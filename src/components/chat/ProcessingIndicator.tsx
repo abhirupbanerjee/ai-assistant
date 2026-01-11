@@ -146,7 +146,10 @@ export default function ProcessingIndicator({
             {phaseInfo.icon}
           </div>
           <span className={`text-sm font-medium ${phaseInfo.color}`}>
-            {details.phase === 'tools' && runningTool
+            {/* Show pause pending message when pause requested but still running */}
+            {isPaused && details.phase !== 'complete'
+              ? 'Pausing after current task...'
+              : details.phase === 'tools' && runningTool
               ? `Running ${runningTool.displayName}...`
               : phaseInfo.label}
           </span>

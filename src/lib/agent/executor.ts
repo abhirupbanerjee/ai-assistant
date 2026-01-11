@@ -453,16 +453,17 @@ async function executeImageGenTool(
   // Parse result and emit artifact event
   try {
     const parsed = JSON.parse(result);
-    if (parsed.success && parsed.image) {
+    // Note: Response uses 'imageHint' (not 'image') per ImageGenResponse type
+    if (parsed.success && parsed.imageHint) {
       const imageInfo: GeneratedImageInfo = {
-        id: parsed.image.id || `img-${Date.now()}`,
-        url: parsed.image.url,
-        thumbnailUrl: parsed.image.thumbnailUrl,
-        alt: `${style} visualization: ${task.description.substring(0, 100)}`,
-        provider: parsed.image.provider,
-        model: parsed.image.model,
-        width: parsed.image.width || 1024,
-        height: parsed.image.height || 1024,
+        id: parsed.imageHint.id || `img-${Date.now()}`,
+        url: parsed.imageHint.url,
+        thumbnailUrl: parsed.imageHint.thumbnailUrl,
+        alt: parsed.imageHint.alt || `${style} visualization: ${task.description.substring(0, 100)}`,
+        provider: parsed.metadata?.provider || 'gemini',
+        model: parsed.metadata?.model || 'unknown',
+        width: parsed.imageHint.width || 1024,
+        height: parsed.imageHint.height || 1024,
       };
 
       callbacks?.onArtifact?.({
@@ -471,7 +472,7 @@ async function executeImageGenTool(
         data: imageInfo,
       });
 
-      return `Image generated: ${style} style\nURL: ${parsed.image.url}`;
+      return `Image generated: ${style} style\nURL: ${parsed.imageHint.url}`;
     } else {
       return `Image generation failed: ${parsed.error?.message || parsed.error || 'Unknown error'}`;
     }

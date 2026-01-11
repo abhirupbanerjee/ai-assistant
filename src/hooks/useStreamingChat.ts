@@ -592,9 +592,15 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       cancelAnimationFrame(rafRef.current);
       rafRef.current = undefined;
     }
+    // Reset all streaming state including processing details
     setState(prev => ({
       ...prev,
       isStreaming: false,
+      processingDetails: {
+        ...prev.processingDetails,
+        currentPhase: 'complete',
+        toolsExecuted: prev.processingDetails.toolsExecuted, // Keep tool history for reference
+      },
     }));
   }, []);
 
@@ -624,15 +630,19 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
   /**
    * Pause the current autonomous plan
+   * Note: Pause takes effect AFTER the current task completes (graceful pause)
    */
   const pausePlan = useCallback(async (reason?: string): Promise<boolean> => {
     const planId = state.activePlanId;
+    console.log('[useStreamingChat] Pause requested, activePlanId:', planId);
+
     if (!planId) {
-      console.warn('[useStreamingChat] Cannot pause: no active plan');
+      console.warn('[useStreamingChat] Cannot pause: no active plan (activePlanId is null)');
       return false;
     }
 
     try {
+      console.log('[useStreamingChat] Sending pause request to:', `/api/autonomous/${planId}/pause`);
       const response = await fetch(`/api/autonomous/${planId}/pause`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -640,6 +650,9 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       });
 
       if (response.ok) {
+        const data = await response.json();
+        console.log('[useStreamingChat] Pause accepted:', data);
+        // Set pending pause state - actual pause happens after current task completes
         setState(prev => ({ ...prev, isPaused: true }));
         return true;
       } else {
