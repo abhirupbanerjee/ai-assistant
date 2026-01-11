@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getThread, deleteThread, updateThreadTitle, setThreadCategories } from '@/lib/threads';
+import { getTaskPlansByThread } from '@/lib/db/task-plans';
 import type { ThreadWithMessages, DeleteThreadResponse, UpdateThreadRequest, ApiError } from '@/types';
 
 interface RouteParams {
@@ -27,7 +28,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    return NextResponse.json<ThreadWithMessages>(thread);
+    // Get task plans for this thread (most recent completed/active plan for autonomous mode)
+    const taskPlans = getTaskPlansByThread(threadId);
+    const completedPlan = taskPlans.find(p =>
+      p.status === 'completed' || p.status === 'failed' || p.status === 'active'
+    );
+
+    return NextResponse.json({
+      ...thread,
+      taskPlan: completedPlan || null,
+    });
   } catch (error) {
     console.error('Get thread error:', error);
     return NextResponse.json<ApiError>(

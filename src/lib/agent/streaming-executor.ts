@@ -7,8 +7,19 @@
 // @ts-nocheck - Type compatibility issues will be resolved in future refactor
 import type { StreamEvent } from '@/types/stream';
 import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/types/agent';
+import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
 import { getAgentModelConfigs } from '../db/agent-config';
+
+/**
+ * Result of autonomous execution including collected artifacts
+ */
+export interface AutonomousExecutionResult {
+  summary: string;
+  planId: string;
+  generatedDocuments: GeneratedDocumentInfo[];
+  generatedImages: GeneratedImageInfo[];
+}
 
 /**
  * Execute autonomous plan with streaming progress updates
@@ -17,7 +28,7 @@ import { getAgentModelConfigs } from '../db/agent-config';
  * @param context - Additional context (RAG, conversation history, etc.)
  * @param planConfig - Plan configuration (thread/user IDs, budget, model config)
  * @param sendEvent - Callback to send SSE events to client
- * @returns Final assistant response content
+ * @returns Execution result including summary and collected artifacts
  */
 export async function executeAutonomousWithStreaming(
   userRequest: string,
@@ -33,7 +44,7 @@ export async function executeAutonomousWithStreaming(
     budget?: Record<string, unknown>;
   },
   sendEvent: (event: StreamEvent) => void
-): Promise<string> {
+): Promise<AutonomousExecutionResult> {
   // Get model config from database (admin-configured)
   const modelConfigs = getAgentModelConfigs();
   const modelConfig: AgentModelConfig = {
@@ -42,6 +53,11 @@ export async function executeAutonomousWithStreaming(
     checker: modelConfigs.checker,
     summarizer: modelConfigs.summarizer,
   };
+
+  // Collect artifacts during execution for persistence
+  const collectedDocuments: GeneratedDocumentInfo[] = [];
+  const collectedImages: GeneratedImageInfo[] = [];
+  let planId = '';
 
   // Execute autonomous plan with streaming callbacks
   try {
@@ -59,6 +75,9 @@ export async function executeAutonomousWithStreaming(
       },
       {
         onPlanCreated: (plan: AgentPlan) => {
+          // Capture plan ID for return value
+          planId = plan.id;
+
           // Count document generation tasks to estimate output count
           const generateTasks = plan.tasks.filter(t => t.type === 'generate');
           const docGenTasks = generateTasks.filter(t =>
@@ -153,6 +172,15 @@ export async function executeAutonomousWithStreaming(
         onArtifact: (event: StreamEvent) => {
           // Forward artifact events directly to client
           sendEvent(event);
+
+          // Also collect artifacts for persistence in message
+          if (event.type === 'artifact') {
+            if (event.subtype === 'document' && event.data) {
+              collectedDocuments.push(event.data as GeneratedDocumentInfo);
+            } else if (event.subtype === 'image' && event.data) {
+              collectedImages.push(event.data as GeneratedImageInfo);
+            }
+          }
         },
 
         onBudgetWarning: (message: string, percentage: number) => {
@@ -205,7 +233,12 @@ export async function executeAutonomousWithStreaming(
     );
 
     if (result.success && result.summary) {
-      return result.summary;
+      return {
+        summary: result.summary,
+        planId,
+        generatedDocuments: collectedDocuments,
+        generatedImages: collectedImages,
+      };
     } else if (result.error) {
       throw new Error(result.error);
     } else {

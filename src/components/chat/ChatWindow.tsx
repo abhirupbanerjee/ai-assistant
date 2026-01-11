@@ -10,7 +10,7 @@ import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
 import AutonomousTaskList from './AutonomousTaskList';
 import ShareModal from '@/components/sharing/ShareModal';
-import { useStreamingChat } from '@/hooks/useStreamingChat';
+import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
 
 interface WelcomeConfig {
   title?: string;
@@ -63,6 +63,7 @@ export default function ChatWindow({
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
+  const [restoredPlan, setRestoredPlan] = useState<AutonomousPlanState | null>(null);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -199,6 +200,7 @@ export default function ChatWindow({
       setMessages([]);
       setUploads([]);
       setSummaryData(null);
+      setRestoredPlan(null);
     }
   }, [activeThread, resetStreaming]);
 
@@ -283,6 +285,56 @@ export default function ChatWindow({
           timestamp: new Date(m.timestamp),
         })));
         setUploads(data.uploads || []);
+
+        // Restore task plan if available (from autonomous mode)
+        if (data.taskPlan) {
+          const plan = data.taskPlan;
+          // Map DB task status to UI status
+          const mapStatus = (s: string): AutonomousTaskState['status'] => {
+            if (s === 'complete' || s === 'done') return 'done';
+            if (s === 'in_progress' || s === 'running') return 'running';
+            if (s === 'failed') return 'error';
+            if (s === 'skipped') return 'skipped';
+            if (s === 'needs_review') return 'needs_review';
+            return 'pending';
+          };
+
+          const tasks: AutonomousTaskState[] = plan.tasks.map((t: any) => ({
+            id: t.id,
+            description: t.description,
+            type: t.type || 'analyze',
+            status: mapStatus(t.status),
+            confidence: t.confidence_score,
+            result: t.result,
+            checkerNotes: t.review_notes,
+          }));
+
+          // Calculate stats
+          const completedTasks = tasks.filter(t => t.status === 'done').length;
+          const failedTasks = tasks.filter(t => t.status === 'error').length;
+          const skippedTasks = tasks.filter(t => t.status === 'skipped').length;
+          const needsReviewTasks = tasks.filter(t => t.status === 'needs_review').length;
+          const confidences = tasks.filter(t => t.confidence !== undefined).map(t => t.confidence!);
+          const avgConfidence = confidences.length > 0
+            ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+            : 0;
+
+          setRestoredPlan({
+            planId: plan.id,
+            title: plan.title,
+            tasks,
+            stats: {
+              total_tasks: tasks.length,
+              completed_tasks: completedTasks,
+              failed_tasks: failedTasks,
+              skipped_tasks: skippedTasks,
+              needs_review_tasks: needsReviewTasks,
+              average_confidence: avgConfidence,
+            },
+          });
+        } else {
+          setRestoredPlan(null);
+        }
       }
     } catch (err) {
       console.error('Failed to load thread:', err);
@@ -444,15 +496,22 @@ export default function ChatWindow({
           />
         )}
 
-        {/* Autonomous Task List - Show even after streaming ends/errors */}
-        {streamingState.autonomousPlan && (
+        {/* Autonomous Task List - Show streaming plan or restored plan */}
+        {streamingState.autonomousPlan ? (
           <div className="mb-4">
             <AutonomousTaskList
               plan={streamingState.autonomousPlan}
               toolsExecuted={streamingState.processingDetails.toolsExecuted}
             />
           </div>
-        )}
+        ) : restoredPlan ? (
+          <div className="mb-4">
+            <AutonomousTaskList
+              plan={restoredPlan}
+              isExpanded={false}
+            />
+          </div>
+        ) : null}
 
         {/* Streaming Content */}
         {streamingState.isStreaming && streamingState.currentContent && (

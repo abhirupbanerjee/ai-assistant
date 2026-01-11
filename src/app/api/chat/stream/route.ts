@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
             async () => {
               try {
                 // Execute autonomous plan with streaming
-                const summary = await executeAutonomousWithStreaming(
+                const result = await executeAutonomousWithStreaming(
                   message,
                   {
                     ragContext,
@@ -173,16 +173,27 @@ export async function POST(request: NextRequest) {
                   send
                 );
 
-                // Save assistant message with summary
+                // Save assistant message with summary AND artifacts
                 const assistantMessage: Message = {
                   id: assistantMessageId,
                   role: 'assistant',
-                  content: summary,
+                  content: result.summary,
+                  generatedDocuments: result.generatedDocuments.length > 0 ? result.generatedDocuments : undefined,
+                  generatedImages: result.generatedImages.length > 0 ? result.generatedImages : undefined,
                   timestamp: new Date(),
                 };
 
                 await addMessage(user.id, threadId, assistantMessage);
-                updateThreadTokenCount(threadId, countTokens(summary));
+                updateThreadTokenCount(threadId, countTokens(result.summary));
+
+                // Link generated outputs to message
+                if (result.generatedDocuments.length > 0 || result.generatedImages.length > 0) {
+                  try {
+                    linkOutputsToMessage(threadId, assistantMessageId);
+                  } catch (linkError) {
+                    console.error('[Stream] Failed to link autonomous outputs to message:', linkError);
+                  }
+                }
 
                 // Background tasks (non-blocking)
                 if (summarizationSettings.enabled && shouldSummarize(threadId)) {
