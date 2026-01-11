@@ -344,8 +344,6 @@ services:
       - "traefik.http.routers.app.middlewares=sse-timeout"
       # SSE streaming: flush immediately for real-time updates
       - "traefik.http.services.app.loadbalancer.responseForwarding.flushInterval=100ms"
-      # Service-level timeout: wait up to 30 minutes for response
-      - "traefik.http.services.app.loadbalancer.server.responseHeaderTimeout=1800s"
 ```
 
 **Key Settings:**
@@ -355,8 +353,9 @@ services:
 | Entrypoint | `readTimeout` | 1800s (30 min) | Maximum time to read request |
 | Entrypoint | `writeTimeout` | 1800s (30 min) | Maximum time to write response |
 | Entrypoint | `idleTimeout` | 1800s (30 min) | Keep idle connections alive |
-| Service | `responseHeaderTimeout` | 1800s (30 min) | Wait for first response byte |
 | Service | `flushInterval` | 100ms | Flush SSE events immediately |
+
+**Note:** Traefik v3 does not support service-level `responseHeaderTimeout`. The entrypoint-level timeouts (read/write/idle) are sufficient for SSE streaming.
 
 ### Timeout Chain
 
@@ -368,12 +367,10 @@ Browser ←─────── Traefik ─────────→ Next.js 
     flushInterval=100ms            maxDuration (admin config)
     (stream chunks fast)           (app-level limit)
            │
-    responseHeaderTimeout=1800s
-    (wait for first byte)
-           │
     readTimeout=1800s
     writeTimeout=1800s
     idleTimeout=1800s
+    (entrypoint-level timeouts)
            │
     Keepalive Interval (admin config)
     (ping events to keep connection alive)
@@ -628,7 +625,7 @@ This section documents bugs and issues encountered during autonomous mode develo
 **Resolution:** The app-level `maxDuration` was limiting streaming sessions to 300 seconds (5 minutes). Added admin-configurable streaming settings:
 - **Max Stream Duration**: Increase from default 300s to 480-600s for large plans (20+ tasks)
 - **Keepalive Interval**: Reduce to 10s to keep connections alive through proxies
-- **Service-level timeout**: Added `responseHeaderTimeout=1800s` to Traefik labels
+- **Traefik timeouts**: Ensure entrypoint-level timeouts (readTimeout, writeTimeout, idleTimeout) are set to 1800s
 
 Configure in Admin UI → Settings → Autonomous Agent → Streaming Configuration.
 
@@ -809,7 +806,7 @@ All core functionality has been implemented:
   - Keepalive Interval (5-60s, default 10s)
   - Max Stream Duration (60-600s, default 300s)
   - Tool Timeout (30-300s, default 60s)
-- **Traefik Enhancements**: Added service-level `responseHeaderTimeout` for reliable long connections
+- **Traefik Enhancements**: Extended entrypoint-level timeouts (read/write/idle) to 1800s for reliable long SSE connections
 - **Token Usage Display**: Shows LLM calls, tokens used, and web searches in task list stats
 - Updated SSE event types with control events (`agent_paused`, `agent_resumed`, `agent_stopped`, `agent_task_skipped`)
 

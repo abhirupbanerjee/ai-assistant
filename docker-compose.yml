@@ -57,8 +57,6 @@ services:
       - "traefik.http.routers.app.middlewares=sse-timeout"
       # SSE streaming: flush immediately for real-time updates
       - "traefik.http.services.app.loadbalancer.responseForwarding.flushInterval=100ms"
-      # Service-level timeout: wait up to 30 minutes for response (autonomous mode can take 10+ minutes)
-      - "traefik.http.services.app.loadbalancer.server.responseHeaderTimeout=1800s"
     volumes:
       - ./data/app:/app/data
       - ./config:/app/config:ro
