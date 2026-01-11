@@ -19,6 +19,40 @@ import { documentGenerationTool } from '../tools/docgen';
 import { imageGenTool } from '../tools/image-gen';
 import { tavilyWebSearch } from '../tools/tavily';
 import { runWithContextAsync } from '../request-context';
+import { resolveSkills } from '../skills/resolver';
+import { getCategoryBySlug } from '../db/categories';
+
+// ============ Skills Resolution ============
+
+/**
+ * Resolve skills for the plan's category context
+ * Returns the combined skill prompt content to inject into executor prompts
+ */
+function resolveSkillsForPlan(plan: AgentPlan, taskDescription: string): string {
+  // Get category slug from plan (handle both naming conventions)
+  const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
+
+  if (!categorySlug) {
+    return '';
+  }
+
+  // Look up category ID from slug
+  const category = getCategoryBySlug(categorySlug);
+  if (!category) {
+    console.log(`[Executor] No category found for slug: ${categorySlug}`);
+    return '';
+  }
+
+  // Resolve skills for this category
+  const resolved = resolveSkills([category.id], taskDescription);
+
+  if (resolved.skills.length > 0) {
+    console.log(`[Executor] Loaded ${resolved.skills.length} skills for category "${categorySlug}":`,
+      resolved.activatedBy);
+  }
+
+  return resolved.combinedPrompt;
+}
 
 // ============ Tool Detection ============
 
@@ -218,12 +252,21 @@ async function performTaskExecution(
   // Default: LLM-based execution
   const prompt = buildExecutionPrompt(task, plan);
 
+  // Resolve skills for this plan's category context
+  const skillPrompt = resolveSkillsForPlan(plan, task.description);
+
+  // Build system prompt with skills injected
+  let systemPrompt = EXECUTOR_SYSTEM_PROMPT;
+  if (skillPrompt) {
+    systemPrompt = `${EXECUTOR_SYSTEM_PROMPT}\n\n--- DOMAIN-SPECIFIC GUIDELINES ---\n${skillPrompt}`;
+  }
+
   // Get executor model
   const executorModel = getModelForRole('executor', modelConfig);
 
   // Generate result
   const response = await generateWithModel(executorModel, prompt, {
-    systemPrompt: EXECUTOR_SYSTEM_PROMPT,
+    systemPrompt,
     temperature: 0.4, // Balanced creativity
   });
 
@@ -298,12 +341,22 @@ async function executeDocGenTool(
   modelConfig: AgentModelConfig,
   callbacks?: ExecutorCallbacks
 ): Promise<string> {
+  // Resolve skills for this plan's category context
+  const skillPrompt = resolveSkillsForPlan(plan, task.description);
+
+  // Build system prompt with skills injected
+  // Skills are CRITICAL for document generation - they define the output structure
+  let docSystemPrompt = DOC_CONTENT_SYSTEM_PROMPT;
+  if (skillPrompt) {
+    docSystemPrompt = `${DOC_CONTENT_SYSTEM_PROMPT}\n\n--- DOMAIN-SPECIFIC GUIDELINES ---\nFollow these guidelines precisely when generating the document:\n\n${skillPrompt}`;
+  }
+
   // First, generate the document content using LLM
   const contentPrompt = buildDocContentPrompt(task, plan);
   const executorModel = getModelForRole('executor', modelConfig);
 
   const contentResponse = await generateWithModel(executorModel, contentPrompt, {
-    systemPrompt: DOC_CONTENT_SYSTEM_PROMPT,
+    systemPrompt: docSystemPrompt,
     temperature: 0.4,
   });
 

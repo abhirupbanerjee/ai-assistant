@@ -405,7 +405,14 @@ export default function ChatWindow({
 
   const retry = () => {
     setError(null);
+    // Also reset streaming state if there was a streaming error
+    if (streamingState.error) {
+      resetStreaming();
+    }
   };
+
+  // Combined error from local state or streaming state
+  const displayError = error || streamingState.error;
 
   const handleStarterSelect = (prompt: string) => {
     sendMessage(prompt);
@@ -542,10 +549,10 @@ export default function ChatWindow({
           </div>
         )}
 
-        {error && (
+        {displayError && (
           <div className="flex justify-center mb-4">
             <div className="bg-red-50 text-red-600 rounded-lg px-4 py-3 flex items-center gap-3">
-              <span>{error}</span>
+              <span>{displayError}</span>
               <button
                 onClick={retry}
                 className="flex items-center gap-1 text-sm font-medium hover:underline"
