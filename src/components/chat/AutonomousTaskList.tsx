@@ -32,6 +32,10 @@ interface AutonomousTaskListProps {
   plan: AutonomousPlanState;
   toolsExecuted?: ToolExecutionState[];
   isExpanded?: boolean;
+  // Control state and callbacks
+  isPaused?: boolean;
+  isStopped?: boolean;
+  onSkipTask?: (taskId: number) => void;
 }
 
 /**
@@ -95,7 +99,15 @@ function getStatusColorClass(status: AutonomousTaskState['status']) {
 /**
  * Single task item component
  */
-function TaskItem({ task, isLast }: { task: AutonomousTaskState; isLast: boolean }) {
+function TaskItem({
+  task,
+  isLast,
+  onSkip,
+}: {
+  task: AutonomousTaskState;
+  isLast: boolean;
+  onSkip?: () => void;
+}) {
   return (
     <div className="flex items-start gap-3">
       {/* Status line */}
@@ -114,9 +126,24 @@ function TaskItem({ task, isLast }: { task: AutonomousTaskState; isLast: boolean
       <div
         className={`flex-1 p-2 rounded-lg border text-sm mb-2 ${getStatusColorClass(task.status)}`}
       >
-        <div className="flex items-center gap-2">
-          {getTaskTypeIcon(task.type)}
-          <span className="font-medium text-gray-700">{task.description}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {getTaskTypeIcon(task.type)}
+            <span className="font-medium text-gray-700">{task.description}</span>
+          </div>
+          {/* Skip button for pending tasks */}
+          {task.status === 'pending' && onSkip && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSkip();
+              }}
+              className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Skip this task"
+            >
+              <SkipForward size={14} />
+            </button>
+          )}
         </div>
 
         {/* Executor result text */}
@@ -192,6 +219,9 @@ export default function AutonomousTaskList({
   plan,
   toolsExecuted = [],
   isExpanded: initialExpanded = true,
+  isPaused = false,
+  isStopped = false,
+  onSkipTask,
 }: AutonomousTaskListProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
 
@@ -204,6 +234,21 @@ export default function AutonomousTaskList({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+      {/* Paused/Stopped Status Banner */}
+      {(isPaused || isStopped) && (
+        <div
+          className={`px-3 py-2 text-sm font-medium ${
+            isPaused
+              ? 'bg-yellow-50 text-yellow-700 border-b border-yellow-200'
+              : 'bg-orange-50 text-orange-700 border-b border-orange-200'
+          }`}
+        >
+          {isPaused
+            ? `Paused at ${completedCount}/${plan.tasks.length} tasks`
+            : `Stopped at ${completedCount}/${plan.tasks.length} tasks`}
+        </div>
+      )}
+
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
@@ -217,7 +262,7 @@ export default function AutonomousTaskList({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {currentTask && (
+          {currentTask && !isPaused && !isStopped && (
             <span className="text-xs text-blue-600 animate-pulse">
               {currentTask.description.substring(0, 30)}...
             </span>
@@ -253,6 +298,7 @@ export default function AutonomousTaskList({
                 key={task.id}
                 task={task}
                 isLast={index === plan.tasks.length - 1}
+                onSkip={onSkipTask ? () => onSkipTask(task.id) : undefined}
               />
             ))}
           </div>

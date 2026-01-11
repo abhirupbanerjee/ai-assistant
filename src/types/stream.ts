@@ -96,7 +96,13 @@ export type StreamEvent =
   | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
   | { type: 'agent_budget_exceeded'; message: string }
   | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }
-  | { type: 'agent_error'; error: string };
+  | { type: 'agent_error'; error: string }
+
+  // Autonomous mode control events
+  | { type: 'agent_paused'; plan_id: string; completed_tasks: number; total_tasks: number; message: string; reason?: string }
+  | { type: 'agent_resumed'; plan_id: string; remaining_tasks: number; total_tasks: number; message: string }
+  | { type: 'agent_stopped'; plan_id: string; completed_tasks: number; skipped_tasks: number; total_tasks: number; summary?: string; reason?: string }
+  | { type: 'agent_task_skipped'; plan_id: string; task_id: number; reason?: string };
 
 /**
  * Stream error codes

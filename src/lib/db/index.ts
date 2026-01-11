@@ -507,6 +507,20 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Migration: Add execution control columns to task_plans for pause/resume/stop
+  const taskPlansControlColumns = database.pragma('table_info(task_plans)') as { name: string }[];
+  const taskPlansCtrlColumnNames = taskPlansControlColumns.map((c) => c.name);
+
+  if (!taskPlansCtrlColumnNames.includes('paused_at')) {
+    database.exec(`
+      ALTER TABLE task_plans ADD COLUMN paused_at DATETIME;
+      ALTER TABLE task_plans ADD COLUMN pause_reason TEXT;
+      ALTER TABLE task_plans ADD COLUMN resumed_at DATETIME;
+      ALTER TABLE task_plans ADD COLUMN stopped_at DATETIME;
+      ALTER TABLE task_plans ADD COLUMN stop_reason TEXT;
+    `);
+  }
+
   // Check and create RAG testing tables for RAG Tuning Dashboard
   const ragTestQueriesTableExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='rag_test_queries'"

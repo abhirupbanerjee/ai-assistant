@@ -11,7 +11,7 @@ import { execute, queryOne, queryAll } from './index';
 // ============ Types ============
 
 export type TaskStatus = 'pending' | 'in_progress' | 'complete' | 'failed' | 'skipped';
-export type PlanStatus = 'active' | 'completed' | 'cancelled' | 'failed';
+export type PlanStatus = 'active' | 'completed' | 'cancelled' | 'failed' | 'paused' | 'stopped';
 
 export interface Task {
   id: number;
@@ -38,6 +38,12 @@ export interface TaskPlan {
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
+  // Control fields
+  pausedAt?: string;
+  pauseReason?: string;
+  resumedAt?: string;
+  stoppedAt?: string;
+  stopReason?: string;
 }
 
 export interface TaskPlanStats {
@@ -65,6 +71,12 @@ interface DbTaskPlan {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  // Control columns
+  paused_at: string | null;
+  pause_reason: string | null;
+  resumed_at: string | null;
+  stopped_at: string | null;
+  stop_reason: string | null;
 }
 
 // ============ Mappers ============
@@ -85,6 +97,12 @@ function mapDbToTaskPlan(row: DbTaskPlan): TaskPlan {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at || undefined,
+    // Control fields
+    pausedAt: row.paused_at || undefined,
+    pauseReason: row.pause_reason || undefined,
+    resumedAt: row.resumed_at || undefined,
+    stoppedAt: row.stopped_at || undefined,
+    stopReason: row.stop_reason || undefined,
   };
 }
 
@@ -575,4 +593,209 @@ export function recoverActivePlans(): number {
   }
 
   return recovered;
+}
+
+// ============ Execution Control Operations ============
+
+/**
+ * Pause an active plan
+ * The orchestrator will stop after the current task completes
+ */
+export function pausePlan(planId: string, reason?: string): TaskPlan | undefined {
+  const plan = getTaskPlan(planId);
+  if (!plan) return undefined;
+
+  // Can only pause active plans
+  if (plan.status !== 'active') {
+    console.warn(`[PausePlan] Cannot pause plan ${planId} with status '${plan.status}'`);
+    return undefined;
+  }
+
+  const now = new Date().toISOString();
+
+  execute(
+    `UPDATE task_plans
+     SET status = 'paused', paused_at = ?, pause_reason = ?, updated_at = ?
+     WHERE id = ?`,
+    [now, reason || null, now, planId]
+  );
+
+  console.log(`[PausePlan] Plan ${planId} paused at ${now}${reason ? `: ${reason}` : ''}`);
+  return getTaskPlan(planId);
+}
+
+/**
+ * Resume a paused plan
+ * Clears pause state and sets status back to active
+ */
+export function resumePlan(planId: string): TaskPlan | undefined {
+  const plan = getTaskPlan(planId);
+  if (!plan) return undefined;
+
+  // Can only resume paused plans
+  if (plan.status !== 'paused') {
+    console.warn(`[ResumePlan] Cannot resume plan ${planId} with status '${plan.status}'`);
+    return undefined;
+  }
+
+  const now = new Date().toISOString();
+
+  execute(
+    `UPDATE task_plans
+     SET status = 'active', resumed_at = ?, updated_at = ?
+     WHERE id = ?`,
+    [now, now, planId]
+  );
+
+  console.log(`[ResumePlan] Plan ${planId} resumed at ${now}`);
+  return getTaskPlan(planId);
+}
+
+/**
+ * Gracefully stop a plan
+ * Completes the current task but does not continue to remaining tasks
+ * Different from cancel - stop keeps all completed work
+ */
+export function stopPlan(planId: string, reason?: string): TaskPlan | undefined {
+  const plan = getTaskPlan(planId);
+  if (!plan) return undefined;
+
+  // Can stop active or paused plans
+  if (plan.status !== 'active' && plan.status !== 'paused') {
+    console.warn(`[StopPlan] Cannot stop plan ${planId} with status '${plan.status}'`);
+    return undefined;
+  }
+
+  const now = new Date().toISOString();
+
+  // Mark any in_progress tasks as complete (they'll finish their current work)
+  // Skip pending tasks
+  const tasksData = JSON.parse(
+    queryOne<{ tasks_json: string }>('SELECT tasks_json FROM task_plans WHERE id = ?', [planId])!.tasks_json
+  ) as { tasks: any[] };
+
+  for (const task of tasksData.tasks) {
+    if (task.status === 'pending') {
+      task.status = 'skipped';
+      task.reason = reason || 'Plan stopped by user';
+      task.completed_at = now;
+      if (!task.state_history) task.state_history = [];
+      task.state_history.push({
+        status: 'skipped',
+        timestamp: now,
+        details: { reason: reason || 'Plan stopped by user' },
+      });
+    }
+  }
+
+  execute(
+    `UPDATE task_plans
+     SET status = 'stopped', stopped_at = ?, stop_reason = ?, tasks_json = ?, updated_at = ?
+     WHERE id = ?`,
+    [now, reason || null, JSON.stringify(tasksData), now, planId]
+  );
+
+  console.log(`[StopPlan] Plan ${planId} stopped at ${now}${reason ? `: ${reason}` : ''}`);
+  return getTaskPlan(planId);
+}
+
+/**
+ * Skip a specific task by ID
+ * Can only skip pending tasks (not running or completed)
+ */
+export function skipTask(planId: string, taskId: number, reason?: string): TaskPlan | undefined {
+  const plan = getTaskPlan(planId);
+  if (!plan) return undefined;
+
+  // Can only skip tasks in active or paused plans
+  if (plan.status !== 'active' && plan.status !== 'paused') {
+    console.warn(`[SkipTask] Cannot skip task in plan ${planId} with status '${plan.status}'`);
+    return undefined;
+  }
+
+  const tasksData = JSON.parse(
+    queryOne<{ tasks_json: string }>('SELECT tasks_json FROM task_plans WHERE id = ?', [planId])!.tasks_json
+  ) as { tasks: any[] };
+
+  const task = tasksData.tasks.find((t: any) => t.id === taskId);
+  if (!task) {
+    console.warn(`[SkipTask] Task ${taskId} not found in plan ${planId}`);
+    return undefined;
+  }
+
+  // Can only skip pending tasks
+  if (task.status !== 'pending') {
+    console.warn(`[SkipTask] Cannot skip task ${taskId} with status '${task.status}'`);
+    return undefined;
+  }
+
+  const now = new Date().toISOString();
+
+  task.status = 'skipped';
+  task.reason = reason || 'Skipped by user';
+  task.completed_at = now;
+  if (!task.state_history) task.state_history = [];
+  task.state_history.push({
+    status: 'skipped',
+    timestamp: now,
+    details: { reason: reason || 'Skipped by user' },
+  });
+
+  // Update stats
+  const stats = {
+    complete: tasksData.tasks.filter((t: any) => t.status === 'done').length,
+    failed: tasksData.tasks.filter((t: any) => t.status === 'failed').length,
+    skipped: tasksData.tasks.filter((t: any) => t.status === 'skipped').length,
+  };
+
+  execute(
+    `UPDATE task_plans SET tasks_json = ?, updated_at = ?, completed_tasks = ?, failed_tasks = ? WHERE id = ?`,
+    [JSON.stringify(tasksData), now, stats.complete, stats.failed, planId]
+  );
+
+  console.log(`[SkipTask] Task ${taskId} in plan ${planId} skipped${reason ? `: ${reason}` : ''}`);
+  return getTaskPlan(planId);
+}
+
+/**
+ * Check if a plan is paused
+ */
+export function isPlanPaused(planId: string): boolean {
+  const row = queryOne<{ status: string }>('SELECT status FROM task_plans WHERE id = ?', [planId]);
+  return row?.status === 'paused';
+}
+
+/**
+ * Check if a plan is stopped
+ */
+export function isPlanStopped(planId: string): boolean {
+  const row = queryOne<{ status: string }>('SELECT status FROM task_plans WHERE id = ?', [planId]);
+  return row?.status === 'stopped';
+}
+
+/**
+ * Get plan control status (for orchestrator loop checks)
+ */
+export function getPlanControlStatus(planId: string): {
+  status: PlanStatus;
+  isPaused: boolean;
+  isStopped: boolean;
+  pauseReason?: string;
+  stopReason?: string;
+} | undefined {
+  const row = queryOne<{
+    status: string;
+    pause_reason: string | null;
+    stop_reason: string | null;
+  }>('SELECT status, pause_reason, stop_reason FROM task_plans WHERE id = ?', [planId]);
+
+  if (!row) return undefined;
+
+  return {
+    status: row.status as PlanStatus,
+    isPaused: row.status === 'paused',
+    isStopped: row.status === 'stopped',
+    pauseReason: row.pause_reason || undefined,
+    stopReason: row.stop_reason || undefined,
+  };
 }

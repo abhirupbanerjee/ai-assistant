@@ -240,6 +240,9 @@ export interface OrchestratorResult {
   plan_id: string;
   summary?: string;
   error?: string;
+  // Control states
+  paused?: boolean;
+  stopped?: boolean;
   stats?: {
     total_tasks: number;
     completed_tasks: number;

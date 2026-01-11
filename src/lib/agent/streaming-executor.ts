@@ -229,16 +229,70 @@ export async function executeAutonomousWithStreaming(
             stats,
           });
         },
+
+        // Control callbacks
+        onPlanPaused: (plan: AgentPlan, reason?: string) => {
+          const completedTasks = plan.tasks.filter((t) => t.status === 'done').length;
+          sendEvent({
+            type: 'agent_paused',
+            plan_id: plan.id,
+            completed_tasks: completedTasks,
+            total_tasks: plan.tasks.length,
+            message: `Plan paused at ${completedTasks}/${plan.tasks.length} tasks`,
+            reason,
+          });
+        },
+
+        onPlanStopped: (plan: AgentPlan, reason?: string) => {
+          const completedTasks = plan.tasks.filter((t) => t.status === 'done').length;
+          const skippedTasks = plan.tasks.filter((t) => t.status === 'skipped').length;
+          sendEvent({
+            type: 'agent_stopped',
+            plan_id: plan.id,
+            completed_tasks: completedTasks,
+            skipped_tasks: skippedTasks,
+            total_tasks: plan.tasks.length,
+            reason,
+          });
+        },
       }
     );
 
-    if (result.success && result.summary) {
-      return {
-        summary: result.summary,
-        planId,
-        generatedDocuments: collectedDocuments,
-        generatedImages: collectedImages,
-      };
+    if (result.success) {
+      // Handle normal completion, paused, or stopped states
+      if (result.paused) {
+        // Plan was paused - return partial results
+        return {
+          summary: 'Plan paused - resume to continue execution.',
+          planId,
+          generatedDocuments: collectedDocuments,
+          generatedImages: collectedImages,
+        };
+      } else if (result.stopped) {
+        // Plan was stopped gracefully - return with partial summary
+        return {
+          summary: result.summary || 'Plan stopped by user.',
+          planId,
+          generatedDocuments: collectedDocuments,
+          generatedImages: collectedImages,
+        };
+      } else if (result.summary) {
+        // Normal completion with summary
+        return {
+          summary: result.summary,
+          planId,
+          generatedDocuments: collectedDocuments,
+          generatedImages: collectedImages,
+        };
+      } else {
+        // Success but no summary - shouldn't happen
+        return {
+          summary: 'Plan completed.',
+          planId,
+          generatedDocuments: collectedDocuments,
+          generatedImages: collectedImages,
+        };
+      }
     } else if (result.error) {
       throw new Error(result.error);
     } else {

@@ -28,6 +28,7 @@ import {
   updateTaskPlanStatus,
   transitionTaskState,
   incrementBudgetUsage,
+  getPlanControlStatus,
 } from '../db/task-plans';
 
 /**
@@ -44,6 +45,9 @@ export interface OrchestratorCallbacks {
   onBudgetExceeded?: (message: string) => void;
   onError?: (error: string) => void;
   onPlanCompleted?: (plan: AgentPlan, summary: string) => void;
+  // Control callbacks
+  onPlanPaused?: (plan: AgentPlan, reason?: string) => void;
+  onPlanStopped?: (plan: AgentPlan, reason?: string) => void;
 }
 
 /**
@@ -265,6 +269,40 @@ async function executeTasksInOrder(
     const updatedPlan = getTaskPlan(plan.id);
     const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === nextTask.id) || nextTask;
     callbacks?.onTaskCompleted?.(updatedTask, result);
+
+    // === Control Signal Checks ===
+    // Check for pause/stop signals AFTER task completion
+    const controlStatus = getPlanControlStatus(plan.id);
+    if (controlStatus) {
+      // Check pause signal
+      if (controlStatus.isPaused) {
+        const pausedPlan = (getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
+        callbacks?.onPlanPaused?.(pausedPlan, controlStatus.pauseReason);
+        console.log(`[Orchestrator] Plan ${plan.id} paused after task ${nextTask.id}`);
+        return {
+          success: true,
+          paused: true,
+          plan_id: plan.id,
+        };
+      }
+
+      // Check stop signal (graceful termination)
+      if (controlStatus.isStopped) {
+        const stoppedPlan = (getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
+        callbacks?.onPlanStopped?.(stoppedPlan, controlStatus.stopReason);
+        console.log(`[Orchestrator] Plan ${plan.id} stopped after task ${nextTask.id}`);
+
+        // Generate partial summary for stopped plan
+        const summaryResult = await generatePlanSummary(stoppedPlan, modelConfig, budgetTracker);
+        return {
+          success: true,
+          stopped: true,
+          plan_id: plan.id,
+          summary: summaryResult.summary,
+          stats: calculatePlanStats(stoppedPlan),
+        };
+      }
+    }
 
     // Check for errors or review needed
     if (!result.success) {

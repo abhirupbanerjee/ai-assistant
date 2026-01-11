@@ -305,7 +305,8 @@ export type ErrorCode =
   | 'INVALID_FILE_TYPE'
   | 'SERVICE_ERROR'
   | 'RATE_LIMITED'
-  | 'NOT_CONFIGURED';
+  | 'NOT_CONFIGURED'
+  | 'INVALID_STATE';
 
 // ============ Storage Types ============
 

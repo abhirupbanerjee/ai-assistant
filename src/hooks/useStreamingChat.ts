@@ -75,6 +75,13 @@ export interface StreamingState {
   error: string | null;
   /** Whether error is recoverable */
   errorRecoverable: boolean;
+  // Execution control state
+  /** Whether plan is paused */
+  isPaused: boolean;
+  /** Whether plan is stopped */
+  isStopped: boolean;
+  /** Active plan ID (for control operations) */
+  activePlanId: string | null;
 }
 
 export interface UseStreamingChatOptions {
@@ -97,6 +104,15 @@ export interface UseStreamingChatReturn {
   toggleProcessingDetails: () => void;
   /** Reset state for new conversation */
   reset: () => void;
+  // Execution control methods
+  /** Pause the current autonomous plan */
+  pausePlan: (reason?: string) => Promise<boolean>;
+  /** Resume a paused autonomous plan */
+  resumePlan: () => Promise<boolean>;
+  /** Stop the current autonomous plan gracefully */
+  stopPlan: (reason?: string) => Promise<boolean>;
+  /** Skip a specific task in the autonomous plan */
+  skipTask: (taskId: number, reason?: string) => Promise<boolean>;
 }
 
 // ============ Initial State ============
@@ -122,6 +138,9 @@ const initialState: StreamingState = {
   budgetWarning: null,
   error: null,
   errorRecoverable: false,
+  isPaused: false,
+  isStopped: false,
+  activePlanId: null,
 };
 
 // ============ Hook ============
@@ -244,6 +263,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         // Initialize autonomous plan with tasks from the event
         setState(prev => ({
           ...prev,
+          activePlanId: event.plan_id,
           autonomousPlan: {
             planId: event.plan_id,
             title: event.title,
@@ -351,6 +371,52 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           error: event.error,
           errorRecoverable: true,
         }));
+        break;
+
+      case 'agent_paused':
+        // Handle plan paused
+        setState(prev => ({
+          ...prev,
+          isPaused: true,
+          isStreaming: false,
+        }));
+        break;
+
+      case 'agent_resumed':
+        // Handle plan resumed
+        setState(prev => ({
+          ...prev,
+          isPaused: false,
+          isStreaming: true,
+        }));
+        break;
+
+      case 'agent_stopped':
+        // Handle plan stopped
+        setState(prev => ({
+          ...prev,
+          isStopped: true,
+          isStreaming: false,
+          currentContent: event.summary || prev.currentContent,
+        }));
+        break;
+
+      case 'agent_task_skipped':
+        // Handle task skipped
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, status: 'skipped' as const }
+                  : task
+              ),
+            },
+          };
+        });
         break;
 
       case 'chunk':
@@ -550,12 +616,155 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     setState(initialState);
   }, [abort]);
 
+  // ============ Execution Control Methods ============
+
+  /**
+   * Pause the current autonomous plan
+   */
+  const pausePlan = useCallback(async (reason?: string): Promise<boolean> => {
+    const planId = state.activePlanId;
+    if (!planId) {
+      console.warn('[useStreamingChat] Cannot pause: no active plan');
+      return false;
+    }
+
+    try {
+      const response = await fetch(`/api/autonomous/${planId}/pause`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (response.ok) {
+        setState(prev => ({ ...prev, isPaused: true }));
+        return true;
+      } else {
+        const error = await response.json();
+        console.error('[useStreamingChat] Pause failed:', error);
+        return false;
+      }
+    } catch (error) {
+      console.error('[useStreamingChat] Pause error:', error);
+      return false;
+    }
+  }, [state.activePlanId]);
+
+  /**
+   * Resume a paused autonomous plan
+   */
+  const resumePlan = useCallback(async (): Promise<boolean> => {
+    const planId = state.activePlanId;
+    if (!planId) {
+      console.warn('[useStreamingChat] Cannot resume: no active plan');
+      return false;
+    }
+
+    try {
+      const response = await fetch(`/api/autonomous/${planId}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        setState(prev => ({ ...prev, isPaused: false }));
+        return true;
+      } else {
+        const error = await response.json();
+        console.error('[useStreamingChat] Resume failed:', error);
+        return false;
+      }
+    } catch (error) {
+      console.error('[useStreamingChat] Resume error:', error);
+      return false;
+    }
+  }, [state.activePlanId]);
+
+  /**
+   * Stop the current autonomous plan gracefully
+   */
+  const stopPlan = useCallback(async (reason?: string): Promise<boolean> => {
+    const planId = state.activePlanId;
+    if (!planId) {
+      console.warn('[useStreamingChat] Cannot stop: no active plan');
+      return false;
+    }
+
+    try {
+      const response = await fetch(`/api/autonomous/${planId}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (response.ok) {
+        setState(prev => ({ ...prev, isStopped: true, isStreaming: false }));
+        return true;
+      } else {
+        const error = await response.json();
+        console.error('[useStreamingChat] Stop failed:', error);
+        return false;
+      }
+    } catch (error) {
+      console.error('[useStreamingChat] Stop error:', error);
+      return false;
+    }
+  }, [state.activePlanId]);
+
+  /**
+   * Skip a specific task in the autonomous plan
+   */
+  const skipTask = useCallback(async (taskId: number, reason?: string): Promise<boolean> => {
+    const planId = state.activePlanId;
+    if (!planId) {
+      console.warn('[useStreamingChat] Cannot skip task: no active plan');
+      return false;
+    }
+
+    try {
+      const response = await fetch(`/api/autonomous/${planId}/tasks/${taskId}/skip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (response.ok) {
+        // Update task state locally
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === taskId
+                  ? { ...task, status: 'skipped' as const }
+                  : task
+              ),
+            },
+          };
+        });
+        return true;
+      } else {
+        const error = await response.json();
+        console.error('[useStreamingChat] Skip task failed:', error);
+        return false;
+      }
+    } catch (error) {
+      console.error('[useStreamingChat] Skip task error:', error);
+      return false;
+    }
+  }, [state.activePlanId]);
+
   return {
     state,
     sendMessage,
     abort,
     toggleProcessingDetails,
     reset,
+    pausePlan,
+    resumePlan,
+    stopPlan,
+    skipTask,
   };
 }
 

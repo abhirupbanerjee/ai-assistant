@@ -21,6 +21,9 @@ import {
   Loader2,
   Zap,
   StopCircle,
+  Pause,
+  Play,
+  Square,
 } from 'lucide-react';
 import type { ProcessingDetails, StreamPhase, ToolExecutionState } from '@/types';
 
@@ -28,6 +31,13 @@ interface ProcessingIndicatorProps {
   details: ProcessingDetails;
   onToggleExpand: () => void;
   onAbort?: () => void;
+  // Autonomous mode control
+  isAutonomous?: boolean;
+  isPaused?: boolean;
+  isStopped?: boolean;
+  onPause?: () => void;
+  onResume?: () => void;
+  onStop?: () => void;
 }
 
 /**
@@ -103,6 +113,12 @@ export default function ProcessingIndicator({
   details,
   onToggleExpand,
   onAbort,
+  isAutonomous = false,
+  isPaused = false,
+  isStopped = false,
+  onPause,
+  onResume,
+  onStop,
 }: ProcessingIndicatorProps) {
   const phaseInfo = getPhaseInfo(details.phase);
 
@@ -154,18 +170,64 @@ export default function ProcessingIndicator({
         </div>
       </button>
 
-      {/* Stop Button */}
-      {onAbort && details.phase !== 'complete' && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAbort();
-          }}
-          className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
-          title="Stop processing"
-        >
-          <StopCircle size={18} />
-        </button>
+      {/* Control Buttons */}
+      {details.phase !== 'complete' && !isStopped && (
+        <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          {/* Autonomous mode controls */}
+          {isAutonomous && (
+            <>
+              {isPaused ? (
+                // Resume button when paused
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onResume?.();
+                  }}
+                  className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 hover:text-green-600 transition-colors"
+                  title="Resume execution"
+                >
+                  <Play size={18} />
+                </button>
+              ) : (
+                // Pause button when running
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPause?.();
+                  }}
+                  className="p-1.5 rounded-lg text-yellow-500 hover:bg-yellow-50 hover:text-yellow-600 transition-colors"
+                  title="Pause after current task"
+                >
+                  <Pause size={18} />
+                </button>
+              )}
+              {/* Graceful stop button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStop?.();
+                }}
+                className="p-1.5 rounded-lg text-orange-500 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                title="Stop gracefully (keep completed work)"
+              >
+                <Square size={16} />
+              </button>
+            </>
+          )}
+          {/* Hard abort button (all modes) */}
+          {onAbort && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAbort();
+              }}
+              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+              title="Abort immediately"
+            >
+              <StopCircle size={18} />
+            </button>
+          )}
+        </div>
       )}
 
       {/* Expanded Details */}
