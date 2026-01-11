@@ -82,14 +82,18 @@ interface StreamChatRequest {
 
 **New SSE Events:**
 ```typescript
-| { type: 'agent_plan_created'; plan_id: string; title: string; task_count: number }
-| { type: 'agent_task_started'; task_id: number; description: string; type: string }
-| { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number }
+| { type: 'agent_plan_created'; plan_id: string; title: string; task_count: number; tasks: Array<{ id: number; description: string; type: string }> }
+| { type: 'agent_task_started'; task_id: number; description: string; task_type: string }
+| { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number; result?: string; checkerNotes?: string }
 | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
 | { type: 'agent_budget_exceeded'; message: string }
 | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }
 | { type: 'agent_error'; error: string }
 ```
+
+**Note:** The `agent_task_completed` event now includes:
+- `result`: The executor's output text for the task
+- `checkerNotes`: The checker agent's quality assessment notes
 
 **New Stream Phases:**
 ```typescript
@@ -248,7 +252,13 @@ eventSource.addEventListener('message', (e) => {
         ...prev,
         tasks: prev.tasks.map(t =>
           t.id === event.task_id
-            ? { ...t, status: event.status, confidence: event.confidence }
+            ? {
+                ...t,
+                status: event.status,
+                confidence: event.confidence,
+                result: event.result,           // Executor output text
+                checkerNotes: event.checkerNotes // Checker assessment notes
+              }
             : t
         ),
       }));
@@ -308,6 +318,55 @@ return (
   </div>
 );
 ```
+
+---
+
+## Infrastructure Configuration
+
+### Traefik Reverse Proxy Timeouts
+
+Autonomous mode can run for extended periods (10-30 minutes for complex tasks). The default Traefik timeouts will kill SSE connections prematurely. Configure extended timeouts in `docker-compose.yml`:
+
+```yaml
+services:
+  traefik:
+    command:
+      # ... other config ...
+      # Increase timeouts for SSE/long-running autonomous mode (30 minutes)
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=1800s"
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=1800s"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=1800s"
+
+  app:
+    labels:
+      # SSE keepalive middleware
+      - "traefik.http.middlewares.sse-timeout.headers.customRequestHeaders.Connection=keep-alive"
+      - "traefik.http.routers.app.middlewares=sse-timeout"
+      # Response timeout: wait up to 30 minutes for response
+      - "traefik.http.services.app.loadbalancer.responseForwarding.flushInterval=100ms"
+```
+
+**Key Settings:**
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `readTimeout` | 1800s (30 min) | Maximum time to read request |
+| `writeTimeout` | 1800s (30 min) | Maximum time to write response |
+| `idleTimeout` | 1800s (30 min) | Keep idle connections alive |
+| `flushInterval` | 100ms | Flush SSE events immediately |
+
+### Admin UI Configuration
+
+The Admin panel (`/admin`) provides configuration for autonomous mode:
+
+| Setting | Recommended Value | Description |
+|---------|-------------------|-------------|
+| Max Duration | 30 minutes | Maximum runtime for autonomous plans |
+| Max LLM Calls | 500 | Total LLM calls allowed per plan |
+| Max Tokens | 2,000,000 | Total token budget per plan |
+| Confidence Threshold | 80% | Tasks below this are flagged for review |
+| Task Timeout | 5 minutes | Per-task execution limit |
+
+**Important:** For processing large batches (20+ items), ensure Max Duration is set to at least 30 minutes.
 
 ---
 
@@ -504,6 +563,39 @@ This section documents bugs and issues encountered during autonomous mode develo
 
 ---
 
+#### 5. Network Timeout During Long Operations
+**Symptom:** Autonomous mode would fail with `net::ERR_NETWORK_CHANGED` or similar network errors after ~3 minutes, even though tasks were completing successfully on the server.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** Traefik reverse proxy default timeouts (180s) were killing SSE connections. Extended all Traefik timeouts to 30 minutes in `docker-compose.yml`. See [Infrastructure Configuration](#infrastructure-configuration) for details.
+
+---
+
+#### 6. Task List Disappearing on Error
+**Symptom:** When a network error occurred or streaming ended, the task progress list would immediately disappear, leaving users with no visibility into what was accomplished.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** The `AutonomousTaskList` component was rendered inside an `{isStreaming && ...}` block. Moved it outside the streaming condition so it persists after errors/completion. Modified files:
+- [src/components/chat/ChatWindow.tsx](src/components/chat/ChatWindow.tsx) - Task list now renders independently of streaming state
+
+---
+
+#### 7. No Visibility into Task Execution Details
+**Symptom:** Users could only see task status (done/skipped/needs_review) but not what the executor actually did or what the checker found.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** Extended the streaming pipeline to include full task details:
+1. Backend ([streaming-executor.ts](src/lib/agent/streaming-executor.ts)) now sends `result` and `checkerNotes` in `agent_task_completed` event
+2. Frontend state ([useStreamingChat.ts](src/hooks/useStreamingChat.ts)) stores and updates these fields
+3. UI ([AutonomousTaskList.tsx](src/components/chat/AutonomousTaskList.tsx)) displays:
+   - **Executor result**: Gray box showing what was accomplished
+   - **Checker notes**: Blue italic text with quality assessment
+
+---
+
 ### Current Limitations
 
 #### Per-Item Processing Limit
@@ -585,4 +677,25 @@ All core functionality has been implemented:
 
 **Last Updated:** 2026-01-10
 **Implementation Time:** ~18-20 hours
-**Version:** 1.1 (Bug Fixes & Improvements)
+**Version:** 1.2 (Task Visibility & Detail Display)
+
+### Changelog
+
+#### v1.2 (2026-01-10)
+- Added Traefik timeout configuration for long-running SSE connections (30 min)
+- Fixed task list visibility - now persists after streaming ends or errors
+- Added executor result text and checker notes to task display
+- Updated SSE event types with `result` and `checkerNotes` fields
+- Added Admin UI configuration documentation
+
+#### v1.1 (2026-01-09)
+- Added conversation history to planner prompt
+- Added per-item task creation for batch processing
+- Increased MAX_TOOL_CALL_ITERATIONS
+- Added max_tokens to agent model config with admin UI support
+
+#### v1.0 (Initial Release)
+- Core autonomous mode infrastructure
+- Plan → Execute → Check → Summarize workflow
+- Budget tracking with warnings
+- Multi-provider LLM routing

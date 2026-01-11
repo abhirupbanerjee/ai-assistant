@@ -126,6 +126,8 @@ export async function executeAutonomousWithStreaming(
             task_id: task.id,
             status,
             confidence: result.confidence,
+            result: result.result,           // Executor output text
+            checkerNotes: task.review_notes, // Checker's assessment notes
           });
         },
 

@@ -432,44 +432,43 @@ export default function ChatWindow({
           <MessageBubble key={message.id} message={message} />
         ))}
 
-        {/* Streaming UI */}
+        {/* Streaming UI - Processing Indicator */}
         {streamingState.isStreaming && (
-          <>
-            <ProcessingIndicator
-              details={streamingState.processingDetails}
-              onToggleExpand={toggleProcessingDetails}
-              onAbort={() => {
-                abortStreaming();
-                setLoading(false);
-              }}
+          <ProcessingIndicator
+            details={streamingState.processingDetails}
+            onToggleExpand={toggleProcessingDetails}
+            onAbort={() => {
+              abortStreaming();
+              setLoading(false);
+            }}
+          />
+        )}
+
+        {/* Autonomous Task List - Show even after streaming ends/errors */}
+        {streamingState.autonomousPlan && (
+          <div className="mb-4">
+            <AutonomousTaskList
+              plan={streamingState.autonomousPlan}
+              toolsExecuted={streamingState.processingDetails.toolsExecuted}
             />
+          </div>
+        )}
 
-            {/* Autonomous Task List */}
-            {streamingState.autonomousPlan && (
-              <div className="mb-4">
-                <AutonomousTaskList
-                  plan={streamingState.autonomousPlan}
-                  toolsExecuted={streamingState.processingDetails.toolsExecuted}
-                />
-              </div>
-            )}
-
-            {streamingState.currentContent && (
-              <MessageBubble
-                message={{
-                  id: 'streaming',
-                  role: 'assistant',
-                  content: streamingState.currentContent,
-                  sources: streamingState.sources,
-                  visualizations: streamingState.visualizations,
-                  generatedDocuments: streamingState.documents,
-                  generatedImages: streamingState.images,
-                  timestamp: new Date(),
-                }}
-                isStreaming={true}
-              />
-            )}
-          </>
+        {/* Streaming Content */}
+        {streamingState.isStreaming && streamingState.currentContent && (
+          <MessageBubble
+            message={{
+              id: 'streaming',
+              role: 'assistant',
+              content: streamingState.currentContent,
+              sources: streamingState.sources,
+              visualizations: streamingState.visualizations,
+              generatedDocuments: streamingState.documents,
+              generatedImages: streamingState.images,
+              timestamp: new Date(),
+            }}
+            isStreaming={true}
+          />
         )}
 
         {/* Legacy loading indicator */}

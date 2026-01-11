@@ -92,7 +92,7 @@ export type StreamEvent =
   // Autonomous mode events
   | { type: 'agent_plan_created'; plan_id: string; title: string; task_count: number; tasks: Array<{ id: number; description: string; type: string }> }
   | { type: 'agent_task_started'; task_id: number; description: string; task_type: string }
-  | { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number }
+  | { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number; result?: string; checkerNotes?: string }
   | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
   | { type: 'agent_budget_exceeded'; message: string }
   | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }

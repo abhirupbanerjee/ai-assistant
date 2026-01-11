@@ -118,11 +118,28 @@ function TaskItem({ task, isLast }: { task: AutonomousTaskState; isLast: boolean
           {getTaskTypeIcon(task.type)}
           <span className="font-medium text-gray-700">{task.description}</span>
         </div>
+
+        {/* Executor result text */}
+        {task.result && (
+          <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2 whitespace-pre-wrap">
+            {task.result}
+          </div>
+        )}
+
+        {/* Confidence score */}
         {task.confidence !== undefined && task.status === 'done' && (
           <div className="mt-1 text-xs text-gray-500">
             Confidence: {task.confidence}%
           </div>
         )}
+
+        {/* Checker notes */}
+        {task.checkerNotes && (
+          <div className="mt-1 text-xs text-blue-600 italic">
+            Checker: {task.checkerNotes}
+          </div>
+        )}
+
         {task.status === 'needs_review' && (
           <div className="mt-1 text-xs text-amber-600">
             Needs review (confidence: {task.confidence}%)

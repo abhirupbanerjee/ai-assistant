@@ -32,6 +32,7 @@ export interface AutonomousTaskState {
   status: 'pending' | 'running' | 'done' | 'skipped' | 'needs_review' | 'error';
   confidence?: number;
   result?: string;
+  checkerNotes?: string;
 }
 
 /** Autonomous plan state for UI display */
@@ -280,7 +281,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'agent_task_completed':
-        // Update task to completed status
+        // Update task to completed status with result and checker notes
         setState(prev => {
           if (!prev.autonomousPlan) return prev;
           return {
@@ -289,7 +290,13 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
               ...prev.autonomousPlan,
               tasks: prev.autonomousPlan.tasks.map(task =>
                 task.id === event.task_id
-                  ? { ...task, status: event.status, confidence: event.confidence }
+                  ? {
+                      ...task,
+                      status: event.status,
+                      confidence: event.confidence,
+                      result: event.result,
+                      checkerNotes: event.checkerNotes,
+                    }
                   : task
               ),
             },
