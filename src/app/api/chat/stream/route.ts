@@ -25,13 +25,20 @@ import {
   getSSEHeaders,
   getPhaseMessage,
   performRAGRetrieval,
-  STREAMING_CONFIG,
+  getStreamingConfigMs,
 } from '@/lib/streaming';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
+
+// Route segment config for long-running autonomous tasks
+// 300 seconds = 5 minutes (Vercel Pro max, or adjust based on hosting provider)
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const encoder = createSSEEncoder();
   let keepAliveInterval: NodeJS.Timeout | null = null;
+
+  // Get streaming config from database (with fallback defaults)
+  const streamingConfig = getStreamingConfigMs();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -44,14 +51,14 @@ export async function POST(request: NextRequest) {
         }
       };
 
-      // Setup keep-alive ping
+      // Setup keep-alive ping (interval from admin config)
       keepAliveInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.keepAlive());
         } catch {
           // Controller closed
         }
-      }, STREAMING_CONFIG.KEEPALIVE_INTERVAL_MS);
+      }, streamingConfig.KEEPALIVE_INTERVAL_MS);
 
       // Handle client abort
       const cleanup = () => {

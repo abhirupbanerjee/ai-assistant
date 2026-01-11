@@ -325,6 +325,25 @@ export default function AutonomousTaskList({
                   Average confidence: {Math.round(plan.stats.average_confidence)}%
                 </div>
               )}
+              {/* Token usage stats */}
+              {(plan.stats.tokens_used || plan.stats.llm_calls) && (
+                <div className="mt-2 pt-2 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
+                  <div className="text-center p-1.5 bg-blue-50 rounded">
+                    <div className="font-medium text-blue-700">
+                      {plan.stats.tokens_used?.toLocaleString() || 0}
+                    </div>
+                    <div className="text-blue-600">Tokens</div>
+                  </div>
+                  <div className="text-center p-1.5 bg-purple-50 rounded">
+                    <div className="font-medium text-purple-700">{plan.stats.llm_calls || 0}</div>
+                    <div className="text-purple-600">LLM Calls</div>
+                  </div>
+                  <div className="text-center p-1.5 bg-cyan-50 rounded">
+                    <div className="font-medium text-cyan-700">{plan.stats.web_searches || 0}</div>
+                    <div className="text-cyan-600">Searches</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

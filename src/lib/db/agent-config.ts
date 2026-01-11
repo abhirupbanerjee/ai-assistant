@@ -111,3 +111,46 @@ export function validateAgentModelConfig(config: AgentModelConfig): boolean {
   }
   return true;
 }
+
+// ============ Streaming Configuration ============
+
+export interface StreamingConfig {
+  keepalive_interval_seconds: number;
+  max_stream_duration_seconds: number;
+  tool_timeout_seconds: number;
+}
+
+const DEFAULT_STREAMING_CONFIG: StreamingConfig = {
+  keepalive_interval_seconds: 10,
+  max_stream_duration_seconds: 300,
+  tool_timeout_seconds: 60,
+};
+
+/**
+ * Get streaming configuration from database
+ */
+export function getStreamingConfig(): StreamingConfig {
+  return {
+    keepalive_interval_seconds: parseInt(
+      getSetting('streaming_keepalive_interval', String(DEFAULT_STREAMING_CONFIG.keepalive_interval_seconds)),
+      10
+    ),
+    max_stream_duration_seconds: parseInt(
+      getSetting('streaming_max_duration', String(DEFAULT_STREAMING_CONFIG.max_stream_duration_seconds)),
+      10
+    ),
+    tool_timeout_seconds: parseInt(
+      getSetting('streaming_tool_timeout', String(DEFAULT_STREAMING_CONFIG.tool_timeout_seconds)),
+      10
+    ),
+  };
+}
+
+/**
+ * Save streaming configuration to database
+ */
+export function setStreamingConfig(config: StreamingConfig, updatedBy: string): void {
+  setSetting('streaming_keepalive_interval', String(config.keepalive_interval_seconds), updatedBy);
+  setSetting('streaming_max_duration', String(config.max_stream_duration_seconds), updatedBy);
+  setSetting('streaming_tool_timeout', String(config.tool_timeout_seconds), updatedBy);
+}

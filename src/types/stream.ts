@@ -54,6 +54,10 @@ export interface AgentPlanStats {
   skipped_tasks: number;
   needs_review_tasks: number;
   average_confidence: number;
+  // Token usage stats
+  llm_calls?: number;
+  tokens_used?: number;
+  web_searches?: number;
 }
 
 // ============ Stream Events ============

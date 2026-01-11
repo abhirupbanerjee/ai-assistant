@@ -221,6 +221,10 @@ export async function executeAutonomousWithStreaming(
             average_confidence: tasksWithConfidence.length > 0
               ? tasksWithConfidence.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / tasksWithConfidence.length
               : 0,
+            // Include token usage stats from budget tracker
+            llm_calls: plan.budget_used?.llm_calls || 0,
+            tokens_used: plan.budget_used?.tokens_used || 0,
+            web_searches: plan.budget_used?.web_searches || 0,
           };
 
           sendEvent({

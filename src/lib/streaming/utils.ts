@@ -6,6 +6,7 @@
  */
 
 import type { StreamEvent, StreamPhase } from '@/types/stream';
+import { getStreamingConfig } from '@/lib/db/agent-config';
 
 /**
  * Create SSE encoder for streaming responses
@@ -85,15 +86,38 @@ export function getPhaseMessage(phase: StreamPhase): string {
 }
 
 /**
- * Constants for streaming configuration
+ * Default streaming configuration (fallback values)
  */
-export const STREAMING_CONFIG = {
-  /** Interval for keep-alive pings in milliseconds */
-  KEEPALIVE_INTERVAL_MS: 15000,
-
-  /** Maximum stream duration in milliseconds (3 minutes) */
-  MAX_STREAM_DURATION_MS: 180000,
-
-  /** Tool execution timeout in milliseconds */
+const DEFAULT_STREAMING_CONFIG = {
+  KEEPALIVE_INTERVAL_MS: 10000,
+  MAX_STREAM_DURATION_MS: 300000,
   TOOL_TIMEOUT_MS: 60000,
 } as const;
+
+/**
+ * Get streaming configuration from database (with fallback to defaults)
+ * Returns values in milliseconds for direct use
+ */
+export function getStreamingConfigMs(): {
+  KEEPALIVE_INTERVAL_MS: number;
+  MAX_STREAM_DURATION_MS: number;
+  TOOL_TIMEOUT_MS: number;
+} {
+  try {
+    const config = getStreamingConfig();
+    return {
+      KEEPALIVE_INTERVAL_MS: config.keepalive_interval_seconds * 1000,
+      MAX_STREAM_DURATION_MS: config.max_stream_duration_seconds * 1000,
+      TOOL_TIMEOUT_MS: config.tool_timeout_seconds * 1000,
+    };
+  } catch {
+    // Fallback to defaults if DB not available
+    return DEFAULT_STREAMING_CONFIG;
+  }
+}
+
+/**
+ * Constants for streaming configuration (deprecated - use getStreamingConfigMs() for dynamic values)
+ * Kept for backward compatibility
+ */
+export const STREAMING_CONFIG = DEFAULT_STREAMING_CONFIG;

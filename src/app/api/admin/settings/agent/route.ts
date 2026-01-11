@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getSetting, setSetting } from '@/lib/db/config';
-import { getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig } from '@/lib/db/agent-config';
+import { getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig } from '@/lib/db/agent-config';
 
 export async function GET() {
   try {
@@ -21,6 +21,7 @@ export async function GET() {
 
     // Get agent settings from database
     const modelConfigs = getAgentModelConfigs();
+    const streamingConfig = getStreamingConfig();
 
     const settings = {
       budgetMaxLlmCalls: parseInt(getSetting('agent_budget_max_llm_calls', '500'), 10),
@@ -33,6 +34,10 @@ export async function GET() {
       executorModel: modelConfigs.executor,
       checkerModel: modelConfigs.checker,
       summarizerModel: modelConfigs.summarizer,
+      // Streaming configuration
+      streamingKeepaliveInterval: streamingConfig.keepalive_interval_seconds,
+      streamingMaxDuration: streamingConfig.max_stream_duration_seconds,
+      streamingToolTimeout: streamingConfig.tool_timeout_seconds,
     };
 
     return NextResponse.json(settings);
@@ -64,6 +69,10 @@ export async function POST(request: NextRequest) {
       executorModel,
       checkerModel,
       summarizerModel,
+      // Streaming configuration
+      streamingKeepaliveInterval,
+      streamingMaxDuration,
+      streamingToolTimeout,
     } = body;
 
     // Validate budget inputs
@@ -79,6 +88,25 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid input: all budget fields must be numbers' },
         { status: 400 }
       );
+    }
+
+    // Validate streaming inputs (optional - use defaults if not provided)
+    const hasStreamingConfig =
+      streamingKeepaliveInterval !== undefined ||
+      streamingMaxDuration !== undefined ||
+      streamingToolTimeout !== undefined;
+
+    if (hasStreamingConfig) {
+      if (
+        (streamingKeepaliveInterval !== undefined && typeof streamingKeepaliveInterval !== 'number') ||
+        (streamingMaxDuration !== undefined && typeof streamingMaxDuration !== 'number') ||
+        (streamingToolTimeout !== undefined && typeof streamingToolTimeout !== 'number')
+      ) {
+        return NextResponse.json(
+          { error: 'Invalid input: streaming fields must be numbers' },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate model configurations
@@ -115,6 +143,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate streaming ranges (if provided)
+    if (hasStreamingConfig) {
+      const keepalive = streamingKeepaliveInterval ?? 10;
+      const maxDuration = streamingMaxDuration ?? 300;
+      const toolTimeout = streamingToolTimeout ?? 60;
+
+      if (
+        keepalive < 5 || keepalive > 60 ||
+        maxDuration < 60 || maxDuration > 600 ||
+        toolTimeout < 30 || toolTimeout > 300
+      ) {
+        return NextResponse.json(
+          { error: 'Streaming values out of valid range' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Save budget settings to database
     setSetting('agent_budget_max_llm_calls', String(budgetMaxLlmCalls), user.email);
     setSetting('agent_budget_max_tokens', String(budgetMaxTokens), user.email);
@@ -134,6 +180,22 @@ export async function POST(request: NextRequest) {
       user.email
     );
 
+    // Save streaming configuration (if provided)
+    if (hasStreamingConfig) {
+      const currentStreaming = getStreamingConfig();
+      setStreamingConfig(
+        {
+          keepalive_interval_seconds: streamingKeepaliveInterval ?? currentStreaming.keepalive_interval_seconds,
+          max_stream_duration_seconds: streamingMaxDuration ?? currentStreaming.max_stream_duration_seconds,
+          tool_timeout_seconds: streamingToolTimeout ?? currentStreaming.tool_timeout_seconds,
+        },
+        user.email
+      );
+    }
+
+    // Get current streaming config for response
+    const finalStreamingConfig = getStreamingConfig();
+
     return NextResponse.json({
       success: true,
       settings: {
@@ -147,6 +209,9 @@ export async function POST(request: NextRequest) {
         executorModel,
         checkerModel,
         summarizerModel,
+        streamingKeepaliveInterval: finalStreamingConfig.keepalive_interval_seconds,
+        streamingMaxDuration: finalStreamingConfig.max_stream_duration_seconds,
+        streamingToolTimeout: finalStreamingConfig.tool_timeout_seconds,
         updatedAt: new Date().toISOString(),
         updatedBy: user.email,
       },

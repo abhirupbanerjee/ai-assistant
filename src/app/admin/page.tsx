@@ -238,6 +238,10 @@ interface AgentSettings {
   executorModel: AgentModelConfig;
   checkerModel: AgentModelConfig;
   summarizerModel: AgentModelConfig;
+  // Streaming configuration
+  streamingKeepaliveInterval: number;
+  streamingMaxDuration: number;
+  streamingToolTimeout: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -739,6 +743,9 @@ export default function AdminPage() {
             executorModel: agentData.executorModel,
             checkerModel: agentData.checkerModel,
             summarizerModel: agentData.summarizerModel,
+            streamingKeepaliveInterval: agentData.streamingKeepaliveInterval ?? 10,
+            streamingMaxDuration: agentData.streamingMaxDuration ?? 300,
+            streamingToolTimeout: agentData.streamingToolTimeout ?? 60,
           });
         }
       } catch (err) {
@@ -2172,6 +2179,9 @@ export default function AdminPage() {
         executorModel: agentSettings.executorModel,
         checkerModel: agentSettings.checkerModel,
         summarizerModel: agentSettings.summarizerModel,
+        streamingKeepaliveInterval: agentSettings.streamingKeepaliveInterval ?? 10,
+        streamingMaxDuration: agentSettings.streamingMaxDuration ?? 300,
+        streamingToolTimeout: agentSettings.streamingToolTimeout ?? 60,
       });
       setAgentModified(false);
     }
@@ -5397,6 +5407,81 @@ export default function AdminPage() {
                             Tasks exceeding this timeout will be skipped during crash recovery. Default: 5 minutes
                           </p>
                         </div>
+                      </div>
+
+                      {/* Streaming Configuration */}
+                      <div className="pt-4 border-t border-gray-100">
+                        <h4 className="font-medium text-gray-900 mb-4">Streaming Configuration</h4>
+                        <p className="text-sm text-gray-600 mb-4">
+                          Configure SSE streaming timeouts for long-running autonomous tasks.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Keepalive Interval */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">
+                              Keepalive Interval (Seconds)
+                            </label>
+                            <input
+                              type="number"
+                              min="5"
+                              max="60"
+                              value={editedAgent.streamingKeepaliveInterval}
+                              onChange={(e) => {
+                                setEditedAgent({ ...editedAgent, streamingKeepaliveInterval: parseInt(e.target.value) || 10 });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                              Keep connection alive (5-60s). Default: 10s
+                            </p>
+                          </div>
+
+                          {/* Max Stream Duration */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">
+                              Max Stream Duration (Seconds)
+                            </label>
+                            <input
+                              type="number"
+                              min="60"
+                              max="600"
+                              value={editedAgent.streamingMaxDuration}
+                              onChange={(e) => {
+                                setEditedAgent({ ...editedAgent, streamingMaxDuration: parseInt(e.target.value) || 300 });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                              Max stream time (60-600s). Default: 300s
+                            </p>
+                          </div>
+
+                          {/* Tool Timeout */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">
+                              Tool Timeout (Seconds)
+                            </label>
+                            <input
+                              type="number"
+                              min="30"
+                              max="300"
+                              value={editedAgent.streamingToolTimeout}
+                              onChange={(e) => {
+                                setEditedAgent({ ...editedAgent, streamingToolTimeout: parseInt(e.target.value) || 60 });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                              Per-tool timeout (30-300s). Default: 60s
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-400">
+                          For Traefik: ensure <code className="bg-gray-100 px-1 rounded">respondingTimeouts.readTimeout</code> is greater than Max Stream Duration.
+                        </p>
                       </div>
 
                       {/* Info Box */}

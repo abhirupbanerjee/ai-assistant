@@ -342,31 +342,79 @@ services:
       # SSE keepalive middleware
       - "traefik.http.middlewares.sse-timeout.headers.customRequestHeaders.Connection=keep-alive"
       - "traefik.http.routers.app.middlewares=sse-timeout"
-      # Response timeout: wait up to 30 minutes for response
+      # SSE streaming: flush immediately for real-time updates
       - "traefik.http.services.app.loadbalancer.responseForwarding.flushInterval=100ms"
+      # Service-level timeout: wait up to 30 minutes for response
+      - "traefik.http.services.app.loadbalancer.server.responseHeaderTimeout=1800s"
 ```
 
 **Key Settings:**
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| `readTimeout` | 1800s (30 min) | Maximum time to read request |
-| `writeTimeout` | 1800s (30 min) | Maximum time to write response |
-| `idleTimeout` | 1800s (30 min) | Keep idle connections alive |
-| `flushInterval` | 100ms | Flush SSE events immediately |
+
+| Level | Setting | Value | Purpose |
+|-------|---------|-------|---------|
+| Entrypoint | `readTimeout` | 1800s (30 min) | Maximum time to read request |
+| Entrypoint | `writeTimeout` | 1800s (30 min) | Maximum time to write response |
+| Entrypoint | `idleTimeout` | 1800s (30 min) | Keep idle connections alive |
+| Service | `responseHeaderTimeout` | 1800s (30 min) | Wait for first response byte |
+| Service | `flushInterval` | 100ms | Flush SSE events immediately |
+
+### Timeout Chain
+
+Understanding how timeouts interact is crucial for debugging network errors:
+
+```
+Browser ←─────── Traefik ─────────→ Next.js App
+           │                              │
+    flushInterval=100ms            maxDuration (admin config)
+    (stream chunks fast)           (app-level limit)
+           │
+    responseHeaderTimeout=1800s
+    (wait for first byte)
+           │
+    readTimeout=1800s
+    writeTimeout=1800s
+    idleTimeout=1800s
+           │
+    Keepalive Interval (admin config)
+    (ping events to keep connection alive)
+```
+
+**Which parameter causes network errors?**
+
+| Error Type | Likely Cause | Solution |
+|------------|--------------|----------|
+| Error at task N of N (near end) | Max Stream Duration exceeded | Increase in Admin UI |
+| Error after ~3 minutes | Traefik default timeout | Check docker-compose.yml |
+| Sporadic disconnects | Keepalive too slow for proxy | Reduce Keepalive Interval |
+| Single task hangs | Tool Timeout exceeded | Increase Tool Timeout |
 
 ### Admin UI Configuration
 
-The Admin panel (`/admin`) provides configuration for autonomous mode:
+The Admin panel (`/admin` → Settings → Autonomous Agent) provides configuration for:
 
-| Setting | Recommended Value | Description |
-|---------|-------------------|-------------|
-| Max Duration | 30 minutes | Maximum runtime for autonomous plans |
-| Max LLM Calls | 500 | Total LLM calls allowed per plan |
-| Max Tokens | 2,000,000 | Total token budget per plan |
-| Confidence Threshold | 80% | Tasks below this are flagged for review |
-| Task Timeout | 5 minutes | Per-task execution limit |
+#### Budget Settings
 
-**Important:** For processing large batches (20+ items), ensure Max Duration is set to at least 30 minutes.
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| Max Duration | 30 min | 1-480 min | Maximum runtime for autonomous plans |
+| Max LLM Calls | 500 | 1-10,000 | Total LLM calls allowed per plan |
+| Max Tokens | 2,000,000 | 1K-100M | Total token budget per plan |
+| Max Web Searches | 100 | 1-1,000 | Maximum web search calls |
+| Confidence Threshold | 80% | 0-100% | Tasks below this are flagged for review |
+| Task Timeout | 5 min | 1-60 min | Per-task execution limit |
+
+#### Streaming Configuration (NEW)
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| Keepalive Interval | 10s | 5-60s | How often ping events are sent to keep SSE alive |
+| Max Stream Duration | 300s | 60-600s | Maximum streaming session length (app-level) |
+| Tool Timeout | 60s | 30-300s | Timeout for individual tool executions |
+
+**Important:**
+- For processing large batches (20+ items), increase **Max Stream Duration** to 480-600s
+- **Max Stream Duration** must be less than Traefik's timeout (1800s)
+- **Keepalive Interval** must be less than your proxy's idle timeout
 
 ---
 
@@ -572,6 +620,20 @@ This section documents bugs and issues encountered during autonomous mode develo
 
 ---
 
+#### 5b. Network Error Near End of Long Plans (Task N of N)
+**Symptom:** Network error occurs at the very last task (e.g., task 27 of 27), despite Traefik being configured correctly. The total execution time exceeds 5 minutes.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** The app-level `maxDuration` was limiting streaming sessions to 300 seconds (5 minutes). Added admin-configurable streaming settings:
+- **Max Stream Duration**: Increase from default 300s to 480-600s for large plans (20+ tasks)
+- **Keepalive Interval**: Reduce to 10s to keep connections alive through proxies
+- **Service-level timeout**: Added `responseHeaderTimeout=1800s` to Traefik labels
+
+Configure in Admin UI → Settings → Autonomous Agent → Streaming Configuration.
+
+---
+
 #### 6. Task List Disappearing on Error
 **Symptom:** When a network error occurred or streaming ended, the task progress list would immediately disappear, leaving users with no visibility into what was accomplished.
 
@@ -629,9 +691,65 @@ This section documents bugs and issues encountered during autonomous mode develo
 
 ---
 
+## Execution Controls
+
+Autonomous mode provides full execution control for long-running plans:
+
+### Available Controls
+
+| Control | Icon | Description | Use Case |
+|---------|------|-------------|----------|
+| **Pause** | ⏸️ | Stop after current task, resumable | Review progress, take a break |
+| **Resume** | ▶️ | Continue from last checkpoint | Return after pause |
+| **Skip** | ⏭️ | Skip specific pending task | Bypass problematic task |
+| **Stop** | ⏹️ | Graceful stop, keep completed work | End early but save results |
+| **Abort** | ⏹ (red) | Immediate termination | Emergency stop |
+
+### Control Button States
+
+| State | Pause | Resume | Stop | Skip | Abort |
+|-------|-------|--------|------|------|-------|
+| Executing | ✅ | ❌ | ✅ | ✅ (pending only) | ✅ |
+| Paused | ❌ | ✅ | ✅ | ✅ (pending only) | ✅ |
+| Stopped | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Completed | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+### API Endpoints
+
+```typescript
+POST /api/autonomous/{planId}/pause   // Pause execution
+POST /api/autonomous/{planId}/resume  // Resume paused plan
+POST /api/autonomous/{planId}/stop    // Graceful stop
+POST /api/autonomous/{planId}/tasks/{taskId}/skip  // Skip task
+```
+
+### SSE Control Events
+
+```typescript
+| { type: 'agent_paused'; plan_id: string; completed_tasks: number; total_tasks: number; message: string }
+| { type: 'agent_resumed'; plan_id: string; remaining_tasks: number; total_tasks: number; message: string }
+| { type: 'agent_stopped'; plan_id: string; completed_tasks: number; skipped_tasks: number; total_tasks: number; summary?: string }
+| { type: 'agent_task_skipped'; plan_id: string; task_id: number; reason?: string }
+```
+
+### UI Components
+
+**ProcessingIndicator** ([src/components/chat/ProcessingIndicator.tsx](src/components/chat/ProcessingIndicator.tsx)):
+- Shows pause/resume/stop buttons during autonomous execution
+- Hard abort button always available
+
+**AutonomousTaskList** ([src/components/chat/AutonomousTaskList.tsx](src/components/chat/AutonomousTaskList.tsx)):
+- Shows paused/stopped status banner
+- Skip button next to each pending task
+- Persists after streaming ends (visible after errors)
+
+---
+
 ## Future Enhancements (Not in v1)
 
-- [ ] Pause/Resume functionality
+- [x] ~~Pause/Resume functionality~~ (v1.3)
+- [x] ~~Skip task functionality~~ (v1.3)
+- [x] ~~Graceful stop~~ (v1.3)
 - [ ] Retry logic with exponential backoff
 - [ ] Per-category budget overrides
 - [ ] Real-time budget usage visualization
@@ -675,11 +793,25 @@ All core functionality has been implemented:
 
 ---
 
-**Last Updated:** 2026-01-10
-**Implementation Time:** ~18-20 hours
-**Version:** 1.2 (Task Visibility & Detail Display)
+**Last Updated:** 2026-01-11
+**Implementation Time:** ~22-24 hours
+**Version:** 1.3 (Execution Controls & Streaming Config)
 
 ### Changelog
+
+#### v1.3 (2026-01-11)
+- **Execution Controls**: Added pause/resume/stop/skip functionality for autonomous plans
+  - Pause: Stop after current task, resumable later
+  - Resume: Continue from last checkpoint
+  - Stop: Graceful termination, keeps completed work
+  - Skip: Skip specific pending tasks
+- **Admin-Configurable Streaming**: New settings in Admin UI
+  - Keepalive Interval (5-60s, default 10s)
+  - Max Stream Duration (60-600s, default 300s)
+  - Tool Timeout (30-300s, default 60s)
+- **Traefik Enhancements**: Added service-level `responseHeaderTimeout` for reliable long connections
+- **Token Usage Display**: Shows LLM calls, tokens used, and web searches in task list stats
+- Updated SSE event types with control events (`agent_paused`, `agent_resumed`, `agent_stopped`, `agent_task_skipped`)
 
 #### v1.2 (2026-01-10)
 - Added Traefik timeout configuration for long-running SSE connections (30 min)

@@ -237,7 +237,11 @@ export type SettingKey =
   | 'agent_model_planner'
   | 'agent_model_executor'
   | 'agent_model_checker'
-  | 'agent_model_summarizer';
+  | 'agent_model_summarizer'
+  // Streaming configuration
+  | 'streaming_keepalive_interval'
+  | 'streaming_max_duration'
+  | 'streaming_tool_timeout';
 
 // ============ Generic Operations ============
 

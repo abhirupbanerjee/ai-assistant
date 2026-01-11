@@ -122,27 +122,6 @@ export default function ChatWindow({
   const [threadId, setThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Compute generated docs and images from all messages
-  const { generatedDocs, generatedImages } = useMemo(() => {
-    const docs: GeneratedDocumentInfo[] = [];
-    const images: GeneratedImageInfo[] = [];
-    for (const msg of messages) {
-      if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
-      if (msg.generatedImages) images.push(...msg.generatedImages);
-    }
-    return { generatedDocs: docs, generatedImages: images };
-  }, [messages]);
-
-  // Notify parent of artifacts changes
-  useEffect(() => {
-    onArtifactsChange?.({
-      threadId,
-      uploads,
-      generatedDocs,
-      generatedImages,
-      urlSources,
-    });
-  }, [threadId, uploads, generatedDocs, generatedImages, urlSources, onArtifactsChange]);
 
   // Streaming chat hook
   const handleStreamComplete = useCallback((
@@ -178,10 +157,56 @@ export default function ChatWindow({
     toggleProcessingDetails,
     reset: resetStreaming,
     abort: abortStreaming,
+    pausePlan,
+    resumePlan,
+    stopPlan,
+    skipTask,
   } = useStreamingChat({
     onComplete: handleStreamComplete,
     onError: handleStreamError,
   });
+
+  // Determine if we're in autonomous mode
+  const isAutonomousMode = Boolean(streamingState.autonomousPlan);
+
+  // Compute generated docs and images from all messages + streaming state
+  const { generatedDocs, generatedImages } = useMemo(() => {
+    const docs: GeneratedDocumentInfo[] = [];
+    const images: GeneratedImageInfo[] = [];
+    // Include artifacts from saved messages
+    for (const msg of messages) {
+      if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
+      if (msg.generatedImages) images.push(...msg.generatedImages);
+    }
+    // Include real-time streaming artifacts (for sidebar updates during generation)
+    if (streamingState.documents) {
+      for (const doc of streamingState.documents) {
+        // Avoid duplicates by checking id
+        if (!docs.some(d => d.id === doc.id)) {
+          docs.push(doc);
+        }
+      }
+    }
+    if (streamingState.images) {
+      for (const img of streamingState.images) {
+        if (!images.some(i => i.id === img.id)) {
+          images.push(img);
+        }
+      }
+    }
+    return { generatedDocs: docs, generatedImages: images };
+  }, [messages, streamingState.documents, streamingState.images]);
+
+  // Notify parent of artifacts changes
+  useEffect(() => {
+    onArtifactsChange?.({
+      threadId,
+      uploads,
+      generatedDocs,
+      generatedImages,
+      urlSources,
+    });
+  }, [threadId, uploads, generatedDocs, generatedImages, urlSources, onArtifactsChange]);
 
   // Load thread messages when active thread changes
   useEffect(() => {
@@ -500,6 +525,12 @@ export default function ChatWindow({
               abortStreaming();
               setLoading(false);
             }}
+            isAutonomous={isAutonomousMode}
+            isPaused={streamingState.isPaused}
+            isStopped={streamingState.isStopped}
+            onPause={() => pausePlan()}
+            onResume={() => resumePlan()}
+            onStop={() => stopPlan()}
           />
         )}
 
@@ -509,6 +540,9 @@ export default function ChatWindow({
             <AutonomousTaskList
               plan={streamingState.autonomousPlan}
               toolsExecuted={streamingState.processingDetails.toolsExecuted}
+              isPaused={streamingState.isPaused}
+              isStopped={streamingState.isStopped}
+              onSkipTask={(taskId) => skipTask(taskId)}
             />
           </div>
         ) : restoredPlan ? (
