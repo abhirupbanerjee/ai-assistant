@@ -528,21 +528,10 @@ async function executeWebSearchTool(
       formatted = `**Summary:** ${parsed.answer}\n\n${formatted}`;
     }
 
-    // Bug fix: Emit web search results as visualization artifact for UI display
-    callbacks?.onArtifact?.({
-      type: 'artifact',
-      subtype: 'visualization',
-      data: {
-        chartType: 'table' as const,
-        data: results.slice(0, 5).map((r: { title: string; url: string; content?: string }) => ({
-          title: r.title,
-          url: r.url,
-          snippet: r.content?.substring(0, 200) || '',
-        })),
-        fields: ['title', 'url', 'snippet'],
-        sourceName: `Web Search: ${query.substring(0, 50)}${query.length > 50 ? '...' : ''}`,
-      },
-    });
+    // Note: Removed table visualization for search results in autonomous mode
+    // Search results are stored as text and passed to dependent analyze tasks
+    // The analyze task should process the results, then outputs (doc/image/chart)
+    // can visualize the analysis, not raw search URLs
 
     return formatted;
   } catch {

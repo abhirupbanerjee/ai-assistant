@@ -123,9 +123,9 @@ export async function translateWithOpenAI(
       model: settings.model,
     };
   } catch (error) {
-    logger.error('[Translation:OpenAI] Translation failed', { error });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('[Translation:OpenAI] Translation failed', error);
 
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
       original: text,

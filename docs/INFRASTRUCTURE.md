@@ -506,7 +506,7 @@ docker compose -f docker-compose.dev.yml down -v
 - Ubuntu 22.04+ or similar Linux
 - **Docker 27.5.1** (see critical note below)
 - Docker Compose v2
-- 4GB RAM minimum
+- 8GB RAM minimum
 - 20GB disk space
 - Ports 80, 443 open
 
@@ -931,7 +931,7 @@ sudo swapon /swapfile
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
 | CPU | 2 cores | 4 cores |
-| RAM | 4 GB | 8 GB |
+| RAM | 8 GB | 16 GB |
 | Disk | 10 GB | 20 GB |
 
 ### Pre-Production / Production
@@ -939,7 +939,7 @@ sudo swapon /swapfile
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
 | CPU | 2 cores | 4 cores |
-| RAM | 4 GB | 8 GB |
+| RAM | 8 GB | 16 GB |
 | Disk | 20 GB | 50 GB |
 | Network | 10 Mbps | 100 Mbps |
 
@@ -980,8 +980,8 @@ sudo swapon /swapfile
 
 | Provider | Spec | Cost |
 |----------|------|------|
-| Azure B2s | 2 vCPU, 4GB RAM | ~$30/month |
-| DigitalOcean | 2 vCPU, 4GB RAM | ~$24/month |
-| AWS t3.medium | 2 vCPU, 4GB RAM | ~$30/month |
+| Azure B2ms | 2 vCPU, 8GB RAM | ~$60/month |
+| DigitalOcean | 2 vCPU, 8GB RAM | ~$48/month |
+| AWS t3.large | 2 vCPU, 8GB RAM | ~$60/month |
 
-**Total Infrastructure: ~$25-35/month**
+**Total Infrastructure: ~$50-65/month**

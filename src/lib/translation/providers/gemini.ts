@@ -163,7 +163,7 @@ export async function translateWithGemini(
       model: settings.model,
     };
   } catch (error) {
-    logger.error('[Translation:Gemini] Translation failed', { error });
+    logger.error('[Translation:Gemini] Translation failed', error);
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {

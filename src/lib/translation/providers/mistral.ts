@@ -136,7 +136,7 @@ export async function translateWithMistral(
       model: settings.model,
     };
   } catch (error) {
-    logger.error('[Translation:Mistral] Translation failed', { error });
+    logger.error('[Translation:Mistral] Translation failed', error);
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {

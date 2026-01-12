@@ -417,6 +417,8 @@ export async function POST(request: NextRequest) {
                 });
                 if (translationResult.success) {
                   fullContent = translationResult.translated;
+                } else {
+                  console.warn('[Stream] Translation failed:', translationResult.error);
                 }
               } catch (translationError) {
                 console.warn('[Stream] Translation failed, using original response:', translationError);

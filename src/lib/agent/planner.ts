@@ -147,6 +147,19 @@ ${context.categoryContext}
 
 2. **DO NOT search the web** for data that is already in the message or conversation history.
 
+2.5 **SEARCH → ANALYZE → OUTPUT CHAIN (CRITICAL):**
+   - Web search returns RAW data (URLs, titles, snippets) - NOT usable directly for outputs
+   - ALWAYS create an "analyze" task to PROCESS and INTERPRET search results
+   - ALL outputs (documents, images, charts) MUST depend on ANALYZE task, NOT search task
+   - Correct: search → analyze → generate (doc/image/chart)
+   - WRONG: search → generate (skipping analysis - outputs will just list URLs!)
+
+2.6 **OUTPUT GENERATION FROM PROCESSED DATA:**
+   - Documents should summarize ANALYSIS findings, not list raw search URLs
+   - Images/infographics should visualize ANALYZED insights, not raw search snippets
+   - Charts should plot ANALYZED metrics, not search result counts
+   - The analyze task transforms raw data into meaningful content for visualization
+
 3. **PER-ITEM PROCESSING:** When the user asks for SEPARATE/INDIVIDUAL outputs for multiple items:
    - If user says "for each", "individual reports", "separate analysis", etc.
    - Create a SEPARATE task for EACH item in the list
@@ -274,10 +287,10 @@ Correct response (creates per-item tasks):
   ]
 }
 
-**Example 3: User asks for external information**
-User: "Research the latest compliance regulations for financial services"
+**Example 3: User asks for external information (search → analyze → output)**
+User: "Research the latest compliance regulations for financial services and create a summary report"
 
-Correct response (uses web search):
+Correct response (search THEN analyze THEN generate):
 {
   "title": "Compliance Regulations Research",
   "tasks": [
@@ -289,9 +302,116 @@ Correct response (uses web search):
       "priority": 1,
       "dependencies": []
     },
-    ...
+    {
+      "id": 2,
+      "type": "analyze",
+      "target": "compliance regulations analysis",
+      "description": "Analyze search results and extract key compliance requirements, deadlines, and implications",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 3,
+      "type": "generate",
+      "target": "Word document summary report",
+      "description": "Generate a summary report document with the analyzed compliance findings",
+      "priority": 1,
+      "dependencies": [2]
+    }
   ]
 }
+
+**Example 4: Per-item with web search AND visual outputs (search → analyze → outputs)**
+User: "Research each SOE and create an assessment with an infographic for each: T&TEC, WASA, NGC"
+
+Correct response (per-item: search → analyze → multiple outputs):
+{
+  "title": "SOE Research and Visual Assessments",
+  "tasks": [
+    {
+      "id": 1,
+      "type": "extract",
+      "target": "SOE list from user message",
+      "description": "Extract the 3 SOEs: T&TEC, WASA, NGC",
+      "priority": 1,
+      "dependencies": []
+    },
+    {
+      "id": 2,
+      "type": "search",
+      "target": "web search T&TEC Trinidad assessment data",
+      "description": "Search for T&TEC company information and performance data",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 3,
+      "type": "analyze",
+      "target": "T&TEC assessment",
+      "description": "Analyze T&TEC search results - extract key metrics, performance indicators, and insights",
+      "priority": 1,
+      "dependencies": [2]
+    },
+    {
+      "id": 4,
+      "type": "generate",
+      "target": "infographic for T&TEC",
+      "description": "Create infographic visualizing T&TEC assessment findings",
+      "priority": 1,
+      "dependencies": [3]
+    },
+    {
+      "id": 5,
+      "type": "search",
+      "target": "web search WASA Trinidad assessment data",
+      "description": "Search for WASA company information and performance data",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 6,
+      "type": "analyze",
+      "target": "WASA assessment",
+      "description": "Analyze WASA search results - extract key metrics, performance indicators, and insights",
+      "priority": 1,
+      "dependencies": [5]
+    },
+    {
+      "id": 7,
+      "type": "generate",
+      "target": "infographic for WASA",
+      "description": "Create infographic visualizing WASA assessment findings",
+      "priority": 1,
+      "dependencies": [6]
+    },
+    {
+      "id": 8,
+      "type": "search",
+      "target": "web search NGC Trinidad assessment data",
+      "description": "Search for NGC company information and performance data",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 9,
+      "type": "analyze",
+      "target": "NGC assessment",
+      "description": "Analyze NGC search results - extract key metrics, performance indicators, and insights",
+      "priority": 1,
+      "dependencies": [8]
+    },
+    {
+      "id": 10,
+      "type": "generate",
+      "target": "infographic for NGC",
+      "description": "Create infographic visualizing NGC assessment findings",
+      "priority": 1,
+      "dependencies": [9]
+    }
+  ]
+}
+
+CRITICAL: In Example 4, note that each infographic (ids 4, 7, 10) depends on its ANALYZE task (ids 3, 6, 9), NOT on the search task. This ensures the image is generated from processed analysis, not raw search URLs.
 
 Respond with JSON only.`;
 
