@@ -185,6 +185,150 @@ export interface DataCsvCategoryRecord {
   created_at: string;
 }
 
+// ============ NEW: Workspace Records ============
+
+export interface WorkspaceRecord {
+  id: string;
+  slug: string;
+  name: string;
+  type: string;
+  is_enabled: number;
+  access_mode: string;
+  primary_color: string | null;
+  logo_url: string | null;
+  chat_title: string | null;
+  greeting_message: string | null;
+  suggested_prompts: string | null;
+  footer_text: string | null;
+  llm_provider: string | null;
+  llm_model: string | null;
+  temperature: number | null;
+  system_prompt: string | null;
+  allowed_domains: string | null;
+  daily_limit: number | null;
+  session_limit: number | null;
+  voice_enabled: number;
+  file_upload_enabled: number;
+  max_file_size_mb: number | null;
+  created_by: string;
+  created_by_role: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceCategoryRecord {
+  workspace_id: string;
+  category_id: number;
+}
+
+export interface WorkspaceUserRecord {
+  workspace_id: string;
+  user_id: number;
+  added_by: string;
+  added_at: string;
+}
+
+// ============ NEW: Function API Records ============
+
+export interface FunctionApiConfigRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  base_url: string;
+  auth_type: string;
+  auth_header: string | null;
+  auth_credentials: string | null;
+  default_headers: string | null;
+  tools_schema: string;
+  endpoint_mappings: string;
+  timeout_seconds: number;
+  cache_ttl_seconds: number;
+  is_enabled: number;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  last_tested: string | null;
+  last_error: string | null;
+}
+
+export interface FunctionApiCategoryRecord {
+  api_id: string;
+  category_id: number;
+  created_at: string;
+}
+
+// ============ NEW: User Memory Records ============
+
+export interface UserMemoryRecord {
+  id: number;
+  user_id: number;
+  category_id: number | null;
+  facts_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============ NEW: Tool Routing Rules ============
+
+export interface ToolRoutingRuleRecord {
+  id: string;
+  tool_name: string;
+  rule_name: string;
+  rule_type: string;
+  patterns: string;
+  force_mode: string;
+  priority: number;
+  category_ids: string | null;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+}
+
+// ============ NEW: Thread Share Records ============
+
+export interface ThreadShareRecord {
+  id: string;
+  thread_id: string;
+  share_token: string;
+  created_by: number;
+  allow_download: number;
+  expires_at: string | null;
+  view_count: number;
+  created_at: string;
+  last_viewed_at: string | null;
+  revoked_at: string | null;
+}
+
+// ============ NEW: Task Plan Records ============
+
+export interface TaskPlanRecord {
+  id: string;
+  thread_id: string;
+  user_id: string;
+  category_slug: string | null;
+  title: string | null;
+  tasks_json: string;
+  status: string;
+  total_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  mode: string | null;
+  budget_json: string | null;
+  budget_used_json: string | null;
+  model_config_json: string | null;
+  paused_at: string | null;
+  pause_reason: string | null;
+  resumed_at: string | null;
+  stopped_at: string | null;
+  stop_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 // ============ Export Functions ============
 
 /**
@@ -422,6 +566,131 @@ export function exportDataCsvCategories(): DataCsvCategoryRecord[] {
     SELECT csv_id, category_id, created_at
     FROM data_csv_categories
     ORDER BY csv_id, category_id
+  `);
+}
+
+// ============ NEW: Workspace Export Functions ============
+
+/**
+ * Export all workspaces
+ */
+export function exportWorkspaces(): WorkspaceRecord[] {
+  return queryAll<WorkspaceRecord>(`
+    SELECT id, slug, name, type, is_enabled, access_mode,
+           primary_color, logo_url, chat_title, greeting_message, suggested_prompts, footer_text,
+           llm_provider, llm_model, temperature, system_prompt,
+           allowed_domains, daily_limit, session_limit,
+           voice_enabled, file_upload_enabled, max_file_size_mb,
+           created_by, created_by_role, created_at, updated_at
+    FROM workspaces
+    ORDER BY name
+  `);
+}
+
+/**
+ * Export workspace-category relationships
+ */
+export function exportWorkspaceCategories(): WorkspaceCategoryRecord[] {
+  return queryAll<WorkspaceCategoryRecord>(`
+    SELECT workspace_id, category_id
+    FROM workspace_categories
+    ORDER BY workspace_id, category_id
+  `);
+}
+
+/**
+ * Export workspace-user relationships
+ */
+export function exportWorkspaceUsers(): WorkspaceUserRecord[] {
+  return queryAll<WorkspaceUserRecord>(`
+    SELECT workspace_id, user_id, added_by, added_at
+    FROM workspace_users
+    ORDER BY workspace_id, user_id
+  `);
+}
+
+// ============ NEW: Function API Export Functions ============
+
+/**
+ * Export function API configurations
+ */
+export function exportFunctionApiConfigs(): FunctionApiConfigRecord[] {
+  return queryAll<FunctionApiConfigRecord>(`
+    SELECT id, name, description, base_url, auth_type, auth_header, auth_credentials,
+           default_headers, tools_schema, endpoint_mappings, timeout_seconds,
+           cache_ttl_seconds, is_enabled, status, created_by, created_at, updated_at,
+           last_tested, last_error
+    FROM function_api_configs
+    ORDER BY name
+  `);
+}
+
+/**
+ * Export function API to category mappings
+ */
+export function exportFunctionApiCategories(): FunctionApiCategoryRecord[] {
+  return queryAll<FunctionApiCategoryRecord>(`
+    SELECT api_id, category_id, created_at
+    FROM function_api_categories
+    ORDER BY api_id, category_id
+  `);
+}
+
+// ============ NEW: User Memory Export Functions ============
+
+/**
+ * Export user memories
+ */
+export function exportUserMemories(): UserMemoryRecord[] {
+  return queryAll<UserMemoryRecord>(`
+    SELECT id, user_id, category_id, facts_json, created_at, updated_at
+    FROM user_memories
+    ORDER BY user_id, category_id
+  `);
+}
+
+// ============ NEW: Tool Routing Export Functions ============
+
+/**
+ * Export tool routing rules
+ */
+export function exportToolRoutingRules(): ToolRoutingRuleRecord[] {
+  return queryAll<ToolRoutingRuleRecord>(`
+    SELECT id, tool_name, rule_name, rule_type, patterns, force_mode,
+           priority, category_ids, is_active, created_at, updated_at,
+           created_by, updated_by
+    FROM tool_routing_rules
+    ORDER BY priority, tool_name
+  `);
+}
+
+// ============ NEW: Thread Share Export Functions ============
+
+/**
+ * Export thread shares
+ */
+export function exportThreadShares(): ThreadShareRecord[] {
+  return queryAll<ThreadShareRecord>(`
+    SELECT id, thread_id, share_token, created_by, allow_download,
+           expires_at, view_count, created_at, last_viewed_at, revoked_at
+    FROM thread_shares
+    ORDER BY created_at
+  `);
+}
+
+// ============ NEW: Task Plan Export Functions ============
+
+/**
+ * Export task plans
+ */
+export function exportTaskPlans(): TaskPlanRecord[] {
+  return queryAll<TaskPlanRecord>(`
+    SELECT id, thread_id, user_id, category_slug, title, tasks_json, status,
+           total_tasks, completed_tasks, failed_tasks, mode, budget_json,
+           budget_used_json, model_config_json, paused_at, pause_reason,
+           resumed_at, stopped_at, stop_reason, created_at, updated_at, completed_at
+    FROM task_plans
+    ORDER BY created_at
   `);
 }
 
@@ -899,6 +1168,199 @@ export function importDataCsvCategories(records: DataCsvCategoryRecord[]): void 
   }
 }
 
+// ============ NEW: Workspace Import Functions ============
+
+/**
+ * Import workspaces
+ */
+export function importWorkspaces(records: WorkspaceRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO workspaces (
+      id, slug, name, type, is_enabled, access_mode,
+      primary_color, logo_url, chat_title, greeting_message, suggested_prompts, footer_text,
+      llm_provider, llm_model, temperature, system_prompt,
+      allowed_domains, daily_limit, session_limit,
+      voice_enabled, file_upload_enabled, max_file_size_mb,
+      created_by, created_by_role, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.slug, rec.name, rec.type, rec.is_enabled, rec.access_mode,
+      rec.primary_color, rec.logo_url, rec.chat_title, rec.greeting_message,
+      rec.suggested_prompts, rec.footer_text, rec.llm_provider, rec.llm_model,
+      rec.temperature, rec.system_prompt, rec.allowed_domains, rec.daily_limit,
+      rec.session_limit, rec.voice_enabled, rec.file_upload_enabled,
+      rec.max_file_size_mb, rec.created_by, rec.created_by_role,
+      rec.created_at, rec.updated_at
+    );
+  }
+}
+
+/**
+ * Import workspace-category relationships
+ */
+export function importWorkspaceCategories(records: WorkspaceCategoryRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO workspace_categories (workspace_id, category_id)
+    VALUES (?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.workspace_id, rec.category_id);
+  }
+}
+
+/**
+ * Import workspace-user relationships
+ */
+export function importWorkspaceUsers(records: WorkspaceUserRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO workspace_users (workspace_id, user_id, added_by, added_at)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.workspace_id, rec.user_id, rec.added_by, rec.added_at);
+  }
+}
+
+// ============ NEW: Function API Import Functions ============
+
+/**
+ * Import function API configurations
+ */
+export function importFunctionApiConfigs(records: FunctionApiConfigRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO function_api_configs (
+      id, name, description, base_url, auth_type, auth_header, auth_credentials,
+      default_headers, tools_schema, endpoint_mappings, timeout_seconds,
+      cache_ttl_seconds, is_enabled, status, created_by, created_at, updated_at,
+      last_tested, last_error
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.name, rec.description, rec.base_url, rec.auth_type,
+      rec.auth_header, rec.auth_credentials, rec.default_headers,
+      rec.tools_schema, rec.endpoint_mappings, rec.timeout_seconds,
+      rec.cache_ttl_seconds, rec.is_enabled, rec.status, rec.created_by,
+      rec.created_at, rec.updated_at, rec.last_tested, rec.last_error
+    );
+  }
+}
+
+/**
+ * Import function API to category mappings
+ */
+export function importFunctionApiCategories(records: FunctionApiCategoryRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO function_api_categories (api_id, category_id, created_at)
+    VALUES (?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.api_id, rec.category_id, rec.created_at);
+  }
+}
+
+// ============ NEW: User Memory Import Functions ============
+
+/**
+ * Import user memories
+ */
+export function importUserMemories(records: UserMemoryRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO user_memories (id, user_id, category_id, facts_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.id, rec.user_id, rec.category_id, rec.facts_json, rec.created_at, rec.updated_at);
+  }
+}
+
+// ============ NEW: Tool Routing Import Functions ============
+
+/**
+ * Import tool routing rules
+ */
+export function importToolRoutingRules(records: ToolRoutingRuleRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO tool_routing_rules (
+      id, tool_name, rule_name, rule_type, patterns, force_mode,
+      priority, category_ids, is_active, created_at, updated_at,
+      created_by, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.tool_name, rec.rule_name, rec.rule_type, rec.patterns,
+      rec.force_mode, rec.priority, rec.category_ids, rec.is_active,
+      rec.created_at, rec.updated_at, rec.created_by, rec.updated_by
+    );
+  }
+}
+
+// ============ NEW: Thread Share Import Functions ============
+
+/**
+ * Import thread shares
+ */
+export function importThreadShares(records: ThreadShareRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO thread_shares (
+      id, thread_id, share_token, created_by, allow_download,
+      expires_at, view_count, created_at, last_viewed_at, revoked_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.thread_id, rec.share_token, rec.created_by, rec.allow_download,
+      rec.expires_at, rec.view_count, rec.created_at, rec.last_viewed_at, rec.revoked_at
+    );
+  }
+}
+
+// ============ NEW: Task Plan Import Functions ============
+
+/**
+ * Import task plans
+ */
+export function importTaskPlans(records: TaskPlanRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO task_plans (
+      id, thread_id, user_id, category_slug, title, tasks_json, status,
+      total_tasks, completed_tasks, failed_tasks, mode, budget_json,
+      budget_used_json, model_config_json, paused_at, pause_reason,
+      resumed_at, stopped_at, stop_reason, created_at, updated_at, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.thread_id, rec.user_id, rec.category_slug, rec.title,
+      rec.tasks_json, rec.status, rec.total_tasks, rec.completed_tasks,
+      rec.failed_tasks, rec.mode, rec.budget_json, rec.budget_used_json,
+      rec.model_config_json, rec.paused_at, rec.pause_reason, rec.resumed_at,
+      rec.stopped_at, rec.stop_reason, rec.created_at, rec.updated_at, rec.completed_at
+    );
+  }
+}
+
 // ============ Clear Functions ============
 
 /**
@@ -907,6 +1369,12 @@ export function importDataCsvCategories(records: DataCsvCategoryRecord[]): void 
  */
 export function clearAllData(): void {
   transaction(() => {
+    // Clear task plans (depends on threads)
+    execute('DELETE FROM task_plans');
+
+    // Clear thread shares (depends on threads and users)
+    execute('DELETE FROM thread_shares');
+
     // Clear thread-related tables first (depend on threads)
     execute('DELETE FROM thread_outputs');
     execute('DELETE FROM thread_uploads');
@@ -918,17 +1386,30 @@ export function clearAllData(): void {
     execute('DELETE FROM document_categories');
     execute('DELETE FROM documents');
 
+    // Clear user memories (depends on users and categories)
+    execute('DELETE FROM user_memories');
+
     // Clear user relationships
     execute('DELETE FROM user_subscriptions');
     execute('DELETE FROM super_user_categories');
     execute('DELETE FROM users');
 
+    // Clear workspace-related tables (depend on workspaces, users, categories)
+    execute('DELETE FROM workspace_users');
+    execute('DELETE FROM workspace_categories');
+    execute('DELETE FROM workspaces');
+
     // Clear tools, skills, and category prompts (depend on categories)
     execute('DELETE FROM category_tool_configs');
     execute('DELETE FROM tool_configs');
+    execute('DELETE FROM tool_routing_rules');
     execute('DELETE FROM category_skills');
     execute('DELETE FROM skills');
     execute('DELETE FROM category_prompts');
+
+    // Clear function API sources (depend on categories)
+    execute('DELETE FROM function_api_categories');
+    execute('DELETE FROM function_api_configs');
 
     // Clear data sources (depend on categories)
     execute('DELETE FROM data_api_categories');

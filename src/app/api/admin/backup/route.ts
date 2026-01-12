@@ -37,6 +37,13 @@ export async function POST(request: NextRequest) {
       includeSkills: body.includeSkills !== false, // Default true
       includeCategoryPrompts: body.includeCategoryPrompts !== false, // Default true
       includeDataSources: body.includeDataSources !== false, // Default true
+      // NEW backup options
+      includeWorkspaces: body.includeWorkspaces !== false, // Default true
+      includeFunctionApis: body.includeFunctionApis !== false, // Default true
+      includeUserMemories: body.includeUserMemories !== false, // Default true
+      includeToolRouting: body.includeToolRouting !== false, // Default true
+      includeThreadShares: body.includeThreadShares === true, // Default false
+      includeTaskPlans: body.includeTaskPlans === true, // Default false
     };
 
     // Create backup

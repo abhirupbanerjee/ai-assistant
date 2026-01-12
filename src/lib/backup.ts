@@ -31,6 +31,15 @@ import {
   exportDataApiCategories,
   exportDataCsvConfigs,
   exportDataCsvCategories,
+  exportWorkspaces,
+  exportWorkspaceCategories,
+  exportWorkspaceUsers,
+  exportFunctionApiConfigs,
+  exportFunctionApiCategories,
+  exportUserMemories,
+  exportToolRoutingRules,
+  exportThreadShares,
+  exportTaskPlans,
   importDocuments,
   importCategories,
   importDocumentCategories,
@@ -52,6 +61,15 @@ import {
   importDataApiCategories,
   importDataCsvConfigs,
   importDataCsvCategories,
+  importWorkspaces,
+  importWorkspaceCategories,
+  importWorkspaceUsers,
+  importFunctionApiConfigs,
+  importFunctionApiCategories,
+  importUserMemories,
+  importToolRoutingRules,
+  importThreadShares,
+  importTaskPlans,
   clearAllData,
 } from './db/backup';
 import { getGlobalDocsDir, getThreadsDir, ensureDir } from './storage';
@@ -70,6 +88,13 @@ export interface BackupOptions {
   includeSkills: boolean;
   includeCategoryPrompts: boolean;
   includeDataSources: boolean;
+  // NEW backup options
+  includeWorkspaces: boolean;
+  includeFunctionApis: boolean;
+  includeUserMemories: boolean;
+  includeToolRouting: boolean;
+  includeThreadShares: boolean;
+  includeTaskPlans: boolean;
 }
 
 export interface RestoreOptions {
@@ -85,6 +110,13 @@ export interface RestoreOptions {
   restoreCategoryPrompts: boolean;
   restoreDataSources: boolean;
   refreshVectorDb: boolean;
+  // NEW restore options
+  restoreWorkspaces: boolean;
+  restoreFunctionApis: boolean;
+  restoreUserMemories: boolean;
+  restoreToolRouting: boolean;
+  restoreThreadShares: boolean;
+  restoreTaskPlans: boolean;
 }
 
 export interface BackupManifest {
@@ -115,6 +147,19 @@ export interface BackupManifest {
     categoryPromptCount: number;
     dataSourceCount: number;
     totalFileSize: number;
+    // NEW content flags
+    workspaces: boolean;
+    functionApis: boolean;
+    userMemories: boolean;
+    toolRouting: boolean;
+    threadShares: boolean;
+    taskPlans: boolean;
+    workspaceCount: number;
+    functionApiCount: number;
+    userMemoryCount: number;
+    toolRoutingRuleCount: number;
+    threadShareCount: number;
+    taskPlanCount: number;
   };
   warnings: string[];
 }
@@ -133,6 +178,13 @@ export interface RestoreResult {
     skillsRestored: number;
     categoryPromptsRestored: number;
     dataSourcesRestored: number;
+    // NEW restore counts
+    workspacesRestored: number;
+    functionApisRestored: number;
+    userMemoriesRestored: number;
+    toolRoutingRulesRestored: number;
+    threadSharesRestored: number;
+    taskPlansRestored: number;
   };
   warnings: string[];
 }
@@ -204,6 +256,27 @@ export async function createBackup(
   const dataCsvConfigs = options.includeDataSources ? exportDataCsvConfigs() : [];
   const dataCsvCategories = options.includeDataSources ? exportDataCsvCategories() : [];
 
+  // NEW: Workspaces
+  const workspaces = options.includeWorkspaces ? exportWorkspaces() : [];
+  const workspaceCategories = options.includeWorkspaces ? exportWorkspaceCategories() : [];
+  const workspaceUsers = options.includeWorkspaces ? exportWorkspaceUsers() : [];
+
+  // NEW: Function APIs
+  const functionApiConfigs = options.includeFunctionApis ? exportFunctionApiConfigs() : [];
+  const functionApiCategories = options.includeFunctionApis ? exportFunctionApiCategories() : [];
+
+  // NEW: User memories
+  const userMemories = options.includeUserMemories ? exportUserMemories() : [];
+
+  // NEW: Tool routing rules
+  const toolRoutingRules = options.includeToolRouting ? exportToolRoutingRules() : [];
+
+  // NEW: Thread shares
+  const threadShares = options.includeThreadShares ? exportThreadShares() : [];
+
+  // NEW: Task plans
+  const taskPlans = options.includeTaskPlans ? exportTaskPlans() : [];
+
   // Create manifest
   const manifest: BackupManifest = {
     version: '1.0.0',
@@ -233,6 +306,19 @@ export async function createBackup(
       categoryPromptCount: categoryPrompts.length,
       dataSourceCount: dataApiConfigs.length + dataCsvConfigs.length,
       totalFileSize: 0, // Will be updated
+      // NEW content flags
+      workspaces: options.includeWorkspaces,
+      functionApis: options.includeFunctionApis,
+      userMemories: options.includeUserMemories,
+      toolRouting: options.includeToolRouting,
+      threadShares: options.includeThreadShares,
+      taskPlans: options.includeTaskPlans,
+      workspaceCount: workspaces.length,
+      functionApiCount: functionApiConfigs.length,
+      userMemoryCount: userMemories.length,
+      toolRoutingRuleCount: toolRoutingRules.length,
+      threadShareCount: threadShares.length,
+      taskPlanCount: taskPlans.length,
     },
     warnings,
   };
@@ -294,6 +380,39 @@ export async function createBackup(
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataApiCategories.length, records: dataApiCategories }, null, 2), { name: 'data/data_api_categories.json' });
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataCsvConfigs.length, records: dataCsvConfigs }, null, 2), { name: 'data/data_csv_configs.json' });
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataCsvCategories.length, records: dataCsvCategories }, null, 2), { name: 'data/data_csv_categories.json' });
+  }
+
+  // NEW: Add workspaces data
+  if (options.includeWorkspaces) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: workspaces.length, records: workspaces }, null, 2), { name: 'data/workspaces.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: workspaceCategories.length, records: workspaceCategories }, null, 2), { name: 'data/workspace_categories.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: workspaceUsers.length, records: workspaceUsers }, null, 2), { name: 'data/workspace_users.json' });
+  }
+
+  // NEW: Add function APIs data
+  if (options.includeFunctionApis) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: functionApiConfigs.length, records: functionApiConfigs }, null, 2), { name: 'data/function_api_configs.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: functionApiCategories.length, records: functionApiCategories }, null, 2), { name: 'data/function_api_categories.json' });
+  }
+
+  // NEW: Add user memories data
+  if (options.includeUserMemories) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: userMemories.length, records: userMemories }, null, 2), { name: 'data/user_memories.json' });
+  }
+
+  // NEW: Add tool routing rules data
+  if (options.includeToolRouting) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: toolRoutingRules.length, records: toolRoutingRules }, null, 2), { name: 'data/tool_routing_rules.json' });
+  }
+
+  // NEW: Add thread shares data
+  if (options.includeThreadShares) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: threadShares.length, records: threadShares }, null, 2), { name: 'data/thread_shares.json' });
+  }
+
+  // NEW: Add task plans data
+  if (options.includeTaskPlans) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: taskPlans.length, records: taskPlans }, null, 2), { name: 'data/task_plans.json' });
   }
 
   // Add document files
@@ -402,6 +521,13 @@ export async function restoreBackup(
       skillsRestored: 0,
       categoryPromptsRestored: 0,
       dataSourcesRestored: 0,
+      // NEW restore counts
+      workspacesRestored: 0,
+      functionApisRestored: 0,
+      userMemoriesRestored: 0,
+      toolRoutingRulesRestored: 0,
+      threadSharesRestored: 0,
+      taskPlansRestored: 0,
     },
     warnings: [],
   };
@@ -579,6 +705,75 @@ export async function restoreBackup(
         const dataCsvCategories = readJsonFromZip<ReturnType<typeof exportDataCsvCategories>>('data/data_csv_categories.json');
         if (dataCsvCategories && dataCsvCategories.length > 0) {
           importDataCsvCategories(dataCsvCategories);
+        }
+      }
+
+      // NEW: Restore workspaces
+      if (options.restoreWorkspaces && manifest.contents.workspaces) {
+        const workspaces = readJsonFromZip<ReturnType<typeof exportWorkspaces>>('data/workspaces.json');
+        if (workspaces && workspaces.length > 0) {
+          importWorkspaces(workspaces);
+          result.details.workspacesRestored = workspaces.length;
+        }
+
+        const workspaceCategories = readJsonFromZip<ReturnType<typeof exportWorkspaceCategories>>('data/workspace_categories.json');
+        if (workspaceCategories && workspaceCategories.length > 0) {
+          importWorkspaceCategories(workspaceCategories);
+        }
+
+        const workspaceUsers = readJsonFromZip<ReturnType<typeof exportWorkspaceUsers>>('data/workspace_users.json');
+        if (workspaceUsers && workspaceUsers.length > 0) {
+          importWorkspaceUsers(workspaceUsers);
+        }
+      }
+
+      // NEW: Restore function APIs
+      if (options.restoreFunctionApis && manifest.contents.functionApis) {
+        const functionApiConfigs = readJsonFromZip<ReturnType<typeof exportFunctionApiConfigs>>('data/function_api_configs.json');
+        if (functionApiConfigs && functionApiConfigs.length > 0) {
+          importFunctionApiConfigs(functionApiConfigs);
+          result.details.functionApisRestored = functionApiConfigs.length;
+        }
+
+        const functionApiCategories = readJsonFromZip<ReturnType<typeof exportFunctionApiCategories>>('data/function_api_categories.json');
+        if (functionApiCategories && functionApiCategories.length > 0) {
+          importFunctionApiCategories(functionApiCategories);
+        }
+      }
+
+      // NEW: Restore user memories
+      if (options.restoreUserMemories && manifest.contents.userMemories) {
+        const userMemories = readJsonFromZip<ReturnType<typeof exportUserMemories>>('data/user_memories.json');
+        if (userMemories && userMemories.length > 0) {
+          importUserMemories(userMemories);
+          result.details.userMemoriesRestored = userMemories.length;
+        }
+      }
+
+      // NEW: Restore tool routing rules
+      if (options.restoreToolRouting && manifest.contents.toolRouting) {
+        const toolRoutingRules = readJsonFromZip<ReturnType<typeof exportToolRoutingRules>>('data/tool_routing_rules.json');
+        if (toolRoutingRules && toolRoutingRules.length > 0) {
+          importToolRoutingRules(toolRoutingRules);
+          result.details.toolRoutingRulesRestored = toolRoutingRules.length;
+        }
+      }
+
+      // NEW: Restore thread shares
+      if (options.restoreThreadShares && manifest.contents.threadShares) {
+        const threadShares = readJsonFromZip<ReturnType<typeof exportThreadShares>>('data/thread_shares.json');
+        if (threadShares && threadShares.length > 0) {
+          importThreadShares(threadShares);
+          result.details.threadSharesRestored = threadShares.length;
+        }
+      }
+
+      // NEW: Restore task plans
+      if (options.restoreTaskPlans && manifest.contents.taskPlans) {
+        const taskPlans = readJsonFromZip<ReturnType<typeof exportTaskPlans>>('data/task_plans.json');
+        if (taskPlans && taskPlans.length > 0) {
+          importTaskPlans(taskPlans);
+          result.details.taskPlansRestored = taskPlans.length;
         }
       }
     });

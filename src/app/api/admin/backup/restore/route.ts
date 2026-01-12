@@ -62,6 +62,13 @@ export async function POST(request: NextRequest) {
       restoreCategoryPrompts: formData.get('restoreCategoryPrompts') !== 'false',
       restoreDataSources: formData.get('restoreDataSources') !== 'false',
       refreshVectorDb: formData.get('refreshVectorDb') === 'true',
+      // NEW restore options
+      restoreWorkspaces: formData.get('restoreWorkspaces') !== 'false',
+      restoreFunctionApis: formData.get('restoreFunctionApis') !== 'false',
+      restoreUserMemories: formData.get('restoreUserMemories') !== 'false',
+      restoreToolRouting: formData.get('restoreToolRouting') !== 'false',
+      restoreThreadShares: formData.get('restoreThreadShares') === 'true',
+      restoreTaskPlans: formData.get('restoreTaskPlans') === 'true',
     };
 
     // Read file to buffer

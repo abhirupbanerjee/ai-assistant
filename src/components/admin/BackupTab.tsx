@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database } from 'lucide-react';
+import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, ListTodo } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -33,6 +33,19 @@ interface BackupManifest {
     categoryPromptCount: number;
     dataSourceCount: number;
     totalFileSize: number;
+    // NEW content flags
+    workspaces?: boolean;
+    functionApis?: boolean;
+    userMemories?: boolean;
+    toolRouting?: boolean;
+    threadShares?: boolean;
+    taskPlans?: boolean;
+    workspaceCount?: number;
+    functionApiCount?: number;
+    userMemoryCount?: number;
+    toolRoutingRuleCount?: number;
+    threadShareCount?: number;
+    taskPlanCount?: number;
   };
   warnings: string[];
 }
@@ -51,6 +64,13 @@ interface RestoreResult {
     skillsRestored: number;
     categoryPromptsRestored: number;
     dataSourcesRestored: number;
+    // NEW restore counts
+    workspacesRestored?: number;
+    functionApisRestored?: number;
+    userMemoriesRestored?: number;
+    toolRoutingRulesRestored?: number;
+    threadSharesRestored?: number;
+    taskPlansRestored?: number;
   };
   warnings: string[];
 }
@@ -69,6 +89,13 @@ export default function BackupTab() {
     includeSkills: true,
     includeCategoryPrompts: true,
     includeDataSources: true,
+    // NEW backup options
+    includeWorkspaces: true,
+    includeFunctionApis: true,
+    includeUserMemories: true,
+    includeToolRouting: true,
+    includeThreadShares: false,
+    includeTaskPlans: false,
   });
 
   // Restore state
@@ -89,6 +116,13 @@ export default function BackupTab() {
     restoreCategoryPrompts: true,
     restoreDataSources: true,
     refreshVectorDb: true,
+    // NEW restore options
+    restoreWorkspaces: true,
+    restoreFunctionApis: true,
+    restoreUserMemories: true,
+    restoreToolRouting: true,
+    restoreThreadShares: false,
+    restoreTaskPlans: false,
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +208,13 @@ export default function BackupTab() {
           restoreSkills: data.manifest.contents.skills ?? false,
           restoreCategoryPrompts: data.manifest.contents.categoryPrompts ?? false,
           restoreDataSources: data.manifest.contents.dataSources ?? false,
+          // NEW restore options
+          restoreWorkspaces: data.manifest.contents.workspaces ?? false,
+          restoreFunctionApis: data.manifest.contents.functionApis ?? false,
+          restoreUserMemories: data.manifest.contents.userMemories ?? false,
+          restoreToolRouting: data.manifest.contents.toolRouting ?? false,
+          restoreThreadShares: data.manifest.contents.threadShares ?? false,
+          restoreTaskPlans: data.manifest.contents.taskPlans ?? false,
         }));
       }
     } catch (err) {
@@ -374,6 +415,72 @@ export default function BackupTab() {
                 <Database size={18} className="text-gray-500" />
                 <span className="text-sm">Data Sources</span>
               </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeWorkspaces}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeWorkspaces: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <LayoutGrid size={18} className="text-gray-500" />
+                <span className="text-sm">Workspaces</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeFunctionApis}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeFunctionApis: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Zap size={18} className="text-gray-500" />
+                <span className="text-sm">Function APIs</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeUserMemories}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeUserMemories: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Brain size={18} className="text-gray-500" />
+                <span className="text-sm">User Memories</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeToolRouting}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeToolRouting: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <GitBranch size={18} className="text-gray-500" />
+                <span className="text-sm">Tool Routing</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeThreadShares}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeThreadShares: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Share2 size={18} className="text-gray-500" />
+                <span className="text-sm">Thread Shares</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeTaskPlans}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeTaskPlans: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <ListTodo size={18} className="text-gray-500" />
+                <span className="text-sm">Task Plans</span>
+              </label>
             </div>
 
             <div className="flex justify-end pt-4 border-t mt-4">
@@ -503,6 +610,42 @@ export default function BackupTab() {
                         <span>{restoreManifest.contents.dataSourceCount} Data Sources</span>
                       </div>
                     )}
+                    {restoreManifest.contents.workspaces && (
+                      <div className="flex items-center gap-2">
+                        <LayoutGrid size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.workspaceCount} Workspaces</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.functionApis && (
+                      <div className="flex items-center gap-2">
+                        <Zap size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.functionApiCount} Function APIs</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.userMemories && (
+                      <div className="flex items-center gap-2">
+                        <Brain size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.userMemoryCount} User Memories</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.toolRouting && (
+                      <div className="flex items-center gap-2">
+                        <GitBranch size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.toolRoutingRuleCount} Routing Rules</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.threadShares && (
+                      <div className="flex items-center gap-2">
+                        <Share2 size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.threadShareCount} Thread Shares</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.taskPlans && (
+                      <div className="flex items-center gap-2">
+                        <ListTodo size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.taskPlanCount} Task Plans</span>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-blue-600">
                     Created: {new Date(restoreManifest.createdAt).toLocaleString()} by {restoreManifest.createdBy}
@@ -623,6 +766,72 @@ export default function BackupTab() {
                     />
                     <span className="text-sm">Data Sources</span>
                   </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.workspaces ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreWorkspaces}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreWorkspaces: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.workspaces}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Workspaces</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.functionApis ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreFunctionApis}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreFunctionApis: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.functionApis}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Function APIs</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.userMemories ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreUserMemories}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreUserMemories: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.userMemories}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">User Memories</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.toolRouting ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreToolRouting}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreToolRouting: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.toolRouting}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Tool Routing</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.threadShares ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreThreadShares}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreThreadShares: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.threadShares}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Thread Shares</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.taskPlans ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreTaskPlans}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreTaskPlans: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.taskPlans}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Task Plans</span>
+                  </label>
                 </div>
 
                 {/* Advanced Options */}
@@ -724,6 +933,24 @@ export default function BackupTab() {
                   )}
                   {restoreResult.details.dataSourcesRestored > 0 && (
                     <div>Data Sources: {restoreResult.details.dataSourcesRestored}</div>
+                  )}
+                  {(restoreResult.details.workspacesRestored ?? 0) > 0 && (
+                    <div>Workspaces: {restoreResult.details.workspacesRestored}</div>
+                  )}
+                  {(restoreResult.details.functionApisRestored ?? 0) > 0 && (
+                    <div>Function APIs: {restoreResult.details.functionApisRestored}</div>
+                  )}
+                  {(restoreResult.details.userMemoriesRestored ?? 0) > 0 && (
+                    <div>User Memories: {restoreResult.details.userMemoriesRestored}</div>
+                  )}
+                  {(restoreResult.details.toolRoutingRulesRestored ?? 0) > 0 && (
+                    <div>Tool Routing: {restoreResult.details.toolRoutingRulesRestored}</div>
+                  )}
+                  {(restoreResult.details.threadSharesRestored ?? 0) > 0 && (
+                    <div>Thread Shares: {restoreResult.details.threadSharesRestored}</div>
+                  )}
+                  {(restoreResult.details.taskPlansRestored ?? 0) > 0 && (
+                    <div>Task Plans: {restoreResult.details.taskPlansRestored}</div>
                   )}
                 </div>
               )}
