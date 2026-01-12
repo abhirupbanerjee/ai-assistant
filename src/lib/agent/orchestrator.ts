@@ -35,8 +35,14 @@ import {
  * Orchestrator callbacks for progress updates
  */
 export interface OrchestratorCallbacks {
+  // Planning phase callbacks (user-friendly progress)
+  onAnalyzing?: () => void;
+  onPlanning?: () => void;
+  onPlanReady?: (taskCount: number) => void;
+  // Execution callbacks
   onPlanCreated?: (plan: AgentPlan) => void;
   onTaskStarted?: (task: AgentTask) => void;
+  onTaskChecking?: (task: AgentTask) => void; // When checker validates task result
   onTaskCompleted?: (task: AgentTask, result: ExecutionResult) => void;
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
@@ -44,6 +50,7 @@ export interface OrchestratorCallbacks {
   onBudgetWarning?: (message: string, percentage: number) => void;
   onBudgetExceeded?: (message: string) => void;
   onError?: (error: string) => void;
+  onSummarizing?: () => void; // When generating final summary
   onPlanCompleted?: (plan: AgentPlan, summary: string) => void;
   // Control callbacks
   onPlanPaused?: (plan: AgentPlan, reason?: string) => void;
@@ -112,6 +119,7 @@ export async function executeAutonomousPlan(
     plan = (getTaskPlan(planId) as unknown as AgentPlan) || plan;
 
     // Phase 3: Summarization
+    callbacks?.onSummarizing?.();
     const summaryResult = await generatePlanSummary(plan, modelConfig, budgetTracker);
 
     if (!summaryResult.success) {
@@ -240,6 +248,7 @@ async function executeTasksInOrder(
       onToolStart: callbacks?.onToolStart,
       onToolEnd: callbacks?.onToolEnd,
       onArtifact: callbacks?.onArtifact,
+      onChecking: () => callbacks?.onTaskChecking?.(nextTask),
     };
 
     const result = await executeTask(nextTask, currentPlan, modelConfig, executorCallbacks);
@@ -469,7 +478,11 @@ export async function createAndExecuteAutonomousPlan(
   callbacks?: OrchestratorCallbacks
 ): Promise<OrchestratorResult> {
   try {
-    // Phase 1: Planning
+    // Phase 1a: Analyzing user request
+    callbacks?.onAnalyzing?.();
+
+    // Phase 1b: Creating task plan
+    callbacks?.onPlanning?.();
     const planResult = await createPlan(userRequest, context, planConfig.modelConfig);
 
     if (planResult.error || planResult.tasks.length === 0) {
@@ -501,6 +514,9 @@ export async function createAndExecuteAutonomousPlan(
         modelConfig: planConfig.modelConfig,
       }
     );
+
+    // Phase 1c: Plan ready - notify user with task count
+    callbacks?.onPlanReady?.(planResult.tasks.length);
 
     // Phase 2 & 3: Execute plan
     return await executeAutonomousPlan(planId, planConfig.modelConfig, callbacks);

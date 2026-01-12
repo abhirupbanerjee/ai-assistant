@@ -61,8 +61,6 @@ export async function executeAutonomousWithStreaming(
 
   // Execute autonomous plan with streaming callbacks
   try {
-    sendEvent({ type: 'status', phase: 'agent_planning', content: 'Creating autonomous task plan...' });
-
     const result = await createAndExecuteAutonomousPlan(
       userRequest,
       context,
@@ -74,6 +72,31 @@ export async function executeAutonomousWithStreaming(
         modelConfig,
       },
       {
+        // Planning phase callbacks - user-friendly progress messages
+        onAnalyzing: () => {
+          sendEvent({
+            type: 'status',
+            phase: 'agent_planning',
+            content: 'Analyzing your request...',
+          });
+        },
+
+        onPlanning: () => {
+          sendEvent({
+            type: 'status',
+            phase: 'agent_planning',
+            content: 'Creating a task plan...',
+          });
+        },
+
+        onPlanReady: (taskCount: number) => {
+          sendEvent({
+            type: 'status',
+            phase: 'agent_planning',
+            content: `Ready to execute ${taskCount} tasks. You can pause, stop, or skip tasks if needed.`,
+          });
+        },
+
         onPlanCreated: (plan: AgentPlan) => {
           // Capture plan ID for return value
           planId = plan.id;
@@ -128,6 +151,20 @@ export async function executeAutonomousWithStreaming(
             task_id: task.id,
             description: task.description,
             task_type: task.type,
+          });
+          // Update status message to show which task is executing
+          sendEvent({
+            type: 'status',
+            phase: 'agent_executing',
+            content: `Executing task ${task.id}: ${task.description.substring(0, 50)}${task.description.length > 50 ? '...' : ''}`,
+          });
+        },
+
+        onTaskChecking: (task: AgentTask) => {
+          sendEvent({
+            type: 'status',
+            phase: 'agent_executing',
+            content: `Checking task ${task.id} quality...`,
           });
         },
 
@@ -207,8 +244,15 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
+        onSummarizing: () => {
+          sendEvent({
+            type: 'status',
+            phase: 'agent_summarizing',
+            content: 'All tasks complete. Generating summary...',
+          });
+        },
+
         onPlanCompleted: (plan: AgentPlan, summary: string) => {
-          sendEvent({ type: 'status', phase: 'agent_summarizing', content: 'Generating summary...' });
 
           // Calculate stats
           const tasksWithConfidence = plan.tasks.filter((t) => t.confidence_score !== undefined);

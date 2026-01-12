@@ -147,6 +147,7 @@ export interface StreamChatRequest {
  */
 export interface ProcessingDetails {
   phase: StreamPhase;
+  statusMessage?: string; // User-friendly status message (e.g., "Analyzing your request...")
   skills: SkillInfo[];
   toolsAvailable: string[];
   toolsExecuted: ToolExecutionState[];

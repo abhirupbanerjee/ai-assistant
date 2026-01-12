@@ -107,6 +107,7 @@ export interface ExecutorCallbacks {
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (event: StreamEvent) => void;
+  onChecking?: () => void; // When checker validates task result
 }
 
 /**
@@ -171,6 +172,7 @@ export async function executeTask(
     }
 
     // Quality check with 80% threshold
+    callbacks?.onChecking?.();
     const checkResult = await checkTaskQuality(task, result.content, modelConfig);
 
     // Track checker LLM usage

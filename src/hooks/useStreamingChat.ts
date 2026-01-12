@@ -184,6 +184,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           processingDetails: {
             ...prev.processingDetails,
             phase: event.phase,
+            statusMessage: event.content, // User-friendly status message
           },
         }));
         onPhaseChange?.(event.phase);
