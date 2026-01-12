@@ -86,7 +86,16 @@ export async function translateWithOpenAI(
       textLength: text.length,
     });
 
-    const openai = new OpenAI();
+    // Use LiteLLM proxy if configured, otherwise direct OpenAI
+    const baseURL = process.env.OPENAI_BASE_URL || undefined;
+    const apiKey = process.env.OPENAI_BASE_URL
+      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
+      : process.env.OPENAI_API_KEY;
+
+    const openai = new OpenAI({
+      baseURL,
+      apiKey: apiKey || '',
+    });
 
     // Calculate max tokens (roughly 2x input for language expansion)
     const maxTokens = Math.min(text.length * 2, 4000);
