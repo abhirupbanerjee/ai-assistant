@@ -118,7 +118,8 @@ export async function generateResponseWithTools(
   enableTools: boolean = true,
   categoryIds?: number[],
   callbacks?: StreamingCallbacks,
-  images?: ImageContent[]
+  images?: ImageContent[],
+  excludeTools?: string[]
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -204,7 +205,15 @@ export async function generateResponseWithTools(
   }
 
   // Prepare completion params - pass categoryIds for dynamic Function API tools
-  const tools = effectiveEnableTools ? getToolDefinitions(categoryIds) : undefined;
+  let tools = effectiveEnableTools ? getToolDefinitions(categoryIds) : undefined;
+
+  // Filter out excluded tools if specified
+  if (tools && excludeTools && excludeTools.length > 0) {
+    tools = tools.filter(tool => {
+      const toolName = tool.function?.name;
+      return toolName && !excludeTools.includes(toolName);
+    });
+  }
 
   // Apply tool routing to determine tool_choice
   let toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined;

@@ -116,6 +116,12 @@ ${userRequest}
   if (context.conversationHistory) {
     prompt += `\n**Recent Conversation (for context - may contain data referenced by user):**
 ${context.conversationHistory}
+
+**IMPORTANT:** The conversation history above is ONLY for extracting DATA (lists, names, numbers, entities).
+- Do NOT copy task types from previous messages (search, generate, image, document, infographic)
+- Only create tasks that are EXPLICITLY requested in the CURRENT user request above
+- If the user doesn't ask for web search, don't create search tasks
+- If the user doesn't ask for images/infographics, don't create image tasks
 `;
   }
 

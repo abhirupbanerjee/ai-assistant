@@ -27,6 +27,8 @@ import {
   performRAGRetrieval,
   getStreamingConfigMs,
 } from '@/lib/streaming';
+import { translate } from '@/lib/translation';
+import { TONE_PRESETS } from '@/types/stream';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
 
 // Route segment config for long-running autonomous tasks
@@ -81,7 +83,14 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json() as StreamChatRequest;
-        const { message, threadId, mode = 'normal' } = body;
+        const {
+          message,
+          threadId,
+          mode = 'normal',
+          webSearchEnabled = true,
+          targetLanguage = 'en',
+          responseTone = 'default',
+        } = body;
 
         if (!message || !threadId) {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
@@ -166,10 +175,12 @@ export async function POST(request: NextRequest) {
                   message,
                   {
                     ragContext,
+                    // Only include user messages to prevent task type leakage from previous assistant responses
                     conversationHistory: conversationHistory
                       .slice(-10)
-                      .map(m => `${m.role}: ${m.content}`)
-                      .join('\n'),
+                      .filter(m => m.role === 'user')
+                      .map(m => m.content)
+                      .join('\n\n'),
                     categoryContext: categorySlugs.join(', '),
                   },
                   {
@@ -312,10 +323,23 @@ export async function POST(request: NextRequest) {
             const historyLimit = limitsSettings.conversationHistoryMessages;
             const recentHistory = conversationHistory.slice(0, -1).slice(-historyLimit);
 
+            // Prepare system prompt with tone injection if needed
+            let effectiveSystemPrompt = ragResult.systemPrompt;
+            if (responseTone && responseTone !== 'default' && TONE_PRESETS[responseTone]) {
+              const tonePrompt = TONE_PRESETS[responseTone].prompt;
+              effectiveSystemPrompt = `${tonePrompt}\n\n${ragResult.systemPrompt}`;
+            }
+
+            // Determine which tools to exclude based on user preferences
+            const excludeTools: string[] = [];
+            if (!webSearchEnabled) {
+              excludeTools.push('web_search');
+            }
+
             // Execute tools with streaming callbacks
             // Pass images for multimodal visual analysis (in addition to OCR text in context)
             const toolResult = await generateResponseWithTools(
-              ragResult.systemPrompt,
+              effectiveSystemPrompt,
               recentHistory,
               ragResult.context,
               message,
@@ -344,7 +368,8 @@ export async function POST(request: NextRequest) {
                   }
                 },
               },
-              imageContents.length > 0 ? imageContents : undefined
+              imageContents.length > 0 ? imageContents : undefined,
+              excludeTools
             );
 
             // Extract web sources from tool history
@@ -379,7 +404,26 @@ export async function POST(request: NextRequest) {
             // For true streaming of the final response, we would need to make a separate streaming call
             // For now, we send the complete response in chunks to simulate streaming
 
-            const fullContent = toolResult.content;
+            let fullContent = toolResult.content;
+
+            // Translate response if targetLanguage is not English
+            if (targetLanguage && targetLanguage !== 'en') {
+              try {
+                const translationResult = await translate({
+                  text: fullContent,
+                  targetLanguage,
+                  context: 'policy document assistant response',
+                  formalStyle: true, // Use formal style for policy documents
+                });
+                if (translationResult.success) {
+                  fullContent = translationResult.translated;
+                }
+              } catch (translationError) {
+                console.warn('[Stream] Translation failed, using original response:', translationError);
+                // Continue with original content if translation fails
+              }
+            }
+
             const chunkSize = 20; // Characters per chunk for smooth typing effect
 
             for (let i = 0; i < fullContent.length; i += chunkSize) {

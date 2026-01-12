@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
-import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
+import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences } from '@/types';
+import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
@@ -64,6 +65,7 @@ export default function ChatWindow({
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
   const [restoredPlan, setRestoredPlan] = useState<AutonomousPlanState | null>(null);
+  const [chatPreferences, setChatPreferences] = useState<ChatPreferences>(DEFAULT_CHAT_PREFERENCES);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -385,7 +387,7 @@ export default function ChatWindow({
     return null;
   }, [onThreadCreated]);
 
-  const sendMessage = useCallback(async (content: string, mode?: 'normal' | 'autonomous') => {
+  const sendMessage = useCallback(async (content: string, mode?: 'normal' | 'autonomous', preferences?: ChatPreferences) => {
     setError(null);
 
     let currentThreadId = threadId;
@@ -406,8 +408,10 @@ export default function ChatWindow({
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
-    await sendStreamingMessage(content, currentThreadId, mode);
-  }, [threadId, createThread, sendStreamingMessage]);
+    // Use provided preferences or fall back to current state
+    const prefsToUse = preferences || chatPreferences;
+    await sendStreamingMessage(content, currentThreadId, mode, prefsToUse);
+  }, [threadId, createThread, sendStreamingMessage, chatPreferences]);
 
   const handleUploadComplete = (filename: string) => {
     setUploads((prev) => [...prev, filename]);
@@ -609,6 +613,8 @@ export default function ChatWindow({
         currentUploads={uploads}
         onUploadComplete={handleUploadComplete}
         onUrlSourceAdded={handleUrlSourceAdded}
+        preferences={chatPreferences}
+        onPreferencesChange={setChatPreferences}
       />
 
       {/* Share Modal */}

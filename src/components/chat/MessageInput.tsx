@@ -5,6 +5,10 @@ import { ArrowUp } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import FileUpload from './FileUpload';
 import ModeToggle, { ChatMode } from './ModeToggle';
+import WebSearchToggle from './WebSearchToggle';
+import LanguageSelector from './LanguageSelector';
+import ToneSelector from './ToneSelector';
+import type { ChatPreferences } from '@/types/stream';
 
 interface UrlSourceInfo {
   filename: string;
@@ -14,12 +18,15 @@ interface UrlSourceInfo {
 }
 
 interface MessageInputProps {
-  onSend: (message: string, mode?: ChatMode) => void;
+  onSend: (message: string, mode?: ChatMode, preferences?: ChatPreferences) => void;
   disabled?: boolean;
   threadId: string | null;
   currentUploads: string[];
   onUploadComplete: (filename: string) => void;
   onUrlSourceAdded?: (source: UrlSourceInfo) => void;
+  // Chat preferences
+  preferences: ChatPreferences;
+  onPreferencesChange: (preferences: ChatPreferences) => void;
 }
 
 export default function MessageInput({
@@ -29,6 +36,8 @@ export default function MessageInput({
   currentUploads,
   onUploadComplete,
   onUrlSourceAdded,
+  preferences,
+  onPreferencesChange,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<ChatMode>('normal');
@@ -44,11 +53,24 @@ export default function MessageInput({
 
   const handleSubmit = () => {
     if (message.trim() && !disabled) {
-      onSend(message.trim(), mode);
+      onSend(message.trim(), mode, preferences);
       setMessage('');
       // Reset mode to normal after sending
       setMode('normal');
     }
+  };
+
+  // Preference change handlers
+  const handleWebSearchToggle = (enabled: boolean) => {
+    onPreferencesChange({ ...preferences, webSearchEnabled: enabled });
+  };
+
+  const handleLanguageChange = (languageCode: string) => {
+    onPreferencesChange({ ...preferences, targetLanguage: languageCode });
+  };
+
+  const handleToneChange = (tone: string) => {
+    onPreferencesChange({ ...preferences, responseTone: tone });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -106,6 +128,21 @@ export default function MessageInput({
               disabled={disabled}
             />
             <ModeToggle mode={mode} onModeChange={setMode} disabled={disabled} />
+            <WebSearchToggle
+              enabled={preferences.webSearchEnabled}
+              onToggle={handleWebSearchToggle}
+              disabled={disabled}
+            />
+            <LanguageSelector
+              selectedLanguage={preferences.targetLanguage}
+              onLanguageChange={handleLanguageChange}
+              disabled={disabled}
+            />
+            <ToneSelector
+              selectedTone={preferences.responseTone}
+              onToneChange={handleToneChange}
+              disabled={disabled}
+            />
           </div>
 
           {/* Right actions */}

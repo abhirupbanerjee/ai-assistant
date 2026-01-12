@@ -20,6 +20,7 @@ import type {
   MessageVisualization,
   GeneratedDocumentInfo,
   GeneratedImageInfo,
+  ChatPreferences,
 } from '@/types';
 
 // ============ Types ============
@@ -101,7 +102,7 @@ export interface UseStreamingChatReturn {
   /** Current streaming state */
   state: StreamingState;
   /** Send a message and start streaming */
-  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous') => Promise<void>;
+  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous', preferences?: ChatPreferences) => Promise<void>;
   /** Abort current streaming */
   abort: () => void;
   /** Toggle processing details expansion */
@@ -475,7 +476,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   /**
    * Send message and start streaming
    */
-  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' = 'normal') => {
+  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' = 'normal', preferences?: ChatPreferences) => {
     // Abort any existing stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -511,7 +512,15 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message, threadId, mode }),
+        body: JSON.stringify({
+          message,
+          threadId,
+          mode,
+          // Include chat preferences if provided
+          webSearchEnabled: preferences?.webSearchEnabled,
+          targetLanguage: preferences?.targetLanguage,
+          responseTone: preferences?.responseTone,
+        }),
         signal: abortControllerRef.current.signal,
       });
 

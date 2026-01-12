@@ -129,6 +129,71 @@ export type StreamErrorCode =
   | 'SESSION_INVALID'
   | 'RATE_LIMITED';
 
+// ============ Chat Preferences ============
+
+/**
+ * Tone preset definition for response style control
+ */
+export interface TonePreset {
+  label: string;
+  icon: string;
+  prompt: string;
+}
+
+/**
+ * Available tone presets for response style
+ */
+export const TONE_PRESETS: Record<string, TonePreset> = {
+  default: {
+    label: 'Default',
+    icon: 'MessageSquare',
+    prompt: '', // No modification
+  },
+  concise: {
+    label: 'Concise',
+    icon: 'Minimize2',
+    prompt: 'Be brief and to the point. Provide only essential information without unnecessary elaboration.',
+  },
+  detailed: {
+    label: 'Detailed',
+    icon: 'FileText',
+    prompt: 'Provide comprehensive information covering all relevant aspects thoroughly with examples where helpful.',
+  },
+  explanatory: {
+    label: 'Explanatory',
+    icon: 'HelpCircle',
+    prompt: 'Explain concepts clearly with context and background. Break down complex topics into understandable parts.',
+  },
+  formal: {
+    label: 'Formal',
+    icon: 'Briefcase',
+    prompt: 'Use formal, professional language appropriate for official communications and documentation.',
+  },
+  creative: {
+    label: 'Creative',
+    icon: 'Sparkles',
+    prompt: 'Use engaging, creative language while maintaining accuracy. Make the response interesting and memorable.',
+  },
+};
+
+/**
+ * Chat preferences that can be set per-thread
+ */
+export interface ChatPreferences {
+  webSearchEnabled: boolean;
+  targetLanguage: string;
+  responseTone: string;
+}
+
+/**
+ * Default chat preferences
+ */
+export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
+  webSearchEnabled: true,
+  targetLanguage: 'en',
+  responseTone: 'default',
+};
+
 // ============ Request/Response Types ============
 
 /**
@@ -139,6 +204,10 @@ export interface StreamChatRequest {
   threadId: string;
   mode?: 'normal' | 'autonomous'; // Optional mode selection (defaults to 'normal')
   modelConfigPreset?: string; // For autonomous mode: 'default', 'quality', 'economy', 'compliance'
+  // Chat preferences
+  webSearchEnabled?: boolean; // default: true (follows admin setting)
+  targetLanguage?: string; // e.g., 'es', 'fr', defaults to 'en'
+  responseTone?: string; // e.g., 'concise', 'formal', defaults to 'default'
 }
 
 /**
