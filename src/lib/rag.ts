@@ -8,7 +8,14 @@
 import { createEmbeddings, generateResponseWithTools } from './openai';
 import type { OpenAI } from 'openai';
 import { queryCategories } from './chroma';
-import { getCachedQuery, cacheQuery, hashQuery } from './redis';
+import {
+  getCachedQuery,
+  cacheQuery,
+  hashQuery,
+  getCachedUserDocEmbeddings,
+  cacheUserDocEmbeddings,
+  type CachedUserDocData,
+} from './redis';
 import { extractTextFromDocument, chunkText } from './ingest';
 import { readFileBuffer } from './storage';
 import { getRagSettings, getAcronymMappings } from './db/config';
@@ -100,13 +107,27 @@ function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
  * );
  * ```
  */
+/**
+ * Truncation stats for user documents
+ */
+export interface UserDocTruncation {
+  filename: string;
+  totalChunks: number;
+  processedChunks: number;
+  includedChunks: number;
+}
+
 export async function buildContext(
   queryEmbedding: number[],
   userDocPaths: string[] = [],
   additionalEmbeddings: number[][] = [],
   settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number },
   categorySlugs?: string[]
-): Promise<{ globalChunks: RetrievedChunk[]; userChunks: RetrievedChunk[] }> {
+): Promise<{
+  globalChunks: RetrievedChunk[];
+  userChunks: RetrievedChunk[];
+  userDocTruncations: UserDocTruncation[];
+}> {
   // Use provided settings or fetch from SQLite config
   const ragSettings = settings || getRagSettings();
   const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
@@ -173,36 +194,93 @@ export async function buildContext(
 
   // Process user documents if provided
   const userChunks: RetrievedChunk[] = [];
+  const userDocTruncations: UserDocTruncation[] = [];
 
   for (const docPath of userDocPaths) {
     try {
-      const buffer = await readFileBuffer(docPath);
       const filename = docPath.split('/').pop() || 'user-document';
-      const { text, pages } = await extractTextFromDocument(buffer, filename);
+      // Extract threadId from path: /data/thread-uploads/{userId}/{threadId}/{filename}
+      const pathParts = docPath.split('/');
+      const threadId = pathParts.length >= 3 ? pathParts[pathParts.length - 2] : undefined;
 
-      // Create temporary chunks from user document with page info
-      const chunks = await chunkText(text, 'user-temp', filename, 'user', undefined, undefined, pages);
+      // Check cache for existing embeddings
+      let cachedData: CachedUserDocData | null = null;
+      if (threadId) {
+        cachedData = await getCachedUserDocEmbeddings(threadId, filename);
+      }
 
-      // Get embeddings for user document chunks
-      const chunkTexts = chunks.slice(0, MAX_USER_DOC_CHUNKS).map(c => c.text);
-      if (chunkTexts.length > 0) {
+      let chunksWithEmbeddings: Array<{ id: string; text: string; embedding: number[]; pageNumber: number }>;
+      let totalChunks: number;
+
+      if (cachedData) {
+        // Use cached embeddings
+        logger.debug(`Using cached embeddings for ${filename}`, { threadId, chunkCount: cachedData.chunks.length });
+        chunksWithEmbeddings = cachedData.chunks;
+        // Use cached total or fallback to processed count
+        totalChunks = cachedData.totalChunks ?? cachedData.chunks.length;
+      } else {
+        // Extract and embed - no cache available
+        logger.debug(`Processing user document (no cache): ${filename}`);
+        const buffer = await readFileBuffer(docPath);
+        const { text, pages } = await extractTextFromDocument(buffer, filename);
+
+        // Create temporary chunks from user document with page info
+        const chunks = await chunkText(text, 'user-temp', filename, 'user', undefined, undefined, pages);
+        totalChunks = chunks.length;
+
+        // Get embeddings for user document chunks
+        const chunkTexts = chunks.slice(0, MAX_USER_DOC_CHUNKS).map(c => c.text);
+        if (chunkTexts.length === 0) {
+          continue;
+        }
+
         const chunkEmbeddings = await createEmbeddings(chunkTexts);
 
-        // Calculate similarity with query
-        for (let i = 0; i < chunkTexts.length; i++) {
-          const similarity = cosineSimilarity(queryEmbedding, chunkEmbeddings[i]);
-          if (similarity >= similarityThreshold) {
-            userChunks.push({
-              id: chunks[i].id,
-              text: chunks[i].text,
-              documentName: filename,
-              pageNumber: chunks[i].metadata.pageNumber,
-              score: similarity,
-              source: 'user',
-            });
-          }
+        // Build chunks with embeddings
+        chunksWithEmbeddings = chunks.slice(0, MAX_USER_DOC_CHUNKS).map((chunk, i) => ({
+          id: chunk.id,
+          text: chunk.text,
+          embedding: chunkEmbeddings[i],
+          pageNumber: chunk.metadata.pageNumber,
+        }));
+
+        // Cache the embeddings for future queries (with total chunk count)
+        if (threadId && chunksWithEmbeddings.length > 0) {
+          await cacheUserDocEmbeddings(threadId, filename, {
+            chunks: chunksWithEmbeddings,
+            totalChunks,
+            createdAt: Date.now(),
+          });
+          logger.debug(`Cached embeddings for ${filename}`, { threadId, chunkCount: chunksWithEmbeddings.length, totalChunks });
         }
       }
+
+      // Track chunks matched for this document
+      let matchedChunks = 0;
+
+      // Calculate similarity with query
+      for (const chunk of chunksWithEmbeddings) {
+        const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
+        if (similarity >= similarityThreshold) {
+          matchedChunks++;
+          userChunks.push({
+            id: chunk.id,
+            text: chunk.text,
+            documentName: filename,
+            pageNumber: chunk.pageNumber,
+            score: similarity,
+            source: 'user',
+          });
+        }
+      }
+
+      // Track truncation stats for this document
+      userDocTruncations.push({
+        filename,
+        totalChunks,
+        processedChunks: chunksWithEmbeddings.length,
+        includedChunks: matchedChunks,
+      });
     } catch (error) {
       logger.error(`Failed to process user document: ${docPath}`, error);
     }
@@ -211,7 +289,19 @@ export async function buildContext(
   // Sort user chunks by relevance
   userChunks.sort((a, b) => b.score - a.score);
 
-  return { globalChunks, userChunks: userChunks.slice(0, MAX_USER_CHUNKS_RETURNED) };
+  // Update truncation stats with final included counts (after MAX_USER_CHUNKS_RETURNED limit)
+  const finalUserChunks = userChunks.slice(0, MAX_USER_CHUNKS_RETURNED);
+  const finalIncludedByDoc = new Map<string, number>();
+  for (const chunk of finalUserChunks) {
+    finalIncludedByDoc.set(chunk.documentName, (finalIncludedByDoc.get(chunk.documentName) || 0) + 1);
+  }
+
+  // Update includedChunks to reflect actual chunks used in context
+  for (const truncation of userDocTruncations) {
+    truncation.includedChunks = finalIncludedByDoc.get(truncation.filename) || 0;
+  }
+
+  return { globalChunks, userChunks: finalUserChunks, userDocTruncations };
 }
 
 /**
@@ -353,7 +443,8 @@ export async function ragQuery(
 
   // Apply reranking if enabled (improves relevance ordering)
   const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks);
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks);
+  // User uploads bypass threshold - user explicitly added these docs for this conversation
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true });
 
   // Format context for LLM
   const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);

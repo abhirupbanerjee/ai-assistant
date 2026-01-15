@@ -45,6 +45,18 @@ export interface ToolExecutionState {
 }
 
 /**
+ * User upload extraction state for UI tracking
+ */
+export interface UploadExtractionState {
+  filename: string;
+  sourceType: 'file' | 'web' | 'youtube';
+  status: 'pending' | 'extracting' | 'success' | 'error';
+  contentLength?: number;
+  contentPreview?: string; // First 300 chars of extracted text
+  error?: string;
+}
+
+/**
  * Agent plan statistics for summary display
  */
 export interface AgentPlanStats {
@@ -83,6 +95,12 @@ export type StreamEvent =
 
   // RAG sources
   | { type: 'sources'; data: Source[] }
+
+  // User upload extraction status
+  | { type: 'upload_status'; uploads: UploadExtractionState[] }
+
+  // Context truncation warning (when user doc content is cut off)
+  | { type: 'context_truncation'; filename: string; totalChunks: number; processedChunks: number; includedChunks: number; message: string }
 
   // Text content chunks
   | { type: 'chunk'; content: string }
@@ -211,6 +229,17 @@ export interface StreamChatRequest {
 }
 
 /**
+ * Context truncation warning for user documents
+ */
+export interface ContextTruncationWarning {
+  filename: string;
+  totalChunks: number;
+  processedChunks: number;
+  includedChunks: number;
+  message: string;
+}
+
+/**
  * Processing details for progressive disclosure UI
  * IMPORTANT: This is frontend-only state, NOT saved to database
  */
@@ -220,6 +249,8 @@ export interface ProcessingDetails {
   skills: SkillInfo[];
   toolsAvailable: string[];
   toolsExecuted: ToolExecutionState[];
+  userUploads: UploadExtractionState[]; // User upload extraction status
+  truncationWarnings: ContextTruncationWarning[]; // Warnings for truncated user docs
   isExpanded: boolean; // UI state for collapse/expand
 }
 

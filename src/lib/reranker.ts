@@ -168,13 +168,18 @@ async function rerankWithLocal(
  *
  * @param query - The user's search query
  * @param chunks - Retrieved chunks from vector search
+ * @param options - Optional settings
+ * @param options.bypassThreshold - If true, skip threshold filtering (useful for user uploads)
  * @returns Reranked chunks sorted by relevance
  */
 export async function rerankChunks(
   query: string,
-  chunks: RetrievedChunk[]
+  chunks: RetrievedChunk[],
+  options?: { bypassThreshold?: boolean }
 ): Promise<RetrievedChunk[]> {
   const settings = getRerankerSettings();
+  // When bypassThreshold is true, use 0 as minScore to include all chunks
+  const minScore = options?.bypassThreshold ? 0 : settings.minRerankerScore;
 
   // Return original chunks if reranker is disabled or no chunks
   if (!settings.enabled || chunks.length === 0) {
@@ -194,7 +199,7 @@ export async function rerankChunks(
           ...chunk,
           score: cachedScores[i] ?? chunk.score,
         }))
-        .filter(c => c.score >= settings.minRerankerScore)
+        .filter(c => c.score >= minScore)
         .sort((a, b) => b.score - a.score);
     }
   } catch {
@@ -213,13 +218,13 @@ export async function rerankChunks(
     rerankedChunks = await rerankWithCohere(
       query,
       chunksToRerank,
-      settings.minRerankerScore
+      minScore
     );
   } else {
     rerankedChunks = await rerankWithLocal(
       query,
       chunksToRerank,
-      settings.minRerankerScore
+      minScore
     );
   }
 
@@ -237,7 +242,7 @@ export async function rerankChunks(
   // Combine reranked chunks with remaining (unranked) chunks
   // Filter remaining chunks by the same threshold
   const filteredRemaining = remainingChunks.filter(
-    c => c.score >= settings.minRerankerScore
+    c => c.score >= minScore
   );
 
   console.log(`[Reranker] After reranking: ${rerankedChunks.length} chunks passed threshold`);

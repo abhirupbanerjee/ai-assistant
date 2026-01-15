@@ -5,10 +5,10 @@
  * Provides context, sources, and skill information for progressive disclosure.
  */
 
-import type { Source, StreamEvent, SkillInfo } from '@/types';
+import type { Source, StreamEvent, SkillInfo, UploadExtractionState } from '@/types';
 import type { RetrievedChunk } from '@/types';
 import { createEmbeddings } from '../openai';
-import { buildContext } from '../rag';
+import { buildContext, type UserDocTruncation } from '../rag';
 import { rerankChunks } from '../reranker';
 import { getRagSettings, getAcronymMappings } from '../db/config';
 import { getResolvedSystemPrompt } from '../db/category-prompts';
@@ -146,7 +146,7 @@ export async function performRAGRetrieval(
   const additionalEmbeddings = allQueryEmbeddings.slice(1);
 
   // Build context from documents
-  const { globalChunks, userChunks } = await buildContext(
+  const { globalChunks, userChunks, userDocTruncations } = await buildContext(
     primaryEmbedding,
     userDocPaths,
     additionalEmbeddings,
@@ -156,7 +156,82 @@ export async function performRAGRetrieval(
 
   // Apply reranking
   const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks);
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks);
+  // User uploads bypass threshold - user explicitly added these docs for this conversation
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true });
+
+  // Emit truncation warnings for documents with content cut off
+  if (send && userDocTruncations.length > 0) {
+    for (const truncation of userDocTruncations) {
+      // Only warn if content was actually truncated
+      const wasProcessingTruncated = truncation.totalChunks > truncation.processedChunks;
+      const wasContextTruncated = truncation.processedChunks > truncation.includedChunks;
+
+      if (wasProcessingTruncated || wasContextTruncated) {
+        let message = '';
+        if (wasProcessingTruncated && wasContextTruncated) {
+          message = `Large document: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections, using ${truncation.includedChunks} in context`;
+        } else if (wasProcessingTruncated) {
+          message = `Large document: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections`;
+        } else {
+          message = `Using ${truncation.includedChunks} of ${truncation.processedChunks} relevant sections`;
+        }
+
+        send({
+          type: 'context_truncation',
+          filename: truncation.filename,
+          totalChunks: truncation.totalChunks,
+          processedChunks: truncation.processedChunks,
+          includedChunks: truncation.includedChunks,
+          message,
+        });
+
+        logger.debug('Context truncation warning', truncation);
+      }
+    }
+  }
+
+  // Build upload status for progressive disclosure
+  if (send && userDocPaths.length > 0) {
+    // Group chunks by document to get content stats
+    const docStats = new Map<string, { totalLength: number; preview: string }>();
+    for (const chunk of rerankedUserChunks) {
+      const existing = docStats.get(chunk.documentName);
+      if (existing) {
+        existing.totalLength += chunk.text.length;
+      } else {
+        docStats.set(chunk.documentName, {
+          totalLength: chunk.text.length,
+          preview: chunk.text.substring(0, 300),
+        });
+      }
+    }
+
+    // Build upload status from paths
+    const uploadStatuses: UploadExtractionState[] = userDocPaths.map(path => {
+      const filename = path.split('/').pop() || path;
+      // Determine source type from filename
+      const sourceType: UploadExtractionState['sourceType'] =
+        filename.startsWith('youtube-') ? 'youtube' :
+        filename.startsWith('web-') ? 'web' : 'file';
+
+      // Find matching doc stats
+      const stats = docStats.get(filename);
+
+      return {
+        filename,
+        sourceType,
+        status: stats ? 'success' : 'error',
+        contentLength: stats?.totalLength,
+        contentPreview: stats?.preview,
+        error: stats ? undefined : 'No content extracted',
+      };
+    });
+
+    send({
+      type: 'upload_status',
+      uploads: uploadStatuses,
+    });
+  }
 
   // Format context
   const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);

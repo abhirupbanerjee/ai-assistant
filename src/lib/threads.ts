@@ -19,6 +19,7 @@ import {
 import { isSupportedExtension, getMimeTypeFromFilename, isImage } from './document-extractor';
 import { getUserId } from './users';
 import { getUploadLimits } from './db/config';
+import { invalidateThreadEmbeddingCache } from './redis';
 import {
   createThread as dbCreateThread,
   getThreadById as dbGetThreadById,
@@ -361,6 +362,9 @@ export async function saveUpload(
   // Record upload in database
   dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
 
+  // Invalidate embedding cache for this file (in case of re-upload with same name)
+  await invalidateThreadEmbeddingCache(threadId, safeFilename);
+
   const newCount = dbGetThreadUploadCount(threadId);
 
   return {
@@ -401,6 +405,9 @@ export async function deleteUpload(
 
   // Delete from database
   dbDeleteThreadUpload(upload.id);
+
+  // Invalidate embedding cache for this file
+  await invalidateThreadEmbeddingCache(threadId, filename);
 
   return dbGetThreadUploadCount(threadId);
 }

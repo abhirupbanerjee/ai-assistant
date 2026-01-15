@@ -24,8 +24,13 @@ import {
   Pause,
   Play,
   Square,
+  FileText,
+  Globe,
+  Youtube,
+  AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
-import type { ProcessingDetails, StreamPhase, ToolExecutionState } from '@/types';
+import type { ProcessingDetails, StreamPhase, ToolExecutionState, UploadExtractionState, ContextTruncationWarning } from '@/types';
 
 interface ProcessingIndicatorProps {
   details: ProcessingDetails;
@@ -107,6 +112,45 @@ function formatDuration(ms?: number): string {
   if (!ms) return '';
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * Get upload source type icon
+ */
+function getUploadTypeIcon(sourceType: UploadExtractionState['sourceType']): React.ReactNode {
+  switch (sourceType) {
+    case 'file':
+      return <FileText size={12} className="text-blue-500" />;
+    case 'web':
+      return <Globe size={12} className="text-green-500" />;
+    case 'youtube':
+      return <Youtube size={12} className="text-red-500" />;
+  }
+}
+
+/**
+ * Get upload status icon
+ */
+function getUploadStatusIcon(status: UploadExtractionState['status']): React.ReactNode {
+  switch (status) {
+    case 'pending':
+      return <div className="w-3 h-3 rounded-full bg-gray-300" />;
+    case 'extracting':
+      return <Loader2 size={12} className="animate-spin text-blue-500" />;
+    case 'success':
+      return <CheckCircle2 size={12} className="text-green-500" />;
+    case 'error':
+      return <AlertCircle size={12} className="text-red-500" />;
+  }
+}
+
+/**
+ * Format content length to human readable
+ */
+function formatContentLength(length?: number): string {
+  if (!length) return '';
+  if (length < 1000) return `${length} chars`;
+  return `${(length / 1000).toFixed(1)}k chars`;
 }
 
 export default function ProcessingIndicator({
@@ -282,7 +326,7 @@ export default function ProcessingIndicator({
 
           {/* Tools Executed Section */}
           {details.toolsExecuted.length > 0 && (
-            <div>
+            <div className="mb-3">
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 Tool Execution
               </h4>
@@ -316,8 +360,83 @@ export default function ProcessingIndicator({
             </div>
           )}
 
+          {/* User Uploads Section */}
+          {details.userUploads && details.userUploads.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                User Uploads ({details.userUploads.length})
+              </h4>
+              <div className="space-y-2">
+                {details.userUploads.map((upload, i) => (
+                  <div
+                    key={i}
+                    className="bg-gray-50 rounded-lg p-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {getUploadStatusIcon(upload.status)}
+                        {getUploadTypeIcon(upload.sourceType)}
+                        <span className={`text-sm ${upload.status === 'error' ? 'text-red-600' : 'text-gray-700'} truncate max-w-[200px]`} title={upload.filename}>
+                          {upload.filename}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {upload.contentLength && upload.status === 'success' && (
+                          <span className="text-xs text-gray-400">
+                            {formatContentLength(upload.contentLength)}
+                          </span>
+                        )}
+                        {upload.status === 'extracting' && (
+                          <span className="text-xs text-blue-500">
+                            Extracting...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Content Preview */}
+                    {upload.contentPreview && upload.status === 'success' && (
+                      <div className="mt-1.5 text-xs text-gray-500 bg-white rounded p-1.5 border border-gray-100">
+                        <span className="line-clamp-2">{upload.contentPreview}</span>
+                      </div>
+                    )}
+                    {/* Error message */}
+                    {upload.error && (
+                      <div className="mt-1.5 text-xs text-red-500">
+                        {upload.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Truncation Warnings Section */}
+          {details.truncationWarnings && details.truncationWarnings.length > 0 && (
+            <div className="mb-3">
+              <h4 className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <AlertTriangle size={12} />
+                Content Truncated
+              </h4>
+              <div className="space-y-1.5">
+                {details.truncationWarnings.map((warning, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 text-sm bg-amber-50 text-amber-700 rounded-lg p-2"
+                  >
+                    <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                    <div>
+                      <span className="font-medium">{warning.filename}</span>
+                      <p className="text-xs text-amber-600">{warning.message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Empty state */}
-          {details.skills.length === 0 && details.toolsAvailable.length === 0 && details.toolsExecuted.length === 0 && (
+          {details.skills.length === 0 && details.toolsAvailable.length === 0 && details.toolsExecuted.length === 0 && (!details.userUploads || details.userUploads.length === 0) && (!details.truncationWarnings || details.truncationWarnings.length === 0) && (
             <p className="text-sm text-gray-500 text-center py-2">
               No additional processing details
             </p>

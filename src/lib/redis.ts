@@ -122,3 +122,93 @@ export async function clearAllCache(): Promise<void> {
     console.error('Failed to clear all cache:', error);
   }
 }
+
+// ============ User Document Embedding Cache ============
+
+/**
+ * Cached user document data structure
+ */
+export interface CachedUserDocData {
+  chunks: Array<{
+    id: string;
+    text: string;
+    embedding: number[];
+    pageNumber: number;
+  }>;
+  totalChunks?: number; // Original chunk count before MAX_USER_DOC_CHUNKS limit
+  createdAt: number;
+}
+
+/**
+ * Cache user document embeddings for a thread
+ * @param threadId - Thread ID
+ * @param filename - Document filename
+ * @param data - Chunks with embeddings
+ * @param ttlSeconds - Cache TTL (default 24 hours)
+ */
+export async function cacheUserDocEmbeddings(
+  threadId: string,
+  filename: string,
+  data: CachedUserDocData,
+  ttlSeconds: number = 86400
+): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    const key = `user-doc:${threadId}:${hashQuery(filename)}`;
+    await redis.setEx(key, ttlSeconds, JSON.stringify(data));
+  } catch (error) {
+    console.error('Failed to cache user doc embeddings:', error);
+  }
+}
+
+/**
+ * Get cached user document embeddings
+ * @param threadId - Thread ID
+ * @param filename - Document filename
+ * @returns Cached data or null if not found
+ */
+export async function getCachedUserDocEmbeddings(
+  threadId: string,
+  filename: string
+): Promise<CachedUserDocData | null> {
+  try {
+    const redis = await getRedisClient();
+    const key = `user-doc:${threadId}:${hashQuery(filename)}`;
+    const cached = await redis.get(key);
+    if (cached) {
+      return JSON.parse(cached) as CachedUserDocData;
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get cached user doc embeddings:', error);
+    return null;
+  }
+}
+
+/**
+ * Invalidate user document embedding cache for a thread
+ * @param threadId - Thread ID
+ * @param filename - Optional specific filename, or all if not provided
+ */
+export async function invalidateThreadEmbeddingCache(
+  threadId: string,
+  filename?: string
+): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    if (filename) {
+      // Invalidate specific file
+      const key = `user-doc:${threadId}:${hashQuery(filename)}`;
+      await redis.del(key);
+    } else {
+      // Invalidate all files for thread
+      const pattern = `user-doc:${threadId}:*`;
+      const keys = await redis.keys(pattern);
+      if (keys.length > 0) {
+        await redis.del(keys);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to invalidate thread embedding cache:', error);
+  }
+}

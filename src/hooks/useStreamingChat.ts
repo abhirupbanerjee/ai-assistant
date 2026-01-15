@@ -15,6 +15,7 @@ import type {
   StreamEvent,
   StreamPhase,
   ToolExecutionState,
+  UploadExtractionState,
   ProcessingDetails,
   Source,
   MessageVisualization,
@@ -127,6 +128,8 @@ const initialProcessingDetails: ProcessingDetails = {
   skills: [],
   toolsAvailable: [],
   toolsExecuted: [],
+  userUploads: [],
+  truncationWarnings: [],
   isExpanded: false,
 };
 
@@ -262,6 +265,35 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         setState(prev => ({
           ...prev,
           sources: event.data,
+        }));
+        break;
+
+      case 'upload_status':
+        setState(prev => ({
+          ...prev,
+          processingDetails: {
+            ...prev.processingDetails,
+            userUploads: event.uploads,
+          },
+        }));
+        break;
+
+      case 'context_truncation':
+        setState(prev => ({
+          ...prev,
+          processingDetails: {
+            ...prev.processingDetails,
+            truncationWarnings: [
+              ...prev.processingDetails.truncationWarnings,
+              {
+                filename: event.filename,
+                totalChunks: event.totalChunks,
+                processedChunks: event.processedChunks,
+                includedChunks: event.includedChunks,
+                message: event.message,
+              },
+            ],
+          },
         }));
         break;
 

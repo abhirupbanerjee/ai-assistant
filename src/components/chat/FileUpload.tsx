@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  RotateCcw,
 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 
@@ -271,6 +272,15 @@ export default function FileUpload({
   // Remove item from queue
   const removeFromQueue = useCallback((id: string) => {
     setQueue((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  // Retry a failed item
+  const retryItem = useCallback((id: string) => {
+    setQueue((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, status: 'pending' as QueueItemStatus, error: undefined } : item
+      )
+    );
   }, []);
 
   // Process single upload
@@ -655,6 +665,12 @@ export default function FileUpload({
                   <span className="flex-1 truncate" title={item.url || item.name}>
                     {item.name}
                   </span>
+                  {/* Extraction status message for URL items */}
+                  {item.status === 'uploading' && item.type !== 'file' && (
+                    <span className="text-xs text-blue-500 animate-pulse">
+                      {item.type === 'youtube' ? 'Extracting transcript...' : 'Extracting content...'}
+                    </span>
+                  )}
                   {item.error && (
                     <span className="text-xs text-red-500 truncate max-w-[150px]" title={item.error}>
                       {item.error}
@@ -668,6 +684,24 @@ export default function FileUpload({
                     >
                       <X size={14} />
                     </button>
+                  )}
+                  {item.status === 'error' && !isProcessing && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => retryItem(item.id)}
+                        className="p-1 text-blue-500 hover:text-blue-600 transition-colors"
+                        title="Retry"
+                      >
+                        <RotateCcw size={14} />
+                      </button>
+                      <button
+                        onClick={() => removeFromQueue(item.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        title="Remove"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
