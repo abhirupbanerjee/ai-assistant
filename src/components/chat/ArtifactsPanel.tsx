@@ -76,9 +76,16 @@ export default function ArtifactsPanel({
   const webSources = urlSources.filter(s => s.sourceType === 'web');
   const youtubeSources = urlSources.filter(s => s.sourceType === 'youtube');
 
-  // Count totals
+  // Get filenames from URL sources to avoid duplicates
+  const urlSourceFilenames = new Set(urlSources.map(s => s.filename));
+
+  // Filter uploads to exclude files that are already shown in URL sources sections
+  // (youtube-*.txt and web-*.txt files have their own dedicated sections with more metadata)
+  const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
+
+  // Count totals (use filtered fileUploads to avoid double-counting)
   const aiGeneratedCount = generatedDocs.length + generatedImages.length;
-  const totalCount = aiGeneratedCount + uploads.length + webSources.length + youtubeSources.length;
+  const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
   const toggleSection = (section: keyof SectionState) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -192,8 +199,8 @@ export default function ArtifactsPanel({
               </div>
             )}
 
-            {/* User Uploads Section */}
-            {uploads.length > 0 && (
+            {/* User Uploads Section (files only, not web/youtube) */}
+            {fileUploads.length > 0 && (
               <div className="border rounded-lg overflow-hidden">
                 <button
                   onClick={() => toggleSection('userUploads')}
@@ -202,13 +209,13 @@ export default function ArtifactsPanel({
                   <div className="flex items-center gap-2">
                     <FileText size={14} className="text-blue-500" />
                     <span className="text-sm font-medium text-blue-700">User Uploads</span>
-                    <span className="text-xs text-blue-500">({uploads.length})</span>
+                    <span className="text-xs text-blue-500">({fileUploads.length})</span>
                   </div>
                   {expandedSections.userUploads ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
                 {expandedSections.userUploads && (
                   <div className="px-3 py-2 space-y-1.5 bg-white">
-                    {uploads.map((filename) => (
+                    {fileUploads.map((filename) => (
                       <div
                         key={filename}
                         className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group"
