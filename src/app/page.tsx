@@ -101,15 +101,53 @@ export default function Home() {
     setArtifactsData(data);
   }, []);
 
-  const handleRemoveUpload = (filename: string) => {
-    // TODO: Implement upload removal if needed
-    console.log('Remove upload:', filename);
-  };
+  const handleRemoveUpload = useCallback(async (filename: string) => {
+    if (!artifactsData.threadId) return;
 
-  const handleRemoveUrlSource = (filename: string) => {
-    // TODO: Implement URL source removal if needed
-    console.log('Remove URL source:', filename);
-  };
+    try {
+      const response = await fetch(
+        `/api/threads/${artifactsData.threadId}/upload?filename=${encodeURIComponent(filename)}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        // Update local state to remove the upload
+        setArtifactsData(prev => ({
+          ...prev,
+          uploads: prev.uploads.filter(f => f !== filename),
+        }));
+      } else {
+        const error = await response.json();
+        console.error('Failed to delete upload:', error);
+      }
+    } catch (err) {
+      console.error('Failed to delete upload:', err);
+    }
+  }, [artifactsData.threadId]);
+
+  const handleRemoveUrlSource = useCallback(async (filename: string) => {
+    if (!artifactsData.threadId) return;
+
+    try {
+      const response = await fetch(
+        `/api/threads/${artifactsData.threadId}/upload?filename=${encodeURIComponent(filename)}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        // Update local state to remove the URL source
+        setArtifactsData(prev => ({
+          ...prev,
+          urlSources: prev.urlSources.filter(s => s.filename !== filename),
+        }));
+      } else {
+        const error = await response.json();
+        console.error('Failed to delete URL source:', error);
+      }
+    } catch (err) {
+      console.error('Failed to delete URL source:', err);
+    }
+  }, [artifactsData.threadId]);
 
   // Header always shows the bot name (branding)
   const getHeaderTitle = () => brandingName;

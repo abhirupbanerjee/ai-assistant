@@ -105,6 +105,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         try {
           const result = await extractWithSupadata(videoId, config.apiKey, config.preferredLanguage);
+
+          // Validate transcript is not empty
+          if (!result.transcript || result.transcript.trim().length === 0) {
+            return NextResponse.json<ApiError>(
+              { error: 'No transcript available for this video. The video may not have captions enabled.', code: 'SERVICE_ERROR' },
+              { status: 400 }
+            );
+          }
+
           content = `Source: YouTube Video\nURL: ${url}\nVideo ID: ${videoId}\nLanguage: ${result.language}\nExtracted: ${new Date().toISOString()}\n\n---\n\n${result.transcript}`;
           filename = `youtube-${Date.now()}-${videoId}.txt`;
           title = `YouTube: ${videoId}`;
