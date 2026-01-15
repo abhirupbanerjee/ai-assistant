@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import ChatWindow from '@/components/chat/ChatWindow';
+import ChatWindow, { type ChatWindowRef } from '@/components/chat/ChatWindow';
 import ThreadSidebar from '@/components/layout/ThreadSidebar';
 import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import AppHeader from '@/components/layout/AppHeader';
@@ -13,6 +13,7 @@ import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInf
 
 export default function Home() {
   const { data: session } = useSession();
+  const chatWindowRef = useRef<ChatWindowRef>(null);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
@@ -111,7 +112,9 @@ export default function Home() {
       );
 
       if (response.ok) {
-        // Update local state to remove the upload
+        // Update ChatWindow's internal state via ref
+        chatWindowRef.current?.removeUpload(filename);
+        // Also update local artifacts state (for immediate UI feedback)
         setArtifactsData(prev => ({
           ...prev,
           uploads: prev.uploads.filter(f => f !== filename),
@@ -135,7 +138,9 @@ export default function Home() {
       );
 
       if (response.ok) {
-        // Update local state to remove the URL source
+        // Update ChatWindow's internal state via ref
+        chatWindowRef.current?.removeUrlSource(filename);
+        // Also update local artifacts state (for immediate UI feedback)
         setArtifactsData(prev => ({
           ...prev,
           urlSources: prev.urlSources.filter(s => s.filename !== filename),
@@ -184,6 +189,7 @@ export default function Home() {
           {activeThread ? (
             <ErrorBoundary moduleName="ChatWindow">
               <ChatWindow
+                ref={chatWindowRef}
                 activeThread={activeThread}
                 onThreadCreated={handleThreadCreated}
                 userSubscriptions={userSubscriptions}

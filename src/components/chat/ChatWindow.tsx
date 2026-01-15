@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
@@ -38,13 +38,19 @@ interface ChatWindowProps {
   }) => void;
 }
 
+// Ref interface for external control
+export interface ChatWindowRef {
+  removeUpload: (filename: string) => void;
+  removeUrlSource: (filename: string) => void;
+}
+
 interface ThreadSummary {
   summary: string;
   messagesSummarized: number;
   createdAt: string;
 }
 
-export default function ChatWindow({
+const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindow({
   activeThread,
   onThreadCreated,
   userSubscriptions = [],
@@ -55,7 +61,7 @@ export default function ChatWindow({
   showShareModal = false,
   onCloseShareModal,
   onArtifactsChange,
-}: ChatWindowProps) {
+}, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
   const [urlSources, setUrlSources] = useState<UrlSource[]>([]);
@@ -66,6 +72,16 @@ export default function ChatWindow({
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
   const [restoredPlan, setRestoredPlan] = useState<AutonomousPlanState | null>(null);
   const [chatPreferences, setChatPreferences] = useState<ChatPreferences>(DEFAULT_CHAT_PREFERENCES);
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    removeUpload: (filename: string) => {
+      setUploads(prev => prev.filter(f => f !== filename));
+    },
+    removeUrlSource: (filename: string) => {
+      setUrlSources(prev => prev.filter(s => s.filename !== filename));
+    },
+  }), []);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -628,4 +644,6 @@ export default function ChatWindow({
       )}
     </div>
   );
-}
+});
+
+export default ChatWindow;
