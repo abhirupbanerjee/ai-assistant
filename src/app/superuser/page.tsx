@@ -189,6 +189,11 @@ export default function SuperUserPage() {
     globalPrompt: string;
     categoryAddendum: string;
     starterPrompts: StarterPrompt[];
+    starterLimits?: {
+      maxStarters: number;
+      maxLabelLength: number;
+      maxPromptLength: number;
+    };
     combinedPrompt: string;
     charInfo: {
       globalLength: number;
@@ -2356,6 +2361,9 @@ export default function SuperUserPage() {
                 starters={editedStarterPrompts}
                 onChange={handleStarterPromptsChange}
                 disabled={savingCategoryPrompt}
+                maxStarters={categoryPromptData?.starterLimits?.maxStarters}
+                maxLabelLength={categoryPromptData?.starterLimits?.maxLabelLength}
+                maxPromptLength={categoryPromptData?.starterLimits?.maxPromptLength}
               />
             </div>
 

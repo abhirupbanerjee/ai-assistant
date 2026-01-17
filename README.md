@@ -129,8 +129,6 @@ npm install && npm run dev
 docker compose up -d --build
 ```
 
-> **⚠️ Docker Version Requirement:** Production deployment requires **Docker 27.5.1 exactly**. Docker 28.x/29.x have API compatibility issues with Traefik v3.x. See [INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md#server-requirements) for installation instructions.
-
 ## Infrastructure
 
 | Service | Purpose |

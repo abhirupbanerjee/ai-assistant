@@ -1231,14 +1231,6 @@ When a vision-capable model is configured, users can upload images in their chat
 
 Administrative functions for system maintenance.
 
-### Docker Version Requirement
-
-> **⚠️ CRITICAL:** Policy Bot requires **Docker version 27.5.1 exactly**. Docker 28.x and 29.x have API compatibility issues with Traefik v3.x and **will not work**.
->
-> If you see errors like `client version 1.24 is too old. Minimum supported API version is 1.44`, you need to downgrade Docker.
->
-> See [INFRASTRUCTURE.md](../INFRASTRUCTURE.md#server-requirements) for detailed installation instructions.
-
 ### Backup & Restore
 
 #### Creating a Backup

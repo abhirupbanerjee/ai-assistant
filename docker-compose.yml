@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.6
+    image: traefik:v3.6.1
     container_name: policy-bot-traefik
     command:
       - "--api.insecure=false"

@@ -7255,6 +7255,9 @@ export default function AdminPage() {
                 starters={editedStarterPrompts}
                 onChange={handleStarterPromptsChange}
                 disabled={savingCategoryPrompt}
+                maxStarters={tokenLimitsSettings?.maxStartersPerCategory}
+                maxLabelLength={tokenLimitsSettings?.starterLabelMaxChars}
+                maxPromptLength={tokenLimitsSettings?.starterPromptMaxChars}
               />
             </div>
 

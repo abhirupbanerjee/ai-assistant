@@ -24,6 +24,9 @@ import {
   setCategoryStarterPrompts,
   setCategoryWelcome,
   getResolvedSystemPrompt,
+  getMaxStarterPrompts,
+  getMaxStarterLabelLength,
+  getMaxStarterPromptLength,
   MAX_COMBINED_PROMPT_LENGTH,
   StarterPrompt,
 } from '@/lib/db/category-prompts';
@@ -116,6 +119,11 @@ export async function GET(request: Request, { params }: RouteParams) {
       globalPrompt,
       categoryAddendum: categoryPrompt?.promptAddendum || '',
       starterPrompts: categoryPrompt?.starterPrompts || [],
+      starterLimits: {
+        maxStarters: getMaxStarterPrompts(),
+        maxLabelLength: getMaxStarterLabelLength(),
+        maxPromptLength: getMaxStarterPromptLength(),
+      },
       welcomeTitle: categoryPrompt?.welcomeTitle || '',
       welcomeMessage: categoryPrompt?.welcomeMessage || '',
       combinedPrompt,

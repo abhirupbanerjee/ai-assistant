@@ -13,21 +13,28 @@ interface StarterPromptsEditorProps {
   starters: StarterPrompt[];
   onChange: (starters: StarterPrompt[]) => void;
   disabled?: boolean;
+  maxStarters?: number;
+  maxLabelLength?: number;
+  maxPromptLength?: number;
 }
 
-const MAX_STARTERS = 6;
-const MAX_LABEL_LENGTH = 30;
-const MAX_PROMPT_LENGTH = 500;
+// Default values (used when props not provided)
+const DEFAULT_MAX_STARTERS = 6;
+const DEFAULT_MAX_LABEL_LENGTH = 30;
+const DEFAULT_MAX_PROMPT_LENGTH = 500;
 
 export default function StarterPromptsEditor({
   starters,
   onChange,
   disabled = false,
+  maxStarters = DEFAULT_MAX_STARTERS,
+  maxLabelLength = DEFAULT_MAX_LABEL_LENGTH,
+  maxPromptLength = DEFAULT_MAX_PROMPT_LENGTH,
 }: StarterPromptsEditorProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const addStarter = () => {
-    if (starters.length >= MAX_STARTERS) return;
+    if (starters.length >= maxStarters) return;
     onChange([...starters, { label: '', prompt: '' }]);
   };
 
@@ -66,14 +73,14 @@ export default function StarterPromptsEditor({
         <div>
           <h4 className="text-sm font-medium text-gray-700">Starter Prompts</h4>
           <p className="text-xs text-gray-500">
-            Quick-action buttons shown when users start a new thread ({starters.length}/{MAX_STARTERS})
+            Quick-action buttons shown when users start a new thread ({starters.length}/{maxStarters})
           </p>
         </div>
         <Button
           variant="secondary"
           size="sm"
           onClick={addStarter}
-          disabled={disabled || starters.length >= MAX_STARTERS}
+          disabled={disabled || starters.length >= maxStarters}
         >
           <Plus size={14} className="mr-1" />
           Add Starter
@@ -110,14 +117,14 @@ export default function StarterPromptsEditor({
                 <div className="flex-1 space-y-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Button Label ({starter.label.length}/{MAX_LABEL_LENGTH})
+                      Button Label ({starter.label.length}/{maxLabelLength})
                     </label>
                     <input
                       type="text"
                       value={starter.label}
                       onChange={(e) => updateStarter(index, 'label', e.target.value)}
                       placeholder="e.g., Check Leave Policy"
-                      maxLength={MAX_LABEL_LENGTH}
+                      maxLength={maxLabelLength}
                       disabled={disabled}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
                     />
@@ -125,13 +132,13 @@ export default function StarterPromptsEditor({
 
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Full Prompt ({starter.prompt.length}/{MAX_PROMPT_LENGTH})
+                      Full Prompt ({starter.prompt.length}/{maxPromptLength})
                     </label>
                     <textarea
                       value={starter.prompt}
                       onChange={(e) => updateStarter(index, 'prompt', e.target.value)}
                       placeholder="e.g., What is the annual leave policy for permanent employees?"
-                      maxLength={MAX_PROMPT_LENGTH}
+                      maxLength={maxPromptLength}
                       rows={2}
                       disabled={disabled}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"

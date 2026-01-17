@@ -266,7 +266,7 @@ Full stack with Traefik for TLS.
 ```yaml
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6.1
     container_name: policy-bot-traefik
     command:
       - "--api.insecure=false"
@@ -504,38 +504,32 @@ docker compose -f docker-compose.dev.yml down -v
 ### Server Requirements
 
 - Ubuntu 22.04+ or similar Linux
-- **Docker 27.5.1** (see critical note below)
+- Docker 29.x or later
 - Docker Compose v2
 - 8GB RAM minimum
 - 20GB disk space
 - Ports 80, 443 open
 
-> **⚠️ CRITICAL: Docker Version Requirement**
+**Verify your Docker version:**
+```bash
+docker --version
+# Should show: Docker version 29.x or later
+```
+
+> **⚠️ IMPORTANT: Lock Docker & Traefik Versions**
 >
-> Policy Bot requires **Docker version 27.5.1 exactly**. Docker 28.x and 29.x have API compatibility issues with Traefik v3.x and **will not work**. You will see repeated errors like:
-> ```
-> client version 1.24 is too old. Minimum supported API version is 1.44
-> ```
->
-> **To install Docker 27.5.1:**
+> After installation, hold Docker packages to prevent automatic upgrades that may break compatibility:
 > ```bash
-> # Remove current Docker (if installed)
-> sudo apt-get remove docker-ce docker-ce-cli containerd.io
+> # Hold Docker at current version
+> sudo apt-mark hold docker-ce docker-ce-cli docker-compose-plugin
 >
-> # Install specific version (adjust for your Ubuntu version)
-> sudo apt-get install docker-ce=5:27.5.1-1~ubuntu.24.04~noble \
->                      docker-ce-cli=5:27.5.1-1~ubuntu.24.04~noble \
->                      containerd.io
->
-> # Hold the version to prevent auto-upgrades
-> sudo apt-mark hold docker-ce docker-ce-cli
+> # Verify holds are in place
+> apt-mark showhold
 > ```
 >
-> **Verify your Docker version:**
-> ```bash
-> docker --version
-> # Should show: Docker version 27.5.1
-> ```
+> Traefik is pinned to a specific version (`traefik:v3.6.1`) in `docker-compose.yml`. Do not change to floating tags like `traefik:latest` or `traefik:v3` as minor updates may introduce breaking changes.
+>
+> **To upgrade later:** Test new versions in a staging environment first, then update the pinned version in `docker-compose.yml` and run `docker compose pull && docker compose up -d`.
 
 ### DNS Configuration
 
