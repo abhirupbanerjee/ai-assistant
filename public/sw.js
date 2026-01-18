@@ -1,7 +1,9 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
+// Force immediate activation - critical for fixing broken SWs
 self.addEventListener('install', (event) => {
+  console.log('[SW] Installing v2 - bypasses navigation');
   self.skipWaiting();
 });
 
@@ -53,13 +55,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation - show simple offline message if network fails
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response('<html><body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Offline</h1><p>Please check your connection.</p></div></body></html>',
-          { headers: { 'Content-Type': 'text/html' } })
-      )
-    );
-  }
+  // All other requests (including navigation) pass through without SW intervention
+  // This ensures OAuth redirects and auth flows work correctly
 });
