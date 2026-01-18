@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
 // Force immediate activation - critical for fixing broken SWs
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v2 - bypasses navigation');
+  console.log('[SW] Installing v3');
   self.skipWaiting();
 });
 
@@ -18,6 +18,20 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Helper: safely cache a response (only cache valid responses)
+function cacheResponse(request, response) {
+  // Only cache successful, same-origin responses
+  if (!response || response.status !== 200 || response.type !== 'basic') {
+    return response;
+  }
+  // Clone before any async operation
+  const responseToCache = response.clone();
+  caches.open(STATIC_CACHE).then(cache => {
+    cache.put(request, responseToCache);
+  });
+  return response;
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -29,12 +43,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(event.request).then(cached =>
-        cached || fetch(event.request).then(response => {
-          caches.open(STATIC_CACHE).then(cache =>
-            cache.put(event.request, response.clone())
-          );
-          return response;
-        })
+        cached || fetch(event.request).then(res => cacheResponse(event.request, res))
       )
     );
     return;
@@ -44,17 +53,11 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/icons/')) {
     event.respondWith(
       caches.match(event.request).then(cached =>
-        cached || fetch(event.request).then(response => {
-          caches.open(STATIC_CACHE).then(cache =>
-            cache.put(event.request, response.clone())
-          );
-          return response;
-        })
+        cached || fetch(event.request).then(res => cacheResponse(event.request, res))
       )
     );
     return;
   }
 
-  // All other requests (including navigation) pass through without SW intervention
-  // This ensures OAuth redirects and auth flows work correctly
+  // All other requests pass through without SW intervention
 });
