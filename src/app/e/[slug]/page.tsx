@@ -5,9 +5,10 @@
  * URL: /e/{workspace-slug}
  */
 
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getWorkspaceBySlug } from '@/lib/db/workspaces';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
+import { getCurrentUser } from '@/lib/auth';
 import { EmbedPageClient } from './EmbedPageClient';
 
 interface PageProps {
@@ -41,6 +42,14 @@ export default async function HostedEmbedPage({ params }: PageProps) {
   // Check if workspace is enabled
   if (!workspace.is_enabled) {
     notFound();
+  }
+
+  // Check if authentication is required for this embed
+  if (workspace.auth_required) {
+    const user = await getCurrentUser();
+    if (!user) {
+      redirect(`/auth/signin?callbackUrl=/e/${slug}`);
+    }
   }
 
   return (

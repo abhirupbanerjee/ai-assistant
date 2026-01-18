@@ -58,6 +58,7 @@ interface Workspace {
   voice_enabled: boolean;
   file_upload_enabled: boolean;
   max_file_size_mb: number;
+  auth_required: boolean;
   created_by: string;
   created_by_role: 'admin' | 'superuser';
   created_at: string;
@@ -86,6 +87,7 @@ interface WorkspaceFormData {
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
+  authRequired: boolean;
   accessMode: 'category' | 'explicit';
 }
 
@@ -109,6 +111,7 @@ const initialFormData: WorkspaceFormData = {
   voiceEnabled: false,
   fileUploadEnabled: false,
   maxFileSizeMb: 5,
+  authRequired: false,
   accessMode: 'category',
 };
 
@@ -322,6 +325,7 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
       voiceEnabled: workspace.voice_enabled,
       fileUploadEnabled: workspace.file_upload_enabled,
       maxFileSizeMb: workspace.max_file_size_mb,
+      authRequired: workspace.auth_required,
       accessMode: workspace.access_mode,
     });
     setShowEditModal(true);
@@ -977,6 +981,21 @@ function WorkspaceForm({
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty to allow all domains
                 </p>
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={formData.authRequired}
+                    onChange={(e) => updateField('authRequired', e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Require Authentication</span>
+                    <p className="text-xs text-gray-500">Users must be logged in to use this embed</p>
+                  </div>
+                </label>
               </div>
             </>
           )}

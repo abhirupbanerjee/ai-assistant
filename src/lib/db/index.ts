@@ -870,6 +870,14 @@ function runMigrations(database: Database.Database): void {
       `);
     }
   }
+
+  // Migration: Add auth_required column to workspaces table (for embed auth toggle)
+  const workspacesColumns = database.pragma('table_info(workspaces)') as { name: string }[];
+  const workspacesColumnNames = workspacesColumns.map((c) => c.name);
+
+  if (workspacesColumnNames.length > 0 && !workspacesColumnNames.includes('auth_required')) {
+    database.exec('ALTER TABLE workspaces ADD COLUMN auth_required INTEGER DEFAULT 0');
+  }
 }
 
 /**

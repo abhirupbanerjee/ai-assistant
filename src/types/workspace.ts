@@ -52,6 +52,9 @@ export interface Workspace {
   file_upload_enabled: boolean;
   max_file_size_mb: number;
 
+  // Authentication (embed only)
+  auth_required: boolean;
+
   // Ownership & timestamps
   created_by: string;
   created_by_role: CreatorRole;
@@ -220,6 +223,9 @@ export interface CreateWorkspaceInput {
   file_upload_enabled?: boolean;
   max_file_size_mb?: number;
 
+  // Authentication (embed only)
+  auth_required?: boolean;
+
   // Standalone-specific
   access_mode?: AccessMode;
 }
@@ -251,6 +257,9 @@ export interface UpdateWorkspaceInput {
   voice_enabled?: boolean;
   file_upload_enabled?: boolean;
   max_file_size_mb?: number;
+
+  // Authentication (embed only)
+  auth_required?: boolean;
 
   // Standalone-specific
   access_mode?: AccessMode;
@@ -368,6 +377,7 @@ export interface WorkspaceRow {
   voice_enabled: number;
   file_upload_enabled: number;
   max_file_size_mb: number;
+  auth_required: number;
   created_by: string;
   created_by_role: string;
   created_at: string;
