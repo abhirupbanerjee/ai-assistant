@@ -149,10 +149,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    // Validate file type (PDF, images, DOCX, XLSX, PPTX)
+    // Validate file type (PDF, images, DOCX, XLSX, PPTX, TXT, MD)
     if (!isSupportedMimeType(file.type)) {
       return NextResponse.json(
-        { error: `Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF` },
+        { error: `Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT, MD, PNG, JPG, WEBP, GIF` },
         { status: 400 }
       );
     }

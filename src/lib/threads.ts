@@ -27,6 +27,7 @@ import {
   getThreadsForUser as dbGetThreadsForUser,
   deleteThread as dbDeleteThread,
   updateThreadTitle as dbUpdateThreadTitle,
+  toggleThreadPin as dbToggleThreadPin,
   userOwnsThread as dbUserOwnsThread,
   addMessage as dbAddMessage,
   getMessagesForThread as dbGetMessagesForThread,
@@ -53,6 +54,7 @@ function toThread(
     title: string;
     created_at: string;
     updated_at: string;
+    is_pinned?: number;
   },
   userEmail: string,
   uploadCount: number,
@@ -66,6 +68,7 @@ function toThread(
     updatedAt: new Date(dbThread.updated_at),
     uploadCount,
     categories,
+    isPinned: Boolean(dbThread.is_pinned),
   };
 }
 
@@ -179,6 +182,7 @@ export async function listThreads(userId: string): Promise<Thread[]> {
     categories: t.categories,
     isSummarized: Boolean(t.is_summarized),
     totalTokens: t.total_tokens || 0,
+    isPinned: Boolean(t.is_pinned),
   }));
 }
 
@@ -246,6 +250,45 @@ export async function updateThreadTitle(
     updatedAt: new Date(threadDetails.updated_at),
     uploadCount: threadDetails.uploadCount,
     categories: threadDetails.categories,
+  };
+}
+
+/**
+ * Toggle thread pin status
+ */
+export async function toggleThreadPin(
+  userId: string,
+  threadId: string
+): Promise<Thread | null> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return null;
+  }
+
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return null;
+  }
+
+  const success = dbToggleThreadPin(threadId);
+  if (!success) {
+    return null;
+  }
+
+  const threadDetails = getThreadWithDetails(threadId);
+  if (!threadDetails) {
+    return null;
+  }
+
+  return {
+    id: threadDetails.id,
+    userId: userId,
+    title: threadDetails.title,
+    createdAt: new Date(threadDetails.created_at),
+    updatedAt: new Date(threadDetails.updated_at),
+    uploadCount: threadDetails.uploadCount,
+    categories: threadDetails.categories,
+    isPinned: Boolean(threadDetails.is_pinned),
   };
 }
 

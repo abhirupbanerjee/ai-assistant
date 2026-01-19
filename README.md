@@ -37,7 +37,9 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Multi-Provider Auth** - Azure AD and Google OAuth
 
 ### AI Enhancements
-- **Skills System** - Inject behaviors based on category/keyword triggers
+- **Prompts System** - Global and category-specific AI instructions
+- **Skills System** - Modular behaviors triggered by category/keyword/always-on
+- **Tool Routing** - Pattern-based forced tool invocation for reliable behavior
 - **User Memory** - Recall user-specific facts across conversations
 - **Thread Summarization** - Compress long conversations
 - **Reranking** - Cohere API or local Transformers.js
@@ -62,8 +64,17 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Data Sources** - Query external APIs and CSV files
 - **Function APIs** - OpenAI-style function calling
 - **Chart Generation** - Visualize data in responses
-- **Task Planning** - Multi-step workflow execution
+- **Task Planning** - Multi-step workflow execution with templates
 - **YouTube** - Extract and query video transcripts
+- **Document Generation** - Create PDF, DOCX, Markdown files
+
+### Progressive Web App (PWA)
+- **Installable** - Add to home screen (mobile) or desktop
+- **Standalone Mode** - App-like experience without browser UI
+- **Auto-Updates** - Service worker manages updates
+- **Dynamic Branding** - App name and icon from admin settings
+- **Cross-Platform** - Works on Windows, macOS, Linux, iOS, Android
+- **Offline Page** - Friendly offline message (online connection required for functionality)
 
 ## Directory Structure
 
@@ -98,14 +109,25 @@ policy-bot/
 │   │   └── skills.ts           # Skills system
 │   └── types/                  # TypeScript definitions
 ├── docs/                       # Comprehensive documentation
-│   ├── SOLUTION.md             # Architecture and design decisions
-│   ├── DATABASE.md             # Complete SQLite/ChromaDB/Redis schema
-│   ├── API_SPECIFICATION.md    # Full REST API reference
-│   ├── Tools.md                # Tool system documentation
-│   ├── UI_WIREFRAMES.md        # Interface designs
-│   ├── INFRASTRUCTURE.md       # Deployment and operations
-│   ├── Bot-Config-architecture.md # Prompts, skills, tools, memory architecture
+│   ├── API/                    # API specifications
+│   │   └── API_SPECIFICATION.md # Full REST API reference
+│   ├── features/               # Feature documentation
+│   │   ├── Tools.md            # Tool system documentation
+│   │   ├── PROMPTS.md          # Prompts system guide
+│   │   ├── SKILLS.md           # Skills system guide
+│   │   ├── TOOL_ROUTING.md     # Tool routing guide
+│   │   ├── PWA.md              # Progressive Web App guide
+│   │   └── AUTONOMOUS_MODE_INTEGRATION.md # Autonomous mode
+│   ├── tech/                   # Technical architecture
+│   │   ├── SOLUTION.md         # Architecture and design decisions
+│   │   ├── DATABASE.md         # Complete SQLite/ChromaDB/Redis schema
+│   │   ├── INFRASTRUCTURE.md   # Deployment and operations
+│   │   ├── Bot-Config-architecture.md # Configuration architecture
+│   │   └── UI_WIREFRAMES.md    # Interface designs
 │   └── user_manuals/           # User, Admin, SuperUser guides
+│       ├── USER_GUIDE.md       # End user guide
+│       ├── ADMIN_GUIDE.md      # Admin dashboard guide
+│       └── SUPERUSER_GUIDE.md  # Superuser guide
 ├── litellm-proxy/              # LiteLLM configuration
 ├── docker-compose.yml          # Production stack
 ├── docker-compose.dev.yml      # Development stack
@@ -215,14 +237,30 @@ See `.env.example` for complete configuration reference.
 
 ## Documentation
 
+### Core Architecture
 | Document | Content |
 |----------|---------|
-| [SOLUTION.md](docs/SOLUTION.md) | Architecture, RAG pipeline, design decisions |
-| [DATABASE.md](docs/DATABASE.md) | SQLite schema, ChromaDB collections, Redis patterns |
-| [API_SPECIFICATION.md](docs/API_SPECIFICATION.md) | Complete REST API reference |
-| [Tools.md](docs/Tools.md) | Tool system: web search, data sources, charts, etc. |
-| [INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Docker deployment, scaling, backup/restore |
-| [Bot-Config-architecture.md](docs/Bot-Config-architecture.md) | Prompts, skills, tools overview, memory architecture |
+| [SOLUTION.md](docs/tech/SOLUTION.md) | Architecture, RAG pipeline, design decisions |
+| [DATABASE.md](docs/tech/DATABASE.md) | SQLite schema, ChromaDB collections, Redis patterns |
+| [INFRASTRUCTURE.md](docs/tech/INFRASTRUCTURE.md) | Docker deployment, scaling, backup/restore |
+| [Bot-Config-architecture.md](docs/tech/Bot-Config-architecture.md) | Configuration architecture |
+
+### Features
+| Document | Content |
+|----------|---------|
+| [PROMPTS.md](docs/features/PROMPTS.md) | Prompts system: global, category, starter prompts, acronyms |
+| [SKILLS.md](docs/features/SKILLS.md) | Skills system: trigger types, priority, examples |
+| [TOOL_ROUTING.md](docs/features/TOOL_ROUTING.md) | Tool routing: pattern matching, force modes, testing |
+| [Tools.md](docs/features/Tools.md) | Tools: web search, data sources, charts, task planning |
+| [PWA.md](docs/features/PWA.md) | Progressive Web App: installation, capabilities, limitations |
+
+### API & User Guides
+| Document | Content |
+|----------|---------|
+| [API_SPECIFICATION.md](docs/API/API_SPECIFICATION.md) | Complete REST API reference |
+| [USER_GUIDE.md](docs/user_manuals/USER_GUIDE.md) | End user guide for chat, uploads, voice input |
+| [ADMIN_GUIDE.md](docs/user_manuals/ADMIN_GUIDE.md) | Admin dashboard guide for system management |
+| [SUPERUSER_GUIDE.md](docs/user_manuals/SUPERUSER_GUIDE.md) | Superuser guide for category management |
 
 ## License
 

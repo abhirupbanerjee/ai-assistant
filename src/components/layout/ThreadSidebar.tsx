@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen
+  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -54,6 +54,8 @@ export default function ThreadSidebar({
   const [newThreadTitle, setNewThreadTitle] = useState('');
   const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
@@ -84,6 +86,22 @@ export default function ThreadSidebar({
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const response = await fetch('/api/user/categories');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableCategories(data.categories || []);
+        }
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+      }
+    };
+
+    loadCategories();
+  }, []);
 
   const openNewThreadModal = () => {
     setNewThreadTitle('');
@@ -150,6 +168,27 @@ export default function ThreadSidebar({
     }
   };
 
+  const handleTogglePin = async (thread: Thread, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    try {
+      const response = await fetch(`/api/threads/${thread.id}/pin`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const updatedThread = await response.json();
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === thread.id ? { ...t, isPinned: updatedThread.isPinned } : t
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Failed to toggle pin:', err);
+    }
+  };
+
   const formatDate = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -173,36 +212,16 @@ export default function ThreadSidebar({
     }
   };
 
-  const groupThreadsByDate = (threads: Thread[]) => {
-    const groups: { [key: string]: Thread[] } = {};
-    const now = new Date();
+  // Apply category filter
+  const filteredThreads = selectedCategoryId === null
+    ? threads
+    : threads.filter(thread =>
+        thread.categories?.some(cat => cat.id === selectedCategoryId)
+      );
 
-    threads.forEach((thread) => {
-      const date = thread.updatedAt;
-      const diff = now.getTime() - date.getTime();
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-      let key: string;
-      if (days === 0) {
-        key = 'Today';
-      } else if (days === 1) {
-        key = 'Yesterday';
-      } else if (days < 7) {
-        key = 'This Week';
-      } else {
-        key = 'Older';
-      }
-
-      if (!groups[key]) {
-        groups[key] = [];
-      }
-      groups[key].push(thread);
-    });
-
-    return groups;
-  };
-
-  const groupedThreads = groupThreadsByDate(threads);
+  // Then apply pin grouping
+  const pinnedThreads = filteredThreads.filter(t => t.isPinned);
+  const otherThreads = filteredThreads.filter(t => !t.isPinned);
 
   // Don't render if collapsed on desktop
   if (!isOpen) {
@@ -221,86 +240,229 @@ export default function ThreadSidebar({
           </Button>
         </div>
 
+        {/* Category Filter Dropdown */}
+        {availableCategories.length > 0 && (
+          <div className="px-4 py-2 border-b">
+            <select
+              value={selectedCategoryId ?? ''}
+              onChange={(e) => setSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">All Categories</option>
+              {availableCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Thread List */}
         <div className="flex-1 overflow-y-auto px-2 pb-4">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-pulse text-gray-400">Loading...</div>
             </div>
-          ) : threads.length === 0 ? (
+          ) : filteredThreads.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No threads yet</p>
-              <p className="text-xs">Start a new conversation</p>
+              {selectedCategoryId ? (
+                <>
+                  <p className="text-sm">No threads in this category</p>
+                  <button
+                    onClick={() => setSelectedCategoryId(null)}
+                    className="mt-2 text-xs text-blue-600 hover:text-blue-700 underline"
+                  >
+                    Show all categories
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm">No threads yet</p>
+                  <p className="text-xs">Start a new conversation</p>
+                </>
+              )}
             </div>
           ) : (
-            Object.entries(groupedThreads).map(([group, groupThreads]) => (
-              <div key={group} className="mb-4">
-                <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 mt-3">
-                  {group}
-                </h3>
-                <div className="space-y-1">
-                  {groupThreads.map((thread) => (
-                    <div
-                      key={thread.id}
-                      className={`
-                        group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
-                        ${selectedThreadId === thread.id
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'hover:bg-gray-100 text-gray-700'
-                        }
-                      `}
-                      onClick={() => {
-                        onThreadSelect?.(thread);
-                      }}
-                    >
-                      <MessageSquare size={16} className="shrink-0 opacity-50" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {thread.title}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-xs text-gray-500">
-                            {formatDate(thread.updatedAt)}
-                          </span>
-                          {thread.isSummarized && (
-                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
-                              <BookOpen size={10} />
-                              <span>Summarized</span>
+            <>
+              {/* Pinned Threads Section */}
+              {pinnedThreads.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 mt-3 flex items-center gap-1">
+                    <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                    Favorites
+                    {selectedCategoryId && (
+                      <span className="text-[10px] text-gray-400 normal-case ml-1">
+                        ({pinnedThreads.length})
+                      </span>
+                    )}
+                  </h3>
+                  <div className="space-y-1">
+                    {pinnedThreads.map((thread) => (
+                      <div
+                        key={thread.id}
+                        className={`
+                          group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
+                          ${selectedThreadId === thread.id
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'hover:bg-gray-100 text-gray-700'
+                          }
+                        `}
+                        onClick={() => {
+                          onThreadSelect?.(thread);
+                        }}
+                      >
+                        <MessageSquare size={16} className="shrink-0 opacity-50" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {thread.title}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs text-gray-500">
+                              {formatDate(thread.updatedAt)}
                             </span>
+                            {thread.isSummarized && (
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
+                                <BookOpen size={10} />
+                                <span>Summarized</span>
+                              </span>
+                            )}
+                          </div>
+                          {thread.categories && thread.categories.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {thread.categories.map((category) => {
+                                const colors = getCategoryColor(category.id);
+                                return (
+                                  <span
+                                    key={category.id}
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
+                                    title={category.name}
+                                  >
+                                    {category.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
-                        {thread.categories && thread.categories.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {thread.categories.map((category) => {
-                              const colors = getCategoryColor(category.id);
-                              return (
-                                <span
-                                  key={category.id}
-                                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
-                                  title={category.name}
-                                >
-                                  {category.name}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                          <button
+                            onClick={(e) => handleTogglePin(thread, e)}
+                            className={`p-1 rounded transition-colors ${
+                              thread.isPinned
+                                ? 'text-yellow-500 hover:text-yellow-600'
+                                : 'text-gray-400 hover:text-yellow-500'
+                            }`}
+                            title={thread.isPinned ? 'Unpin thread' : 'Pin thread'}
+                          >
+                            <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteThread(thread);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded"
+                            title="Delete thread"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteThread(thread);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 rounded"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))
+              )}
+
+              {/* Other Threads Section */}
+              {otherThreads.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 mt-3">
+                    {pinnedThreads.length > 0 ? 'Others' : 'Recent'}
+                    {selectedCategoryId && (
+                      <span className="text-[10px] text-gray-400 normal-case ml-1">
+                        ({otherThreads.length})
+                      </span>
+                    )}
+                  </h3>
+                  <div className="space-y-1">
+                    {otherThreads.map((thread) => (
+                      <div
+                        key={thread.id}
+                        className={`
+                          group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
+                          ${selectedThreadId === thread.id
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'hover:bg-gray-100 text-gray-700'
+                          }
+                        `}
+                        onClick={() => {
+                          onThreadSelect?.(thread);
+                        }}
+                      >
+                        <MessageSquare size={16} className="shrink-0 opacity-50" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {thread.title}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs text-gray-500">
+                              {formatDate(thread.updatedAt)}
+                            </span>
+                            {thread.isSummarized && (
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
+                                <BookOpen size={10} />
+                                <span>Summarized</span>
+                              </span>
+                            )}
+                          </div>
+                          {thread.categories && thread.categories.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {thread.categories.map((category) => {
+                                const colors = getCategoryColor(category.id);
+                                return (
+                                  <span
+                                    key={category.id}
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
+                                    title={category.name}
+                                  >
+                                    {category.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                          <button
+                            onClick={(e) => handleTogglePin(thread, e)}
+                            className={`p-1 rounded transition-colors ${
+                              thread.isPinned
+                                ? 'text-yellow-500 hover:text-yellow-600'
+                                : 'text-gray-400 hover:text-yellow-500'
+                            }`}
+                            title={thread.isPinned ? 'Unpin thread' : 'Pin thread'}
+                          >
+                            <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteThread(thread);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded"
+                            title="Delete thread"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

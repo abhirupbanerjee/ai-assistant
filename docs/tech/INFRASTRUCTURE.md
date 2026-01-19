@@ -740,6 +740,172 @@ git checkout <previous-commit>
 docker compose up -d --build
 ```
 
+### Progressive Web App (PWA) Deployment
+
+Policy Bot includes Progressive Web App capabilities that allow users to install the application on their devices.
+
+> **📖 Full Documentation:** [docs/features/PWA.md](../../features/PWA.md)
+
+#### PWA Components
+
+The PWA implementation consists of the following components that are automatically deployed:
+
+**1. Web App Manifest**
+- **Route:** `src/app/manifest.webmanifest/route.ts`
+- **Served at:** `https://yourdomain.com/manifest.webmanifest`
+- **Dynamic generation** based on admin settings from database
+- **No build step required** - generated on-the-fly per request
+
+**2. Service Worker**
+- **File:** `public/sw.js`
+- **Served at:** `https://yourdomain.com/sw.js`
+- **Static file** - bundled during build
+- **Registers automatically** on first page load
+- **Updates automatically** when file changes
+
+**3. Install Banner Component**
+- **Component:** `src/components/pwa/InstallBanner.tsx`
+- **Bundled** as part of the React application
+- **Detects installability** and shows appropriate prompts
+
+**4. Offline Page**
+- **Route:** `src/app/offline/page.tsx`
+- **Served at:** `https://yourdomain.com/offline`
+- **Static page** shown when user is offline
+
+#### Deployment Checklist
+
+When deploying Policy Bot with PWA support:
+
+**1. HTTPS is Required**
+- ✅ Traefik configuration includes Let's Encrypt SSL
+- ✅ All requests automatically redirected to HTTPS
+- ❌ PWA will NOT work over HTTP (browser requirement)
+
+**2. Service Worker Permissions**
+- ✅ `public/sw.js` must be accessible at `/sw.js`
+- ✅ Served with correct MIME type (`application/javascript`)
+- ✅ No authentication required for `/sw.js`, `/manifest.webmanifest`, `/offline`
+
+**3. Icon Assets**
+- **Admin Configuration:** Upload PWA icon in Admin > Settings > PWA
+- **Fallback:** Uses Application Logo if no PWA icon set
+- **Sizes:** Manifest automatically generates entries for 192x192 and 512x512
+- **Format:** PNG recommended (square, 512x512px minimum)
+
+**4. Database Configuration**
+```sql
+-- Default PWA settings in config table
+pwa_enabled = 1
+pwa_app_name = 'Policy Bot'  -- Set via Admin dashboard
+pwa_short_name = 'Policy'    -- Max 12 characters
+pwa_app_icon = NULL          -- URL to icon (or NULL for fallback)
+pwa_theme_color = '#6366f1'
+pwa_background_color = '#ffffff'
+```
+
+**5. Environment Variables**
+No additional environment variables required. PWA settings managed via admin dashboard.
+
+#### Testing PWA Installation
+
+After deployment, verify PWA functionality:
+
+**Desktop (Chrome/Edge):**
+```bash
+1. Visit https://yourdomain.com
+2. Look for install icon (⊕) in address bar
+3. Click "Install Policy Bot"
+4. Verify app opens in standalone window
+5. Check app appears in OS app launcher
+```
+
+**Mobile (Android Chrome):**
+```bash
+1. Visit https://yourdomain.com in Chrome
+2. Tap install banner or menu → "Install app"
+3. Icon appears on home screen
+4. Tap to launch in standalone mode
+```
+
+**Mobile (iOS Safari):**
+```bash
+1. Visit https://yourdomain.com in Safari
+2. Tap Share button → "Add to Home Screen"
+3. Icon appears on home screen
+4. Tap to launch
+```
+
+#### Service Worker Updates
+
+The service worker automatically updates when `public/sw.js` changes:
+
+**Manual Update (if needed):**
+```bash
+# After updating sw.js, rebuild and deploy
+docker compose down
+docker compose up -d --build
+
+# Users will see update prompt on next visit
+# Changes activate after closing all app tabs/windows
+```
+
+**Cache Strategy:**
+- **Static assets:** Cached with stale-while-revalidate
+- **API requests:** Network-first (always fresh data)
+- **Offline page:** Pre-cached on installation
+
+#### Disabling PWA
+
+If you need to disable PWA:
+
+**Method 1: Via Admin Dashboard**
+```
+1. Admin > Settings > PWA
+2. Toggle "Enable PWA" to OFF
+3. Manifest returns 404
+4. Install prompts hidden
+5. Existing installations continue to work
+```
+
+**Method 2: Remove Service Worker**
+```bash
+# Stop service worker registration
+# Edit src/app/layout.tsx and remove:
+<script src="/sw-register.js" />
+
+# Rebuild and deploy
+docker compose up -d --build
+```
+
+#### Troubleshooting PWA
+
+| Issue | Solution |
+|-------|----------|
+| No install prompt appears | Verify HTTPS, check manifest is accessible at `/manifest.webmanifest`, ensure icons are valid |
+| Service worker not registering | Check browser console for errors, verify `/sw.js` is accessible without authentication |
+| Offline page not showing | Service worker cache may be stale, hard refresh (Ctrl+Shift+R) or clear cache |
+| Icon not updating | Manifest is cached, update `pwa_app_icon` URL with cache-busting query param |
+| Updates not applying | Users must close all tabs/windows for service worker update to activate |
+
+#### PWA Limitations
+
+Policy Bot's PWA implementation has intentional limitations:
+
+❌ **No Offline Mode**
+- Document search requires server (vector database)
+- Chat requires LLM API
+- Authentication requires server validation
+- Offline page shown when disconnected
+
+❌ **No Push Notifications**
+- Not implemented in current version
+- Could be added for document upload alerts, share notifications
+
+❌ **No Background Sync**
+- Not implemented
+- Could be added for offline message queuing
+
 ---
 
 ## Health Checks

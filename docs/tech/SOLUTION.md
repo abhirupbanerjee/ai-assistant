@@ -764,6 +764,253 @@ User Access
 
 ---
 
+### 13. Tool Routing System
+
+Tool Routing provides deterministic tool invocation by forcing the LLM to call specific tools when user messages match predefined patterns. This overcomes the non-deterministic nature of LLM function calling.
+
+> **📖 Full Documentation:** [docs/features/TOOL_ROUTING.md](../../features/TOOL_ROUTING.md)
+
+#### Architecture
+
+```
+User Message
+    │
+    ▼
+┌─────────────────────┐
+│ Tool Routing Engine │
+│                     │
+│ 1. Load all active  │
+│    routing rules    │
+│ 2. Filter by        │
+│    categories       │
+│ 3. Match patterns   │
+│    (keyword/regex)  │
+│ 4. Sort by priority │
+└─────────────────────┘
+    │
+    ├──── No Match ────▶ Standard LLM Function Calling
+    │
+    └──── Match Found
+          │
+          ▼
+    ┌─────────────────────┐
+    │ Apply Force Mode    │
+    │                     │
+    │ Required:  tool_choice = {type: "function", function: {name: "chart_gen"}}
+    │ Preferred: tool_choice = "required" (any tool)
+    │ Suggested: tool_choice = {type: "function", function: {name: "chart_gen"}} (hint)
+    └─────────────────────┘
+          │
+          ▼
+    Pass to OpenAI API with tool_choice parameter
+```
+
+#### Database Schema
+
+**Routing Rules Table:**
+```sql
+CREATE TABLE tool_routing_rules (
+  id INTEGER PRIMARY KEY,
+  tool_name TEXT NOT NULL,           -- Target tool (e.g., "chart_gen")
+  rule_name TEXT NOT NULL,           -- Descriptive name
+  rule_type TEXT NOT NULL,           -- "keyword" or "regex"
+  patterns TEXT NOT NULL,            -- JSON array of patterns
+  force_mode TEXT NOT NULL,          -- "required", "preferred", "suggested"
+  priority INTEGER DEFAULT 100,     -- Lower = higher priority
+  categories TEXT,                   -- JSON array (null = all categories)
+  active BOOLEAN DEFAULT 1,          -- Enable/disable
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### Pattern Matching
+
+**Keyword Mode:**
+- Uses word boundary matching: `\b(pattern1|pattern2|pattern3)\b`
+- Case-insensitive
+- Example: Pattern `chart` matches "create a chart" but not "merchant"
+
+**Regex Mode:**
+- Full JavaScript regex syntax supported
+- Case-sensitive by default (use `(?i)` for case-insensitive)
+- Example: `\binitiate\b.*assessment` matches "initiate SOE assessment"
+
+#### Force Modes
+
+| Mode | Behavior | OpenAI API Mapping |
+|------|----------|-------------------|
+| **required** | Forces the specific tool to be called | `{type: "function", function: {name: "tool"}}` |
+| **preferred** | Forces the LLM to use some tool (LLM chooses which) | `"required"` |
+| **suggested** | Hints at the tool but LLM can ignore | Same as required (implementation detail) |
+
+#### Multi-Match Resolution
+
+When multiple rules match:
+1. Rules sorted by **priority** (lower number = higher priority)
+2. If multiple `required` rules → LLM must pick one of those tools
+3. If single `required` rule → That specific tool is forced
+4. `preferred` rules processed after `required`
+5. `suggested` rules only apply if no higher modes match
+
+#### Default Rules
+
+On first access, these default rules are created:
+
+| Tool | Patterns | Force Mode |
+|------|----------|------------|
+| `chart_gen` | chart, graph, plot, visualize, visualization, bar chart, pie chart, line graph | required |
+| `task_planner` | initiate, assessment, evaluate all, step by step, create a plan | required |
+| `doc_gen` | generate report, create pdf, export to pdf, formal document | required |
+| `web_search` | search the web, look up online, latest news, current information | required |
+
+#### Implementation Files
+
+- **Routing Logic:** `src/lib/toolRouting.ts`
+- **Database Layer:** `src/lib/db/toolRouting.ts`
+- **Admin UI:** `src/app/admin/tools/routing/page.tsx`
+- **API Routes:** `src/app/api/admin/tool-routing/*`
+
+---
+
+### 14. Progressive Web App (PWA)
+
+Policy Bot implements PWA capabilities, allowing users to install the application as a standalone app on desktop and mobile devices.
+
+> **📖 Full Documentation:** [docs/features/PWA.md](../../features/PWA.md)
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         PWA COMPONENTS                          │
+│                                                                 │
+│  ┌───────────────────┐  ┌───────────────────┐                   │
+│  │  Web App Manifest │  │  Service Worker   │                   │
+│  │  (Dynamic JSON)   │  │  (sw.js)          │                   │
+│  └───────────────────┘  └───────────────────┘                   │
+│           │                      │                              │
+│           │                      │                              │
+│           ▼                      ▼                              │
+│  ┌────────────────────────────────────────────────────┐         │
+│  │        PWA Features                                │         │
+│  │  ✅ Installable (desktop + mobile)                 │         │
+│  │  ✅ Standalone mode (no browser UI)                │         │
+│  │  ✅ Custom app icon and name                       │         │
+│  │  ✅ Auto-updates via service worker                │         │
+│  │  ✅ Splash screen with branding                    │         │
+│  │  ❌ Offline mode (requires online connection)      │         │
+│  │  ❌ Push notifications (not implemented)           │         │
+│  │  ❌ Background sync (not implemented)              │         │
+│  └────────────────────────────────────────────────────┘         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Components
+
+**1. Web App Manifest**
+- **Route:** `src/app/manifest.webmanifest/route.ts`
+- **Dynamic generation** based on admin settings (app name, icon, colors)
+- **Content-Type:** `application/manifest+json`
+- **Caching:** Served with cache headers to reduce latency
+
+```typescript
+// Example manifest structure
+{
+  "name": "Policy Bot",
+  "short_name": "Policy",
+  "description": "Enterprise RAG platform for policy documents",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+**2. Service Worker**
+- **File:** `public/sw.js`
+- **Responsibilities:**
+  - Cache static assets (HTML, CSS, JS)
+  - Implement update strategy (stale-while-revalidate)
+  - Show offline page when network unavailable
+  - Handle background updates
+- **Registration:** Automatic via Next.js script in app layout
+
+**3. Install Banner**
+- **Component:** `src/components/pwa/InstallBanner.tsx`
+- **Behavior:**
+  - Detects if app is installable
+  - Shows prompt banner for desktop/mobile
+  - Hides after installation
+  - Respects user dismissal (localStorage)
+
+**4. Icon Generation**
+- **Admin upload:** Square PNG icon (512x512px recommended)
+- **Fallback:** Uses Application Logo if no PWA icon configured
+- **Sizes:** Manifest auto-generates icon entries for 192x192 and 512x512
+
+#### Database Configuration
+
+**Settings Table (PWA fields):**
+```sql
+pwa_enabled BOOLEAN DEFAULT 1,
+pwa_app_name TEXT,                -- Default: app_name
+pwa_short_name TEXT,              -- Default: first 12 chars of app_name
+pwa_app_icon TEXT,                -- Icon URL
+pwa_theme_color TEXT DEFAULT '#6366f1',
+pwa_background_color TEXT DEFAULT '#ffffff'
+```
+
+#### Browser Support
+
+| Browser | Desktop | Mobile | Install Method |
+|---------|---------|--------|----------------|
+| Chrome | ✅ | ✅ | Install icon in address bar |
+| Edge | ✅ | ✅ | Install icon in address bar |
+| Safari | ✅ | ✅ | Share → Add to Home Screen (iOS) |
+| Firefox | ✅ | ✅ | Address bar prompt |
+
+#### Limitations
+
+**No Offline Support:**
+- Policy Bot requires network connectivity for:
+  - Document search (vector database queries)
+  - LLM API calls (chat completions)
+  - Authentication validation
+- Offline page shown when disconnected
+- **Reason:** Full offline mode would require:
+  - Local embedding generation
+  - Local LLM inference
+  - Sync mechanism for documents and threads
+
+**No Push Notifications:**
+- Not implemented in current version
+- Could be added for:
+  - Document upload completion
+  - Thread share notifications
+  - System announcements
+
+#### Implementation Files
+
+- **Manifest Route:** `src/app/manifest.webmanifest/route.ts`
+- **Service Worker:** `public/sw.js`
+- **Install Banner:** `src/components/pwa/InstallBanner.tsx`
+- **Offline Page:** `src/app/offline/page.tsx`
+- **Settings UI:** Admin dashboard PWA section
+
+---
+
 ## User Roles & Permissions
 
 ### Admin Users

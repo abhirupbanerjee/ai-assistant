@@ -20,6 +20,8 @@ export interface RequestContext {
   categoryId?: number;
   /** User ID making the request */
   userId?: string;
+  /** User message for context-aware tool decisions */
+  userMessage?: string;
 }
 
 /**

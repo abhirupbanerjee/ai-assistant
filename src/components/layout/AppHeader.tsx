@@ -6,7 +6,9 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Share2,
+  Bot,
 } from 'lucide-react';
+import Link from 'next/link';
 
 interface AppHeaderProps {
   title: string;
@@ -41,11 +43,15 @@ export default function AppHeader({
           </button>
         </div>
 
-        {/* Center section: Bot Name */}
+        {/* Center section: Logo + Bot Name */}
         <div className="flex-1 text-center">
-          <h1 className="text-lg font-semibold text-gray-900">
-            {title}
-          </h1>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
+          >
+            <Bot size={24} className="text-blue-600" />
+            <span>{title}</span>
+          </Link>
         </div>
 
         {/* Right section: Share + Artifacts toggle */}

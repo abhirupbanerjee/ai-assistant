@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     // Validate file type
     if (!isSupportedMimeType(file.type)) {
       return NextResponse.json<ApiError>(
-        { error: 'Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT, PNG, JPG, WEBP, GIF', code: 'INVALID_FILE_TYPE' },
+        { error: 'Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT, MD, PNG, JPG, WEBP, GIF', code: 'INVALID_FILE_TYPE' },
         { status: 400 }
       );
     }

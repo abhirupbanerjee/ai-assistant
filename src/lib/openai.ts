@@ -217,12 +217,14 @@ export async function generateResponseWithTools(
 
   // Apply tool routing to determine tool_choice
   let toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined;
+  let toolChoiceAppliedByRouting = false;
 
   if (effectiveEnableTools && tools && tools.length > 0) {
     const routing = resolveToolRouting(userMessage, categoryIds || []);
 
     if (routing.matches.length > 0) {
       toolChoice = routing.toolChoice;
+      toolChoiceAppliedByRouting = true;
       logger.info('Tool routing applied', {
         matches: routing.matches.map((m) => `${m.toolName}:${m.matchedPattern}`),
         toolChoice:
@@ -392,9 +394,11 @@ export async function generateResponseWithTools(
     }
 
     // Get next response with tool results
+    // Only apply forced tool_choice on first iteration, then let LLM decide
     response = await openai.chat.completions.create({
       ...completionParams,
       messages,
+      tool_choice: toolChoiceAppliedByRouting ? 'auto' : completionParams.tool_choice,
     });
     responseMessage = response.choices[0].message;
   }

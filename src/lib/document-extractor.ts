@@ -35,6 +35,7 @@ export const SUPPORTED_MIME_TYPES = {
   XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   PPTX: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   TXT: 'text/plain',
+  MD: 'text/markdown',
   // Images
   PNG: 'image/png',
   JPEG: 'image/jpeg',
@@ -50,6 +51,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.xlsx',
   '.pptx',
   '.txt',
+  '.md',
   '.png',
   '.jpg',
   '.jpeg',
@@ -57,7 +59,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.gif',
 ] as const;
 
-export const ALLOWED_EXTENSIONS_STRING = '.pdf,.docx,.xlsx,.pptx,.txt,.png,.jpg,.jpeg,.webp,.gif';
+export const ALLOWED_EXTENSIONS_STRING = '.pdf,.docx,.xlsx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.gif';
 
 // ============================================
 // MIME Type Helpers
@@ -85,16 +87,16 @@ export function isMistralSupported(mimeType: string): boolean {
 }
 
 export function isPlainText(mimeType: string): boolean {
-  return mimeType === SUPPORTED_MIME_TYPES.TXT;
+  return mimeType === SUPPORTED_MIME_TYPES.TXT || mimeType === SUPPORTED_MIME_TYPES.MD;
 }
 
 export function isPlainTextFile(mimeType: string, filename: string): boolean {
   // Check MIME type first
-  if (mimeType === SUPPORTED_MIME_TYPES.TXT) return true;
-  // Also check file extension for octet-stream (common for .txt files)
+  if (mimeType === SUPPORTED_MIME_TYPES.TXT || mimeType === SUPPORTED_MIME_TYPES.MD) return true;
+  // Also check file extension for octet-stream (common for .txt and .md files)
   if (mimeType === 'application/octet-stream') {
     const ext = filename.toLowerCase().split('.').pop();
-    return ext === 'txt';
+    return ext === 'txt' || ext === 'md';
   }
   return false;
 }
@@ -117,6 +119,7 @@ export function getMimeTypeFromFilename(filename: string): string {
     'xlsx': SUPPORTED_MIME_TYPES.XLSX,
     'pptx': SUPPORTED_MIME_TYPES.PPTX,
     'txt': SUPPORTED_MIME_TYPES.TXT,
+    'md': SUPPORTED_MIME_TYPES.MD,
     'png': SUPPORTED_MIME_TYPES.PNG,
     'jpg': SUPPORTED_MIME_TYPES.JPEG,
     'jpeg': SUPPORTED_MIME_TYPES.JPEG,

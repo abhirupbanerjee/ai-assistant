@@ -31,6 +31,7 @@ interface RouteContext {
 const ALLOWED_TYPES = new Set([
   'application/pdf',
   'text/plain',
+  'text/markdown',
   'image/png',
   'image/jpeg',
   'image/jpg',
@@ -209,7 +210,7 @@ export async function POST(
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
         {
-          error: 'Invalid file type. Allowed: PDF, TXT, PNG, JPG, GIF, WEBP, DOCX',
+          error: 'Invalid file type. Allowed: PDF, TXT, MD, PNG, JPG, GIF, WEBP, DOCX',
           code: 'INVALID_FILE_TYPE',
         },
         { status: 400 }

@@ -476,6 +476,69 @@ Policy Bot is fully responsive and works on any device with a modern web browser
 | Firefox | ✅ | ✅ |
 | Edge | ✅ | ✅ |
 
+### Progressive Web App (PWA)
+
+Policy Bot can be installed as a standalone app on your device for a better experience.
+
+#### Benefits
+
+- **App-like Experience** - No browser UI clutter
+- **Quick Access** - Launch from home screen or desktop
+- **Auto-Updates** - Always get the latest version
+- **Faster Loading** - Optimized performance
+
+#### Installing on Desktop
+
+**Chrome / Edge:**
+1. Open Policy Bot in your browser
+2. Look for the **install icon** (⊕) in the address bar
+3. Click **"Install Policy Bot"**
+4. Confirm installation
+5. App opens in a standalone window
+6. Find the app in:
+   - Windows: Start Menu
+   - macOS: Applications folder
+   - Linux: Applications menu
+
+#### Installing on Mobile
+
+**Android (Chrome):**
+1. Visit Policy Bot in Chrome
+2. Tap the **install banner** at the bottom
+3. Or tap **⋮ menu** → **"Install app"**
+4. Icon appears on home screen
+5. Launch from home screen
+
+**iOS (Safari):**
+1. Visit Policy Bot in Safari
+2. Tap the **Share button** (box with arrow)
+3. Scroll and select **"Add to Home Screen"**
+4. Tap **"Add"**
+5. Launch from home screen
+
+#### Using the App
+
+Once installed:
+- ✅ Launches in standalone window (no browser bars)
+- ✅ All Policy Bot features work normally
+- ✅ Custom app icon and name
+- ✅ Updates automatically
+- ⚠️ **Requires internet connection** - Cannot work offline
+
+**Note:** Policy Bot requires an online connection to search documents and chat with the AI. When offline, you'll see a message to check your connection.
+
+#### Uninstalling
+
+**Desktop:**
+- Open the app → **⋮ menu** → **"Uninstall Policy Bot"**
+- Or use your OS app manager
+
+**Mobile:**
+- **Android:** Long-press icon → **"Uninstall"**
+- **iOS:** Long-press icon → **"Remove App"**
+
+For more details, see [docs/features/PWA.md](../../features/PWA.md).
+
 ---
 
 ## 11. Personalization

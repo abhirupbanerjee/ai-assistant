@@ -216,6 +216,21 @@ function parseSort(sortArg?: { field: string; direction?: string }): DataSort | 
 }
 
 /**
+ * Check if visualization was requested via keywords or explicit param
+ */
+function isVisualizationRequested(
+  userMessage: string,
+  explicitVizParam: boolean
+): boolean {
+  if (explicitVizParam) return true;
+
+  // Check if chart routing rules would trigger
+  // This detects chart keywords like "chart", "graph", "visualize", etc.
+  const chartKeywords = /\b(chart|graph|plot|visualize|visualization|bar chart|pie chart|line graph|histogram|show.*chart|create.*chart|generate.*chart|draw.*graph)\b/i;
+  return chartKeywords.test(userMessage);
+}
+
+/**
  * Recommend chart type and fields based on data characteristics
  * Smart auto-detection for best visualization
  */
@@ -755,28 +770,47 @@ IMPORTANT FOR LARGE DATASETS:
         }
       }
 
-      // Build visualization hint - always include when data is returned successfully
+      // Build visualization hint - only when explicitly requested
       let visualizationHint: VisualizationHint | undefined;
       if (response.success && response.data && response.data.length > 0) {
-        if (args.visualization) {
-          // Use explicit visualization request from LLM
-          const chartType = args.visualization.chart_type || toolConfig.defaultChartType;
-          visualizationHint = {
-            chartType: toolConfig.enabledChartTypes.includes(chartType) ? chartType : toolConfig.defaultChartType,
-            xField: args.visualization.x_field,
-            yField: args.visualization.y_field,
-            groupBy: args.visualization.group_by,
-          };
-        } else {
-          // Auto-recommend based on data characteristics
-          const fields = response.metadata?.fields || Object.keys(response.data[0]);
-          visualizationHint = recommendVisualization(
-            response.data,
-            fields,
-            aggregationConfig,
-            toolConfig.defaultChartType
-          );
+        // Get the original user message from request context
+        const context = getRequestContext();
+        const userMessage = context.userMessage || '';
+
+        // Only generate viz hint if explicitly requested
+        const vizRequested = isVisualizationRequested(
+          userMessage,
+          !!args.visualization
+        );
+
+        console.log('[DataSource] Visualization check:', {
+          userMessage: userMessage.substring(0, 100),
+          explicitVizParam: !!args.visualization,
+          vizRequested,
+        });
+
+        if (vizRequested) {
+          if (args.visualization) {
+            // Use explicit visualization request from LLM
+            const chartType = args.visualization.chart_type || toolConfig.defaultChartType;
+            visualizationHint = {
+              chartType: toolConfig.enabledChartTypes.includes(chartType) ? chartType : toolConfig.defaultChartType,
+              xField: args.visualization.x_field,
+              yField: args.visualization.y_field,
+              groupBy: args.visualization.group_by,
+            };
+          } else {
+            // Auto-recommend based on data characteristics
+            const fields = response.metadata?.fields || Object.keys(response.data[0]);
+            visualizationHint = recommendVisualization(
+              response.data,
+              fields,
+              aggregationConfig,
+              toolConfig.defaultChartType
+            );
+          }
         }
+        // If not requested, visualizationHint remains undefined (no chart)
       }
 
       return formatResponseForLLM(response, visualizationHint);

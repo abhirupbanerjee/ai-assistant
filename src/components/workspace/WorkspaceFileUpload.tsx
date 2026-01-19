@@ -14,6 +14,7 @@ import { Paperclip, X, Loader2, FileText, ImageIcon } from 'lucide-react';
 const ALLOWED_TYPES = new Set([
   'application/pdf',
   'text/plain',
+  'text/markdown',
   'image/png',
   'image/jpeg',
   'image/jpg',
@@ -22,7 +23,7 @@ const ALLOWED_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 
-const ALLOWED_EXTENSIONS = '.pdf,.txt,.png,.jpg,.jpeg,.gif,.webp,.docx';
+const ALLOWED_EXTENSIONS = '.pdf,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.docx';
 
 interface UploadedFile {
   filename: string;
@@ -64,7 +65,7 @@ export function WorkspaceFileUpload({
 
     // Validate file type
     if (!ALLOWED_TYPES.has(file.type)) {
-      setError('Invalid file type. Allowed: PDF, TXT, PNG, JPG, GIF, WEBP, DOCX');
+      setError('Invalid file type. Allowed: PDF, TXT, MD, PNG, JPG, GIF, WEBP, DOCX');
       return;
     }
 

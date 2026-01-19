@@ -347,6 +347,8 @@ You can only delete documents that you uploaded:
 
 The Prompts tab lets you customize AI behavior for your managed categories. It has three subsections accessible from the sidebar.
 
+> **📖 Detailed Documentation:** For comprehensive information about the prompts system, see [docs/features/PROMPTS.md](../../features/PROMPTS.md).
+
 ### Prompts Submenu
 
 | Section | Purpose |
@@ -444,6 +446,8 @@ Skills are specialized behaviors that extend the AI assistant's capabilities. Th
 ## 7. Tools Tab
 
 The Tools tab lets you configure AI tools for your managed categories.
+
+> **📖 Detailed Documentation:** For comprehensive information about tools, see [docs/features/Tools.md](../../features/Tools.md). For tool routing, see [docs/features/TOOL_ROUTING.md](../../features/TOOL_ROUTING.md).
 
 ### Understanding Tool Inheritance
 

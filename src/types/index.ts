@@ -55,6 +55,7 @@ export interface Thread {
   categories?: ThreadCategory[];
   isSummarized?: boolean;
   totalTokens?: number;
+  isPinned?: boolean;
 }
 
 export interface ThreadCategory {

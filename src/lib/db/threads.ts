@@ -18,6 +18,7 @@ export interface DbThread {
   updated_at: string;
   is_summarized: number;
   total_tokens: number;
+  is_pinned: number;
 }
 
 export interface DbMessage {
@@ -113,7 +114,7 @@ export function createThread(
  */
 export function getThreadById(threadId: string): DbThread | undefined {
   return queryOne<DbThread>(`
-    SELECT id, user_id, title, created_at, updated_at
+    SELECT id, user_id, title, created_at, updated_at, is_summarized, total_tokens, is_pinned
     FROM threads
     WHERE id = ?
   `, [threadId]);
@@ -159,10 +160,10 @@ export function getThreadsForUser(
   offset: number = 0
 ): ThreadWithDetails[] {
   const threads = queryAll<DbThread>(`
-    SELECT id, user_id, title, created_at, updated_at, is_summarized, total_tokens
+    SELECT id, user_id, title, created_at, updated_at, is_summarized, total_tokens, is_pinned
     FROM threads
     WHERE user_id = ?
-    ORDER BY updated_at DESC
+    ORDER BY is_pinned DESC, updated_at DESC
     LIMIT ? OFFSET ?
   `, [userId, limit, offset]);
 
@@ -209,6 +210,21 @@ export function updateThreadTitle(threadId: string, title: string): boolean {
   const result = execute(`
     UPDATE threads SET title = ? WHERE id = ?
   `, [title, threadId]);
+  return result.changes > 0;
+}
+
+/**
+ * Toggle thread pin status
+ */
+export function toggleThreadPin(threadId: string): boolean {
+  const thread = getThreadById(threadId);
+  if (!thread) return false;
+
+  const newPinStatus = thread.is_pinned ? 0 : 1;
+  const result = execute(`
+    UPDATE threads SET is_pinned = ? WHERE id = ?
+  `, [newPinStatus, threadId]);
+
   return result.changes > 0;
 }
 

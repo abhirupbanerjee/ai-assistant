@@ -100,6 +100,11 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE threads ADD COLUMN total_tokens INTEGER DEFAULT 0');
   }
 
+  if (!threadColumnNames.includes('is_pinned')) {
+    database.exec('ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC)');
+  }
+
   // Check and add token_count column to messages
   const messagesColumns = database.pragma('table_info(messages)') as { name: string }[];
   const messageColumnNames = messagesColumns.map((c) => c.name);

@@ -385,6 +385,8 @@ If a document shows Error status:
 
 Configure AI behavior through system prompts.
 
+> **📖 Detailed Documentation:** For comprehensive information about the prompts system including prompt hierarchy, variables, optimization, and best practices, see [docs/features/PROMPTS.md](../../features/PROMPTS.md).
+
 ### Global System Prompt
 
 The global prompt applies to all conversations:
@@ -448,11 +450,39 @@ Available variables in prompts:
 | `{user_name}` | Current user's name |
 | `{date}` | Today's date |
 
+### Acronyms
+
+Configure acronym expansions that are automatically added to the AI's context during document processing and retrieval.
+
+**Purpose:** Help the AI understand domain-specific acronyms without adding them to every prompt.
+
+1. Navigate to **Prompts** tab
+2. Select **Acronyms** from the submenu
+3. Add acronyms in the format: `ACRONYM = Full Expansion`
+4. One acronym per line
+5. Click **Save**
+
+**Example:**
+```
+SOE = State-Owned Enterprise
+KPI = Key Performance Indicator
+NDA = Non-Disclosure Agreement
+EBITDA = Earnings Before Interest, Taxes, Depreciation, and Amortization
+```
+
+**How it works:**
+- Acronyms are automatically appended to the system prompt
+- The AI uses them to understand abbreviations in documents and queries
+- Global acronyms apply to all categories
+- Category-specific acronym management available in Superuser dashboard
+
 ---
 
 ## 7. Skills
 
 Skills are specialized behaviors that enhance AI capabilities.
+
+> **📖 Detailed Documentation:** For comprehensive information about the skills system including trigger types, match types, priority system, and advanced examples, see [docs/features/SKILLS.md](../../features/SKILLS.md).
 
 ### What are Skills?
 
@@ -663,6 +693,8 @@ Override global settings per category:
 ## 9. Tool Routing
 
 Tool Routing allows you to force specific tools to be called when user messages match certain patterns. This ensures reliable tool invocation instead of leaving the decision entirely to the LLM.
+
+> **📖 Detailed Documentation:** For comprehensive information about tool routing including pattern syntax, force modes, priority resolution, testing, and advanced examples, see [docs/features/TOOL_ROUTING.md](../../features/TOOL_ROUTING.md).
 
 ### Why Use Tool Routing?
 
@@ -1224,6 +1256,42 @@ When a vision-capable model is configured, users can upload images in their chat
 | **LiteLLM Endpoint** | LLM proxy URL |
 | **Tavily API Key** | Web search API key |
 | **YouTube API Key** | YouTube data API key |
+
+### Progressive Web App (PWA) Settings
+
+Configure Policy Bot as an installable Progressive Web App.
+
+> **📖 Detailed Documentation:** For comprehensive information about PWA capabilities, installation, and technical details, see [docs/features/PWA.md](../../features/PWA.md).
+
+| Setting | Description |
+|---------|-------------|
+| **Enable PWA** | Allow users to install Policy Bot as a standalone app |
+| **App Name** | Name shown in app launcher (defaults to Application Name) |
+| **App Short Name** | Short name for mobile home screen (max 12 chars) |
+| **App Icon** | Icon URL for the installed app (square PNG, 512x512px recommended) |
+| **Theme Color** | Browser UI theme color (hex value) |
+| **Background Color** | Splash screen background color |
+
+**PWA Capabilities:**
+- ✅ Install on desktop (Windows, macOS, Linux)
+- ✅ Install on mobile (iOS, Android)
+- ✅ Standalone window without browser UI
+- ✅ Automatic updates via service worker
+- ✅ Custom app icon and name
+- ⚠️ Requires internet connection (no offline mode)
+
+**Testing PWA:**
+1. Enable PWA in settings
+2. Configure app name and icon
+3. Visit Policy Bot in Chrome or Edge
+4. Look for install prompt in address bar
+5. Click "Install" to test
+
+**Icon Requirements:**
+- Format: PNG, SVG, or ICO
+- Recommended size: 512x512px
+- Square aspect ratio
+- If not provided, defaults to Application Logo
 
 ---
 

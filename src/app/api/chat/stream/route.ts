@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
               messageId: assistantMessageId,
               categoryId: categoryIds[0],
               userId: user.id,
+              userMessage: message,
             },
             async () => {
               try {
@@ -293,6 +294,7 @@ export async function POST(request: NextRequest) {
             messageId: assistantMessageId,
             categoryId: categoryIds[0],
             userId: user.id,
+            userMessage: message,
           },
           async () => {
             // ============ Phase 2: RAG Retrieval ============
