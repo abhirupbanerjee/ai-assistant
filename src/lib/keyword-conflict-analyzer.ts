@@ -81,12 +81,88 @@ export function consolidateKeywordSources(
 }
 
 /**
+ * Pre-compute exact keyword overlaps programmatically
+ * This provides verified overlaps before LLM analysis
+ */
+export function computeExactOverlaps(
+  skills: KeywordSource[],
+  routingRules: KeywordSource[]
+): { keyword: string; sources: string[]; sourceTypes: ('skill' | 'tool_routing')[] }[] {
+  const keywordMap = new Map<string, { names: string[]; types: ('skill' | 'tool_routing')[] }>();
+
+  // Map keywords to their sources
+  for (const skill of skills) {
+    for (const kw of skill.keywords) {
+      const entry = keywordMap.get(kw) || { names: [], types: [] };
+      entry.names.push(skill.name);
+      entry.types.push('skill');
+      keywordMap.set(kw, entry);
+    }
+  }
+  for (const rule of routingRules) {
+    for (const kw of rule.keywords) {
+      const entry = keywordMap.get(kw) || { names: [], types: [] };
+      entry.names.push(rule.name);
+      entry.types.push('tool_routing');
+      keywordMap.set(kw, entry);
+    }
+  }
+
+  // Return keywords with multiple sources
+  return Array.from(keywordMap.entries())
+    .filter(([, entry]) => entry.names.length > 1)
+    .map(([keyword, entry]) => ({
+      keyword,
+      sources: entry.names,
+      sourceTypes: entry.types,
+    }));
+}
+
+/**
+ * Filter out false positive conflicts from LLM analysis
+ */
+export function filterFalsePositives(
+  conflicts: ConflictItem[],
+  skills: KeywordSource[]
+): ConflictItem[] {
+  return conflicts.filter((conflict) => {
+    // For exact_overlap between skills, check category restrictions
+    if (conflict.conflictType === 'exact_overlap') {
+      const skillSources = conflict.sources.filter((s) => s.type === 'skill');
+      if (skillSources.length === 2) {
+        const [s1, s2] = skillSources;
+        // If both skills are category-restricted, check for category overlap
+        if (s1.additionalInfo.categoryRestricted && s2.additionalInfo.categoryRestricted) {
+          const cats1 = new Set(s1.additionalInfo.categoryNames || []);
+          const cats2 = s2.additionalInfo.categoryNames || [];
+          const hasOverlap = cats2.some((c) => cats1.has(c));
+          if (!hasOverlap) {
+            // No category overlap means they never fire together - not a real conflict
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    // Be stricter about semantic overlaps - only keep high severity
+    if (conflict.conflictType === 'semantic_overlap') {
+      return conflict.severity === 'high';
+    }
+
+    // Keep all other conflict types
+    return true;
+  });
+}
+
+/**
  * Build the analysis prompt for the LLM
  */
 export function buildAnalysisPrompt(
   skills: KeywordSource[],
   routingRules: KeywordSource[],
-  analysisScope: AnalysisScope = 'keywords'
+  analysisScope: AnalysisScope = 'keywords',
+  exactOverlaps: { keyword: string; sources: string[]; sourceTypes: ('skill' | 'tool_routing')[] }[] = []
 ): string {
   // Scope-specific instructions
   let scopeInstructions = '';
@@ -176,7 +252,20 @@ ${JSON.stringify(
   null,
   2
 )}
+${
+  exactOverlaps.length > 0
+    ? `
+## Pre-Computed Exact Overlaps (Verified)
+The following keywords appear in multiple sources - these are CONFIRMED overlaps:
+${JSON.stringify(exactOverlaps, null, 2)}
 
+Focus your analysis on:
+1. Determining if these verified overlaps are problematic (some may be intentional)
+2. Finding semantic overlaps NOT in this list
+3. Checking for contradictory prompt instructions
+`
+    : ''
+}
 ## Your Analysis Task
 
 Identify conflicts and issues. For each, provide:
@@ -253,7 +342,7 @@ export function parseConflictResponse(
   const parsed = JSON.parse(jsonStr);
 
   // Build conflict items with IDs
-  const conflicts: ConflictItem[] = (parsed.conflicts || []).map(
+  const rawConflicts: ConflictItem[] = (parsed.conflicts || []).map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (c: any, idx: number) => ({
       id: `conflict-${idx}`,
@@ -266,7 +355,15 @@ export function parseConflictResponse(
     })
   );
 
-  // Count by severity
+  // Filter out false positives (category-restricted non-overlaps, low-severity semantic)
+  const conflicts = filterFalsePositives(rawConflicts, skills);
+
+  // Re-index IDs after filtering
+  conflicts.forEach((c, idx) => {
+    c.id = `conflict-${idx}`;
+  });
+
+  // Count by severity (after filtering)
   const conflictCounts = {
     high: conflicts.filter((c) => c.severity === 'high').length,
     medium: conflicts.filter((c) => c.severity === 'medium').length,
@@ -309,14 +406,17 @@ export async function analyzeKeywordConflicts(
   // 1. Consolidate sources
   const { skills, routingRules } = consolidateKeywordSources(includeInactive, includePrompts);
 
-  // 2. Build prompt
-  const prompt = buildAnalysisPrompt(skills, routingRules, analysisScope);
+  // 2. Pre-compute exact keyword overlaps
+  const exactOverlaps = computeExactOverlaps(skills, routingRules);
 
-  // 3. Get configured LLM settings (not hardcoded)
+  // 3. Build prompt with verified overlaps
+  const prompt = buildAnalysisPrompt(skills, routingRules, analysisScope, exactOverlaps);
+
+  // 4. Get configured LLM settings (not hardcoded)
   const llmSettings = getLlmSettings();
   const model = llmSettings.model;
 
-  // 4. Call LLM
+  // 5. Call LLM
   const openai = getOpenAI();
   const response = await openai.chat.completions.create({
     model,
@@ -335,6 +435,6 @@ export async function analyzeKeywordConflicts(
 
   const llmResponse = response.choices[0]?.message?.content || '{}';
 
-  // 5. Parse response (pass model name for report metadata)
+  // 6. Parse response and filter false positives
   return parseConflictResponse(llmResponse, skills, routingRules, model);
 }
