@@ -226,6 +226,7 @@ export type SettingKey =
   | 'memory-settings'
   | 'summarization-settings'
   | 'skills-settings'
+  | 'diagram-settings'
   | 'limits-settings'
   | 'model-token-limits'
   | 'token-limits-settings'
