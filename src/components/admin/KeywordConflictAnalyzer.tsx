@@ -21,6 +21,7 @@ import type {
   ConflictReport,
   ConflictItem,
   ConflictSeverity,
+  AnalysisScope,
 } from '@/types/keyword-conflicts';
 
 // Severity configuration
@@ -175,6 +176,7 @@ export default function KeywordConflictAnalyzer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [analysisScope, setAnalysisScope] = useState<AnalysisScope>('keywords');
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -184,7 +186,7 @@ export default function KeywordConflictAnalyzer() {
       const response = await fetch('/api/admin/keyword-conflicts/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ includeInactive }),
+        body: JSON.stringify({ includeInactive, analysisScope }),
       });
 
       const data = await response.json();
@@ -233,19 +235,64 @@ export default function KeywordConflictAnalyzer() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={includeInactive}
-                onChange={(e) => setIncludeInactive(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              Include inactive
-            </label>
-            {report && (
-              <Button variant="secondary" onClick={handleExport}>
-                <Download size={16} className="mr-2" />
+          <div className="flex flex-col gap-3">
+            {/* Analysis Scope */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-sm text-gray-600">Analyze:</span>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  name="analysisScope"
+                  value="keywords"
+                  checked={analysisScope === 'keywords'}
+                  onChange={() => setAnalysisScope('keywords')}
+                  className="text-blue-600"
+                />
+                Keywords
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  name="analysisScope"
+                  value="prompts"
+                  checked={analysisScope === 'prompts'}
+                  onChange={() => setAnalysisScope('prompts')}
+                  className="text-blue-600"
+                />
+                Prompts
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  name="analysisScope"
+                  value="both"
+                  checked={analysisScope === 'both'}
+                  onChange={() => setAnalysisScope('both')}
+                  className="text-blue-600"
+                />
+                Both
+              </label>
+            </div>
+            {/* Token usage warning */}
+            {analysisScope !== 'keywords' && (
+              <p className="text-xs text-amber-600">
+                Note: Prompt analysis uses more tokens and may take longer.
+              </p>
+            )}
+            {/* Actions */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeInactive}
+                  onChange={(e) => setIncludeInactive(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Include inactive
+              </label>
+              {report && (
+                <Button variant="secondary" onClick={handleExport}>
+                  <Download size={16} className="mr-2" />
                 Export
               </Button>
             )}
@@ -254,6 +301,7 @@ export default function KeywordConflictAnalyzer() {
               {loading ? 'Analyzing...' : 'Analyze Now'}
             </Button>
           </div>
+        </div>
         </div>
 
         {/* Error Display */}

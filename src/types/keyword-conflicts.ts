@@ -16,7 +16,9 @@ export interface KeywordSource {
     // For skills
     triggerType?: 'always' | 'category' | 'keyword';
     categoryRestricted?: boolean;
+    categoryNames?: string[]; // Category names linked to this skill
     tokenEstimate?: number;
+    promptContent?: string; // Skill prompt content (for prompt analysis)
     // For tool routing
     forceMode?: 'required' | 'preferred' | 'suggested';
     ruleType?: 'keyword' | 'regex';
@@ -30,7 +32,9 @@ export type ConflictType =
   | 'semantic_overlap' // Similar meaning keywords
   | 'priority_tie' // Same priority in tool routing
   | 'redundant' // Duplicate within same system
-  | 'category_mismatch'; // Tool routing without category skill support
+  | 'category_mismatch' // Tool routing without category skill support
+  | 'contradictory_instructions' // Skills with conflicting prompt instructions
+  | 'tool_prompt_mismatch'; // Prompt conflicts with forced tool behavior
 
 /** Severity levels */
 export type ConflictSeverity = 'high' | 'medium' | 'low';
@@ -74,9 +78,13 @@ export interface ConflictReport {
   recommendations: string[];
 }
 
+/** Analysis scope options */
+export type AnalysisScope = 'keywords' | 'prompts' | 'both';
+
 /** API request/response types */
 export interface AnalyzeConflictsRequest {
   includeInactive?: boolean; // Include inactive skills/rules
+  analysisScope?: AnalysisScope; // What to analyze (default: 'keywords')
 }
 
 export interface AnalyzeConflictsResponse {

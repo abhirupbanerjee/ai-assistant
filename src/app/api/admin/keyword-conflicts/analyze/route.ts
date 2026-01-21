@@ -60,6 +60,9 @@ export async function POST(
       const body = await request.json();
       options = {
         includeInactive: body.includeInactive === true,
+        analysisScope: ['keywords', 'prompts', 'both'].includes(body.analysisScope)
+          ? body.analysisScope
+          : 'keywords',
       };
     } catch {
       // Empty body is OK, use defaults

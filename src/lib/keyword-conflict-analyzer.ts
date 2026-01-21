@@ -5,7 +5,7 @@
  * to identify conflicts and suggest resolutions.
  */
 
-import { getAllSkills } from '@/lib/db/skills';
+import { getAllSkills, getCategoriesForSkill } from '@/lib/db/skills';
 import { getAllRoutingRules } from '@/lib/db/tool-routing';
 import { getLlmSettings } from '@/lib/db/config';
 import getOpenAI from '@/lib/openai';
@@ -14,6 +14,7 @@ import type {
   ConflictReport,
   ConflictItem,
   AnalyzeConflictsRequest,
+  AnalysisScope,
 } from '@/types/keyword-conflicts';
 
 const MAX_TOKENS = 4000;
@@ -21,7 +22,10 @@ const MAX_TOKENS = 4000;
 /**
  * Gather all keyword sources from database
  */
-export function consolidateKeywordSources(includeInactive = false): {
+export function consolidateKeywordSources(
+  includeInactive = false,
+  includePrompts = false
+): {
   skills: KeywordSource[];
   routingRules: KeywordSource[];
 } {
@@ -31,19 +35,27 @@ export function consolidateKeywordSources(includeInactive = false): {
     is_active: includeInactive ? undefined : true,
   });
 
-  const skills: KeywordSource[] = allSkills.map((skill) => ({
-    type: 'skill' as const,
-    id: skill.id,
-    name: skill.name,
-    keywords: skill.trigger_value?.split(',').map((k) => k.trim().toLowerCase()) || [],
-    priority: skill.priority,
-    isActive: skill.is_active,
-    additionalInfo: {
-      triggerType: skill.trigger_type,
-      categoryRestricted: skill.category_restricted,
-      tokenEstimate: skill.token_estimate || undefined,
-    },
-  }));
+  const skills: KeywordSource[] = allSkills.map((skill) => {
+    // Get category names for this skill
+    const categories = getCategoriesForSkill(skill.id);
+    const categoryNames = categories.map((c) => c.name);
+
+    return {
+      type: 'skill' as const,
+      id: skill.id,
+      name: skill.name,
+      keywords: skill.trigger_value?.split(',').map((k) => k.trim().toLowerCase()) || [],
+      priority: skill.priority,
+      isActive: skill.is_active,
+      additionalInfo: {
+        triggerType: skill.trigger_type,
+        categoryRestricted: skill.category_restricted,
+        categoryNames: categoryNames.length > 0 ? categoryNames : undefined,
+        tokenEstimate: skill.token_estimate || undefined,
+        promptContent: includePrompts ? skill.prompt_content : undefined,
+      },
+    };
+  });
 
   // Get tool routing rules
   const allRules = getAllRoutingRules();
@@ -73,15 +85,69 @@ export function consolidateKeywordSources(includeInactive = false): {
  */
 export function buildAnalysisPrompt(
   skills: KeywordSource[],
-  routingRules: KeywordSource[]
+  routingRules: KeywordSource[],
+  analysisScope: AnalysisScope = 'keywords'
 ): string {
-  return `You are analyzing keyword configurations for a chatbot system.
+  // Scope-specific instructions
+  let scopeInstructions = '';
+  let conflictTypes = '';
+
+  if (analysisScope === 'keywords') {
+    scopeInstructions = `
+## Analysis Scope: Keywords Only
+Focus on keyword/pattern conflicts. Do not analyze prompt content.`;
+    conflictTypes = 'exact_overlap, semantic_overlap, priority_tie, redundant, category_mismatch';
+  } else if (analysisScope === 'prompts') {
+    scopeInstructions = `
+## Analysis Scope: Prompts Only
+Focus on conflicts in the prompt content. Look for:
+- Contradictory instructions between skills
+- Prompts that conflict with what forced tools do
+- Redundant or overlapping guidance`;
+    conflictTypes = 'contradictory_instructions, tool_prompt_mismatch, redundant';
+  } else {
+    scopeInstructions = `
+## Analysis Scope: Keywords AND Prompts
+Analyze both keyword conflicts AND prompt content conflicts.
+For keywords, look for overlapping or duplicate patterns.
+For prompts, look for:
+- Contradictory instructions between skills
+- Prompts that conflict with what forced tools do
+- Redundant or overlapping guidance`;
+    conflictTypes = 'exact_overlap, semantic_overlap, priority_tie, redundant, category_mismatch, contradictory_instructions, tool_prompt_mismatch';
+  }
+
+  // Build skills data - include prompts when scope includes them
+  const skillsData = skills.map((s) => {
+    const base: Record<string, unknown> = {
+      name: s.name,
+      keywords: s.keywords,
+      priority: s.priority,
+      active: s.isActive,
+      categoryRestricted: s.additionalInfo.categoryRestricted,
+      tokens: s.additionalInfo.tokenEstimate,
+    };
+    // Include category names if available
+    if (s.additionalInfo.categoryNames && s.additionalInfo.categoryNames.length > 0) {
+      base.categories = s.additionalInfo.categoryNames;
+    }
+    // Include prompt content when analyzing prompts
+    if (analysisScope !== 'keywords' && s.additionalInfo.promptContent) {
+      base.promptContent = s.additionalInfo.promptContent;
+    }
+    return base;
+  });
+
+  return `You are analyzing configurations for a chatbot system.
 The system has TWO independent keyword-based mechanisms:
 
 ## 1. Skills System
 - **Purpose**: Injects specialized prompt content when keywords match
 - **Effect**: Adds context/instructions to the LLM's system prompt
 - **Matching**: Word-boundary regex, case-insensitive
+- **Category Restriction**: Skills can be restricted to specific categories
+  - If \`categoryRestricted: true\` and \`categories\` is set, the skill only fires in those categories
+  - Skills with different category restrictions do NOT conflict (they never fire simultaneously)
 
 ## 2. Tool Routing System
 - **Purpose**: Forces specific tool calls when keywords match
@@ -90,22 +156,12 @@ The system has TWO independent keyword-based mechanisms:
   - required: Forces the specific tool
   - preferred: Forces some tool call (LLM picks which)
   - suggested: Hints but doesn't force
+${scopeInstructions}
 
 ## Current Configurations
 
 ### Skills (${skills.length} keyword-triggered):
-${JSON.stringify(
-  skills.map((s) => ({
-    name: s.name,
-    keywords: s.keywords,
-    priority: s.priority,
-    active: s.isActive,
-    categoryRestricted: s.additionalInfo.categoryRestricted,
-    tokens: s.additionalInfo.tokenEstimate,
-  })),
-  null,
-  2
-)}
+${JSON.stringify(skillsData, null, 2)}
 
 ### Tool Routing Rules (${routingRules.length}):
 ${JSON.stringify(
@@ -124,8 +180,8 @@ ${JSON.stringify(
 ## Your Analysis Task
 
 Identify conflicts and issues. For each, provide:
-1. The specific keyword(s) involved
-2. Conflict type: exact_overlap, semantic_overlap, priority_tie, redundant, category_mismatch
+1. The specific keyword(s) or prompt section involved
+2. Conflict type: ${conflictTypes}
 3. Severity: high (causes errors/confusion), medium (suboptimal), low (minor)
 4. Clear description of the problem
 5. Specific, actionable resolution suggestion
@@ -134,15 +190,22 @@ Consider these conflict scenarios:
 - **exact_overlap**: Same keyword in both skills and tool routing
 - **semantic_overlap**: Similar keywords that might confuse users (e.g., "chart" vs "graph")
 - **priority_tie**: Multiple tool routing rules with same priority
-- **redundant**: Duplicate keywords within the same system
+- **redundant**: Duplicate keywords or similar prompt instructions
 - **category_mismatch**: Tool routing forces a tool but no skill provides context for it
+- **contradictory_instructions**: Skills with conflicting guidance (e.g., "be formal" vs "be casual")
+- **tool_prompt_mismatch**: Skill prompt conflicts with forced tool behavior
+
+**IMPORTANT - NOT a conflict**:
+- Skills with the same keywords but different category restrictions are NOT conflicts if they never fire together
+- If two skills have categoryRestricted=true and non-overlapping categories, they cannot conflict
+- Only report conflicts when skills could actually fire simultaneously
 
 Respond ONLY with valid JSON in this exact format:
 {
   "conflicts": [
     {
-      "keyword": "the keyword or keywords involved",
-      "conflictType": "exact_overlap|semantic_overlap|priority_tie|redundant|category_mismatch",
+      "keyword": "the keyword, keywords, or prompt section involved",
+      "conflictType": "one of the conflict types listed above",
       "severity": "high|medium|low",
       "sources": ["name1", "name2"],
       "description": "Clear description of the conflict",
@@ -238,13 +301,16 @@ export function parseConflictResponse(
 export async function analyzeKeywordConflicts(
   options: AnalyzeConflictsRequest = {}
 ): Promise<ConflictReport> {
-  const { includeInactive = false } = options;
+  const { includeInactive = false, analysisScope = 'keywords' } = options;
+
+  // Determine if we need prompts based on scope
+  const includePrompts = analysisScope !== 'keywords';
 
   // 1. Consolidate sources
-  const { skills, routingRules } = consolidateKeywordSources(includeInactive);
+  const { skills, routingRules } = consolidateKeywordSources(includeInactive, includePrompts);
 
   // 2. Build prompt
-  const prompt = buildAnalysisPrompt(skills, routingRules);
+  const prompt = buildAnalysisPrompt(skills, routingRules, analysisScope);
 
   // 3. Get configured LLM settings (not hardcoded)
   const llmSettings = getLlmSettings();
