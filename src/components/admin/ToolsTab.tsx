@@ -36,6 +36,7 @@ import ToolRoutingTab from './ToolRoutingTab';
 import ImageGenConfig from './ImageGenConfig';
 import TranslationConfig from './TranslationConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
+import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
 
 // Tool interface matching API response
 interface Tool {
@@ -673,7 +674,7 @@ function GenericToolConfig({
   );
 }
 
-type ToolsSubTab = 'management' | 'dependencies' | 'routing';
+type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts';
 
 interface ToolsTabProps {
   /** If true, shows read-only view (for superusers in legacy mode) */
@@ -681,7 +682,7 @@ interface ToolsTabProps {
   /** If true, shows superuser mode with category selection and per-category config */
   isSuperuser?: boolean;
   /** Optional controlled sub-tab from sidebar. When provided, hides internal tab UI */
-  activeSubTab?: 'management' | 'dependencies' | 'routing';
+  activeSubTab?: 'management' | 'dependencies' | 'routing' | 'conflicts';
 }
 
 /**
@@ -1121,6 +1122,17 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
               <Route size={16} />
               Tool Routing
             </button>
+            <button
+              onClick={() => setInternalSubTab('conflicts')}
+              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeSubTab === 'conflicts'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <AlertCircle size={16} />
+              Keyword Conflicts
+            </button>
           </nav>
         </div>
       )}
@@ -1133,6 +1145,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       {/* Tool Routing Sub-tab */}
       {!readOnly && !isSuperuser && activeSubTab === 'routing' && (
         <ToolRoutingTab />
+      )}
+
+      {/* Keyword Conflicts Sub-tab */}
+      {!readOnly && !isSuperuser && activeSubTab === 'conflicts' && (
+        <KeywordConflictAnalyzer />
       )}
 
       {/* Tools Management Header - only show when on management tab or in superuser/readOnly mode */}

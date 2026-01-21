@@ -22,7 +22,7 @@ import {
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
 type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
-type ToolsSection = 'management' | 'dependencies' | 'routing';
+type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
 
 interface AdminSidebarMenuProps {
   activeTab: TabType;
@@ -73,6 +73,7 @@ const TOOLS_SUBMENU: { id: ToolsSection; label: string }[] = [
   { id: 'management', label: 'Tools Management' },
   { id: 'dependencies', label: 'Dependencies' },
   { id: 'routing', label: 'Tool Routing' },
+  { id: 'conflicts', label: 'Keyword Conflicts' },
 ];
 
 export default function AdminSidebarMenu({

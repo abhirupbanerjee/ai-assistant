@@ -112,7 +112,7 @@ interface AvailableModel {
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
 type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
-type ToolsSection = 'management' | 'dependencies' | 'routing';
+type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
 
 interface BrandingSettings {
   botName: string;
