@@ -1,3 +1,21 @@
+# Production Skill Update: ID 12 - "Implementation Plan & Gantt"
+
+## Action: UPDATE existing skill
+
+## Metadata:
+- **Skill ID:** 12
+- **Name:** Implementation Plan & Gantt
+- **Description:** Rules for implementation plans and Gantt-style schedules
+- **Trigger Type:** keyword
+- **Trigger Keywords:** `implementation plan,gantt chart,project plan,project schedule,timeline,roadmap,milestones,project phases,delivery plan`
+- **Priority:** 13
+- **Is Active:** true
+- **Is Core:** true
+
+---
+
+## Updated Prompt Content:
+
 ## Implementation Plan & Timeline Rules
 
 **Mode Detection:**

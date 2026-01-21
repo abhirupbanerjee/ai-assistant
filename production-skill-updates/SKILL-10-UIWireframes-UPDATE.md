@@ -1,3 +1,21 @@
+# Production Skill Update: ID 10 - "UI Wireframes"
+
+## Action: UPDATE existing skill
+
+## Metadata:
+- **Skill ID:** 10
+- **Name:** UI Wireframes
+- **Description:** Rules for creating UI wireframes and screen layouts in ASCII
+- **Trigger Type:** keyword
+- **Trigger Keywords:** `wireframe,screen layout,ui design,user interface,mockup,prototype,screen design,page layout`
+- **Priority:** 11
+- **Is Active:** true
+- **Is Core:** true
+
+---
+
+## Updated Prompt Content:
+
 ## UI Wireframe Rules
 
 When creating UI wireframes or screen layouts:

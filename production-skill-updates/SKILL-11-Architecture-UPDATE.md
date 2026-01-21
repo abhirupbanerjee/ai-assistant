@@ -1,3 +1,21 @@
+# Production Skill Update: ID 11 - "Architecture Diagrams"
+
+## Action: UPDATE existing skill
+
+## Metadata:
+- **Skill ID:** 11
+- **Name:** Architecture Diagrams
+- **Description:** Rules for conceptual, logical, technical, and implementation architecture diagrams
+- **Trigger Type:** keyword
+- **Trigger Keywords:** `architecture diagram,conceptual diagram,logical diagram,technical diagram,implementation diagram,system architecture,solution architecture,enterprise architecture,component diagram`
+- **Priority:** 12
+- **Is Active:** true
+- **Is Core:** true
+
+---
+
+## Updated Prompt Content:
+
 ## Architecture Diagram Rules
 
 **Mode Detection:**

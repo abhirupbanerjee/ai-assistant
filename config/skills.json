@@ -83,13 +83,13 @@
       "priority": 16
     },
     {
-      "id": "ascii-diagram-rules",
-      "name": "ASCII Diagram Rules",
-      "description": "General ASCII diagram formatting for hierarchies and structures",
-      "file": "ascii-diagram-rules.md",
+      "id": "mindmap-hierarchy",
+      "name": "Mindmap & Hierarchy Diagrams",
+      "description": "Rules for creating mindmaps, org charts, and hierarchical structures",
+      "file": "mindmap-hierarchy.md",
       "triggerType": "keyword",
-      "triggerValue": "diagram,structure,visualize,hierarchy,org chart,organization chart",
-      "priority": 20
+      "triggerValue": "mindmap,mind map,org chart,organization chart,organizational chart,hierarchy,hierarchical,organizational structure,company structure,reporting structure,tree diagram",
+      "priority": 17
     },
     {
       "id": "table-formatting",

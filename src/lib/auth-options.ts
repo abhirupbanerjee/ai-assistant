@@ -11,6 +11,8 @@ const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS || 'abhirup.app,gov.gd')
   .map(d => d.trim().toLowerCase());
 
 export const authOptions: NextAuthOptions = {
+  // @ts-expect-error - trustHost is supported in runtime but not in v4 types yet
+  trustHost: true, // Trust X-Forwarded-* headers from Traefik reverse proxy
   providers: [
     AzureADProvider({
       clientId: process.env.AZURE_AD_CLIENT_ID || '',

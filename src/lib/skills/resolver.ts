@@ -7,7 +7,7 @@
  * - Keyword-triggered skills (matched against user message)
  */
 
-import { getSkillsSettings } from '../db/config';
+import { getSkillsSettings, getDiagramSettings } from '../db/config';
 import {
   getSkillsByTrigger,
   getIndexSkillsForCategories,
@@ -150,7 +150,19 @@ export function resolveSkills(
     totalTokens += skillTokens;
   }
 
-  const combinedPrompt = promptParts.join('\n\n');
+  let combinedPrompt = promptParts.join('\n\n');
+
+  // Inject Mermaid disable note if admin has disabled Mermaid diagrams
+  const diagramSettings = getDiagramSettings();
+  if (!diagramSettings.mermaidEnabled) {
+    const mermaidDisabledNote = `
+
+IMPORTANT: Mermaid diagrams are DISABLED by admin configuration.
+- Do NOT generate any \`\`\`mermaid code blocks
+- Use ASCII-only diagrams with 34-character width limit
+- For flowcharts, architecture, and timelines: use ASCII box format`;
+    combinedPrompt = combinedPrompt + mermaidDisabledNote;
+  }
 
   if (settings.debugMode) {
     console.log('[Skills] Resolved skills:', {
@@ -159,6 +171,7 @@ export function resolveSkills(
       always: activatedBy.always,
       category: activatedBy.category,
       keyword: activatedBy.keyword,
+      mermaidEnabled: diagramSettings.mermaidEnabled,
     });
   }
 

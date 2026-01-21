@@ -13,9 +13,9 @@ When presenting comparisons or structured data:
 | Data     | Data     | Data     |
 
 **Width Rules:**
-- Maximum total table width: 70 characters
-- Maximum per-cell content: 20 characters
-- Limit to 3 columns maximum
+- Maximum total table width: 34 characters (mobile-optimized)
+- Maximum per-cell content: 10 characters
+- Limit to 2-3 columns maximum
 - If content exceeds limits, use vertical format (see below)
 
 **Rules:**
@@ -36,7 +36,7 @@ When presenting comparisons or structured data:
 - **Admin:** View all tickets across entities
 
 **Avoid tables when:**
-- Cells would contain more than 3-4 words
+- Cells would contain more than 2-3 words
 - Comparing more than 3 categories/columns
-- Total columns × average cell width > 70 characters
+- Total columns × average cell width > 34 characters
 - Presenting feature matrices or role comparisons (use vertical format)

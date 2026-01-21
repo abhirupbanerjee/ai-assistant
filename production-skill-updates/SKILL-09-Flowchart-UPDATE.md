@@ -1,3 +1,21 @@
+# Production Skill Update: ID 9 - "Flowchart & Process Diagrams"
+
+## Action: UPDATE existing skill
+
+## Metadata:
+- **Skill ID:** 9
+- **Name:** Flowchart & Process Diagrams
+- **Description:** Rules for creating flowcharts and process diagrams with mode-aware rendering
+- **Trigger Type:** keyword
+- **Trigger Keywords:** `flowchart,process diagram,process flow,workflow,process map,business process,sequence diagram`
+- **Priority:** 10
+- **Is Active:** true
+- **Is Core:** true
+
+---
+
+## Updated Prompt Content:
+
 ## Flowchart & Process Diagram Rules
 
 **Mode Detection:**

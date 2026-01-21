@@ -55,6 +55,10 @@ interface SkillsSettings {
   debugMode: boolean;
 }
 
+interface DiagramSettings {
+  mermaidEnabled: boolean;
+}
+
 interface PreviewResult {
   wouldActivate: { name: string; trigger: string; tokens: number }[];
   totalTokens: number;
@@ -143,6 +147,9 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     maxTotalTokens: 3000,
     debugMode: false,
   });
+  const [diagramSettings, setDiagramSettings] = useState<DiagramSettings>({
+    mermaidEnabled: true,
+  });
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -189,6 +196,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
 
       setSkills(skillsData.skills || []);
       setSettings(skillsData.settings || { enabled: false, maxTotalTokens: 3000, debugMode: false });
+      setDiagramSettings(skillsData.diagramSettings || { mermaidEnabled: true });
       setCategories(categoriesData.categories || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -216,6 +224,30 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save diagram settings
+  const handleSaveDiagramSettings = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'diagrams',
+          settings: diagramSettings,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to save diagram settings');
+
+      setSuccess('Diagram settings saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save diagram settings');
     } finally {
       setSaving(false);
     }
@@ -483,6 +515,34 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
               <div>
                 <span className="font-medium">Debug Mode</span>
                 <p className="text-sm text-gray-500">Log skill activation details</p>
+              </div>
+            </label>
+          </div>
+
+          {/* Diagram Settings */}
+          <div className="p-4 bg-gray-50 rounded-lg border space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-gray-900">Diagram Settings</h4>
+              <Button
+                onClick={handleSaveDiagramSettings}
+                disabled={saving}
+                size="sm"
+              >
+                {saving ? <><Spinner size="sm" /> Saving...</> : <><Save className="h-4 w-4" /> Save</>}
+              </Button>
+            </div>
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={diagramSettings.mermaidEnabled}
+                onChange={(e) => setDiagramSettings({ ...diagramSettings, mermaidEnabled: e.target.checked })}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="font-medium">Enable Mermaid Diagrams</span>
+                <p className="text-sm text-gray-500">
+                  Use Mermaid for flowcharts, architecture diagrams, and timelines in standalone mode. When disabled, all diagrams use ASCII format.
+                </p>
               </div>
             </label>
           </div>

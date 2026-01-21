@@ -24,6 +24,8 @@ import {
   getSummarizationSettings,
   setSummarizationSettings,
   setSkillsSettings,
+  getDiagramSettings,
+  setDiagramSettings,
   getLimitsSettings,
   setLimitsSettings,
   getModelTokenLimits,
@@ -868,6 +870,23 @@ export async function PUT(request: NextRequest) {
           enabled,
           maxTotalTokens,
           debugMode,
+        }, user.email);
+        break;
+      }
+
+      case 'diagrams': {
+        const { mermaidEnabled } = settings;
+
+        // Validate mermaidEnabled flag
+        if (typeof mermaidEnabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Mermaid enabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setDiagramSettings({
+          mermaidEnabled,
         }, user.email);
         break;
       }
