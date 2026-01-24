@@ -15,6 +15,7 @@ import type { Source } from '@/types';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 import VoiceInput from '@/components/chat/VoiceInput';
 import { WorkspaceFileUpload, AttachmentChip } from './WorkspaceFileUpload';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 
 export interface WorkspaceChatMessage {
   id: string;
@@ -72,6 +73,7 @@ export function WorkspaceChatInterface({
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isTouchDevice = useIsTouchDevice();
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -109,7 +111,9 @@ export function WorkspaceChatInterface({
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // On touch devices: Enter creates new line (default behavior)
+    // On desktop: Enter submits, Shift+Enter creates new line
+    if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice) {
       e.preventDefault();
       handleSubmit();
     }
@@ -234,6 +238,7 @@ export function WorkspaceChatInterface({
               placeholder="Type a message..."
               disabled={isStreaming || disabled}
               rows={1}
+              enterKeyHint={isTouchDevice ? 'enter' : 'send'}
               className="flex-1 bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 min-h-[24px] max-h-[150px]"
             />
             <button

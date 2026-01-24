@@ -9,6 +9,7 @@ import WebSearchToggle from './WebSearchToggle';
 import LanguageSelector from './LanguageSelector';
 import ToneSelector from './ToneSelector';
 import type { ChatPreferences } from '@/types/stream';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 
 interface UrlSourceInfo {
   filename: string;
@@ -42,6 +43,7 @@ export default function MessageInput({
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<ChatMode>('normal');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isTouchDevice = useIsTouchDevice();
 
   // Auto-resize textarea
   useEffect(() => {
@@ -74,7 +76,9 @@ export default function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // On touch devices: Enter creates new line (default behavior)
+    // On desktop: Enter submits, Shift+Enter creates new line
+    if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice) {
       e.preventDefault();
       handleSubmit();
     }
@@ -113,6 +117,7 @@ export default function MessageInput({
           placeholder="Ask a question..."
           disabled={disabled}
           rows={1}
+          enterKeyHint={isTouchDevice ? 'enter' : 'send'}
           className="w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 min-h-[40px] max-h-[150px]"
         />
 

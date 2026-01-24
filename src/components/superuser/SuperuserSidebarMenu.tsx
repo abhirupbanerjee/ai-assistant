@@ -284,33 +284,52 @@ export default function SuperuserSidebarMenu({
 
   return (
     <>
-      {/* Mobile: Hamburger Button */}
-      <div className="md:hidden">
-        <button
-          onClick={() => setIsMobileOpen(true)}
-          className="flex items-center gap-2 p-2 text-gray-600 hover:text-gray-900"
-          aria-label="Open menu"
-        >
-          <Menu size={24} />
-          <span className="text-sm font-medium truncate max-w-[200px]">{getCurrentLabel()}</span>
-        </button>
+      {/* Mobile: Icons-only strip + expandable drawer */}
+      <div className="md:hidden flex flex-col shrink-0 bg-white border-r h-[calc(100vh-64px)] w-14">
+        <nav className="py-2 overflow-y-auto flex-1">
+          {MAIN_TABS.map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setIsMobileOpen(true);
+                  // If has submenu, expand it
+                  if (tab.id === 'prompts' || tab.id === 'settings') {
+                    setExpandedMenu(tab.id);
+                  }
+                }}
+                className={`w-full flex justify-center py-3 transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
+                    : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
+                }`}
+                title={tab.label}
+                aria-label={tab.label}
+              >
+                <Icon size={20} />
+              </button>
+            );
+          })}
+        </nav>
+      </div>
 
-        {/* Mobile Overlay */}
-        {isMobileOpen && (
-          <div
-            className="fixed inset-0 bg-black/30 z-30"
-            onClick={() => setIsMobileOpen(false)}
-          />
-        )}
-
-        {/* Mobile Drawer */}
+      {/* Mobile Overlay - shown when drawer is open */}
+      {isMobileOpen && (
         <div
-          className={`fixed top-0 left-0 h-full w-64 bg-white shadow-xl z-40 transform transition-transform duration-200 flex flex-col ${
-            isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-        >
-          <MobileMenuContent showHeader onClose={() => setIsMobileOpen(false)} />
-        </div>
+          className="md:hidden fixed inset-0 bg-black/30 z-30"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile Drawer - slides over the icons strip */}
+      <div
+        className={`md:hidden fixed top-16 left-0 h-[calc(100vh-64px)] w-64 bg-white shadow-xl z-40 transform transition-transform duration-200 flex flex-col ${
+          isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <MobileMenuContent showHeader onClose={() => setIsMobileOpen(false)} />
       </div>
 
       {/* Desktop: Fixed Sidebar with collapse support */}

@@ -17,7 +17,6 @@ import {
 import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
 
 interface ArtifactsPanelProps {
-  isOpen: boolean;
   threadId: string | null;
   uploads: string[];
   generatedDocs: GeneratedDocumentInfo[];
@@ -44,7 +43,6 @@ function getFileIcon(filename: string) {
 }
 
 export default function ArtifactsPanel({
-  isOpen,
   threadId,
   uploads,
   generatedDocs,
@@ -91,8 +89,8 @@ export default function ArtifactsPanel({
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // Don't show panel if externally closed or no thread selected
-  if (!isOpen || !threadId) {
+  // Don't show panel if no thread selected
+  if (!threadId) {
     return null;
   }
 

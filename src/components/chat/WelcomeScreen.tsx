@@ -16,7 +16,7 @@ import Button from '@/components/ui/Button';
 interface WelcomeScreenProps {
   userRole: 'user' | 'superuser' | 'admin';
   brandingName: string;
-  onNewThread: () => void;
+  onNewThread?: () => void;
 }
 
 interface TopicCard {

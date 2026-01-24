@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star
+  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
+  PanelLeftClose, PanelLeftOpen, Share2
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -31,19 +32,17 @@ const getCategoryColor = (categoryId: number) => {
 };
 
 interface ThreadSidebarProps {
-  isOpen: boolean;
-  onToggle: () => void;
   onThreadSelect?: (thread: Thread | null) => void;
   onThreadCreated?: (thread: Thread) => void;
   selectedThreadId?: string | null;
+  onShareThread?: (thread: Thread) => void;
 }
 
 export default function ThreadSidebar({
-  isOpen,
-  onToggle,
   onThreadSelect,
   onThreadCreated,
   selectedThreadId,
+  onShareThread,
 }: ThreadSidebarProps) {
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -56,6 +55,19 @@ export default function ThreadSidebar({
   const [creating, setCreating] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
+
+  // Collapsed state - persisted to localStorage
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('thread-sidebar-collapsed') === 'true';
+    }
+    return false;
+  });
+
+  // Persist collapsed state
+  useEffect(() => {
+    localStorage.setItem('thread-sidebar-collapsed', String(isCollapsed));
+  }, [isCollapsed]);
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
@@ -223,15 +235,118 @@ export default function ThreadSidebar({
   const pinnedThreads = filteredThreads.filter(t => t.isPinned);
   const otherThreads = filteredThreads.filter(t => !t.isPinned);
 
-  // Don't render if collapsed on desktop
-  if (!isOpen) {
-    return null;
+  // Collapsed view
+  if (isCollapsed) {
+    return (
+      <>
+        <aside className="w-14 bg-white border-r flex flex-col shrink-0 h-full items-center py-4 gap-3">
+          <button
+            onClick={() => setIsCollapsed(false)}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Expand threads panel"
+          >
+            <PanelLeftOpen size={20} />
+          </button>
+
+          {/* New thread button */}
+          <button
+            onClick={openNewThreadModal}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="New thread"
+          >
+            <Plus size={20} />
+          </button>
+
+          {/* Thread count */}
+          {threads.length > 0 && (
+            <div className="flex flex-col items-center gap-1">
+              <MessageSquare size={16} className="text-gray-400" />
+              <span className="text-xs font-medium text-gray-600">{threads.length}</span>
+            </div>
+          )}
+        </aside>
+
+        {/* New Thread modal (still needed when collapsed) */}
+        <Modal
+          isOpen={showNewThreadModal}
+          onClose={() => setShowNewThreadModal(false)}
+          title="New Thread"
+          allowOverflow
+        >
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="thread-title" className="block text-sm font-medium text-gray-700 mb-1">
+                Title (optional)
+              </label>
+              <input
+                id="thread-title"
+                type="text"
+                value={newThreadTitle}
+                onChange={(e) => setNewThreadTitle(e.target.value)}
+                placeholder="New Thread"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category{requiresSingleCategory ? ' *' : ' (optional)'}
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                {requiresSingleCategory
+                  ? 'Select a category for this thread'
+                  : 'Select categories to scope RAG queries for this thread'}
+              </p>
+              <CategorySelector
+                selectedIds={newThreadCategories}
+                onChange={setNewThreadCategories}
+                placeholder={requiresSingleCategory ? 'Select a category...' : 'All available documents'}
+                singleSelect={requiresSingleCategory}
+              />
+              {requiresSingleCategory && newThreadCategories.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  You must select a category to create a thread
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              variant="secondary"
+              onClick={() => setShowNewThreadModal(false)}
+              disabled={creating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={createNewThread}
+              loading={creating}
+              disabled={requiresSingleCategory && newThreadCategories.length === 0}
+            >
+              Create Thread
+            </Button>
+          </div>
+        </Modal>
+      </>
+    );
   }
 
+  // Expanded view
   return (
     <>
       {/* Sidebar */}
       <aside className="w-72 bg-white border-r flex flex-col shrink-0 h-full">
+        {/* Header with collapse button */}
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <span className="font-medium text-gray-900">Threads</span>
+          <button
+            onClick={() => setIsCollapsed(true)}
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+            title="Collapse panel"
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        </div>
+
         {/* New Thread Button */}
         <div className="p-4 border-b">
           <Button onClick={openNewThreadModal} className="w-full">
@@ -358,6 +473,18 @@ export default function ThreadSidebar({
                           >
                             <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
                           </button>
+                          {onShareThread && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onShareThread(thread);
+                              }}
+                              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                              title="Share thread"
+                            >
+                              <Share2 size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -446,6 +573,18 @@ export default function ThreadSidebar({
                           >
                             <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
                           </button>
+                          {onShareThread && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onShareThread(thread);
+                              }}
+                              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                              title="Share thread"
+                            >
+                              <Share2 size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

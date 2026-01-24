@@ -18,23 +18,7 @@ export default function Home() {
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
   const [showShareModal, setShowShareModal] = useState(false);
-
-  // Sidebar visibility states (persisted to localStorage)
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('left-sidebar-open');
-      return saved !== null ? saved === 'true' : true;
-    }
-    return true;
-  });
-
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('right-sidebar-open');
-      return saved !== null ? saved === 'true' : true;
-    }
-    return true;
-  });
+  const [shareThread, setShareThread] = useState<Thread | null>(null);
 
   // Artifacts state (lifted from ChatWindow)
   const [artifactsData, setArtifactsData] = useState<{
@@ -50,15 +34,6 @@ export default function Home() {
     generatedImages: [],
     urlSources: [],
   });
-
-  // Persist sidebar states
-  useEffect(() => {
-    localStorage.setItem('left-sidebar-open', String(leftSidebarOpen));
-  }, [leftSidebarOpen]);
-
-  useEffect(() => {
-    localStorage.setItem('right-sidebar-open', String(rightSidebarOpen));
-  }, [rightSidebarOpen]);
 
   // Load user subscriptions and branding on mount
   useEffect(() => {
@@ -91,6 +66,12 @@ export default function Home() {
   const handleThreadCreated = (thread: Thread) => {
     setActiveThread(thread);
   };
+
+  const handleShareThread = useCallback((thread: Thread) => {
+    setShareThread(thread);
+    setActiveThread(thread); // Select the thread
+    setShowShareModal(true);
+  }, []);
 
   const handleArtifactsChange = useCallback((data: {
     threadId: string | null;
@@ -162,26 +143,17 @@ export default function Home() {
 
   return (
     <div className="fixed-layout bg-gray-50">
-      {/* Full-width header */}
-      <AppHeader
-        title={getHeaderTitle()}
-        onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
-        onToggleRightSidebar={() => setRightSidebarOpen(!rightSidebarOpen)}
-        leftSidebarOpen={leftSidebarOpen}
-        rightSidebarOpen={rightSidebarOpen}
-        showShareButton={!!activeThread}
-        onShare={() => setShowShareModal(true)}
-      />
+      {/* Full-width header - clean, only bot icon and name */}
+      <AppHeader title={getHeaderTitle()} />
 
       {/* Content area with sidebars */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left sidebar - Thread list */}
+        {/* Left sidebar - Thread list (manages its own collapsed state) */}
         <ThreadSidebar
-          isOpen={leftSidebarOpen}
-          onToggle={() => setLeftSidebarOpen(!leftSidebarOpen)}
           onThreadSelect={handleThreadSelect}
           onThreadCreated={handleThreadCreated}
           selectedThreadId={activeThread?.id}
+          onShareThread={handleShareThread}
         />
 
         {/* Main content area */}
@@ -203,20 +175,12 @@ export default function Home() {
             <WelcomeScreen
               userRole={userRole || 'user'}
               brandingName={brandingName}
-              onNewThread={() => {
-                // Trigger new thread modal in ThreadSidebar
-                // For now, just open the sidebar if closed
-                if (!leftSidebarOpen) {
-                  setLeftSidebarOpen(true);
-                }
-              }}
             />
           )}
         </main>
 
-        {/* Right sidebar - Artifacts panel */}
+        {/* Right sidebar - Artifacts panel (manages its own collapsed state) */}
         <ArtifactsPanel
-          isOpen={rightSidebarOpen}
           threadId={artifactsData.threadId}
           uploads={artifactsData.uploads}
           generatedDocs={artifactsData.generatedDocs}
