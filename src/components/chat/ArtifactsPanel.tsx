@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -15,6 +15,8 @@ import {
   PanelRightOpen
 } from 'lucide-react';
 import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
+import { useResizableSidebar } from '@/hooks/useResizableSidebar';
+import ResizeHandle from '@/components/ui/ResizeHandle';
 
 interface ArtifactsPanelProps {
   threadId: string | null;
@@ -51,11 +53,20 @@ export default function ArtifactsPanel({
   onRemoveUpload,
   onRemoveUrlSource,
 }: ArtifactsPanelProps) {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('artifacts-panel-collapsed') === 'true';
-    }
-    return false;
+  // Resizable sidebar hook - handles width and collapsed state
+  const {
+    width,
+    isCollapsed,
+    isResizing,
+    setIsCollapsed,
+    handleMouseDown,
+  } = useResizableSidebar({
+    storageKeyPrefix: 'artifacts-panel',
+    defaultWidth: 288,
+    minWidth: 200,
+    maxWidth: 500,
+    collapseThreshold: 120,
+    side: 'right',
   });
 
   const [expandedSections, setExpandedSections] = useState<SectionState>({
@@ -64,11 +75,6 @@ export default function ArtifactsPanel({
     webSources: true,
     youtube: true,
   });
-
-  // Persist collapsed state
-  useEffect(() => {
-    localStorage.setItem('artifacts-panel-collapsed', String(isCollapsed));
-  }, [isCollapsed]);
 
   // Separate URL sources by type
   const webSources = urlSources.filter(s => s.sourceType === 'web');
@@ -117,7 +123,19 @@ export default function ArtifactsPanel({
 
   // Expanded view
   return (
-    <div className="w-72 bg-white border-l flex flex-col h-full">
+    <div
+      className="bg-white border-l flex flex-col h-full relative"
+      style={{ width: `${width}px` }}
+    >
+      {/* Resize handle - desktop only */}
+      <div className="hidden md:block">
+        <ResizeHandle
+          side="left"
+          onMouseDown={handleMouseDown}
+          isResizing={isResizing}
+        />
+      </div>
+
       {/* Header */}
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">

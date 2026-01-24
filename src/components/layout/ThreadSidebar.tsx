@@ -11,6 +11,8 @@ import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
+import { useResizableSidebar } from '@/hooks/useResizableSidebar';
+import ResizeHandle from '@/components/ui/ResizeHandle';
 
 // Color palette for subscription badges
 const SUBSCRIPTION_COLORS = [
@@ -56,18 +58,21 @@ export default function ThreadSidebar({
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
 
-  // Collapsed state - persisted to localStorage
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('thread-sidebar-collapsed') === 'true';
-    }
-    return false;
+  // Resizable sidebar hook - handles width and collapsed state
+  const {
+    width,
+    isCollapsed,
+    isResizing,
+    setIsCollapsed,
+    handleMouseDown,
+  } = useResizableSidebar({
+    storageKeyPrefix: 'thread-sidebar',
+    defaultWidth: 288,
+    minWidth: 200,
+    maxWidth: 500,
+    collapseThreshold: 120,
+    side: 'left',
   });
-
-  // Persist collapsed state
-  useEffect(() => {
-    localStorage.setItem('thread-sidebar-collapsed', String(isCollapsed));
-  }, [isCollapsed]);
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
@@ -334,7 +339,18 @@ export default function ThreadSidebar({
   return (
     <>
       {/* Sidebar */}
-      <aside className="w-72 bg-white border-r flex flex-col shrink-0 h-full">
+      <aside
+        className="bg-white border-r flex flex-col shrink-0 h-full relative"
+        style={{ width: `${width}px` }}
+      >
+        {/* Resize handle - desktop only */}
+        <div className="hidden md:block">
+          <ResizeHandle
+            side="right"
+            onMouseDown={handleMouseDown}
+            isResizing={isResizing}
+          />
+        </div>
         {/* Header with collapse button */}
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <span className="font-medium text-gray-900">Threads</span>
