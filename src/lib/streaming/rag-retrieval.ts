@@ -267,15 +267,14 @@ export async function performRAGRetrieval(
     }
   }
 
-  // Inject memory context
+  // Inject memory context into system prompt
   if (memoryContext?.trim()) {
     systemPrompt = `${systemPrompt}\n\n${memoryContext}`;
   }
 
-  // Inject summary context
-  if (summaryContext?.trim()) {
-    systemPrompt = `${systemPrompt}\n\n${summaryContext}`;
-  }
+  // Note: Summary context is NOT injected here - it's passed separately to
+  // generateResponseWithTools which positions it dynamically based on
+  // follow-up detection via the conversation-context module
 
   // Get available tools
   const toolDefs = getToolDefinitions(categoryIds);

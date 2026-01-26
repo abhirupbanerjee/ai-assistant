@@ -17,7 +17,7 @@ import { readFileBuffer } from '@/lib/storage';
 import { linkOutputsToMessage } from '@/lib/db/threads';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
-import { getMemorySettings, getSummarizationSettings, getLimitsSettings } from '@/lib/db/config';
+import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
 import { runWithContextAsync } from '@/lib/request-context';
 import { generateResponseWithTools } from '@/lib/openai';
 import {
@@ -122,7 +122,6 @@ export async function POST(request: NextRequest) {
         const dbUser = getUserByEmail(user.email);
         const memorySettings = getMemorySettings();
         const summarizationSettings = getSummarizationSettings();
-        const limitsSettings = getLimitsSettings();
 
         // Create and save user message
         const userMessageId = uuidv4();
@@ -321,10 +320,6 @@ export async function POST(request: NextRequest) {
             const images: GeneratedImageInfo[] = [];
             const webSources: Source[] = [];
 
-            // Build messages for tool execution
-            const historyLimit = limitsSettings.conversationHistoryMessages;
-            const recentHistory = conversationHistory.slice(0, -1).slice(-historyLimit);
-
             // Prepare system prompt with tone injection if needed
             let effectiveSystemPrompt = ragResult.systemPrompt;
             if (responseTone && responseTone !== 'default' && TONE_PRESETS[responseTone]) {
@@ -340,9 +335,11 @@ export async function POST(request: NextRequest) {
 
             // Execute tools with streaming callbacks
             // Pass images for multimodal visual analysis (in addition to OCR text in context)
+            // Uses conversation context manager for smart history (anchors + recent),
+            // follow-up detection, and context-aware cache keys
             const toolResult = await generateResponseWithTools(
               effectiveSystemPrompt,
-              recentHistory,
+              conversationHistory.slice(0, -1), // Full history, context manager optimizes
               ragResult.context,
               message,
               true, // Enable tools
@@ -371,6 +368,9 @@ export async function POST(request: NextRequest) {
                 },
               },
               imageContents.length > 0 ? imageContents : undefined,
+              summaryContext, // Summary context for dynamic positioning
+              memoryContext, // Memory context for cache key
+              categorySlugs, // Category slugs for cache key
               excludeTools
             );
 

@@ -472,24 +472,29 @@ export async function ragQuery(
     }
   }
 
-  // Inject memory context if available
+  // Inject memory context into system prompt
   if (memoryContext && memoryContext.trim()) {
     systemPrompt = `${systemPrompt}\n\n${memoryContext}`;
   }
 
-  // Inject summary context if available
-  if (summaryContext && summaryContext.trim()) {
-    systemPrompt = `${systemPrompt}\n\n${summaryContext}`;
-  }
+  // Note: Summary context is NOT injected here - it's passed separately to
+  // generateResponseWithTools which positions it dynamically based on
+  // follow-up detection via the conversation-context module
 
   // Generate response with tools (web search, function APIs)
-  const { content: answer, fullHistory } = await generateResponseWithTools(
+  // Includes conversation context management for follow-up detection and smart caching
+  const { content: answer, fullHistory, cacheKey, cacheable } = await generateResponseWithTools(
     systemPrompt,
     conversationHistory,
     context,
     userMessage,
     true, // Enable tools
-    categoryIds // Pass category IDs for dynamic Function API tools
+    categoryIds, // Pass category IDs for dynamic Function API tools
+    undefined, // callbacks (not used in non-streaming)
+    undefined, // images (not used in non-streaming)
+    summaryContext, // Summary context for dynamic positioning
+    memoryContext, // Memory context for cache key
+    categorySlugs // Category slugs for cache key
   );
 
   // Extract sources from RAG (use reranked chunks for accurate scores)
@@ -510,10 +515,11 @@ export async function ragQuery(
 
   const response: RAGResponse = { answer, sources, generatedDocuments, generatedImages, visualizations };
 
-  // Cache response (only for queries without user documents and if caching is enabled)
-  if (cacheEnabled && userDocPaths.length === 0) {
-    const queryHash = hashQuery(cacheKeyBase);
-    await cacheQuery(queryHash, JSON.stringify(response), cacheTTLSeconds);
+  // Cache response using context-aware cache key
+  // Only cache if: caching enabled, no user documents, and response is cacheable
+  // (cacheable=false for follow-ups and conversations with summaries)
+  if (cacheEnabled && userDocPaths.length === 0 && cacheable) {
+    await cacheQuery(cacheKey, JSON.stringify(response), cacheTTLSeconds);
   }
 
   return response;

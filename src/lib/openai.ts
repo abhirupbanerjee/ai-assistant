@@ -10,6 +10,12 @@ import {
   MAX_TOOL_CALL_ITERATIONS,
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
 } from './constants';
+import {
+  buildConversationContext,
+  formatUserMessage,
+  getHistoryForAPI,
+  type ConversationContext,
+} from './conversation-context';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -119,11 +125,16 @@ export async function generateResponseWithTools(
   categoryIds?: number[],
   callbacks?: StreamingCallbacks,
   images?: ImageContent[],
+  summaryContext?: string,
+  memoryContext?: string,
+  categorySlugs?: string[],
   excludeTools?: string[]
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
   fullHistory: OpenAI.Chat.ChatCompletionMessageParam[];
+  cacheKey: string;
+  cacheable: boolean;
 }> {
   const llmSettings = getLlmSettings();
   const openai = getOpenAI();
@@ -136,15 +147,31 @@ export async function generateResponseWithTools(
     logger.warn(`Model ${llmSettings.model} does not support tools, disabling`);
   }
 
+  // Build unified conversation context with anchors, follow-up detection, and cache keys
+  const limitsSettings = getLimitsSettings();
+  const ctx = buildConversationContext(conversationHistory, userMessage, {
+    maxMessages: limitsSettings.conversationHistoryMessages,
+    maxTokens: 6000,
+    summaryContext,
+    memoryContext,
+    categorySlugs,
+  });
+
+  // Log context info for debugging
+  if (ctx.followUp.isFollowUp) {
+    logger.debug('Follow-up detected', {
+      confidence: ctx.followUp.confidence,
+      historyCount: ctx.history.all.length,
+    });
+  }
+
   // Build messages array
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
   ];
 
-  // Add conversation history (configurable limit, including tool calls)
-  const limitsSettings = getLimitsSettings();
-  const historyLimit = limitsSettings.conversationHistoryMessages;
-  for (const msg of conversationHistory.slice(-historyLimit)) {
+  // Add conversation history from context manager (anchors + recent)
+  for (const msg of getHistoryForAPI(ctx)) {
     if (msg.role === 'tool') {
       messages.push({
         role: 'tool',
@@ -165,8 +192,8 @@ export async function generateResponseWithTools(
     }
   }
 
-  // Add context + user question (with optional images for multimodal)
-  const textContent = `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`;
+  // Format user message with proper context ordering (follow-up hint, summary, RAG)
+  const textContent = formatUserMessage(ctx, context, userMessage);
 
   if (images && images.length > 0) {
     // Build multimodal content with images
@@ -411,6 +438,8 @@ export async function generateResponseWithTools(
     content: responseMessage.content || '',
     toolCalls: responseMessage.tool_calls as ToolCall[] | undefined,
     fullHistory: messages,
+    cacheKey: ctx.cache.key,
+    cacheable: ctx.cache.isCacheable,
   };
 }
 
