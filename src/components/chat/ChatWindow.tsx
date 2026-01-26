@@ -36,6 +36,9 @@ interface ChatWindowProps {
     generatedImages: GeneratedImageInfo[];
     urlSources: UrlSource[];
   }) => void;
+  // Callbacks for input focus (mobile sidebar hiding)
+  onInputFocus?: () => void;
+  onInputBlur?: () => void;
 }
 
 // Ref interface for external control
@@ -61,6 +64,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   showShareModal = false,
   onCloseShareModal,
   onArtifactsChange,
+  onInputFocus,
+  onInputBlur,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -631,6 +636,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onUrlSourceAdded={handleUrlSourceAdded}
         preferences={chatPreferences}
         onPreferencesChange={setChatPreferences}
+        onFocus={onInputFocus}
+        onBlur={onInputBlur}
       />
 
       {/* Share Modal */}

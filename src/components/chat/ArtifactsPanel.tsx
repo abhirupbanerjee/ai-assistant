@@ -26,6 +26,7 @@ interface ArtifactsPanelProps {
   urlSources: UrlSource[];
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
+  hidden?: boolean; // For mobile: hide when input is focused
 }
 
 interface SectionState {
@@ -52,6 +53,7 @@ export default function ArtifactsPanel({
   urlSources,
   onRemoveUpload,
   onRemoveUrlSource,
+  hidden = false,
 }: ArtifactsPanelProps) {
   // Resizable sidebar hook - handles width and collapsed state
   const {
@@ -94,6 +96,11 @@ export default function ArtifactsPanel({
   const toggleSection = (section: keyof SectionState) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
+
+  // Hidden state (mobile input focused)
+  if (hidden) {
+    return null;
+  }
 
   // Don't show panel if no thread selected
   if (!threadId) {

@@ -38,6 +38,7 @@ interface ThreadSidebarProps {
   onThreadCreated?: (thread: Thread) => void;
   selectedThreadId?: string | null;
   onShareThread?: (thread: Thread) => void;
+  hidden?: boolean; // For mobile: hide when input is focused
 }
 
 export default function ThreadSidebar({
@@ -45,6 +46,7 @@ export default function ThreadSidebar({
   onThreadCreated,
   selectedThreadId,
   onShareThread,
+  hidden = false,
 }: ThreadSidebarProps) {
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -239,6 +241,11 @@ export default function ThreadSidebar({
   // Then apply pin grouping
   const pinnedThreads = filteredThreads.filter(t => t.isPinned);
   const otherThreads = filteredThreads.filter(t => !t.isPinned);
+
+  // Hidden state (mobile input focused)
+  if (hidden) {
+    return null;
+  }
 
   // Collapsed view
   if (isCollapsed) {

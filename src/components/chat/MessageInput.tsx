@@ -3,13 +3,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowUp } from 'lucide-react';
 import VoiceInput from './VoiceInput';
-import FileUpload from './FileUpload';
-import ModeToggle, { ChatMode } from './ModeToggle';
-import WebSearchToggle from './WebSearchToggle';
-import LanguageSelector from './LanguageSelector';
-import ToneSelector from './ToneSelector';
+import PlusMenu from './PlusMenu';
+import { ChatMode } from './ModeToggle';
 import type { ChatPreferences } from '@/types/stream';
-import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 
 interface UrlSourceInfo {
   filename: string;
@@ -28,6 +25,9 @@ interface MessageInputProps {
   // Chat preferences
   preferences: ChatPreferences;
   onPreferencesChange: (preferences: ChatPreferences) => void;
+  // Focus callbacks for sidebar hiding (mobile)
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export default function MessageInput({
@@ -39,20 +39,22 @@ export default function MessageInput({
   onUrlSourceAdded,
   preferences,
   onPreferencesChange,
+  onFocus,
+  onBlur,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<ChatMode>('normal');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isTouchDevice = useIsTouchDevice();
+  const isMobile = useIsMobile();
 
   // Auto-resize textarea with different max heights for mobile vs desktop
   useEffect(() => {
     if (textareaRef.current) {
-      const maxHeight = isTouchDevice ? 112 : 150; // Mobile: 4 lines, Desktop: ~6 lines
+      const maxHeight = isMobile ? 112 : 150; // Mobile: 4 lines, Desktop: ~6 lines
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, maxHeight)}px`;
     }
-  }, [message, isTouchDevice]);
+  }, [message, isMobile]);
 
   const handleSubmit = () => {
     if (message.trim() && !disabled) {
@@ -77,11 +79,18 @@ export default function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // On touch devices: Enter creates new line (default behavior)
-    // On desktop: Enter submits, Shift+Enter creates new line
-    if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice) {
-      e.preventDefault();
-      handleSubmit();
+    if (e.key === 'Enter') {
+      if (isMobile) {
+        // Mobile: Enter = new line (default behavior)
+        return;
+      } else {
+        // Desktop: Enter = submit, Ctrl+Enter = new line
+        if (e.ctrlKey || e.metaKey) {
+          return; // Allow new line with Ctrl/Cmd+Enter
+        }
+        e.preventDefault();
+        handleSubmit();
+      }
     }
   };
 
@@ -90,7 +99,15 @@ export default function MessageInput({
     textareaRef.current?.focus();
   };
 
-  // Reusable uploads indicator
+  const handleFocus = () => {
+    onFocus?.();
+  };
+
+  const handleBlur = () => {
+    onBlur?.();
+  };
+
+  // Uploads indicator
   const UploadsIndicator = () =>
     currentUploads.length > 0 ? (
       <div className="flex items-center gap-2 mb-2 text-sm">
@@ -106,7 +123,7 @@ export default function MessageInput({
       </div>
     ) : null;
 
-  // Reusable send button
+  // Send button
   const SendButton = () => (
     <button
       onClick={handleSubmit}
@@ -128,112 +145,53 @@ export default function MessageInput({
     </button>
   );
 
-  // Mobile layout: Voice + Textarea + Send in main row, tools below
-  if (isTouchDevice) {
-    return (
-      <div className="bg-white p-4 safe-area-bottom">
-        <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
-          <UploadsIndicator />
-
-          {/* Main row: Voice + Textarea + Send */}
-          <div className="flex items-end gap-2">
-            <div className="flex-shrink-0 pb-0.5">
-              <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
-            </div>
-            <textarea
-              ref={textareaRef}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask a question..."
-              disabled={disabled}
-              rows={2}
-              enterKeyHint="enter"
-              className="flex-1 bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 min-h-[56px] max-h-[112px]"
-            />
-            <div className="flex-shrink-0 pb-0.5">
-              <SendButton />
-            </div>
-          </div>
-
-          {/* Tools row: centered */}
-          <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-gray-200">
-            <FileUpload
-              threadId={threadId}
-              currentUploads={currentUploads}
-              onUploadComplete={onUploadComplete}
-              onUrlSourceAdded={onUrlSourceAdded}
-              disabled={disabled}
-            />
-            <WebSearchToggle
-              enabled={preferences.webSearchEnabled}
-              onToggle={handleWebSearchToggle}
-              disabled={disabled}
-            />
-            <LanguageSelector
-              selectedLanguage={preferences.targetLanguage}
-              onLanguageChange={handleLanguageChange}
-              disabled={disabled}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Desktop layout: current layout unchanged
+  // Unified layout for both mobile and desktop
   return (
     <div className="bg-white p-4 safe-area-bottom">
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
         <UploadsIndicator />
 
-        {/* Textarea */}
+        {/* Textarea - responsive sizing */}
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           placeholder="Ask a question..."
           disabled={disabled}
-          rows={1}
-          enterKeyHint="send"
-          className="w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 min-h-[40px] max-h-[150px]"
+          rows={isMobile ? 2 : 1}
+          enterKeyHint={isMobile ? 'enter' : 'send'}
+          className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${
+            isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[150px]'
+          }`}
         />
 
-        {/* Bottom row: actions + send */}
+        {/* Bottom row: Voice + Plus menu + Submit */}
         <div className="flex items-center justify-between mt-2">
-          {/* Left actions */}
+          {/* Left actions: Voice + Plus menu */}
           <div className="flex items-center gap-1">
-            <FileUpload
+            <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
+            <PlusMenu
               threadId={threadId}
               currentUploads={currentUploads}
               onUploadComplete={onUploadComplete}
               onUrlSourceAdded={onUrlSourceAdded}
-              disabled={disabled}
-            />
-            <ModeToggle mode={mode} onModeChange={setMode} disabled={disabled} />
-            <WebSearchToggle
-              enabled={preferences.webSearchEnabled}
-              onToggle={handleWebSearchToggle}
-              disabled={disabled}
-            />
-            <LanguageSelector
+              mode={mode}
+              onModeChange={setMode}
+              webSearchEnabled={preferences.webSearchEnabled}
+              onWebSearchToggle={handleWebSearchToggle}
               selectedLanguage={preferences.targetLanguage}
               onLanguageChange={handleLanguageChange}
-              disabled={disabled}
-            />
-            <ToneSelector
               selectedTone={preferences.responseTone}
               onToneChange={handleToneChange}
               disabled={disabled}
             />
           </div>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-1">
-            <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
-            <SendButton />
-          </div>
+          {/* Right action: Send */}
+          <SendButton />
         </div>
       </div>
     </div>

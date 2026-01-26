@@ -9,6 +9,7 @@ import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
 
 export default function Home() {
@@ -19,6 +20,8 @@ export default function Home() {
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareThread, setShareThread] = useState<Thread | null>(null);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const isMobile = useIsMobile();
 
   // Artifacts state (lifted from ChatWindow)
   const [artifactsData, setArtifactsData] = useState<{
@@ -135,6 +138,18 @@ export default function Home() {
     }
   }, [artifactsData.threadId]);
 
+  // Input focus handlers for hiding sidebars on mobile
+  const handleInputFocus = useCallback(() => {
+    setIsInputFocused(true);
+  }, []);
+
+  const handleInputBlur = useCallback(() => {
+    setIsInputFocused(false);
+  }, []);
+
+  // Determine if sidebars should be hidden (mobile + input focused)
+  const hideSidebars = isMobile && isInputFocused;
+
   // Header always shows the bot name (branding)
   const getHeaderTitle = () => brandingName;
 
@@ -154,6 +169,7 @@ export default function Home() {
           onThreadCreated={handleThreadCreated}
           selectedThreadId={activeThread?.id}
           onShareThread={handleShareThread}
+          hidden={hideSidebars}
         />
 
         {/* Main content area */}
@@ -169,6 +185,8 @@ export default function Home() {
                 showShareModal={showShareModal}
                 onCloseShareModal={() => setShowShareModal(false)}
                 onArtifactsChange={handleArtifactsChange}
+                onInputFocus={handleInputFocus}
+                onInputBlur={handleInputBlur}
               />
             </ErrorBoundary>
           ) : (
@@ -188,6 +206,7 @@ export default function Home() {
           urlSources={artifactsData.urlSources}
           onRemoveUpload={handleRemoveUpload}
           onRemoveUrlSource={handleRemoveUrlSource}
+          hidden={hideSidebars}
         />
       </div>
 
