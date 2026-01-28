@@ -110,7 +110,7 @@ interface AvailableModel {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
-type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent';
+type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent' | 'ocr';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
 
@@ -188,6 +188,20 @@ interface ModelTokenLimitsState {
   limits: Record<string, number | 'default'>;
   updatedAt?: string;
   updatedBy?: string;
+}
+
+type OcrProvider = 'mistral' | 'azure-di' | 'pdf-parse';
+
+interface OcrProviderConfig {
+  provider: OcrProvider;
+  enabled: boolean;
+}
+
+interface OcrSettings {
+  providers: OcrProviderConfig[];
+  updatedAt?: string;
+  updatedBy?: string;
+  providerAvailability?: Record<string, boolean>;
 }
 
 interface StarterPrompt {
@@ -469,6 +483,9 @@ export default function AdminPage() {
   const [tokenLimitsModified, setTokenLimitsModified] = useState(false);
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [rerankerStatusLoading, setRerankerStatusLoading] = useState(true);
+  const [ocrSettings, setOcrSettingsState] = useState<OcrSettings | null>(null);
+  const [editedOcr, setEditedOcr] = useState<OcrProviderConfig[] | null>(null);
+  const [ocrModified, setOcrModified] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -697,6 +714,10 @@ export default function AdminPage() {
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
       }
+      if (data.ocr) {
+        setOcrSettingsState(data.ocr);
+        setEditedOcr(data.ocr.providers.map((p: OcrProviderConfig) => ({ ...p })));
+      }
       if (data.models?.transcription) {
         setTranscriptionModel(data.models.transcription);
       }
@@ -711,6 +732,7 @@ export default function AdminPage() {
       setLimitsModified(false);
       setUploadModified(false);
       setTokenLimitsModified(false);
+      setOcrModified(false);
 
       // Load superuser settings separately
       try {
@@ -1970,6 +1992,59 @@ export default function AdminPage() {
       });
       setRerankerModified(false);
     }
+  };
+
+  // OCR settings handlers
+  const handleSaveOcr = async () => {
+    if (!editedOcr || !ocrModified) return;
+
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'ocr', settings: { providers: editedOcr } }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save OCR settings');
+      }
+
+      // Refresh settings to get updated metadata
+      setOcrSettingsState(prev => prev ? { ...prev, providers: editedOcr } : null);
+      setOcrModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save OCR settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetOcr = () => {
+    if (ocrSettings) {
+      setEditedOcr(ocrSettings.providers.map(p => ({ ...p })));
+      setOcrModified(false);
+    }
+  };
+
+  const handleMoveOcrProvider = (index: number, direction: 'up' | 'down') => {
+    if (!editedOcr) return;
+    const newProviders = [...editedOcr];
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= newProviders.length) return;
+    [newProviders[index], newProviders[swapIndex]] = [newProviders[swapIndex], newProviders[index]];
+    setEditedOcr(newProviders);
+    setOcrModified(true);
+  };
+
+  const handleToggleOcrProvider = (index: number) => {
+    if (!editedOcr) return;
+    const newProviders = [...editedOcr];
+    newProviders[index] = { ...newProviders[index], enabled: !newProviders[index].enabled };
+    setEditedOcr(newProviders);
+    setOcrModified(true);
   };
 
   // Memory settings handlers
@@ -4240,6 +4315,153 @@ export default function AdminPage() {
                       </div>
                     ) : null}
                   </div>
+                </div>
+              )}
+
+              {/* Document Processing (OCR) Section */}
+              {settingsSection === 'ocr' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Document Processing</h2>
+                        <p className="text-sm text-gray-500">Configure OCR providers and their priority order for document text extraction</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {ocrModified && (
+                          <Button variant="secondary" onClick={handleResetOcr} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveOcr} disabled={!ocrModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedOcr ? (
+                    <div className="p-6 space-y-4">
+                      <p className="text-sm text-gray-600 mb-4">
+                        Drag providers to set priority order. The first enabled provider will be tried first, falling back to subsequent providers on failure.
+                      </p>
+
+                      {editedOcr.map((providerConfig, index) => {
+                        const info: Record<string, { label: string; description: string; formats: string; envVars: string }> = {
+                          'mistral': {
+                            label: 'Mistral OCR',
+                            description: 'AI-powered OCR for PDFs and images',
+                            formats: 'PDF, PNG, JPG, WEBP, GIF',
+                            envVars: 'MISTRAL_API_KEY',
+                          },
+                          'azure-di': {
+                            label: 'Azure Document Intelligence',
+                            description: 'Enterprise OCR for all document formats',
+                            formats: 'PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF',
+                            envVars: 'AZURE_DI_ENDPOINT, AZURE_DI_KEY',
+                          },
+                          'pdf-parse': {
+                            label: 'PDF Parse',
+                            description: 'Free local PDF text extraction (no API key required)',
+                            formats: 'PDF only',
+                            envVars: 'None',
+                          },
+                        };
+                        const providerInfo = info[providerConfig.provider];
+                        const isAvailable = ocrSettings?.providerAvailability?.[providerConfig.provider] ?? false;
+                        const priorityLabel = index === 0 ? 'Primary' : index === 1 ? 'Secondary' : 'Fallback';
+
+                        return (
+                          <div
+                            key={providerConfig.provider}
+                            className={`border rounded-lg p-4 ${
+                              providerConfig.enabled ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200 bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-start gap-3 flex-1">
+                                {/* Priority reorder buttons */}
+                                <div className="flex flex-col gap-0.5 pt-0.5">
+                                  <button
+                                    onClick={() => handleMoveOcrProvider(index, 'up')}
+                                    disabled={index === 0}
+                                    className="p-0.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Move up"
+                                  >
+                                    <ChevronUp size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleMoveOcrProvider(index, 'down')}
+                                    disabled={index === editedOcr.length - 1}
+                                    className="p-0.5 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Move down"
+                                  >
+                                    <ChevronDown size={16} />
+                                  </button>
+                                </div>
+
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-medium text-gray-900">{providerInfo.label}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                      index === 0 ? 'bg-blue-100 text-blue-700' :
+                                      index === 1 ? 'bg-gray-100 text-gray-700' :
+                                      'bg-gray-100 text-gray-500'
+                                    }`}>
+                                      {priorityLabel}
+                                    </span>
+                                    {isAvailable ? (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                        Configured
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                                        Not Configured
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-600">{providerInfo.description}</p>
+                                  <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                                    <span><strong>Formats:</strong> {providerInfo.formats}</span>
+                                    <span><strong>Env:</strong> {providerInfo.envVars}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Enable/Disable toggle */}
+                              <div className="flex items-center gap-2 pt-1">
+                                <span className="text-sm text-gray-600">{providerConfig.enabled ? 'Enabled' : 'Disabled'}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={providerConfig.enabled}
+                                  onChange={() => handleToggleOcrProvider(index)}
+                                  className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Info note */}
+                      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-sm text-amber-800">
+                          <strong>Note:</strong> Providers require their environment variables to be configured to function.
+                          Even if enabled here, a provider will be skipped at runtime if its environment variables are not set.
+                          Plain text files (.txt, .md) are always handled directly without OCR.
+                        </p>
+                      </div>
+
+                      {/* Last Updated */}
+                      {ocrSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(ocrSettings.updatedAt)} by {ocrSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               )}
 

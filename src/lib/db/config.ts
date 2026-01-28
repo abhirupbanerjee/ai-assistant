@@ -130,6 +130,25 @@ export interface DiagramSettings {
   mermaidEnabled: boolean;        // Enable/disable Mermaid diagrams globally (default: true, fallback to ASCII when false)
 }
 
+export type OcrProvider = 'mistral' | 'azure-di' | 'pdf-parse';
+
+export interface OcrProviderConfig {
+  provider: OcrProvider;
+  enabled: boolean;
+}
+
+export interface OcrSettings {
+  providers: OcrProviderConfig[];  // Ordered by priority (index 0 = primary)
+}
+
+export const DEFAULT_OCR_SETTINGS: OcrSettings = {
+  providers: [
+    { provider: 'mistral', enabled: true },
+    { provider: 'azure-di', enabled: true },
+    { provider: 'pdf-parse', enabled: true },
+  ],
+};
+
 export interface SuperuserSettings {
   maxCategoriesPerSuperuser: number;  // Max categories a superuser can create (default: 5)
 }
@@ -227,6 +246,7 @@ export type SettingKey =
   | 'summarization-settings'
   | 'skills-settings'
   | 'diagram-settings'
+  | 'ocr-settings'
   | 'limits-settings'
   | 'model-token-limits'
   | 'token-limits-settings'
@@ -536,6 +556,17 @@ export function getDiagramSettings(): DiagramSettings {
 }
 
 /**
+ * Get OCR/document processing settings
+ * Controls which OCR providers are enabled and their priority order
+ * Priority: SQLite > hardcoded defaults
+ */
+export function getOcrSettings(): OcrSettings {
+  const dbSettings = getSetting<OcrSettings>('ocr-settings');
+  if (dbSettings) return dbSettings;
+  return DEFAULT_OCR_SETTINGS;
+}
+
+/**
  * Get limits settings
  * Priority: SQLite > JSON config > hardcoded defaults
  */
@@ -779,6 +810,15 @@ export function setDiagramSettings(settings: Partial<DiagramSettings>, updatedBy
 }
 
 /**
+ * Update OCR/document processing settings
+ * Replaces the full provider list (order matters for priority)
+ */
+export function setOcrSettings(settings: OcrSettings, updatedBy?: string): OcrSettings {
+  setSetting('ocr-settings', settings, updatedBy);
+  return settings;
+}
+
+/**
  * Update limits settings
  */
 export function setLimitsSettings(settings: Partial<LimitsSettings>, updatedBy?: string): LimitsSettings {
@@ -888,6 +928,7 @@ export function getAllSettings(): {
   memory: MemorySettings;
   summarization: SummarizationSettings;
   skills: SkillsSettings;
+  ocr: OcrSettings;
 } {
   return {
     rag: getRagSettings(),
@@ -903,5 +944,6 @@ export function getAllSettings(): {
     memory: getMemorySettings(),
     summarization: getSummarizationSettings(),
     skills: getSkillsSettings(),
+    ocr: getOcrSettings(),
   };
 }

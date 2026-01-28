@@ -26,6 +26,9 @@ import {
   setSkillsSettings,
   getDiagramSettings,
   setDiagramSettings,
+  getOcrSettings,
+  setOcrSettings,
+  DEFAULT_OCR_SETTINGS,
   getLimitsSettings,
   setLimitsSettings,
   getModelTokenLimits,
@@ -77,6 +80,7 @@ export async function GET() {
     const limitsSettings = getLimitsSettings();
     const modelTokenLimits = getModelTokenLimits();
     const tokenLimitsSettings = getTokenLimitsSettings();
+    const ocrSettings = getOcrSettings();
 
     // Get metadata for last updated info
     const ragMeta = getSettingMetadata('rag-settings');
@@ -92,6 +96,7 @@ export async function GET() {
     const modelTokensMeta = getSettingMetadata('model-token-limits');
     const tokenLimitsMeta = getSettingMetadata('token-limits-settings');
     const uploadMeta = getSettingMetadata('upload-limits');
+    const ocrMeta = getSettingMetadata('ocr-settings');
 
     return NextResponse.json({
       rag: {
@@ -164,6 +169,16 @@ export async function GET() {
         updatedBy: uploadMeta?.updatedBy || 'system',
       },
       retentionSettings,
+      ocr: {
+        ...ocrSettings,
+        updatedAt: ocrMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: ocrMeta?.updatedBy || 'system',
+        providerAvailability: {
+          mistral: Boolean(process.env.MISTRAL_API_KEY),
+          'azure-di': Boolean(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY),
+          'pdf-parse': true,
+        },
+      },
       availableModels: getAvailableModels(),
       brandingIcons: BRANDING_ICONS,
       models: {
@@ -178,6 +193,7 @@ export async function GET() {
         reranker: { enabled: false, provider: 'cohere', topKForReranking: 50, minRerankerScore: 0.3, cacheTTLSeconds: 3600 },
         memory: { enabled: false, extractionThreshold: 5, maxFactsPerCategory: 20, autoExtractOnThreadEnd: true },
         summarization: { enabled: false, tokenThreshold: 100000, keepRecentMessages: 10, summaryMaxTokens: 2000, archiveOriginalMessages: true },
+        ocr: DEFAULT_OCR_SETTINGS,
       },
     });
   } catch (error) {
@@ -891,6 +907,68 @@ export async function PUT(request: NextRequest) {
         break;
       }
 
+      case 'ocr': {
+        const { providers } = settings;
+
+        // Validate providers is an array of exactly 3 items
+        if (!Array.isArray(providers) || providers.length !== 3) {
+          return NextResponse.json<ApiError>(
+            { error: 'Providers must be an array of exactly 3 items', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        const validProviders = ['mistral', 'azure-di', 'pdf-parse'];
+        const seen = new Set<string>();
+
+        for (const item of providers) {
+          if (!item || typeof item !== 'object') {
+            return NextResponse.json<ApiError>(
+              { error: 'Each provider must be an object with provider and enabled fields', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+
+          if (!validProviders.includes(item.provider)) {
+            return NextResponse.json<ApiError>(
+              { error: `Invalid provider: ${item.provider}. Must be one of: ${validProviders.join(', ')}`, code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+
+          if (typeof item.enabled !== 'boolean') {
+            return NextResponse.json<ApiError>(
+              { error: 'Each provider enabled field must be a boolean', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+
+          if (seen.has(item.provider)) {
+            return NextResponse.json<ApiError>(
+              { error: `Duplicate provider: ${item.provider}`, code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          seen.add(item.provider);
+        }
+
+        // At least one provider must be enabled
+        if (!providers.some((p: { enabled: boolean }) => p.enabled)) {
+          return NextResponse.json<ApiError>(
+            { error: 'At least one OCR provider must be enabled', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setOcrSettings({
+          providers: providers.map((p: { provider: string; enabled: boolean }) => ({
+            provider: p.provider as 'mistral' | 'azure-di' | 'pdf-parse',
+            enabled: p.enabled,
+          })),
+        }, user.email);
+        break;
+      }
+
       case 'limits': {
         const { conversationHistoryMessages } = settings;
 
@@ -1078,6 +1156,7 @@ export async function PUT(request: NextRequest) {
           'summarization-settings',
           'skills-settings',
           'model-token-limits',
+          'ocr-settings',
         ] as const;
 
         for (const key of settingKeys) {
