@@ -1,6 +1,7 @@
 /**
  * Super User - Category Management API
  *
+ * GET    /api/superuser/categories - List super user's assigned categories
  * POST   /api/superuser/categories - Create a new category
  * DELETE /api/superuser/categories - Delete a category (only if created by this super user)
  */
@@ -15,11 +16,43 @@ import {
   isCategoryCreatedBy,
   deleteCategoryWithRelatedData,
 } from '@/lib/db/categories';
-import { assignCategoryToSuperUser } from '@/lib/db/users';
+import { assignCategoryToSuperUser, getSuperUserWithAssignments } from '@/lib/db/users';
 import { getSuperuserSettings } from '@/lib/db/config';
 import { deleteDocument } from '@/lib/ingest';
 import { getDocumentById } from '@/lib/db/documents';
 import { deleteCategoryCollection } from '@/lib/chroma';
+
+// GET - List super user's assigned categories
+export async function GET() {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const role = await getUserRole(user.email);
+    if (role !== 'superuser') {
+      return NextResponse.json({ error: 'Super user access required' }, { status: 403 });
+    }
+
+    const userId = await getUserId(user.email);
+    if (!userId) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const superUserData = getSuperUserWithAssignments(userId);
+    const categories = (superUserData?.assignedCategories || []).map(c => ({
+      id: c.categoryId,
+      name: c.categoryName,
+      slug: c.categorySlug,
+    }));
+
+    return NextResponse.json({ categories });
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
+  }
+}
 
 // POST - Create a new category
 export async function POST(request: NextRequest) {
