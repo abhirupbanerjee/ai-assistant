@@ -67,7 +67,55 @@ async function testCohere(): Promise<{ available: boolean; configured: boolean; 
 }
 
 /**
- * Test local reranker availability (checks if @xenova/transformers is available)
+ * Test Jina Reranker v2 availability (cross-encoder model)
+ */
+async function testJina(): Promise<{ available: boolean; configured: boolean; error?: string; latency?: number }> {
+  const startTime = Date.now();
+
+  try {
+    // Try to dynamically import @xenova/transformers
+    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import('@xenova/transformers');
+
+    // Disable local models to avoid file system issues during test
+    env.allowLocalModels = false;
+
+    // Verify the required classes exist for cross-encoder models
+    if (typeof AutoTokenizer?.from_pretrained === 'function' &&
+        typeof AutoModelForSequenceClassification?.from_pretrained === 'function') {
+      const latency = Date.now() - startTime;
+      return {
+        available: true,
+        configured: true,
+        latency,
+      };
+    }
+
+    return { available: false, configured: false, error: 'Required model classes not available' };
+  } catch (error) {
+    if (error instanceof Error) {
+      // Check for common errors
+      if (error.message.includes('onnxruntime')) {
+        return {
+          available: false,
+          configured: true,
+          error: 'ONNX runtime error - check glibc compatibility'
+        };
+      }
+      if (error.message.includes('MODULE_NOT_FOUND') || error.message.includes('Cannot find module')) {
+        return {
+          available: false,
+          configured: false,
+          error: '@xenova/transformers not installed'
+        };
+      }
+      return { available: false, configured: true, error: error.message };
+    }
+    return { available: false, configured: false, error: 'Unknown error' };
+  }
+}
+
+/**
+ * Test local reranker availability (legacy bi-encoder, checks if @xenova/transformers is available)
  */
 async function testLocal(): Promise<{ available: boolean; configured: boolean; error?: string; latency?: number }> {
   const startTime = Date.now();
@@ -131,9 +179,10 @@ export async function GET() {
       );
     }
 
-    // Test both reranker providers in parallel
-    const [cohereResult, localResult] = await Promise.all([
+    // Test all reranker providers in parallel
+    const [cohereResult, jinaResult, localResult] = await Promise.all([
       testCohere(),
+      testJina(),
       testLocal(),
     ]);
 
@@ -144,8 +193,13 @@ export async function GET() {
         ...cohereResult,
       },
       {
+        provider: 'jina',
+        name: 'Jina Reranker v2 (Cross-encoder)',
+        ...jinaResult,
+      },
+      {
         provider: 'local',
-        name: 'Local (Transformers.js)',
+        name: 'Legacy Local (Bi-encoder)',
         ...localResult,
       },
     ];

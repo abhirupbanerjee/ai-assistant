@@ -692,9 +692,9 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate provider
-        if (!['cohere', 'local'].includes(provider)) {
+        if (!['cohere', 'jina', 'local'].includes(provider)) {
           return NextResponse.json<ApiError>(
-            { error: 'Provider must be "cohere" or "local"', code: 'VALIDATION_ERROR' },
+            { error: 'Provider must be "cohere", "jina", or "local"', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }

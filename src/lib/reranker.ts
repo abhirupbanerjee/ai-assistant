@@ -1,9 +1,10 @@
 /**
  * Reranker Module
  *
- * Supports dual providers:
+ * Supports multiple providers:
  * - Cohere API (fast, requires API key)
- * - Local @xenova/transformers (free, slower first load)
+ * - Jina Reranker v2 (cross-encoder, best accuracy, free)
+ * - Local bi-encoder (legacy, less accurate, free)
  *
  * Includes Redis caching for performance.
  */
@@ -172,6 +173,104 @@ async function rerankWithLocal(
   }
 }
 
+// Lazy-loaded Jina reranker model
+let jinaReranker: {
+  tokenizer: Awaited<ReturnType<typeof import('@xenova/transformers').AutoTokenizer.from_pretrained>>;
+  model: Awaited<ReturnType<typeof import('@xenova/transformers').AutoModelForSequenceClassification.from_pretrained>>;
+} | null = null;
+
+/**
+ * Sigmoid function to convert logits to probability
+ */
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+
+/**
+ * Rerank chunks using Jina Reranker v2 (cross-encoder)
+ *
+ * This is a true reranker that jointly processes query+document pairs,
+ * providing more accurate relevance scoring than bi-encoder approaches.
+ *
+ * Model: jinaai/jina-reranker-v2-base-multilingual
+ * - 278M parameters (half the size of BGE-Reranker)
+ * - 15x faster than BGE-Reranker
+ * - Supports 100+ languages
+ * - Max context: 1024 tokens
+ */
+async function rerankWithJina(
+  query: string,
+  chunks: RetrievedChunk[],
+  minScore: number
+): Promise<RetrievedChunk[]> {
+  try {
+    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import('@xenova/transformers');
+
+    // Disable local model caching warnings
+    env.allowLocalModels = false;
+
+    // Lazy-load the Jina Reranker v2 model
+    if (!jinaReranker) {
+      console.log('[Reranker] Loading Jina Reranker v2 model (first time may take a moment)...');
+      const modelId = 'jinaai/jina-reranker-v2-base-multilingual';
+
+      const [tokenizer, model] = await Promise.all([
+        AutoTokenizer.from_pretrained(modelId),
+        AutoModelForSequenceClassification.from_pretrained(modelId, {
+          quantized: false, // Use full-precision (fp32) model for better accuracy
+        }),
+      ]);
+
+      jinaReranker = { tokenizer, model };
+      console.log('[Reranker] Jina Reranker v2 model loaded successfully');
+    }
+
+    const scoredChunks: RetrievedChunk[] = [];
+
+    for (const chunk of chunks) {
+      try {
+        // Cross-encoder: tokenize query + document together
+        // Truncate to 1024 tokens max (model limit)
+        const truncatedText = chunk.text.slice(0, 4000); // ~1000 tokens approximate
+
+        const inputs = await jinaReranker.tokenizer(query, truncatedText, {
+          padding: true,
+          truncation: true,
+          max_length: 1024,
+        });
+
+        // Get relevance score from model
+        const outputs = await jinaReranker.model(inputs);
+
+        // Convert logits to probability score (0-1)
+        // The model outputs a single logit for relevance
+        const logits = outputs.logits.data as Float32Array;
+        const score = sigmoid(logits[0]);
+
+        if (score >= minScore) {
+          scoredChunks.push({
+            ...chunk,
+            score,
+          });
+        }
+      } catch (chunkError) {
+        console.warn('[Reranker] Error scoring chunk with Jina:', chunkError);
+        // Keep chunk with original score if reranking fails
+        if (chunk.score >= minScore) {
+          scoredChunks.push(chunk);
+        }
+      }
+    }
+
+    console.log(`[Reranker] Jina scoring complete: ${scoredChunks.length} chunks passed threshold`);
+    return scoredChunks.sort((a, b) => b.score - a.score);
+  } catch (error) {
+    console.error('[Reranker] Jina reranker error:', error);
+    // Fallback to original chunks on error
+    return chunks;
+  }
+}
+
 /**
  * Main reranking function
  *
@@ -257,7 +356,14 @@ export async function rerankChunks(
       chunksToRerank,
       minScore
     );
+  } else if (settings.provider === 'jina') {
+    rerankedChunks = await rerankWithJina(
+      query,
+      chunksToRerank,
+      minScore
+    );
   } else {
+    // Legacy 'local' bi-encoder fallback
     rerankedChunks = await rerankWithLocal(
       query,
       chunksToRerank,

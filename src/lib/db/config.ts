@@ -98,7 +98,7 @@ export interface EmbeddingSettings {
 
 export interface RerankerSettings {
   enabled: boolean;
-  provider: 'cohere' | 'local';   // Toggle between Cohere API and local @xenova/transformers
+  provider: 'cohere' | 'jina' | 'local';   // Cohere API, Jina Reranker v2 (cross-encoder), or legacy local (bi-encoder)
   topKForReranking: number;       // How many chunks to rerank (default: 50)
   minRerankerScore: number;       // Threshold 0-1 (default: 0.3)
   cacheTTLSeconds: number;        // Cache duration (default: 3600)

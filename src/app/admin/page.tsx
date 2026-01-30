@@ -127,7 +127,7 @@ interface BrandingSettings {
 
 interface RerankerSettings {
   enabled: boolean;
-  provider: 'cohere' | 'local';
+  provider: 'cohere' | 'jina' | 'local';
   topKForReranking: number;
   minRerankerScore: number;
   cacheTTLSeconds: number;
@@ -4220,23 +4220,28 @@ export default function AdminPage() {
                         <select
                           value={editedReranker.provider}
                           onChange={(e) => {
-                            setEditedReranker({ ...editedReranker, provider: e.target.value as 'cohere' | 'local' });
+                            setEditedReranker({ ...editedReranker, provider: e.target.value as 'cohere' | 'jina' | 'local' });
                             setRerankerModified(true);
                           }}
                           className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           {(() => {
                             const cohereStatus = rerankerStatus.find(s => s?.provider === 'cohere');
+                            const jinaStatus = rerankerStatus.find(s => s?.provider === 'jina');
                             const localStatus = rerankerStatus.find(s => s?.provider === 'local');
                             const cohereAvailable = cohereStatus?.available ?? true;
+                            const jinaAvailable = jinaStatus?.available ?? true;
                             const localAvailable = localStatus?.available ?? true;
                             return (
                               <>
                                 <option value="cohere" disabled={!cohereAvailable}>
                                   Cohere API (Fast, requires API key){!cohereAvailable ? ' (unavailable)' : ''}
                                 </option>
+                                <option value="jina" disabled={!jinaAvailable}>
+                                  Jina Reranker v2 (Best accuracy, free){!jinaAvailable ? ' (unavailable)' : ''}
+                                </option>
                                 <option value="local" disabled={!localAvailable}>
-                                  Local (Free, slower first load){!localAvailable ? ' (unavailable)' : ''}
+                                  Legacy Local (Bi-encoder, less accurate){!localAvailable ? ' (unavailable)' : ''}
                                 </option>
                               </>
                             );
@@ -4245,7 +4250,9 @@ export default function AdminPage() {
                         <p className="mt-1 text-xs text-gray-500">
                           {editedReranker.provider === 'cohere'
                             ? 'Uses Cohere rerank-english-v3.0 model. Requires COHERE_API_KEY in environment.'
-                            : 'Uses local all-MiniLM-L6-v2 model with semantic similarity. First load downloads model.'}
+                            : editedReranker.provider === 'jina'
+                            ? 'Uses Jina Reranker v2 cross-encoder model. Best accuracy, ~500MB download on first use.'
+                            : 'Legacy bi-encoder using all-MiniLM-L6-v2. Less accurate than cross-encoder rerankers.'}
                         </p>
                       </div>
 

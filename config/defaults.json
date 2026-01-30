@@ -181,7 +181,7 @@
 
   "reranker": {
     "enabled": false,
-    "provider": "cohere",
+    "provider": "jina",
     "topKForReranking": 50,
     "minRerankerScore": 0.3,
     "cacheTTLSeconds": 3600
@@ -252,6 +252,7 @@
     ],
     "transcription": "whisper-1",
     "rerankerCohere": "rerank-english-v3.0",
+    "rerankerJina": "jinaai/jina-reranker-v2-base-multilingual",
     "rerankerLocal": "Xenova/all-MiniLM-L6-v2"
   },
 
