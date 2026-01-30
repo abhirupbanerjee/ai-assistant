@@ -297,8 +297,19 @@ const DEFAULT_ROUTING_RULES: ToolRoutingRuleInput[] = [
 
 /**
  * Seed default routing rules if none exist
+ * Skips seeding if migration to skills has already happened
  */
 export function seedDefaultRoutingRules(createdBy: string = 'system'): void {
+  // Check if migration to skills has happened (skills with tool_name exist)
+  const skillsWithToolRouting = queryOne<{ count: number }>(
+    `SELECT COUNT(*) as count FROM skills WHERE tool_name IS NOT NULL`
+  );
+
+  if ((skillsWithToolRouting?.count || 0) > 0) {
+    console.log('[ToolRouting] Skipping seed - tool routing has been migrated to skills');
+    return;
+  }
+
   transaction(() => {
     for (const rule of DEFAULT_ROUTING_RULES) {
       // Check if rule with same name already exists

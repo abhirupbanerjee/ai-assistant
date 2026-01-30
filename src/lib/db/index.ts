@@ -883,6 +883,30 @@ function runMigrations(database: Database.Database): void {
   if (workspacesColumnNames.length > 0 && !workspacesColumnNames.includes('auth_required')) {
     database.exec('ALTER TABLE workspaces ADD COLUMN auth_required INTEGER DEFAULT 0');
   }
+
+  // Migration: Add tool routing columns to skills table for unified keyword actions
+  // This merges tool routing functionality into the skills system
+  const skillsColumns = database.pragma('table_info(skills)') as { name: string }[];
+  const skillsColumnNames = skillsColumns.map((c) => c.name);
+
+  if (!skillsColumnNames.includes('match_type')) {
+    database.exec(`
+      -- Pattern matching type (keyword = word boundary, regex = full regex)
+      ALTER TABLE skills ADD COLUMN match_type TEXT DEFAULT 'keyword'
+        CHECK (match_type IN ('keyword', 'regex'));
+
+      -- Tool routing fields
+      ALTER TABLE skills ADD COLUMN tool_name TEXT;
+      ALTER TABLE skills ADD COLUMN force_mode TEXT
+        CHECK (force_mode IN ('required', 'preferred', 'suggested'));
+
+      -- Tool configuration override (JSON)
+      ALTER TABLE skills ADD COLUMN tool_config_override TEXT;
+
+      -- Data source filtering (JSON: {type: 'include'|'exclude', source_ids: number[]})
+      ALTER TABLE skills ADD COLUMN data_source_filter TEXT;
+    `);
+  }
 }
 
 /**

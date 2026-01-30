@@ -29,6 +29,15 @@ interface Category {
   slug: string;
 }
 
+interface Tool {
+  name: string;
+  displayName: string;
+  enabled: boolean;
+}
+
+type MatchType = 'keyword' | 'regex';
+type ForceMode = 'required' | 'preferred' | 'suggested';
+
 interface Skill {
   id: number;
   name: string;
@@ -47,6 +56,13 @@ interface Skill {
   created_at: string;
   updated_at: string;
   categories: Category[];
+
+  // Tool routing fields
+  match_type?: MatchType;
+  tool_name?: string | null;
+  force_mode?: ForceMode | null;
+  tool_config_override?: Record<string, unknown> | null;
+  data_source_filter?: { type: 'include' | 'exclude'; source_ids: number[] } | null;
 }
 
 interface SkillsSettings {
@@ -75,6 +91,12 @@ interface SkillFormData {
   is_index: boolean;
   priority: number;
   category_ids: number[];
+
+  // Tool routing fields
+  match_type: MatchType;
+  tool_name: string;
+  force_mode: ForceMode;
+  tool_config_override: string; // JSON string for editing
 }
 
 const initialFormData: SkillFormData = {
@@ -87,6 +109,12 @@ const initialFormData: SkillFormData = {
   is_index: false,
   priority: 100,
   category_ids: [],
+
+  // Tool routing defaults
+  match_type: 'keyword',
+  tool_name: '',
+  force_mode: 'required',
+  tool_config_override: '',
 };
 
 // Priority tiers
@@ -151,6 +179,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     mermaidEnabled: true,
   });
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,21 +212,25 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [skillsRes, categoriesRes] = await Promise.all([
+      const [skillsRes, categoriesRes, toolsRes] = await Promise.all([
         fetch('/api/admin/skills'),
         fetch('/api/admin/categories'),
+        fetch('/api/admin/tools'),
       ]);
 
       if (!skillsRes.ok) throw new Error('Failed to fetch skills');
       if (!categoriesRes.ok) throw new Error('Failed to fetch categories');
+      if (!toolsRes.ok) throw new Error('Failed to fetch tools');
 
       const skillsData = await skillsRes.json();
       const categoriesData = await categoriesRes.json();
+      const toolsData = await toolsRes.json();
 
       setSkills(skillsData.skills || []);
       setSettings(skillsData.settings || { enabled: false, maxTotalTokens: 3000, debugMode: false });
       setDiagramSettings(skillsData.diagramSettings || { mermaidEnabled: true });
       setCategories(categoriesData.categories || []);
+      setTools(toolsData.tools || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -253,6 +286,32 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     }
   };
 
+  // Prepare form data for API submission
+  const prepareFormDataForSubmit = () => {
+    const data: Record<string, unknown> = { ...formData };
+
+    // Parse tool_config_override from JSON string to object
+    if (formData.tool_config_override) {
+      try {
+        data.tool_config_override = JSON.parse(formData.tool_config_override);
+      } catch {
+        // Invalid JSON - will be sent as empty
+        data.tool_config_override = null;
+      }
+    } else {
+      data.tool_config_override = null;
+    }
+
+    // Clear tool fields if no tool selected
+    if (!formData.tool_name) {
+      data.tool_name = null;
+      data.force_mode = null;
+      data.tool_config_override = null;
+    }
+
+    return data;
+  };
+
   // Create skill
   const handleCreate = async () => {
     setSaving(true);
@@ -260,7 +319,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       const response = await fetch('/api/admin/skills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(prepareFormDataForSubmit()),
       });
 
       if (!response.ok) {
@@ -288,7 +347,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       const response = await fetch(`/api/admin/skills/${selectedSkill.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(prepareFormDataForSubmit()),
       });
 
       if (!response.ok) {
@@ -416,6 +475,14 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       is_index: skill.is_index,
       priority: skill.priority,
       category_ids: skill.categories.map(c => c.id),
+
+      // Tool routing fields
+      match_type: skill.match_type || 'keyword',
+      tool_name: skill.tool_name || '',
+      force_mode: skill.force_mode || 'required',
+      tool_config_override: skill.tool_config_override
+        ? JSON.stringify(skill.tool_config_override, null, 2)
+        : '',
     });
     setShowEditModal(true);
   };
@@ -635,6 +702,11 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {skill.is_core && <span title="Core skill"><Lock size={14} className="text-amber-500" /></span>}
+                        {skill.tool_name && (
+                          <span title={`Forces tool: ${skill.tool_name} (${skill.force_mode})`}>
+                            <Zap size={14} className="text-orange-500" />
+                          </span>
+                        )}
                         <div>
                           <div className="font-medium text-gray-900">{skill.name}</div>
                           {skill.description && (
@@ -902,6 +974,104 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
               Estimated tokens: ~{Math.ceil(formData.prompt_content.length / 4)}
             </p>
           </div>
+
+          {/* Tool Routing Section - Only for keyword trigger type */}
+          {formData.trigger_type === 'keyword' && (
+            <div className="border-t pt-4 mt-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Zap size={18} className="text-amber-500" />
+                <h3 className="font-medium text-gray-900">Tool Action (Optional)</h3>
+              </div>
+
+              <div className="space-y-4 pl-6">
+                {/* Match Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Match Type</label>
+                  <select
+                    value={formData.match_type}
+                    onChange={(e) => setFormData({ ...formData, match_type: e.target.value as MatchType })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="keyword">Keyword (word boundary matching)</option>
+                    <option value="regex">Regex (regular expression)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.match_type === 'keyword'
+                      ? 'Matches whole words only (e.g., "chart" matches "create a chart" but not "flowchart")'
+                      : 'Use regular expressions for flexible pattern matching'}
+                  </p>
+                </div>
+
+                {/* Tool Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Force Tool</label>
+                  <select
+                    value={formData.tool_name}
+                    onChange={(e) => setFormData({ ...formData, tool_name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">No tool forcing (prompt only)</option>
+                    {tools.filter(t => t.enabled).map((tool) => (
+                      <option key={tool.name} value={tool.name}>
+                        {tool.displayName || tool.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select a tool to force when this skill is triggered
+                  </p>
+                </div>
+
+                {/* Force Mode - Only show when tool is selected */}
+                {formData.tool_name && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Force Mode</label>
+                      <select
+                        value={formData.force_mode}
+                        onChange={(e) => setFormData({ ...formData, force_mode: e.target.value as ForceMode })}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="required">Required (always call this tool)</option>
+                        <option value="preferred">Preferred (strongly encourage tool use)</option>
+                        <option value="suggested">Suggested (hint to use tool)</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formData.force_mode === 'required' && 'The LLM must call this specific tool'}
+                        {formData.force_mode === 'preferred' && 'The LLM is strongly encouraged to call a tool'}
+                        {formData.force_mode === 'suggested' && 'The LLM may choose to call the tool or not'}
+                      </p>
+                    </div>
+
+                    {/* Config Override */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Config Override (JSON)
+                      </label>
+                      <textarea
+                        value={formData.tool_config_override}
+                        onChange={(e) => setFormData({ ...formData, tool_config_override: e.target.value })}
+                        rows={3}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                        placeholder='{"defaultChartType": "pie", "maxResults": 5}'
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Optional JSON to override tool configuration when triggered
+                      </p>
+                      {formData.tool_config_override && (() => {
+                        try {
+                          JSON.parse(formData.tool_config_override);
+                          return <p className="text-xs text-green-600 mt-1">Valid JSON</p>;
+                        } catch {
+                          return <p className="text-xs text-red-600 mt-1">Invalid JSON format</p>;
+                        }
+                      })()}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="secondary" onClick={() => { setShowCreateModal(false); setShowEditModal(false); setSelectedSkill(null); }}>

@@ -2,9 +2,17 @@
  * Skills System Types
  *
  * Defines types for the modular prompt skills system
+ * Extended to support unified keyword actions (skills + tool routing)
  */
 
 export type TriggerType = 'always' | 'category' | 'keyword';
+export type MatchType = 'keyword' | 'regex';
+export type ForceMode = 'required' | 'preferred' | 'suggested';
+
+export interface DataSourceFilter {
+  type: 'include' | 'exclude';
+  source_ids: number[];
+}
 
 export interface Skill {
   id: number;
@@ -24,6 +32,13 @@ export interface Skill {
   updated_at: string;
   created_by: string;
   updated_by: string;
+
+  // Tool routing fields (unified keyword actions)
+  match_type: MatchType;
+  tool_name: string | null;
+  force_mode: ForceMode | null;
+  tool_config_override: Record<string, unknown> | null;
+  data_source_filter: DataSourceFilter | null;
 }
 
 export interface SkillWithCategories extends Skill {
@@ -44,6 +59,13 @@ export interface CreateSkillInput {
   is_index?: boolean;
   priority?: number;
   category_ids?: number[];
+
+  // Tool routing fields (optional)
+  match_type?: MatchType;
+  tool_name?: string;
+  force_mode?: ForceMode;
+  tool_config_override?: Record<string, unknown>;
+  data_source_filter?: DataSourceFilter;
 }
 
 export interface ResolvedSkills {
@@ -54,6 +76,19 @@ export interface ResolvedSkills {
     always: string[];
     category: string[];
     keyword: string[];
+  };
+
+  // Tool routing from matched skills
+  toolRouting?: {
+    toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } };
+    matches: Array<{
+      skillId: number;
+      skillName: string;
+      toolName: string;
+      forceMode: ForceMode;
+      configOverride?: Record<string, unknown>;
+    }>;
+    dataSourceFilters: DataSourceFilter[];
   };
 }
 

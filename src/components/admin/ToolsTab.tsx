@@ -32,7 +32,7 @@ import Modal from '@/components/ui/Modal';
 import DataSourcesTab from './DataSourcesTab';
 import FunctionAPITab from './FunctionAPITab';
 import TaskPlannerTemplates from './TaskPlannerTemplates';
-import ToolRoutingTab from './ToolRoutingTab';
+// ToolRoutingTab is deprecated - tool routing now handled via Skills
 import ImageGenConfig from './ImageGenConfig';
 import TranslationConfig from './TranslationConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
@@ -1115,12 +1115,15 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
               onClick={() => setInternalSubTab('routing')}
               className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                 activeSubTab === 'routing'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-amber-500 text-amber-600'
+                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'
               }`}
             >
               <Route size={16} />
-              Tool Routing
+              <span className="flex items-center gap-1">
+                Tool Routing
+                <span className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 rounded">Moved</span>
+              </span>
             </button>
             <button
               onClick={() => setInternalSubTab('conflicts')}
@@ -1142,9 +1145,22 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
         <ToolDependencyPanel />
       )}
 
-      {/* Tool Routing Sub-tab */}
+      {/* Tool Routing Sub-tab - DEPRECATED */}
       {!readOnly && !isSuperuser && activeSubTab === 'routing' && (
-        <ToolRoutingTab />
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+          <Route size={48} className="mx-auto text-amber-500 mb-4" />
+          <h3 className="text-lg font-semibold text-amber-800 mb-2">
+            Tool Routing Has Moved
+          </h3>
+          <p className="text-amber-700 mb-4">
+            Tool routing is now unified with Skills. Configure keyword-triggered tool actions
+            in the <strong>Prompts → Skills</strong> tab using the &quot;Tool Action&quot; section.
+          </p>
+          <p className="text-sm text-amber-600">
+            When creating or editing a keyword-triggered skill, you can now optionally
+            force a specific tool to be called when the keywords match.
+          </p>
+        </div>
       )}
 
       {/* Keyword Conflicts Sub-tab */}

@@ -4,6 +4,7 @@ import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMa
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
 import { resolveToolRouting } from './tool-routing';
+import { resolveSkills } from './skills/resolver';
 import { toolsLogger as logger } from './logger';
 import {
   TOOL_CAPABLE_MODELS,
@@ -243,20 +244,38 @@ export async function generateResponseWithTools(
   }
 
   // Apply tool routing to determine tool_choice
+  // Check both legacy tool-routing and skills-based tool routing
   let toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined;
   let toolChoiceAppliedByRouting = false;
 
   if (effectiveEnableTools && tools && tools.length > 0) {
-    const routing = resolveToolRouting(userMessage, categoryIds || []);
-
-    if (routing.matches.length > 0) {
-      toolChoice = routing.toolChoice;
+    // First, check skills-based tool routing (new unified system)
+    const skillsResult = resolveSkills(categoryIds || [], userMessage);
+    if (skillsResult.toolRouting && skillsResult.toolRouting.matches.length > 0) {
+      toolChoice = skillsResult.toolRouting.toolChoice;
       toolChoiceAppliedByRouting = true;
-      logger.info('Tool routing applied', {
-        matches: routing.matches.map((m) => `${m.toolName}:${m.matchedPattern}`),
+      logger.info('Skills-based tool routing applied', {
+        matches: skillsResult.toolRouting.matches.map(
+          (m) => `${m.toolName}:${m.forceMode}`
+        ),
         toolChoice:
           typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
       });
+    }
+
+    // Fall back to legacy tool-routing rules if no skills-based routing matched
+    if (!toolChoiceAppliedByRouting) {
+      const routing = resolveToolRouting(userMessage, categoryIds || []);
+
+      if (routing.matches.length > 0) {
+        toolChoice = routing.toolChoice;
+        toolChoiceAppliedByRouting = true;
+        logger.info('Legacy tool routing applied', {
+          matches: routing.matches.map((m) => `${m.toolName}:${m.matchedPattern}`),
+          toolChoice:
+            typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
+        });
+      }
     }
   }
 

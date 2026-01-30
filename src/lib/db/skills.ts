@@ -5,7 +5,15 @@
  */
 
 import { execute, queryOne, queryAll } from './index';
-import type { Skill, SkillWithCategories, CreateSkillInput, TriggerType } from '../skills/types';
+import type {
+  Skill,
+  SkillWithCategories,
+  CreateSkillInput,
+  TriggerType,
+  MatchType,
+  ForceMode,
+  DataSourceFilter,
+} from '../skills/types';
 
 // ============ Helper: Convert SQLite integers to booleans ============
 
@@ -28,9 +36,36 @@ interface SkillRow {
   updated_at: string;
   created_by: string;
   updated_by: string;
+
+  // Tool routing fields
+  match_type: MatchType | null;
+  tool_name: string | null;
+  force_mode: ForceMode | null;
+  tool_config_override: string | null;
+  data_source_filter: string | null;
 }
 
 function mapSkillRow(row: SkillRow): Skill {
+  // Parse JSON fields safely
+  let toolConfigOverride: Record<string, unknown> | null = null;
+  let dataSourceFilter: DataSourceFilter | null = null;
+
+  if (row.tool_config_override) {
+    try {
+      toolConfigOverride = JSON.parse(row.tool_config_override);
+    } catch {
+      // Invalid JSON, leave as null
+    }
+  }
+
+  if (row.data_source_filter) {
+    try {
+      dataSourceFilter = JSON.parse(row.data_source_filter);
+    } catch {
+      // Invalid JSON, leave as null
+    }
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -49,6 +84,13 @@ function mapSkillRow(row: SkillRow): Skill {
     updated_at: row.updated_at,
     created_by: row.created_by,
     updated_by: row.updated_by,
+
+    // Tool routing fields
+    match_type: row.match_type || 'keyword',
+    tool_name: row.tool_name,
+    force_mode: row.force_mode,
+    tool_config_override: toolConfigOverride,
+    data_source_filter: dataSourceFilter,
   };
 }
 
@@ -176,6 +218,68 @@ export function getCategoriesForSkill(skillId: number): { id: number; name: stri
 }
 
 /**
+ * Check if any skill with a specific tool matches a message
+ * Used to replace hardcoded keyword patterns with database-driven config
+ */
+export function wouldToolSkillMatch(toolName: string, message: string): boolean {
+  const skills = queryAll<SkillRow>(
+    `SELECT * FROM skills
+     WHERE tool_name = ? AND is_active = 1 AND trigger_type = 'keyword'
+     ORDER BY priority ASC`,
+    [toolName]
+  );
+
+  if (skills.length === 0) return false;
+
+  const messageLower = message.toLowerCase();
+
+  for (const row of skills) {
+    const skill = mapSkillRow(row);
+    if (!skill.trigger_value) continue;
+
+    const patterns = skill.trigger_value.split(',').map(p => p.trim());
+
+    if (skill.match_type === 'regex') {
+      // Regex matching
+      const matched = patterns.some(pattern => {
+        try {
+          const regex = new RegExp(pattern, 'i');
+          return regex.test(message);
+        } catch {
+          return false;
+        }
+      });
+      if (matched) return true;
+    } else {
+      // Keyword matching with word boundaries
+      const matched = patterns.some(keyword => {
+        const keywordLower = keyword.toLowerCase();
+        const escapedKeyword = keywordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, 'i');
+        return regex.test(messageLower);
+      });
+      if (matched) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Get skills by tool name (for checking keywords for a specific tool)
+ */
+export function getSkillsByTool(toolName: string): Skill[] {
+  const rows = queryAll<SkillRow>(
+    `SELECT * FROM skills
+     WHERE tool_name = ? AND is_active = 1
+     ORDER BY priority ASC`,
+    [toolName]
+  );
+
+  return rows.map(mapSkillRow);
+}
+
+/**
  * Get all skills with their categories
  */
 export function getAllSkillsWithCategories(): SkillWithCategories[] {
@@ -204,12 +308,21 @@ export function createSkill(
 ): number {
   const tokenEstimate = Math.ceil(input.prompt_content.length / 4);
 
+  // Serialize JSON fields
+  const toolConfigOverride = input.tool_config_override
+    ? JSON.stringify(input.tool_config_override)
+    : null;
+  const dataSourceFilter = input.data_source_filter
+    ? JSON.stringify(input.data_source_filter)
+    : null;
+
   const result = execute(
     `INSERT INTO skills (
       name, description, prompt_content, trigger_type, trigger_value,
       category_restricted, is_index, priority, is_active, is_core,
-      created_by_role, token_estimate, created_by, updated_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)`,
+      created_by_role, token_estimate, created_by, updated_by,
+      match_type, tool_name, force_mode, tool_config_override, data_source_filter
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.name,
       input.description || null,
@@ -223,6 +336,11 @@ export function createSkill(
       tokenEstimate,
       createdBy,
       createdBy,
+      input.match_type || 'keyword',
+      input.tool_name || null,
+      input.force_mode || null,
+      toolConfigOverride,
+      dataSourceFilter,
     ]
   );
 
@@ -289,6 +407,28 @@ export function updateSkill(
   if (updates.is_index !== undefined) {
     setClauses.push('is_index = ?');
     params.push(updates.is_index ? 1 : 0);
+  }
+
+  // Tool routing fields
+  if (updates.match_type !== undefined) {
+    setClauses.push('match_type = ?');
+    params.push(updates.match_type);
+  }
+  if (updates.tool_name !== undefined) {
+    setClauses.push('tool_name = ?');
+    params.push(updates.tool_name || null);
+  }
+  if (updates.force_mode !== undefined) {
+    setClauses.push('force_mode = ?');
+    params.push(updates.force_mode || null);
+  }
+  if (updates.tool_config_override !== undefined) {
+    setClauses.push('tool_config_override = ?');
+    params.push(updates.tool_config_override ? JSON.stringify(updates.tool_config_override) : null);
+  }
+  if (updates.data_source_filter !== undefined) {
+    setClauses.push('data_source_filter = ?');
+    params.push(updates.data_source_filter ? JSON.stringify(updates.data_source_filter) : null);
   }
 
   params.push(id);
@@ -376,4 +516,150 @@ export function seedCoreSkill(
     ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 1, 1, 'admin', ?, 'system', 'system')`,
     [name, description, promptContent, triggerType, triggerValue, priority, tokenEstimate]
   );
+}
+
+// ============ Tool Routing Operations ============
+
+/**
+ * Get all keyword-triggered skills that have tool routing configured
+ * Used by the resolver to determine tool_choice based on matched skills
+ */
+export function getSkillsWithToolRouting(): Skill[] {
+  const rows = queryAll<SkillRow>(
+    `SELECT * FROM skills
+     WHERE trigger_type = 'keyword'
+       AND is_active = 1
+       AND tool_name IS NOT NULL
+     ORDER BY priority ASC`
+  );
+
+  return rows.map(mapSkillRow);
+}
+
+/**
+ * Get skills that match a specific tool
+ * Useful for finding all skills that trigger a particular tool
+ */
+export function getSkillsForTool(toolName: string): Skill[] {
+  const rows = queryAll<SkillRow>(
+    `SELECT * FROM skills
+     WHERE tool_name = ?
+       AND is_active = 1
+     ORDER BY priority ASC`,
+    [toolName]
+  );
+
+  return rows.map(mapSkillRow);
+}
+
+// ============ Migration Operations ============
+
+interface ToolRoutingRuleForMigration {
+  id: string;
+  tool_name: string;
+  rule_name: string;
+  rule_type: string;
+  patterns: string;
+  force_mode: string;
+  priority: number;
+  category_ids: string | null;
+  is_active: number;
+  created_by: string;
+}
+
+/**
+ * Migrate tool routing rules to skills
+ * Creates skill entries for each tool routing rule with tool_name set
+ * This is a one-time migration for the unified keyword actions feature
+ *
+ * @returns Number of rules migrated
+ */
+export function migrateToolRoutingToSkills(migratedBy: string = 'system'): {
+  migrated: number;
+  skipped: number;
+  errors: string[];
+} {
+  const results = { migrated: 0, skipped: 0, errors: [] as string[] };
+
+  // Get all tool routing rules
+  const rules = queryAll<ToolRoutingRuleForMigration>(
+    `SELECT * FROM tool_routing_rules ORDER BY priority ASC`
+  );
+
+  for (const rule of rules) {
+    try {
+      // Check if a skill with this name already exists
+      const existingSkill = queryOne<{ id: number }>(
+        `SELECT id FROM skills WHERE name = ?`,
+        [`[Tool] ${rule.rule_name}`]
+      );
+
+      if (existingSkill) {
+        results.skipped++;
+        continue;
+      }
+
+      // Parse JSON fields
+      const patterns: string[] = JSON.parse(rule.patterns);
+      const categoryIds: number[] | null = rule.category_ids
+        ? JSON.parse(rule.category_ids)
+        : null;
+
+      // Create the skill with tool routing fields
+      const result = execute(
+        `INSERT INTO skills (
+          name, description, prompt_content, trigger_type, trigger_value,
+          category_restricted, is_index, priority, is_active, is_core,
+          created_by_role, token_estimate, created_by, updated_by,
+          match_type, tool_name, force_mode, tool_config_override, data_source_filter
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 0, 'admin', 0, ?, ?, ?, ?, ?, NULL, NULL)`,
+        [
+          `[Tool] ${rule.rule_name}`,
+          `Migrated from tool routing rule: ${rule.rule_name}`,
+          '', // Empty prompt content for tool-only actions
+          'keyword',
+          patterns.join(', '), // Convert array to comma-separated
+          categoryIds !== null ? 1 : 0, // category_restricted if categories specified
+          rule.priority,
+          rule.is_active,
+          migratedBy,
+          migratedBy,
+          rule.rule_type as 'keyword' | 'regex',
+          rule.tool_name,
+          rule.force_mode,
+        ]
+      );
+
+      const skillId = result.lastInsertRowid as number;
+
+      // Link categories if specified
+      if (categoryIds && categoryIds.length > 0) {
+        for (const categoryId of categoryIds) {
+          execute(
+            'INSERT OR IGNORE INTO category_skills (category_id, skill_id) VALUES (?, ?)',
+            [categoryId, skillId]
+          );
+        }
+      }
+
+      results.migrated++;
+    } catch (error) {
+      results.errors.push(
+        `Failed to migrate rule "${rule.rule_name}": ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Check if tool routing migration has been completed
+ */
+export function isToolRoutingMigrated(): boolean {
+  // Check if any skills exist with [Tool] prefix (indicating migrated rules)
+  const migrated = queryOne<{ count: number }>(
+    `SELECT COUNT(*) as count FROM skills WHERE name LIKE '[Tool]%'`
+  );
+  return (migrated?.count || 0) > 0;
 }

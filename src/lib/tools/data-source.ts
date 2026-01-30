@@ -7,6 +7,7 @@
 
 import { getToolConfig } from '../db/tool-config';
 import { getDataSourceByName, getAllDataSourcesForCategories } from '../db/data-sources';
+import { wouldToolSkillMatch } from '../db/skills';
 import { callDataAPI } from '../data-sources/api-caller';
 import { queryCSVData, queryCSVDataWithAggregation } from '../data-sources/csv-handler';
 import { aggregateData } from '../data-sources/aggregation';
@@ -217,6 +218,7 @@ function parseSort(sortArg?: { field: string; direction?: string }): DataSort | 
 
 /**
  * Check if visualization was requested via keywords or explicit param
+ * Uses skills with tool_name='chart_gen' for keyword matching (database-driven)
  */
 function isVisualizationRequested(
   userMessage: string,
@@ -224,10 +226,9 @@ function isVisualizationRequested(
 ): boolean {
   if (explicitVizParam) return true;
 
-  // Check if chart routing rules would trigger
-  // This detects chart keywords like "chart", "graph", "visualize", etc.
-  const chartKeywords = /\b(chart|graph|plot|visualize|visualization|bar chart|pie chart|line graph|histogram|show.*chart|create.*chart|generate.*chart|draw.*graph)\b/i;
-  return chartKeywords.test(userMessage);
+  // Check if any chart_gen skill would match the message
+  // This is database-driven via skills with tool_name='chart_gen'
+  return wouldToolSkillMatch('chart_gen', userMessage);
 }
 
 /**

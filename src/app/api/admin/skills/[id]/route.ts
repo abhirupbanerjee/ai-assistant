@@ -92,6 +92,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (body.is_active !== undefined) updates.is_active = Boolean(body.is_active);
     if (body.category_ids !== undefined) updates.category_ids = body.category_ids;
 
+    // Tool routing fields
+    if (body.match_type !== undefined) updates.match_type = body.match_type;
+    if (body.tool_name !== undefined) updates.tool_name = body.tool_name || undefined;
+    if (body.force_mode !== undefined) updates.force_mode = body.force_mode || undefined;
+    if (body.tool_config_override !== undefined) updates.tool_config_override = body.tool_config_override || undefined;
+    if (body.data_source_filter !== undefined) updates.data_source_filter = body.data_source_filter || undefined;
+
     updateSkill(skillId, updates, user.email);
 
     return NextResponse.json({ message: 'Skill updated' });

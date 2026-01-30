@@ -57,6 +57,12 @@ export async function POST(request: NextRequest) {
       is_index,
       priority,
       category_ids,
+      // Tool routing fields
+      match_type,
+      tool_name,
+      force_mode,
+      tool_config_override,
+      data_source_filter,
     } = body;
 
     // Validation
@@ -108,6 +114,12 @@ export async function POST(request: NextRequest) {
       is_index: Boolean(is_index),
       priority: typeof priority === 'number' ? priority : 100,
       category_ids: category_ids || [],
+      // Tool routing fields
+      match_type: match_type || 'keyword',
+      tool_name: tool_name || undefined,
+      force_mode: force_mode || undefined,
+      tool_config_override: tool_config_override || undefined,
+      data_source_filter: data_source_filter || undefined,
     };
 
     const skillId = createSkill(input, user.email, user.role);

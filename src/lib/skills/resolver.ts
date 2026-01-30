@@ -5,6 +5,8 @@
  * - Always-on skills (core prompts)
  * - Category-based skills (index skills for selected categories)
  * - Keyword-triggered skills (matched against user message)
+ *
+ * Extended to support unified keyword actions (skills + tool routing)
  */
 
 import { getSkillsSettings, getDiagramSettings } from '../db/config';
@@ -14,21 +16,36 @@ import {
   getKeywordSkills,
   getCategoriesForSkill,
 } from '../db/skills';
-import type { Skill, ResolvedSkills } from './types';
+import type { Skill, ResolvedSkills, ForceMode, DataSourceFilter } from './types';
 
 /**
- * Match keywords in message text
+ * Match keywords or regex patterns in message text
  * Supports comma-separated keywords in trigger_value
+ * Uses match_type to determine matching strategy
  */
-function matchesKeyword(skill: Skill, message: string): boolean {
+function matchesPattern(skill: Skill, message: string): boolean {
   if (!skill.trigger_value) return false;
 
-  const keywords = skill.trigger_value.split(',').map(k => k.trim().toLowerCase());
+  const patterns = skill.trigger_value.split(',').map(p => p.trim());
   const messageLower = message.toLowerCase();
 
-  return keywords.some(keyword => {
-    // Word boundary matching for better accuracy
-    const regex = new RegExp(`\\b${escapeRegex(keyword)}\\b`, 'i');
+  if (skill.match_type === 'regex') {
+    // Regex mode: each pattern is a full regex
+    return patterns.some(pattern => {
+      try {
+        const regex = new RegExp(pattern, 'i');
+        return regex.test(message);
+      } catch {
+        // Invalid regex, skip
+        return false;
+      }
+    });
+  }
+
+  // Default: keyword mode with word boundary matching
+  return patterns.some(keyword => {
+    const keywordLower = keyword.toLowerCase();
+    const regex = new RegExp(`\\b${escapeRegex(keywordLower)}\\b`, 'i');
     return regex.test(messageLower);
   });
 }
@@ -38,6 +55,58 @@ function matchesKeyword(skill: Skill, message: string): boolean {
  */
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Determine tool_choice based on matched skills with tool routing
+ */
+function determineToolChoice(
+  toolMatches: Array<{
+    skillId: number;
+    skillName: string;
+    toolName: string;
+    forceMode: ForceMode;
+    configOverride?: Record<string, unknown>;
+  }>
+): 'auto' | 'required' | { type: 'function'; function: { name: string } } {
+  if (toolMatches.length === 0) {
+    return 'auto';
+  }
+
+  // Sort by force mode priority: required > preferred > suggested
+  const forceModeOrder: Record<ForceMode, number> = {
+    required: 0,
+    preferred: 1,
+    suggested: 2,
+  };
+
+  const sorted = [...toolMatches].sort(
+    (a, b) => forceModeOrder[a.forceMode] - forceModeOrder[b.forceMode]
+  );
+
+  const topMatch = sorted[0];
+
+  // Count required matches
+  const requiredMatches = sorted.filter(m => m.forceMode === 'required');
+
+  if (requiredMatches.length === 1) {
+    // Single required match: force that specific tool
+    return { type: 'function', function: { name: requiredMatches[0].toolName } };
+  }
+
+  if (requiredMatches.length > 1) {
+    // Multiple required matches: force some tool (LLM picks)
+    return 'required';
+  }
+
+  // No required matches - check for preferred
+  const preferredMatches = sorted.filter(m => m.forceMode === 'preferred');
+  if (preferredMatches.length > 0) {
+    return 'required';
+  }
+
+  // Only suggested matches: don't force
+  return 'auto';
 }
 
 /**
@@ -95,12 +164,21 @@ export function resolveSkills(
 
   // 3. Match keyword-triggered skills
   const keywordSkills = getKeywordSkills();
+  const toolMatches: Array<{
+    skillId: number;
+    skillName: string;
+    toolName: string;
+    forceMode: ForceMode;
+    configOverride?: Record<string, unknown>;
+  }> = [];
+  const dataSourceFilters: DataSourceFilter[] = [];
+
   for (const skill of keywordSkills) {
     // Skip if already activated
     if (seenIds.has(skill.id)) continue;
 
-    // Check keyword match
-    if (!matchesKeyword(skill, userMessage)) continue;
+    // Check pattern match (keyword or regex based on match_type)
+    if (!matchesPattern(skill, userMessage)) continue;
 
     // Check category restriction
     if (skill.category_restricted && categoryIds.length > 0) {
@@ -122,6 +200,22 @@ export function resolveSkills(
     seenIds.add(skill.id);
     activatedSkills.push(skill);
     activatedBy.keyword.push(skill.name);
+
+    // Collect tool routing information from this skill
+    if (skill.tool_name && skill.force_mode) {
+      toolMatches.push({
+        skillId: skill.id,
+        skillName: skill.name,
+        toolName: skill.tool_name,
+        forceMode: skill.force_mode,
+        configOverride: skill.tool_config_override || undefined,
+      });
+    }
+
+    // Collect data source filters
+    if (skill.data_source_filter) {
+      dataSourceFilters.push(skill.data_source_filter);
+    }
   }
 
   // Sort by priority (lower = higher priority)
@@ -164,6 +258,9 @@ IMPORTANT: Mermaid diagrams are DISABLED by admin configuration.
     combinedPrompt = combinedPrompt + mermaidDisabledNote;
   }
 
+  // Determine tool routing from matched skills
+  const toolChoice = determineToolChoice(toolMatches);
+
   if (settings.debugMode) {
     console.log('[Skills] Resolved skills:', {
       total: includedSkills.length,
@@ -172,15 +269,29 @@ IMPORTANT: Mermaid diagrams are DISABLED by admin configuration.
       category: activatedBy.category,
       keyword: activatedBy.keyword,
       mermaidEnabled: diagramSettings.mermaidEnabled,
+      toolMatches: toolMatches.length,
+      toolChoice,
     });
   }
 
-  return {
+  // Build result with optional tool routing
+  const result: ResolvedSkills = {
     skills: includedSkills,
     combinedPrompt,
     totalTokens,
     activatedBy,
   };
+
+  // Add tool routing if any matches were found
+  if (toolMatches.length > 0) {
+    result.toolRouting = {
+      toolChoice,
+      matches: toolMatches,
+      dataSourceFilters,
+    };
+  }
+
+  return result;
 }
 
 /**
