@@ -305,7 +305,8 @@ export async function POST(request: NextRequest) {
               allDocPaths,
               memoryContext,
               summaryContext,
-              send
+              send,
+              conversationHistory  // Pass for follow-up context boosting
             );
 
             // Send sources from RAG

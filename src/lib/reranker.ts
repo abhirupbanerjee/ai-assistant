@@ -12,6 +12,18 @@ import { getRerankerSettings } from './db/config';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import type { RetrievedChunk } from '@/types';
 
+/**
+ * Options for reranking chunks
+ */
+export interface RerankOptions {
+  /** If true, skip threshold filtering (useful for user uploads) */
+  bypassThreshold?: boolean;
+  /** Document names to boost (from previous conversation) */
+  boostDocuments?: string[];
+  /** Boost multiplier for matching documents (default: 1.3) */
+  boostFactor?: number;
+}
+
 // Cohere rerank result type
 interface CohereRerankResult {
   index: number;
@@ -170,20 +182,45 @@ async function rerankWithLocal(
  * @param chunks - Retrieved chunks from vector search
  * @param options - Optional settings
  * @param options.bypassThreshold - If true, skip threshold filtering (useful for user uploads)
+ * @param options.boostDocuments - Document names to boost (for follow-up context)
+ * @param options.boostFactor - Boost multiplier (default: 1.3)
  * @returns Reranked chunks sorted by relevance
  */
 export async function rerankChunks(
   query: string,
   chunks: RetrievedChunk[],
-  options?: { bypassThreshold?: boolean }
+  options?: RerankOptions
 ): Promise<RetrievedChunk[]> {
   const settings = getRerankerSettings();
   // When bypassThreshold is true, use 0 as minScore to include all chunks
   const minScore = options?.bypassThreshold ? 0 : settings.minRerankerScore;
 
-  // Return original chunks if reranker is disabled or no chunks
-  if (!settings.enabled || chunks.length === 0) {
+  // Return original chunks if no chunks
+  if (chunks.length === 0) {
     return chunks;
+  }
+
+  // If reranker is disabled, still apply boost logic if provided
+  if (!settings.enabled) {
+    let result = [...chunks];
+
+    // Apply boost for follow-up context even without reranking
+    if (options?.boostDocuments?.length) {
+      const boostFactor = options.boostFactor ?? 1.3;
+      result = result.map(chunk => {
+        if (options.boostDocuments!.includes(chunk.documentName)) {
+          return {
+            ...chunk,
+            score: Math.min(chunk.score * boostFactor, 1.0),
+          };
+        }
+        return chunk;
+      });
+      result.sort((a, b) => b.score - a.score);
+    }
+
+    // Apply threshold filtering
+    return result.filter(c => c.score >= minScore);
   }
 
   // Check cache first
@@ -247,5 +284,32 @@ export async function rerankChunks(
 
   console.log(`[Reranker] After reranking: ${rerankedChunks.length} chunks passed threshold`);
 
-  return [...rerankedChunks, ...filteredRemaining];
+  // Combine reranked and remaining chunks
+  let finalChunks = [...rerankedChunks, ...filteredRemaining];
+
+  // Apply boost for documents from previous conversation (follow-up context)
+  if (options?.boostDocuments?.length) {
+    const boostFactor = options.boostFactor ?? 1.3;
+    let boostedCount = 0;
+
+    finalChunks = finalChunks.map(chunk => {
+      if (options.boostDocuments!.includes(chunk.documentName)) {
+        boostedCount++;
+        return {
+          ...chunk,
+          score: Math.min(chunk.score * boostFactor, 1.0), // Cap at 1.0
+        };
+      }
+      return chunk;
+    });
+
+    // Re-sort after boosting
+    finalChunks.sort((a, b) => b.score - a.score);
+
+    if (boostedCount > 0) {
+      console.log(`[Reranker] Boosted ${boostedCount} chunks from previous conversation`);
+    }
+  }
+
+  return finalChunks;
 }

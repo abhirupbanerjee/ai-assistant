@@ -5,7 +5,7 @@
  * Provides context, sources, and skill information for progressive disclosure.
  */
 
-import type { Source, StreamEvent, SkillInfo, UploadExtractionState } from '@/types';
+import type { Source, StreamEvent, SkillInfo, UploadExtractionState, Message } from '@/types';
 import type { RetrievedChunk } from '@/types';
 import { createEmbeddings } from '../openai';
 import { buildContext, type UserDocTruncation } from '../rag';
@@ -18,6 +18,7 @@ import { getAvailableDataSourcesDescription } from '../tools/data-source';
 import { getToolDefinitions } from '../tools';
 import { ragLogger as logger } from '../logger';
 import { MAX_QUERY_EXPANSIONS, CHUNK_PREVIEW_LENGTH } from '../constants';
+import { detectFollowUp } from '../conversation-context';
 
 /**
  * Result of RAG retrieval phase
@@ -118,6 +119,7 @@ function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChu
  * @param memoryContext - Optional user memory context
  * @param summaryContext - Optional thread summary context
  * @param send - Optional SSE send function for streaming events
+ * @param conversationHistory - Optional conversation history for follow-up context boosting
  */
 export async function performRAGRetrieval(
   userMessage: string,
@@ -125,7 +127,8 @@ export async function performRAGRetrieval(
   userDocPaths: string[] = [],
   memoryContext?: string,
   summaryContext?: string,
-  send?: (event: StreamEvent) => void
+  send?: (event: StreamEvent) => void,
+  conversationHistory: Message[] = []
 ): Promise<RAGRetrievalResult> {
   const ragSettings = getRagSettings();
   const { queryExpansionEnabled } = ragSettings;
@@ -154,10 +157,26 @@ export async function performRAGRetrieval(
     categorySlugs.length > 0 ? categorySlugs : undefined
   );
 
-  // Apply reranking
-  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks);
+  // Detect follow-up and extract previous sources for boosting
+  const { isFollowUp } = detectFollowUp(userMessage);
+  let boostDocuments: string[] = [];
+
+  if (isFollowUp && conversationHistory.length > 0) {
+    // Get the last assistant message with sources
+    const lastAssistantMsg = [...conversationHistory]
+      .reverse()
+      .find(m => m.role === 'assistant' && m.sources?.length);
+
+    if (lastAssistantMsg?.sources) {
+      boostDocuments = lastAssistantMsg.sources.map(s => s.documentName);
+      logger.debug('Follow-up detected, boosting documents', { boostDocuments });
+    }
+  }
+
+  // Apply reranking with boost for follow-up context
+  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
   // User uploads bypass threshold - user explicitly added these docs for this conversation
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true });
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true, boostDocuments });
 
   // Emit truncation warnings for documents with content cut off
   if (send && userDocTruncations.length > 0) {

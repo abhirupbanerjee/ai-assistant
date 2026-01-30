@@ -25,6 +25,7 @@ import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
 import { getAvailableDataSourcesDescription } from './tools/data-source';
 import { ragLogger as logger } from './logger';
+import { detectFollowUp } from './conversation-context';
 import {
   MAX_QUERY_EXPANSIONS,
   MAX_USER_DOC_CHUNKS,
@@ -441,10 +442,27 @@ export async function ragQuery(
     categorySlugs
   );
 
+  // Detect follow-up and extract previous sources for boosting
+  const { isFollowUp } = detectFollowUp(userMessage);
+  let boostDocuments: string[] = [];
+
+  if (isFollowUp && conversationHistory.length > 0) {
+    // Get the last assistant message with sources
+    const lastAssistantMsg = [...conversationHistory]
+      .reverse()
+      .find(m => m.role === 'assistant' && m.sources?.length);
+
+    if (lastAssistantMsg?.sources) {
+      boostDocuments = lastAssistantMsg.sources.map(s => s.documentName);
+      logger.debug('Follow-up detected, boosting documents', { boostDocuments });
+    }
+  }
+
   // Apply reranking if enabled (improves relevance ordering)
-  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks);
+  // Pass boostDocuments to prioritize chunks from previous conversation context
+  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
   // User uploads bypass threshold - user explicitly added these docs for this conversation
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true });
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true, boostDocuments });
 
   // Format context for LLM
   const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
