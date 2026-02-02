@@ -293,6 +293,86 @@ const DEFAULT_ROUTING_RULES: ToolRoutingRuleInput[] = [
     forceMode: 'preferred',
     priority: 30,
   },
+  // Diagram Generator - Flowcharts
+  {
+    toolName: 'diagram_gen',
+    ruleName: 'Diagram Flowchart Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'flowchart',
+      'process flow',
+      'workflow',
+      'flow diagram',
+      'process diagram',
+      'mermaid diagram',
+      'mermaid flowchart',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
+  // Diagram Generator - Mindmaps
+  {
+    toolName: 'diagram_gen',
+    ruleName: 'Diagram Mindmap Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'mindmap',
+      'mind map',
+      'brainstorm diagram',
+      'concept map',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
+  // Diagram Generator - Sequence
+  {
+    toolName: 'diagram_gen',
+    ruleName: 'Diagram Sequence Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'sequence diagram',
+      'interaction diagram',
+      'message flow',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
+  // Diagram Generator - Architecture
+  {
+    toolName: 'diagram_gen',
+    ruleName: 'Diagram Architecture Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'architecture diagram',
+      'c4 diagram',
+      'system diagram',
+      'c4 context',
+      'c4 container',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
+  // Diagram Generator - Other
+  {
+    toolName: 'diagram_gen',
+    ruleName: 'Diagram Other Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'gantt chart',
+      'timeline diagram',
+      'class diagram',
+      'uml class',
+      'state diagram',
+      'state machine',
+      'er diagram',
+      'entity relationship',
+      'database diagram',
+      'user journey',
+      'journey map',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
 ];
 
 /**

@@ -9,7 +9,7 @@
  * Extended to support unified keyword actions (skills + tool routing)
  */
 
-import { getSkillsSettings, getDiagramSettings } from '../db/config';
+import { getSkillsSettings } from '../db/config';
 import {
   getSkillsByTrigger,
   getIndexSkillsForCategories,
@@ -244,19 +244,7 @@ export function resolveSkills(
     totalTokens += skillTokens;
   }
 
-  let combinedPrompt = promptParts.join('\n\n');
-
-  // Inject Mermaid disable note if admin has disabled Mermaid diagrams
-  const diagramSettings = getDiagramSettings();
-  if (!diagramSettings.mermaidEnabled) {
-    const mermaidDisabledNote = `
-
-IMPORTANT: Mermaid diagrams are DISABLED by admin configuration.
-- Do NOT generate any \`\`\`mermaid code blocks
-- Use ASCII-only diagrams with 34-character width limit
-- For flowcharts, architecture, and timelines: use ASCII box format`;
-    combinedPrompt = combinedPrompt + mermaidDisabledNote;
-  }
+  const combinedPrompt = promptParts.join('\n\n');
 
   // Determine tool routing from matched skills
   const toolChoice = determineToolChoice(toolMatches);
@@ -268,7 +256,6 @@ IMPORTANT: Mermaid diagrams are DISABLED by admin configuration.
       always: activatedBy.always,
       category: activatedBy.category,
       keyword: activatedBy.keyword,
-      mermaidEnabled: diagramSettings.mermaidEnabled,
       toolMatches: toolMatches.length,
       toolChoice,
     });

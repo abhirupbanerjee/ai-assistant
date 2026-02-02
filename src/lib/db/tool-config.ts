@@ -470,6 +470,16 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       rateLimitPerHour: 50,
     },
   },
+  diagram_gen: {
+    enabled: true, // Enabled by default - uses system default LLM
+    config: {
+      temperature: 0.3,
+      maxTokens: 1500,
+      validateSyntax: true,
+      maxRetries: 2,
+      debugMode: false,
+    },
+  },
 };
 
 /**

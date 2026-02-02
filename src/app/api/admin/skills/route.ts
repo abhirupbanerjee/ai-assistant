@@ -12,7 +12,7 @@ import {
   createSkill,
   resetCoreSkillsToDefaults,
 } from '@/lib/db/skills';
-import { getSkillsSettings, getDiagramSettings } from '@/lib/db/config';
+import { getSkillsSettings } from '@/lib/db/config';
 import { seedCoreSkills } from '@/lib/skills/seed';
 import { clearConfigCache } from '@/lib/config-loader';
 import type { CreateSkillInput, TriggerType } from '@/lib/skills/types';
@@ -23,9 +23,8 @@ export async function GET() {
 
     const skills = getAllSkillsWithCategories();
     const settings = getSkillsSettings();
-    const diagramSettings = getDiagramSettings();
 
-    return NextResponse.json({ skills, settings, diagramSettings });
+    return NextResponse.json({ skills, settings });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
+import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint } from '@/types';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
@@ -23,7 +23,7 @@ import {
  * These tools produce final outputs (images, documents) and should not be called again
  * unless the user explicitly requests it.
  */
-const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen']);
+const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
 
 let openaiClient: OpenAI | null = null;
 
@@ -398,6 +398,16 @@ export async function generateResponseWithTools(
                     model: parsed.metadata?.model,
                   };
                   callbacks.onArtifact('image', img);
+                }
+
+                // Check for generated diagram
+                if (parsed.success && parsed.diagramHint) {
+                  const diagram: DiagramHint = {
+                    code: parsed.diagramHint.code,
+                    type: parsed.diagramHint.type,
+                    title: parsed.diagramHint.title,
+                  };
+                  callbacks.onArtifact('diagram', diagram);
                 }
               } catch (artifactError) {
                 // Log artifact callback error but don't fail the tool execution

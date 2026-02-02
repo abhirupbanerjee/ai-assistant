@@ -195,6 +195,35 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
         }
       };
     }
+  },
+
+  diagram_gen: {
+    name: 'diagram_gen',
+    displayName: 'Diagram Generator',
+    description: 'Generate Mermaid diagrams using the system default LLM',
+    requires: {
+      envVars: [
+        { name: 'OPENAI_API_KEY', description: 'OpenAI API key (or use LiteLLM proxy)' }
+      ]
+    },
+    validates: async () => {
+      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+      const hasLiteLLM = Boolean(process.env.OPENAI_BASE_URL);
+      const hasAny = hasOpenAI || hasLiteLLM;
+
+      return {
+        ok: hasAny,
+        message: hasAny
+          ? `Ready - ${hasLiteLLM ? 'LiteLLM proxy' : 'OpenAI'} configured`
+          : 'Requires OpenAI API key or LiteLLM proxy',
+        details: {
+          envVars: [
+            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'env' : undefined },
+            { name: 'OPENAI_BASE_URL', set: hasLiteLLM, source: hasLiteLLM ? 'env' : undefined }
+          ]
+        }
+      };
+    }
   }
 };
 

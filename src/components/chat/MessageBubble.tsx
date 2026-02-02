@@ -9,6 +9,7 @@ import SourceCard from './SourceCard';
 import DocumentResultCard from './DocumentResultCard';
 import ImageDisplay from './ImageDisplay';
 import DataVisualization from './DataVisualization';
+import MermaidDiagram from '@/components/markdown/MermaidDiagram';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 
 const MAX_SOURCES_DISPLAYED = 5;
@@ -114,6 +115,22 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
                 notes={viz.notes}
                 seriesMode={viz.seriesMode}
               />
+            ))}
+          </div>
+        )}
+
+        {/* Generated Diagrams */}
+        {message.generatedDiagrams && message.generatedDiagrams.length > 0 && (
+          <div className="mt-4 space-y-4">
+            {message.generatedDiagrams.map((diagram, index) => (
+              <div key={index} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                {diagram.title && (
+                  <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                    <span className="text-sm font-medium text-gray-700">{diagram.title}</span>
+                  </div>
+                )}
+                <MermaidDiagram code={diagram.code} />
+              </div>
             ))}
           </div>
         )}

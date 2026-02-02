@@ -126,10 +126,6 @@ export interface SkillsSettings {
   debugMode: boolean;             // Log skill activation details
 }
 
-export interface DiagramSettings {
-  mermaidEnabled: boolean;        // Enable/disable Mermaid diagrams globally (default: true, fallback to ASCII when false)
-}
-
 export type OcrProvider = 'mistral' | 'azure-di' | 'pdf-parse';
 
 export interface OcrProviderConfig {
@@ -245,7 +241,6 @@ export type SettingKey =
   | 'memory-settings'
   | 'summarization-settings'
   | 'skills-settings'
-  | 'diagram-settings'
   | 'ocr-settings'
   | 'limits-settings'
   | 'model-token-limits'
@@ -542,20 +537,6 @@ export function getSkillsSettings(): SkillsSettings {
 }
 
 /**
- * Get diagram settings
- * Controls Mermaid vs ASCII-only diagram generation
- * Priority: SQLite > hardcoded defaults
- */
-export function getDiagramSettings(): DiagramSettings {
-  const dbSettings = getSetting<DiagramSettings>('diagram-settings');
-  if (dbSettings) return dbSettings;
-
-  return {
-    mermaidEnabled: true,  // Default to enabled for backwards compatibility
-  };
-}
-
-/**
  * Get OCR/document processing settings
  * Controls which OCR providers are enabled and their priority order
  * Priority: SQLite > hardcoded defaults
@@ -796,16 +777,6 @@ export function setSkillsSettings(settings: Partial<SkillsSettings>, updatedBy?:
   const current = getSkillsSettings();
   const updated = { ...current, ...settings };
   setSetting('skills-settings', updated, updatedBy);
-  return updated;
-}
-
-/**
- * Update diagram settings
- */
-export function setDiagramSettings(settings: Partial<DiagramSettings>, updatedBy?: string): DiagramSettings {
-  const current = getDiagramSettings();
-  const updated = { ...current, ...settings };
-  setSetting('diagram-settings', updated, updatedBy);
   return updated;
 }
 

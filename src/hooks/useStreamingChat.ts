@@ -21,6 +21,7 @@ import type {
   MessageVisualization,
   GeneratedDocumentInfo,
   GeneratedImageInfo,
+  DiagramHint,
   ChatPreferences,
 } from '@/types';
 
@@ -73,6 +74,8 @@ export interface StreamingState {
   documents: GeneratedDocumentInfo[];
   /** Generated images from tools */
   images: GeneratedImageInfo[];
+  /** Generated diagrams from tools */
+  diagrams: DiagramHint[];
   /** Autonomous plan state (for autonomous mode) */
   autonomousPlan: AutonomousPlanState | null;
   /** Budget warning info (for autonomous mode) */
@@ -92,7 +95,7 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[]) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[]) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
@@ -142,6 +145,7 @@ const initialState: StreamingState = {
   visualizations: [],
   documents: [],
   images: [],
+  diagrams: [],
   autonomousPlan: null,
   budgetWarning: null,
   error: null,
@@ -257,6 +261,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           setState(prev => ({
             ...prev,
             images: [...prev.images, event.data],
+          }));
+        } else if (event.subtype === 'diagram') {
+          setState(prev => ({
+            ...prev,
+            diagrams: [...prev.diagrams, event.data],
           }));
         }
         break;
@@ -479,7 +488,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }
         setState(prev => {
           const finalContent = contentBufferRef.current || prev.currentContent;
-          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images);
+          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images, prev.diagrams);
           return {
             ...prev,
             isStreaming: false,
