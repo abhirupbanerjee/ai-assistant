@@ -202,7 +202,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Sort state
-  type SortField = 'id' | 'name' | 'trigger' | 'tokens';
+  type SortField = 'id' | 'name' | 'trigger' | 'priority' | 'tokens' | 'status';
   type SortOrder = 'asc' | 'desc';
   const [sortBy, setSortBy] = useState<SortField>('id');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
@@ -490,8 +490,15 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
         case 'trigger':
           comparison = a.trigger_type.localeCompare(b.trigger_type);
           break;
+        case 'priority':
+          comparison = a.priority - b.priority;
+          break;
         case 'tokens':
           comparison = (a.token_estimate || 0) - (b.token_estimate || 0);
+          break;
+        case 'status':
+          // Active first when ascending
+          comparison = (a.is_active === b.is_active) ? 0 : (a.is_active ? -1 : 1);
           break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -712,7 +719,19 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categories</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('priority')}
+                >
+                  <div className="flex items-center gap-1">
+                    Priority
+                    {sortBy === 'priority' ? (
+                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </div>
+                </th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('tokens')}
@@ -726,7 +745,19 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('status')}
+                >
+                  <div className="flex items-center gap-1">
+                    Status
+                    {sortBy === 'status' ? (
+                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </div>
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
