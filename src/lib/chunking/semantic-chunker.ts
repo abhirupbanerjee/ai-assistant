@@ -135,18 +135,27 @@ export class SemanticChunker {
 
   /**
    * Get embeddings for all sentence groups
+   * Batches requests to avoid API token limits (max 300K tokens per request)
    */
   private async embedGroups(groups: SentenceGroup[]): Promise<ScoredGroup[]> {
     try {
       // Truncate group text to avoid token limits
       const texts = groups.map(g => g.text.slice(0, 500));
 
-      // Batch embed all groups
-      const embeddings = await createEmbeddings(texts);
+      // Batch embed in chunks of 100 to stay under API limits
+      // ~500 chars * 100 groups * ~1.3 tokens/char = ~65K tokens per batch (safe margin)
+      const BATCH_SIZE = 100;
+      const allEmbeddings: number[][] = [];
+
+      for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+        const batch = texts.slice(i, i + BATCH_SIZE);
+        const batchEmbeddings = await createEmbeddings(batch);
+        allEmbeddings.push(...batchEmbeddings);
+      }
 
       return groups.map((group, i) => ({
         ...group,
-        embedding: embeddings[i] || [],
+        embedding: allEmbeddings[i] || [],
       }));
     } catch (error) {
       console.error('[SemanticChunker] Embedding error:', error);
