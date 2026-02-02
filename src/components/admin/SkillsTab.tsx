@@ -620,6 +620,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-16">ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trigger</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categories</th>
@@ -632,13 +633,14 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             <tbody className="divide-y divide-gray-200">
               {filteredSkills.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                     No skills found. Create your first skill to get started.
                   </td>
                 </tr>
               ) : (
                 filteredSkills.map((skill) => (
                   <tr key={skill.id} className={`hover:bg-gray-50 ${!skill.is_active ? 'opacity-60' : ''}`}>
+                    <td className="px-3 py-4 text-sm text-gray-500 font-mono">{skill.id}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {skill.is_core && <span title="Core skill"><Lock size={14} className="text-amber-500" /></span>}
