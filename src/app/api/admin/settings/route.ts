@@ -239,7 +239,18 @@ export async function PUT(request: NextRequest) {
     switch (type) {
       case 'rag': {
         // Validate RAG settings
-        const { topKChunks, maxContextChunks, similarityThreshold, chunkSize, chunkOverlap, queryExpansionEnabled, cacheEnabled, cacheTTLSeconds } = settings;
+        const {
+          topKChunks,
+          maxContextChunks,
+          similarityThreshold,
+          chunkSize,
+          chunkOverlap,
+          queryExpansionEnabled,
+          cacheEnabled,
+          cacheTTLSeconds,
+          chunkingStrategy,
+          semanticBreakpointThreshold,
+        } = settings;
 
         if (typeof topKChunks !== 'number' || topKChunks < 1 || topKChunks > 50) {
           return NextResponse.json<ApiError>(
@@ -283,6 +294,24 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate chunking strategy
+        if (chunkingStrategy !== undefined && !['recursive', 'semantic'].includes(chunkingStrategy)) {
+          return NextResponse.json<ApiError>(
+            { error: 'Chunking strategy must be "recursive" or "semantic"', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate semantic breakpoint threshold
+        if (semanticBreakpointThreshold !== undefined) {
+          if (typeof semanticBreakpointThreshold !== 'number' || semanticBreakpointThreshold < 0.3 || semanticBreakpointThreshold > 0.8) {
+            return NextResponse.json<ApiError>(
+              { error: 'Semantic breakpoint threshold must be between 0.3 and 0.8', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
         result = setRagSettings({
           topKChunks,
           maxContextChunks,
@@ -292,6 +321,8 @@ export async function PUT(request: NextRequest) {
           queryExpansionEnabled: Boolean(queryExpansionEnabled),
           cacheEnabled: Boolean(cacheEnabled),
           cacheTTLSeconds,
+          chunkingStrategy: chunkingStrategy || 'recursive',
+          semanticBreakpointThreshold: semanticBreakpointThreshold ?? 0.5,
         }, user.email);
         break;
       }

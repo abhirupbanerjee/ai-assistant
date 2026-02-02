@@ -55,6 +55,8 @@ interface RAGSettings {
   queryExpansionEnabled: boolean;
   cacheEnabled: boolean;
   cacheTTLSeconds: number;
+  chunkingStrategy: 'recursive' | 'semantic';
+  semanticBreakpointThreshold: number;
   updatedAt: string;
   updatedBy: string;
 }
@@ -618,6 +620,8 @@ export default function AdminPage() {
           queryExpansionEnabled: data.rag.queryExpansionEnabled,
           cacheEnabled: data.rag.cacheEnabled,
           cacheTTLSeconds: data.rag.cacheTTLSeconds,
+          chunkingStrategy: data.rag.chunkingStrategy || 'recursive',
+          semanticBreakpointThreshold: data.rag.semanticBreakpointThreshold ?? 0.5,
         });
       }
       if (data.llm) {
@@ -1674,6 +1678,8 @@ export default function AdminPage() {
         queryExpansionEnabled: ragSettings?.queryExpansionEnabled,
         cacheEnabled: ragSettings?.cacheEnabled,
         cacheTTLSeconds: ragSettings?.cacheTTLSeconds,
+        chunkingStrategy: ragSettings?.chunkingStrategy,
+        semanticBreakpointThreshold: ragSettings?.semanticBreakpointThreshold,
       })
     );
   };
@@ -1717,6 +1723,8 @@ export default function AdminPage() {
         queryExpansionEnabled: ragSettings.queryExpansionEnabled,
         cacheEnabled: ragSettings.cacheEnabled,
         cacheTTLSeconds: ragSettings.cacheTTLSeconds,
+        chunkingStrategy: ragSettings.chunkingStrategy,
+        semanticBreakpointThreshold: ragSettings.semanticBreakpointThreshold,
       });
       setRagModified(false);
     }
@@ -3792,6 +3800,42 @@ export default function AdminPage() {
                           />
                           <p className="mt-1 text-xs text-gray-500">Overlap between chunks</p>
                         </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Default Chunking Strategy</label>
+                          <select
+                            value={editedRag.chunkingStrategy}
+                            onChange={(e) => handleRagChange('chunkingStrategy', e.target.value as 'recursive' | 'semantic')}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                          >
+                            <option value="recursive">Recursive Character (Fast)</option>
+                            <option value="semantic">Semantic (Topic-Aware)</option>
+                          </select>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {editedRag.chunkingStrategy === 'recursive'
+                              ? 'Fast, no extra cost. Good for general documents.'
+                              : 'Groups by topic. +70% accuracy. Uses embedding API calls.'}
+                          </p>
+                        </div>
+                        {editedRag.chunkingStrategy === 'semantic' && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Breakpoint Sensitivity: {editedRag.semanticBreakpointThreshold}
+                            </label>
+                            <input
+                              type="range"
+                              min="0.3"
+                              max="0.8"
+                              step="0.05"
+                              value={editedRag.semanticBreakpointThreshold}
+                              onChange={(e) => handleRagChange('semanticBreakpointThreshold', parseFloat(e.target.value))}
+                              className="w-full"
+                            />
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                              <span>0.3 (More splits)</span>
+                              <span>0.8 (Fewer splits)</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-6 pt-4 border-t">
                         <label className="flex items-center gap-2 cursor-pointer">

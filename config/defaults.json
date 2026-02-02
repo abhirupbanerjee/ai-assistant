@@ -171,7 +171,9 @@
     "chunkOverlap": 200,
     "queryExpansionEnabled": true,
     "cacheEnabled": true,
-    "cacheTTLSeconds": 3600
+    "cacheTTLSeconds": 3600,
+    "chunkingStrategy": "recursive",
+    "semanticBreakpointThreshold": 0.5
   },
 
   "embedding": {

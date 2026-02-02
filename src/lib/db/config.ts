@@ -26,6 +26,8 @@ export interface RagSettings {
   queryExpansionEnabled: boolean;
   cacheEnabled: boolean;
   cacheTTLSeconds: number;
+  chunkingStrategy: 'recursive' | 'semantic';  // Chunking algorithm (default: 'recursive')
+  semanticBreakpointThreshold: number;         // Sensitivity for semantic chunking (0.3-0.8, default: 0.5)
 }
 
 export interface LlmSettings {
@@ -338,12 +340,21 @@ export function getSettingMetadata(key: SettingKey): {
  * Priority: SQLite > JSON config > hardcoded defaults
  */
 export function getRagSettings(): RagSettings {
-  const dbSettings = getSetting<RagSettings>('rag-settings');
-  if (dbSettings) return dbSettings;
+  const dbSettings = getSetting<Partial<RagSettings>>('rag-settings');
 
-  // Fall back to JSON config
+  // Fall back to JSON config for base values
   const config = loadConfig();
-  return config.rag;
+  const defaults = config.rag;
+
+  // Merge with defaults to ensure new fields have values (backward compatibility)
+  return {
+    ...defaults,
+    // Provide defaults for new chunking fields if not in config
+    chunkingStrategy: 'recursive',
+    semanticBreakpointThreshold: 0.5,
+    // Override with database settings if present
+    ...dbSettings,
+  };
 }
 
 /**

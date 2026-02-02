@@ -11,6 +11,7 @@
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import path from 'path';
 import { createEmbeddings } from './openai';
+import { SemanticChunker } from './chunking/semantic-chunker';
 import {
   addDocuments,
   addDocumentsToCategories,
@@ -97,8 +98,26 @@ export async function chunkText(
   userId?: string,
   pages?: PageText[]
 ): Promise<DocumentChunk[]> {
-  // Get splitter with current settings
-  const splitter = createSplitter();
+  const settings = getRagSettings();
+  const useSemanticChunking = settings.chunkingStrategy === 'semantic';
+
+  // Create appropriate chunker based on strategy
+  const splitTextFn = useSemanticChunking
+    ? async (pageText: string) => {
+        const chunker = new SemanticChunker({
+          maxChunkSize: settings.chunkSize,
+          breakpointThreshold: settings.semanticBreakpointThreshold,
+        });
+        return chunker.splitText(pageText);
+      }
+    : async (pageText: string) => {
+        const splitter = createSplitter();
+        return splitter.splitText(pageText);
+      };
+
+  if (useSemanticChunking) {
+    console.log(`[Ingest] Using semantic chunking (threshold: ${settings.semanticBreakpointThreshold})`);
+  }
 
   // If we have page information, chunk each page separately to preserve page numbers
   if (pages && pages.length > 0) {
@@ -108,7 +127,7 @@ export async function chunkText(
     for (const page of pages) {
       if (!page.text.trim()) continue;
 
-      const pageChunks = await splitter.splitText(page.text);
+      const pageChunks = await splitTextFn(page.text);
 
       for (const chunkText of pageChunks) {
         allChunks.push({
@@ -132,7 +151,7 @@ export async function chunkText(
   }
 
   // Fallback: chunk without page info (all page 1)
-  const chunks = await splitter.splitText(text);
+  const chunks = await splitTextFn(text);
 
   return chunks.map((chunk, index) => ({
     id: `${documentId}-chunk-${index}`,
