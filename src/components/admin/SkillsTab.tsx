@@ -18,6 +18,9 @@ import {
   Play,
   Eye,
   RotateCcw,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -196,6 +199,13 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   // Filter/search state
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTriggerType, setFilterTriggerType] = useState<'all' | 'always' | 'category' | 'keyword'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // Sort state
+  type SortField = 'id' | 'name' | 'trigger' | 'tokens';
+  type SortOrder = 'asc' | 'desc';
+  const [sortBy, setSortBy] = useState<SortField>('id');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   // Fetch data
   useEffect(() => {
@@ -455,14 +465,47 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     setShowEditModal(true);
   };
 
-  // Filter skills
-  const filteredSkills = skills.filter(skill => {
-    const matchesSearch =
-      skill.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (skill.description?.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesTrigger = filterTriggerType === 'all' || skill.trigger_type === filterTriggerType;
-    return matchesSearch && matchesTrigger;
-  });
+  // Filter and sort skills
+  const filteredSkills = skills
+    .filter(skill => {
+      const matchesSearch =
+        skill.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (skill.description?.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesTrigger = filterTriggerType === 'all' || skill.trigger_type === filterTriggerType;
+      const matchesStatus =
+        filterStatus === 'all' ||
+        (filterStatus === 'active' && skill.is_active) ||
+        (filterStatus === 'inactive' && !skill.is_active);
+      return matchesSearch && matchesTrigger && matchesStatus;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case 'id':
+          comparison = a.id - b.id;
+          break;
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'trigger':
+          comparison = a.trigger_type.localeCompare(b.trigger_type);
+          break;
+        case 'tokens':
+          comparison = (a.token_estimate || 0) - (b.token_estimate || 0);
+          break;
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+  // Toggle sort handler
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
 
   // Get trigger type badge
   const getTriggerBadge = (type: string) => {
@@ -613,6 +656,15 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             <option value="category">Category</option>
             <option value="keyword">Keyword</option>
           </select>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'inactive')}
+            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
         </div>
 
         {/* Skills Table */}
@@ -620,12 +672,60 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-16">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trigger</th>
+                <th
+                  className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-16 cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('id')}
+                >
+                  <div className="flex items-center gap-1">
+                    ID
+                    {sortBy === 'id' ? (
+                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Name
+                    {sortBy === 'name' ? (
+                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('trigger')}
+                >
+                  <div className="flex items-center gap-1">
+                    Trigger
+                    {sortBy === 'trigger' ? (
+                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </div>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categories</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tokens</th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('tokens')}
+                >
+                  <div className="flex items-center gap-1">
+                    Tokens
+                    {sortBy === 'tokens' ? (
+                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+                    ) : (
+                      <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </div>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
