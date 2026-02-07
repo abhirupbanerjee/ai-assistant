@@ -74,14 +74,28 @@ export class SemanticChunker {
     }
 
     if (sentences.length === 1) {
-      return [text.trim()];
+      // Single sentence - apply safety split if needed
+      const trimmedText = text.trim();
+      const MAX_SAFE_CHARS = 6000;
+      if (trimmedText.length > MAX_SAFE_CHARS) {
+        console.log(`[SemanticChunker] Single sentence exceeds safe size (${trimmedText.length} chars), splitting`);
+        return this.splitLargeChunk(trimmedText, this.options.maxChunkSize);
+      }
+      return [trimmedText];
     }
 
     // Step 2: Create sentence groups (sliding window)
     const groups = this.createSentenceGroups(sentences);
 
     if (groups.length <= 1) {
-      return [text.trim()];
+      // Few groups - apply safety split if needed
+      const trimmedText = text.trim();
+      const MAX_SAFE_CHARS = 6000;
+      if (trimmedText.length > MAX_SAFE_CHARS) {
+        console.log(`[SemanticChunker] Text with few groups exceeds safe size (${trimmedText.length} chars), splitting`);
+        return this.splitLargeChunk(trimmedText, this.options.maxChunkSize);
+      }
+      return [trimmedText];
     }
 
     // Step 3: Get embeddings for all groups
@@ -94,9 +108,20 @@ export class SemanticChunker {
     // Step 5: Merge groups into chunks based on breakpoints
     const chunks = this.mergeIntoChunks(sentences, breakpoints);
 
-    console.log(`[SemanticChunker] Split ${sentences.length} sentences into ${chunks.length} chunks`);
+    // Step 6: Safety fallback - split any chunks that exceed safe embedding size
+    // ~6000 chars ≈ 7500 tokens, safely under the 8192 token limit
+    const MAX_SAFE_CHARS = 6000;
+    const safeChunks = chunks.flatMap(chunk => {
+      if (chunk.length > MAX_SAFE_CHARS) {
+        console.log(`[SemanticChunker] Splitting oversized chunk (${chunk.length} chars) into smaller pieces`);
+        return this.splitLargeChunk(chunk, this.options.maxChunkSize);
+      }
+      return chunk;
+    });
 
-    return chunks;
+    console.log(`[SemanticChunker] Split ${sentences.length} sentences into ${safeChunks.length} chunks`);
+
+    return safeChunks;
   }
 
   /**
@@ -274,9 +299,9 @@ export class SemanticChunker {
       const hasMinContent = currentLength >= this.options.minChunkSize;
 
       // Break conditions:
-      // 1. Semantic breakpoint AND we have minimum content
-      // 2. Would exceed max size AND we have minimum content
-      if ((isBreakpoint || wouldExceedMax) && hasMinContent && currentChunk.length > 0) {
+      // 1. Semantic breakpoint AND we have minimum content AND we have existing content
+      // 2. Would exceed max size AND we have existing content (don't require min for size overflow)
+      if ((isBreakpoint && hasMinContent && currentChunk.length > 0) || (wouldExceedMax && currentChunk.length > 0)) {
         chunks.push(currentChunk.join(' ').trim());
         currentChunk = [];
         currentLength = 0;
@@ -297,6 +322,34 @@ export class SemanticChunker {
 
     // Post-process: merge tiny chunks with neighbors
     return this.mergeSmallChunks(chunks);
+  }
+
+  /**
+   * Split a large chunk into smaller pieces using character-based splitting.
+   * Used as a fallback when semantic chunking produces oversized chunks.
+   */
+  private splitLargeChunk(text: string, maxSize: number): string[] {
+    const chunks: string[] = [];
+    let remaining = text;
+
+    while (remaining.length > maxSize) {
+      // Find a good break point (space, newline, or punctuation)
+      let breakPoint = maxSize;
+      for (let i = maxSize; i > maxSize * 0.5; i--) {
+        if ([' ', '\n', '.', ',', ';', ':'].includes(remaining[i])) {
+          breakPoint = i + 1;
+          break;
+        }
+      }
+      chunks.push(remaining.slice(0, breakPoint).trim());
+      remaining = remaining.slice(breakPoint).trim();
+    }
+
+    if (remaining) {
+      chunks.push(remaining);
+    }
+
+    return chunks;
   }
 
   /**
