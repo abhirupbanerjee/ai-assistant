@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, ListTodo } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, ListTodo, CheckSquare, Square } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -127,6 +127,95 @@ export default function BackupTab() {
 
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Select all / clear all handlers for backup options
+  const handleSelectAllBackup = useCallback(() => {
+    setBackupOptions({
+      includeDocuments: true,
+      includeDocumentFiles: true,
+      includeCategories: true,
+      includeSettings: true,
+      includeUsers: true,
+      includeThreads: true,
+      includeTools: true,
+      includeSkills: true,
+      includeCategoryPrompts: true,
+      includeDataSources: true,
+      includeWorkspaces: true,
+      includeFunctionApis: true,
+      includeUserMemories: true,
+      includeToolRouting: true,
+      includeThreadShares: true,
+      includeTaskPlans: true,
+    });
+  }, []);
+
+  const handleClearAllBackup = useCallback(() => {
+    setBackupOptions({
+      includeDocuments: false,
+      includeDocumentFiles: false,
+      includeCategories: false,
+      includeSettings: false,
+      includeUsers: false,
+      includeThreads: false,
+      includeTools: false,
+      includeSkills: false,
+      includeCategoryPrompts: false,
+      includeDataSources: false,
+      includeWorkspaces: false,
+      includeFunctionApis: false,
+      includeUserMemories: false,
+      includeToolRouting: false,
+      includeThreadShares: false,
+      includeTaskPlans: false,
+    });
+  }, []);
+
+  // Select all / clear all handlers for restore options
+  const handleSelectAllRestore = useCallback(() => {
+    if (!restoreManifest?.contents) return;
+    setRestoreOptions(prev => ({
+      ...prev,
+      restoreDocuments: restoreManifest.contents.documents,
+      restoreDocumentFiles: restoreManifest.contents.documentFiles,
+      restoreCategories: restoreManifest.contents.categories,
+      restoreSettings: restoreManifest.contents.settings,
+      restoreUsers: restoreManifest.contents.users,
+      restoreThreads: restoreManifest.contents.threads,
+      restoreTools: restoreManifest.contents.tools ?? false,
+      restoreSkills: restoreManifest.contents.skills ?? false,
+      restoreCategoryPrompts: restoreManifest.contents.categoryPrompts ?? false,
+      restoreDataSources: restoreManifest.contents.dataSources ?? false,
+      restoreWorkspaces: restoreManifest.contents.workspaces ?? false,
+      restoreFunctionApis: restoreManifest.contents.functionApis ?? false,
+      restoreUserMemories: restoreManifest.contents.userMemories ?? false,
+      restoreToolRouting: restoreManifest.contents.toolRouting ?? false,
+      restoreThreadShares: restoreManifest.contents.threadShares ?? false,
+      restoreTaskPlans: restoreManifest.contents.taskPlans ?? false,
+    }));
+  }, [restoreManifest]);
+
+  const handleClearAllRestore = useCallback(() => {
+    setRestoreOptions(prev => ({
+      ...prev,
+      restoreDocuments: false,
+      restoreDocumentFiles: false,
+      restoreCategories: false,
+      restoreSettings: false,
+      restoreUsers: false,
+      restoreThreads: false,
+      restoreTools: false,
+      restoreSkills: false,
+      restoreCategoryPrompts: false,
+      restoreDataSources: false,
+      restoreWorkspaces: false,
+      restoreFunctionApis: false,
+      restoreUserMemories: false,
+      restoreToolRouting: false,
+      restoreThreadShares: false,
+      restoreTaskPlans: false,
+    }));
+  }, []);
 
   // Handle backup creation
   const handleCreateBackup = async () => {
@@ -304,6 +393,24 @@ export default function BackupTab() {
         </div>
         <div className="p-6">
           <div className="space-y-4">
+            {/* Select All / Clear All buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleSelectAllBackup}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+              >
+                <CheckSquare size={16} />
+                Select All
+              </button>
+              <button
+                onClick={handleClearAllBackup}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <Square size={16} />
+                Clear All
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                 <input
@@ -655,7 +762,25 @@ export default function BackupTab() {
 
               {/* Restore Options */}
               <div className="space-y-3">
-                <div className="text-sm font-medium text-gray-700">Restore Options</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium text-gray-700">Restore Options</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSelectAllRestore}
+                      className="flex items-center gap-1.5 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      <CheckSquare size={14} />
+                      Select All
+                    </button>
+                    <button
+                      onClick={handleClearAllRestore}
+                      className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                    >
+                      <Square size={14} />
+                      Clear All
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.documents ? 'opacity-50' : ''}`}>
                     <input
