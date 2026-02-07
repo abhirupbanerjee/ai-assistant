@@ -980,9 +980,9 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                             </button>
                             <button
                               onClick={() => { setSelectedSkill(skill); setShowDeleteModal(true); }}
-                              className={`p-1 ${canModify && !skill.is_core ? 'text-gray-400 hover:text-red-600' : 'text-gray-200 cursor-not-allowed'}`}
-                              title={skill.is_core ? 'Cannot delete core skill' : (!canModify ? 'Cannot delete admin skill' : 'Delete')}
-                              disabled={skill.is_core || !canModify}
+                              className={`p-1 ${canModify ? 'text-gray-400 hover:text-red-600' : 'text-gray-200 cursor-not-allowed'}`}
+                              title={!canModify ? 'Cannot delete admin skill' : 'Delete'}
+                              disabled={!canModify}
                             >
                               <Trash2 size={16} />
                             </button>

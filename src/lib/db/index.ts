@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { validateLiteLLMOnStartup } from '../litellm-validator';
 import { seedCoreSkills } from '../skills/seed';
+import { removeCoreFlag } from './skills';
 
 // Database file path
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -47,6 +48,12 @@ export function getDatabase(): Database.Database {
 
   // Seed core skills (idempotent)
   seedCoreSkills();
+
+  // Remove is_core flag from all skills (allows deletion)
+  const removedCount = removeCoreFlag();
+  if (removedCount > 0) {
+    console.log(`[Skills] Removed is_core flag from ${removedCount} skills`);
+  }
 
   // Validate LiteLLM config (fail fast if default model missing)
   validateLiteLLMOnStartup();

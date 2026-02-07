@@ -445,19 +445,18 @@ export function updateSkill(
 }
 
 /**
- * Delete a skill (fails for core skills)
+ * Delete a skill
  */
 export function deleteSkill(id: number): { success: boolean; message: string } {
-  const skill = queryOne<{ is_core: number }>('SELECT is_core FROM skills WHERE id = ?', [id]);
+  const skill = queryOne<{ id: number }>('SELECT id FROM skills WHERE id = ?', [id]);
 
   if (!skill) {
     return { success: false, message: 'Skill not found' };
   }
 
-  if (skill.is_core) {
-    return { success: false, message: 'Cannot delete core skills' };
-  }
-
+  // Delete category associations first
+  execute('DELETE FROM category_skills WHERE skill_id = ?', [id]);
+  // Delete the skill
   execute('DELETE FROM skills WHERE id = ?', [id]);
   return { success: true, message: 'Skill deleted' };
 }
@@ -488,6 +487,15 @@ export function resetCoreSkillsToDefaults(): number {
   // Delete all existing core skills
   const deleteResult = execute('DELETE FROM skills WHERE is_core = 1');
   return deleteResult.changes;
+}
+
+/**
+ * Remove is_core flag from all skills
+ * This allows all skills to be deletable by admins
+ */
+export function removeCoreFlag(): number {
+  const result = execute('UPDATE skills SET is_core = 0 WHERE is_core = 1');
+  return result.changes;
 }
 
 // ============ Seed Operations ============
