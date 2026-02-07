@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { ArrowUp, AlertCircle, Loader2, X } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import { ChatMode } from './ModeToggle';
@@ -44,6 +44,8 @@ export default function MessageInput({
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<ChatMode>('normal');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
@@ -84,12 +86,12 @@ export default function MessageInput({
         // Mobile: Enter = new line (default behavior)
         return;
       } else {
-        // Desktop: Enter = submit, Ctrl+Enter = new line
+        // Desktop: Enter = new line, Ctrl+Enter = submit
         if (e.ctrlKey || e.metaKey) {
-          return; // Allow new line with Ctrl/Cmd+Enter
+          e.preventDefault();
+          handleSubmit();
         }
-        e.preventDefault();
-        handleSubmit();
+        // Otherwise, allow default new line behavior
       }
     }
   };
@@ -106,6 +108,56 @@ export default function MessageInput({
   const handleBlur = () => {
     onBlur?.();
   };
+
+  // Handle paste event for file uploads
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items || !threadId) return;
+
+    // Extract files from clipboard
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    // If no files, let default paste behavior handle it (text paste)
+    if (files.length === 0) return;
+
+    // Prevent default paste for file uploads
+    e.preventDefault();
+    setUploadError(null);
+    setIsUploading(true);
+
+    // Upload each file
+    for (const file of files) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`/api/threads/${threadId}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          onUploadComplete(data.filename);
+        } else {
+          const errorData = await response.json();
+          setUploadError(errorData.error || 'Failed to upload file');
+        }
+      } catch (error) {
+        setUploadError('Failed to upload file. Please try again.');
+      }
+    }
+
+    setIsUploading(false);
+  }, [threadId, onUploadComplete]);
 
   // Uploads indicator
   const UploadsIndicator = () =>
@@ -151,16 +203,49 @@ export default function MessageInput({
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
         <UploadsIndicator />
 
+        {/* Upload Error */}
+        {uploadError && (
+          <div className="mb-2 p-2 bg-red-50 text-red-600 rounded-lg text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                <div>
+                  <div>{uploadError}</div>
+                  <div className="text-xs text-red-500 mt-1">
+                    Supported: PDF, PNG, JPG, WebP, TXT (max size from settings)
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setUploadError(null)}
+                className="p-0.5 hover:bg-red-100 rounded flex-shrink-0"
+                aria-label="Dismiss error"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Uploading Indicator */}
+        {isUploading && (
+          <div className="mb-2 p-2 bg-blue-50 text-blue-600 rounded-lg text-sm flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            Uploading file...
+          </div>
+        )}
+
         {/* Textarea - responsive sizing */}
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder="Ask a question..."
-          disabled={disabled}
+          disabled={disabled || isUploading}
           rows={isMobile ? 2 : 1}
           enterKeyHint={isMobile ? 'enter' : 'send'}
           className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${

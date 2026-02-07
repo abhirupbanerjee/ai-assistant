@@ -200,6 +200,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTriggerType, setFilterTriggerType] = useState<'all' | 'always' | 'category' | 'keyword'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterHasTool, setFilterHasTool] = useState<'all' | 'with-tool' | 'no-tool'>('all');
 
   // Sort state
   type SortField = 'id' | 'name' | 'trigger' | 'priority' | 'tokens' | 'status';
@@ -476,7 +477,11 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
         filterStatus === 'all' ||
         (filterStatus === 'active' && skill.is_active) ||
         (filterStatus === 'inactive' && !skill.is_active);
-      return matchesSearch && matchesTrigger && matchesStatus;
+      const matchesHasTool =
+        filterHasTool === 'all' ||
+        (filterHasTool === 'with-tool' && skill.tool_name) ||
+        (filterHasTool === 'no-tool' && !skill.tool_name);
+      return matchesSearch && matchesTrigger && matchesStatus && matchesHasTool;
     })
     .sort((a, b) => {
       let comparison = 0;
@@ -671,6 +676,15 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
+          </select>
+          <select
+            value={filterHasTool}
+            onChange={(e) => setFilterHasTool(e.target.value as 'all' | 'with-tool' | 'no-tool')}
+            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="all">All Tools</option>
+            <option value="with-tool">With Tool</option>
+            <option value="no-tool">No Tool</option>
           </select>
         </div>
 
