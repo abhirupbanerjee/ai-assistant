@@ -74,9 +74,15 @@ function determineToolChoice(
 
   // Single required tool = force that specific tool
   if (requiredMatches.length === 1) {
+    const toolName = requiredMatches[0].toolName;
+    // function_api is a dynamic tool that injects multiple function definitions
+    // Don't force a specific function name - let LLM pick from injected functions
+    if (toolName === 'function_api') {
+      return 'required';
+    }
     return {
       type: 'function' as const,
-      function: { name: requiredMatches[0].toolName },
+      function: { name: toolName },
     };
   }
 

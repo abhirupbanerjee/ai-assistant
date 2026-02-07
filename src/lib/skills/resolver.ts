@@ -91,7 +91,13 @@ function determineToolChoice(
 
   if (requiredMatches.length === 1) {
     // Single required match: force that specific tool
-    return { type: 'function', function: { name: requiredMatches[0].toolName } };
+    const toolName = requiredMatches[0].toolName;
+    // function_api is a dynamic tool that injects multiple function definitions
+    // Don't force a specific function name - let LLM pick from injected functions
+    if (toolName === 'function_api') {
+      return 'required';
+    }
+    return { type: 'function', function: { name: toolName } };
   }
 
   if (requiredMatches.length > 1) {
