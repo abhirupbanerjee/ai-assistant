@@ -208,6 +208,13 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const [sortBy, setSortBy] = useState<SortField>('id');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
+  // Data sources and function APIs for tool config
+  const [dataSources, setDataSources] = useState<{ apis: { id: string; name: string }[]; csvs: { id: string; name: string }[] }>({ apis: [], csvs: [] });
+  const [functionApis, setFunctionApis] = useState<{ id: string; name: string; toolsSchema?: unknown[] }[]>([]);
+
+  // Domain validation for web search
+  const [domainError, setDomainError] = useState<string | null>(null);
+
   // Fetch data
   useEffect(() => {
     fetchData();
@@ -216,10 +223,12 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [skillsRes, categoriesRes, toolsRes] = await Promise.all([
+      const [skillsRes, categoriesRes, toolsRes, dataSourcesRes, functionApisRes] = await Promise.all([
         fetch('/api/admin/skills'),
         fetch('/api/admin/categories'),
         fetch('/api/admin/tools'),
+        fetch('/api/admin/data-sources'),
+        fetch('/api/admin/function-apis'),
       ]);
 
       if (!skillsRes.ok) throw new Error('Failed to fetch skills');
@@ -234,6 +243,18 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       setSettings(skillsData.settings || { enabled: false, maxTotalTokens: 3000, debugMode: false });
       setCategories(categoriesData.categories || []);
       setTools(toolsData.tools || []);
+
+      // Fetch data sources (optional - don't fail if unavailable)
+      if (dataSourcesRes.ok) {
+        const dsData = await dataSourcesRes.json();
+        setDataSources({ apis: dsData.apis || [], csvs: dsData.csvs || [] });
+      }
+
+      // Fetch function APIs (optional - don't fail if unavailable)
+      if (functionApisRes.ok) {
+        const faData = await functionApisRes.json();
+        setFunctionApis(faData.functionApis || []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -565,6 +586,59 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       const json = value ? JSON.stringify({ [key]: value }, null, 2) : '';
       setFormData({ ...formData, tool_config_override: json });
     }
+  };
+
+  // Get array config value
+  const getConfigArrayValue = (key: string): string[] => {
+    try {
+      const config = formData.tool_config_override
+        ? JSON.parse(formData.tool_config_override)
+        : {};
+      return Array.isArray(config[key]) ? config[key] : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Set array config value
+  const setConfigArrayValue = (key: string, value: string[]) => {
+    try {
+      const config = formData.tool_config_override
+        ? JSON.parse(formData.tool_config_override)
+        : {};
+      if (value.length > 0) {
+        config[key] = value;
+      } else {
+        delete config[key];
+      }
+      const json = Object.keys(config).length > 0
+        ? JSON.stringify(config, null, 2)
+        : '';
+      setFormData({ ...formData, tool_config_override: json });
+    } catch {
+      const json = value.length > 0 ? JSON.stringify({ [key]: value }, null, 2) : '';
+      setFormData({ ...formData, tool_config_override: json });
+    }
+  };
+
+  // Domain validation regex
+  const DOMAIN_REGEX = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+
+  // Handle domains input change with validation
+  const handleDomainsChange = (input: string) => {
+    const domains = input.split(',').map(d => d.trim()).filter(Boolean);
+
+    // Validate each domain
+    const invalidDomains = domains.filter(d => !DOMAIN_REGEX.test(d));
+
+    if (invalidDomains.length > 0) {
+      setDomainError(`Invalid domain(s): ${invalidDomains.join(', ')}`);
+    } else {
+      setDomainError(null);
+    }
+
+    // Store as array in config
+    setConfigArrayValue('includeDomains', domains);
   };
 
   if (loading) {
@@ -1249,6 +1323,81 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                             <option value="docx">Word Document (DOCX)</option>
                             <option value="md">Markdown</option>
                           </select>
+                        </div>
+                      )}
+
+                      {/* data_source: Data Source Selection */}
+                      {formData.tool_name === 'data_source' && (dataSources.apis.length > 0 || dataSources.csvs.length > 0) && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Restrict to Data Sources (optional)</label>
+                          <select
+                            multiple
+                            value={getConfigArrayValue('sourceIds')}
+                            onChange={(e) => setConfigArrayValue('sourceIds',
+                              Array.from(e.target.selectedOptions, opt => opt.value)
+                            )}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-32"
+                          >
+                            {dataSources.csvs.length > 0 && (
+                              <optgroup label="CSV Sources">
+                                {dataSources.csvs.map(csv => (
+                                  <option key={csv.id} value={csv.id}>{csv.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {dataSources.apis.length > 0 && (
+                              <optgroup label="API Sources">
+                                {dataSources.apis.map(api => (
+                                  <option key={api.id} value={api.id}>{api.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Leave empty to allow all sources. Hold Ctrl/Cmd to select multiple.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* function_api: Function API Selection */}
+                      {formData.tool_name === 'function_api' && functionApis.length > 0 && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Restrict to Function API (optional)</label>
+                          <select
+                            value={getConfigValue('functionApiId')}
+                            onChange={(e) => setConfigValue('functionApiId', e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">All Function APIs</option>
+                            {functionApis.map(api => (
+                              <option key={api.id} value={api.id}>
+                                {api.name} ({api.toolsSchema?.length || 0} functions)
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Select a specific API or leave empty to allow all.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* web_search: Include Domains */}
+                      {formData.tool_name === 'web_search' && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Include Domains (optional)</label>
+                          <input
+                            type="text"
+                            value={getConfigArrayValue('includeDomains').join(', ')}
+                            onChange={(e) => handleDomainsChange(e.target.value)}
+                            placeholder="example.com, news.site.org"
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Comma-separated domain names. Only results from these domains will be included.
+                          </p>
+                          {domainError && (
+                            <p className="text-xs text-red-600 mt-1">{domainError}</p>
+                          )}
                         </div>
                       )}
 
