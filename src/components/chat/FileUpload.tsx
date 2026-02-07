@@ -156,7 +156,7 @@ export default function FileUpload({
     setInputError(null);
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setInputError('Invalid file type. Allowed: PDF, PNG, JPG, TXT');
+      setInputError('Invalid file type. Allowed: PDF, PNG, JPG, TXT, JSON');
       return;
     }
 

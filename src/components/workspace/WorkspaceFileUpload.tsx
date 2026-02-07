@@ -66,7 +66,7 @@ export function WorkspaceFileUpload({
 
     // Validate file type
     if (!ALLOWED_TYPES.has(file.type)) {
-      setError('Invalid file type. Allowed: PDF, TXT, MD, PNG, JPG, GIF, WEBP, DOCX');
+      setError('Invalid file type. Allowed: PDF, TXT, MD, JSON, PNG, JPG, GIF, WEBP, DOCX');
       return;
     }
 

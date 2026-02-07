@@ -211,7 +211,7 @@ export async function POST(
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json(
         {
-          error: 'Invalid file type. Allowed: PDF, TXT, MD, PNG, JPG, GIF, WEBP, DOCX',
+          error: 'Invalid file type. Allowed: PDF, TXT, MD, JSON, PNG, JPG, GIF, WEBP, DOCX',
           code: 'INVALID_FILE_TYPE',
         },
         { status: 400 }

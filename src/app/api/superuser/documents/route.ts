@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     // Validate file type (PDF, images, DOCX, XLSX, PPTX, TXT, MD)
     if (!isSupportedMimeType(file.type)) {
       return NextResponse.json(
-        { error: `Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT, MD, PNG, JPG, WEBP, GIF` },
+        { error: `Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, TXT, MD, JSON, PNG, JPG, WEBP, GIF` },
         { status: 400 }
       );
     }
