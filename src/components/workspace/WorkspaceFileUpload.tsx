@@ -15,6 +15,7 @@ const ALLOWED_TYPES = new Set([
   'application/pdf',
   'text/plain',
   'text/markdown',
+  'application/json',
   'image/png',
   'image/jpeg',
   'image/jpg',
@@ -23,7 +24,7 @@ const ALLOWED_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 
-const ALLOWED_EXTENSIONS = '.pdf,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.docx';
+const ALLOWED_EXTENSIONS = '.pdf,.txt,.md,.json,.png,.jpg,.jpeg,.gif,.webp,.docx';
 
 interface UploadedFile {
   filename: string;

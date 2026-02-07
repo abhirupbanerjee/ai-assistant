@@ -26,6 +26,7 @@ function getMimeType(filename: string): string {
   const mimeMap: Record<string, string> = {
     '.pdf': 'application/pdf',
     '.txt': 'text/plain',
+    '.json': 'application/json',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',

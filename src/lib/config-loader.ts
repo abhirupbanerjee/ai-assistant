@@ -416,7 +416,7 @@ function getHardcodedDefaults(): AppConfig {
       maxFilesPerInput: 5,
       maxFilesPerThread: 10,
       maxFileSizeMB: 10,
-      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain'],
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'application/json'],
     },
     retention: {
       threadRetentionDays: 90,

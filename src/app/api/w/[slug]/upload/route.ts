@@ -32,6 +32,7 @@ const ALLOWED_TYPES = new Set([
   'application/pdf',
   'text/plain',
   'text/markdown',
+  'application/json',
   'image/png',
   'image/jpeg',
   'image/jpg',
