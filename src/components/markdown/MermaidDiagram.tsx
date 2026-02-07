@@ -114,6 +114,7 @@ function sanitizeMermaidCode(code: string): string {
   // For flowcharts, escape special characters in labels
   if (trimmed.startsWith('flowchart') || trimmed.startsWith('graph')) {
     return trimmed
+      .replace(/<br\s*\/?>/gi, ' ')                        // Remove <br/> and <br> tags
       .replace(/\[([^\]]*?)&([^\]]*?)\]/g, '[$1 and $2]')  // [text & more] -> [text and more]
       .replace(/\{([^}]*?)&([^}]*?)\}/g, '{$1 and $2}');   // {text & more} -> {text and more}
   }

@@ -49,6 +49,10 @@ export interface MessageRecord {
   tool_calls_json: string | null;
   tool_call_id: string | null;
   tool_name: string | null;
+  // Artifact columns
+  generated_documents_json: string | null;
+  visualizations_json: string | null;
+  generated_images_json: string | null;
   created_at: string;
 }
 
@@ -100,6 +104,7 @@ export interface CategoryToolConfigRecord {
   tool_name: string;
   is_enabled: number | null;
   branding_json: string | null;
+  config_json: string | null;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -123,6 +128,12 @@ export interface SkillRecord {
   updated_at: string;
   created_by: string;
   updated_by: string;
+  // Tool routing columns
+  match_type: string | null;
+  tool_name: string | null;
+  force_mode: string | null;
+  tool_config_override: string | null;
+  data_source_filter: string | null;
 }
 
 export interface CategorySkillRecord {
@@ -134,6 +145,8 @@ export interface CategoryPromptRecord {
   category_id: number;
   prompt_addendum: string;
   starter_prompts: string | null;
+  welcome_title: string | null;
+  welcome_message: string | null;
   updated_at: string;
   updated_by: string;
 }
@@ -409,11 +422,14 @@ export function exportThreads(): ThreadRecord[] {
 }
 
 /**
- * Export all messages
+ * Export all messages (includes artifact columns)
  */
 export function exportMessages(): MessageRecord[] {
   return queryAll<MessageRecord>(`
-    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, created_at
+    SELECT id, thread_id, role, content, sources_json, attachments_json,
+           tool_calls_json, tool_call_id, tool_name,
+           generated_documents_json, visualizations_json, generated_images_json,
+           created_at
     FROM messages
     ORDER BY thread_id, created_at
   `);
@@ -475,24 +491,26 @@ export function exportToolConfigs(): ToolConfigRecord[] {
 }
 
 /**
- * Export category tool configurations
+ * Export category tool configurations (includes config_json)
  */
 export function exportCategoryToolConfigs(): CategoryToolConfigRecord[] {
   return queryAll<CategoryToolConfigRecord>(`
-    SELECT id, category_id, tool_name, is_enabled, branding_json, created_at, updated_at, updated_by
+    SELECT id, category_id, tool_name, is_enabled, branding_json, config_json,
+           created_at, updated_at, updated_by
     FROM category_tool_configs
     ORDER BY category_id, tool_name
   `);
 }
 
 /**
- * Export all skills
+ * Export all skills (includes tool routing columns)
  */
 export function exportSkills(): SkillRecord[] {
   return queryAll<SkillRecord>(`
     SELECT id, name, description, prompt_content, trigger_type, trigger_value,
            category_restricted, is_index, priority, is_active, is_core,
-           created_by_role, token_estimate, created_at, updated_at, created_by, updated_by
+           created_by_role, token_estimate, created_at, updated_at, created_by, updated_by,
+           match_type, tool_name, force_mode, tool_config_override, data_source_filter
     FROM skills
     ORDER BY id
   `);
@@ -510,11 +528,13 @@ export function exportCategorySkills(): CategorySkillRecord[] {
 }
 
 /**
- * Export category prompts (includes starter prompts)
+ * Export category prompts (includes starter prompts and welcome fields)
  */
 export function exportCategoryPrompts(): CategoryPromptRecord[] {
   return queryAll<CategoryPromptRecord>(`
-    SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by
+    SELECT category_id, prompt_addendum, starter_prompts,
+           welcome_title, welcome_message,
+           updated_at, updated_by
     FROM category_prompts
     ORDER BY category_id
   `);
@@ -845,13 +865,17 @@ export function importThreads(records: ThreadRecord[]): void {
 }
 
 /**
- * Import messages
+ * Import messages (includes artifact columns)
  */
 export function importMessages(records: MessageRecord[]): void {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO messages (id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO messages (
+      id, thread_id, role, content, sources_json, attachments_json,
+      tool_calls_json, tool_call_id, tool_name,
+      generated_documents_json, visualizations_json, generated_images_json,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const msg of records) {
@@ -865,6 +889,9 @@ export function importMessages(records: MessageRecord[]): void {
       msg.tool_calls_json,
       msg.tool_call_id,
       msg.tool_name,
+      msg.generated_documents_json ?? null,
+      msg.visualizations_json ?? null,
+      msg.generated_images_json ?? null,
       msg.created_at
     );
   }
@@ -975,13 +1002,15 @@ export function importToolConfigs(records: ToolConfigRecord[]): void {
 }
 
 /**
- * Import category tool configurations
+ * Import category tool configurations (includes config_json)
  */
 export function importCategoryToolConfigs(records: CategoryToolConfigRecord[]): void {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO category_tool_configs (id, category_id, tool_name, is_enabled, branding_json, created_at, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO category_tool_configs (
+      id, category_id, tool_name, is_enabled, branding_json, config_json,
+      created_at, updated_at, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const rec of records) {
@@ -991,6 +1020,7 @@ export function importCategoryToolConfigs(records: CategoryToolConfigRecord[]): 
       rec.tool_name,
       rec.is_enabled,
       rec.branding_json,
+      rec.config_json ?? null,
       rec.created_at,
       rec.updated_at,
       rec.updated_by
@@ -999,7 +1029,7 @@ export function importCategoryToolConfigs(records: CategoryToolConfigRecord[]): 
 }
 
 /**
- * Import skills (preserves IDs)
+ * Import skills (preserves IDs, includes tool routing columns)
  */
 export function importSkills(records: SkillRecord[]): void {
   const db = getDatabase();
@@ -1007,8 +1037,9 @@ export function importSkills(records: SkillRecord[]): void {
     INSERT OR REPLACE INTO skills (
       id, name, description, prompt_content, trigger_type, trigger_value,
       category_restricted, is_index, priority, is_active, is_core,
-      created_by_role, token_estimate, created_at, updated_at, created_by, updated_by
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_by_role, token_estimate, created_at, updated_at, created_by, updated_by,
+      match_type, tool_name, force_mode, tool_config_override, data_source_filter
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const rec of records) {
@@ -1029,7 +1060,12 @@ export function importSkills(records: SkillRecord[]): void {
       rec.created_at,
       rec.updated_at,
       rec.created_by,
-      rec.updated_by
+      rec.updated_by,
+      rec.match_type ?? null,
+      rec.tool_name ?? null,
+      rec.force_mode ?? null,
+      rec.tool_config_override ?? null,
+      rec.data_source_filter ?? null
     );
   }
 }
@@ -1050,13 +1086,16 @@ export function importCategorySkills(records: CategorySkillRecord[]): void {
 }
 
 /**
- * Import category prompts (includes starter prompts)
+ * Import category prompts (includes starter prompts and welcome fields)
  */
 export function importCategoryPrompts(records: CategoryPromptRecord[]): void {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO category_prompts (category_id, prompt_addendum, starter_prompts, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO category_prompts (
+      category_id, prompt_addendum, starter_prompts,
+      welcome_title, welcome_message,
+      updated_at, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const rec of records) {
@@ -1064,6 +1103,8 @@ export function importCategoryPrompts(records: CategoryPromptRecord[]): void {
       rec.category_id,
       rec.prompt_addendum,
       rec.starter_prompts,
+      rec.welcome_title ?? null,
+      rec.welcome_message ?? null,
       rec.updated_at,
       rec.updated_by
     );
