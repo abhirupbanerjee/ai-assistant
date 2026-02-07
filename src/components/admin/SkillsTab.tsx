@@ -533,6 +533,40 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     }
   };
 
+  // Parse config override JSON safely
+  const getConfigValue = (key: string): string => {
+    try {
+      const config = formData.tool_config_override
+        ? JSON.parse(formData.tool_config_override)
+        : {};
+      return config[key] || '';
+    } catch {
+      return '';
+    }
+  };
+
+  // Set a single config value, preserving others
+  const setConfigValue = (key: string, value: string) => {
+    try {
+      const config = formData.tool_config_override
+        ? JSON.parse(formData.tool_config_override)
+        : {};
+      if (value) {
+        config[key] = value;
+      } else {
+        delete config[key];
+      }
+      const json = Object.keys(config).length > 0
+        ? JSON.stringify(config, null, 2)
+        : '';
+      setFormData({ ...formData, tool_config_override: json });
+    } catch {
+      // If existing JSON is invalid, start fresh
+      const json = value ? JSON.stringify({ [key]: value }, null, 2) : '';
+      setFormData({ ...formData, tool_config_override: json });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1130,29 +1164,117 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                       </p>
                     </div>
 
-                    {/* Config Override */}
+                    {/* Tool Configuration */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Config Override (JSON)
+                        Tool Configuration
                       </label>
-                      <textarea
-                        value={formData.tool_config_override}
-                        onChange={(e) => setFormData({ ...formData, tool_config_override: e.target.value })}
-                        rows={3}
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                        placeholder='{"defaultChartType": "pie", "maxResults": 5}'
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Optional JSON to override tool configuration when triggered
-                      </p>
-                      {formData.tool_config_override && (() => {
-                        try {
-                          JSON.parse(formData.tool_config_override);
-                          return <p className="text-xs text-green-600 mt-1">Valid JSON</p>;
-                        } catch {
-                          return <p className="text-xs text-red-600 mt-1">Invalid JSON format</p>;
-                        }
-                      })()}
+
+                      {/* diagram_gen: Preferred Diagram Type */}
+                      {formData.tool_name === 'diagram_gen' && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Preferred Diagram Type</label>
+                          <select
+                            value={getConfigValue('preferredType')}
+                            onChange={(e) => setConfigValue('preferredType', e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">Auto-detect (default)</option>
+                            <option value="flowchart">Flowchart / Process</option>
+                            <option value="sequence">Sequence Diagram</option>
+                            <option value="mindmap">Mindmap</option>
+                            <option value="c4-context">Architecture (C4 Context)</option>
+                            <option value="c4-container">Architecture (C4 Container)</option>
+                            <option value="gantt">Gantt Chart</option>
+                            <option value="stateDiagram">State Diagram</option>
+                            <option value="classDiagram">Class Diagram</option>
+                            <option value="erDiagram">ER Diagram</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* chart_gen: Default Chart Type */}
+                      {formData.tool_name === 'chart_gen' && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Default Chart Type</label>
+                          <select
+                            value={getConfigValue('defaultChartType')}
+                            onChange={(e) => setConfigValue('defaultChartType', e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">Use tool default</option>
+                            <option value="bar">Bar Chart</option>
+                            <option value="line">Line Chart</option>
+                            <option value="pie">Pie Chart</option>
+                            <option value="area">Area Chart</option>
+                            <option value="scatter">Scatter Plot</option>
+                            <option value="radar">Radar Chart</option>
+                            <option value="table">Table</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* image_gen: Default Style */}
+                      {formData.tool_name === 'image_gen' && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Default Style</label>
+                          <select
+                            value={getConfigValue('defaultStyle')}
+                            onChange={(e) => setConfigValue('defaultStyle', e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">Use tool default</option>
+                            <option value="infographic">Infographic</option>
+                            <option value="diagram">Diagram</option>
+                            <option value="illustration">Illustration</option>
+                            <option value="photo">Photo-realistic</option>
+                            <option value="icon">Icon</option>
+                            <option value="chart">Chart</option>
+                            <option value="process-flow">Process Flow</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* doc_gen: Default Format */}
+                      {formData.tool_name === 'doc_gen' && (
+                        <div className="mb-3">
+                          <label className="block text-xs text-gray-600 mb-1">Default Format</label>
+                          <select
+                            value={getConfigValue('defaultFormat')}
+                            onChange={(e) => setConfigValue('defaultFormat', e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">Use tool default</option>
+                            <option value="pdf">PDF</option>
+                            <option value="docx">Word Document (DOCX)</option>
+                            <option value="md">Markdown</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Advanced JSON toggle for power users */}
+                      <details className="mt-2">
+                        <summary className="text-xs text-blue-600 cursor-pointer hover:text-blue-800">
+                          Advanced: Edit raw JSON
+                        </summary>
+                        <div className="mt-2">
+                          <textarea
+                            value={formData.tool_config_override}
+                            onChange={(e) => setFormData({ ...formData, tool_config_override: e.target.value })}
+                            rows={3}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                            placeholder='{"key": "value"}'
+                          />
+                          {formData.tool_config_override && (() => {
+                            try {
+                              JSON.parse(formData.tool_config_override);
+                              return <p className="text-xs text-green-600 mt-1">Valid JSON</p>;
+                            } catch {
+                              return <p className="text-xs text-red-600 mt-1">Invalid JSON format</p>;
+                            }
+                          })()}
+                        </div>
+                      </details>
                     </div>
                   </>
                 )}
