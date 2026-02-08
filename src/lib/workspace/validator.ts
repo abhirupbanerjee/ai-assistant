@@ -85,7 +85,18 @@ export async function validateWorkspaceRequest(
 
   // For embed mode: validate domain if provided
   if (workspace.type === 'embed' && origin) {
-    if (!validateDomain(workspace, origin)) {
+    // Skip validation for hosted embed (same origin as app)
+    let isHostedEmbed = false;
+    try {
+      const appOrigin = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      const appHostname = new URL(appOrigin).hostname;
+      const requestHostname = new URL(origin).hostname;
+      isHostedEmbed = appHostname === requestHostname;
+    } catch {
+      // If URL parsing fails, proceed with validation
+    }
+
+    if (!isHostedEmbed && !validateDomain(workspace, origin)) {
       return {
         valid: false,
         workspace,

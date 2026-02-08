@@ -89,6 +89,7 @@ export async function POST(request: Request) {
       voiceEnabled,
       fileUploadEnabled,
       maxFileSizeMb,
+      webSearchEnabled,
       // Authentication (embed only)
       authRequired,
       // Access mode (standalone only)
@@ -139,6 +140,7 @@ export async function POST(request: Request) {
         voice_enabled: voiceEnabled ?? false,
         file_upload_enabled: fileUploadEnabled ?? false,
         max_file_size_mb: maxFileSizeMb ?? 5,
+        web_search_enabled: webSearchEnabled ?? true,
         auth_required: authRequired ?? false,
         access_mode: accessMode || 'category',
       },

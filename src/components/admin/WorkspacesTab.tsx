@@ -58,6 +58,7 @@ interface Workspace {
   voice_enabled: boolean;
   file_upload_enabled: boolean;
   max_file_size_mb: number;
+  web_search_enabled: boolean;
   auth_required: boolean;
   created_by: string;
   created_by_role: 'admin' | 'superuser';
@@ -87,6 +88,7 @@ interface WorkspaceFormData {
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
+  webSearchEnabled: boolean;
   authRequired: boolean;
   accessMode: 'category' | 'explicit';
 }
@@ -111,6 +113,7 @@ const initialFormData: WorkspaceFormData = {
   voiceEnabled: false,
   fileUploadEnabled: false,
   maxFileSizeMb: 5,
+  webSearchEnabled: true,
   authRequired: false,
   accessMode: 'category',
 };
@@ -208,7 +211,10 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
       const res = await fetch(`${apiBase}/workspaces`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          allowedDomains: formData.allowedDomains.filter((d) => d),
+        }),
       });
 
       if (!res.ok) {
@@ -238,7 +244,10 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
       const res = await fetch(`${apiBase}/workspaces/${selectedWorkspace.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          allowedDomains: formData.allowedDomains.filter((d) => d),
+        }),
       });
 
       if (!res.ok) {
@@ -325,6 +334,7 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
       voiceEnabled: workspace.voice_enabled,
       fileUploadEnabled: workspace.file_upload_enabled,
       maxFileSizeMb: workspace.max_file_size_mb,
+      webSearchEnabled: workspace.web_search_enabled,
       authRequired: workspace.auth_required,
       accessMode: workspace.access_mode,
     });
@@ -971,7 +981,7 @@ function WorkspaceForm({
                   onChange={(e) =>
                     updateField(
                       'allowedDomains',
-                      e.target.value.split('\n').filter((d) => d.trim())
+                      e.target.value.split('\n').map((d) => d.trim())
                     )
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
@@ -1000,7 +1010,7 @@ function WorkspaceForm({
             </>
           )}
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -1019,6 +1029,16 @@ function WorkspaceForm({
                 className="rounded border-gray-300 text-blue-600"
               />
               <span className="text-sm">Enable File Upload</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.webSearchEnabled}
+                onChange={(e) => updateField('webSearchEnabled', e.target.checked)}
+                className="rounded border-gray-300 text-blue-600"
+              />
+              <span className="text-sm">Enable Web Search</span>
             </label>
           </div>
 

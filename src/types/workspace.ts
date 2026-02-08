@@ -51,6 +51,7 @@ export interface Workspace {
   voice_enabled: boolean;
   file_upload_enabled: boolean;
   max_file_size_mb: number;
+  web_search_enabled: boolean;
 
   // Authentication (embed only)
   auth_required: boolean;
@@ -222,6 +223,7 @@ export interface CreateWorkspaceInput {
   voice_enabled?: boolean;
   file_upload_enabled?: boolean;
   max_file_size_mb?: number;
+  web_search_enabled?: boolean;
 
   // Authentication (embed only)
   auth_required?: boolean;
@@ -257,6 +259,7 @@ export interface UpdateWorkspaceInput {
   voice_enabled?: boolean;
   file_upload_enabled?: boolean;
   max_file_size_mb?: number;
+  web_search_enabled?: boolean;
 
   // Authentication (embed only)
   auth_required?: boolean;
@@ -377,6 +380,7 @@ export interface WorkspaceRow {
   voice_enabled: number;
   file_upload_enabled: number;
   max_file_size_mb: number;
+  web_search_enabled: number;
   auth_required: number;
   created_by: string;
   created_by_role: string;

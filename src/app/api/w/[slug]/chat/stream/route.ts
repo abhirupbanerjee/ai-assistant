@@ -296,6 +296,12 @@ export async function POST(
             // Determine if this is embed mode (text-only, no visual artifacts)
             const isEmbedMode = workspace.type === 'embed';
 
+            // Determine which tools to exclude based on workspace settings
+            const excludeTools: string[] = [];
+            if (!workspace.web_search_enabled) {
+              excludeTools.push('web_search');
+            }
+
             // Execute tools with streaming callbacks
             const toolResult = await generateResponseWithTools(
               finalSystemPrompt,
@@ -336,7 +342,11 @@ export async function POST(
                   }
                 },
               },
-              imageContents.length > 0 ? imageContents : undefined
+              imageContents.length > 0 ? imageContents : undefined,
+              undefined, // summaryContext
+              undefined, // memoryContext
+              undefined, // categorySlugs
+              excludeTools.length > 0 ? excludeTools : undefined
             );
 
             // Extract web sources from tool history

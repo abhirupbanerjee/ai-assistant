@@ -891,6 +891,11 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE workspaces ADD COLUMN auth_required INTEGER DEFAULT 0');
   }
 
+  // Migration: Add web_search_enabled column to workspaces table
+  if (workspacesColumnNames.length > 0 && !workspacesColumnNames.includes('web_search_enabled')) {
+    database.exec('ALTER TABLE workspaces ADD COLUMN web_search_enabled INTEGER DEFAULT 1');
+  }
+
   // Migration: Add tool routing columns to skills table for unified keyword actions
   // This merges tool routing functionality into the skills system
   const skillsColumns = database.pragma('table_info(skills)') as { name: string }[];

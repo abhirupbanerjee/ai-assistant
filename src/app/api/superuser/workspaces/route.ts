@@ -110,6 +110,7 @@ export async function POST(request: Request) {
       voiceEnabled,
       fileUploadEnabled,
       maxFileSizeMb,
+      webSearchEnabled,
       // Access mode (standalone only)
       accessMode,
     } = body;
@@ -169,6 +170,7 @@ export async function POST(request: Request) {
         voice_enabled: voiceEnabled ?? false,
         file_upload_enabled: fileUploadEnabled ?? false,
         max_file_size_mb: maxFileSizeMb ?? 5,
+        web_search_enabled: webSearchEnabled ?? true,
         access_mode: accessMode || 'category',
       },
       user.email,
