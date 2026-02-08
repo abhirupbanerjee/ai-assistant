@@ -32,6 +32,16 @@ export interface ValidationResult {
 }
 
 /**
+ * Options for tool execution
+ */
+export interface ToolExecutionOptions {
+  /** Function name for dynamic tools (e.g., function_api) */
+  functionName?: string;
+  /** Config override from skill-level tool_config_override (merged with global config) */
+  configOverride?: Record<string, unknown>;
+}
+
+/**
  * Extended tool interface for the unified Tools system
  * Each tool has a definition, execution logic, validation, and configuration
  */
@@ -46,9 +56,9 @@ export interface ToolDefinition {
   category: ToolCategory;
   /** OpenAI function definition (only for autonomous tools with static definitions) */
   definition?: OpenAI.Chat.ChatCompletionTool;
-  /** Execute the tool with arguments. Second param is function name for dynamic tools. */
+  /** Execute the tool with arguments. Options include functionName for dynamic tools and configOverride for skill-level config. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  execute: (args: any, functionName?: string) => Promise<string>;
+  execute: (args: any, options?: ToolExecutionOptions) => Promise<string>;
   /** Validate tool configuration */
   validateConfig: (config: Record<string, unknown>) => ValidationResult;
   /** Default configuration values */
@@ -214,6 +224,7 @@ export function getAllTools(): ToolDefinition[] {
  *
  * @param name - Tool name (e.g., 'web_search') or dynamic function name from function_api
  * @param args - JSON string of tool arguments matching the tool's parameter schema
+ * @param configOverride - Optional config override from skill-level tool_config_override
  * @returns JSON string result - either success data or error object with errorCode
  *
  * @example
@@ -224,6 +235,11 @@ export function getAllTools(): ToolDefinition[] {
  *   max_results: 5
  * }));
  *
+ * // Execute with skill-level config override (e.g., domain filtering)
+ * const result = await executeTool('web_search', JSON.stringify({
+ *   query: 'latest news'
+ * }), { includeDomains: ['example.com'] });
+ *
  * // Parse result
  * const data = JSON.parse(result);
  * if (data.error) {
@@ -233,7 +249,11 @@ export function getAllTools(): ToolDefinition[] {
  * }
  * ```
  */
-export async function executeTool(name: string, args: string): Promise<string> {
+export async function executeTool(
+  name: string,
+  args: string,
+  configOverride?: Record<string, unknown>
+): Promise<string> {
   initializeTools();
 
   // Check standard tools first
@@ -255,7 +275,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
     try {
       const parsedArgs = JSON.parse(args);
       // Pass the function name to the function_api tool
-      return await tool.execute(parsedArgs, name);
+      return await tool.execute(parsedArgs, { functionName: name, configOverride });
     } catch (error) {
       logger.error(`Function API execution error [${name}]`, error);
       return JSON.stringify({
@@ -285,7 +305,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
 
   try {
     const parsedArgs = JSON.parse(args);
-    return await tool.execute(parsedArgs);
+    return await tool.execute(parsedArgs, { configOverride });
   } catch (error) {
     logger.error(`Tool execution error [${name}]`, error);
     return JSON.stringify({

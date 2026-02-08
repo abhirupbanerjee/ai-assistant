@@ -6,7 +6,7 @@
  */
 
 import type OpenAI from 'openai';
-import type { ToolDefinition, ValidationResult } from '../tools';
+import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 import type { FunctionAPIConfig, FunctionExecutionResult } from '../../types/function-api';
 import {
   getToolDefinitionsForCategories,
@@ -275,7 +275,8 @@ export const functionApiTool: ToolDefinition = {
   definition: undefined,
 
   // Main execute function - called with function name from tool registry
-  execute: async (args: Record<string, unknown>, functionName?: string): Promise<string> => {
+  execute: async (args: Record<string, unknown>, options?: ToolExecutionOptions): Promise<string> => {
+    const functionName = options?.functionName;
     if (!functionName) {
       return JSON.stringify({
         success: false,

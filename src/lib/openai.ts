@@ -247,6 +247,8 @@ export async function generateResponseWithTools(
   // Check both legacy tool-routing and skills-based tool routing
   let toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined;
   let toolChoiceAppliedByRouting = false;
+  // Map of tool name -> config override from skill-level tool_config_override
+  const toolConfigOverrides = new Map<string, Record<string, unknown>>();
 
   if (effectiveEnableTools && tools && tools.length > 0) {
     // First, check skills-based tool routing (new unified system)
@@ -254,12 +256,21 @@ export async function generateResponseWithTools(
     if (skillsResult.toolRouting && skillsResult.toolRouting.matches.length > 0) {
       toolChoice = skillsResult.toolRouting.toolChoice;
       toolChoiceAppliedByRouting = true;
+
+      // Collect config overrides from matched skills
+      for (const match of skillsResult.toolRouting.matches) {
+        if (match.configOverride) {
+          toolConfigOverrides.set(match.toolName, match.configOverride);
+        }
+      }
+
       logger.info('Skills-based tool routing applied', {
         matches: skillsResult.toolRouting.matches.map(
           (m) => `${m.toolName}:${m.forceMode}`
         ),
         toolChoice:
           typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
+        hasConfigOverrides: toolConfigOverrides.size > 0,
       });
     }
 
@@ -326,7 +337,9 @@ export async function generateResponseWithTools(
       let errorMsg: string | undefined;
 
       try {
-        result = await executeTool(toolName, toolCall.function.arguments);
+        // Get skill-level config override if available
+        const configOverride = toolConfigOverrides.get(toolName);
+        result = await executeTool(toolName, toolCall.function.arguments, configOverride);
 
         // Check if result indicates an error
         try {

@@ -1,6 +1,6 @@
 import { getWebSearchConfig } from '../db/tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
-import type { ToolDefinition, ValidationResult } from '../tools';
+import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 
 // ============ URL Extract Types ============
 
@@ -358,14 +358,21 @@ export const tavilyWebSearch: ToolDefinition = {
 
   configSchema: webSearchConfigSchema,
 
-  execute: async (args: {
-    query: string;
-    max_results?: number;
-    search_depth?: 'basic' | 'advanced';
-    include_answer?: 'none' | 'basic' | 'advanced';
-  }) => {
+  execute: async (
+    args: {
+      query: string;
+      max_results?: number;
+      search_depth?: 'basic' | 'advanced';
+      include_answer?: 'none' | 'basic' | 'advanced';
+    },
+    options?: ToolExecutionOptions
+  ) => {
     // Get config from unified tool_configs table (with fallback to settings table)
-    const { enabled, config: settings } = getWebSearchConfig();
+    const { enabled, config: globalSettings } = getWebSearchConfig();
+
+    // Merge skill-level config override with global settings (override wins)
+    const configOverride = options?.configOverride || {};
+    const settings = { ...globalSettings, ...configOverride };
 
     // Check settings first, fall back to environment variable
     const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
@@ -404,8 +411,15 @@ export const tavilyWebSearch: ToolDefinition = {
       includeAnswer = settings.includeAnswer === 'none' ? false : (settings.includeAnswer as 'basic' | 'advanced');
     }
 
-    // Check Redis cache first (include params in cache key for varied searches)
-    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}`);
+    // Resolve domain filters (skill override > global config)
+    const includeDomains = (settings.includeDomains as string[]) || [];
+    const excludeDomains = (settings.excludeDomains as string[]) || [];
+
+    // Check Redis cache first (include params + domains in cache key for varied searches)
+    const domainKey = includeDomains.length > 0 || excludeDomains.length > 0
+      ? `:inc=${includeDomains.join(',')}:exc=${excludeDomains.join(',')}`
+      : '';
+    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}${domainKey}`);
     const cached = await getCachedQuery(`tavily:${cacheKey}`);
 
     if (cached) {
@@ -414,7 +428,13 @@ export const tavilyWebSearch: ToolDefinition = {
     }
 
     // Cache miss - call Tavily API
-    console.log('Web search cache miss - calling Tavily:', args.query, { maxResults, searchDepth, includeAnswer });
+    console.log('Web search cache miss - calling Tavily:', args.query, {
+      maxResults,
+      searchDepth,
+      includeAnswer,
+      includeDomains: includeDomains.length > 0 ? includeDomains : undefined,
+      excludeDomains: excludeDomains.length > 0 ? excludeDomains : undefined,
+    });
 
     try {
       const response = await fetch('https://api.tavily.com/search', {
@@ -428,12 +448,8 @@ export const tavilyWebSearch: ToolDefinition = {
           topic: settings.defaultTopic,
           include_answer: includeAnswer,
           include_raw_content: false,
-          include_domains: settings.includeDomains.length > 0
-            ? settings.includeDomains
-            : undefined,
-          exclude_domains: settings.excludeDomains.length > 0
-            ? settings.excludeDomains
-            : undefined,
+          include_domains: includeDomains.length > 0 ? includeDomains : undefined,
+          exclude_domains: excludeDomains.length > 0 ? excludeDomains : undefined,
         }),
       });
 
