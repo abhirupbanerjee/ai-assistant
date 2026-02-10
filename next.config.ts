@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/**': ['./node_modules/pdfkit/js/data/**/*'],
   },
+  // Exclude data directory from build (contains Redis files with restricted permissions)
+  outputFileTracingExcludes: {
+    '/**': ['./data/**'],
+  },
   images: {
     unoptimized: true,
   },

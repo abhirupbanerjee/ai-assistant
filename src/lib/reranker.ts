@@ -110,7 +110,9 @@ async function rerankWithLocal(
     // Dynamic import for @xenova/transformers
     const { pipeline, env, cos_sim } = await import('@xenova/transformers');
 
-    // Disable local model caching warnings
+    // Configure cache directory from environment variable (set in docker-compose.yml)
+    // This prevents EACCES errors when running as non-root in Docker
+    env.cacheDir = process.env.TRANSFORMERS_CACHE || '/tmp/transformers_cache';
     env.allowLocalModels = false;
 
     // Lazy-load the feature extraction pipeline
@@ -206,7 +208,9 @@ async function rerankWithJina(
   try {
     const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import('@xenova/transformers');
 
-    // Disable local model caching warnings
+    // Configure cache directory from environment variable (set in docker-compose.yml)
+    // This prevents EACCES errors when running as non-root in Docker
+    env.cacheDir = process.env.TRANSFORMERS_CACHE || '/tmp/transformers_cache';
     env.allowLocalModels = false;
 
     // Lazy-load the Jina Reranker v2 model
