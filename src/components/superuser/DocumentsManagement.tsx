@@ -1,0 +1,933 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import { FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, CheckCircle, AlertCircle, Youtube, Filter, SortAsc, Globe, Download } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
+import Spinner from '@/components/ui/Spinner';
+import { type SortDirection } from '@/components/ui/SortableTable';
+
+interface DocumentCategory {
+  categoryId: number;
+  categoryName: string;
+}
+
+interface ManagedDocument {
+  id: number;
+  filename: string;
+  size: number;
+  status: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  categories: DocumentCategory[];
+}
+
+interface AssignedCategory {
+  categoryId: number;
+  categoryName: string;
+  createdBy?: string;
+}
+
+interface UrlIngestionResult {
+  url: string;
+  success: boolean;
+  filename?: string;
+  error?: string;
+  sourceType: 'youtube' | 'web';
+}
+
+interface DocumentsManagementProps {
+  documents: ManagedDocument[];
+  assignedCategories: AssignedCategory[];
+  loadData: () => Promise<void>;
+  setError: (error: string | null) => void;
+}
+
+export default function DocumentsManagement({
+  documents,
+  assignedCategories,
+  loadData,
+  setError,
+}: DocumentsManagementProps) {
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'web' | 'youtube'>('file');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadTextName, setUploadTextName] = useState('');
+  const [uploadTextContent, setUploadTextContent] = useState('');
+  const [uploadCategory, setUploadCategory] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
+
+  // URL upload state
+  const [uploadUrls, setUploadUrls] = useState<string[]>(['', '', '', '', '']);
+  const [uploadYoutubeUrl, setUploadYoutubeUrl] = useState('');
+  const [uploadUrlName, setUploadUrlName] = useState('');
+  const [urlIngestionResults, setUrlIngestionResults] = useState<UrlIngestionResult[] | null>(null);
+
+  // Document search, filter, and sort state
+  const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [docSortKey, setDocSortKey] = useState<keyof ManagedDocument | null>(null);
+  const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
+  const [docCategoryFilter, setDocCategoryFilter] = useState<number | 'all'>('all');
+  const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
+
+  // URL validation helpers
+  const isValidUrl = (url: string): boolean => {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const isYouTubeUrl = (url: string): boolean => {
+    return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url);
+  };
+
+  const getValidWebUrls = (): string[] => {
+    return uploadUrls.filter(url => url.trim() && isValidUrl(url.trim()));
+  };
+
+  const resetUploadForm = () => {
+    setUploadFile(null);
+    setUploadTextName('');
+    setUploadTextContent('');
+    setUploadCategory(null);
+    setUploadMode('file');
+    setUploadUrls(['', '', '', '', '']);
+    setUploadYoutubeUrl('');
+    setUploadUrlName('');
+    setUrlIngestionResults(null);
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (dateStr: string): string => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  // Fuzzy search helper
+  const fuzzyMatch = (pattern: string, text: string): number => {
+    pattern = pattern.toLowerCase();
+    text = text.toLowerCase();
+    let patternIdx = 0;
+    let score = 0;
+    let lastMatchIdx = -1;
+    for (let i = 0; i < text.length && patternIdx < pattern.length; i++) {
+      if (text[i] === pattern[patternIdx]) {
+        if (lastMatchIdx === i - 1) score += 2;
+        else score += 1;
+        if (i === 0 || text[i - 1] === ' ' || text[i - 1] === '-' || text[i - 1] === '_') score += 3;
+        lastMatchIdx = i;
+        patternIdx++;
+      }
+    }
+    return patternIdx < pattern.length ? -1 : score;
+  };
+
+  // Document search and sort logic
+  const filteredAndSortedDocs = useMemo(() => {
+    let result = [...documents];
+
+    // Apply category filter
+    if (docCategoryFilter !== 'all') {
+      result = result.filter(doc => doc.categories?.some(c => c.categoryId === docCategoryFilter));
+    }
+
+    // Apply fuzzy search
+    if (docSearchTerm.trim()) {
+      result = result
+        .map(doc => ({
+          doc,
+          score: Math.max(
+            fuzzyMatch(docSearchTerm, doc.filename),
+            fuzzyMatch(docSearchTerm, doc.categories?.map(c => c.categoryName).join(' ') || ''),
+            fuzzyMatch(docSearchTerm, doc.status)
+          ),
+        }))
+        .filter(r => r.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .map(r => r.doc);
+    }
+
+    // Apply sorting from dropdown (takes precedence over column header sort)
+    if (docSortOption && !docSearchTerm.trim()) {
+      result.sort((a, b) => {
+        switch (docSortOption) {
+          case 'newest':
+            return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+          case 'oldest':
+            return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+          case 'largest':
+            return b.size - a.size;
+          case 'smallest':
+            return a.size - b.size;
+          case 'a-z':
+            return a.filename.toLowerCase().localeCompare(b.filename.toLowerCase());
+          case 'z-a':
+            return b.filename.toLowerCase().localeCompare(a.filename.toLowerCase());
+          default:
+            return 0;
+        }
+      });
+    } else if (docSortKey && docSortDirection) {
+      // Apply column header sorting only if dropdown sort is not being used
+      result.sort((a, b) => {
+        let aVal: string | number | Date | undefined;
+        let bVal: string | number | Date | undefined;
+
+        switch (docSortKey) {
+          case 'filename':
+            aVal = a.filename.toLowerCase();
+            bVal = b.filename.toLowerCase();
+            break;
+          case 'size':
+            aVal = a.size;
+            bVal = b.size;
+            break;
+          case 'status':
+            aVal = a.status;
+            bVal = b.status;
+            break;
+          case 'uploadedAt':
+            aVal = new Date(a.uploadedAt).getTime();
+            bVal = new Date(b.uploadedAt).getTime();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return docSortDirection === 'asc' ? 1 : -1;
+        if (bVal == null) return docSortDirection === 'asc' ? -1 : 1;
+
+        let comparison = 0;
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          comparison = aVal.localeCompare(bVal);
+        } else {
+          comparison = (aVal as number) - (bVal as number);
+        }
+
+        return docSortDirection === 'asc' ? comparison : -comparison;
+      });
+    }
+
+    return result;
+  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docSortOption]);
+
+  // Toggle sort for documents
+  const handleDocSort = (key: keyof ManagedDocument) => {
+    if (docSortKey === key) {
+      if (docSortDirection === 'asc') {
+        setDocSortDirection('desc');
+      } else if (docSortDirection === 'desc') {
+        setDocSortKey(null);
+        setDocSortDirection(null);
+      }
+    } else {
+      setDocSortKey(key);
+      setDocSortDirection('asc');
+    }
+  };
+
+  // Sortable header component
+  const SortableDocHeader = ({ columnKey, label, className = '' }: { columnKey: keyof ManagedDocument; label: string; className?: string }) => {
+    const isActive = docSortKey === columnKey;
+    return (
+      <th className={`px-6 py-3 font-medium ${className}`}>
+        <button
+          onClick={() => handleDocSort(columnKey)}
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors group"
+        >
+          {label}
+          <span className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
+            {isActive && docSortDirection === 'asc' ? (
+              <ChevronUp size={14} className="text-blue-600" />
+            ) : isActive && docSortDirection === 'desc' ? (
+              <ChevronDown size={14} className="text-blue-600" />
+            ) : (
+              <ChevronsUpDown size={14} className="text-gray-400" />
+            )}
+          </span>
+        </button>
+      </th>
+    );
+  };
+
+  const handleUploadDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadCategory) return;
+    if (uploadMode === 'file' && !uploadFile) return;
+    if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
+    if (uploadMode === 'web' && getValidWebUrls().length === 0) return;
+    if (uploadMode === 'youtube' && (!uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))) return;
+
+    setUploading(true);
+    setError(null);
+    setUrlIngestionResults(null);
+
+    try {
+      let response: Response;
+
+      if (uploadMode === 'file') {
+        const formData = new FormData();
+        formData.append('file', uploadFile!);
+        formData.append('categoryId', uploadCategory.toString());
+
+        response = await fetch('/api/superuser/documents', {
+          method: 'POST',
+          body: formData,
+        });
+      } else if (uploadMode === 'text') {
+        response = await fetch('/api/superuser/documents/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: uploadTextName.trim(),
+            content: uploadTextContent,
+            categoryId: uploadCategory,
+          }),
+        });
+      } else if (uploadMode === 'web') {
+        // Web URLs mode
+        const webUrls = getValidWebUrls();
+        response = await fetch('/api/superuser/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urls: webUrls,
+            categoryId: uploadCategory,
+          }),
+        });
+      } else {
+        // YouTube mode
+        const youtubeUrl = uploadYoutubeUrl.trim();
+        response = await fetch('/api/superuser/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            youtubeUrl,
+            name: uploadUrlName.trim() || undefined,
+            categoryId: uploadCategory,
+          }),
+        });
+      }
+
+      const data = await response.json();
+
+      if (uploadMode === 'web' || uploadMode === 'youtube') {
+        // Handle URL ingestion results
+        if (data.results) {
+          setUrlIngestionResults(data.results);
+          // Only close if all successful
+          if (data.summary?.failed === 0) {
+            await loadData();
+            setShowUploadModal(false);
+            resetUploadForm();
+          } else {
+            // Show results but don't close
+            await loadData();
+          }
+        } else if (!response.ok) {
+          throw new Error(data.error || 'URL ingestion failed');
+        }
+      } else {
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to upload document');
+        }
+        await loadData();
+        setShowUploadModal(false);
+        resetUploadForm();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload document');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: number) => {
+    setDeletingDocId(docId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/superuser/documents/${docId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete document');
+      }
+
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="bg-white rounded-lg border shadow-sm">
+        <div className="px-6 py-4 border-b">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-gray-900">Documents</h2>
+              <p className="text-sm text-gray-500">
+                {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents in your categories
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowUploadModal(true)}
+              disabled={assignedCategories.length === 0}
+            >
+              <Upload size={18} className="mr-2" />
+              Upload Document
+            </Button>
+          </div>
+          {/* Search, Filter, and Sort controls */}
+          {documents.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {/* Search bar */}
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={docSearchTerm}
+                  onChange={(e) => setDocSearchTerm(e.target.value)}
+                  placeholder="Search documents..."
+                  className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {docSearchTerm && (
+                  <button
+                    onClick={() => setDocSearchTerm('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Category Filter */}
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-gray-400" />
+                <select
+                  value={docCategoryFilter === 'all' ? 'all' : String(docCategoryFilter)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'all') {
+                      setDocCategoryFilter('all');
+                    } else {
+                      setDocCategoryFilter(parseInt(val, 10));
+                    }
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                >
+                  <option value="all">All Categories</option>
+                  {assignedCategories.map(cat => (
+                    <option key={cat.categoryId} value={cat.categoryId}>{cat.categoryName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="flex items-center gap-2">
+                <SortAsc size={16} className="text-gray-400" />
+                <select
+                  value={docSortOption}
+                  onChange={(e) => setDocSortOption(e.target.value as typeof docSortOption)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="largest">Largest First</option>
+                  <option value="smallest">Smallest First</option>
+                  <option value="a-z">Name (A-Z)</option>
+                  <option value="z-a">Name (Z-A)</option>
+                </select>
+              </div>
+
+              {/* Clear filters button */}
+              {(docCategoryFilter !== 'all' || docSearchTerm) && (
+                <button
+                  onClick={() => {
+                    setDocCategoryFilter('all');
+                    setDocSearchTerm('');
+                  }}
+                  className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {documents.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h3>
+            <p className="text-gray-500 mb-4">
+              Upload documents to your assigned categories
+            </p>
+          </div>
+        ) : filteredAndSortedDocs.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No matching documents</h3>
+            <p className="text-gray-500 mb-4">
+              Try adjusting your search or filter criteria
+            </p>
+            <button
+              onClick={() => {
+                setDocCategoryFilter('all');
+                setDocSearchTerm('');
+              }}
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              Clear all filters
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 text-left text-sm text-gray-600">
+                <tr>
+                  <SortableDocHeader columnKey="filename" label="Document" />
+                  <th className="px-6 py-3 font-medium">Category</th>
+                  <SortableDocHeader columnKey="size" label="Size" />
+                  <SortableDocHeader columnKey="status" label="Status" />
+                  <SortableDocHeader columnKey="uploadedAt" label="Uploaded" />
+                  <th className="px-6 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredAndSortedDocs.map((doc) => (
+                  <tr key={doc.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <FileText size={20} className="text-red-500" />
+                        <span className="font-medium text-gray-900">{doc.filename}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {doc.categories.map(cat => (
+                          <span
+                            key={cat.categoryId}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full"
+                          >
+                            {cat.categoryName}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {formatFileSize(doc.size)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full ${
+                          doc.status === 'ready'
+                            ? 'bg-green-100 text-green-700'
+                            : doc.status === 'processing'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {doc.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {formatDate(doc.uploadedAt)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <a
+                          href={`/api/superuser/documents/${doc.id}/download`}
+                          className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                          title="Download"
+                          download
+                        >
+                          <Download size={16} />
+                        </a>
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          disabled={deletingDocId === doc.id}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                          title="Delete document"
+                        >
+                          {deletingDocId === doc.id ? (
+                            <Spinner size="sm" />
+                          ) : (
+                            <Trash2 size={16} />
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Upload Document Modal */}
+      <Modal
+        isOpen={showUploadModal}
+        onClose={() => {
+          setShowUploadModal(false);
+          resetUploadForm();
+        }}
+        title="Upload Document"
+      >
+        {/* Tabs */}
+        <div className="flex border-b mb-4">
+          <button
+            type="button"
+            onClick={() => setUploadMode('file')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'file'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Upload size={16} className="inline mr-2" />
+            File
+          </button>
+          <button
+            type="button"
+            onClick={() => setUploadMode('text')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'text'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText size={16} className="inline mr-2" />
+            Text
+          </button>
+          <button
+            type="button"
+            onClick={() => setUploadMode('web')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'web'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Globe size={16} className="inline mr-2" />
+            Web
+          </button>
+          <button
+            type="button"
+            onClick={() => setUploadMode('youtube')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'youtube'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Youtube size={16} className="inline mr-2" />
+            YouTube
+          </button>
+        </div>
+
+        <form onSubmit={handleUploadDocument}>
+          <div className="space-y-4">
+            {/* File Upload Mode */}
+            {uploadMode === 'file' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  File *
+                </label>
+                <div className="border-2 border-dashed rounded-lg p-4">
+                  {uploadFile ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText size={20} className="text-red-500" />
+                        <span className="text-sm font-medium">{uploadFile.name}</span>
+                        <span className="text-xs text-gray-500">
+                          ({formatFileSize(uploadFile.size)})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setUploadFile(null)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <X size={16} className="text-gray-500" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center cursor-pointer">
+                      <Upload size={24} className="text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-600">Click to select a file</span>
+                      <span className="text-xs text-gray-400 mt-1">PDF, DOCX, XLSX, PPTX, Images (max 50MB)</span>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/png,image/jpeg,image/webp,image/gif"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setUploadFile(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Text Content Mode */}
+            {uploadMode === 'text' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadTextName}
+                    onChange={(e) => setUploadTextName(e.target.value)}
+                    placeholder="e.g., Company Policy Overview"
+                    maxLength={255}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Content *
+                  </label>
+                  <textarea
+                    value={uploadTextContent}
+                    onChange={(e) => setUploadTextContent(e.target.value)}
+                    placeholder="Paste your text content here..."
+                    rows={8}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {uploadTextContent.length.toLocaleString()} characters
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Web Mode */}
+            {uploadMode === 'web' && (
+              <>
+                {/* URL Ingestion Results */}
+                {urlIngestionResults && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                    <div className="space-y-2">
+                      {urlIngestionResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-start gap-2 text-sm ${
+                            result.success ? 'text-green-700' : 'text-red-700'
+                          }`}
+                        >
+                          {result.success ? (
+                            <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate">{result.url}</p>
+                            {result.success ? (
+                              <p className="text-xs text-green-600">{result.filename}</p>
+                            ) : (
+                              <p className="text-xs text-red-600">{result.error}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUrlIngestionResults(null)}
+                      className="mt-2 text-xs text-blue-600 hover:underline"
+                    >
+                      Clear results
+                    </button>
+                  </div>
+                )}
+
+                {/* Web URLs Section */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Web URLs (up to 5 - saves API credits)
+                  </label>
+                  <div className="space-y-2">
+                    {uploadUrls.map((url, index) => (
+                      <input
+                        key={index}
+                        type="url"
+                        value={url}
+                        onChange={(e) => {
+                          const newUrls = [...uploadUrls];
+                          newUrls[index] = e.target.value;
+                          setUploadUrls(newUrls);
+                        }}
+                        placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                          url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* YouTube Mode */}
+            {uploadMode === 'youtube' && (
+              <>
+                {/* URL Ingestion Results */}
+                {urlIngestionResults && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                    <div className="space-y-2">
+                      {urlIngestionResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-start gap-2 text-sm ${
+                            result.success ? 'text-green-700' : 'text-red-700'
+                          }`}
+                        >
+                          {result.success ? (
+                            <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate">{result.url}</p>
+                            {result.success ? (
+                              <p className="text-xs text-green-600">{result.filename}</p>
+                            ) : (
+                              <p className="text-xs text-red-600">{result.error}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUrlIngestionResults(null)}
+                      className="mt-2 text-xs text-blue-600 hover:underline"
+                    >
+                      Clear results
+                    </button>
+                  </div>
+                )}
+
+                {/* YouTube URL */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    YouTube URL
+                  </label>
+                  <input
+                    type="url"
+                    value={uploadYoutubeUrl}
+                    onChange={(e) => setUploadYoutubeUrl(e.target.value)}
+                    placeholder="https://youtube.com/watch?v=..."
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                      uploadYoutubeUrl && !isYouTubeUrl(uploadYoutubeUrl) ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                  />
+                  {uploadYoutubeUrl && isYouTubeUrl(uploadYoutubeUrl) && (
+                    <p className="text-xs text-green-600 mt-1">
+                      YouTube video detected - transcript will be extracted
+                    </p>
+                  )}
+                </div>
+
+                {/* Custom name for YouTube */}
+                {uploadYoutubeUrl && isYouTubeUrl(uploadYoutubeUrl) && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Document Name <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadUrlName}
+                      onChange={(e) => setUploadUrlName(e.target.value)}
+                      placeholder="Auto-generated from video title if not provided"
+                      maxLength={255}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category *
+              </label>
+              <select
+                value={uploadCategory || ''}
+                onChange={(e) => setUploadCategory(parseInt(e.target.value, 10) || null)}
+                required
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select category...</option>
+                {assignedCategories.map(cat => (
+                  <option key={cat.categoryId} value={cat.categoryId}>
+                    {cat.categoryName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowUploadModal(false);
+                resetUploadForm();
+              }}
+              disabled={uploading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={uploading}
+              disabled={
+                !uploadCategory ||
+                (uploadMode === 'file'
+                  ? !uploadFile
+                  : uploadMode === 'text'
+                  ? (!uploadTextName.trim() || !uploadTextContent.trim())
+                  : uploadMode === 'web'
+                  ? getValidWebUrls().length === 0
+                  : !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))
+              }
+            >
+              Upload
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </>
+  );
+}

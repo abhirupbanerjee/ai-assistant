@@ -1,0 +1,1438 @@
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
+import Spinner from '@/components/ui/Spinner';
+import { type SortDirection } from '@/components/ui/SortableTable';
+import type { GlobalDocument } from '@/types';
+
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+}
+
+interface AcronymMappings {
+  mappings: Record<string, string>;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+interface UrlIngestionResult {
+  url: string;
+  success: boolean;
+  filename?: string;
+  error?: string;
+  sourceType: 'youtube' | 'web';
+}
+
+interface DocumentsManagementProps {
+  documentsSection: 'documents' | 'acronyms';
+}
+
+export default function DocumentsManagement({ documentsSection }: DocumentsManagementProps) {
+  // Documents state
+  const [documents, setDocuments] = useState<GlobalDocument[]>([]);
+  const [totalChunks, setTotalChunks] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  // Search and filter state
+  const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [docCategoryFilter, setDocCategoryFilter] = useState<number | 'all' | 'global' | 'uncategorized'>('all');
+  const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
+  const [docSortKey, setDocSortKey] = useState<keyof GlobalDocument | null>(null);
+  const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
+
+  // Action states
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const [reindexing, setReindexing] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [savingDocChanges, setSavingDocChanges] = useState(false);
+
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'web' | 'youtube'>('file');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadTextName, setUploadTextName] = useState('');
+  const [uploadTextContent, setUploadTextContent] = useState('');
+  const [uploadCategoryIds, setUploadCategoryIds] = useState<number[]>([]);
+  const [uploadIsGlobal, setUploadIsGlobal] = useState(false);
+  const [uploadUrls, setUploadUrls] = useState<string[]>(['', '', '', '', '']);
+  const [uploadYoutubeUrl, setUploadYoutubeUrl] = useState('');
+  const [uploadUrlName, setUploadUrlName] = useState('');
+  const [urlIngestionResults, setUrlIngestionResults] = useState<UrlIngestionResult[] | null>(null);
+
+  // Delete modal state
+  const [deleteDoc, setDeleteDoc] = useState<GlobalDocument | null>(null);
+
+  // Edit modal state
+  const [editingDoc, setEditingDoc] = useState<GlobalDocument | null>(null);
+  const [editDocCategoryIds, setEditDocCategoryIds] = useState<number[]>([]);
+  const [editDocIsGlobal, setEditDocIsGlobal] = useState(false);
+
+  // Acronyms state
+  const [acronymMappings, setAcronymMappings] = useState<AcronymMappings | null>(null);
+  const [editedAcronyms, setEditedAcronyms] = useState<string>('');
+  const [acronymsModified, setAcronymsModified] = useState(false);
+
+  // Helper functions
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (date: Date | string) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const isValidUrl = (string: string): boolean => {
+    try {
+      new URL(string);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const isYouTubeUrl = (url: string): boolean => {
+    return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url);
+  };
+
+  const getValidWebUrls = (): string[] => {
+    return uploadUrls.filter(url => url.trim() && isValidUrl(url.trim()));
+  };
+
+  const fuzzyMatch = (pattern: string, text: string): number => {
+    pattern = pattern.toLowerCase();
+    text = text.toLowerCase();
+    let patternIdx = 0;
+    let score = 0;
+    let lastMatchIdx = -1;
+    for (let i = 0; i < text.length && patternIdx < pattern.length; i++) {
+      if (text[i] === pattern[patternIdx]) {
+        if (lastMatchIdx === i - 1) score += 2;
+        else score += 1;
+        if (i === 0 || text[i - 1] === ' ' || text[i - 1] === '-' || text[i - 1] === '_') score += 3;
+        lastMatchIdx = i;
+        patternIdx++;
+      }
+    }
+    return patternIdx < pattern.length ? -1 : score;
+  };
+
+  // Load documents
+  const loadDocuments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/documents');
+      if (!response.ok) throw new Error('Failed to load documents');
+      const data = await response.json();
+      setDocuments(data.documents.map((d: GlobalDocument) => ({
+        ...d,
+        uploadedAt: new Date(d.uploadedAt),
+      })));
+      setTotalChunks(data.totalChunks);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load documents');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load categories
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/categories');
+      if (!response.ok) throw new Error('Failed to load categories');
+      const data = await response.json();
+      setCategories(data.categories || []);
+    } catch (err) {
+      console.error('Failed to load categories:', err);
+    }
+  }, []);
+
+  // Load acronym mappings
+  const loadAcronymMappings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/settings/acronyms');
+      if (!response.ok) throw new Error('Failed to load acronym mappings');
+      const data = await response.json();
+      setAcronymMappings(data);
+      const mappingsText = Object.entries(data.mappings || {})
+        .map(([key, value]) => `${key} = ${value}`)
+        .join('\n');
+      setEditedAcronyms(mappingsText);
+    } catch (err) {
+      console.error('Failed to load acronym mappings:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDocuments();
+    loadCategories();
+    loadAcronymMappings();
+  }, [loadDocuments, loadCategories, loadAcronymMappings]);
+
+  // Reset upload form
+  const resetUploadForm = () => {
+    setUploadFile(null);
+    setUploadTextName('');
+    setUploadTextContent('');
+    setUploadCategoryIds([]);
+    setUploadIsGlobal(false);
+    setUploadMode('file');
+    setUploadUrls(['', '', '', '', '']);
+    setUploadYoutubeUrl('');
+    setUploadUrlName('');
+    setUrlIngestionResults(null);
+  };
+
+  // Upload handler
+  const handleUploadConfirm = async () => {
+    if (uploadMode === 'file' && !uploadFile) return;
+    if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
+    if (uploadMode === 'web' && getValidWebUrls().length === 0) return;
+    if (uploadMode === 'youtube' && (!uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))) return;
+
+    setUploading(true);
+    setUploadProgress('Uploading...');
+    setError(null);
+    setUrlIngestionResults(null);
+
+    try {
+      let response: Response;
+
+      if (uploadMode === 'file') {
+        const formData = new FormData();
+        formData.append('file', uploadFile!);
+        formData.append('categoryIds', JSON.stringify(uploadCategoryIds));
+        formData.append('isGlobal', String(uploadIsGlobal));
+
+        response = await fetch('/api/admin/documents', {
+          method: 'POST',
+          body: formData,
+        });
+      } else if (uploadMode === 'text') {
+        response = await fetch('/api/admin/documents/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: uploadTextName.trim(),
+            content: uploadTextContent,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
+      } else if (uploadMode === 'web') {
+        const webUrls = getValidWebUrls();
+        setUploadProgress('Extracting content...');
+        response = await fetch('/api/admin/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urls: webUrls,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
+      } else {
+        const youtubeUrl = uploadYoutubeUrl.trim();
+        setUploadProgress('Extracting transcript...');
+        response = await fetch('/api/admin/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            youtubeUrl,
+            name: uploadUrlName.trim() || undefined,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
+      }
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+
+      if (uploadMode === 'web' || uploadMode === 'youtube') {
+        if (data.results) {
+          setUrlIngestionResults(data.results);
+        }
+      }
+
+      await loadDocuments();
+      if (uploadMode !== 'web' && uploadMode !== 'youtube') {
+        setShowUploadModal(false);
+        resetUploadForm();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  // Delete handler
+  const handleDeleteDoc = async () => {
+    if (!deleteDoc) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/admin/documents/${deleteDoc.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Delete failed');
+      }
+
+      await loadDocuments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+      setDeleteDoc(null);
+    }
+  };
+
+  // Edit document
+  const handleEditDoc = (doc: GlobalDocument) => {
+    setEditingDoc(doc);
+    setEditDocCategoryIds(doc.categories?.map(c => c.id) || []);
+    setEditDocIsGlobal(doc.isGlobal || false);
+  };
+
+  // Save document changes
+  const handleSaveDocChanges = async () => {
+    if (!editingDoc) return;
+
+    setSavingDocChanges(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/documents/${editingDoc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryIds: editDocCategoryIds,
+          isGlobal: editDocIsGlobal,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update document');
+      }
+
+      await loadDocuments();
+      setEditingDoc(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update document');
+    } finally {
+      setSavingDocChanges(false);
+    }
+  };
+
+  // Reindex document
+  const handleReindex = async (docId: string) => {
+    setReindexing(docId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/documents/${docId}?reindex=true`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Reindex failed');
+      }
+
+      await loadDocuments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reindex failed');
+    } finally {
+      setReindexing(null);
+    }
+  };
+
+  // Refresh all documents
+  const handleRefreshAll = async () => {
+    if (!confirm('This will clear the response cache and reindex all documents. This may take a few minutes. Continue?')) {
+      return;
+    }
+
+    setRefreshingAll(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/refresh', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Refresh failed');
+      }
+
+      const result = await response.json();
+      await loadDocuments();
+      alert(`Refresh complete! Cache cleared, ${result.documentsReindexed} documents reindexed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refresh failed');
+    } finally {
+      setRefreshingAll(false);
+    }
+  };
+
+  // Document sort handler
+  const handleDocSort = (key: keyof GlobalDocument) => {
+    if (docSortKey === key) {
+      if (docSortDirection === 'asc') {
+        setDocSortDirection('desc');
+      } else if (docSortDirection === 'desc') {
+        setDocSortKey(null);
+        setDocSortDirection(null);
+      }
+    } else {
+      setDocSortKey(key);
+      setDocSortDirection('asc');
+    }
+  };
+
+  // Acronyms handlers
+  const handleAcronymsChange = (value: string) => {
+    setEditedAcronyms(value);
+    const originalText = Object.entries(acronymMappings?.mappings || {})
+      .map(([key, val]) => `${key} = ${val}`)
+      .join('\n');
+    setAcronymsModified(value !== originalText);
+  };
+
+  const handleSaveAcronyms = async () => {
+    const mappings: Record<string, string> = {};
+    const lines = editedAcronyms.split('\n');
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || !trimmedLine.includes('=')) continue;
+      const [key, ...valueParts] = trimmedLine.split('=');
+      const acronym = key.trim().toUpperCase();
+      const expansion = valueParts.join('=').trim();
+      if (acronym && expansion) {
+        mappings[acronym] = expansion;
+      }
+    }
+
+    try {
+      const response = await fetch('/api/admin/settings/acronyms', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save acronym mappings');
+      }
+
+      await loadAcronymMappings();
+      setAcronymsModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save acronym mappings');
+    }
+  };
+
+  const handleResetAcronyms = () => {
+    const originalText = Object.entries(acronymMappings?.mappings || {})
+      .map(([key, val]) => `${key} = ${val}`)
+      .join('\n');
+    setEditedAcronyms(originalText);
+    setAcronymsModified(false);
+  };
+
+  // Filtered and sorted documents
+  const filteredAndSortedDocs = useMemo(() => {
+    let result = [...documents];
+
+    // Apply category filter
+    if (docCategoryFilter !== 'all') {
+      if (docCategoryFilter === 'global') {
+        result = result.filter(doc => doc.isGlobal);
+      } else if (docCategoryFilter === 'uncategorized') {
+        result = result.filter(doc => !doc.isGlobal && (!doc.categories || doc.categories.length === 0));
+      } else {
+        result = result.filter(doc => doc.categories?.some(c => c.id === docCategoryFilter));
+      }
+    }
+
+    // Apply fuzzy search
+    if (docSearchTerm.trim()) {
+      result = result
+        .map(doc => ({
+          doc,
+          score: Math.max(
+            fuzzyMatch(docSearchTerm, doc.filename),
+            fuzzyMatch(docSearchTerm, doc.categories?.map(c => c.name).join(' ') || ''),
+            fuzzyMatch(docSearchTerm, doc.status)
+          ),
+        }))
+        .filter(r => r.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .map(r => r.doc);
+    }
+
+    // Apply sorting from dropdown
+    if (docSortOption && !docSearchTerm.trim()) {
+      result.sort((a, b) => {
+        switch (docSortOption) {
+          case 'newest':
+            return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+          case 'oldest':
+            return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+          case 'largest':
+            return b.size - a.size;
+          case 'smallest':
+            return a.size - b.size;
+          case 'a-z':
+            return a.filename.toLowerCase().localeCompare(b.filename.toLowerCase());
+          case 'z-a':
+            return b.filename.toLowerCase().localeCompare(a.filename.toLowerCase());
+          default:
+            return 0;
+        }
+      });
+    } else if (docSortKey && docSortDirection) {
+      result.sort((a, b) => {
+        let aVal: string | number | Date | undefined;
+        let bVal: string | number | Date | undefined;
+
+        switch (docSortKey) {
+          case 'filename':
+            aVal = a.filename.toLowerCase();
+            bVal = b.filename.toLowerCase();
+            break;
+          case 'size':
+            aVal = a.size;
+            bVal = b.size;
+            break;
+          case 'chunkCount':
+            aVal = a.chunkCount;
+            bVal = b.chunkCount;
+            break;
+          case 'status':
+            aVal = a.status;
+            bVal = b.status;
+            break;
+          case 'uploadedAt':
+            aVal = new Date(a.uploadedAt).getTime();
+            bVal = new Date(b.uploadedAt).getTime();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return docSortDirection === 'asc' ? 1 : -1;
+        if (bVal == null) return docSortDirection === 'asc' ? -1 : 1;
+
+        let comparison = 0;
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          comparison = aVal.localeCompare(bVal);
+        } else {
+          comparison = (aVal as number) - (bVal as number);
+        }
+
+        return docSortDirection === 'asc' ? comparison : -comparison;
+      });
+    }
+
+    return result;
+  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docSortOption]);
+
+  // Sortable header component
+  const SortableDocHeader = ({ columnKey, label, className = '' }: { columnKey: keyof GlobalDocument; label: string; className?: string }) => {
+    const isActive = docSortKey === columnKey;
+    return (
+      <th className={`px-6 py-3 font-medium ${className}`}>
+        <button
+          onClick={() => handleDocSort(columnKey)}
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors group"
+        >
+          {label}
+          <span className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
+            {isActive && docSortDirection === 'asc' ? (
+              <ChevronUp size={14} />
+            ) : isActive && docSortDirection === 'desc' ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronsUpDown size={14} />
+            )}
+          </span>
+        </button>
+      </th>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border shadow-sm px-6 py-12 flex justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+          <p className="text-sm text-red-700">{error}</p>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">&times;</button>
+        </div>
+      )}
+
+      {documentsSection === 'documents' && (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <div className="px-6 py-4 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Knowledge Base Documents</h2>
+                <p className="text-sm text-gray-500">
+                  {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents, {totalChunks} chunks indexed
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={refreshingAll || documents.length === 0}
+                  loading={refreshingAll}
+                  onClick={handleRefreshAll}
+                  title="Clear cache and reindex all documents"
+                >
+                  <RefreshCw size={18} className={`mr-2 ${refreshingAll ? 'animate-spin' : ''}`} />
+                  {refreshingAll ? 'Refreshing...' : 'Refresh All'}
+                </Button>
+                <Button
+                  disabled={uploading}
+                  loading={uploading}
+                  onClick={() => {
+                    setUploadMode('file');
+                    setUploadFile(null);
+                    setUploadTextName('');
+                    setUploadTextContent('');
+                    setUploadCategoryIds([]);
+                    setUploadIsGlobal(false);
+                    setShowUploadModal(true);
+                  }}
+                >
+                  <Upload size={18} className="mr-2" />
+                  {uploadProgress || 'Upload Document'}
+                </Button>
+              </div>
+            </div>
+            {/* Search, Filter, and Sort controls */}
+            {documents.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {/* Search bar */}
+                <div className="relative flex-1 min-w-[200px] max-w-md">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={docSearchTerm}
+                    onChange={(e) => setDocSearchTerm(e.target.value)}
+                    placeholder="Search documents..."
+                    className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {docSearchTerm && (
+                    <button
+                      onClick={() => setDocSearchTerm('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter */}
+                <div className="flex items-center gap-2">
+                  <Filter size={16} className="text-gray-400" />
+                  <select
+                    value={docCategoryFilter === 'all' ? 'all' : docCategoryFilter === 'global' ? 'global' : docCategoryFilter === 'uncategorized' ? 'uncategorized' : String(docCategoryFilter)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'all' || val === 'global' || val === 'uncategorized') {
+                        setDocCategoryFilter(val);
+                      } else {
+                        setDocCategoryFilter(parseInt(val, 10));
+                      }
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="global">Global</option>
+                    <option value="uncategorized">Uncategorized</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sort Dropdown */}
+                <div className="flex items-center gap-2">
+                  <SortAsc size={16} className="text-gray-400" />
+                  <select
+                    value={docSortOption}
+                    onChange={(e) => setDocSortOption(e.target.value as typeof docSortOption)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="largest">Largest First</option>
+                    <option value="smallest">Smallest First</option>
+                    <option value="a-z">Name (A-Z)</option>
+                    <option value="z-a">Name (Z-A)</option>
+                  </select>
+                </div>
+
+                {/* Clear filters button */}
+                {(docCategoryFilter !== 'all' || docSearchTerm) && (
+                  <button
+                    onClick={() => {
+                      setDocCategoryFilter('all');
+                      setDocSearchTerm('');
+                    }}
+                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {documents.length === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h3>
+              <p className="text-gray-500 mb-4">
+                Upload PDF documents to build your policy knowledge base
+              </p>
+            </div>
+          ) : filteredAndSortedDocs.length === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No matching documents</h3>
+              <p className="text-gray-500 mb-4">
+                Try adjusting your search or filter criteria
+              </p>
+              <button
+                onClick={() => {
+                  setDocCategoryFilter('all');
+                  setDocSearchTerm('');
+                }}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              >
+                Clear all filters
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 text-left text-sm text-gray-600">
+                  <tr>
+                    <SortableDocHeader columnKey="filename" label="Document" />
+                    <th className="px-6 py-3 font-medium">Categories</th>
+                    <SortableDocHeader columnKey="size" label="Size" />
+                    <SortableDocHeader columnKey="chunkCount" label="Chunks" />
+                    <SortableDocHeader columnKey="status" label="Status" />
+                    <SortableDocHeader columnKey="uploadedAt" label="Uploaded" />
+                    <th className="px-6 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredAndSortedDocs.map((doc) => (
+                    <tr key={doc.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium text-gray-900">{doc.filename}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {doc.isGlobal && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                              <Globe size={10} />
+                              Global
+                            </span>
+                          )}
+                          {doc.categories && doc.categories.length > 0 ? (
+                            doc.categories.map(cat => (
+                              <span
+                                key={cat.id}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full"
+                              >
+                                <Tag size={10} />
+                                {cat.name}
+                              </span>
+                            ))
+                          ) : !doc.isGlobal ? (
+                            <span className="text-gray-400 text-xs italic">Uncategorized</span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {formatFileSize(doc.size)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">{doc.chunkCount}</td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                            doc.status === 'ready'
+                              ? 'bg-green-100 text-green-700'
+                              : doc.status === 'processing'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {doc.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {formatDate(doc.uploadedAt)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <a
+                            href={`/api/admin/documents/${doc.id}/download`}
+                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                            title="Download"
+                            download
+                          >
+                            <Download size={16} />
+                          </a>
+                          <button
+                            onClick={() => handleEditDoc(doc)}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                            title="Edit categories"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleReindex(doc.id)}
+                            disabled={reindexing === doc.id}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50"
+                            title="Reindex"
+                          >
+                            {reindexing === doc.id ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              <RefreshCw size={16} />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setDeleteDoc(doc)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {documentsSection === 'acronyms' && (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <div className="px-6 py-4 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Acronym Mappings</h2>
+                <p className="text-sm text-gray-500">
+                  Define acronyms and their expansions for better search and understanding
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {acronymsModified && (
+                  <Button variant="secondary" onClick={handleResetAcronyms}>
+                    Reset
+                  </Button>
+                )}
+                <Button onClick={handleSaveAcronyms} disabled={!acronymsModified} loading={false}>
+                  <Save size={18} className="mr-2" />
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-sm text-gray-600 mb-4">
+              Enter one acronym per line in the format: <code className="bg-gray-100 px-1 rounded">ACRONYM = Expansion</code>
+            </p>
+            <textarea
+              value={editedAcronyms}
+              onChange={(e) => handleAcronymsChange(e.target.value)}
+              placeholder="EPA = Environmental Protection Agency&#10;FDA = Food and Drug Administration&#10;OSHA = Occupational Safety and Health Administration"
+              className="w-full h-96 px-4 py-3 font-mono text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            />
+            {acronymMappings?.updatedAt && (
+              <p className="mt-3 text-xs text-gray-400">
+                Last updated: {formatDate(acronymMappings.updatedAt)}
+                {acronymMappings.updatedBy && ` by ${acronymMappings.updatedBy}`}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Document Modal */}
+      <Modal
+        isOpen={!!deleteDoc}
+        onClose={() => setDeleteDoc(null)}
+        title="Delete Document?"
+      >
+        <p className="text-gray-600 mb-4">
+          Are you sure you want to delete &quot;{deleteDoc?.filename}&quot;?
+        </p>
+        <p className="text-sm text-gray-500 mb-6">
+          This will remove the document and all {deleteDoc?.chunkCount} indexed chunks from the knowledge base.
+          This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => setDeleteDoc(null)}
+            disabled={deleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDeleteDoc}
+            loading={deleting}
+          >
+            Delete
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Upload Document Modal */}
+      <Modal
+        isOpen={showUploadModal}
+        onClose={() => {
+          setShowUploadModal(false);
+          setUploadFile(null);
+          setUploadTextName('');
+          setUploadTextContent('');
+          setUploadCategoryIds([]);
+          setUploadIsGlobal(false);
+          setUploadMode('file');
+        }}
+        title="Upload Document"
+      >
+        {/* Tabs */}
+        <div className="flex border-b mb-4">
+          <button
+            onClick={() => setUploadMode('file')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'file'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Upload size={16} className="inline mr-2" />
+            File
+          </button>
+          <button
+            onClick={() => setUploadMode('text')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'text'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText size={16} className="inline mr-2" />
+            Text
+          </button>
+          <button
+            onClick={() => setUploadMode('web')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'web'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Globe size={16} className="inline mr-2" />
+            Web
+          </button>
+          <button
+            onClick={() => setUploadMode('youtube')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'youtube'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Youtube size={16} className="inline mr-2" />
+            YouTube
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* File Upload Mode */}
+          {uploadMode === 'file' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                File
+              </label>
+              {uploadFile ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <span className="text-sm text-gray-700 truncate">{uploadFile.name}</span>
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {formatFileSize(uploadFile.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setUploadFile(null)}
+                    className="p-1 hover:bg-gray-200 rounded"
+                  >
+                    <X size={14} className="text-gray-500" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-gray-50 transition-colors">
+                  <Upload size={24} className="text-gray-400 mb-2" />
+                  <span className="text-sm text-gray-500">Click to select a file</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setUploadFile(file);
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+          )}
+
+          {/* Text Content Mode */}
+          {uploadMode === 'text' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Document Name *
+                </label>
+                <input
+                  type="text"
+                  value={uploadTextName}
+                  onChange={(e) => setUploadTextName(e.target.value)}
+                  placeholder="e.g., Company Policy Overview"
+                  maxLength={255}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Content *
+                </label>
+                <textarea
+                  value={uploadTextContent}
+                  onChange={(e) => setUploadTextContent(e.target.value)}
+                  placeholder="Paste your text content here..."
+                  rows={8}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  {uploadTextContent.length.toLocaleString()} characters
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Web Mode */}
+          {uploadMode === 'web' && (
+            <>
+              {/* URL Ingestion Results */}
+              {urlIngestionResults && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                  <div className="space-y-2">
+                    {urlIngestionResults.map((result, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-start gap-2 text-sm ${
+                          result.success ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
+                        {result.success ? (
+                          <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate">{result.url}</p>
+                          {result.success ? (
+                            <p className="text-xs text-green-600">{result.filename}</p>
+                          ) : (
+                            <p className="text-xs text-red-600">{result.error}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUrlIngestionResults(null)}
+                    className="mt-2 text-xs text-blue-600 hover:underline"
+                  >
+                    Clear results
+                  </button>
+                </div>
+              )}
+
+              {/* Web URLs Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Web URLs (up to 5 - saves API credits)
+                </label>
+                <div className="space-y-2">
+                  {uploadUrls.map((url, index) => (
+                    <input
+                      key={index}
+                      type="url"
+                      value={url}
+                      onChange={(e) => {
+                        const newUrls = [...uploadUrls];
+                        newUrls[index] = e.target.value;
+                        setUploadUrls(newUrls);
+                      }}
+                      placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                        url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* YouTube Mode */}
+          {uploadMode === 'youtube' && (
+            <>
+              {/* URL Ingestion Results */}
+              {urlIngestionResults && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                  <div className="space-y-2">
+                    {urlIngestionResults.map((result, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-start gap-2 text-sm ${
+                          result.success ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
+                        {result.success ? (
+                          <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate">{result.url}</p>
+                          {result.success ? (
+                            <p className="text-xs text-green-600">{result.filename}</p>
+                          ) : (
+                            <p className="text-xs text-red-600">{result.error}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUrlIngestionResults(null)}
+                    className="mt-2 text-xs text-blue-600 hover:underline"
+                  >
+                    Clear results
+                  </button>
+                </div>
+              )}
+
+              {/* YouTube URL */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  YouTube URL
+                </label>
+                <input
+                  type="url"
+                  value={uploadYoutubeUrl}
+                  onChange={(e) => setUploadYoutubeUrl(e.target.value)}
+                  placeholder="https://youtube.com/watch?v=..."
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                    uploadYoutubeUrl && !isYouTubeUrl(uploadYoutubeUrl) ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                />
+                {uploadYoutubeUrl && isYouTubeUrl(uploadYoutubeUrl) && (
+                  <p className="text-xs text-green-600 mt-1">
+                    YouTube video detected - transcript will be extracted
+                  </p>
+                )}
+              </div>
+
+              {/* Custom name for YouTube */}
+              {uploadYoutubeUrl && isYouTubeUrl(uploadYoutubeUrl) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Name <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadUrlName}
+                    onChange={(e) => setUploadUrlName(e.target.value)}
+                    placeholder="Auto-generated from video title if not provided"
+                    maxLength={255}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Categories
+            </label>
+            <div className="border border-gray-200 rounded-lg p-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {uploadCategoryIds.length === 0 ? (
+                  <span className="text-sm text-gray-500">No categories selected</span>
+                ) : (
+                  uploadCategoryIds.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    return cat ? (
+                      <span
+                        key={catId}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                      >
+                        <Tag size={10} />
+                        {cat.name}
+                        <button
+                          type="button"
+                          onClick={() => setUploadCategoryIds(ids => ids.filter(id => id !== catId))}
+                          className="hover:bg-blue-200 rounded-full p-0.5"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ) : null;
+                  })
+                )}
+              </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  const catId = parseInt(e.target.value, 10);
+                  if (catId && !uploadCategoryIds.includes(catId)) {
+                    setUploadCategoryIds([...uploadCategoryIds, catId]);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">Add category...</option>
+                {categories
+                  .filter(cat => !uploadCategoryIds.includes(cat.id))
+                  .map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))
+                }
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="uploadIsGlobal"
+              checked={uploadIsGlobal}
+              onChange={(e) => setUploadIsGlobal(e.target.checked)}
+              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="uploadIsGlobal" className="flex items-center gap-2 text-sm text-gray-700">
+              <Globe size={16} className="text-purple-600" />
+              Global document (available in all categories)
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            {uploadIsGlobal
+              ? 'Global documents are indexed into all category collections for universal access.'
+              : uploadCategoryIds.length > 0
+              ? `This document will be available to users subscribed to the selected ${uploadCategoryIds.length === 1 ? 'category' : 'categories'}.`
+              : 'Select categories or mark as global to control document visibility.'}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowUploadModal(false);
+              resetUploadForm();
+            }}
+            disabled={uploading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleUploadConfirm}
+            loading={uploading}
+            disabled={
+              uploadMode === 'file'
+                ? !uploadFile
+                : uploadMode === 'text'
+                ? (!uploadTextName.trim() || !uploadTextContent.trim())
+                : uploadMode === 'web'
+                ? getValidWebUrls().length === 0
+                : !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim())
+            }
+          >
+            <Upload size={18} className="mr-2" />
+            {uploadProgress || 'Upload'}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Edit Document Modal */}
+      <Modal
+        isOpen={!!editingDoc}
+        onClose={() => setEditingDoc(null)}
+        title="Edit Document Categories"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span className="text-sm text-gray-700 truncate font-medium">{editingDoc?.filename}</span>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Categories
+            </label>
+            <div className="border border-gray-200 rounded-lg p-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {editDocCategoryIds.length === 0 ? (
+                  <span className="text-sm text-gray-500">No categories selected</span>
+                ) : (
+                  editDocCategoryIds.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    return cat ? (
+                      <span
+                        key={catId}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                      >
+                        <Tag size={10} />
+                        {cat.name}
+                        <button
+                          type="button"
+                          onClick={() => setEditDocCategoryIds(ids => ids.filter(id => id !== catId))}
+                          className="hover:bg-blue-200 rounded-full p-0.5"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ) : null;
+                  })
+                )}
+              </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  const catId = parseInt(e.target.value, 10);
+                  if (catId && !editDocCategoryIds.includes(catId)) {
+                    setEditDocCategoryIds([...editDocCategoryIds, catId]);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">Add category...</option>
+                {categories
+                  .filter(cat => !editDocCategoryIds.includes(cat.id))
+                  .map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))
+                }
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="editDocIsGlobal"
+              checked={editDocIsGlobal}
+              onChange={(e) => setEditDocIsGlobal(e.target.checked)}
+              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="editDocIsGlobal" className="flex items-center gap-2 text-sm text-gray-700">
+              <Globe size={16} className="text-purple-600" />
+              Global document (available in all categories)
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            {editDocIsGlobal
+              ? 'This document will be re-indexed into all category collections.'
+              : editDocCategoryIds.length > 0
+              ? `This document will be re-indexed into the selected ${editDocCategoryIds.length === 1 ? 'category' : 'categories'}.`
+              : 'Select categories or mark as global. Changes will trigger re-indexing.'}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => setEditingDoc(null)}
+            disabled={savingDocChanges}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveDocChanges}
+            loading={savingDocChanges}
+          >
+            <Save size={18} className="mr-2" />
+            Save Changes
+          </Button>
+        </div>
+      </Modal>
+    </>
+  );
+}

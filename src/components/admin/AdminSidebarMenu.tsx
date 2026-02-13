@@ -5,96 +5,279 @@ import {
   Menu,
   X,
   LayoutDashboard,
-  BarChart3,
   FolderOpen,
   FileText,
   Users,
   MessageSquare,
-  Globe,
+  Sparkles,
+  Bot,
+  Coins,
+  Layers,
+  Database,
   Settings,
+  Palette,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Layers,
+  type LucideIcon,
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
-type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent' | 'ocr';
-type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
-type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
+// ============================================================================
+// Type Definitions
+// ============================================================================
+
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'skills' | 'agent' | 'tokens' | 'workspaces' | 'backup' | 'settings';
+
+// Section types for expandable menus
+type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health';
+type DocumentsSection = 'documents' | 'acronyms';
+type UsersSection = 'management' | 'superuser';
+type PromptsSection = 'system-prompt' | 'category-prompts';
+type SkillsSection = 'tools' | 'skill-library';
+type TokensSection = 'memory' | 'summarization' | 'limits';
+type SettingsSection = 'llm' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache';
+
+// Generic submenu item type
+interface SubmenuItem {
+  id: string;
+  label: string;
+}
+
+// Menu configuration item type
+interface MenuConfigItem {
+  id: TabType;
+  label: string;
+  icon: LucideIcon;
+  expandable: boolean;
+  submenu?: SubmenuItem[];
+}
+
+// ============================================================================
+// Menu Configuration (Single Source of Truth)
+// ============================================================================
+
+const MENU_CONFIG: MenuConfigItem[] = [
+  { id: 'branding', label: 'Branding', icon: Palette, expandable: false },
+  {
+    id: 'dashboard',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    expandable: true,
+    submenu: [
+      { id: 'overview', label: 'Overview' },
+      { id: 'user-stats', label: 'User Statistics' },
+      { id: 'doc-stats', label: 'Document Statistics' },
+      { id: 'query-stats', label: 'Query Statistics' },
+      { id: 'system-health', label: 'System Health' },
+    ]
+  },
+  { id: 'categories', label: 'Categories', icon: FolderOpen, expandable: false },
+  {
+    id: 'documents',
+    label: 'Documents',
+    icon: FileText,
+    expandable: true,
+    submenu: [
+      { id: 'documents', label: 'Documents' },
+      { id: 'acronyms', label: 'Acronyms' },
+    ]
+  },
+  {
+    id: 'users',
+    label: 'Users',
+    icon: Users,
+    expandable: true,
+    submenu: [
+      { id: 'management', label: 'User Management' },
+      { id: 'superuser', label: 'Superuser Settings' },
+    ]
+  },
+  {
+    id: 'prompts',
+    label: 'Prompts',
+    icon: MessageSquare,
+    expandable: true,
+    submenu: [
+      { id: 'system-prompt', label: 'System Prompt' },
+      { id: 'category-prompts', label: 'Category Prompts' },
+    ]
+  },
+  {
+    id: 'skills',
+    label: 'Skills',
+    icon: Sparkles,
+    expandable: true,
+    submenu: [
+      { id: 'tools', label: 'Tools' },
+      { id: 'skill-library', label: 'Skill Library' },
+    ]
+  },
+  { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
+  {
+    id: 'tokens',
+    label: 'Tokens',
+    icon: Coins,
+    expandable: true,
+    submenu: [
+      { id: 'memory', label: 'Memory' },
+      { id: 'summarization', label: 'Summarization' },
+      { id: 'limits', label: 'Limits' },
+    ]
+  },
+  { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
+  { id: 'backup', label: 'Backup', icon: Database, expandable: false },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: Settings,
+    expandable: true,
+    submenu: [
+      { id: 'llm', label: 'LLM' },
+      { id: 'rag', label: 'RAG' },
+      { id: 'rag-tuning', label: 'RAG Tuning' },
+      { id: 'reranker', label: 'Reranker' },
+      { id: 'ocr', label: 'Document Processing' },
+      { id: 'cache', label: 'Cache' },
+    ]
+  },
+];
+
+// Helper to get expandable menu IDs
+const EXPANDABLE_MENU_IDS = MENU_CONFIG.filter(m => m.expandable).map(m => m.id);
+
+// Helper to check if a menu is expandable
+const isExpandableMenu = (menuId: TabType): boolean => EXPANDABLE_MENU_IDS.includes(menuId);
+
+// Helper to get menu config by ID
+const getMenuConfig = (menuId: TabType): MenuConfigItem | undefined =>
+  MENU_CONFIG.find(m => m.id === menuId);
+
+// ============================================================================
+// Legacy exports for backward compatibility
+// ============================================================================
+
+export const DASHBOARD_SUBMENU: { id: DashboardSection; label: string }[] =
+  getMenuConfig('dashboard')?.submenu as { id: DashboardSection; label: string }[] || [];
+
+export const DOCUMENTS_SUBMENU: { id: DocumentsSection; label: string }[] =
+  getMenuConfig('documents')?.submenu as { id: DocumentsSection; label: string }[] || [];
+
+export const USERS_SUBMENU: { id: UsersSection; label: string }[] =
+  getMenuConfig('users')?.submenu as { id: UsersSection; label: string }[] || [];
+
+export const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] =
+  getMenuConfig('prompts')?.submenu as { id: PromptsSection; label: string }[] || [];
+
+export const SKILLS_SUBMENU: { id: SkillsSection; label: string }[] =
+  getMenuConfig('skills')?.submenu as { id: SkillsSection; label: string }[] || [];
+
+export const TOKENS_SUBMENU: { id: TokensSection; label: string }[] =
+  getMenuConfig('tokens')?.submenu as { id: TokensSection; label: string }[] || [];
+
+export const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] =
+  getMenuConfig('settings')?.submenu as { id: SettingsSection; label: string }[] || [];
+
+// ============================================================================
+// Component Props
+// ============================================================================
 
 interface AdminSidebarMenuProps {
   activeTab: TabType;
-  settingsSection: SettingsSection;
+  dashboardSection: DashboardSection;
+  documentsSection: DocumentsSection;
+  usersSection: UsersSection;
   promptsSection: PromptsSection;
-  toolsSection: ToolsSection;
+  skillsSection: SkillsSection;
+  tokensSection: TokensSection;
+  settingsSection: SettingsSection;
   onTabChange: (tab: TabType) => void;
-  onSettingsChange: (section: SettingsSection) => void;
+  onDashboardChange: (section: DashboardSection) => void;
+  onDocumentsChange: (section: DocumentsSection) => void;
+  onUsersChange: (section: UsersSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
-  onToolsChange: (section: ToolsSection) => void;
+  onSkillsChange: (section: SkillsSection) => void;
+  onTokensChange: (section: TokensSection) => void;
+  onSettingsChange: (section: SettingsSection) => void;
 }
 
-const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'stats', label: 'Stats', icon: BarChart3 },
-  { id: 'categories', label: 'Categories', icon: FolderOpen },
-  { id: 'documents', label: 'Documents', icon: FileText },
-  { id: 'users', label: 'Users', icon: Users },
-  { id: 'prompts', label: 'Prompts', icon: MessageSquare },
-  { id: 'tools', label: 'Tools', icon: Globe },
-  { id: 'workspaces', label: 'Workspaces', icon: Layers },
-  { id: 'settings', label: 'Settings', icon: Settings },
-];
-
-const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
-  { id: 'system-prompt', label: 'System Prompt' },
-  { id: 'category-prompts', label: 'Category Prompts' },
-  { id: 'acronyms', label: 'Acronyms' },
-  { id: 'skills', label: 'Skills' },
-];
-
-const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
-  { id: 'llm', label: 'LLM' },
-  { id: 'rag', label: 'RAG' },
-  { id: 'rag-tuning', label: 'RAG Tuning' },
-  { id: 'reranker', label: 'Reranker' },
-  { id: 'ocr', label: 'Document Processing' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'summarization', label: 'Summarization' },
-  { id: 'limits', label: 'Limits' },
-  { id: 'agent', label: 'Autonomous Agent' },
-  { id: 'superuser', label: 'Superuser' },
-  { id: 'backup', label: 'Backup' },
-  { id: 'branding', label: 'Branding' },
-  { id: 'cache', label: 'Cache' },
-];
-
-const TOOLS_SUBMENU: { id: ToolsSection; label: string }[] = [
-  { id: 'management', label: 'Tools Management' },
-  { id: 'dependencies', label: 'Dependencies' },
-  { id: 'routing', label: 'Tool Routing' },
-  { id: 'conflicts', label: 'Keyword Conflicts' },
-];
+// ============================================================================
+// Component
+// ============================================================================
 
 export default function AdminSidebarMenu({
   activeTab,
-  settingsSection,
+  dashboardSection,
+  documentsSection,
+  usersSection,
   promptsSection,
-  toolsSection,
+  skillsSection,
+  tokensSection,
+  settingsSection,
   onTabChange,
-  onSettingsChange,
+  onDashboardChange,
+  onDocumentsChange,
+  onUsersChange,
   onPromptsChange,
-  onToolsChange,
+  onSkillsChange,
+  onTokensChange,
+  onSettingsChange,
 }: AdminSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'settings' | 'tools' | null>(
-    activeTab === 'prompts' ? 'prompts' : activeTab === 'settings' ? 'settings' : activeTab === 'tools' ? 'tools' : null
+  const [expandedMenu, setExpandedMenu] = useState<TabType | null>(
+    isExpandableMenu(activeTab) ? activeTab : null
   );
 
+  // Get current active section for a menu
+  const getActiveSection = (menuId: TabType): string => {
+    switch (menuId) {
+      case 'dashboard': return dashboardSection;
+      case 'documents': return documentsSection;
+      case 'users': return usersSection;
+      case 'prompts': return promptsSection;
+      case 'skills': return skillsSection;
+      case 'tokens': return tokensSection;
+      case 'settings': return settingsSection;
+      default: return '';
+    }
+  };
+
+  // Generic submenu click handler
+  const handleSubClick = (menuId: TabType, sectionId: string) => {
+    onTabChange(menuId);
+
+    // Route to appropriate section handler
+    switch (menuId) {
+      case 'dashboard':
+        onDashboardChange(sectionId as DashboardSection);
+        break;
+      case 'documents':
+        onDocumentsChange(sectionId as DocumentsSection);
+        break;
+      case 'users':
+        onUsersChange(sectionId as UsersSection);
+        break;
+      case 'prompts':
+        onPromptsChange(sectionId as PromptsSection);
+        break;
+      case 'skills':
+        onSkillsChange(sectionId as SkillsSection);
+        break;
+      case 'tokens':
+        onTokensChange(sectionId as TokensSection);
+        break;
+      case 'settings':
+        onSettingsChange(sectionId as SettingsSection);
+        break;
+    }
+
+    setIsMobileOpen(false);
+  };
+
+  // Handle main tab click
   const handleTabClick = (tabId: TabType) => {
-    if (tabId === 'prompts' || tabId === 'settings' || tabId === 'tools') {
+    if (isExpandableMenu(tabId)) {
       // If collapsed, expand sidebar first and show submenu
       if (isCollapsed) {
         setIsCollapsed(false);
@@ -108,38 +291,31 @@ export default function AdminSidebarMenu({
     }
   };
 
-  const handlePromptsSubClick = (section: PromptsSection) => {
-    onTabChange('prompts');
-    onPromptsChange(section);
-    setIsMobileOpen(false);
-  };
-
-  const handleSettingsSubClick = (section: SettingsSection) => {
-    onTabChange('settings');
-    onSettingsChange(section);
-    setIsMobileOpen(false);
-  };
-
-  const handleToolsSubClick = (section: ToolsSection) => {
-    onTabChange('tools');
-    onToolsChange(section);
-    setIsMobileOpen(false);
-  };
-
-  const getCurrentLabel = () => {
-    if (activeTab === 'prompts') {
-      const sub = PROMPTS_SUBMENU.find(s => s.id === promptsSection);
-      return `Prompts > ${sub?.label || ''}`;
+  // Render submenu items for a given menu
+  const renderSubmenu = (menuConfig: MenuConfigItem, isExpanded: boolean) => {
+    if (!menuConfig.expandable || !menuConfig.submenu || !isExpanded) {
+      return null;
     }
-    if (activeTab === 'settings') {
-      const sub = SETTINGS_SUBMENU.find(s => s.id === settingsSection);
-      return `Settings > ${sub?.label || ''}`;
-    }
-    if (activeTab === 'tools') {
-      const sub = TOOLS_SUBMENU.find(s => s.id === toolsSection);
-      return `Tools > ${sub?.label || ''}`;
-    }
-    return MAIN_TABS.find(t => t.id === activeTab)?.label || '';
+
+    const activeSection = getActiveSection(menuConfig.id);
+
+    return (
+      <div className="bg-gray-50/80">
+        {menuConfig.submenu.map(sub => (
+          <button
+            key={sub.id}
+            onClick={() => handleSubClick(menuConfig.id, sub.id)}
+            className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+              activeTab === menuConfig.id && activeSection === sub.id
+                ? 'bg-blue-100 text-blue-700 font-medium'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {sub.label}
+          </button>
+        ))}
+      </div>
+    );
   };
 
   // Shared menu content for mobile (always expanded)
@@ -160,89 +336,34 @@ export default function AdminSidebarMenu({
         </div>
       )}
       <nav className="py-2 overflow-y-auto flex-1">
-        {MAIN_TABS.map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings' || tab.id === 'tools';
-          const isExpanded = expandedMenu === tab.id;
+        {MENU_CONFIG.map(menuItem => {
+          const Icon = menuItem.icon;
+          const isActive = activeTab === menuItem.id;
+          const isExpanded = expandedMenu === menuItem.id;
 
           return (
-            <div key={tab.id}>
+            <div key={menuItem.id}>
               <button
-                onClick={() => handleTabClick(tab.id)}
+                onClick={() => handleTabClick(menuItem.id)}
                 className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors ${
-                  isActive && !hasSubmenu
+                  isActive && !menuItem.expandable
                     ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
-                    : isActive && hasSubmenu
+                    : isActive && menuItem.expandable
                     ? 'text-blue-700 border-l-4 border-blue-600 bg-blue-50/50'
                     : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <Icon size={18} />
-                  <span className="font-medium text-sm">{tab.label}</span>
+                  <span className="font-medium text-sm">{menuItem.label}</span>
                 </div>
-                {hasSubmenu && (
+                {menuItem.expandable && (
                   isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
                 )}
               </button>
 
-              {/* Prompts Submenu */}
-              {tab.id === 'prompts' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {PROMPTS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handlePromptsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'prompts' && promptsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Tools Submenu */}
-              {tab.id === 'tools' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {TOOLS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleToolsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'tools' && toolsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Settings Submenu */}
-              {tab.id === 'settings' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {SETTINGS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleSettingsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'settings' && settingsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Render submenu dynamically */}
+              {renderSubmenu(menuItem, isExpanded)}
             </div>
           );
         })}
@@ -265,90 +386,35 @@ export default function AdminSidebarMenu({
         </button>
       </div>
       <nav className="py-2 overflow-y-auto flex-1">
-        {MAIN_TABS.map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings' || tab.id === 'tools';
-          const isExpanded = expandedMenu === tab.id && !isCollapsed;
+        {MENU_CONFIG.map(menuItem => {
+          const Icon = menuItem.icon;
+          const isActive = activeTab === menuItem.id;
+          const isExpanded = expandedMenu === menuItem.id && !isCollapsed;
 
           return (
-            <div key={tab.id}>
+            <div key={menuItem.id}>
               <button
-                onClick={() => handleTabClick(tab.id)}
+                onClick={() => handleTabClick(menuItem.id)}
                 className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-2.5 text-left transition-colors ${
-                  isActive && !hasSubmenu
+                  isActive && !menuItem.expandable
                     ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
-                    : isActive && hasSubmenu
+                    : isActive && menuItem.expandable
                     ? 'text-blue-700 border-l-4 border-blue-600 bg-blue-50/50'
                     : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
                 }`}
-                title={isCollapsed ? tab.label : undefined}
+                title={isCollapsed ? menuItem.label : undefined}
               >
                 <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
                   <Icon size={18} />
-                  {!isCollapsed && <span className="font-medium text-sm">{tab.label}</span>}
+                  {!isCollapsed && <span className="font-medium text-sm">{menuItem.label}</span>}
                 </div>
-                {hasSubmenu && !isCollapsed && (
+                {menuItem.expandable && !isCollapsed && (
                   isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
                 )}
               </button>
 
-              {/* Prompts Submenu - only show when expanded and not collapsed */}
-              {tab.id === 'prompts' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {PROMPTS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handlePromptsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'prompts' && promptsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Tools Submenu - only show when expanded and not collapsed */}
-              {tab.id === 'tools' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {TOOLS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleToolsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'tools' && toolsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Settings Submenu - only show when expanded and not collapsed */}
-              {tab.id === 'settings' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {SETTINGS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleSettingsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'settings' && settingsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Render submenu dynamically - only when expanded and not collapsed */}
+              {!isCollapsed && renderSubmenu(menuItem, isExpanded)}
             </div>
           );
         })}
@@ -361,17 +427,17 @@ export default function AdminSidebarMenu({
       {/* Mobile: Icons-only strip + expandable drawer */}
       <div className="md:hidden flex flex-col shrink-0 bg-white border-r h-[calc(100vh-64px)] w-14">
         <nav className="py-2 overflow-y-auto flex-1">
-          {MAIN_TABS.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+          {MENU_CONFIG.map(menuItem => {
+            const Icon = menuItem.icon;
+            const isActive = activeTab === menuItem.id;
             return (
               <button
-                key={tab.id}
+                key={menuItem.id}
                 onClick={() => {
                   setIsMobileOpen(true);
                   // If has submenu, expand it
-                  if (tab.id === 'prompts' || tab.id === 'settings' || tab.id === 'tools') {
-                    setExpandedMenu(tab.id);
+                  if (menuItem.expandable) {
+                    setExpandedMenu(menuItem.id);
                   }
                 }}
                 className={`w-full flex justify-center py-3 transition-colors ${
@@ -379,8 +445,8 @@ export default function AdminSidebarMenu({
                     ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
                     : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
                 }`}
-                title={tab.label}
-                aria-label={tab.label}
+                title={menuItem.label}
+                aria-label={menuItem.label}
               >
                 <Icon size={20} />
               </button>
@@ -417,3 +483,6 @@ export default function AdminSidebarMenu({
     </>
   );
 }
+
+// Export types for use in admin/page.tsx
+export type { TabType, DashboardSection, DocumentsSection, UsersSection, PromptsSection, SkillsSection, TokensSection, SettingsSection };
