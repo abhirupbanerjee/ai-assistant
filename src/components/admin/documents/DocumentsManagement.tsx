@@ -26,7 +26,14 @@ interface UrlIngestionResult {
   success: boolean;
   filename?: string;
   error?: string;
-  sourceType: 'youtube' | 'web';
+  sourceType: 'youtube' | 'web' | 'crawl';
+}
+
+interface CrawlInfo {
+  baseUrl: string;
+  totalPagesFound: number;
+  pagesIngested: number;
+  estimatedCredits: number;
 }
 
 interface DocumentsManagementProps {
@@ -68,6 +75,13 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
   const [uploadYoutubeUrl, setUploadYoutubeUrl] = useState('');
   const [uploadUrlName, setUploadUrlName] = useState('');
   const [urlIngestionResults, setUrlIngestionResults] = useState<UrlIngestionResult[] | null>(null);
+
+  // Crawl state
+  const [enableCrawl, setEnableCrawl] = useState(false);
+  const [crawlLimit, setCrawlLimit] = useState<number>(25);
+  const [crawlPathFilter, setCrawlPathFilter] = useState('');
+  const [crawlExcludeFilter, setCrawlExcludeFilter] = useState('');
+  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
 
   // Delete modal state
   const [deleteDoc, setDeleteDoc] = useState<GlobalDocument | null>(null);
@@ -197,13 +211,20 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
     setUploadYoutubeUrl('');
     setUploadUrlName('');
     setUrlIngestionResults(null);
+    // Reset crawl state
+    setEnableCrawl(false);
+    setCrawlLimit(25);
+    setCrawlPathFilter('');
+    setCrawlExcludeFilter('');
+    setCrawlInfo(null);
   };
 
   // Upload handler
   const handleUploadConfirm = async () => {
     if (uploadMode === 'file' && !uploadFile) return;
     if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
-    if (uploadMode === 'web' && getValidWebUrls().length === 0) return;
+    if (uploadMode === 'web' && !enableCrawl && getValidWebUrls().length === 0) return;
+    if (uploadMode === 'web' && enableCrawl && !uploadUrls[0].trim()) return;
     if (uploadMode === 'youtube' && (!uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))) return;
 
     setUploading(true);
@@ -236,17 +257,49 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
           }),
         });
       } else if (uploadMode === 'web') {
-        const webUrls = getValidWebUrls();
-        setUploadProgress('Extracting content...');
-        response = await fetch('/api/admin/documents/url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            urls: webUrls,
-            categoryIds: uploadCategoryIds,
-            isGlobal: uploadIsGlobal,
-          }),
-        });
+        if (enableCrawl) {
+          // Crawl mode
+          const baseUrl = uploadUrls[0].trim();
+          setUploadProgress('Crawling website...');
+
+          // Parse path filters
+          const selectPaths = crawlPathFilter
+            .split('\n')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+          const excludePaths = crawlExcludeFilter
+            .split('\n')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+
+          response = await fetch('/api/admin/documents/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              crawlUrl: baseUrl,
+              crawlOptions: {
+                limit: crawlLimit,
+                selectPaths: selectPaths.length > 0 ? selectPaths : undefined,
+                excludePaths: excludePaths.length > 0 ? excludePaths : undefined,
+              },
+              categoryIds: uploadCategoryIds,
+              isGlobal: uploadIsGlobal,
+            }),
+          });
+        } else {
+          // Extract mode (single pages)
+          const webUrls = getValidWebUrls();
+          setUploadProgress('Extracting content...');
+          response = await fetch('/api/admin/documents/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              urls: webUrls,
+              categoryIds: uploadCategoryIds,
+              isGlobal: uploadIsGlobal,
+            }),
+          });
+        }
       } else {
         const youtubeUrl = uploadYoutubeUrl.trim();
         setUploadProgress('Extracting transcript...');
@@ -272,6 +325,9 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
       if (uploadMode === 'web' || uploadMode === 'youtube') {
         if (data.results) {
           setUrlIngestionResults(data.results);
+        }
+        if (data.crawlInfo) {
+          setCrawlInfo(data.crawlInfo);
         }
       }
 
@@ -1080,8 +1136,17 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
               {/* URL Ingestion Results */}
               {urlIngestionResults && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
-                  <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                    {crawlInfo ? 'Crawl Results' : 'Ingestion Results'}
+                  </h4>
+                  {crawlInfo && (
+                    <div className="text-xs text-gray-600 mb-2 p-2 bg-blue-50 rounded">
+                      <p>Base URL: {crawlInfo.baseUrl}</p>
+                      <p>Pages found: {crawlInfo.totalPagesFound} | Ingested: {crawlInfo.pagesIngested}</p>
+                      <p>Estimated credits used: ~{crawlInfo.estimatedCredits}</p>
+                    </div>
+                  )}
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
                     {urlIngestionResults.map((result, idx) => (
                       <div
                         key={idx}
@@ -1107,7 +1172,10 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
                   </div>
                   <button
                     type="button"
-                    onClick={() => setUrlIngestionResults(null)}
+                    onClick={() => {
+                      setUrlIngestionResults(null);
+                      setCrawlInfo(null);
+                    }}
                     className="mt-2 text-xs text-blue-600 hover:underline"
                   >
                     Clear results
@@ -1115,33 +1183,129 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
                 </div>
               )}
 
-              {/* Web URLs Section */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Web URLs (up to 5 - saves API credits)
+              {/* Crawl Toggle */}
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="enableCrawl"
+                  checked={enableCrawl}
+                  onChange={(e) => setEnableCrawl(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="enableCrawl" className="text-sm font-medium text-gray-700">
+                  Crawl entire site
                 </label>
-                <div className="space-y-2">
-                  {uploadUrls.map((url, index) => (
+                <span className="text-xs text-gray-500">
+                  (discovers and extracts multiple pages)
+                </span>
+              </div>
+
+              {enableCrawl ? (
+                /* Crawl Mode UI */
+                <>
+                  {/* Base URL input */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Base URL to Crawl
+                    </label>
                     <input
-                      key={index}
                       type="url"
-                      value={url}
-                      onChange={(e) => {
-                        const newUrls = [...uploadUrls];
-                        newUrls[index] = e.target.value;
-                        setUploadUrls(newUrls);
-                      }}
-                      placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
+                      value={uploadUrls[0]}
+                      onChange={(e) => setUploadUrls([e.target.value, '', '', '', ''])}
+                      placeholder="https://example.com/docs"
                       className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                        url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
+                        uploadUrls[0] && !isValidUrl(uploadUrls[0]) ? 'border-red-300' : 'border-gray-300'
                       }`}
                     />
-                  ))}
+                  </div>
+
+                  {/* Max Pages Selector */}
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Maximum Pages
+                    </label>
+                    <select
+                      value={crawlLimit}
+                      onChange={(e) => setCrawlLimit(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    >
+                      <option value={10}>10 pages (~1 credit)</option>
+                      <option value={25}>25 pages (~3 credits)</option>
+                      <option value={50}>50 pages (~5 credits)</option>
+                      <option value={100}>100 pages (~10 credits)</option>
+                    </select>
+                  </div>
+
+                  {/* Optional Path Filters */}
+                  <details className="mt-4">
+                    <summary className="text-sm font-medium text-gray-700 cursor-pointer hover:text-gray-900">
+                      Advanced: Path Filters
+                    </summary>
+                    <div className="mt-2 space-y-3 pl-2 border-l-2 border-gray-200">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Include paths (regex, one per line)
+                        </label>
+                        <textarea
+                          value={crawlPathFilter}
+                          onChange={(e) => setCrawlPathFilter(e.target.value)}
+                          placeholder={"/docs/.*\n/guide/.*"}
+                          rows={2}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Exclude paths (regex, one per line)
+                        </label>
+                        <textarea
+                          value={crawlExcludeFilter}
+                          onChange={(e) => setCrawlExcludeFilter(e.target.value)}
+                          placeholder={"/api/.*\n/admin/.*"}
+                          rows={2}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </details>
+
+                  {/* Credit Usage Warning */}
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Credit Usage:</strong> Crawling uses ~1 Tavily credit per 10 pages.
+                      With {crawlLimit} pages limit, expect up to {Math.ceil(crawlLimit / 10)} credits.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                /* Extract Mode UI (single pages) */
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Web URLs (up to 5 - saves API credits)
+                  </label>
+                  <div className="space-y-2">
+                    {uploadUrls.map((url, index) => (
+                      <input
+                        key={index}
+                        type="url"
+                        value={url}
+                        onChange={(e) => {
+                          const newUrls = [...uploadUrls];
+                          newUrls[index] = e.target.value;
+                          setUploadUrls(newUrls);
+                        }}
+                        placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                          url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
+                  </p>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
-                </p>
-              </div>
+              )}
             </>
           )}
 
@@ -1320,7 +1484,7 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
                 : uploadMode === 'text'
                 ? (!uploadTextName.trim() || !uploadTextContent.trim())
                 : uploadMode === 'web'
-                ? getValidWebUrls().length === 0
+                ? (enableCrawl ? !uploadUrls[0].trim() || !isValidUrl(uploadUrls[0]) : getValidWebUrls().length === 0)
                 : !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim())
             }
           >

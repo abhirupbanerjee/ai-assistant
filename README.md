@@ -67,6 +67,18 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Task Planning** - Multi-step workflow execution with templates
 - **YouTube** - Extract and query video transcripts
 - **Document Generation** - Create PDF, DOCX, Markdown files
+- **Image Generation** - DALL-E 3 and Gemini Imagen integration
+- **Diagram Generation** - Mermaid flowcharts, sequences, mindmaps
+- **Translation** - Multi-provider translation (OpenAI, Gemini, Mistral)
+
+### Autonomous Agent (Beta)
+- **Task Planning** - Decompose complex requests into multi-step plans
+- **Budget Tracking** - Enforce token and cost limits per execution
+- **Quality Checking** - Automated validation with confidence thresholds
+- **Streaming Progress** - Real-time updates on plan execution status
+- **Pause/Resume/Stop** - Control agent execution mid-flight
+
+> **Note:** Autonomous Mode is currently in beta. Enable via Admin > Settings > Agent.
 
 ### Progressive Web App (PWA)
 - **Installable** - Add to home screen (mobile) or desktop
@@ -102,6 +114,15 @@ policy-bot/
 │   ├── lib/                    # Core libraries
 │   │   ├── db/                 # SQLite layer (users, categories, documents, config)
 │   │   ├── tools/              # Tool implementations (web search, charts, data sources)
+│   │   ├── agent/              # Autonomous agent (planner, executor, checker, summarizer)
+│   │   ├── image-gen/          # Image generation (DALL-E, Gemini Imagen)
+│   │   ├── diagram-gen/        # Diagram generation (Mermaid)
+│   │   ├── translation/        # Multi-provider translation
+│   │   ├── docgen/             # Document generation (PDF, DOCX, Markdown)
+│   │   ├── streaming/          # Streaming response utilities
+│   │   ├── chunking/           # Document chunking strategies
+│   │   ├── data-sources/       # External API and CSV data sources
+│   │   ├── workspace/          # Workspace utilities (embed/standalone)
 │   │   ├── rag.ts              # RAG pipeline
 │   │   ├── chroma.ts           # ChromaDB client
 │   │   ├── redis.ts            # Redis caching

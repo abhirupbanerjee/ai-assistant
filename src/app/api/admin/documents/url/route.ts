@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { ingestUrls, ingestYouTubeUrl, getUrlIngestionStatus } from '@/lib/ingest';
+import { ingestUrls, ingestYouTubeUrl, getUrlIngestionStatus, ingestCrawledSite } from '@/lib/ingest';
 import { isYouTubeUrl } from '@/lib/youtube';
 import { isTavilyConfigured } from '@/lib/tools/tavily';
 import type { ApiError } from '@/types';
@@ -20,6 +20,14 @@ interface UrlIngestionRequest {
   name?: string;
   categoryIds?: number[];
   isGlobal?: boolean;
+  // Crawl-specific fields
+  crawlUrl?: string;
+  crawlOptions?: {
+    limit?: number;
+    maxDepth?: number;
+    selectPaths?: string[];
+    excludePaths?: string[];
+  };
 }
 
 interface UrlIngestionResponse {
@@ -28,13 +36,20 @@ interface UrlIngestionResponse {
     success: boolean;
     documentId?: string;
     filename?: string;
-    sourceType: 'youtube' | 'web';
+    sourceType: 'youtube' | 'web' | 'crawl';
     error?: string;
   }>;
   summary: {
     total: number;
     successful: number;
     failed: number;
+  };
+  // Crawl-specific response fields
+  crawlInfo?: {
+    baseUrl: string;
+    totalPagesFound: number;
+    pagesIngested: number;
+    estimatedCredits: number;
   };
 }
 
@@ -56,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json() as UrlIngestionRequest;
-    const { urls, youtubeUrl, name, categoryIds, isGlobal } = body;
+    const { urls, youtubeUrl, name, categoryIds, isGlobal, crawlUrl, crawlOptions } = body;
 
     // Validate name if provided
     if (name && name.length > MAX_NAME_LENGTH) {
@@ -102,6 +117,88 @@ export async function POST(request: NextRequest) {
           }],
           summary: { total: 1, successful: 0, failed: 1 },
         }, { status: 207 }); // Multi-status for partial success
+      }
+    }
+
+    // Handle website crawl
+    if (crawlUrl) {
+      // Validate URL format
+      try {
+        new URL(crawlUrl);
+      } catch {
+        return NextResponse.json<ApiError>(
+          { error: 'Invalid crawl URL format', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        );
+      }
+
+      // Check if Tavily is configured
+      if (!isTavilyConfigured()) {
+        return NextResponse.json<ApiError>(
+          { error: 'Website crawling requires Tavily API key. Configure in Settings > Web Search.', code: 'NOT_CONFIGURED' },
+          { status: 400 }
+        );
+      }
+
+      // Validate crawl options
+      if (crawlOptions?.limit !== undefined) {
+        if (crawlOptions.limit < 1 || crawlOptions.limit > 500) {
+          return NextResponse.json<ApiError>(
+            { error: 'Crawl limit must be between 1 and 500', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+      }
+
+      try {
+        const crawlResult = await ingestCrawledSite(crawlUrl, user.email, {
+          categoryIds: categoryIds || [],
+          isGlobal: isGlobal || false,
+          crawlOptions: crawlOptions ? {
+            limit: crawlOptions.limit,
+            maxDepth: crawlOptions.maxDepth,
+            selectPaths: crawlOptions.selectPaths,
+            excludePaths: crawlOptions.excludePaths,
+          } : undefined,
+        });
+
+        const response: UrlIngestionResponse = {
+          results: crawlResult.documents.map(doc => ({
+            url: doc.url,
+            success: doc.success,
+            documentId: doc.documentId,
+            filename: doc.filename,
+            sourceType: 'crawl' as const,
+            error: doc.error,
+          })),
+          summary: {
+            total: crawlResult.totalPagesFound,
+            successful: crawlResult.successfulPages,
+            failed: crawlResult.failedPages,
+          },
+          crawlInfo: {
+            baseUrl: crawlResult.baseUrl,
+            totalPagesFound: crawlResult.totalPagesFound,
+            pagesIngested: crawlResult.successfulPages,
+            estimatedCredits: crawlResult.estimatedCredits,
+          },
+        };
+
+        // Use appropriate status code
+        const status = crawlResult.failedPages === 0 ? 202 :
+                       crawlResult.successfulPages === 0 ? 400 : 207;
+
+        return NextResponse.json(response, { status });
+      } catch (error) {
+        console.error('Website crawl error:', error);
+        return NextResponse.json<ApiError>(
+          {
+            error: 'Failed to crawl website',
+            code: 'SERVICE_ERROR',
+            details: error instanceof Error ? error.message : undefined,
+          },
+          { status: 500 }
+        );
       }
     }
 

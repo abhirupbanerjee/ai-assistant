@@ -288,7 +288,13 @@ CREATE TABLE IF NOT EXISTS skills (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   created_by TEXT NOT NULL,
-  updated_by TEXT NOT NULL
+  updated_by TEXT NOT NULL,
+  -- Tool association fields (for keyword skills)
+  match_type TEXT CHECK (match_type IN ('keyword', 'regex')),
+  tool_name TEXT,                                   -- Tool to force (e.g., 'chart_gen')
+  force_mode TEXT CHECK (force_mode IN ('required', 'preferred', 'suggested')),
+  tool_config_override TEXT,                        -- JSON tool config overrides
+  data_source_filter TEXT                           -- JSON data source filter
 );
 
 CREATE INDEX IF NOT EXISTS idx_skills_trigger_type ON skills(trigger_type);
@@ -1006,6 +1012,8 @@ Key-value configuration store.
 | `skills-settings` | SkillsSettings | Skills system configuration |
 | `memory-settings` | MemorySettings | User memory extraction configuration |
 | `summarization-settings` | SummarizationSettings | Thread summarization configuration |
+| `agent-settings` | AgentSettings | Autonomous agent configuration (beta) |
+| `limits-settings` | LimitsSettings | Token limits and conversation history |
 
 **Settings Interfaces:**
 
@@ -1087,6 +1095,24 @@ export interface SummarizationSettings {
   tokenThreshold: number;     // Token count before summarization (default: 8000)
   keepRecentMessages: number; // Messages to keep after summary (default: 5)
 }
+
+export interface AgentSettings {
+  enabled: boolean;           // Enable autonomous agent (default: false, beta)
+  plannerModel: string;       // Model for task planning (inherits main model)
+  executorModel: string;      // Model for task execution (inherits main model)
+  checkerModel: string;       // Model for quality checking (often faster model)
+  summarizerModel: string;    // Model for summarization (inherits main model)
+  maxTokens: number;          // Max tokens per agent execution
+  maxCost: number;            // Max cost in dollars per execution
+  maxTasks: number;           // Max tasks per plan (default: 10)
+  qualityThreshold: number;   // Min quality score 0.0-1.0 (default: 0.7)
+  maxRetries: number;         // Retries per task (default: 2)
+  streamProgress: boolean;    // Stream progress events to UI (default: true)
+}
+
+export interface LimitsSettings {
+  conversationHistoryMessages: number;  // Messages to include in context (default: 10)
+}
 ```
 
 ### storage_alerts
@@ -1116,7 +1142,7 @@ Modular prompt components that can be dynamically injected into the system promp
 | trigger_value | TEXT | Keywords (comma-separated) for keyword-type |
 | category_restricted | INTEGER | 1=only applies to linked categories |
 | is_index | INTEGER | 1=broader domain expertise skill |
-| priority | INTEGER | Lower = higher priority (for sorting) |
+| priority | INTEGER | Lower = higher priority (core: 1-9, high: 10-99, medium: 100-499, low: 500+) |
 | is_active | INTEGER | 1=enabled, 0=disabled |
 | is_core | INTEGER | 1=core skill (cannot be deleted) |
 | created_by_role | TEXT | `admin` or `superuser` |
@@ -1125,6 +1151,11 @@ Modular prompt components that can be dynamically injected into the system promp
 | updated_at | DATETIME | Last update timestamp |
 | created_by | TEXT | Email of creator |
 | updated_by | TEXT | Email of last updater |
+| match_type | TEXT | `keyword` or `regex` (for keyword skills) |
+| tool_name | TEXT | Tool to force when skill matches (e.g., `chart_gen`) |
+| force_mode | TEXT | `required`, `preferred`, or `suggested` |
+| tool_config_override | TEXT | JSON tool configuration overrides |
+| data_source_filter | TEXT | JSON data source filter configuration |
 
 ### category_skills
 

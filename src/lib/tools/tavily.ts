@@ -11,6 +11,32 @@ export interface ExtractResult {
   error?: string;
 }
 
+// ============ URL Crawl Types ============
+
+export interface CrawlOptions {
+  limit?: number;           // Total pages to process (default 50, max varies by plan)
+  maxDepth?: number;        // 1-5, how deep to crawl from base URL
+  maxBreadth?: number;      // 1-500, links per page level
+  selectPaths?: string[];   // Regex patterns to include specific URL paths
+  excludePaths?: string[];  // Regex patterns to exclude URL paths
+  extractDepth?: 'basic' | 'advanced';
+  format?: 'markdown' | 'text';
+}
+
+export interface CrawlPageResult {
+  url: string;
+  content?: string;
+  error?: string;
+}
+
+export interface CrawlResult {
+  baseUrl: string;
+  success: boolean;
+  pages: CrawlPageResult[];
+  totalPages: number;
+  error?: string;
+}
+
 // ============ URL Extract Functions ============
 
 /**
@@ -140,6 +166,133 @@ export async function extractWebContent(urls: string[]): Promise<ExtractResult[]
     }
 
     return results;
+  }
+}
+
+// ============ URL Crawl Functions ============
+
+/**
+ * Crawl a website using Tavily Crawl API
+ * Automatically discovers and extracts content from multiple pages starting from a base URL
+ *
+ * @param url - Base URL to start crawling from
+ * @param options - Crawl configuration options
+ * @returns CrawlResult with pages array containing content from each crawled page
+ */
+export async function crawlWebsite(url: string, options?: CrawlOptions): Promise<CrawlResult> {
+  // Validate URL
+  try {
+    new URL(url);
+  } catch {
+    return {
+      baseUrl: url,
+      success: false,
+      pages: [],
+      totalPages: 0,
+      error: 'Invalid URL format',
+    };
+  }
+
+  // Get API key
+  const { config: settings } = getWebSearchConfig();
+  const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+
+  if (!apiKey) {
+    return {
+      baseUrl: url,
+      success: false,
+      pages: [],
+      totalPages: 0,
+      error: 'Tavily API key not configured. Set in Settings > Web Search.',
+    };
+  }
+
+  // Build request payload
+  const payload: Record<string, unknown> = {
+    api_key: apiKey,
+    url: url,
+    limit: options?.limit ?? 50,
+    max_depth: options?.maxDepth ?? 2,
+    max_breadth: options?.maxBreadth ?? 20,
+    extract_depth: options?.extractDepth ?? 'advanced',
+    format: options?.format ?? 'text',
+  };
+
+  // Add optional path filters if provided
+  if (options?.selectPaths && options.selectPaths.length > 0) {
+    payload.select_paths = options.selectPaths;
+  }
+  if (options?.excludePaths && options.excludePaths.length > 0) {
+    payload.exclude_paths = options.excludePaths;
+  }
+
+  try {
+    console.log('Tavily Crawl: Starting crawl of', url, 'with options:', {
+      limit: payload.limit,
+      maxDepth: payload.max_depth,
+      maxBreadth: payload.max_breadth,
+      selectPaths: options?.selectPaths,
+      excludePaths: options?.excludePaths,
+    });
+
+    const response = await fetch('https://api.tavily.com/crawl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || errorData.detail || `HTTP ${response.status}`;
+      console.error('Tavily Crawl API error:', response.status, errorData);
+      return {
+        baseUrl: url,
+        success: false,
+        pages: [],
+        totalPages: 0,
+        error: `Tavily Crawl API error: ${errorMessage}`,
+      };
+    }
+
+    const data = await response.json();
+
+    // Process results from Tavily Crawl API
+    // Response format: { base_url, results: [{ url, raw_content }], response_time }
+    const pages: CrawlPageResult[] = [];
+
+    if (data.results && Array.isArray(data.results)) {
+      for (const result of data.results) {
+        if (result.raw_content) {
+          pages.push({
+            url: result.url,
+            content: result.raw_content,
+          });
+        } else {
+          pages.push({
+            url: result.url,
+            error: 'No content extracted',
+          });
+        }
+      }
+    }
+
+    console.log('Tavily Crawl: Completed crawl of', url, '- found', pages.length, 'pages');
+
+    return {
+      baseUrl: data.base_url || url,
+      success: true,
+      pages,
+      totalPages: pages.length,
+    };
+  } catch (error) {
+    console.error('Tavily Crawl error:', error);
+    return {
+      baseUrl: url,
+      success: false,
+      pages: [],
+      totalPages: 0,
+      error: error instanceof Error ? error.message : 'Unknown error occurred during crawl',
+    };
   }
 }
 

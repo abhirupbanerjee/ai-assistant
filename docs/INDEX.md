@@ -219,7 +219,7 @@ Quick reference for feature availability by user role.
 | **Category Management** | ❌ | ✅ (assigned) | ✅ (all) |
 | **Prompts (global)** | ❌ | ❌ (read-only) | ✅ |
 | **Prompts (category)** | ❌ | ✅ (assigned) | ✅ (all) |
-| **Skills Management** | ❌ | ❌ (read-only) | ✅ |
+| **Skills Management** | ❌ | ✅ (priority 100+, assigned) | ✅ (all) |
 | **Tool Configuration** | ❌ | ✅ (overrides) | ✅ (global) |
 | **Tool Routing** | ❌ | ❌ | ✅ |
 | **Data Sources** | ❌ | ✅ (assigned) | ✅ (all) |
@@ -281,6 +281,8 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **2.7** | February 2025 | Added Autonomous Agent (beta) documentation, Content Generation (image/diagram/translation), skill tool association, updated tech docs |
+| **2.6** | February 2025 | Superuser skill creation (priority 100+), updated permissions matrix, API spec alignment |
 | **2.5** | January 2025 | Added comprehensive feature documentation (PROMPTS.md, SKILLS.md, TOOL_ROUTING.md, PWA.md), updated all guides with cross-references, added PWA sections throughout |
 | **2.4** | January 2025 | Added vision-capable models, thread sharing, email notifications |
 | **2.3** | December 2024 | Added workspaces (embed and standalone modes), analytics |
@@ -322,4 +324,4 @@ When updating documentation:
 
 ---
 
-*Last updated: January 2025 (v2.5)*
+*Last updated: February 2025 (v2.7)*

@@ -673,11 +673,27 @@ User sends message
 | **Keyword** | Regex/keyword match | Legal disclaimer on "contract" topics |
 
 **Skill Properties:**
-- **priority**: Lower values processed first (0-100)
+- **priority**: Lower values processed first (core: 1-9, high: 10-99, medium: 100-499, low: 500+)
 - **is_core**: Protected skills can't be deleted
 - **is_index**: Used for RAG index optimization
 - **category_restricted**: Only applies to linked categories
 - **token_estimate**: Budget tracking for prompt size
+
+**Tool Association (Keyword Skills):**
+
+Keyword-triggered skills can optionally force a specific tool when matched:
+
+| Field | Description |
+|-------|-------------|
+| **tool_name** | Tool to invoke (web_search, chart_gen, doc_gen, data_source, etc.) |
+| **force_mode** | How strongly to enforce: `required`, `preferred`, `suggested` |
+| **tool_config_override** | Tool-specific JSON config (e.g., chart type, data source filter) |
+
+Example: A "sales report" keyword skill can force `chart_gen` with `{"chartType": "bar"}` config.
+
+**Role Permissions:**
+- **Admins**: Can create skills at any priority level
+- **Superusers**: Can create skills with priority 100+ (medium/low priority only)
 
 **Implementation**: `src/lib/skills/`, `src/lib/db/skills.ts`
 
@@ -1008,6 +1024,274 @@ pwa_background_color TEXT DEFAULT '#ffffff'
 - **Install Banner:** `src/components/pwa/InstallBanner.tsx`
 - **Offline Page:** `src/app/offline/page.tsx`
 - **Settings UI:** Admin dashboard PWA section
+
+---
+
+### 15. Autonomous Agent System (Beta)
+
+The Autonomous Agent enables multi-step task execution with planning, execution, quality checking, and summarization. This feature is currently in **beta**.
+
+> **⚠️ Beta Feature:** Enable via Admin > Settings > Agent. Resource-intensive.
+
+#### Architecture
+
+```
+User Request (complex task)
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    AUTONOMOUS AGENT PIPELINE                     │
+│                                                                 │
+│  ┌─────────────────┐                                            │
+│  │    PLANNER      │──── Decomposes request into task plan     │
+│  │  (LLM Model)    │     Creates ordered task list              │
+│  └─────────────────┘                                            │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                     EXECUTOR LOOP                        │    │
+│  │                                                          │    │
+│  │    ┌─────────────┐     ┌─────────────┐                   │    │
+│  │    │  Execute    │────▶│   Check     │                   │    │
+│  │    │  Task N     │     │  Quality    │                   │    │
+│  │    └─────────────┘     └─────────────┘                   │    │
+│  │           │                   │                          │    │
+│  │           │    ◀───Pass───────┤                          │    │
+│  │           │                   │                          │    │
+│  │           │    ◀───Retry──────┤ (if below threshold)     │    │
+│  │           ▼                   │                          │    │
+│  │    Next Task ─────────────────┘                          │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────┐                                            │
+│  │   SUMMARIZER    │──── Combines task results                 │
+│  │                 │     Generates final response               │
+│  └─────────────────┘                                            │
+│           │                                                     │
+│           ▼                                                     │
+│  Budget Tracking: Token count + cost limit enforcement          │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+Final Response with sources
+```
+
+#### Components
+
+| Component | Purpose | LLM Model |
+|-----------|---------|-----------|
+| **Planner** | Decompose complex requests into ordered tasks | Configurable (default: main model) |
+| **Executor** | Execute individual tasks with tool access | Configurable (default: main model) |
+| **Checker** | Validate response quality and completeness | Configurable (often faster model) |
+| **Summarizer** | Combine task outputs into coherent response | Configurable (default: main model) |
+
+#### Budget Tracking
+
+The agent enforces resource limits per execution:
+
+| Budget Type | Description | Configuration |
+|-------------|-------------|---------------|
+| **Token Limit** | Maximum tokens across all agent calls | Admin > Settings > Agent |
+| **Cost Limit** | Maximum cost in dollars | Admin > Settings > Agent |
+| **Task Limit** | Maximum tasks per plan | Default: 10 |
+| **Retry Limit** | Max retries per task on quality failure | Default: 2 |
+
+#### Quality Checking
+
+Each task result is validated:
+
+```
+Task Result
+    │
+    ▼
+┌─────────────────┐
+│ Quality Checker │──── Evaluates: completeness, accuracy, relevance
+└─────────────────┘
+    │
+    ├── Score ≥ Threshold ──────▶ Accept, proceed to next task
+    │
+    └── Score < Threshold ──────▶ Retry (up to limit) or flag issue
+```
+
+**Threshold**: Configurable confidence score (0.0 - 1.0, default: 0.7)
+
+#### Streaming Events
+
+The agent streams progress updates to the UI:
+
+| Event Type | Description |
+|------------|-------------|
+| `plan_created` | Task plan generated |
+| `task_started` | Individual task execution began |
+| `task_completed` | Task finished with result |
+| `task_failed` | Task failed after retries |
+| `quality_check` | Quality score for task |
+| `budget_warning` | Approaching limit |
+| `budget_exceeded` | Execution stopped |
+| `summary_started` | Final summarization began |
+| `complete` | Agent finished |
+
+#### User Controls
+
+| Control | Description |
+|---------|-------------|
+| **Pause** | Temporarily halt execution |
+| **Resume** | Continue paused execution |
+| **Stop** | Cancel and return partial results |
+
+#### Implementation Files
+
+- **Agent Core:** `src/lib/agent/index.ts`
+- **Planner:** `src/lib/agent/planner.ts`
+- **Executor:** `src/lib/agent/executor.ts`
+- **Checker:** `src/lib/agent/checker.ts`
+- **Summarizer:** `src/lib/agent/summarizer.ts`
+- **Budget Tracker:** `src/lib/agent/budget.ts`
+- **Types:** `src/lib/agent/types.ts`
+- **Streaming:** `src/lib/agent/streaming.ts`
+- **UI Component:** `src/components/chat/AgentProgress.tsx`
+- **Settings UI:** `src/components/admin/settings/AgentSettings.tsx`
+
+---
+
+### 16. Content Generation
+
+Policy Bot includes tools for generating images, diagrams, and translations.
+
+#### 16.1 Image Generation
+
+Generate images using AI providers (DALL-E 3, Gemini Imagen):
+
+```
+User Request ("create an image of...")
+    │
+    ▼
+┌─────────────────┐
+│ LLM decides to  │
+│ call image_gen  │
+│ tool            │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    IMAGE GENERATION PIPELINE                     │
+│                                                                 │
+│  ┌─────────────────┐     ┌─────────────────┐                   │
+│  │ Provider Factory│────▶│ Generate Image  │                   │
+│  │ (DALL-E/Gemini) │     │                 │                   │
+│  └─────────────────┘     └─────────────────┘                   │
+│                                 │                               │
+│                                 ▼                               │
+│                          ┌─────────────────┐                   │
+│                          │ Save to Thread  │                   │
+│                          │ Artifacts       │                   │
+│                          └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+Image displayed in Artifacts Panel
+```
+
+**Supported Providers:**
+
+| Provider | Model | Sizes | Notes |
+|----------|-------|-------|-------|
+| **OpenAI** | DALL-E 3 | 1024x1024, 1024x1792, 1792x1024 | High quality, style options |
+| **Google** | Gemini Imagen | Various | Fast generation |
+
+**Implementation:** `src/lib/image-gen/`
+
+#### 16.2 Diagram Generation
+
+Generate diagrams using Mermaid syntax:
+
+```
+User Request ("create a flowchart...")
+    │
+    ▼
+┌─────────────────┐
+│ LLM decides to  │
+│ call diagram_gen│
+│ tool            │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DIAGRAM GENERATION PIPELINE                   │
+│                                                                 │
+│  ┌─────────────────┐     ┌─────────────────┐                   │
+│  │ LLM generates   │────▶│ Validate Mermaid│                   │
+│  │ Mermaid code    │     │ syntax          │                   │
+│  └─────────────────┘     └─────────────────┘                   │
+│                                 │                               │
+│                                 ▼                               │
+│                          ┌─────────────────┐                   │
+│                          │ Render to SVG/  │                   │
+│                          │ PNG (client)    │                   │
+│                          └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+Diagram rendered in chat message
+```
+
+**Supported Diagram Types:**
+
+| Type | Mermaid Keyword | Use Case |
+|------|-----------------|----------|
+| **Flowchart** | `flowchart` | Process flows, decision trees |
+| **Sequence** | `sequenceDiagram` | API calls, interactions |
+| **Class** | `classDiagram` | Object relationships |
+| **State** | `stateDiagram-v2` | State machines |
+| **Entity-Relationship** | `erDiagram` | Database schemas |
+| **Gantt** | `gantt` | Project timelines |
+| **Pie Chart** | `pie` | Data distribution |
+| **Mindmap** | `mindmap` | Concept mapping |
+
+**Implementation:** `src/lib/diagram-gen/`
+
+#### 16.3 Translation
+
+Multi-provider translation with automatic language detection:
+
+```
+User Request ("translate to French...")
+    │
+    ▼
+┌─────────────────┐
+│ LLM decides to  │
+│ call translation│
+│ tool            │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    TRANSLATION PIPELINE                          │
+│                                                                 │
+│  ┌─────────────────┐     ┌─────────────────┐                   │
+│  │ Provider Select │────▶│ Translate Text  │                   │
+│  │ (OpenAI/Gemini/ │     │                 │                   │
+│  │  Mistral)       │     │                 │                   │
+│  └─────────────────┘     └─────────────────┘                   │
+│                                 │                               │
+│                                 ▼                               │
+│                          ┌─────────────────┐                   │
+│                          │ Return with     │                   │
+│                          │ source language │                   │
+│                          └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Supported Providers:**
+
+| Provider | Model | Notes |
+|----------|-------|-------|
+| **OpenAI** | GPT-4 | High quality, many languages |
+| **Google** | Gemini | Fast, good multilingual |
+| **Mistral** | Mistral Large | European languages |
+
+**Implementation:** `src/lib/translation/`
 
 ---
 

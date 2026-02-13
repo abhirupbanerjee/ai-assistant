@@ -50,7 +50,8 @@ An **Admin** has full control over all aspects of Policy Bot. Admins can:
 | Create/manage workspaces | ❌ | ✅ (assigned) | ✅ (all) |
 | Create/delete users | ❌ | ❌ | ✅ |
 | Manage all categories | ❌ | ❌ | ✅ |
-| Create and manage skills | ❌ | ❌ | ✅ |
+| Create skills (priority 100+) | ❌ | ✅ (assigned) | ✅ (all) |
+| Create skills (priority 1-99) | ❌ | ❌ | ✅ |
 | System settings & backups | ❌ | ❌ | ✅ |
 
 ### Accessing the Admin Dashboard
@@ -487,9 +488,22 @@ Skills are specialized behaviors that enhance AI capabilities.
 ### What are Skills?
 
 Skills inject additional instructions based on context:
-- **Always-on** - Active in every conversation
+- **Always-on** - Active in every conversation (Admin only)
 - **Category-triggered** - Active in specific categories
 - **Keyword-triggered** - Active when user mentions specific words
+
+### Skill Priority Tiers
+
+Skills use a priority system to determine execution order:
+
+| Tier | Priority Range | Access | Use Case |
+|------|----------------|--------|----------|
+| **Core** | 1-9 | Admin only | Critical system behaviors |
+| **High** | 10-99 | Admin only | Important integrations |
+| **Medium** | 100-499 | Admin + Superuser | Category-specific behaviors |
+| **Low** | 500+ | Admin + Superuser | Optional enhancements |
+
+> **Note:** Superusers can only create skills with priority 100 or higher (Medium/Low tiers) and cannot use the "always" trigger type.
 
 ### Viewing Skills
 
@@ -501,6 +515,7 @@ The Skills tab displays all configured skills:
 | **Trigger Type** | Always-on, Category, or Keyword |
 | **Categories** | Linked categories (if category-triggered) |
 | **Keywords** | Trigger words (if keyword-triggered) |
+| **Tool** | ⚡ icon indicates a tool is forced |
 | **Status** | Active or Inactive |
 
 ### Creating a Skill
@@ -517,8 +532,24 @@ The Skills tab displays all configured skills:
    - Set match type: Exact, Contains, or Regex
 5. Write the **Skill Prompt**:
    - Instructions injected when skill activates
-6. Set **Active** to Yes
-7. Click **Save**
+6. **Tool Association** (Keyword type only, optional):
+   - Select a tool to force when keywords match
+   - Set force mode: Required, Preferred, or Suggested
+   - Configure tool-specific options (chart type, data sources, etc.)
+7. Set **Active** to Yes
+8. Click **Save**
+
+### Tool Association
+
+Keyword-triggered skills can optionally force a specific tool to be called:
+
+| Field | Description |
+|-------|-------------|
+| **Force Tool** | Select tool (web_search, chart_gen, doc_gen, data_source, etc.) |
+| **Force Mode** | Required (must call), Preferred (encouraged), Suggested (optional) |
+| **Tool Config** | Tool-specific options like chart type, data sources, domains |
+
+This combines prompt injection with deterministic tool invocation - useful for commands like "generate a chart" or "search the web for..."
 
 ### Skill Prompt Guidelines
 
@@ -1572,4 +1603,4 @@ User
 
 ---
 
-*Last updated: January 2025 (v2.4 - Added vision-capable models, thread sharing and email notification)*
+*Last updated: February 2025 (v2.5 - Updated skills section: superusers can now create skills with priority 100+)*

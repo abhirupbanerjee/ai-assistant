@@ -9,7 +9,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
 import { getSuperUserWithAssignments } from '@/lib/db/users';
 import { getCategoryById } from '@/lib/db/categories';
-import { ingestUrls, ingestYouTubeUrl, getUrlIngestionStatus } from '@/lib/ingest';
+import { ingestUrls, ingestYouTubeUrl, getUrlIngestionStatus, ingestCrawledSite } from '@/lib/ingest';
 import { isYouTubeUrl } from '@/lib/youtube';
 import { isTavilyConfigured } from '@/lib/tools/tavily';
 
@@ -21,6 +21,14 @@ interface UrlIngestionRequest {
   youtubeUrl?: string;
   name?: string;
   categoryId?: number;
+  // Crawl-specific fields
+  crawlUrl?: string;
+  crawlOptions?: {
+    limit?: number;
+    maxDepth?: number;
+    selectPaths?: string[];
+    excludePaths?: string[];
+  };
 }
 
 interface UrlIngestionResponse {
@@ -29,7 +37,7 @@ interface UrlIngestionResponse {
     success: boolean;
     documentId?: string;
     filename?: string;
-    sourceType: 'youtube' | 'web';
+    sourceType: 'youtube' | 'web' | 'crawl';
     error?: string;
   }>;
   summary: {
@@ -40,6 +48,13 @@ interface UrlIngestionResponse {
   category?: {
     categoryId: number;
     categoryName: string;
+  };
+  // Crawl-specific response fields
+  crawlInfo?: {
+    baseUrl: string;
+    totalPagesFound: number;
+    pagesIngested: number;
+    estimatedCredits: number;
   };
 }
 
@@ -70,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json() as UrlIngestionRequest;
-    const { urls, youtubeUrl, name, categoryId } = body;
+    const { urls, youtubeUrl, name, categoryId, crawlUrl, crawlOptions } = body;
 
     // Validate category ID (required for super users)
     if (!categoryId || typeof categoryId !== 'number') {
@@ -141,6 +156,88 @@ export async function POST(request: NextRequest) {
           summary: { total: 1, successful: 0, failed: 1 },
           category: { categoryId: category.id, categoryName: category.name },
         }, { status: 207 });
+      }
+    }
+
+    // Handle website crawl
+    if (crawlUrl) {
+      // Validate URL format
+      try {
+        new URL(crawlUrl);
+      } catch {
+        return NextResponse.json(
+          { error: 'Invalid crawl URL format' },
+          { status: 400 }
+        );
+      }
+
+      // Check if Tavily is configured
+      if (!isTavilyConfigured()) {
+        return NextResponse.json(
+          { error: 'Website crawling is not available. Contact administrator.' },
+          { status: 400 }
+        );
+      }
+
+      // Validate crawl options
+      if (crawlOptions?.limit !== undefined) {
+        if (crawlOptions.limit < 1 || crawlOptions.limit > 500) {
+          return NextResponse.json(
+            { error: 'Crawl limit must be between 1 and 500' },
+            { status: 400 }
+          );
+        }
+      }
+
+      try {
+        const crawlResult = await ingestCrawledSite(crawlUrl, user.email, {
+          categoryIds: [categoryId], // Super users upload to single category
+          isGlobal: false, // Super users cannot create global documents
+          crawlOptions: crawlOptions ? {
+            limit: crawlOptions.limit,
+            maxDepth: crawlOptions.maxDepth,
+            selectPaths: crawlOptions.selectPaths,
+            excludePaths: crawlOptions.excludePaths,
+          } : undefined,
+        });
+
+        const response: UrlIngestionResponse = {
+          results: crawlResult.documents.map(doc => ({
+            url: doc.url,
+            success: doc.success,
+            documentId: doc.documentId,
+            filename: doc.filename,
+            sourceType: 'crawl' as const,
+            error: doc.error,
+          })),
+          summary: {
+            total: crawlResult.totalPagesFound,
+            successful: crawlResult.successfulPages,
+            failed: crawlResult.failedPages,
+          },
+          category: { categoryId: category.id, categoryName: category.name },
+          crawlInfo: {
+            baseUrl: crawlResult.baseUrl,
+            totalPagesFound: crawlResult.totalPagesFound,
+            pagesIngested: crawlResult.successfulPages,
+            estimatedCredits: crawlResult.estimatedCredits,
+          },
+        };
+
+        // Use appropriate status code
+        const status = crawlResult.failedPages === 0 ? 202 :
+                       crawlResult.successfulPages === 0 ? 400 : 207;
+
+        return NextResponse.json(response, { status });
+      } catch (error) {
+        console.error('Website crawl error:', error);
+        return NextResponse.json(
+          {
+            error: 'Failed to crawl website',
+            details: error instanceof Error ? error.message : undefined,
+          },
+          { status: 500 }
+        );
       }
     }
 

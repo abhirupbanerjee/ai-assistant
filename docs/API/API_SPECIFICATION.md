@@ -144,12 +144,12 @@ When `AUTH_DISABLED=true` in environment:
 | GET | `/api/admin/tools/{name}` | Yes | Admin | Get tool config |
 | PATCH | `/api/admin/tools/{name}` | Yes | Admin | Update tool config |
 | POST | `/api/admin/tools/{name}/test` | Yes | Admin | Test tool connectivity |
-| GET | `/api/admin/skills` | Yes | Admin | List all skills |
-| POST | `/api/admin/skills` | Yes | Admin | Create skill |
-| PUT | `/api/admin/skills/{id}` | Yes | Admin | Update skill |
-| DELETE | `/api/admin/skills/{id}` | Yes | Admin | Delete skill |
-| DELETE | `/api/admin/skills` | Yes | Admin | Reset core skills |
-| GET | `/api/admin/skills/preview` | Yes | Admin | Preview skill activation |
+| GET | `/api/admin/skills` | Yes | Admin/Superuser | List all skills |
+| POST | `/api/admin/skills` | Yes | Admin/Superuser | Create skill (superuser: priority 100+, no "always" trigger) |
+| PUT | `/api/admin/skills/{id}` | Yes | Admin/Superuser | Update skill (superuser: own skills only) |
+| DELETE | `/api/admin/skills/{id}` | Yes | Admin/Superuser | Delete skill (superuser: own skills only) |
+| DELETE | `/api/admin/skills` | Yes | Admin/Superuser | Reset core skills |
+| GET | `/api/admin/skills/preview` | Yes | Admin/Superuser | Preview skill activation |
 | PATCH | `/api/admin/skills/settings` | Yes | Admin | Update skills settings |
 | GET | `/api/categories/{id}/prompt` | Yes | Admin/Superuser | Get category prompt |
 | PUT | `/api/categories/{id}/prompt` | Yes | Admin/Superuser | Update category prompt |
@@ -2575,7 +2575,7 @@ Skills are modular prompt components that can be dynamically injected into the s
 List all skills.
 
 **Authentication**: Required
-**Role**: Admin only
+**Role**: Admin or Superuser
 
 **Response** `200 OK`:
 
@@ -2610,7 +2610,12 @@ List all skills.
 Create a new custom skill.
 
 **Authentication**: Required
-**Role**: Admin only
+**Role**: Admin or Superuser
+
+**Superuser Restrictions**:
+- Priority must be 100 or higher (Medium/Low tiers only)
+- Cannot use `triggerType: 'always'` (reserved for admin)
+- Can only assign categories they manage
 
 **Request Body**:
 
@@ -2647,7 +2652,12 @@ Create a new custom skill.
 Update a skill.
 
 **Authentication**: Required
-**Role**: Admin only
+**Role**: Admin or Superuser
+
+**Superuser Restrictions**:
+- Can only edit skills they created
+- Cannot edit Admin-created skills or Core skills
+- Same priority/trigger restrictions as POST
 
 **Request Body**: Same as POST
 
@@ -2666,7 +2676,11 @@ Update a skill.
 Delete a skill. Core skills cannot be deleted.
 
 **Authentication**: Required
-**Role**: Admin only
+**Role**: Admin or Superuser
+
+**Superuser Restrictions**:
+- Can only delete skills they created
+- Cannot delete Admin-created skills or Core skills
 
 **Response** `200 OK`:
 
@@ -2710,7 +2724,7 @@ Reset all core skills to their defaults.
 Preview which skills would activate for a test message.
 
 **Authentication**: Required
-**Role**: Admin only
+**Role**: Admin or Superuser
 
 **Query Parameters**:
 

@@ -13,13 +13,14 @@ This document describes the key configuration components that control how the AI
 1. [System Prompt (Global Prompt)](#1-system-prompt-global-prompt)
 2. [Starter Prompts](#2-starter-prompts)
 3. [Category Prompts](#3-category-prompts)
-4. [Skills](#4-skills)
+4. [Skills](#4-skills) - Including tool association for keyword skills
 5. [Tools](#5-tools) - Overview of all 9 tools with references to Tools.md
 6. [Data Sources](#6-data-sources)
 7. [Function APIs](#7-function-apis)
 8. [Memory](#8-memory) - Memory extraction and thread summarization
 9. [Prompt Assembly Flow](#9-prompt-assembly-flow)
 10. [Comparison Table](#10-comparison-table)
+11. [Agent Configuration (Beta)](#11-agent-configuration-beta) - Autonomous agent settings
 
 ---
 
@@ -137,7 +138,35 @@ Forbidden phrases are blocked to prevent prompt injection:
 - Optional `category_restricted` flag:
   - `true` = Only applies if user's selected category is linked
   - `false` = Applies globally when keywords match
+- **Tool Association**: Can optionally force a specific tool when triggered
 - Example: Accounting guidance triggered by "accounting" keyword
+
+#### Tool Association (Keyword Skills Only)
+
+Keyword skills can force specific tools to be called when matched:
+
+```typescript
+interface SkillToolAssociation {
+  tool_name: string | null;        // e.g., "chart_gen", "web_search"
+  force_mode: 'required' | 'preferred' | 'suggested';
+  tool_config_override: object;    // Tool-specific config overrides
+}
+```
+
+| Force Mode | Behavior |
+|------------|----------|
+| `required` | Force this specific tool to be called |
+| `preferred` | Force some tool call (LLM picks which) |
+| `suggested` | Hint but don't force |
+
+**Example:** A "sales report" keyword skill can force `chart_gen` with config:
+```json
+{
+  "tool_name": "chart_gen",
+  "force_mode": "required",
+  "tool_config_override": { "chartType": "bar" }
+}
+```
 
 ### Skill Structure
 ```typescript
@@ -150,12 +179,25 @@ interface Skill {
   trigger_value: string | null;  // Keywords for keyword-type skills
   category_restricted: boolean;  // Restrict to linked categories
   is_index: boolean;             // Broader domain expertise flag
-  priority: number;              // Lower = higher priority
+  priority: number;              // Lower = higher priority (see tiers below)
   is_active: boolean;
   is_core: boolean;              // Core skills cannot be deleted
   token_estimate: number;        // ~1 token per 4 chars
+  // Tool Association (keyword skills only)
+  tool_name: string | null;      // Tool to force (e.g., "chart_gen")
+  force_mode: string | null;     // "required", "preferred", "suggested"
+  tool_config_override: object;  // Tool-specific config
 }
 ```
+
+### Priority Tiers
+
+| Tier | Range | Who Can Create | Use Case |
+|------|-------|----------------|----------|
+| **Core** | 1-9 | System only | Core skills (citations, etc.) |
+| **High** | 10-99 | Admin only | Critical business rules |
+| **Medium** | 100-499 | Admin + Superuser | Department-specific behaviors |
+| **Low** | 500+ | Admin + Superuser | Optional enhancements |
 
 ### Skill Resolution Process
 ```
@@ -622,6 +664,76 @@ function_api_categories (api_id, category_id)
 
 ---
 
+## 11. Agent Configuration (Beta)
+
+**What it is:** Configuration for the Autonomous Agent system that enables multi-step task execution with planning, execution, quality checking, and summarization.
+
+> **⚠️ Beta Feature:** The Autonomous Agent is currently in beta. Enable via Admin > Settings > Agent.
+
+### Storage
+- **Settings:** `settings['agent-settings']` - Agent configuration
+
+### Configuration Structure
+
+```typescript
+interface AgentSettings {
+  enabled: boolean;              // Master on/off switch
+
+  // Model assignments
+  plannerModel: string;          // Model for task planning
+  executorModel: string;         // Model for task execution
+  checkerModel: string;          // Model for quality checking
+  summarizerModel: string;       // Model for final summarization
+
+  // Budget limits
+  maxTokens: number;             // Max tokens per agent execution
+  maxCost: number;               // Max cost in dollars
+  maxTasks: number;              // Max tasks per plan (default: 10)
+
+  // Quality settings
+  qualityThreshold: number;      // Min quality score 0.0-1.0 (default: 0.7)
+  maxRetries: number;            // Retries per task (default: 2)
+
+  // Streaming
+  streamProgress: boolean;       // Stream progress events to UI
+}
+```
+
+### Agent Pipeline Components
+
+| Component | Purpose | Model Default |
+|-----------|---------|---------------|
+| **Planner** | Decompose request into ordered tasks | Inherits main model |
+| **Executor** | Execute individual tasks with tool access | Inherits main model |
+| **Checker** | Validate response quality | Often faster/cheaper model |
+| **Summarizer** | Combine outputs into final response | Inherits main model |
+
+### Event Types
+
+The agent streams these events during execution:
+
+| Event | Description |
+|-------|-------------|
+| `plan_created` | Task plan generated |
+| `task_started` | Task execution began |
+| `task_completed` | Task finished successfully |
+| `task_failed` | Task failed after retries |
+| `quality_check` | Quality score reported |
+| `budget_warning` | Approaching budget limit |
+| `budget_exceeded` | Execution stopped due to budget |
+| `complete` | Agent finished |
+
+### Implementation Files
+
+- **Settings UI:** `src/components/admin/settings/AgentSettings.tsx`
+- **Agent Core:** `src/lib/agent/index.ts`
+- **Planner:** `src/lib/agent/planner.ts`
+- **Executor:** `src/lib/agent/executor.ts`
+- **Checker:** `src/lib/agent/checker.ts`
+- **Summarizer:** `src/lib/agent/summarizer.ts`
+
+---
+
 ## Key Settings Table Entries
 
 | Key | Purpose |
@@ -632,3 +744,4 @@ function_api_categories (api_id, category_id)
 | `rag-settings` | Retrieval parameters |
 | `memory-settings` | User memory extraction |
 | `summarization-settings` | Thread summarization |
+| `agent-settings` | Autonomous agent configuration (beta) |

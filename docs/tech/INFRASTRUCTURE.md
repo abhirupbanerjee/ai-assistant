@@ -1113,6 +1113,33 @@ sudo swapon /swapfile
 | Redis cache | 10-100 MB |
 | Thread data | 50 MB - 500 MB |
 
+### Autonomous Agent (Beta)
+
+When the Autonomous Agent feature is enabled, additional resources are consumed:
+
+| Resource | Impact | Notes |
+|----------|--------|-------|
+| **CPU** | +50-100% during agent execution | Multiple concurrent LLM calls |
+| **Memory** | +100-200 MB per active agent | Plan state, task results, streaming buffers |
+| **API Tokens** | 3-10x normal per request | Planner + Executor + Checker + Summarizer |
+
+**Recommendations for Agent Usage:**
+
+- Enable agent mode only when needed (not default)
+- Set conservative budget limits (tokens and cost)
+- Use faster/cheaper models for checker (e.g., gpt-4.1-mini)
+- Monitor token usage via Admin > Settings > Agent
+- Consider rate limiting concurrent agent sessions
+
+**Budget Limits (Defaults):**
+
+| Limit | Default | Description |
+|-------|---------|-------------|
+| Max Tokens | 50,000 | Per agent execution |
+| Max Cost | $1.00 | Per agent execution |
+| Max Tasks | 10 | Per plan |
+| Max Retries | 2 | Per task |
+
 ---
 
 ## Cost Estimation

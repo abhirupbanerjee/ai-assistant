@@ -46,6 +46,8 @@ import {
   formatWebContentForIngestion,
   generateFilenameFromUrl,
   isTavilyConfigured,
+  crawlWebsite,
+  type CrawlOptions,
 } from './tools/tavily';
 
 // Create splitter with configurable settings
@@ -725,6 +727,7 @@ export interface UrlIngestionStatus {
   webEnabled: boolean;
   youtubeEnabled: boolean;
   youtubeSupadataEnabled: boolean;
+  crawlEnabled: boolean;
   message?: string;
 }
 
@@ -744,6 +747,7 @@ export interface UrlIngestionResult {
  */
 export function getUrlIngestionStatus(): UrlIngestionStatus {
   const webEnabled = isTavilyConfigured();
+  const crawlEnabled = isTavilyConfigured(); // Crawl uses same Tavily API key
   const youtubeSupadataEnabled = isYouTubeApiConfigured(); // Now checks Supadata config
 
   const messages: string[] = [];
@@ -758,6 +762,7 @@ export function getUrlIngestionStatus(): UrlIngestionStatus {
     webEnabled,
     youtubeEnabled: true, // Fallback always available (may fail due to IP blocking)
     youtubeSupadataEnabled,
+    crawlEnabled,
     message: messages.length > 0 ? messages.join(' ') : undefined,
   };
 }
@@ -907,4 +912,147 @@ export async function ingestUrls(
   }
 
   return results;
+}
+
+// ============ Website Crawl Ingestion Functions ============
+
+/**
+ * Options for crawling and ingesting a website
+ */
+export interface CrawlIngestionOptions {
+  categoryIds?: number[];
+  isGlobal?: boolean;
+  crawlOptions?: CrawlOptions;
+}
+
+/**
+ * Result of a page ingestion during crawl
+ */
+export interface CrawlPageIngestionResult {
+  url: string;
+  success: boolean;
+  documentId?: string;
+  filename?: string;
+  error?: string;
+}
+
+/**
+ * Result of website crawl ingestion
+ */
+export interface CrawlIngestionResult {
+  baseUrl: string;
+  success: boolean;
+  totalPagesFound: number;
+  successfulPages: number;
+  failedPages: number;
+  documents: CrawlPageIngestionResult[];
+  error?: string;
+  estimatedCredits: number;
+}
+
+/**
+ * Crawl a website and ingest all discovered pages as documents
+ * Each crawled page becomes a separate document
+ *
+ * @param url - Base URL to start crawling from
+ * @param uploadedBy - User email who initiated the crawl
+ * @param options - Crawl and ingestion options
+ */
+export async function ingestCrawledSite(
+  url: string,
+  uploadedBy: string,
+  options?: CrawlIngestionOptions
+): Promise<CrawlIngestionResult> {
+  if (!isTavilyConfigured()) {
+    return {
+      baseUrl: url,
+      success: false,
+      totalPagesFound: 0,
+      successfulPages: 0,
+      failedPages: 0,
+      documents: [],
+      error: 'Website crawling requires Tavily API key. Configure in Settings > Web Search.',
+      estimatedCredits: 0,
+    };
+  }
+
+  // Crawl the website
+  console.log('[Ingest] Starting website crawl:', url, options?.crawlOptions);
+  const crawlResult = await crawlWebsite(url, options?.crawlOptions);
+
+  if (!crawlResult.success) {
+    return {
+      baseUrl: url,
+      success: false,
+      totalPagesFound: 0,
+      successfulPages: 0,
+      failedPages: 0,
+      documents: [],
+      error: crawlResult.error || 'Failed to crawl website',
+      estimatedCredits: 0,
+    };
+  }
+
+  const documents: CrawlPageIngestionResult[] = [];
+  let successfulPages = 0;
+  let failedPages = 0;
+
+  // Ingest each crawled page as a separate document
+  for (const page of crawlResult.pages) {
+    if (page.content) {
+      try {
+        const content = formatWebContentForIngestion(page.url, page.content);
+        const filename = generateFilenameFromUrl(page.url);
+        const docName = filename.replace('.txt', '');
+
+        const doc = await ingestTextContent(content, docName, uploadedBy, {
+          categoryIds: options?.categoryIds,
+          isGlobal: options?.isGlobal,
+        });
+
+        documents.push({
+          url: page.url,
+          success: true,
+          documentId: doc.id,
+          filename: doc.filename,
+        });
+        successfulPages++;
+      } catch (error) {
+        documents.push({
+          url: page.url,
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to ingest page',
+        });
+        failedPages++;
+      }
+    } else {
+      documents.push({
+        url: page.url,
+        success: false,
+        error: page.error || 'No content extracted from page',
+      });
+      failedPages++;
+    }
+  }
+
+  // Calculate estimated credits (1 credit per 10 pages)
+  const estimatedCredits = Math.ceil(crawlResult.totalPages / 10);
+
+  console.log('[Ingest] Website crawl complete:', {
+    baseUrl: url,
+    totalPages: crawlResult.totalPages,
+    successful: successfulPages,
+    failed: failedPages,
+    credits: estimatedCredits,
+  });
+
+  return {
+    baseUrl: crawlResult.baseUrl,
+    success: successfulPages > 0,
+    totalPagesFound: crawlResult.totalPages,
+    successfulPages,
+    failedPages,
+    documents,
+    estimatedCredits,
+  };
 }

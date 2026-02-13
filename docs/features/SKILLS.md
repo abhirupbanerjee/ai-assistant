@@ -156,6 +156,7 @@ Prompt:
 - Sensitive subject handling
 - Specialized analysis requests
 - Contextual behavior changes
+- **Force specific tools** when certain keywords are detected
 
 **Example:**
 ```
@@ -170,6 +171,56 @@ Prompt:
   - Note approval authority levels
   - Remind about signature requirements
 ```
+
+### Tool Association (Keyword Skills Only)
+
+Keyword-triggered skills can optionally force a specific tool to be called when the skill matches. This provides deterministic tool invocation based on keyword patterns.
+
+**Available when:** `trigger_type = keyword`
+
+| Field | Description |
+|-------|-------------|
+| **Force Tool** | The tool to invoke (web_search, chart_gen, doc_gen, data_source, etc.) |
+| **Force Mode** | How strongly to enforce tool usage |
+| **Tool Config Override** | Tool-specific settings (e.g., chart type, data source filter) |
+
+#### Force Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Required** | The LLM *must* call this specific tool |
+| **Preferred** | The LLM is strongly encouraged to call a tool (can choose which) |
+| **Suggested** | The LLM may choose to call the tool or respond without it |
+
+#### Tool-Specific Config Options
+
+When a tool is selected, additional configuration options appear:
+
+| Tool | Config Options |
+|------|----------------|
+| **chart_gen** | Default chart type (bar, line, pie, scatter, area) |
+| **doc_gen** | Default format (pdf, docx, markdown) |
+| **data_source** | Restrict to specific data sources (include/exclude) |
+| **function_api** | Restrict to specific function API |
+| **web_search** | Include/exclude domains |
+| **diagram_gen** | Preferred diagram type (flowchart, sequence, mindmap, etc.) |
+| **image_gen** | Default style (realistic, artistic, etc.) |
+
+**Example with Tool:**
+```yaml
+Name: Generate Budget Chart
+Type: Keyword
+Keywords: budget chart, spending graph, expense visualization
+Match Type: Contains
+Force Tool: chart_gen
+Force Mode: Required
+Tool Config: { "chartType": "bar" }
+Prompt:
+  Create a clear budget visualization with proper labels and legend.
+  Use department names on the x-axis and amounts on the y-axis.
+```
+
+> **Note:** Tool association is separate from the standalone Tool Routing feature (Admin > Tools > Tool Routing). Skills with tools provide keyword-based tool forcing combined with prompt injection, while Tool Routing rules only force tools without adding prompts.
 
 ### Match Types for Keywords
 
@@ -187,12 +238,18 @@ Prompt:
 
 | Action | Admin | Superuser | User |
 |--------|-------|-----------|------|
-| Create skills | ✅ | ❌ | ❌ |
-| View skills | ✅ | ❌ | ❌ |
-| Edit skills | ✅ | ❌ | ❌ |
-| Delete skills | ✅ (except core) | ❌ | ❌ |
+| Create skills (all tiers) | ✅ | ❌ | ❌ |
+| Create skills (priority 100+) | ✅ | ✅ (managed categories) | ❌ |
+| Use "always" trigger | ✅ | ❌ | ❌ |
+| View skills | ✅ | ✅ | ❌ |
+| Edit own skills | ✅ | ✅ | ❌ |
+| Edit any skill | ✅ | ❌ | ❌ |
+| Delete skills | ✅ (except core) | ✅ (own only) | ❌ |
 
-**Note:** Only Admins can create and manage skills. This is intentional to maintain system-wide consistency.
+**Note:** Superusers can create and manage skills for their assigned categories with restrictions:
+- Priority must be 100 or higher (Medium/Low tiers)
+- Cannot use the "always" trigger type (reserved for system-wide behaviors)
+- Can only assign skills to categories they manage
 
 ### Step-by-Step Creation
 
@@ -216,19 +273,24 @@ Prompt:
    - Keep focused and concise
    - Use clear, directive language
 
-5. **Priority**
-   - Set priority (0-100, lower = higher priority)
-   - Default: 50
-   - Core skills: 0-10
-   - Standard skills: 40-60
-   - Low-priority skills: 70-100
+5. **Tool Association** (Keyword type only, optional)
+   - **Force Tool** - Select a tool to invoke when skill matches
+   - **Force Mode** - Required, Preferred, or Suggested
+   - **Tool Config** - Tool-specific options (chart type, data sources, etc.)
 
-6. **Advanced Options**
-   - **Is Core** - Protected from deletion
+6. **Priority**
+   - Set priority (1-999, lower = higher priority)
+   - Core skills: 1-9 (Admin only)
+   - High priority: 10-99 (Admin only)
+   - Medium priority: 100-499 (Admin + Superuser)
+   - Low priority: 500+ (Admin + Superuser)
+
+7. **Advanced Options**
+   - **Is Core** - Protected from deletion (Admin only)
    - **Is Index** - Used for RAG optimization
    - **Token Estimate** - For budget tracking
 
-7. **Save**
+8. **Save**
    - Click **Save** to create the skill
    - Test in a conversation to verify
 
@@ -433,15 +495,18 @@ For emergencies or unsafe conditions:
 
 Skills are applied in **priority order**, with lower numbers having higher priority.
 
-### Priority Ranges
+### Priority Tiers
 
-| Range | Purpose | Examples |
-|-------|---------|----------|
-| **0-10** | Core system behaviors | Citation format, safety guidelines |
-| **11-30** | Important contextual skills | Legal disclaimers, compliance requirements |
-| **31-60** | Standard skills | Department-specific behaviors |
-| **61-90** | Low-priority skills | Nice-to-have enhancements |
-| **91-100** | Experimental skills | Testing new behaviors |
+Skills use a tiered priority system with role-based access:
+
+| Tier | Priority Range | Access | Examples |
+|------|----------------|--------|----------|
+| **Core** | 1-9 | Admin only | Citation format, safety guidelines |
+| **High** | 10-99 | Admin only | Legal disclaimers, compliance requirements |
+| **Medium** | 100-499 | Admin + Superuser | Department-specific behaviors, category skills |
+| **Low** | 500+ | Admin + Superuser | Nice-to-have enhancements, experimental |
+
+**Note:** Superusers can only create skills in the Medium (100-499) or Low (500+) tiers. Core and High priority skills are reserved for system-wide behaviors managed by administrators.
 
 ### How Priority Works
 
@@ -959,4 +1024,4 @@ Consider tracking:
 
 ---
 
-*Last updated: January 2025 (v1.0)*
+*Last updated: February 2025 (v1.1 - Added superuser skill creation permissions with tier restrictions)*

@@ -355,7 +355,7 @@ The Prompts tab lets you customize AI behavior for your managed categories. It h
 |---------|---------|
 | **Global Prompt** | View the global system prompt (read-only) |
 | **Category Prompts** | Edit category-specific addendums and starter prompts |
-| **Skills** | View available AI skills (read-only) |
+| **Skills** | Create and manage skills for your categories (with restrictions) |
 
 ### Understanding Prompt Hierarchy
 
@@ -425,9 +425,9 @@ To remove category customizations and use only the global prompt:
 2. Click **Reset to Global**
 3. Confirm the action
 
-### Skills (Read-Only)
+### Skills
 
-The Skills section within Prompts shows AI skills configured for Policy Bot.
+The Skills section lets you create and manage AI skills for your categories.
 
 **What are Skills?**
 
@@ -435,11 +435,68 @@ Skills are specialized behaviors that extend the AI assistant's capabilities. Th
 
 | Type | Description | Example |
 |------|-------------|---------|
-| **Always-on** | Active in every conversation | Memory recall, citation formatting |
 | **Category-triggered** | Active when user is in specific categories | Department-specific procedures |
 | **Keyword-triggered** | Active when user mentions specific words | "compliance" → regulatory guidelines |
 
-> **Note:** Skills are managed by Admins only. Superusers have read-only access to view available skills. If you need a new skill or changes to existing skills, contact your Admin.
+### Superuser Skill Restrictions
+
+Superusers can create and manage skills with the following restrictions:
+
+| Restriction | Details |
+|-------------|---------|
+| **Priority** | Must be 100 or higher (Medium or Low tier) |
+| **Trigger Type** | Cannot use "always" trigger (reserved for Admins) |
+| **Categories** | Can only assign to your managed categories |
+| **Edit Access** | Can only edit skills you created |
+
+### Priority Tiers
+
+| Tier | Priority Range | Access |
+|------|----------------|--------|
+| **Core** | 1-9 | Admin only |
+| **High** | 10-99 | Admin only |
+| **Medium** | 100-499 | Superuser + Admin |
+| **Low** | 500+ | Superuser + Admin |
+
+> **Note:** Core and High priority skills (1-99) are managed by Admins only. Contact your Admin if you need a skill with higher priority.
+
+### Creating a Skill
+
+1. Click **Add Skill**
+2. Fill in the configuration:
+   - **Name** - Display name (e.g., "HR Policy Formatting")
+   - **Content** - The instructions to inject into the AI context
+   - **Trigger Type** - "keyword" or "category"
+   - **Trigger Value** - Keyword(s) or category selection
+   - **Priority** - 100-999 (higher numbers = lower priority)
+3. **Tool Association** (keyword trigger only, optional):
+   - **Force Tool** - Select a tool to invoke when keywords match
+   - **Force Mode** - Required, Preferred, or Suggested
+   - **Tool Config** - Tool-specific options (chart type, data sources, etc.)
+4. Click **Save**
+
+### Tool Association
+
+Keyword-triggered skills can optionally force a specific tool:
+
+| Field | Description |
+|-------|-------------|
+| **Force Tool** | web_search, chart_gen, doc_gen, data_source, etc. |
+| **Force Mode** | Required (must call), Preferred (encouraged), Suggested (optional) |
+| **Tool Config** | Chart type, data source filter, domains, etc. |
+
+**Example:** A skill with keywords "create chart, visualize data" can force the `chart_gen` tool with a default chart type of "bar".
+
+### Editing Skills
+
+You can only edit skills you created:
+
+1. Find the skill in the list
+2. Click **Edit**
+3. Modify fields as needed
+4. Click **Save**
+
+> **Note:** You cannot edit Admin-created skills or skills with priority below 100.
 
 ---
 
@@ -855,7 +912,10 @@ Access usage statistics:
 - Reset to global prompt
 
 ✅ **Skills**
-- View all available skills (read-only)
+- Create skills for managed categories (priority 100+)
+- Edit skills you created
+- View all available skills
+- Assign skills to managed categories
 
 ✅ **Task Planner Templates**
 - Create templates for managed categories
@@ -898,7 +958,12 @@ Access usage statistics:
 - Access system settings
 - View all users across all categories
 - Configure reranker or LLM settings
-- Create or manage skills
+
+❌ **Skills Restrictions**
+- Create skills with priority below 100 (Core/High tier)
+- Use "always" trigger type
+- Edit skills created by Admins
+- Assign skills to categories you don't manage
 
 ❌ **Task Planner Templates**
 - Deactivate or delete templates
@@ -1056,4 +1121,4 @@ If you encounter issues not covered here:
 
 ---
 
-*Last updated: December 2024 (v2.2 - Added Categories tab, hybrid role support with subscribed categories, category creation quota)*
+*Last updated: February 2025 (v2.3 - Updated Skills section: superusers can now create and manage skills with restrictions)*
