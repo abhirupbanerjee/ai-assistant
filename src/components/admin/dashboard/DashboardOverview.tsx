@@ -104,91 +104,10 @@ export default function DashboardOverview() {
   const fetchProviders = useCallback(async () => {
     try {
       setProvidersLoading(true);
-      const res = await fetch('/api/admin/providers/status');
+      const res = await fetch('/api/admin/providers');
       if (res.ok) {
         const data = await res.json();
-        const services: ServiceStatus[] = [];
-
-        // LLM providers
-        if (data.llm) {
-          Object.entries(data.llm).forEach(([provider, info]: [string, any]) => {
-            if (info.models) {
-              info.models.forEach((model: any) => {
-                services.push({
-                  category: 'llm',
-                  provider,
-                  name: provider,
-                  model: model.name || model.id,
-                  available: model.available ?? info.available,
-                  configured: info.configured,
-                  latency: model.latency,
-                  error: model.error || info.error,
-                });
-              });
-            } else {
-              services.push({
-                category: 'llm',
-                provider,
-                name: provider,
-                model: info.model || '',
-                available: info.available,
-                configured: info.configured,
-                latency: info.latency,
-                error: info.error,
-              });
-            }
-          });
-        }
-
-        // Embedding providers
-        if (data.embedding) {
-          Object.entries(data.embedding).forEach(([provider, info]: [string, any]) => {
-            services.push({
-              category: 'embedding',
-              provider,
-              name: provider,
-              model: info.model || '',
-              available: info.available,
-              configured: info.configured,
-              latency: info.latency,
-              error: info.error,
-            });
-          });
-        }
-
-        // Transcribe providers
-        if (data.transcribe) {
-          Object.entries(data.transcribe).forEach(([provider, info]: [string, any]) => {
-            services.push({
-              category: 'transcribe',
-              provider,
-              name: provider,
-              model: info.model || '',
-              available: info.available,
-              configured: info.configured,
-              latency: info.latency,
-              error: info.error,
-            });
-          });
-        }
-
-        // OCR providers
-        if (data.ocr) {
-          Object.entries(data.ocr).forEach(([provider, info]: [string, any]) => {
-            services.push({
-              category: 'ocr',
-              provider,
-              name: provider,
-              model: info.model || '',
-              available: info.available,
-              configured: info.configured,
-              latency: info.latency,
-              error: info.error,
-            });
-          });
-        }
-
-        setServiceStatus(services);
+        setServiceStatus(data.services || []);
       }
     } catch (err) {
       console.error('Failed to fetch providers:', err);
@@ -201,7 +120,7 @@ export default function DashboardOverview() {
   const fetchRerankerStatus = useCallback(async () => {
     try {
       setRerankerStatusLoading(true);
-      const res = await fetch('/api/admin/settings/reranker/status');
+      const res = await fetch('/api/admin/reranker-status');
       if (res.ok) {
         const data = await res.json();
         setRerankerStatus(data.providers || []);

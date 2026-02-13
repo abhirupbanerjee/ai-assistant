@@ -223,10 +223,12 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Use superuser API endpoints when in superuser mode
+      const apiBase = isSuperuser ? '/api/superuser' : '/api/admin';
       const [skillsRes, categoriesRes, toolsRes, dataSourcesRes, functionApisRes] = await Promise.all([
-        fetch('/api/admin/skills'),
-        fetch('/api/admin/categories'),
-        fetch('/api/admin/tools'),
+        fetch('/api/admin/skills'), // Skills API handles role-based filtering internally
+        fetch(`${apiBase}/categories`),
+        fetch(`${apiBase}/tools`),
         fetch('/api/admin/data-sources'),
         fetch('/api/admin/function-apis'),
       ]);
@@ -242,7 +244,12 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       setSkills(skillsData.skills || []);
       setSettings(skillsData.settings || { enabled: false, maxTotalTokens: 3000, debugMode: false });
       setCategories(categoriesData.categories || []);
-      setTools(toolsData.tools || []);
+      // Normalize tools data: superuser API returns 'globalEnabled', admin API returns 'enabled'
+      const normalizedTools = (toolsData.tools || []).map((t: Tool & { globalEnabled?: boolean }) => ({
+        ...t,
+        enabled: t.enabled ?? t.globalEnabled ?? false,
+      }));
+      setTools(normalizedTools);
 
       // Fetch data sources (optional - don't fail if unavailable)
       if (dataSourcesRes.ok) {
