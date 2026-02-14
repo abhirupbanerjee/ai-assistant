@@ -628,14 +628,42 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     }
   };
 
-  // Domain validation regex
-  const DOMAIN_REGEX = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+  // Domain validation regex - supports wildcards as Tavily API accepts them
+  // Patterns: *.com (all .com), *.gov.tt (all gov.tt subdomains), example.com (specific domain)
+  const DOMAIN_REGEX = /^(?:\*\.)?(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z]{2,}$/;
+
+  // Track raw input for domains to allow typing commas
+  const [domainsRawInput, setDomainsRawInput] = useState<string>('');
+  const [domainsUserEditing, setDomainsUserEditing] = useState(false);
+
+  // Initialize raw input from config when modal opens
+  const isModalOpen = showCreateModal || showEditModal;
+  useEffect(() => {
+    if (isModalOpen && !domainsUserEditing) {
+      // Only initialize when not actively editing
+      const existingDomains = getConfigArrayValue('includeDomains');
+      setDomainsRawInput(existingDomains.join(', '));
+    }
+    if (!isModalOpen) {
+      // Reset when modal closes
+      setDomainsRawInput('');
+      setDomainsUserEditing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModalOpen]);
 
   // Handle domains input change with validation
   const handleDomainsChange = (input: string) => {
+    // Mark that user is actively editing
+    setDomainsUserEditing(true);
+
+    // Store raw input for display (allows typing commas)
+    setDomainsRawInput(input);
+
+    // Parse domains for validation and storage
     const domains = input.split(',').map(d => d.trim()).filter(Boolean);
 
-    // Validate each domain
+    // Validate each non-empty domain
     const invalidDomains = domains.filter(d => !DOMAIN_REGEX.test(d));
 
     if (invalidDomains.length > 0) {
@@ -644,7 +672,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       setDomainError(null);
     }
 
-    // Store as array in config
+    // Store as array in config (only non-empty entries)
     setConfigArrayValue('includeDomains', domains);
   };
 
@@ -1394,13 +1422,13 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                           <label className="block text-xs text-gray-600 mb-1">Include Domains (optional)</label>
                           <input
                             type="text"
-                            value={getConfigArrayValue('includeDomains').join(', ')}
+                            value={domainsRawInput}
                             onChange={(e) => handleDomainsChange(e.target.value)}
-                            placeholder="example.com, news.site.org"
+                            placeholder="*.gov.tt, example.com"
                             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
                           <p className="text-xs text-gray-500 mt-1">
-                            Comma-separated domain names. Only results from these domains will be included.
+                            Comma-separated. Use *.domain for wildcards (e.g., *.gov.tt matches all gov.tt subdomains).
                           </p>
                           {domainError && (
                             <p className="text-xs text-red-600 mt-1">{domainError}</p>

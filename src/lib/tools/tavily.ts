@@ -296,6 +296,231 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
   }
 }
 
+// ============ URL Map Functions ============
+
+export interface MapOptions {
+  limit?: number;           // Total URLs to discover (default 50)
+  maxDepth?: number;        // 1-5, how deep to explore
+  maxBreadth?: number;      // 1-500, links per page level
+  selectPaths?: string[];   // Regex patterns to include
+  excludePaths?: string[];  // Regex patterns to exclude
+}
+
+export interface MapResult {
+  baseUrl: string;
+  success: boolean;
+  urls: string[];           // All discovered URLs
+  pdfUrls: string[];        // URLs ending in .pdf
+  webUrls: string[];        // Non-PDF URLs (web pages)
+  totalUrls: number;
+  error?: string;
+}
+
+/**
+ * Map a website using Tavily Map API
+ * Discovers all URLs on a website without extracting content
+ * Useful for getting a site overview and finding PDF links
+ *
+ * @param url - Base URL to start mapping from
+ * @param options - Map configuration options
+ * @returns MapResult with arrays of discovered URLs
+ */
+export async function mapWebsite(url: string, options?: MapOptions): Promise<MapResult> {
+  // Validate URL
+  try {
+    new URL(url);
+  } catch {
+    return {
+      baseUrl: url,
+      success: false,
+      urls: [],
+      pdfUrls: [],
+      webUrls: [],
+      totalUrls: 0,
+      error: 'Invalid URL format',
+    };
+  }
+
+  // Get API key
+  const { config: settings } = getWebSearchConfig();
+  const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+
+  if (!apiKey) {
+    return {
+      baseUrl: url,
+      success: false,
+      urls: [],
+      pdfUrls: [],
+      webUrls: [],
+      totalUrls: 0,
+      error: 'Tavily API key not configured. Set in Settings > Web Search.',
+    };
+  }
+
+  // Build request payload
+  const payload: Record<string, unknown> = {
+    api_key: apiKey,
+    url: url,
+    limit: options?.limit ?? 100,
+    max_depth: options?.maxDepth ?? 3,
+    max_breadth: options?.maxBreadth ?? 50,
+  };
+
+  // Add optional path filters if provided
+  if (options?.selectPaths && options.selectPaths.length > 0) {
+    payload.select_paths = options.selectPaths;
+  }
+  if (options?.excludePaths && options.excludePaths.length > 0) {
+    payload.exclude_paths = options.excludePaths;
+  }
+
+  try {
+    console.log('Tavily Map: Starting map of', url);
+
+    const response = await fetch('https://api.tavily.com/map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || errorData.detail || `HTTP ${response.status}`;
+      console.error('Tavily Map API error:', response.status, errorData);
+      return {
+        baseUrl: url,
+        success: false,
+        urls: [],
+        pdfUrls: [],
+        webUrls: [],
+        totalUrls: 0,
+        error: `Tavily Map API error: ${errorMessage}`,
+      };
+    }
+
+    const data = await response.json();
+
+    // Response format: { base_url, results: string[] }
+    const urls: string[] = data.results || [];
+
+    // Separate PDF URLs from web page URLs
+    const pdfUrls: string[] = [];
+    const webUrls: string[] = [];
+
+    for (const discoveredUrl of urls) {
+      const lowerUrl = discoveredUrl.toLowerCase();
+      if (lowerUrl.endsWith('.pdf') || lowerUrl.includes('.pdf?') || lowerUrl.includes('.pdf#')) {
+        pdfUrls.push(discoveredUrl);
+      } else {
+        webUrls.push(discoveredUrl);
+      }
+    }
+
+    console.log('Tavily Map: Completed map of', url, '- found', urls.length, 'URLs (', pdfUrls.length, 'PDFs)');
+
+    return {
+      baseUrl: data.base_url || url,
+      success: true,
+      urls,
+      pdfUrls,
+      webUrls,
+      totalUrls: urls.length,
+    };
+  } catch (error) {
+    console.error('Tavily Map error:', error);
+    return {
+      baseUrl: url,
+      success: false,
+      urls: [],
+      pdfUrls: [],
+      webUrls: [],
+      totalUrls: 0,
+      error: error instanceof Error ? error.message : 'Unknown error occurred during map',
+    };
+  }
+}
+
+// ============ PDF Download Functions ============
+
+export interface PdfDownloadResult {
+  url: string;
+  success: boolean;
+  buffer?: Buffer;
+  filename?: string;
+  size?: number;
+  error?: string;
+}
+
+/**
+ * Download a PDF file from a URL
+ * Returns the PDF as a Buffer for processing
+ *
+ * @param url - URL of the PDF to download
+ * @returns PdfDownloadResult with buffer if successful
+ */
+export async function downloadPdfFromUrl(url: string): Promise<PdfDownloadResult> {
+  try {
+    // Validate URL
+    const urlObj = new URL(url);
+
+    console.log('Downloading PDF:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; PolicyBot/1.0)',
+        'Accept': 'application/pdf,*/*',
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        url,
+        success: false,
+        error: `HTTP ${response.status}: Failed to download PDF`,
+      };
+    }
+
+    // Check content type
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/pdf') && !url.toLowerCase().endsWith('.pdf')) {
+      return {
+        url,
+        success: false,
+        error: `Not a PDF file (content-type: ${contentType})`,
+      };
+    }
+
+    // Get the PDF as ArrayBuffer and convert to Buffer
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Generate filename from URL
+    let filename = urlObj.pathname.split('/').pop() || 'document.pdf';
+    if (!filename.toLowerCase().endsWith('.pdf')) {
+      filename += '.pdf';
+    }
+    // Clean filename
+    filename = filename.replace(/[^a-zA-Z0-9.-_]/g, '-').slice(0, 200);
+
+    console.log('Downloaded PDF:', filename, '- size:', buffer.length, 'bytes');
+
+    return {
+      url,
+      success: true,
+      buffer,
+      filename,
+      size: buffer.length,
+    };
+  } catch (error) {
+    console.error('PDF download error:', url, error);
+    return {
+      url,
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error downloading PDF',
+    };
+  }
+}
+
 /**
  * Format extracted web content for document ingestion
  */

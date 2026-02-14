@@ -919,6 +919,70 @@ function runMigrations(database: Database.Database): void {
       ALTER TABLE skills ADD COLUMN data_source_filter TEXT;
     `);
   }
+
+  // Migration: Create folder_syncs tables for folder upload with re-sync capability
+  const folderSyncsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='folder_syncs'"
+  ).get();
+
+  if (!folderSyncsTableExists) {
+    database.exec(`
+      -- Folder sync sessions (track uploaded folders)
+      CREATE TABLE IF NOT EXISTS folder_syncs (
+        id TEXT PRIMARY KEY,
+        folder_name TEXT NOT NULL,
+        original_path TEXT NOT NULL,
+        uploaded_by TEXT NOT NULL,
+        category_ids TEXT,
+        is_global INTEGER DEFAULT 0,
+        total_files INTEGER DEFAULT 0,
+        synced_files INTEGER DEFAULT 0,
+        failed_files INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'syncing', 'error')),
+        error_message TEXT,
+        last_synced_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_folder_syncs_user ON folder_syncs(uploaded_by);
+      CREATE INDEX IF NOT EXISTS idx_folder_syncs_status ON folder_syncs(status);
+
+      -- Individual files within a folder sync
+      CREATE TABLE IF NOT EXISTS folder_sync_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        folder_sync_id TEXT NOT NULL,
+        document_id INTEGER,
+        relative_path TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        file_hash TEXT,
+        file_size INTEGER NOT NULL,
+        last_modified INTEGER,
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'synced', 'skipped', 'error')),
+        error_message TEXT,
+        synced_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (folder_sync_id) REFERENCES folder_syncs(id) ON DELETE CASCADE,
+        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_folder_sync_files_sync ON folder_sync_files(folder_sync_id);
+      CREATE INDEX IF NOT EXISTS idx_folder_sync_files_doc ON folder_sync_files(document_id);
+      CREATE INDEX IF NOT EXISTS idx_folder_sync_files_hash ON folder_sync_files(file_hash);
+    `);
+  }
+
+  // Migration: Add folder sync columns to documents table
+  const documentsColumns = database.pragma('table_info(documents)') as { name: string }[];
+  const documentsColumnNames = documentsColumns.map((c) => c.name);
+
+  if (!documentsColumnNames.includes('folder_sync_id')) {
+    database.exec(`
+      ALTER TABLE documents ADD COLUMN folder_sync_id TEXT REFERENCES folder_syncs(id) ON DELETE SET NULL;
+      ALTER TABLE documents ADD COLUMN original_relative_path TEXT;
+      CREATE INDEX IF NOT EXISTS idx_documents_folder_sync ON documents(folder_sync_id);
+    `);
+  }
 }
 
 /**
@@ -1314,6 +1378,47 @@ CREATE TABLE IF NOT EXISTS function_api_categories (
 );
 CREATE INDEX IF NOT EXISTS idx_function_api_categories_api ON function_api_categories(api_id);
 CREATE INDEX IF NOT EXISTS idx_function_api_categories_cat ON function_api_categories(category_id);
+
+-- Folder sync sessions (track uploaded folders)
+CREATE TABLE IF NOT EXISTS folder_syncs (
+  id TEXT PRIMARY KEY,
+  folder_name TEXT NOT NULL,
+  original_path TEXT NOT NULL,
+  uploaded_by TEXT NOT NULL,
+  category_ids TEXT,
+  is_global INTEGER DEFAULT 0,
+  total_files INTEGER DEFAULT 0,
+  synced_files INTEGER DEFAULT 0,
+  failed_files INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'syncing', 'error')),
+  error_message TEXT,
+  last_synced_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_folder_syncs_user ON folder_syncs(uploaded_by);
+CREATE INDEX IF NOT EXISTS idx_folder_syncs_status ON folder_syncs(status);
+
+-- Individual files within a folder sync
+CREATE TABLE IF NOT EXISTS folder_sync_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folder_sync_id TEXT NOT NULL,
+  document_id INTEGER,
+  relative_path TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  file_hash TEXT,
+  file_size INTEGER NOT NULL,
+  last_modified INTEGER,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'synced', 'skipped', 'error')),
+  error_message TEXT,
+  synced_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (folder_sync_id) REFERENCES folder_syncs(id) ON DELETE CASCADE,
+  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_folder_sync_files_sync ON folder_sync_files(folder_sync_id);
+CREATE INDEX IF NOT EXISTS idx_folder_sync_files_doc ON folder_sync_files(document_id);
+CREATE INDEX IF NOT EXISTS idx_folder_sync_files_hash ON folder_sync_files(file_hash);
   `;
 }
 

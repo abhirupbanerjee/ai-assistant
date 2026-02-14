@@ -28,6 +28,7 @@ interface UrlIngestionRequest {
     selectPaths?: string[];
     excludePaths?: string[];
   };
+  includePdfs?: boolean;  // Include PDF files discovered during crawl
 }
 
 interface UrlIngestionResponse {
@@ -36,7 +37,7 @@ interface UrlIngestionResponse {
     success: boolean;
     documentId?: string;
     filename?: string;
-    sourceType: 'youtube' | 'web' | 'crawl';
+    sourceType: 'youtube' | 'web' | 'crawl' | 'pdf';
     error?: string;
   }>;
   summary: {
@@ -50,6 +51,10 @@ interface UrlIngestionResponse {
     totalPagesFound: number;
     pagesIngested: number;
     estimatedCredits: number;
+    // PDF info
+    pdfCount?: number;
+    pdfsIngested?: number;
+    pdfsFailed?: number;
   };
 }
 
@@ -71,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json() as UrlIngestionRequest;
-    const { urls, youtubeUrl, name, categoryIds, isGlobal, crawlUrl, crawlOptions } = body;
+    const { urls, youtubeUrl, name, categoryIds, isGlobal, crawlUrl, crawlOptions, includePdfs } = body;
 
     // Validate name if provided
     if (name && name.length > MAX_NAME_LENGTH) {
@@ -160,6 +165,7 @@ export async function POST(request: NextRequest) {
             selectPaths: crawlOptions.selectPaths,
             excludePaths: crawlOptions.excludePaths,
           } : undefined,
+          includePdfs: includePdfs || false,
         });
 
         const response: UrlIngestionResponse = {
@@ -168,7 +174,8 @@ export async function POST(request: NextRequest) {
             success: doc.success,
             documentId: doc.documentId,
             filename: doc.filename,
-            sourceType: 'crawl' as const,
+            // Determine source type: PDF URLs end with .pdf
+            sourceType: doc.url.toLowerCase().endsWith('.pdf') ? 'pdf' as const : 'crawl' as const,
             error: doc.error,
           })),
           summary: {
@@ -181,6 +188,9 @@ export async function POST(request: NextRequest) {
             totalPagesFound: crawlResult.totalPagesFound,
             pagesIngested: crawlResult.successfulPages,
             estimatedCredits: crawlResult.estimatedCredits,
+            pdfCount: crawlResult.pdfCount,
+            pdfsIngested: crawlResult.pdfsIngested,
+            pdfsFailed: crawlResult.pdfsFailed,
           },
         };
 

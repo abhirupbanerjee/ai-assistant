@@ -47,6 +47,8 @@ import {
   generateFilenameFromUrl,
   isTavilyConfigured,
   crawlWebsite,
+  mapWebsite,
+  downloadPdfFromUrl,
   type CrawlOptions,
 } from './tools/tavily';
 
@@ -923,6 +925,7 @@ export interface CrawlIngestionOptions {
   categoryIds?: number[];
   isGlobal?: boolean;
   crawlOptions?: CrawlOptions;
+  includePdfs?: boolean;  // Download and ingest PDFs discovered via Map API
 }
 
 /**
@@ -948,11 +951,16 @@ export interface CrawlIngestionResult {
   documents: CrawlPageIngestionResult[];
   error?: string;
   estimatedCredits: number;
+  // PDF-related fields
+  pdfCount?: number;         // Number of PDFs discovered
+  pdfsIngested?: number;     // Number of PDFs successfully ingested
+  pdfsFailed?: number;       // Number of PDFs that failed to ingest
 }
 
 /**
  * Crawl a website and ingest all discovered pages as documents
  * Each crawled page becomes a separate document
+ * Optionally discovers and downloads PDFs via Map API
  *
  * @param url - Base URL to start crawling from
  * @param uploadedBy - User email who initiated the crawl
@@ -976,11 +984,101 @@ export async function ingestCrawledSite(
     };
   }
 
-  // Crawl the website
+  const documents: CrawlPageIngestionResult[] = [];
+  let successfulPages = 0;
+  let failedPages = 0;
+  let pdfCount = 0;
+  let pdfsIngested = 0;
+  let pdfsFailed = 0;
+  let estimatedCredits = 0;
+
+  // If includePdfs is enabled, first use Map API to discover URLs and PDFs
+  if (options?.includePdfs) {
+    console.log('[Ingest] Using Map API to discover PDFs:', url);
+    const mapResult = await mapWebsite(url, {
+      limit: (options.crawlOptions?.limit ?? 50) * 2, // Map more URLs to find PDFs
+      maxDepth: options.crawlOptions?.maxDepth,
+      selectPaths: options.crawlOptions?.selectPaths,
+      excludePaths: options.crawlOptions?.excludePaths,
+    });
+
+    if (mapResult.success && mapResult.pdfUrls.length > 0) {
+      pdfCount = mapResult.pdfUrls.length;
+      console.log('[Ingest] Found', pdfCount, 'PDFs to download');
+
+      // Download and ingest each PDF
+      for (const pdfUrl of mapResult.pdfUrls) {
+        try {
+          const downloadResult = await downloadPdfFromUrl(pdfUrl);
+
+          if (downloadResult.success && downloadResult.buffer) {
+            // Ingest the PDF through the normal document pipeline
+            const doc = await ingestDocument(
+              downloadResult.buffer,
+              downloadResult.filename || 'document.pdf',
+              uploadedBy,
+              {
+                categoryIds: options.categoryIds,
+                isGlobal: options.isGlobal,
+                mimeType: 'application/pdf',
+              }
+            );
+
+            documents.push({
+              url: pdfUrl,
+              success: true,
+              documentId: doc.id,
+              filename: doc.filename,
+            });
+            pdfsIngested++;
+            successfulPages++;
+          } else {
+            documents.push({
+              url: pdfUrl,
+              success: false,
+              error: downloadResult.error || 'Failed to download PDF',
+            });
+            pdfsFailed++;
+            failedPages++;
+          }
+        } catch (error) {
+          documents.push({
+            url: pdfUrl,
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to ingest PDF',
+          });
+          pdfsFailed++;
+          failedPages++;
+        }
+      }
+
+      // Map API credits: ~1 credit per 10 URLs discovered
+      estimatedCredits += Math.ceil(mapResult.totalUrls / 10);
+    }
+  }
+
+  // Crawl the website for web pages
   console.log('[Ingest] Starting website crawl:', url, options?.crawlOptions);
   const crawlResult = await crawlWebsite(url, options?.crawlOptions);
 
   if (!crawlResult.success) {
+    // If we got some PDFs but crawl failed, return partial success
+    if (pdfsIngested > 0) {
+      return {
+        baseUrl: url,
+        success: true,
+        totalPagesFound: pdfCount,
+        successfulPages,
+        failedPages,
+        documents,
+        error: crawlResult.error || 'Web page crawl failed, but PDFs were ingested',
+        estimatedCredits,
+        pdfCount,
+        pdfsIngested,
+        pdfsFailed,
+      };
+    }
+
     return {
       baseUrl: url,
       success: false,
@@ -992,10 +1090,6 @@ export async function ingestCrawledSite(
       estimatedCredits: 0,
     };
   }
-
-  const documents: CrawlPageIngestionResult[] = [];
-  let successfulPages = 0;
-  let failedPages = 0;
 
   // Ingest each crawled page as a separate document
   for (const page of crawlResult.pages) {
@@ -1035,12 +1129,16 @@ export async function ingestCrawledSite(
     }
   }
 
-  // Calculate estimated credits (1 credit per 10 pages)
-  const estimatedCredits = Math.ceil(crawlResult.totalPages / 10);
+  // Calculate estimated credits (1 credit per 10 pages for crawl)
+  estimatedCredits += Math.ceil(crawlResult.totalPages / 10);
+
+  const totalPagesFound = crawlResult.totalPages + pdfCount;
 
   console.log('[Ingest] Website crawl complete:', {
     baseUrl: url,
-    totalPages: crawlResult.totalPages,
+    totalPages: totalPagesFound,
+    webPages: crawlResult.totalPages,
+    pdfs: pdfCount,
     successful: successfulPages,
     failed: failedPages,
     credits: estimatedCredits,
@@ -1049,10 +1147,13 @@ export async function ingestCrawledSite(
   return {
     baseUrl: crawlResult.baseUrl,
     success: successfulPages > 0,
-    totalPagesFound: crawlResult.totalPages,
+    totalPagesFound,
     successfulPages,
     failedPages,
     documents,
     estimatedCredits,
+    pdfCount: pdfCount > 0 ? pdfCount : undefined,
+    pdfsIngested: pdfsIngested > 0 ? pdfsIngested : undefined,
+    pdfsFailed: pdfsFailed > 0 ? pdfsFailed : undefined,
   };
 }

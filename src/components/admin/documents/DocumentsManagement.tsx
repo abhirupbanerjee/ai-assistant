@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save } from 'lucide-react';
+import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save, Link2, FolderOpen, Clock, ChevronRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -26,7 +26,7 @@ interface UrlIngestionResult {
   success: boolean;
   filename?: string;
   error?: string;
-  sourceType: 'youtube' | 'web' | 'crawl';
+  sourceType: 'youtube' | 'web' | 'crawl' | 'pdf';
 }
 
 interface CrawlInfo {
@@ -34,6 +34,33 @@ interface CrawlInfo {
   totalPagesFound: number;
   pagesIngested: number;
   estimatedCredits: number;
+  pdfCount?: number;
+  pdfsIngested?: number;
+  pdfsFailed?: number;
+}
+
+interface FolderSync {
+  id: string;
+  folderName: string;
+  originalPath: string;
+  uploadedBy: string;
+  categoryIds: number[];
+  isGlobal: boolean;
+  totalFiles: number;
+  syncedFiles: number;
+  failedFiles: number;
+  status: 'active' | 'syncing' | 'error';
+  errorMessage: string | null;
+  lastSyncedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface FolderUploadFile {
+  file: File;
+  relativePath: string;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
 }
 
 interface DocumentsManagementProps {
@@ -65,7 +92,7 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'web' | 'youtube'>('file');
+  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'urls' | 'crawl' | 'youtube' | 'folder'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTextName, setUploadTextName] = useState('');
   const [uploadTextContent, setUploadTextContent] = useState('');
@@ -76,12 +103,34 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
   const [uploadUrlName, setUploadUrlName] = useState('');
   const [urlIngestionResults, setUrlIngestionResults] = useState<UrlIngestionResult[] | null>(null);
 
-  // Crawl state
-  const [enableCrawl, setEnableCrawl] = useState(false);
+  // Crawl state (for Crawl Site tab)
+  const [crawlUrl, setCrawlUrl] = useState('');
   const [crawlLimit, setCrawlLimit] = useState<number>(25);
   const [crawlPathFilter, setCrawlPathFilter] = useState('');
   const [crawlExcludeFilter, setCrawlExcludeFilter] = useState('');
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
+  const [includePdfs, setIncludePdfs] = useState(true);  // Include PDF files in crawl
+
+  // Folder upload state
+  const [folderFiles, setFolderFiles] = useState<FolderUploadFile[]>([]);
+  const [folderName, setFolderName] = useState('');
+  const [folderUploadProgress, setFolderUploadProgress] = useState<{
+    current: number;
+    total: number;
+    currentFile: string;
+  } | null>(null);
+  const [folderUploadResults, setFolderUploadResults] = useState<{
+    synced: number;
+    failed: number;
+    skipped: number;
+  } | null>(null);
+
+  // Synced folders state
+  const [folderSyncs, setFolderSyncs] = useState<FolderSync[]>([]);
+  const [loadingFolderSyncs, setLoadingFolderSyncs] = useState(false);
+  const [showFolderSyncs, setShowFolderSyncs] = useState(false);
+  const [resyncingFolder, setResyncingFolder] = useState<string | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
 
   // Delete modal state
   const [deleteDoc, setDeleteDoc] = useState<GlobalDocument | null>(null);
@@ -193,11 +242,27 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
     }
   }, []);
 
+  // Load folder syncs
+  const loadFolderSyncs = useCallback(async () => {
+    try {
+      setLoadingFolderSyncs(true);
+      const response = await fetch('/api/admin/documents/folders');
+      if (!response.ok) throw new Error('Failed to load folder syncs');
+      const data = await response.json();
+      setFolderSyncs(data.folderSyncs || []);
+    } catch (err) {
+      console.error('Failed to load folder syncs:', err);
+    } finally {
+      setLoadingFolderSyncs(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadDocuments();
     loadCategories();
     loadAcronymMappings();
-  }, [loadDocuments, loadCategories, loadAcronymMappings]);
+    loadFolderSyncs();
+  }, [loadDocuments, loadCategories, loadAcronymMappings, loadFolderSyncs]);
 
   // Reset upload form
   const resetUploadForm = () => {
@@ -212,20 +277,27 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
     setUploadUrlName('');
     setUrlIngestionResults(null);
     // Reset crawl state
-    setEnableCrawl(false);
     setCrawlLimit(25);
+    setCrawlUrl('');
     setCrawlPathFilter('');
     setCrawlExcludeFilter('');
     setCrawlInfo(null);
+    setIncludePdfs(true);
+    // Reset folder state
+    setFolderFiles([]);
+    setFolderName('');
+    setFolderUploadProgress(null);
+    setFolderUploadResults(null);
   };
 
   // Upload handler
   const handleUploadConfirm = async () => {
     if (uploadMode === 'file' && !uploadFile) return;
     if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
-    if (uploadMode === 'web' && !enableCrawl && getValidWebUrls().length === 0) return;
-    if (uploadMode === 'web' && enableCrawl && !uploadUrls[0].trim()) return;
+    if (uploadMode === 'urls' && getValidWebUrls().length === 0) return;
+    if (uploadMode === 'crawl' && !crawlUrl.trim()) return;
     if (uploadMode === 'youtube' && (!uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))) return;
+    if (uploadMode === 'folder' && folderFiles.length === 0) return;
 
     setUploading(true);
     setUploadProgress('Uploading...');
@@ -256,51 +328,49 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
             isGlobal: uploadIsGlobal,
           }),
         });
-      } else if (uploadMode === 'web') {
-        if (enableCrawl) {
-          // Crawl mode
-          const baseUrl = uploadUrls[0].trim();
-          setUploadProgress('Crawling website...');
+      } else if (uploadMode === 'urls') {
+        // Extract mode (single pages)
+        const webUrls = getValidWebUrls();
+        setUploadProgress('Extracting content...');
+        response = await fetch('/api/admin/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urls: webUrls,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
+      } else if (uploadMode === 'crawl') {
+        // Crawl mode
+        setUploadProgress('Crawling website...');
 
-          // Parse path filters
-          const selectPaths = crawlPathFilter
-            .split('\n')
-            .map(p => p.trim())
-            .filter(p => p.length > 0);
-          const excludePaths = crawlExcludeFilter
-            .split('\n')
-            .map(p => p.trim())
-            .filter(p => p.length > 0);
+        // Parse path filters
+        const selectPaths = crawlPathFilter
+          .split('\n')
+          .map(p => p.trim())
+          .filter(p => p.length > 0);
+        const excludePaths = crawlExcludeFilter
+          .split('\n')
+          .map(p => p.trim())
+          .filter(p => p.length > 0);
 
-          response = await fetch('/api/admin/documents/url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              crawlUrl: baseUrl,
-              crawlOptions: {
-                limit: crawlLimit,
-                selectPaths: selectPaths.length > 0 ? selectPaths : undefined,
-                excludePaths: excludePaths.length > 0 ? excludePaths : undefined,
-              },
-              categoryIds: uploadCategoryIds,
-              isGlobal: uploadIsGlobal,
-            }),
-          });
-        } else {
-          // Extract mode (single pages)
-          const webUrls = getValidWebUrls();
-          setUploadProgress('Extracting content...');
-          response = await fetch('/api/admin/documents/url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              urls: webUrls,
-              categoryIds: uploadCategoryIds,
-              isGlobal: uploadIsGlobal,
-            }),
-          });
-        }
-      } else {
+        response = await fetch('/api/admin/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            crawlUrl: crawlUrl.trim(),
+            crawlOptions: {
+              limit: crawlLimit,
+              selectPaths: selectPaths.length > 0 ? selectPaths : undefined,
+              excludePaths: excludePaths.length > 0 ? excludePaths : undefined,
+            },
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+            includePdfs,
+          }),
+        });
+      } else if (uploadMode === 'youtube') {
         const youtubeUrl = uploadYoutubeUrl.trim();
         setUploadProgress('Extracting transcript...');
         response = await fetch('/api/admin/documents/url', {
@@ -313,6 +383,28 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
             isGlobal: uploadIsGlobal,
           }),
         });
+      } else {
+        // Folder upload mode
+        setUploadProgress('Preparing folder upload...');
+        setFolderUploadProgress({ current: 0, total: folderFiles.length, currentFile: '' });
+
+        const formData = new FormData();
+        formData.append('folderName', folderName);
+        formData.append('categoryIds', JSON.stringify(uploadCategoryIds));
+        formData.append('isGlobal', String(uploadIsGlobal));
+
+        // Add all files with their relative paths
+        const relativePaths: string[] = [];
+        for (const item of folderFiles) {
+          formData.append('files', item.file);
+          relativePaths.push(item.relativePath);
+        }
+        formData.append('relativePaths', JSON.stringify(relativePaths));
+
+        response = await fetch('/api/admin/documents/folder', {
+          method: 'POST',
+          body: formData,
+        });
       }
 
       if (!response.ok) {
@@ -322,7 +414,7 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
 
       const data = await response.json();
 
-      if (uploadMode === 'web' || uploadMode === 'youtube') {
+      if (uploadMode === 'urls' || uploadMode === 'crawl' || uploadMode === 'youtube') {
         if (data.results) {
           setUrlIngestionResults(data.results);
         }
@@ -331,8 +423,21 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
         }
       }
 
+      if (uploadMode === 'folder') {
+        // Handle folder upload results
+        setFolderUploadProgress(null);
+        if (data.summary) {
+          setFolderUploadResults({
+            synced: data.summary.synced || 0,
+            failed: data.summary.failed || 0,
+            skipped: data.summary.skipped || 0,
+          });
+        }
+        await loadFolderSyncs();
+      }
+
       await loadDocuments();
-      if (uploadMode !== 'web' && uploadMode !== 'youtube') {
+      if (uploadMode !== 'urls' && uploadMode !== 'crawl' && uploadMode !== 'youtube' && uploadMode !== 'folder') {
         setShowUploadModal(false);
         resetUploadForm();
       }
@@ -404,6 +509,100 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
     } finally {
       setSavingDocChanges(false);
     }
+  };
+
+  // Handle folder re-sync (not used in initial upload - for future use via folder management section)
+  const handleFolderResync = async (syncId: string, files: File[], relativePaths: string[]) => {
+    setResyncingFolder(syncId);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('relativePaths', JSON.stringify(relativePaths));
+      for (const file of files) {
+        formData.append('files', file);
+      }
+
+      const response = await fetch(`/api/admin/documents/folders/${syncId}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Re-sync failed');
+      }
+
+      await loadDocuments();
+      await loadFolderSyncs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Re-sync failed');
+    } finally {
+      setResyncingFolder(null);
+    }
+  };
+
+  // Delete folder sync
+  const handleDeleteFolderSync = async (syncId: string, deleteDocuments: boolean = false) => {
+    if (!confirm(deleteDocuments
+      ? 'Delete this folder sync AND all associated documents? This cannot be undone.'
+      : 'Delete this folder sync record? Documents will be kept.')) {
+      return;
+    }
+
+    setDeletingFolder(syncId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/documents/folders/${syncId}?deleteDocuments=${deleteDocuments}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Delete failed');
+      }
+
+      await loadDocuments();
+      await loadFolderSyncs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeletingFolder(null);
+    }
+  };
+
+  // Handle folder file selection
+  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Extract folder name from first file path
+    const firstFile = files[0];
+    const pathParts = firstFile.webkitRelativePath.split('/');
+    const rootFolderName = pathParts[0] || 'Uploaded Folder';
+    setFolderName(rootFolderName);
+
+    // Build file list with relative paths
+    const fileList: FolderUploadFile[] = [];
+    const supportedExtensions = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const relativePath = file.webkitRelativePath;
+      const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+      if (supportedExtensions.includes(extension)) {
+        fileList.push({
+          file,
+          relativePath,
+          status: 'pending',
+        });
+      }
+    }
+
+    setFolderFiles(fileList);
+    setFolderUploadResults(null);
   };
 
   // Reindex document
@@ -917,6 +1116,93 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
               </table>
             </div>
           )}
+
+          {/* Synced Folders Section */}
+          {folderSyncs.length > 0 && (
+            <div className="mt-4 border-t pt-4">
+              <button
+                onClick={() => setShowFolderSyncs(!showFolderSyncs)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                <ChevronRight
+                  size={16}
+                  className={`transition-transform ${showFolderSyncs ? 'rotate-90' : ''}`}
+                />
+                <FolderOpen size={16} />
+                Synced Folders ({folderSyncs.length})
+              </button>
+
+              {showFolderSyncs && (
+                <div className="mt-3 space-y-2">
+                  {loadingFolderSyncs ? (
+                    <div className="flex justify-center py-4">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    folderSyncs.map((sync) => (
+                      <div
+                        key={sync.id}
+                        className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border"
+                      >
+                        <div className="flex items-center gap-3">
+                          <FolderOpen className="w-5 h-5 text-blue-600" />
+                          <div>
+                            <p className="font-medium text-gray-900">{sync.folderName}</p>
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <FileText size={12} />
+                                {sync.syncedFiles}/{sync.totalFiles} files
+                              </span>
+                              {sync.failedFiles > 0 && (
+                                <span className="text-red-600">
+                                  {sync.failedFiles} failed
+                                </span>
+                              )}
+                              <span className="flex items-center gap-1">
+                                <Clock size={12} />
+                                {sync.lastSyncedAt ? formatDate(sync.lastSyncedAt) : formatDate(sync.createdAt)}
+                              </span>
+                              {sync.isGlobal && (
+                                <span className="flex items-center gap-1 text-purple-600">
+                                  <Globe size={12} />
+                                  Global
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded-full ${
+                              sync.status === 'active'
+                                ? 'bg-green-100 text-green-700'
+                                : sync.status === 'syncing'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {sync.status}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteFolderSync(sync.id, false)}
+                            disabled={deletingFolder === sync.id}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                            title="Remove sync record (keep documents)"
+                          >
+                            {deletingFolder === sync.id ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              <Trash2 size={16} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -999,12 +1285,7 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
         isOpen={showUploadModal}
         onClose={() => {
           setShowUploadModal(false);
-          setUploadFile(null);
-          setUploadTextName('');
-          setUploadTextContent('');
-          setUploadCategoryIds([]);
-          setUploadIsGlobal(false);
-          setUploadMode('file');
+          resetUploadForm();
         }}
         title="Upload Document"
       >
@@ -1033,15 +1314,26 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
             Text
           </button>
           <button
-            onClick={() => setUploadMode('web')}
+            onClick={() => setUploadMode('urls')}
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              uploadMode === 'web'
+              uploadMode === 'urls'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <Globe size={16} className="inline mr-2" />
-            Web
+            URLs
+          </button>
+          <button
+            onClick={() => setUploadMode('crawl')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'crawl'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Link2 size={16} className="inline mr-2" />
+            Crawl Site
           </button>
           <button
             onClick={() => setUploadMode('youtube')}
@@ -1053,6 +1345,17 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
           >
             <Youtube size={16} className="inline mr-2" />
             YouTube
+          </button>
+          <button
+            onClick={() => setUploadMode('folder')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'folder'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FolderOpen size={16} className="inline mr-2" />
+            Folder
           </button>
         </div>
 
@@ -1130,19 +1433,90 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
             </>
           )}
 
-          {/* Web Mode */}
-          {uploadMode === 'web' && (
+          {/* URLs Mode - Extract single pages */}
+          {uploadMode === 'urls' && (
             <>
               {/* URL Ingestion Results */}
               {urlIngestionResults && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    {crawlInfo ? 'Crawl Results' : 'Ingestion Results'}
-                  </h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {urlIngestionResults.map((result, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-start gap-2 text-sm ${
+                          result.success ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
+                        {result.success ? (
+                          <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate">{result.url}</p>
+                          {result.success ? (
+                            <p className="text-xs text-green-600">{result.filename}</p>
+                          ) : (
+                            <p className="text-xs text-red-600">{result.error}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUrlIngestionResults(null)}
+                    className="mt-2 text-xs text-blue-600 hover:underline"
+                  >
+                    Clear results
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Web URLs (up to 5 - saves API credits)
+                </label>
+                <div className="space-y-2">
+                  {uploadUrls.map((url, index) => (
+                    <input
+                      key={index}
+                      type="url"
+                      value={url}
+                      onChange={(e) => {
+                        const newUrls = [...uploadUrls];
+                        newUrls[index] = e.target.value;
+                        setUploadUrls(newUrls);
+                      }}
+                      placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                        url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Crawl Site Mode - Crawl entire website */}
+          {uploadMode === 'crawl' && (
+            <>
+              {/* Crawl Results */}
+              {urlIngestionResults && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Crawl Results</h4>
                   {crawlInfo && (
                     <div className="text-xs text-gray-600 mb-2 p-2 bg-blue-50 rounded">
                       <p>Base URL: {crawlInfo.baseUrl}</p>
                       <p>Pages found: {crawlInfo.totalPagesFound} | Ingested: {crawlInfo.pagesIngested}</p>
+                      {crawlInfo.pdfCount && crawlInfo.pdfCount > 0 && (
+                        <p>PDFs: {crawlInfo.pdfsIngested || 0} of {crawlInfo.pdfCount} ingested</p>
+                      )}
                       <p>Estimated credits used: ~{crawlInfo.estimatedCredits}</p>
                     </div>
                   )}
@@ -1183,129 +1557,110 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
                 </div>
               )}
 
-              {/* Crawl Toggle */}
-              <div className="flex items-center gap-2 mb-4">
+              {/* Base URL input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Website URL
+                </label>
+                <input
+                  type="url"
+                  value={crawlUrl}
+                  onChange={(e) => setCrawlUrl(e.target.value)}
+                  placeholder="https://example.com/docs"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                    crawlUrl && !isValidUrl(crawlUrl) ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter a base URL to crawl and extract content from multiple pages
+                </p>
+              </div>
+
+              {/* Max Pages Selector */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Maximum Pages
+                </label>
+                <select
+                  value={crawlLimit}
+                  onChange={(e) => setCrawlLimit(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value={10}>10 pages (~1 credit)</option>
+                  <option value={25}>25 pages (~3 credits)</option>
+                  <option value={50}>50 pages (~5 credits)</option>
+                  <option value={100}>100 pages (~10 credits)</option>
+                </select>
+              </div>
+
+              {/* PDF Option */}
+              <div className="mt-4 flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="enableCrawl"
-                  checked={enableCrawl}
-                  onChange={(e) => setEnableCrawl(e.target.checked)}
+                  id="includePdfs"
+                  checked={includePdfs}
+                  onChange={(e) => setIncludePdfs(e.target.checked)}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <label htmlFor="enableCrawl" className="text-sm font-medium text-gray-700">
-                  Crawl entire site
+                <label htmlFor="includePdfs" className="text-sm font-medium text-gray-700">
+                  Include PDF documents
                 </label>
                 <span className="text-xs text-gray-500">
-                  (discovers and extracts multiple pages)
+                  (discovers and downloads PDFs)
                 </span>
               </div>
 
-              {enableCrawl ? (
-                /* Crawl Mode UI */
-                <>
-                  {/* Base URL input */}
+              {/* Optional Path Filters */}
+              <details className="mt-4">
+                <summary className="text-sm font-medium text-gray-700 cursor-pointer hover:text-gray-900">
+                  Advanced: Path Filters
+                </summary>
+                <div className="mt-2 space-y-3 pl-2 border-l-2 border-gray-200">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Base URL to Crawl
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Include paths (regex, one per line)
                     </label>
-                    <input
-                      type="url"
-                      value={uploadUrls[0]}
-                      onChange={(e) => setUploadUrls([e.target.value, '', '', '', ''])}
-                      placeholder="https://example.com/docs"
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                        uploadUrls[0] && !isValidUrl(uploadUrls[0]) ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                    <textarea
+                      value={crawlPathFilter}
+                      onChange={(e) => setCrawlPathFilter(e.target.value)}
+                      placeholder={"/docs/.*\n/guide/.*"}
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-
-                  {/* Max Pages Selector */}
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Maximum Pages
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Exclude paths (regex, one per line)
                     </label>
-                    <select
-                      value={crawlLimit}
-                      onChange={(e) => setCrawlLimit(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    >
-                      <option value={10}>10 pages (~1 credit)</option>
-                      <option value={25}>25 pages (~3 credits)</option>
-                      <option value={50}>50 pages (~5 credits)</option>
-                      <option value={100}>100 pages (~10 credits)</option>
-                    </select>
+                    <textarea
+                      value={crawlExcludeFilter}
+                      onChange={(e) => setCrawlExcludeFilter(e.target.value)}
+                      placeholder={"/api/.*\n/admin/.*"}
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-
-                  {/* Optional Path Filters */}
-                  <details className="mt-4">
-                    <summary className="text-sm font-medium text-gray-700 cursor-pointer hover:text-gray-900">
-                      Advanced: Path Filters
-                    </summary>
-                    <div className="mt-2 space-y-3 pl-2 border-l-2 border-gray-200">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Include paths (regex, one per line)
-                        </label>
-                        <textarea
-                          value={crawlPathFilter}
-                          onChange={(e) => setCrawlPathFilter(e.target.value)}
-                          placeholder={"/docs/.*\n/guide/.*"}
-                          rows={2}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">
-                          Exclude paths (regex, one per line)
-                        </label>
-                        <textarea
-                          value={crawlExcludeFilter}
-                          onChange={(e) => setCrawlExcludeFilter(e.target.value)}
-                          placeholder={"/api/.*\n/admin/.*"}
-                          rows={2}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </details>
-
-                  {/* Credit Usage Warning */}
-                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Credit Usage:</strong> Crawling uses ~1 Tavily credit per 10 pages.
-                      With {crawlLimit} pages limit, expect up to {Math.ceil(crawlLimit / 10)} credits.
-                    </p>
-                  </div>
-                </>
-              ) : (
-                /* Extract Mode UI (single pages) */
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Web URLs (up to 5 - saves API credits)
-                  </label>
-                  <div className="space-y-2">
-                    {uploadUrls.map((url, index) => (
-                      <input
-                        key={index}
-                        type="url"
-                        value={url}
-                        onChange={(e) => {
-                          const newUrls = [...uploadUrls];
-                          newUrls[index] = e.target.value;
-                          setUploadUrls(newUrls);
-                        }}
-                        placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                          url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
-                  </p>
                 </div>
-              )}
+              </details>
+
+              {/* Credit Usage Warning */}
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <strong>Credit Usage:</strong> Crawling uses ~1 Tavily credit per 10 pages.
+                  With {crawlLimit} pages limit, expect up to {Math.ceil(crawlLimit / 10)} credits.
+                  {includePdfs && ' Additional credits used for PDF discovery.'}
+                </p>
+              </div>
+
+              {/* Note about crawl */}
+              <div className="mt-3 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                <p className="text-xs text-gray-600">
+                  <strong>Note:</strong> Crawl discovers and extracts content from multiple web pages.
+                  {includePdfs
+                    ? ' PDFs found on the site will be downloaded and processed separately.'
+                    : ' Enable "Include PDF documents" to capture PDFs from the site.'}
+                </p>
+              </div>
             </>
           )}
 
@@ -1386,6 +1741,149 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   />
                 </div>
+              )}
+            </>
+          )}
+
+          {/* Folder Upload Mode */}
+          {uploadMode === 'folder' && (
+            <>
+              {/* Folder Upload Results */}
+              {folderUploadResults && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Upload Results</h4>
+                  <div className="space-y-1 text-sm">
+                    <p className="flex items-center gap-2 text-green-700">
+                      <CheckCircle size={16} />
+                      {folderUploadResults.synced} files synced successfully
+                    </p>
+                    {folderUploadResults.skipped > 0 && (
+                      <p className="flex items-center gap-2 text-yellow-700">
+                        <AlertCircle size={16} />
+                        {folderUploadResults.skipped} files skipped (unsupported type)
+                      </p>
+                    )}
+                    {folderUploadResults.failed > 0 && (
+                      <p className="flex items-center gap-2 text-red-700">
+                        <AlertCircle size={16} />
+                        {folderUploadResults.failed} files failed
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFolderUploadResults(null);
+                      setFolderFiles([]);
+                      setFolderName('');
+                    }}
+                    className="mt-2 text-xs text-blue-600 hover:underline"
+                  >
+                    Upload another folder
+                  </button>
+                </div>
+              )}
+
+              {/* Folder Selection */}
+              {!folderUploadResults && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Select Folder
+                    </label>
+                    {folderFiles.length > 0 ? (
+                      <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <FolderOpen className="w-5 h-5 text-blue-600" />
+                            <span className="font-medium text-gray-900">{folderName}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFolderFiles([]);
+                              setFolderName('');
+                            }}
+                            className="p-1 hover:bg-gray-200 rounded"
+                          >
+                            <X size={14} className="text-gray-500" />
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {folderFiles.length} supported files found
+                        </p>
+                        <div className="max-h-32 overflow-y-auto text-xs text-gray-500 space-y-0.5">
+                          {folderFiles.slice(0, 20).map((f, idx) => (
+                            <p key={idx} className="truncate">{f.relativePath}</p>
+                          ))}
+                          {folderFiles.length > 20 && (
+                            <p className="text-gray-400 italic">...and {folderFiles.length - 20} more</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-gray-50 transition-colors">
+                        <FolderOpen size={32} className="text-gray-400 mb-2" />
+                        <span className="text-sm text-gray-500">Click to select a folder</span>
+                        <span className="text-xs text-gray-400 mt-1">All files in subfolders will be included</span>
+                        <input
+                          type="file"
+                          // @ts-expect-error webkitdirectory is a valid HTML attribute
+                          webkitdirectory=""
+                          directory=""
+                          multiple
+                          onChange={handleFolderSelect}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Upload Progress */}
+                  {folderUploadProgress && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-blue-800">
+                          Uploading files...
+                        </span>
+                        <span className="text-sm text-blue-600">
+                          {folderUploadProgress.current} / {folderUploadProgress.total}
+                        </span>
+                      </div>
+                      <div className="w-full bg-blue-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all"
+                          style={{ width: `${(folderUploadProgress.current / folderUploadProgress.total) * 100}%` }}
+                        />
+                      </div>
+                      {folderUploadProgress.currentFile && (
+                        <p className="mt-1 text-xs text-blue-600 truncate">
+                          {folderUploadProgress.currentFile}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Folder Limits Notice */}
+                  {folderFiles.length > 0 && folderFiles.length > 500 && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        <strong>Warning:</strong> Maximum 500 files per folder upload.
+                        Only the first 500 files will be processed.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Info */}
+                  <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-xs text-gray-600">
+                      <strong>Supported files:</strong> PDF, DOCX, XLSX, PPTX, TXT, MD, PNG, JPG, WEBP, GIF
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Folder path is preserved in document metadata for re-sync capability.
+                    </p>
+                  </div>
+                </>
               )}
             </>
           )}
@@ -1483,9 +1981,13 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
                 ? !uploadFile
                 : uploadMode === 'text'
                 ? (!uploadTextName.trim() || !uploadTextContent.trim())
-                : uploadMode === 'web'
-                ? (enableCrawl ? !uploadUrls[0].trim() || !isValidUrl(uploadUrls[0]) : getValidWebUrls().length === 0)
-                : !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim())
+                : uploadMode === 'urls'
+                ? getValidWebUrls().length === 0
+                : uploadMode === 'crawl'
+                ? !crawlUrl.trim() || !isValidUrl(crawlUrl)
+                : uploadMode === 'youtube'
+                ? !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim())
+                : folderFiles.length === 0
             }
           >
             <Upload size={18} className="mr-2" />
