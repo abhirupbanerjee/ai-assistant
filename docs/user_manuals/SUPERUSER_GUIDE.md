@@ -504,7 +504,7 @@ You can only edit skills you created:
 
 The Tools tab lets you configure AI tools for your managed categories.
 
-> **📖 Detailed Documentation:** For comprehensive information about tools, see [docs/features/Tools.md](../../features/Tools.md). For tool routing, see [docs/features/TOOL_ROUTING.md](../../features/TOOL_ROUTING.md).
+> **📖 Detailed Documentation:** For comprehensive information about tools, see [docs/features/Tools.md](../../features/Tools.md). For skill-based tool routing, see [docs/features/SKILLS.md](../../features/SKILLS.md).
 
 ### Understanding Tool Inheritance
 

@@ -190,6 +190,8 @@ When `AUTH_DISABLED=true` in environment:
 | DELETE | `/api/user/memory` | Yes | Any | Clear user memories |
 | GET | `/api/admin/memory/stats` | Yes | Admin | Get memory extraction stats |
 | GET | `/api/admin/summarization/stats` | Yes | Admin | Get summarization stats |
+| POST | `/api/chat/hitl` | Yes | Any | Submit HITL clarification response |
+| GET | `/api/admin/compliance/stats` | Yes | Admin | Get compliance statistics |
 | GET | `/api/admin/backup` | Yes | Admin | Download system backup |
 | POST | `/api/admin/backup/restore` | Yes | Admin | Restore from backup |
 | GET | `/api/superuser/backup` | Yes | Superuser | Download category backup |
@@ -439,6 +441,41 @@ type ErrorCode =
   | "SERVICE_ERROR";
 ```
 
+### ComplianceDecision
+
+```typescript
+interface ComplianceDecision {
+  decision: 'pass' | 'warn' | 'hitl';
+  score: number;                    // 0-100
+  checksPerformed: ComplianceCheckResult[];
+  failedChecks: string[];           // Names of failed checks
+  issues: string[];                 // Human-readable issue descriptions
+  badgeType: 'success' | 'warning' | 'error';
+  badgeText: string;                // Display text for badge
+}
+
+interface ComplianceCheckResult {
+  rule: string;                     // Rule name
+  checkType: 'tool_success' | 'data_returned' | 'artifact_valid' | 'sections_present';
+  target: string;                   // Tool name or section
+  passed: boolean;
+  detail: string;                   // Description of result
+  weight: number;                   // Check weight (0-100)
+}
+```
+
+### SkillComplianceConfig
+
+```typescript
+interface SkillComplianceConfig {
+  enabled: boolean;                 // Enable compliance for this skill
+  sections?: string[];              // Required markdown headings
+  passThreshold?: number;           // Override global (default: 80)
+  warnThreshold?: number;           // Override global (default: 50)
+  clarificationInstructions?: string; // Custom LLM context
+}
+```
+
 ---
 
 ## Endpoints
@@ -547,6 +584,113 @@ curl -X POST https://policybot.abhirup.app/api/chat \
 - Web search via Tavily auto-triggers if RAG returns insufficient context
 - Sources are limited to top relevant chunks based on system settings
 - Thread categories determine which document collections are searched
+
+---
+
+#### `POST /api/chat/hitl`
+
+Submit user response to HITL (Human-in-the-Loop) clarification dialog.
+
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Request Body**:
+
+```typescript
+{
+  messageId: string;                    // Message that triggered HITL
+  action: 'continue' | 'accept' | 'accept_flagged' | 'cancel';
+  responses?: Record<string, string>;   // Selected option per question
+  freeText?: Record<string, string>;    // Free text inputs per question
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `messageId` | string | Yes | ID of the message with compliance issues |
+| `action` | string | Yes | User's action choice |
+| `responses` | object | No | Question ID → selected option ID |
+| `freeText` | object | No | Question ID → free text input |
+
+**Actions**:
+
+| Action | Description |
+|--------|-------------|
+| `continue` | Apply selections and retry with clarifications |
+| `accept` | Accept the current response as-is |
+| `accept_flagged` | Accept but flag for admin review |
+| `cancel` | Cancel the response |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: boolean;
+  retryContext?: {              // Present when action='continue'
+    clarifications: object;     // User's selections to apply
+    messageId: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Message ID required" | VALIDATION_ERROR | Include messageId |
+| 400 | "Invalid action" | VALIDATION_ERROR | Use valid action value |
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
+| 500 | "Failed to process HITL response" | SERVICE_ERROR | Contact admin |
+
+---
+
+#### `GET /api/admin/compliance/stats`
+
+Get compliance checking statistics for analytics.
+
+**Authentication**: Required
+**Role**: Admin
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `skillId` | number | No | - | Filter by skill ID |
+| `from` | string | No | 7 days ago | Start date (ISO 8601) |
+| `to` | string | No | Now | End date (ISO 8601) |
+| `includeRecent` | boolean | No | false | Include recent results |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  stats: {
+    totalChecks: number;
+    passCount: number;
+    warnCount: number;
+    hitlCount: number;
+    passRate: number;           // Percentage
+    avgScore: number;           // 0-100
+    hitlAcceptRate: number;     // % of HITL accepted
+    hitlFlaggedCount: number;   // Flagged for review
+  };
+  config: {
+    enabled: boolean;
+    passThreshold: number;
+    warnThreshold: number;
+    enableHitl: boolean;
+    useLlmClarifications: boolean;
+  };
+  recentResults?: ComplianceResult[];  // If includeRecent=true
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in |
+| 403 | "Admin access required" | FORBIDDEN | Use admin account |
 
 ---
 

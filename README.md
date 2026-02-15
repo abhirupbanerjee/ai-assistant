@@ -70,6 +70,7 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Image Generation** - DALL-E 3 and Gemini Imagen integration
 - **Diagram Generation** - Mermaid flowcharts, sequences, mindmaps
 - **Translation** - Multi-provider translation (OpenAI, Gemini, Mistral)
+- **Compliance Checker** - Response validation with weighted scoring and HITL clarification
 
 ### Autonomous Agent (Beta)
 - **Task Planning** - Decompose complex requests into multi-step plans
@@ -135,8 +136,7 @@ policy-bot/
 │   ├── features/               # Feature documentation
 │   │   ├── Tools.md            # Tool system documentation
 │   │   ├── PROMPTS.md          # Prompts system guide
-│   │   ├── SKILLS.md           # Skills system guide
-│   │   ├── TOOL_ROUTING.md     # Tool routing guide
+│   │   ├── SKILLS.md           # Skills system guide (includes tool routing)
 │   │   ├── PWA.md              # Progressive Web App guide
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md # Autonomous mode
 │   ├── tech/                   # Technical architecture
@@ -270,8 +270,7 @@ See `.env.example` for complete configuration reference.
 | Document | Content |
 |----------|---------|
 | [PROMPTS.md](docs/features/PROMPTS.md) | Prompts system: global, category, starter prompts, acronyms |
-| [SKILLS.md](docs/features/SKILLS.md) | Skills system: trigger types, priority, examples |
-| [TOOL_ROUTING.md](docs/features/TOOL_ROUTING.md) | Tool routing: pattern matching, force modes, testing |
+| [SKILLS.md](docs/features/SKILLS.md) | Skills system: trigger types, tool routing, compliance, priority, examples |
 | [Tools.md](docs/features/Tools.md) | Tools: web search, data sources, charts, task planning |
 | [PWA.md](docs/features/PWA.md) | Progressive Web App: installation, capabilities, limitations |
 

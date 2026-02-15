@@ -46,8 +46,7 @@ Detailed guides for specific features and capabilities.
 | Document | Description | Key Topics |
 |----------|-------------|------------|
 | [features/PROMPTS.md](features/PROMPTS.md) | Prompts system guide | Global prompts, category prompts, starter prompts, acronyms, variables, optimization |
-| [features/SKILLS.md](features/SKILLS.md) | Skills system guide | Trigger types (always-on, category, keyword), match types, priority system, examples |
-| [features/TOOL_ROUTING.md](features/TOOL_ROUTING.md) | Tool routing guide | Pattern matching, force modes (required, preferred, suggested), testing, priority resolution |
+| [features/SKILLS.md](features/SKILLS.md) | Skills system guide | Trigger types (always-on, category, keyword), match types, tool routing, priority system, compliance, examples |
 
 ### Tools & Integrations
 
@@ -161,7 +160,7 @@ Guides for different user roles and workflows.
 ### Tools & Function Calling
 
 - [features/Tools.md](features/Tools.md) - Complete tools documentation
-- [features/TOOL_ROUTING.md](features/TOOL_ROUTING.md) - Deterministic tool invocation
+- [features/SKILLS.md](features/SKILLS.md) - Skill-based tool routing
 - [user_manuals/ADMIN_GUIDE.md § Tools](user_manuals/ADMIN_GUIDE.md#8-tools) - Tools configuration UI
 - [user_manuals/ADMIN_GUIDE.md § Tool Routing](user_manuals/ADMIN_GUIDE.md#9-tool-routing) - Routing rules UI
 
@@ -283,7 +282,7 @@ This documentation index tracks major documentation updates.
 |---------|------|---------|
 | **2.7** | February 2025 | Added Autonomous Agent (beta) documentation, Content Generation (image/diagram/translation), skill tool association, updated tech docs |
 | **2.6** | February 2025 | Superuser skill creation (priority 100+), updated permissions matrix, API spec alignment |
-| **2.5** | January 2025 | Added comprehensive feature documentation (PROMPTS.md, SKILLS.md, TOOL_ROUTING.md, PWA.md), updated all guides with cross-references, added PWA sections throughout |
+| **2.5** | January 2025 | Added comprehensive feature documentation (PROMPTS.md, SKILLS.md, PWA.md), updated all guides with cross-references, added PWA sections throughout |
 | **2.4** | January 2025 | Added vision-capable models, thread sharing, email notifications |
 | **2.3** | December 2024 | Added workspaces (embed and standalone modes), analytics |
 | **2.2** | November 2024 | Added task planner templates, data sources, function APIs |

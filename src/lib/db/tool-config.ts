@@ -480,6 +480,21 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       debugMode: false,
     },
   },
+  compliance_checker: {
+    enabled: false, // Disabled by default - opt-in feature
+    config: {
+      passThreshold: 80,
+      warnThreshold: 50,
+      enableHitl: true,
+      useWeightedScoring: true,
+      clarificationProvider: 'auto',
+      clarificationModel: '',
+      useLlmClarifications: true,
+      clarificationTimeout: 5000,
+      fallbackToTemplates: true,
+      allowAcceptFlagged: true,
+    },
+  },
 };
 
 /**

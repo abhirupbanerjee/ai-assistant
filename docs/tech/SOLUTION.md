@@ -784,7 +784,7 @@ User Access
 
 Tool Routing provides deterministic tool invocation by forcing the LLM to call specific tools when user messages match predefined patterns. This overcomes the non-deterministic nature of LLM function calling.
 
-> **📖 Full Documentation:** [docs/features/TOOL_ROUTING.md](../../features/TOOL_ROUTING.md)
+> **📖 Full Documentation:** [docs/features/SKILLS.md](../../features/SKILLS.md) (see Tool Association section)
 
 #### Architecture
 

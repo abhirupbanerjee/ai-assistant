@@ -10,6 +10,7 @@ import { getCurrentUser } from '@/lib/auth';
 import {
   getToolConfig,
   updateToolConfig,
+  createToolConfig,
   resetToolToDefaults,
   getToolConfigAuditHistory,
   TOOL_DEFAULTS,
@@ -198,18 +199,28 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         );
       }
 
-      // Update configuration
-      const updated = updateToolConfig(toolName, {
+      // Update configuration (or create if doesn't exist)
+      let updated = updateToolConfig(toolName, {
         isEnabled: enabled,
         config: mergedConfig,
         ...(descriptionOverride !== undefined && { descriptionOverride }),
       }, user.email);
 
+      // If update failed because config doesn't exist, create it
       if (!updated) {
-        return NextResponse.json(
-          { error: 'Failed to update tool' },
-          { status: 500 }
+        const created = createToolConfig(
+          toolName,
+          mergedConfig,
+          enabled ?? false,
+          user.email
         );
+        if (!created) {
+          return NextResponse.json(
+            { error: 'Failed to create tool configuration' },
+            { status: 500 }
+          );
+        }
+        updated = created;
       }
 
       // Invalidate cache for web_search
@@ -245,13 +256,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (enabled !== undefined) updates.isEnabled = enabled;
       if (descriptionOverride !== undefined) updates.descriptionOverride = descriptionOverride;
 
-      const updated = updateToolConfig(toolName, updates, user.email);
+      let updated = updateToolConfig(toolName, updates, user.email);
 
+      // If update failed because config doesn't exist, create it
       if (!updated) {
-        return NextResponse.json(
-          { error: 'Failed to update tool' },
-          { status: 500 }
+        const created = createToolConfig(
+          toolName,
+          tool.defaultConfig,
+          enabled ?? false,
+          user.email
         );
+        if (!created) {
+          return NextResponse.json(
+            { error: 'Failed to create tool configuration' },
+            { status: 500 }
+          );
+        }
+        updated = created;
       }
 
       return NextResponse.json({

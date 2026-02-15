@@ -536,8 +536,13 @@ The Skills tab displays all configured skills:
    - Select a tool to force when keywords match
    - Set force mode: Required, Preferred, or Suggested
    - Configure tool-specific options (chart type, data sources, etc.)
-7. Set **Active** to Yes
-8. Click **Save**
+7. **Compliance Configuration** (optional):
+   - Enable compliance checking for this skill
+   - Set required sections (markdown headings that must be present)
+   - Override pass/warn thresholds
+   - Add custom clarification instructions
+8. Set **Active** to Yes
+9. Click **Save**
 
 ### Tool Association
 
@@ -550,6 +555,20 @@ Keyword-triggered skills can optionally force a specific tool to be called:
 | **Tool Config** | Tool-specific options like chart type, data sources, domains |
 
 This combines prompt injection with deterministic tool invocation - useful for commands like "generate a chart" or "search the web for..."
+
+### Compliance Configuration
+
+Skills can enable compliance validation to check AI responses for required sections, tool success, and data quality.
+
+| Field | Description |
+|-------|-------------|
+| **Enable Compliance** | Turn on compliance checking for this skill |
+| **Required Sections** | Markdown headings that must be present (e.g., "## Summary") |
+| **Pass Threshold** | Override global pass threshold (default: 80) |
+| **Warn Threshold** | Override global warn threshold (default: 50) |
+| **Clarification Instructions** | Custom context for LLM-generated questions |
+
+**Opt-In Model:** Compliance checking is opt-in at the skill level. If no matched skills have compliance enabled, the check is skipped entirely.
 
 ### Skill Prompt Guidelines
 
@@ -618,6 +637,7 @@ Policy Bot includes these built-in tools:
 | **Function APIs** | Call external APIs |
 | **Thread Sharing** | Share conversations via secure links |
 | **Email (SendGrid)** | Send email notifications |
+| **Compliance Checker** | Validate AI responses with scoring and HITL |
 
 ### Global Tool Configuration
 
@@ -711,6 +731,34 @@ Override global settings per category:
 5. Configure sender email (must match verified sender)
 6. Test by sharing a thread with email notification
 
+#### Compliance Checker
+
+The Compliance Checker validates AI responses and triggers Human-in-the-Loop (HITL) clarification when issues are detected.
+
+| Setting | Description |
+|---------|-------------|
+| **Enabled** | Enable compliance validation globally |
+| **Pass Threshold** | Score for passing (default: 80, recommended: 70-80) |
+| **Warning Threshold** | Score for warning (default: 50, recommended: 40-60) |
+| **Enable HITL** | Show clarification dialog when below warning threshold |
+| **Use Weighted Scoring** | Weight checks by importance |
+| **Clarification Provider** | LLM provider for generating questions (auto, openai, gemini, mistral) |
+| **Clarification Model** | Specific model (leave empty for default) |
+| **Use LLM Clarifications** | Generate contextual questions via LLM |
+| **Clarification Timeout** | Max wait time in ms (recommended: 3000-5000) |
+| **Fallback to Templates** | Use pre-defined templates if LLM fails |
+| **Allow Accept & Flag** | Show "Accept but flag for review" option |
+
+**Opt-In Model:**
+Compliance checks only run for skills that explicitly enable compliance in their configuration. This prevents unnecessary overhead.
+
+**Weighted Scoring:**
+When enabled, check types have different weights:
+- Artifact failures (charts/docs): 30%
+- Tool execution errors: 25%
+- Empty results: 25%
+- Missing sections: 20%
+
 ### Testing Tools
 
 1. Select a tool
@@ -725,7 +773,7 @@ Override global settings per category:
 
 Tool Routing allows you to force specific tools to be called when user messages match certain patterns. This ensures reliable tool invocation instead of leaving the decision entirely to the LLM.
 
-> **📖 Detailed Documentation:** For comprehensive information about tool routing including pattern syntax, force modes, priority resolution, testing, and advanced examples, see [docs/features/TOOL_ROUTING.md](../../features/TOOL_ROUTING.md).
+> **📖 Detailed Documentation:** For comprehensive information about skill-based tool routing including pattern syntax, force modes, and examples, see [docs/features/SKILLS.md](../../features/SKILLS.md).
 
 ### Why Use Tool Routing?
 
@@ -1464,6 +1512,31 @@ View system activity:
 3. Check if the rule is scoped to specific categories
 4. Verify the pattern type (keyword vs regex) matches your intent
 5. Check server logs for routing debug messages
+
+#### Compliance Check Not Running
+
+**Causes:**
+- Compliance checker tool disabled globally
+- No matched skills have compliance enabled (opt-in model)
+- Skill's complianceConfig.enabled is false
+
+**Solutions:**
+1. Enable compliance_checker tool in Admin > Tools
+2. Enable compliance on at least one skill (Admin > Prompts > Skills)
+3. Verify the skill that should trigger compliance has "Enable compliance checking" toggled on
+4. Check if the skill is matching (view matched skills in response debug)
+
+#### HITL Clarification Not Appearing
+
+**Causes:**
+- Score above warning threshold
+- enableHitl is disabled in compliance checker config
+- useLlmClarifications disabled and no templates match
+
+**Solutions:**
+1. Lower the warning threshold to trigger HITL more easily (for testing)
+2. Verify enableHitl is checked in compliance checker settings
+3. Check that fallbackToTemplates is enabled if LLM clarification fails
 
 #### Processing Queue Stuck
 

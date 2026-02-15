@@ -1400,6 +1400,181 @@ await sendShareNotification({
 
 ---
 
+## Compliance Checker Tool
+
+### Purpose
+
+Validates AI responses against compliance rules and triggers Human-in-the-Loop (HITL) clarification when issues are detected. This processor tool runs after the AI generates a response, checking for missing sections, failed tool executions, empty results, and artifact failures.
+
+### Type
+
+**Processor Tool** - Runs after AI response generation, not during (unlike autonomous tools).
+
+### Features
+
+- **Weighted Scoring**: Different check types have different importance weights
+- **Configurable Thresholds**: Set pass/warn thresholds for your compliance needs
+- **HITL Clarification**: Intelligent dialog when issues are detected
+- **LLM-Generated Questions**: Contextual questions based on specific failures
+- **Template Fallbacks**: Pre-defined questions for common scenarios
+- **Opt-In Model**: Only runs for skills with compliance explicitly enabled
+
+### When It Runs
+
+Compliance checking runs when ALL of these conditions are met:
+
+1. `compliance_checker` tool is enabled globally (Admin > Tools)
+2. At least one matched skill has `complianceConfig.enabled = true`
+
+If no skills have compliance enabled, the check is skipped entirely.
+
+### Configuration
+
+```typescript
+interface ComplianceCheckerConfig {
+  // Core settings
+  enabled: boolean;              // Enable/disable globally
+  passThreshold: number;         // 0-100, default: 80
+  warnThreshold: number;         // 0-100, default: 50
+  enableHitl: boolean;           // Show HITL dialog, default: true
+  useWeightedScoring: boolean;   // Weight checks by type, default: true
+
+  // Clarification LLM settings
+  clarificationProvider: 'auto' | 'openai' | 'gemini' | 'mistral';
+  clarificationModel: string;    // Empty = use default LLM
+  useLlmClarifications: boolean; // Use LLM for questions, default: true
+  clarificationTimeout: number;  // ms, default: 5000
+  fallbackToTemplates: boolean;  // Use templates if LLM fails, default: true
+
+  // HITL options
+  allowAcceptFlagged: boolean;   // Show "Accept & Flag" option, default: true
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": true,
+  "config": {
+    "passThreshold": 80,
+    "warnThreshold": 50,
+    "enableHitl": true,
+    "useWeightedScoring": true,
+    "clarificationProvider": "auto",
+    "clarificationModel": "",
+    "useLlmClarifications": true,
+    "clarificationTimeout": 5000,
+    "fallbackToTemplates": true,
+    "allowAcceptFlagged": true
+  }
+}
+```
+
+### Weighted Scoring
+
+When `useWeightedScoring` is enabled, checks are weighted by importance:
+
+| Check Type | Weight | Description |
+|------------|--------|-------------|
+| `artifact_valid` | 30% | Chart/document generation failures |
+| `tool_success` | 25% | Tool execution errors |
+| `data_returned` | 25% | Empty results from searches/queries |
+| `sections_present` | 20% | Missing required markdown sections |
+
+### Decision Flow
+
+```
+Response Generated
+       ↓
+Run Compliance Checks
+       ↓
+Calculate Weighted Score
+       ↓
+┌─────────────────────────────────────┐
+│ Score >= passThreshold (80)?        │
+│   YES → Pass (green badge)          │
+│   NO  ↓                             │
+│ Score >= warnThreshold (50)?        │
+│   YES → Warn (yellow badge)         │
+│   NO  → HITL (red badge + dialog)   │
+└─────────────────────────────────────┘
+```
+
+### HITL Clarification
+
+When score falls below `warnThreshold`, a clarification dialog appears:
+
+1. **Analyze Failures**: System identifies what went wrong
+2. **Generate Questions**: LLM creates contextual questions (or templates if LLM fails)
+3. **User Response**: User selects options or provides free text
+4. **Actions Available**:
+   - `Continue` - Apply selections and retry
+   - `Accept` - Accept current response as-is
+   - `Accept & Flag` - Accept but mark for admin review
+   - `Cancel` - Cancel the response
+
+### Template Clarifications
+
+When LLM clarification fails or is disabled, these templates are used:
+
+| Failure Type | Template Question |
+|--------------|-------------------|
+| Empty web search | "How should I proceed? Try broader search / Skip search / Custom terms" |
+| Chart no data | "Use text table instead / Skip visualization / Show placeholder" |
+| Missing section | "Add with available data / Add with 'Data unavailable' / Remove requirement" |
+| Document failed | "Try generating again / Provide as text / Skip generation" |
+
+### Clarification Provider Settings
+
+The compliance checker can use a separate LLM for generating clarification questions:
+
+- **Auto**: Uses the same provider/model from main LLM Settings
+- **OpenAI/Gemini/Mistral**: Use specific provider with model dropdown
+- **Tip**: Use cheaper/faster models (e.g., gpt-4.1-mini) since clarifications are simple
+
+### Admin UI
+
+Configure in **Admin > Tools > Compliance Checker**:
+
+1. **Enable/Disable**: Toggle compliance checking globally
+2. **Thresholds**: Set pass (70-80 recommended) and warn (40-60) thresholds
+3. **Scoring**: Enable weighted scoring for importance-based calculation
+4. **HITL Settings**: Configure clarification provider, model, timeout
+5. **Fallback Options**: Enable template fallbacks and "Accept & Flag"
+
+### Example: Compliance Check Result
+
+```typescript
+{
+  decision: 'warn',
+  score: 65,
+  checksPerformed: [
+    { checkType: 'tool_success', target: 'web_search', passed: true, weight: 25 },
+    { checkType: 'data_returned', target: 'web_search', passed: false, weight: 25 },
+    { checkType: 'sections_present', target: '## Summary', passed: true, weight: 20 },
+    { checkType: 'artifact_valid', target: 'chart_gen', passed: false, weight: 30 }
+  ],
+  failedChecks: ['data_returned', 'artifact_valid'],
+  issues: ['Web search returned no results', 'Chart has no data points'],
+  badgeType: 'warning',
+  badgeText: '65% - Issues Found'
+}
+```
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/chat/hitl` | Submit user's HITL clarification response |
+| GET | `/api/admin/compliance/stats` | Get compliance statistics and analytics |
+
+### Database
+
+Compliance results are logged to `compliance_results` table for audit and analytics.
+
+---
+
 ## Tool Routing
 
 ### Purpose

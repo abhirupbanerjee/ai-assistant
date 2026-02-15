@@ -174,9 +174,34 @@ Prompt:
 
 ### Tool Association (Keyword Skills Only)
 
-Keyword-triggered skills can optionally force a specific tool to be called when the skill matches. This provides deterministic tool invocation based on keyword patterns.
+Keyword-triggered skills can optionally force a specific tool to be called when the skill matches. This provides **deterministic tool invocation** based on keyword patterns, solving a common problem with LLM-based tool selection.
 
 **Available when:** `trigger_type = keyword`
+
+#### Why Use Tool Association?
+
+Without tool forcing, the LLM may:
+- 💬 Write about creating a chart instead of actually calling the chart tool
+- 🤔 Ask for confirmation before generating visualizations
+- 📝 Describe steps instead of using the Task Planner
+- 🌐 Summarize what a web search might find instead of searching
+
+**Example:**
+```
+User: "Create a bar chart showing sales by region"
+
+Without Tool Association:
+❌ AI: "I can help you create a bar chart. Let me describe
+        how it might look: We'd have regions on the X-axis..."
+        [No chart generated]
+
+With Tool Association (Required mode):
+✅ AI: [Calls chart_gen tool]
+     "Here's a bar chart showing sales by region:"
+     [Actual chart displayed]
+```
+
+#### Configuration Fields
 
 | Field | Description |
 |-------|-------------|
@@ -186,11 +211,19 @@ Keyword-triggered skills can optionally force a specific tool to be called when 
 
 #### Force Modes
 
-| Mode | Behavior |
-|------|----------|
-| **Required** | The LLM *must* call this specific tool |
-| **Preferred** | The LLM is strongly encouraged to call a tool (can choose which) |
-| **Suggested** | The LLM may choose to call the tool or respond without it |
+| Mode | Behavior | API Mapping | When to Use |
+|------|----------|-------------|-------------|
+| **Required** | The LLM *must* call this specific tool | `tool_choice: {type: "function", function: {name: "tool"}}` | Pattern clearly indicates one tool, no ambiguity |
+| **Preferred** | The LLM must use *some* tool (can choose which) | `tool_choice: "required"` | Multiple tools might apply, LLM should choose |
+| **Suggested** | Hint to LLM, but doesn't force | `tool_choice: "auto"` | Gentle nudge, testing new rules |
+
+**Force Mode Selection Guide:**
+
+| Force Mode | LLM Flexibility | Use Case |
+|------------|-----------------|----------|
+| **Required** | None - must use specific tool | Critical workflows, deterministic behavior |
+| **Preferred** | Low - must use some tool | General tool encouragement |
+| **Suggested** | High - can opt out | Gentle hints, experimental |
 
 #### Tool-Specific Config Options
 
@@ -202,11 +235,50 @@ When a tool is selected, additional configuration options appear:
 | **doc_gen** | Default format (pdf, docx, markdown) |
 | **data_source** | Restrict to specific data sources (include/exclude) |
 | **function_api** | Restrict to specific function API |
-| **web_search** | Include/exclude domains |
+| **web_search** | Include/exclude domains, wildcard patterns (e.g., `*.gov`) |
 | **diagram_gen** | Preferred diagram type (flowchart, sequence, mindmap, etc.) |
 | **image_gen** | Default style (realistic, artistic, etc.) |
 
-**Example with Tool:**
+#### Pattern Syntax for Tool Triggers
+
+Use precise patterns with the Regex match type for reliable tool invocation:
+
+| Pattern | Meaning | Example |
+|---------|---------|---------|
+| `\b` | Word boundary | `\bchart\b` (not "charter") |
+| `.*` | Any characters | `initiate.*assessment` |
+| `\s+` | One or more spaces | `evaluate\s+all` |
+| `(a\|b)` | OR operator | `(chart\|graph)` |
+| `\d+` | One or more digits | `report\s+\d+` |
+| `?` | Optional | `charts?` (chart or charts) |
+| `^` | Start of string | `^create` |
+| `$` | End of string | `please$` |
+
+**Common Regex Patterns:**
+
+```regex
+# Exact phrase
+\binitiate\s+assessment\b
+
+# Multiple options
+\b(SOE|state-owned enterprise)\b
+
+# Optional plurals
+\bpolic(y|ies)\b
+
+# Numbers in context
+\breport\s+\d{4}\b  # "report 2024"
+
+# Start of message
+^(create|generate|make)
+
+# Complex phrase
+\b(create|generate|make)\s+a\s+(chart|graph|plot)\b
+```
+
+#### Example Skills with Tool Association
+
+**Example 1: Chart Generation**
 ```yaml
 Name: Generate Budget Chart
 Type: Keyword
@@ -220,7 +292,92 @@ Prompt:
   Use department names on the x-axis and amounts on the y-axis.
 ```
 
-> **Note:** Tool association is separate from the standalone Tool Routing feature (Admin > Tools > Tool Routing). Skills with tools provide keyword-based tool forcing combined with prompt injection, while Tool Routing rules only force tools without adding prompts.
+**Example 2: Web Search (Regex)**
+```yaml
+Name: Web Search Triggers
+Type: Keyword
+Keywords: \b(search|look up|latest news|current)\b
+Match Type: Regex
+Force Tool: web_search
+Force Mode: Required
+Tool Config: { "includeDomains": ["*.gov", "*.org"] }
+Prompt:
+  Search for the most recent and authoritative sources.
+  Prioritize government and official organization websites.
+```
+
+**Example 3: Document Generation**
+```yaml
+Name: Report Generator
+Type: Keyword
+Keywords: \b(generate|create)\s+(a\s+)?(report|document|pdf)\b
+Match Type: Regex
+Force Tool: doc_gen
+Force Mode: Required
+Tool Config: { "format": "pdf" }
+Prompt:
+  Generate a professionally formatted document with:
+  - Clear section headings
+  - Executive summary
+  - Source citations
+```
+
+**Example 4: Task Planner (Category-Scoped)**
+```yaml
+Name: SOE Assessment Planner
+Type: Keyword
+Categories: [SOE, Operations]
+Keywords: \binitiate\b.*assessment
+Match Type: Regex
+Force Tool: task_planner
+Force Mode: Required
+Tool Config: { "template": "soe_identify" }
+Prompt:
+  Use the 6-dimension SOE assessment framework.
+  Work through each dimension systematically.
+```
+
+#### Best Practices for Tool Association
+
+✅ **Do:**
+- Use specific, unambiguous patterns
+- Test patterns with real user messages
+- Use word boundaries in regex (`\b`)
+- Choose Required mode for critical workflows
+- Combine with skill prompts for context
+
+❌ **Don't:**
+- Use overly broad patterns ("data", "help")
+- Create conflicting skills with different tools
+- Over-complicate regex unnecessarily
+- Use Required mode for ambiguous contexts
+
+#### Troubleshooting Tool Association
+
+**Issue: Tool Not Being Called**
+
+| Possible Cause | Solution |
+|----------------|----------|
+| Skill is inactive | Verify Status = Active |
+| Keyword not matching | Test with exact keyword phrases |
+| Force mode is "Suggested" | Change to "Required" |
+| Pattern too specific | Simplify regex pattern |
+
+**Issue: Wrong Tool Called**
+
+| Possible Cause | Solution |
+|----------------|----------|
+| Multiple skills matching | Check skill priorities, adjust as needed |
+| Overlapping keywords | Make patterns more specific |
+| Force mode is "Preferred" | Change to "Required" for specific tool |
+
+**Issue: Tool Called When It Shouldn't Be**
+
+| Possible Cause | Solution |
+|----------------|----------|
+| Pattern too broad | Add word boundaries (`\b`) |
+| Contains mode too permissive | Switch to Regex with precise pattern |
+| No category scope | Add category restrictions |
 
 ### Match Types for Keywords
 
@@ -290,7 +447,13 @@ Prompt:
    - **Is Index** - Used for RAG optimization
    - **Token Estimate** - For budget tracking
 
-8. **Save**
+8. **Compliance Configuration** (optional)
+   - **Enable Compliance** - Turn on compliance validation for this skill
+   - **Required Sections** - Markdown headings that must be present (e.g., "## Summary, ## Analysis")
+   - **Threshold Overrides** - Custom pass/warn thresholds for this skill
+   - **Clarification Instructions** - Custom context for LLM-generated questions
+
+9. **Save**
    - Click **Save** to create the skill
    - Test in a conversation to verify
 
@@ -385,6 +548,99 @@ No Match: "contractor" (because of \b word boundary)
 (SOE|soe)\s+assessment       # SOE assessment (case variations)
 \b(review|audit)\b           # Either "review" or "audit"
 ```
+
+### Compliance Configuration
+
+Skills can optionally enable compliance validation, which runs after the AI generates a response. This is an **opt-in** feature - compliance checks only run for skills that explicitly enable it.
+
+#### Enabling Compliance
+
+When editing a skill, expand the **Compliance Validation** section:
+
+1. **Enable compliance checking** - Toggle on to run compliance for this skill
+2. **Required Sections** - Comma-separated markdown headings that must be present
+   - Example: `## Summary, ## Analysis, ## Recommendations`
+3. **Pass Threshold** - Override global pass threshold (default: 80)
+4. **Warning Threshold** - Override global warn threshold (default: 50)
+5. **Custom Clarification Instructions** - Context for LLM-generated questions
+
+#### How It Works
+
+```
+User message matches skill
+        ↓
+AI generates response with skill prompt
+        ↓
+┌───────────────────────────────────────┐
+│ Is skill.complianceConfig.enabled?   │
+│   NO  → Skip compliance check        │
+│   YES ↓                              │
+│ Run compliance validation            │
+│   - Check required sections present  │
+│   - Validate tool executions         │
+│   - Calculate weighted score         │
+│   - Trigger HITL if below threshold  │
+└───────────────────────────────────────┘
+```
+
+#### Opt-In Model
+
+Compliance checking is **opt-in** at the skill level:
+
+- **No skills with compliance enabled** → Compliance checker skipped entirely
+- **At least one matched skill has compliance** → Compliance runs for those skills
+
+This prevents unnecessary overhead for simple questions and allows targeted validation for critical workflows.
+
+#### Configuration Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | false | Whether to run compliance for this skill |
+| `sections` | string[] | [] | Required markdown headings (e.g., `["## Summary"]`) |
+| `passThreshold` | number | 80 | Override global pass threshold |
+| `warnThreshold` | number | 50 | Override global warn threshold |
+| `clarificationInstructions` | string | null | Custom context for clarification questions |
+
+#### Example: Compliance-Enabled Skill
+
+```yaml
+Name: SOE Assessment Report
+Type: Keyword
+Keywords: SOE assessment, evaluate state-owned
+Priority: 30
+Status: Active
+
+Prompt:
+  Conduct a comprehensive SOE assessment using the 6-dimension framework.
+  Include fiscal health, governance, efficiency, market position,
+  strategic importance, and political economy context.
+
+Compliance:
+  Enabled: true
+  Required Sections:
+    - "## Executive Summary"
+    - "## Fiscal Health Analysis"
+    - "## Recommendations"
+  Pass Threshold: 75
+  Clarification Instructions:
+    For SOE assessments, prioritize asking about data recency
+    and methodology when sections are incomplete.
+```
+
+#### When to Enable Compliance
+
+✅ **Enable compliance when:**
+- Skill generates structured reports with required sections
+- Output quality is critical (legal, compliance, financial)
+- Users expect specific deliverables
+- You want to catch tool failures before showing response
+
+❌ **Don't enable compliance when:**
+- Skill is for simple Q&A
+- Output format is flexible
+- Performance is critical (adds latency)
+- Already covered by another skill's compliance config
 
 ---
 
