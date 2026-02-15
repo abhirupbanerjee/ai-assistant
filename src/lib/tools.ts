@@ -11,6 +11,7 @@ import { translationTool } from './tools/translation';
 import { shareThreadTool } from './tools/share-thread';
 import { sendEmailTool } from './tools/send-email';
 import { diagramGenTool } from './tools/diagram-gen';
+import { complianceCheckerTool } from './tools/compliance-checker';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -96,6 +97,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   share_thread: shareThreadTool,
   send_email: sendEmailTool,
   diagram_gen: diagramGenTool,
+  compliance_checker: complianceCheckerTool,
 };
 
 // ============ Initialization ============

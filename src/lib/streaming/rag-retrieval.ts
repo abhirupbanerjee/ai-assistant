@@ -21,6 +21,30 @@ import { MAX_QUERY_EXPANSIONS, CHUNK_PREVIEW_LENGTH } from '../constants';
 import { detectFollowUp } from '../conversation-context';
 
 /**
+ * Matched skill info for compliance checking
+ */
+export interface MatchedSkillForCompliance {
+  id: number;
+  name: string;
+  complianceConfig?: {
+    enabled: boolean;
+    sections?: string[];
+    passThreshold?: number;
+    warnThreshold?: number;
+    clarificationInstructions?: string;
+    hitlModel?: string;
+  };
+}
+
+/**
+ * Tool routing match info for compliance checking
+ */
+export interface ToolRoutingMatch {
+  toolName: string;
+  forceMode: string;
+}
+
+/**
  * Result of RAG retrieval phase
  */
 export interface RAGRetrievalResult {
@@ -36,6 +60,10 @@ export interface RAGRetrievalResult {
   activatedSkills: SkillInfo[];
   /** Available tool names */
   availableTools: string[];
+  /** Matched skills with compliance configs (for compliance checking) */
+  matchedSkills: MatchedSkillForCompliance[];
+  /** Tool routing matches (for compliance checking) */
+  toolRoutingMatches: ToolRoutingMatch[];
 }
 
 /**
@@ -314,6 +342,26 @@ export async function performRAGRetrieval(
     toolsCount: availableTools.length,
   });
 
+  // Build matched skills with compliance configs for compliance checking
+  const matchedSkills: MatchedSkillForCompliance[] = resolvedSkills.skills.map(skill => ({
+    id: skill.id,
+    name: skill.name,
+    complianceConfig: skill.compliance_config ? {
+      enabled: skill.compliance_config.enabled,
+      sections: skill.compliance_config.sections,
+      passThreshold: skill.compliance_config.passThreshold,
+      warnThreshold: skill.compliance_config.warnThreshold,
+      clarificationInstructions: skill.compliance_config.clarificationInstructions,
+      hitlModel: skill.compliance_config.hitlModel,
+    } : undefined,
+  }));
+
+  // Build tool routing matches for compliance checking
+  const toolRoutingMatches: ToolRoutingMatch[] = resolvedSkills.toolRouting?.matches.map(m => ({
+    toolName: m.toolName,
+    forceMode: m.forceMode,
+  })) || [];
+
   return {
     context,
     systemPrompt,
@@ -321,5 +369,7 @@ export async function performRAGRetrieval(
     categoryIds,
     activatedSkills,
     availableTools,
+    matchedSkills,
+    toolRoutingMatches,
   };
 }

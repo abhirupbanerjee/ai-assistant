@@ -6,6 +6,7 @@
  */
 
 import type { Source, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization, DiagramHint } from './index';
+import type { ComplianceDecision, HitlClarificationEvent } from './compliance';
 
 
 // ============ Stream Phases ============
@@ -126,7 +127,11 @@ export type StreamEvent =
   | { type: 'agent_paused'; plan_id: string; completed_tasks: number; total_tasks: number; message: string; reason?: string }
   | { type: 'agent_resumed'; plan_id: string; remaining_tasks: number; total_tasks: number; message: string }
   | { type: 'agent_stopped'; plan_id: string; completed_tasks: number; skipped_tasks: number; total_tasks: number; summary?: string; reason?: string }
-  | { type: 'agent_task_skipped'; plan_id: string; task_id: number; reason?: string };
+  | { type: 'agent_task_skipped'; plan_id: string; task_id: number; reason?: string }
+
+  // Compliance events
+  | { type: 'compliance'; data: ComplianceDecision }
+  | { type: 'hitl_clarification'; data: HitlClarificationEvent };
 
 /**
  * Stream error codes

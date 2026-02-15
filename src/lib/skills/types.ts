@@ -5,6 +5,11 @@
  * Extended to support unified keyword actions (skills + tool routing)
  */
 
+import type { SkillComplianceConfig } from '../../types/compliance';
+
+// Re-export for convenience
+export type { SkillComplianceConfig };
+
 export type TriggerType = 'always' | 'category' | 'keyword';
 export type MatchType = 'keyword' | 'regex';
 export type ForceMode = 'required' | 'preferred' | 'suggested';
@@ -39,6 +44,9 @@ export interface Skill {
   force_mode: ForceMode | null;
   tool_config_override: Record<string, unknown> | null;
   data_source_filter: DataSourceFilter | null;
+
+  // Compliance configuration
+  compliance_config: SkillComplianceConfig | null;
 }
 
 export interface SkillWithCategories extends Skill {
@@ -66,6 +74,9 @@ export interface CreateSkillInput {
   force_mode?: ForceMode;
   tool_config_override?: Record<string, unknown>;
   data_source_filter?: DataSourceFilter;
+
+  // Compliance configuration (optional)
+  compliance_config?: SkillComplianceConfig;
 }
 
 export interface ResolvedSkills {

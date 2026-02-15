@@ -983,6 +983,52 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_documents_folder_sync ON documents(folder_sync_id);
     `);
   }
+
+  // Migration: Add compliance_config column to skills table
+  const skillsColumnsForCompliance = database.pragma('table_info(skills)') as { name: string }[];
+  const skillsComplianceColumnNames = skillsColumnsForCompliance.map((c) => c.name);
+
+  if (!skillsComplianceColumnNames.includes('compliance_config')) {
+    database.exec(`
+      ALTER TABLE skills ADD COLUMN compliance_config TEXT;
+    `);
+  }
+
+  // Migration: Create compliance_results table for compliance checker audit trail
+  const complianceResultsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='compliance_results'"
+  ).get();
+
+  if (!complianceResultsTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS compliance_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        skill_ids TEXT,
+
+        overall_score INTEGER NOT NULL,
+        decision TEXT NOT NULL CHECK (decision IN ('pass', 'warn', 'hitl')),
+
+        checks_performed TEXT NOT NULL,
+        failed_checks TEXT,
+
+        hitl_triggered INTEGER DEFAULT 0,
+        hitl_questions TEXT,
+        hitl_user_response TEXT,
+        hitl_action TEXT,
+
+        validated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (conversation_id) REFERENCES threads(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_compliance_conversation ON compliance_results(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_compliance_decision ON compliance_results(decision, validated_at);
+      CREATE INDEX IF NOT EXISTS idx_compliance_hitl ON compliance_results(hitl_triggered, validated_at);
+      CREATE INDEX IF NOT EXISTS idx_compliance_message ON compliance_results(message_id);
+    `);
+  }
 }
 
 /**

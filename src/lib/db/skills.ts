@@ -13,6 +13,7 @@ import type {
   MatchType,
   ForceMode,
   DataSourceFilter,
+  SkillComplianceConfig,
 } from '../skills/types';
 
 // ============ Helper: Convert SQLite integers to booleans ============
@@ -43,12 +44,16 @@ interface SkillRow {
   force_mode: ForceMode | null;
   tool_config_override: string | null;
   data_source_filter: string | null;
+
+  // Compliance configuration
+  compliance_config: string | null;
 }
 
 function mapSkillRow(row: SkillRow): Skill {
   // Parse JSON fields safely
   let toolConfigOverride: Record<string, unknown> | null = null;
   let dataSourceFilter: DataSourceFilter | null = null;
+  let complianceConfig: SkillComplianceConfig | null = null;
 
   if (row.tool_config_override) {
     try {
@@ -61,6 +66,14 @@ function mapSkillRow(row: SkillRow): Skill {
   if (row.data_source_filter) {
     try {
       dataSourceFilter = JSON.parse(row.data_source_filter);
+    } catch {
+      // Invalid JSON, leave as null
+    }
+  }
+
+  if (row.compliance_config) {
+    try {
+      complianceConfig = JSON.parse(row.compliance_config);
     } catch {
       // Invalid JSON, leave as null
     }
@@ -91,6 +104,9 @@ function mapSkillRow(row: SkillRow): Skill {
     force_mode: row.force_mode,
     tool_config_override: toolConfigOverride,
     data_source_filter: dataSourceFilter,
+
+    // Compliance configuration
+    compliance_config: complianceConfig,
   };
 }
 
@@ -315,14 +331,18 @@ export function createSkill(
   const dataSourceFilter = input.data_source_filter
     ? JSON.stringify(input.data_source_filter)
     : null;
+  const complianceConfig = input.compliance_config
+    ? JSON.stringify(input.compliance_config)
+    : null;
 
   const result = execute(
     `INSERT INTO skills (
       name, description, prompt_content, trigger_type, trigger_value,
       category_restricted, is_index, priority, is_active, is_core,
       created_by_role, token_estimate, created_by, updated_by,
-      match_type, tool_name, force_mode, tool_config_override, data_source_filter
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      match_type, tool_name, force_mode, tool_config_override, data_source_filter,
+      compliance_config
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.name,
       input.description || null,
@@ -341,6 +361,7 @@ export function createSkill(
       input.force_mode || null,
       toolConfigOverride,
       dataSourceFilter,
+      complianceConfig,
     ]
   );
 
@@ -429,6 +450,10 @@ export function updateSkill(
   if (updates.data_source_filter !== undefined) {
     setClauses.push('data_source_filter = ?');
     params.push(updates.data_source_filter ? JSON.stringify(updates.data_source_filter) : null);
+  }
+  if (updates.compliance_config !== undefined) {
+    setClauses.push('compliance_config = ?');
+    params.push(updates.compliance_config ? JSON.stringify(updates.compliance_config) : null);
   }
 
   params.push(id);

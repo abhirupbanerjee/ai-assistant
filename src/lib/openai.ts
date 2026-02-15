@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint } from '@/types';
+import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
@@ -136,6 +137,7 @@ export async function generateResponseWithTools(
   fullHistory: OpenAI.Chat.ChatCompletionMessageParam[];
   cacheKey: string;
   cacheable: boolean;
+  toolExecutionResults: ToolExecutionRecord[];
 }> {
   const llmSettings = getLlmSettings();
   const openai = getOpenAI();
@@ -310,6 +312,9 @@ export async function generateResponseWithTools(
   let iterations = 0;
   let terminalToolSucceeded = false;
 
+  // Collect tool execution results for compliance checking
+  const toolExecutionResults: ToolExecutionRecord[] = [];
+
   while (responseMessage.tool_calls && iterations < MAX_TOOL_CALL_ITERATIONS && !terminalToolSucceeded) {
     iterations++;
     logger.debug(`Tool call iteration ${iterations}/${MAX_TOOL_CALL_ITERATIONS}`);
@@ -450,6 +455,54 @@ export async function generateResponseWithTools(
       // Notify streaming callback that tool completed
       callbacks?.onToolEnd?.(toolName, success, duration, errorMsg);
 
+      // Build tool execution record for compliance checking
+      const executionRecord: ToolExecutionRecord = {
+        toolName,
+        success,
+        duration,
+        executedAt: new Date().toISOString(),
+      };
+
+      if (errorMsg) {
+        executionRecord.error = errorMsg;
+        executionRecord.failureType = 'error' as FailureType;
+      }
+
+      // Extract additional info from result for compliance
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.success !== false) {
+          // Count results (for data_returned check)
+          if (Array.isArray(parsed.data)) {
+            executionRecord.resultCount = parsed.data.length;
+          } else if (parsed.results && Array.isArray(parsed.results)) {
+            executionRecord.resultCount = parsed.results.length;
+          } else if (parsed.data) {
+            executionRecord.resultCount = 1;
+          }
+
+          // Get artifact URL (for doc_gen, image_gen)
+          if (parsed.document?.downloadUrl) {
+            executionRecord.artifactUrl = parsed.document.downloadUrl;
+          } else if (parsed.imageHint?.url) {
+            executionRecord.artifactUrl = parsed.imageHint.url;
+          }
+
+          // Get data points (for chart_gen)
+          if (parsed.data && Array.isArray(parsed.data)) {
+            executionRecord.dataPoints = parsed.data.length;
+          }
+        } else if (!executionRecord.failureType) {
+          // success: false but no error - likely empty results
+          executionRecord.failureType = 'empty' as FailureType;
+          executionRecord.resultCount = 0;
+        }
+      } catch {
+        // Non-JSON result - may be a plain text response
+      }
+
+      toolExecutionResults.push(executionRecord);
+
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -482,6 +535,7 @@ export async function generateResponseWithTools(
     fullHistory: messages,
     cacheKey: ctx.cache.key,
     cacheable: ctx.cache.isCacheable,
+    toolExecutionResults,
   };
 }
 

@@ -30,6 +30,8 @@ import {
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
+import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
+import { isToolEnabled } from '@/lib/tools';
 
 // Route segment config for long-running autonomous tasks
 // 300 seconds = 5 minutes (Vercel Pro max, or adjust based on hosting provider)
@@ -436,6 +438,37 @@ export async function POST(request: NextRequest) {
               send({ type: 'chunk', content: chunk });
               // Small delay for typing effect (in real streaming this would be natural)
               await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            // ============ Phase 5: Compliance Checking ============
+            // Run compliance check if enabled and there are matched skills with compliance configs
+            if (isToolEnabled('compliance_checker') && ragResult.matchedSkills.length > 0) {
+              try {
+                const complianceResultStr = await complianceCheckerTool.execute({
+                  userMessage: message,
+                  response: fullContent,
+                  toolExecutions: toolResult.toolExecutionResults,
+                  matchedSkills: ragResult.matchedSkills,
+                  toolRoutingMatches: ragResult.toolRoutingMatches,
+                  messageId: assistantMessageId,
+                  conversationId: threadId,
+                });
+
+                const complianceResult: ComplianceCheckerResult = JSON.parse(complianceResultStr);
+
+                if (complianceResult.success) {
+                  // Send compliance decision event
+                  send({ type: 'compliance', data: complianceResult.decision });
+
+                  // If HITL was triggered, send clarification event
+                  if (complianceResult.hitlEvent) {
+                    send({ type: 'hitl_clarification', data: complianceResult.hitlEvent });
+                  }
+                }
+              } catch (complianceError) {
+                // Log but don't fail the request for compliance check errors
+                console.error('[Stream] Compliance check error:', complianceError);
+              }
             }
 
             // ============ Save & Cleanup ============
