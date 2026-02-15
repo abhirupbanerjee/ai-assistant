@@ -441,14 +441,20 @@ export async function POST(request: NextRequest) {
             }
 
             // ============ Phase 5: Compliance Checking ============
-            // Run compliance check if enabled and there are matched skills with compliance configs
-            if (isToolEnabled('compliance_checker') && ragResult.matchedSkills.length > 0) {
+            // Run compliance check if:
+            // 1. Compliance checker tool is globally enabled
+            // 2. At least one matched skill has compliance explicitly enabled (opt-in model)
+            const skillsWithComplianceEnabled = ragResult.matchedSkills.filter(
+              s => s.complianceConfig?.enabled === true
+            );
+
+            if (isToolEnabled('compliance_checker') && skillsWithComplianceEnabled.length > 0) {
               try {
                 const complianceResultStr = await complianceCheckerTool.execute({
                   userMessage: message,
                   response: fullContent,
                   toolExecutions: toolResult.toolExecutionResults,
-                  matchedSkills: ragResult.matchedSkills,
+                  matchedSkills: skillsWithComplianceEnabled, // Only pass skills with compliance enabled
                   toolRoutingMatches: ragResult.toolRoutingMatches,
                   messageId: assistantMessageId,
                   conversationId: threadId,

@@ -27,8 +27,8 @@ export const DEFAULT_COMPLIANCE_CONFIG: ComplianceGlobalConfig = {
   enableHitl: true,
   useWeightedScoring: true,
 
-  clarificationProvider: 'openai',
-  clarificationModel: 'gpt-4.1-mini',
+  clarificationProvider: 'auto',
+  clarificationModel: '',  // Empty = use default LLM model from settings
   useLlmClarifications: true,
   clarificationTimeout: 5000,
   fallbackToTemplates: true,

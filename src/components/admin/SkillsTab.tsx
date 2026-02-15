@@ -21,6 +21,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Shield,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -40,6 +41,14 @@ interface Tool {
 
 type MatchType = 'keyword' | 'regex';
 type ForceMode = 'required' | 'preferred' | 'suggested';
+
+interface SkillComplianceConfig {
+  enabled?: boolean;
+  sections?: string[];
+  passThreshold?: number;
+  warnThreshold?: number;
+  clarificationInstructions?: string;
+}
 
 interface Skill {
   id: number;
@@ -66,6 +75,9 @@ interface Skill {
   force_mode?: ForceMode | null;
   tool_config_override?: Record<string, unknown> | null;
   data_source_filter?: { type: 'include' | 'exclude'; source_ids: number[] } | null;
+
+  // Compliance configuration
+  compliance_config?: SkillComplianceConfig | null;
 }
 
 interface SkillsSettings {
@@ -96,6 +108,13 @@ interface SkillFormData {
   tool_name: string;
   force_mode: ForceMode;
   tool_config_override: string; // JSON string for editing
+
+  // Compliance configuration
+  compliance_enabled: boolean;
+  compliance_sections: string; // Comma-separated list, stored as array in API
+  compliance_passThreshold: number | undefined;
+  compliance_warnThreshold: number | undefined;
+  compliance_clarificationInstructions: string;
 }
 
 const initialFormData: SkillFormData = {
@@ -114,6 +133,13 @@ const initialFormData: SkillFormData = {
   tool_name: '',
   force_mode: 'required',
   tool_config_override: '',
+
+  // Compliance defaults (opt-in, disabled by default)
+  compliance_enabled: false,
+  compliance_sections: '',
+  compliance_passThreshold: undefined,
+  compliance_warnThreshold: undefined,
+  compliance_clarificationInstructions: '',
 };
 
 // Priority tiers
@@ -316,6 +342,28 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       data.tool_config_override = null;
     }
 
+    // Build compliance_config if enabled
+    if (formData.compliance_enabled) {
+      data.compliance_config = {
+        enabled: true,
+        sections: formData.compliance_sections
+          ? formData.compliance_sections.split(',').map(s => s.trim()).filter(Boolean)
+          : undefined,
+        passThreshold: formData.compliance_passThreshold,
+        warnThreshold: formData.compliance_warnThreshold,
+        clarificationInstructions: formData.compliance_clarificationInstructions || undefined,
+      };
+    } else {
+      data.compliance_config = null;
+    }
+
+    // Remove individual compliance fields that shouldn't be sent to API
+    delete data.compliance_enabled;
+    delete data.compliance_sections;
+    delete data.compliance_passThreshold;
+    delete data.compliance_warnThreshold;
+    delete data.compliance_clarificationInstructions;
+
     return data;
   };
 
@@ -490,6 +538,13 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       tool_config_override: skill.tool_config_override
         ? JSON.stringify(skill.tool_config_override, null, 2)
         : '',
+
+      // Compliance config fields
+      compliance_enabled: skill.compliance_config?.enabled || false,
+      compliance_sections: skill.compliance_config?.sections?.join(', ') || '',
+      compliance_passThreshold: skill.compliance_config?.passThreshold,
+      compliance_warnThreshold: skill.compliance_config?.warnThreshold,
+      compliance_clarificationInstructions: skill.compliance_config?.clarificationInstructions || '',
     });
     setShowEditModal(true);
   };
@@ -1465,6 +1520,114 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
               </div>
             </div>
           )}
+
+          {/* Compliance Configuration Section */}
+          <div className="border-t pt-4 mt-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Shield size={18} className="text-green-500" />
+              <h3 className="font-medium text-gray-900">Compliance Validation</h3>
+              <span className="text-xs text-gray-500">(Optional)</span>
+            </div>
+
+            <div className="space-y-4 pl-6">
+              {/* Enable Toggle */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="compliance_enabled"
+                  checked={formData.compliance_enabled || false}
+                  onChange={(e) => setFormData({ ...formData, compliance_enabled: e.target.checked })}
+                  className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                />
+                <label htmlFor="compliance_enabled" className="text-sm text-gray-700">
+                  Enable compliance checking for this skill
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 -mt-2 ml-6">
+                When enabled, responses using this skill will be validated against compliance rules.
+              </p>
+
+              {/* Show additional fields only when enabled */}
+              {formData.compliance_enabled && (
+                <div className="space-y-4 border-l-2 border-green-200 pl-4 mt-4">
+                  {/* Required Sections */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Required Sections
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.compliance_sections || ''}
+                      onChange={(e) => setFormData({ ...formData, compliance_sections: e.target.value })}
+                      placeholder="## Summary, ## Analysis, ## Recommendations"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Markdown headings that must be present in the response. Comma-separated.
+                    </p>
+                  </div>
+
+                  {/* Threshold Overrides */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Pass Threshold
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={formData.compliance_passThreshold ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          compliance_passThreshold: e.target.value ? parseInt(e.target.value) : undefined
+                        })}
+                        placeholder="80 (default)"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Warning Threshold
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={formData.compliance_warnThreshold ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          compliance_warnThreshold: e.target.value ? parseInt(e.target.value) : undefined
+                        })}
+                        placeholder="50 (default)"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 -mt-2">
+                    Leave empty to use global defaults. Pass threshold should be higher than warning threshold.
+                  </p>
+
+                  {/* Clarification Instructions */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Custom Clarification Instructions
+                    </label>
+                    <textarea
+                      value={formData.compliance_clarificationInstructions || ''}
+                      onChange={(e) => setFormData({ ...formData, compliance_clarificationInstructions: e.target.value })}
+                      placeholder="For financial reports, prioritize asking about data recency. For legal documents, ask about jurisdiction."
+                      rows={2}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Custom instructions injected into the LLM prompt when generating clarification questions.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="secondary" onClick={() => { setShowCreateModal(false); setShowEditModal(false); setSelectedSkill(null); }}>

@@ -99,6 +99,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (body.tool_config_override !== undefined) updates.tool_config_override = body.tool_config_override || undefined;
     if (body.data_source_filter !== undefined) updates.data_source_filter = body.data_source_filter || undefined;
 
+    // Compliance configuration
+    if (body.compliance_config !== undefined) updates.compliance_config = body.compliance_config || undefined;
+
     updateSkill(skillId, updates, user.email);
 
     return NextResponse.json({ message: 'Skill updated' });

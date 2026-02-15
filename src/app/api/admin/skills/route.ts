@@ -62,6 +62,8 @@ export async function POST(request: NextRequest) {
       force_mode,
       tool_config_override,
       data_source_filter,
+      // Compliance configuration
+      compliance_config,
     } = body;
 
     // Validation
@@ -119,6 +121,8 @@ export async function POST(request: NextRequest) {
       force_mode: force_mode || undefined,
       tool_config_override: tool_config_override || undefined,
       data_source_filter: data_source_filter || undefined,
+      // Compliance configuration
+      compliance_config: compliance_config || undefined,
     };
 
     const skillId = createSkill(input, user.email, user.role);

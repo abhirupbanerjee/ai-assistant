@@ -631,7 +631,7 @@ function GenericToolConfig({
   onChange: (config: Record<string, unknown>) => void;
   disabled: boolean;
 }) {
-  const properties = (schema as { properties?: Record<string, { type: string; title?: string; description?: string }> }).properties || {};
+  const properties = (schema as { properties?: Record<string, { type: string; title?: string; description?: string; enum?: string[]; default?: unknown }> }).properties || {};
 
   return (
     <div className="space-y-4">
@@ -640,7 +640,23 @@ function GenericToolConfig({
           <label className="block text-sm font-medium text-gray-700 mb-1">
             {prop.title || key}
           </label>
-          {prop.type === 'boolean' ? (
+          {/* Dropdown for enum properties */}
+          {prop.enum && Array.isArray(prop.enum) ? (
+            <select
+              value={String(config[key] ?? prop.default ?? '')}
+              onChange={(e) => onChange({ ...config, [key]: e.target.value })}
+              disabled={disabled}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              {/* Show "Use default" option only if default is empty string */}
+              {prop.default === '' && <option value="">Use default LLM settings</option>}
+              {prop.enum.map((option: string) => (
+                <option key={option} value={option}>
+                  {option === 'auto' ? 'Auto (use default LLM provider)' : option.charAt(0).toUpperCase() + option.slice(1)}
+                </option>
+              ))}
+            </select>
+          ) : prop.type === 'boolean' ? (
             <input
               type="checkbox"
               checked={!!config[key]}
@@ -651,7 +667,7 @@ function GenericToolConfig({
           ) : prop.type === 'number' ? (
             <input
               type="number"
-              value={(config[key] as number) || 0}
+              value={(config[key] as number) ?? (prop.default as number) ?? 0}
               onChange={(e) => onChange({ ...config, [key]: parseInt(e.target.value) })}
               disabled={disabled}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -659,9 +675,10 @@ function GenericToolConfig({
           ) : (
             <input
               type="text"
-              value={(config[key] as string) || ''}
+              value={(config[key] as string) ?? (prop.default as string) ?? ''}
               onChange={(e) => onChange({ ...config, [key]: e.target.value })}
               disabled={disabled}
+              placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           )}
