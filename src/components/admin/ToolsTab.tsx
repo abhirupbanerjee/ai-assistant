@@ -691,6 +691,272 @@ function GenericToolConfig({
   );
 }
 
+interface AvailableModel {
+  id: string;
+  name: string;
+  description: string;
+  provider: 'openai' | 'mistral' | 'gemini' | 'ollama';
+  defaultMaxTokens: number;
+}
+
+/**
+ * Custom config component for Compliance Checker tool
+ * Handles dynamic model dropdown based on selected provider
+ */
+function ComplianceCheckerConfig({
+  config,
+  onChange,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+  disabled: boolean;
+}) {
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+
+  // Fetch available models from settings API
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await fetch('/api/admin/settings');
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableModels((data.availableModels || []).filter(Boolean));
+        }
+      } catch (err) {
+        console.error('Failed to fetch available models:', err);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  const provider = (config.clarificationProvider as string) || 'auto';
+
+  // Filter models by selected provider
+  const modelsForProvider = availableModels.filter(m => m.provider === provider);
+
+  return (
+    <div className="space-y-4">
+      {/* Enable Compliance Checking */}
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="compliance_enabled"
+          checked={config.enabled !== false}
+          onChange={(e) => onChange({ ...config, enabled: e.target.checked })}
+          disabled={disabled}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <label htmlFor="compliance_enabled" className="text-sm font-medium text-gray-700">
+          Enable Compliance Checking
+        </label>
+      </div>
+      <p className="text-xs text-gray-500 -mt-2 ml-6">
+        Enable or disable compliance validation globally. When enabled, only skills with compliance explicitly enabled will be checked.
+      </p>
+
+      {/* Thresholds */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Pass Threshold</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={(config.passThreshold as number) ?? 80}
+            onChange={(e) => onChange({ ...config, passThreshold: parseInt(e.target.value) })}
+            disabled={disabled}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-gray-500 mt-1">Recommended: 70-80</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Warning Threshold</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={(config.warnThreshold as number) ?? 50}
+            onChange={(e) => onChange({ ...config, warnThreshold: parseInt(e.target.value) })}
+            disabled={disabled}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-gray-500 mt-1">Recommended: 40-60. Below this triggers HITL.</p>
+        </div>
+      </div>
+
+      {/* HITL Options */}
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="enableHitl"
+          checked={config.enableHitl !== false}
+          onChange={(e) => onChange({ ...config, enableHitl: e.target.checked })}
+          disabled={disabled}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <label htmlFor="enableHitl" className="text-sm font-medium text-gray-700">
+          Enable Human-in-the-Loop
+        </label>
+      </div>
+      <p className="text-xs text-gray-500 -mt-2 ml-6">
+        Show clarification dialog when compliance score is below warning threshold.
+      </p>
+
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="useWeightedScoring"
+          checked={config.useWeightedScoring !== false}
+          onChange={(e) => onChange({ ...config, useWeightedScoring: e.target.checked })}
+          disabled={disabled}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <label htmlFor="useWeightedScoring" className="text-sm font-medium text-gray-700">
+          Use Weighted Scoring
+        </label>
+      </div>
+      <p className="text-xs text-gray-500 -mt-2 ml-6">
+        Weight checks by importance: artifact failures=30%, tool errors=25%, empty results=25%, missing sections=20%.
+      </p>
+
+      {/* Clarification LLM Settings */}
+      <div className="border-t pt-4 mt-4">
+        <h4 className="font-medium text-gray-900 mb-3">Clarification LLM Settings</h4>
+
+        <div className="space-y-4">
+          {/* Provider Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+            <select
+              value={provider}
+              onChange={(e) => onChange({ ...config, clarificationProvider: e.target.value, clarificationModel: '' })}
+              disabled={disabled}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="auto">Auto (use default LLM provider)</option>
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="mistral">Mistral</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Provider for generating clarification questions.
+            </p>
+          </div>
+
+          {/* Model Dropdown - Dynamic based on provider */}
+          {provider !== 'auto' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
+              {loadingModels ? (
+                <div className="px-3 py-2 text-sm text-gray-500">Loading models...</div>
+              ) : (
+                <select
+                  value={(config.clarificationModel as string) || ''}
+                  onChange={(e) => onChange({ ...config, clarificationModel: e.target.value })}
+                  disabled={disabled}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Use default from LLM Settings</option>
+                  {modelsForProvider.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} - {model.description}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Tip: Use cheaper/faster models for cost savings. Clarifications are simple tasks.
+              </p>
+            </div>
+          )}
+
+          {provider === 'auto' && (
+            <p className="text-xs text-gray-500 bg-blue-50 p-2 rounded">
+              Using &quot;Auto&quot; will use the same provider and model configured in your main LLM Settings.
+            </p>
+          )}
+
+          {/* Use LLM Clarifications */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="useLlmClarifications"
+              checked={config.useLlmClarifications !== false}
+              onChange={(e) => onChange({ ...config, useLlmClarifications: e.target.checked })}
+              disabled={disabled}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="useLlmClarifications" className="text-sm font-medium text-gray-700">
+              Use LLM Clarifications
+            </label>
+          </div>
+          <p className="text-xs text-gray-500 -mt-2 ml-6">
+            Generate contextual questions using LLM. When disabled, uses pre-defined templates.
+          </p>
+
+          {/* Timeout */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Clarification Timeout (ms)</label>
+            <input
+              type="number"
+              min={1000}
+              max={30000}
+              step={500}
+              value={(config.clarificationTimeout as number) ?? 5000}
+              onChange={(e) => onChange({ ...config, clarificationTimeout: parseInt(e.target.value) })}
+              disabled={disabled}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Recommended: 3000-5000ms. Falls back to templates if exceeded.
+            </p>
+          </div>
+
+          {/* Fallback to Templates */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="fallbackToTemplates"
+              checked={config.fallbackToTemplates !== false}
+              onChange={(e) => onChange({ ...config, fallbackToTemplates: e.target.checked })}
+              disabled={disabled}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="fallbackToTemplates" className="text-sm font-medium text-gray-700">
+              Fallback to Templates
+            </label>
+          </div>
+          <p className="text-xs text-gray-500 -mt-2 ml-6">
+            If LLM clarification fails or times out, show template questions. Templates exist for: empty search results, failed charts, missing sections, failed document/image generation, data source errors, and general tool errors.
+          </p>
+
+          {/* Allow Accept Flagged */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="allowAcceptFlagged"
+              checked={config.allowAcceptFlagged !== false}
+              onChange={(e) => onChange({ ...config, allowAcceptFlagged: e.target.checked })}
+              disabled={disabled}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="allowAcceptFlagged" className="text-sm font-medium text-gray-700">
+              Allow &quot;Accept &amp; Flag&quot;
+            </label>
+          </div>
+          <p className="text-xs text-gray-500 -mt-2 ml-6">
+            Show &quot;Accept but flag for review&quot; option in HITL dialog. Lets users accept responses despite issues while marking them for admin review later.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts';
 
 interface ToolsTabProps {
@@ -1060,6 +1326,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'translation':
         return (
           <TranslationConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'compliance_checker':
+        return (
+          <ComplianceCheckerConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}
