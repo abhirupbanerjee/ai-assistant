@@ -254,17 +254,23 @@ export function getProviderApiBase(id: string): string | null {
 
 /**
  * Seed default providers if the table is empty
+ * Also adds any missing providers to existing databases
  * Auto-populates API keys from environment variables
  */
 export function seedDefaultProviders(): void {
   const existing = getAllProviders();
+  const existingIds = new Set(existing.map(p => p.id));
 
-  // Skip if providers already exist
-  if (existing.length > 0) return;
+  // Find providers that need to be added
+  const missingProviders = DEFAULT_PROVIDERS.filter(p => !existingIds.has(p.id));
 
-  console.log('[LLM Providers] Seeding default providers...');
+  if (missingProviders.length === 0) {
+    return; // All providers already exist
+  }
 
-  for (const provider of DEFAULT_PROVIDERS) {
+  console.log(`[LLM Providers] Adding ${missingProviders.length} missing providers...`);
+
+  for (const provider of missingProviders) {
     const envConfig = PROVIDER_ENV_KEYS[provider.id];
     let apiKey: string | undefined;
     let apiBase: string | undefined;
@@ -284,9 +290,9 @@ export function seedDefaultProviders(): void {
       apiBase,
       enabled: provider.enabled,
     });
-  }
 
-  console.log(`[LLM Providers] Seeded ${DEFAULT_PROVIDERS.length} providers`);
+    console.log(`[LLM Providers] Added provider: ${provider.name}`);
+  }
 }
 
 /**
