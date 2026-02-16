@@ -30,6 +30,7 @@ interface EnabledModel {
   maxInputTokens: number | null;
   isDefault: boolean;
   enabled: boolean;
+  providerEnabled?: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -354,7 +355,7 @@ export default function LLMConfigSettings() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {enabledModels.map(model => (
-                  <tr key={model.id} className={!model.enabled ? 'bg-gray-50 opacity-60' : ''}>
+                  <tr key={model.id} className={!model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {getProviderName(model.providerId)}
                     </td>
@@ -418,7 +419,11 @@ export default function LLMConfigSettings() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {model.enabled ? (
+                      {model.providerEnabled === false ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700" title="Provider is disabled">
+                          Provider Off
+                        </span>
+                      ) : model.enabled ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
                           Active
                         </span>

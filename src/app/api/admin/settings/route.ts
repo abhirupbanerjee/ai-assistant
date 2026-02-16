@@ -376,7 +376,17 @@ export async function PUT(request: NextRequest) {
           maxTokens,
           promptOptimizationMaxTokens,
         }, user.email);
-        break;
+
+        // Return with metadata
+        const llmMeta = getSettingMetadata('llm-settings');
+        return NextResponse.json({
+          success: true,
+          settings: {
+            ...result,
+            updatedAt: llmMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: llmMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'acronyms': {

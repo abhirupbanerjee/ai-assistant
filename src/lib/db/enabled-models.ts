@@ -18,6 +18,7 @@ export interface EnabledModel {
   maxInputTokens: number | null;
   isDefault: boolean;
   enabled: boolean;        // false = disabled/hidden
+  providerEnabled?: boolean; // Whether the provider is enabled (for UI display)
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +33,7 @@ interface EnabledModelRow {
   max_input_tokens: number | null;
   is_default: number;
   enabled: number;
+  provider_enabled?: number;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -71,6 +73,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     maxInputTokens: row.max_input_tokens,
     isDefault: row.is_default === 1,
     enabled: row.enabled === 1,
+    providerEnabled: row.provider_enabled !== undefined ? row.provider_enabled === 1 : undefined,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -84,10 +87,12 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
  */
 export function getAllEnabledModels(): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
-    SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           max_input_tokens, is_default, enabled, sort_order, created_at, updated_at
-    FROM enabled_models
-    ORDER BY sort_order, display_name
+    SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
+           m.max_input_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at,
+           p.enabled as provider_enabled
+    FROM enabled_models m
+    LEFT JOIN llm_providers p ON m.provider_id = p.id
+    ORDER BY m.sort_order, m.display_name
   `);
   return rows.map(mapRowToModel);
 }
