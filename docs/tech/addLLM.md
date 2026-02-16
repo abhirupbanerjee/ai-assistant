@@ -2,37 +2,188 @@
 
 This guide explains how to add a new LLM model to the Policy Bot system.
 
-## Prerequisites
+## Overview
 
-- LiteLLM proxy running (`docker compose up litellm`)
-- API key for the provider (OpenAI, Gemini, Mistral, etc.)
-- Access to edit `litellm-proxy/litellm_config.yaml`
+There are **two methods** to add LLM models:
+
+| Method | Best For | Requires |
+|--------|----------|----------|
+| **Admin UI** (Recommended) | Production, non-technical users | Web browser access |
+| **YAML Config** (Alternative) | CI/CD, infrastructure-as-code | File system access |
+
+---
 
 ## Architecture Overview
 
-Models are **auto-discovered** from the LiteLLM configuration at startup:
+Models are loaded with the following priority:
 
 ```
-litellm_config.yaml (Single Source of Truth)
-        │
-        ├── model_name ──────────────► Model ID
-        ├── litellm_params.model ────► Provider (gemini/, mistral/, ollama/)
-        └── model_info ──────────────► Capabilities
-                │
-                ▼
-        [App Startup - Auto Discovery]
-                │
-                ▼
-        config-loader.ts
-                │
-                ├── getModelPresetsFromConfig() ► UI model list
-                ├── getToolCapableModels() ─────► Tool support flags
-                └── Fallback to hardcoded defaults if YAML unavailable
+Model Configuration Priority:
+
+        ┌─────────────────────────────────────┐
+        │  Admin UI → Database                │  ◄── PRIMARY
+        │  (llm_providers, enabled_models)    │
+        └─────────────────────────────────────┘
+                        │
+                        ▼ (fallback if no DB models)
+        ┌─────────────────────────────────────┐
+        │  litellm_config.yaml → Auto-parse   │  ◄── SECONDARY
+        └─────────────────────────────────────┘
+                        │
+                        ▼ (fallback if YAML unavailable)
+        ┌─────────────────────────────────────┐
+        │  Hardcoded defaults                 │  ◄── FALLBACK
+        │  (config-loader.ts)                 │
+        └─────────────────────────────────────┘
 ```
 
-## Quick Start: Adding a New Model
+---
 
-### Step 1: Edit LiteLLM Config
+## Method 1: Admin UI (Recommended)
+
+### Prerequisites
+
+- Admin access to the Policy Bot application
+- API key for the provider (OpenAI, Gemini, Mistral, etc.)
+
+### UI Overview
+
+Navigate to **Admin > Settings > Configure LLM**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Settings > Configure LLM                                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ ┌─── Providers ─────────────────────────────────────────────────────┐   │
+│ │                                                                    │   │
+│ │  ✓ OpenAI       [••••••••••sk-abc]  [Test] [Edit] [Delete]       │   │
+│ │  ✓ Google       [••••••••••AIza...]  [Test] [Edit] [Delete]       │   │
+│ │  ○ Mistral      Not configured       [+ Add Key]                  │   │
+│ │  ✓ Ollama       http://localhost:11434  [Test] [Edit]             │   │
+│ │                                                                    │   │
+│ └────────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│ ┌─── Enabled Models ────────────────────────────────────────────────┐   │
+│ │                                                                    │   │
+│ │  Provider      Model               Capabilities       [Actions]   │   │
+│ │  ─────────────────────────────────────────────────────────────────│   │
+│ │  OpenAI        GPT-4.1 Mini ★      🔧 Vision          [⋯]        │   │
+│ │  OpenAI        GPT-4.1             🔧 Vision          [⋯]        │   │
+│ │  Google        Gemini 2.5 Flash    🔧 Vision          [⋯]        │   │
+│ │  Ollama        Llama 3.2           🔧                 [⋯]        │   │
+│ │                                                                    │   │
+│ │  ★ = Default model   🔧 = Tool support                            │   │
+│ │  [⋯] menu: Set Default | Edit | Disable | Remove                  │   │
+│ │                                                                    │   │
+│ │  [+ Add Models]                    [Manage Deprecated Models]     │   │
+│ └────────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start: Adding a New Model
+
+#### Step 1: Configure Provider (if needed)
+
+1. Go to **Admin > Settings > Configure LLM**
+2. Find the provider (OpenAI, Google, Mistral, Ollama)
+3. If showing "Not configured", click **[+ Add Key]**
+4. Enter your API key
+5. Click **[Test]** to verify the connection
+6. Click **[Save]**
+
+#### Step 2: Discover and Enable Models
+
+1. Click **[+ Add Models]** button
+2. Select the provider tab (OpenAI, Google, etc.)
+3. Browse or search for the model you want
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Add Models                                                  [X] │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Provider:  [OpenAI ▼] [Google] [Mistral] [Ollama]             │
+│                                                                 │
+│  🔍 Search: [gpt                                    ]          │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ ☐ gpt-4.1           1M tokens    🔧 Vision   (enabled)  │   │
+│  │ ☐ gpt-4.1-mini      1M tokens    🔧 Vision   (enabled)  │   │
+│  │ ☑ gpt-4.1-nano      1M tokens    🔧 Vision              │   │
+│  │ ☑ gpt-5             2M tokens    🔧 Vision   [NEW]      │   │
+│  │ ☑ o3-mini           200K tokens  🔧          [NEW]      │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Selected: 3 models                                            │
+│                                                                 │
+│                              [Cancel]  [Add Selected]          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+4. Check the boxes for models you want to enable
+5. Click **[Add Selected]**
+
+**Done!** The model is immediately available in the chat dropdown.
+
+#### Step 3: Set as Default (Optional)
+
+1. In the Enabled Models table, find the model
+2. Click the **[⋯]** menu
+3. Select **Set Default**
+
+### Managing Models
+
+#### Model Actions Menu [⋯]
+
+| Action | Description |
+|--------|-------------|
+| **Set Default** | Make this the default model for new chats |
+| **Edit** | Change display name |
+| **Disable** | Hide from dropdown but keep config (can re-enable) |
+| **Remove** | Permanently delete from enabled models |
+
+#### Managing Deprecated Models
+
+When providers retire models, they'll appear in the deprecated models manager:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Manage Deprecated Models                                    [X] │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  These models are no longer available from the provider but    │
+│  exist in your enabled models list.                            │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ ☑ gpt-4-turbo       OpenAI    (deprecated Jan 2025)     │   │
+│  │ ☑ gemini-1.5-pro    Google    (deprecated Dec 2024)     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│                    [Cancel]  [Remove Selected (2)]             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+1. Click **[Manage Deprecated Models]**
+2. Select models to remove
+3. Click **[Remove Selected]**
+
+---
+
+## Method 2: YAML Configuration (Alternative)
+
+Use this method for infrastructure-as-code deployments or when Admin UI is not available.
+
+### Prerequisites
+
+- LiteLLM proxy running (`docker compose up litellm`)
+- API key for the provider
+- Access to edit `litellm-proxy/litellm_config.yaml`
+
+### Quick Start
+
+#### Step 1: Edit LiteLLM Config
 
 Edit `litellm-proxy/litellm_config.yaml` and add your model:
 
@@ -50,7 +201,7 @@ model_list:
       max_input_tokens: 2000000
 ```
 
-### Step 2: Restart Application
+#### Step 2: Restart Application
 
 ```bash
 # Production
@@ -71,7 +222,7 @@ Check startup logs for confirmation:
 [LiteLLM] Discovered 12 models from YAML config
 ```
 
-## model_info Reference
+### model_info Reference
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -81,46 +232,9 @@ Check startup logs for confirmation:
 
 **Important:** If `model_info` is omitted entirely, the model defaults to no tool support and no vision.
 
-## Auto-Generated Settings
+### Provider Examples
 
-### Display Names
-
-Model IDs are automatically converted to human-friendly names:
-
-| Model ID | Generated Name |
-|----------|----------------|
-| `gpt-5` | GPT-5 |
-| `gpt-4.1-mini` | GPT-4.1 Mini |
-| `gemini-2.5-flash` | Gemini 2.5 Flash |
-| `ollama-llama3.2` | Ollama Llama 3.2 |
-| `mistral-small-3.2` | Mistral Small 3.2 |
-
-### Provider Detection
-
-Providers are detected from the `litellm_params.model` prefix:
-
-| Model Path | Detected Provider |
-|------------|-------------------|
-| `gemini/gemini-2.5-flash` | gemini |
-| `mistral/mistral-large` | mistral |
-| `ollama/llama3.2` | ollama |
-| `azure/gpt-4` | azure |
-| `gpt-4.1-mini` (no prefix) | openai |
-
-### Tier-Based Defaults
-
-Settings are automatically applied based on keywords in the model ID:
-
-| Tier Keywords | Temperature | Max Output Tokens |
-|---------------|-------------|-------------------|
-| `pro`, `large` | 0.1 | 8000 |
-| `mini`, `flash`, `small` | 0.2 | 3000 |
-| `nano`, `lite` | 0.2 | 1000 |
-| (none matched) | 0.2 | 2000 |
-
-## Provider Examples
-
-### OpenAI
+#### OpenAI
 
 ```yaml
 - model_name: gpt-5
@@ -133,7 +247,7 @@ Settings are automatically applied based on keywords in the model ID:
     max_input_tokens: 2000000
 ```
 
-### Google Gemini
+#### Google Gemini
 
 ```yaml
 - model_name: gemini-3-pro
@@ -146,7 +260,7 @@ Settings are automatically applied based on keywords in the model ID:
     max_input_tokens: 2000000
 ```
 
-### Mistral
+#### Mistral
 
 ```yaml
 - model_name: mistral-next
@@ -158,7 +272,7 @@ Settings are automatically applied based on keywords in the model ID:
     supports_vision: true
 ```
 
-### Ollama (Local)
+#### Ollama (Local)
 
 ```yaml
 - model_name: ollama-llama4
@@ -169,7 +283,7 @@ Settings are automatically applied based on keywords in the model ID:
     supports_function_calling: true
 ```
 
-### Azure OpenAI
+#### Azure OpenAI
 
 ```yaml
 - model_name: azure-gpt4
@@ -183,15 +297,60 @@ Settings are automatically applied based on keywords in the model ID:
     supports_vision: true
 ```
 
+### Auto-Generated Settings
+
+#### Display Names
+
+Model IDs are automatically converted to human-friendly names:
+
+| Model ID | Generated Name |
+|----------|----------------|
+| `gpt-5` | GPT-5 |
+| `gpt-4.1-mini` | GPT-4.1 Mini |
+| `gemini-2.5-flash` | Gemini 2.5 Flash |
+| `ollama-llama3.2` | Ollama Llama 3.2 |
+| `mistral-small-3.2` | Mistral Small 3.2 |
+
+#### Provider Detection
+
+Providers are detected from the `litellm_params.model` prefix:
+
+| Model Path | Detected Provider |
+|------------|-------------------|
+| `gemini/gemini-2.5-flash` | gemini |
+| `mistral/mistral-large` | mistral |
+| `ollama/llama3.2` | ollama |
+| `azure/gpt-4` | azure |
+| `gpt-4.1-mini` (no prefix) | openai |
+
+#### Tier-Based Defaults
+
+Settings are automatically applied based on keywords in the model ID:
+
+| Tier Keywords | Temperature | Max Output Tokens |
+|---------------|-------------|-------------------|
+| `pro`, `large` | 0.1 | 8000 |
+| `mini`, `flash`, `small` | 0.2 | 3000 |
+| `nano`, `lite` | 0.2 | 1000 |
+| (none matched) | 0.2 | 2000 |
+
+---
+
 ## Setting as Default Model
 
 ### Option 1: Admin UI (Recommended)
 
-1. Go to Admin > Settings > LLM Settings
+1. Go to **Admin > Settings > Configure LLM**
+2. In the Enabled Models table, click **[⋯]** menu
+3. Select **Set Default**
+
+### Option 2: Admin > Settings > LLM
+
+1. Go to **Admin > Settings > LLM**
 2. Select the new model from the dropdown
 3. Save changes
 
-### Option 2: Code Change
+### Option 3: Code Change
 
 Edit `src/lib/config-loader.ts`:
 
@@ -209,32 +368,43 @@ This affects:
 - Fallback model for utility functions
 - Agent executor default
 
-## Model Types
-
-The system automatically filters models by type:
-
-| Type | Detection | Used For |
-|------|-----------|----------|
-| **Chat** | Default | LLM conversations, tools |
-| **Embedding** | Name contains `embed` | RAG vector search |
-| **Transcription** | Name contains `whisper` or `voxtral` | Audio transcription |
-
-Only **chat** models appear in the LLM selection dropdown. Embedding and transcription models are used by their respective subsystems.
+---
 
 ## Verification Checklist
 
 After adding a new model:
 
-- [ ] Startup logs show: `[LiteLLM] Discovered N models from YAML config`
-- [ ] Model appears in Admin > Settings > LLM dropdown
-- [ ] Model shows in Admin > Providers status page
-- [ ] Tool badge (wrench icon) appears if `supports_function_calling: true`
+- [ ] Model appears in **Admin > Settings > Configure LLM** (if using Admin UI)
+- [ ] OR startup logs show: `[LiteLLM] Discovered N models` (if using YAML)
+- [ ] Model appears in chat model dropdown
+- [ ] Tool badge (🔧) appears if tool-capable
 - [ ] Chat works with new model selected
 - [ ] Translation tool shows model (for openai/gemini/mistral providers)
 
+---
+
 ## Troubleshooting
 
-### Model not appearing in UI
+### Admin UI Issues
+
+#### Provider test fails
+1. Verify API key is correct and has not expired
+2. Check provider's status page for outages
+3. Ensure firewall allows outbound HTTPS
+
+#### Models not showing after discovery
+1. Check if provider has API key configured
+2. Try clicking refresh/discover again
+3. Check browser console for errors
+
+#### Database fallback not working
+1. Verify `hasEnabledModels()` returns true
+2. Check database connection in startup logs
+3. Restart application to reinitialize
+
+### YAML Configuration Issues
+
+#### Model not appearing in UI
 
 1. **Check YAML syntax:**
    ```bash
@@ -256,7 +426,7 @@ After adding a new model:
    npm run build
    ```
 
-### Tools not working with model
+#### Tools not working with model
 
 1. Verify `model_info.supports_function_calling: true` is set
 2. Check provider documentation to confirm model supports function calling
@@ -272,7 +442,7 @@ After adding a new model:
      }'
    ```
 
-### Model connection errors
+#### Model connection errors
 
 1. **Check API key:**
    ```bash
@@ -292,28 +462,59 @@ After adding a new model:
      -d '{"model": "gpt-5", "messages": [{"role": "user", "content": "test"}]}'
    ```
 
-### Fallback Behavior
-
-If YAML parsing fails, the system uses hardcoded defaults from `config-loader.ts`. This ensures the app remains functional but new models won't appear until the YAML issue is resolved.
+---
 
 ## Files Reference
 
+### Admin UI Files (Phase 3)
+
 | File | Purpose |
 |------|---------|
-| `litellm-proxy/litellm_config.yaml` | **Single source of truth** - model routing + capabilities |
+| `src/lib/db/llm-providers.ts` | Provider CRUD operations |
+| `src/lib/db/enabled-models.ts` | Enabled models CRUD |
+| `src/lib/services/model-discovery.ts` | Provider API discovery (OpenAI, Gemini, Mistral, Ollama) |
+| `src/components/admin/settings/LLMConfigSettings.tsx` | Main Configure LLM UI |
+| `src/components/admin/settings/ProviderCard.tsx` | Provider configuration cards |
+| `src/components/admin/settings/ModelDiscoveryModal.tsx` | Model browser/selector modal |
+| `src/app/api/admin/llm/providers/route.ts` | Provider list/create API |
+| `src/app/api/admin/llm/providers/[id]/route.ts` | Provider update/delete API |
+| `src/app/api/admin/llm/providers/[id]/test/route.ts` | Test provider connection API |
+| `src/app/api/admin/llm/models/route.ts` | Enabled models list/batch-create API |
+| `src/app/api/admin/llm/models/[id]/route.ts` | Model update/delete API |
+| `src/app/api/admin/llm/discover/route.ts` | Model discovery API |
+
+### Core Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `litellm-proxy/litellm_config.yaml` | LiteLLM model routing + capabilities |
 | `src/lib/litellm-validator.ts` | YAML parsing, model discovery, display name generation |
 | `src/lib/config-loader.ts` | Model presets API, fallback defaults |
+| `src/lib/db/config.ts` | `getAvailableModels()` with DB-first priority |
 | `src/lib/constants.ts` | Re-exports `isToolCapableModel()` |
-| `src/app/api/admin/providers/route.ts` | Provider health check API |
-| `src/lib/db/config.ts` | `getAvailableModels()` for admin UI |
 
-## Migration from Manual Configuration
+---
 
-If you previously added models manually to `config-loader.ts`:
+## Model Types
 
-1. Ensure models are in `litellm_config.yaml` with full `model_info`
-2. Remove custom entries from `modelPresets` in `config-loader.ts` (optional)
-3. Remove entries from `models.toolCapable` array (now auto-detected)
-4. Restart the app
+The system automatically filters models by type:
 
-The hardcoded defaults remain as fallback and won't cause conflicts with auto-discovered models.
+| Type | Detection | Used For |
+|------|-----------|----------|
+| **Chat** | Default | LLM conversations, tools |
+| **Embedding** | Name contains `embed` | RAG vector search |
+| **Transcription** | Name contains `whisper` or `voxtral` | Audio transcription |
+
+Only **chat** models appear in the LLM selection dropdown. Embedding and transcription models are used by their respective subsystems.
+
+---
+
+## Fallback Behavior
+
+The system has built-in fallback for resilience:
+
+1. **Database available:** Models from Admin UI take precedence
+2. **No DB models:** Falls back to YAML parsing
+3. **YAML unavailable:** Falls back to hardcoded defaults in `config-loader.ts`
+
+This ensures the app remains functional even if configuration sources are unavailable.
