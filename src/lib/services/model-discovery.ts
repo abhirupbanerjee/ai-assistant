@@ -33,9 +33,11 @@ export interface DiscoveryResult {
 const TOOL_CAPABLE_PATTERNS = [
   // OpenAI
   /^gpt-4/,
+  /^gpt-5/,  // GPT-5 family
   /^gpt-3\.5-turbo/,
   /^o1/,
   /^o3/,
+  /^o4/,  // Future-proofing
   // Gemini
   /^gemini/,
   // Mistral
@@ -46,6 +48,7 @@ const TOOL_CAPABLE_PATTERNS = [
   /^pixtral/,
   // Ollama (some models)
   /^llama3/,
+  /^llama4/,  // Future-proofing
   /^qwen/,
   /^mistral$/,
 ];
@@ -56,8 +59,10 @@ const VISION_CAPABLE_PATTERNS = [
   /^gpt-4o/,
   /^gpt-4-turbo/,
   /^gpt-4\.1/,
+  /^gpt-5/,  // GPT-5 family supports vision
   /^o1/,
   /^o3/,
+  /^o4/,  // Future-proofing
   // Gemini
   /^gemini-2/,
   /^gemini-1\.5/,
@@ -69,7 +74,11 @@ const VISION_CAPABLE_PATTERNS = [
 
 // Known context window sizes
 const CONTEXT_WINDOWS: Record<string, number> = {
-  // OpenAI
+  // OpenAI - GPT-5 family (assuming similar to GPT-4.1)
+  'gpt-5': 1000000,
+  'gpt-5.1': 1000000,
+  'gpt-5.2': 1000000,
+  // OpenAI - GPT-4 family
   'gpt-4.1': 1000000,
   'gpt-4.1-mini': 1000000,
   'gpt-4.1-nano': 1000000,
@@ -78,9 +87,11 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-4-turbo': 128000,
   'gpt-4': 8192,
   'gpt-3.5-turbo': 16385,
+  // OpenAI - o-series
   'o1': 200000,
   'o1-preview': 128000,
   'o1-mini': 128000,
+  'o3': 200000,
   'o3-mini': 200000,
   // Gemini
   'gemini-2.5-pro': 1000000,
@@ -123,19 +134,41 @@ function getContextWindow(modelId: string): number | null {
 
 // ============ Model Filtering ============
 
-// Models to exclude (embedding, audio, internal)
+// Models to exclude (embedding, audio, image generation, moderation, legacy)
 const EXCLUDED_PATTERNS = [
+  // Embedding models
   /embed/i,
+  /text-embedding/i,
+  // Audio models
   /whisper/i,
   /tts/i,
+  /audio/i,
+  /realtime/i,
+  // Image generation
   /dall-e/i,
+  /image/i,
+  // Moderation & safety
   /text-moderation/i,
+  /moderation/i,
+  /omni-moderation/i,
+  // Legacy/completion models (not chat)
   /babbage/i,
   /davinci/i,
   /curie/i,
   /ada(?!-)/i,  // ada but not ada-embedding
+  /instruct(?!.*(gpt|turbo))/i,  // instruct models except gpt-instruct variants
+  // Internal/preview/deprecated
   /canary/i,
   /deprecated/i,
+  /preview.*audio/i,
+  // Search/retrieval models
+  /search/i,
+  /similarity/i,
+  // Code-specific non-chat models
+  /code-davinci/i,
+  /code-cushman/i,
+  // Transcription
+  /transcribe/i,
 ];
 
 function isChatModel(modelId: string): boolean {

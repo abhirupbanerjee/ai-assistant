@@ -509,6 +509,47 @@ Only **chat** models appear in the LLM selection dropdown. Embedding and transcr
 
 ---
 
+## Specialized Model Settings
+
+Besides chat models, the system uses specialized models for various features. API keys configured in **Configure LLM** are shared across all features.
+
+| Feature | Model(s) | Configure In | File |
+|---------|----------|--------------|------|
+| **Embeddings** | text-embedding-3-large | Settings → RAG | `src/lib/openai.ts` |
+| **Transcription** | whisper-1 | Hardcoded | `src/lib/openai.ts` |
+| **Image Generation** | DALL-E 3, Gemini Imagen | tool_config | `src/lib/image-gen/` |
+| **Translation** | gpt-4.1-mini, gemini-2.5-flash | tool_config | `src/lib/translation/` |
+| **Document OCR** | Mistral OCR, Azure DI | Settings → Doc Processing | `src/lib/document-extractor.ts` |
+| **Reranker** | Cohere, Jina, Local | Settings → Reranker | `src/lib/reranker.ts` |
+
+### Using Centralized API Keys
+
+Tools should use the provider helpers instead of reading environment variables directly:
+
+```typescript
+import { getApiKey, getApiBase, isProviderConfigured } from '@/lib/provider-helpers';
+
+// Get API key (checks Admin UI config first, then env var)
+const openaiKey = getApiKey('openai');
+const geminiKey = getApiKey('gemini');
+const mistralKey = getApiKey('mistral');
+
+// Get API base URL (for Ollama or custom endpoints)
+const ollamaBase = getApiBase('ollama');
+
+// Check if provider is configured
+if (isProviderConfigured('openai')) {
+  // Provider has API key available
+}
+```
+
+This ensures:
+1. API keys configured via Admin UI take precedence
+2. Falls back to environment variables if not in Admin UI
+3. Single source of truth for provider configuration
+
+---
+
 ## Fallback Behavior
 
 The system has built-in fallback for resilience:
