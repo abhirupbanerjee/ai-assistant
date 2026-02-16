@@ -8,6 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { execute, queryOne, queryAll, transaction } from './index';
 import { getTavilySettings, type TavilySettings } from './config';
+import { getDefaultLLMModel, getModelPresetsFromConfig } from '../config-loader';
 
 // ============ Types ============
 
@@ -307,7 +308,78 @@ export function getWebSearchConfig(): {
 // ============ Tool Definitions Registry ============
 
 /**
+ * Get dynamic translation tool defaults based on config
+ * Uses config-loader to derive appropriate models per provider
+ */
+function getTranslationToolDefaults(): { enabled: boolean; config: Record<string, unknown> } {
+  const defaultModel = getDefaultLLMModel();
+  const presets = getModelPresetsFromConfig();
+
+  // Find best model for each provider from available presets
+  const findModelForProvider = (provider: string): string => {
+    const providerModels = Object.entries(presets)
+      .filter(([, preset]) => preset.provider === provider)
+      .map(([id]) => id);
+
+    if (provider === 'openai') {
+      return providerModels.find(m => m.includes('mini')) || providerModels[0] || defaultModel;
+    }
+    if (provider === 'gemini') {
+      return providerModels.find(m => m.includes('flash') && !m.includes('lite')) || providerModels[0] || defaultModel;
+    }
+    if (provider === 'mistral') {
+      return providerModels.find(m => m.includes('small')) || providerModels[0] || defaultModel;
+    }
+    return providerModels[0] || defaultModel;
+  };
+
+  return {
+    enabled: false,
+    config: {
+      activeProvider: 'openai',
+      providers: {
+        openai: {
+          enabled: true,
+          model: findModelForProvider('openai'),
+          temperature: 0.3,
+        },
+        gemini: {
+          enabled: true,
+          model: findModelForProvider('gemini'),
+          temperature: 0.3,
+        },
+        mistral: {
+          enabled: true,
+          model: findModelForProvider('mistral'),
+          temperature: 0.3,
+        },
+      },
+      languages: {
+        en: true,
+        hi: true,
+        fr: true,
+        es: true,
+        pt: true,
+      },
+      formalStyle: true,
+    },
+  };
+}
+
+/**
+ * Get defaults for a specific tool (with dynamic values where needed)
+ */
+export function getToolDefaultsForTool(toolName: string): { enabled: boolean; config: Record<string, unknown> } | undefined {
+  // Use dynamic defaults for tools that depend on config
+  if (toolName === 'translation') {
+    return getTranslationToolDefaults();
+  }
+  return TOOL_DEFAULTS[toolName];
+}
+
+/**
  * Default configurations for each tool type
+ * Note: For translation tool, use getToolDefaultsForTool('translation') to get dynamic defaults
  */
 export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<string, unknown> }> = {
   web_search: {
@@ -502,9 +574,11 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
  * This is called during initialization to seed missing tool configs
  */
 export function ensureToolConfigsExist(updatedBy: string = 'system'): void {
-  for (const [toolName, defaults] of Object.entries(TOOL_DEFAULTS)) {
+  for (const toolName of Object.keys(TOOL_DEFAULTS)) {
     const existing = getToolConfig(toolName);
     if (!existing) {
+      // Use dynamic defaults where available
+      const defaults = getToolDefaultsForTool(toolName) || TOOL_DEFAULTS[toolName];
       createToolConfig(toolName, defaults.config, defaults.enabled, updatedBy);
       console.log(`[Tools] Created default config for tool: ${toolName}`);
     }
@@ -515,7 +589,8 @@ export function ensureToolConfigsExist(updatedBy: string = 'system'): void {
  * Reset a tool to its default configuration
  */
 export function resetToolToDefaults(toolName: string, updatedBy: string): ToolConfig | undefined {
-  const defaults = TOOL_DEFAULTS[toolName];
+  // Use dynamic defaults where available
+  const defaults = getToolDefaultsForTool(toolName);
   if (!defaults) return undefined;
 
   return updateToolConfig(toolName, {

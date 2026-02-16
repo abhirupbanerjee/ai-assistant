@@ -388,12 +388,7 @@ export const DEFAULT_LLM_SETTINGS: Omit<LLMSettings, 'updatedAt' | 'updatedBy'> 
   maxTokens: 2000,
 };
 
-// DEPRECATED: Use MODEL_PRESETS from db/config.ts instead
-export const AVAILABLE_MODELS = [
-  { id: 'gpt-4.1', name: 'GPT-4.1', description: 'Most capable, best for complex queries' },
-  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini (Recommended)', description: 'Balanced performance and cost' },
-  { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', description: 'Fast and cost-effective' },
-];
+// Note: Available models are now loaded from getAvailableModels() in db/config.ts
 
 export async function getLLMSettings(): Promise<LLMSettings> {
   const configPath = path.join(getConfigDir(), 'llm-settings.json');

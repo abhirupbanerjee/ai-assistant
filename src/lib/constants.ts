@@ -38,29 +38,10 @@ export const LOCAL_RERANKER_MAX_TOKENS = 512;
 export const MAX_TOOL_CALL_ITERATIONS = 10;
 
 /**
- * Models with reliable function/tool calling support
- * These models can use OpenAI-compatible function calling
+ * Check if a model supports tool/function calling
+ * Re-exported from config-loader for convenience
  */
-export const TOOL_CAPABLE_MODELS = new Set([
-  // OpenAI - GPT-4.1 Family
-  'gpt-4.1',
-  'gpt-4.1-mini',
-  'gpt-4.1-nano',
-  // Mistral - Mistral 3 Family
-  'mistral-large-3',
-  'mistral-medium-3.1',
-  'mistral-small-3.2',
-  // Google - Gemini Family
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  // Ollama (with native tool support)
-  'ollama-llama3.2',
-  'ollama-mistral',
-  'ollama-qwen2.5',
-  'ollama-gemma3',
-  'ollama-gpt-oss',
-]);
+export { isToolCapableModel, getToolCapableModels } from './config-loader';
 
 // ============ Ingestion Constants ============
 

@@ -4,11 +4,35 @@
  * Loads settings from config/defaults.json and config/system-prompt.md
  * Provides typed getters with fallbacks to hardcoded defaults
  * Caches config in memory (reload on app restart)
+ *
+ * Model Discovery:
+ * - Automatically discovers models from litellm_config.yaml
+ * - Falls back to hardcoded defaults if YAML unavailable
  */
 
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+
+// Lazy imports to avoid circular dependency
+// These functions don't depend on loadConfig, so they're safe to call
+let _litellmFunctions: {
+  getLiteLLMChatModels: () => import('./litellm-validator').ParsedLiteLLMModel[];
+  getLiteLLMToolCapableModels: () => Set<string>;
+} | null = null;
+
+function getLiteLLMFunctions() {
+  if (!_litellmFunctions) {
+    // Dynamic require to avoid circular dependency at module load time
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const validator = require('./litellm-validator');
+    _litellmFunctions = {
+      getLiteLLMChatModels: validator.getLiteLLMChatModels,
+      getLiteLLMToolCapableModels: validator.getLiteLLMToolCapableModels,
+    };
+  }
+  return _litellmFunctions;
+}
 
 // ============ Types ============
 
@@ -619,10 +643,79 @@ export function clearConfigCache(): void {
 }
 
 /**
- * Get model presets from config
+ * Get model presets - auto-discovers from LiteLLM config, falls back to hardcoded
+ *
+ * Priority:
+ * 1. Parse litellm_config.yaml and build presets from discovered models
+ * 2. Fall back to hardcoded modelPresets if YAML unavailable
  */
 export function getModelPresetsFromConfig(): Record<string, ModelPresetConfig> {
+  // Try to get models from LiteLLM config first
+  try {
+    const { getLiteLLMChatModels } = getLiteLLMFunctions();
+    const litellmModels = getLiteLLMChatModels();
+
+    if (litellmModels.length > 0) {
+      // Build presets from discovered models
+      const presets: Record<string, ModelPresetConfig> = {};
+
+      for (const model of litellmModels) {
+        // Determine default settings based on model tier
+        const tierSettings = getDefaultSettingsForTier(model.id);
+
+        presets[model.id] = {
+          name: model.name,
+          description: model.description,
+          provider: model.provider,
+          temperature: tierSettings.temperature,
+          maxTokens: tierSettings.maxTokens,
+          // RAG settings (unused but required by interface)
+          topKChunks: tierSettings.topKChunks,
+          maxContextChunks: tierSettings.maxContextChunks,
+          similarityThreshold: 0.5,
+          chunkSize: 1200,
+          chunkOverlap: 200,
+          queryExpansionEnabled: true,
+          cacheEnabled: true,
+          cacheTTLSeconds: 3600,
+        };
+      }
+
+      return presets;
+    }
+  } catch {
+    // Fall through to hardcoded defaults
+  }
+
+  // Fall back to hardcoded defaults
   return loadConfig().modelPresets;
+}
+
+/**
+ * Get default settings based on model tier (detected from model ID)
+ */
+function getDefaultSettingsForTier(modelId: string): {
+  temperature: number;
+  maxTokens: number;
+  topKChunks: number;
+  maxContextChunks: number;
+} {
+  const id = modelId.toLowerCase();
+
+  // High-performance models (pro, large)
+  if (id.includes('pro') || id.includes('large')) {
+    return { temperature: 0.1, maxTokens: 8000, topKChunks: 25, maxContextChunks: 20 };
+  }
+  // Balanced models (mini, flash, small)
+  if (id.includes('mini') || id.includes('flash') || id.includes('small')) {
+    return { temperature: 0.2, maxTokens: 3000, topKChunks: 20, maxContextChunks: 15 };
+  }
+  // Cost-effective models (nano, lite)
+  if (id.includes('nano') || id.includes('lite')) {
+    return { temperature: 0.2, maxTokens: 1000, topKChunks: 15, maxContextChunks: 10 };
+  }
+  // Default
+  return { temperature: 0.2, maxTokens: 2000, topKChunks: 15, maxContextChunks: 10 };
 }
 
 /**
@@ -630,6 +723,55 @@ export function getModelPresetsFromConfig(): Record<string, ModelPresetConfig> {
  */
 export function getDefaultPresetId(): string {
   return loadConfig().defaultPreset;
+}
+
+// ============ Model Defaults (Single Source of Truth) ============
+
+/**
+ * Default LLM model ID - used as fallback throughout the app
+ * Single source of truth for the default model
+ */
+export function getDefaultLLMModel(): string {
+  const config = loadConfig();
+  return config.llm?.model || config.defaultPreset || 'gpt-4.1-mini';
+}
+
+/**
+ * Default embedding model - used for RAG
+ */
+export function getDefaultEmbeddingModel(): string {
+  const config = loadConfig();
+  return config.embedding?.model || 'text-embedding-3-large';
+}
+
+/**
+ * Get tool-capable models - auto-discovers from LiteLLM config, falls back to hardcoded
+ * Returns a Set for O(1) lookup
+ */
+export function getToolCapableModels(): Set<string> {
+  // Try to get from LiteLLM config first
+  try {
+    const { getLiteLLMToolCapableModels } = getLiteLLMFunctions();
+    const litellmToolCapable = getLiteLLMToolCapableModels();
+
+    if (litellmToolCapable.size > 0) {
+      return litellmToolCapable;
+    }
+  } catch {
+    // Fall through to hardcoded defaults
+  }
+
+  // Fall back to hardcoded defaults
+  const config = loadConfig();
+  const toolCapable = config.models?.toolCapable || [];
+  return new Set(toolCapable);
+}
+
+/**
+ * Check if a model supports tool/function calling
+ */
+export function isToolCapableModel(modelId: string): boolean {
+  return getToolCapableModels().has(modelId);
 }
 
 /**

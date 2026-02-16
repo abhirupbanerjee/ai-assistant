@@ -8,7 +8,7 @@ import { resolveToolRouting } from './tool-routing';
 import { resolveSkills } from './skills/resolver';
 import { toolsLogger as logger } from './logger';
 import {
-  TOOL_CAPABLE_MODELS,
+  isToolCapableModel,
   MAX_TOOL_CALL_ITERATIONS,
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
 } from './constants';
@@ -143,7 +143,7 @@ export async function generateResponseWithTools(
   const openai = getOpenAI();
 
   // Check if model supports tools, disable gracefully if not
-  const modelSupportsTools = TOOL_CAPABLE_MODELS.has(llmSettings.model);
+  const modelSupportsTools = isToolCapableModel(llmSettings.model);
   const effectiveEnableTools = enableTools && modelSupportsTools;
 
   if (enableTools && !modelSupportsTools) {

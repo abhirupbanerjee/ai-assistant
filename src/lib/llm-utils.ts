@@ -6,6 +6,7 @@
  */
 
 import OpenAI from 'openai';
+import { getDefaultLLMModel } from './config-loader';
 
 let openaiClient: OpenAI | null = null;
 
@@ -40,7 +41,7 @@ export async function callLLMForJson(
   const openai = getOpenAI();
 
   const {
-    model = 'gpt-4.1-mini',
+    model = getDefaultLLMModel(),
     timeout = 5000,
     temperature = 0.3,
     maxTokens = 1000,
@@ -97,7 +98,7 @@ export async function callLLMForText(
   const openai = getOpenAI();
 
   const {
-    model = 'gpt-4.1-mini',
+    model = getDefaultLLMModel(),
     timeout = 5000,
     temperature = 0.3,
     maxTokens = 1000,

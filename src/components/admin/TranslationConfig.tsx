@@ -10,8 +10,14 @@
  * - Formal style toggle
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Info, Languages, Sparkles, Bot, Wind } from 'lucide-react';
+
+interface AvailableModel {
+  id: string;
+  name: string;
+  provider: string;
+}
 
 interface TranslationConfigProps {
   config: Record<string, unknown>;
@@ -28,8 +34,8 @@ const LANGUAGES = [
   { code: 'pt', name: 'Portuguese' },
 ];
 
-// Provider model options
-const PROVIDER_MODELS = {
+// Fallback provider model options (used if API unavailable)
+const FALLBACK_PROVIDER_MODELS: Record<string, { id: string; name: string }[]> = {
   openai: [
     { id: 'gpt-4.1', name: 'GPT-4.1 (Best quality)' },
     { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini (Balanced)' },
@@ -51,6 +57,33 @@ export default function TranslationConfig({
   onChange,
   disabled,
 }: TranslationConfigProps) {
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+
+  // Fetch available models from API on mount
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data.availableModels && Array.isArray(data.availableModels)) {
+          setAvailableModels(data.availableModels);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch available models:', err);
+      });
+  }, []);
+
+  // Get models for a specific provider (from API or fallback)
+  const getModelsForProvider = (provider: 'openai' | 'gemini' | 'mistral') => {
+    if (availableModels.length > 0) {
+      const filtered = availableModels.filter(m => m.provider === provider);
+      if (filtered.length > 0) {
+        return filtered.map(m => ({ id: m.id, name: m.name }));
+      }
+    }
+    return FALLBACK_PROVIDER_MODELS[provider] || [];
+  };
+
   const handleChange = (key: string, value: unknown) => {
     onChange({ ...config, [key]: value });
   };
@@ -164,7 +197,7 @@ export default function TranslationConfig({
                 className="w-full px-3 py-2 border rounded-lg"
                 disabled={disabled}
               >
-                {PROVIDER_MODELS.openai.map((model) => (
+                {getModelsForProvider('openai').map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name}
                   </option>
@@ -231,7 +264,7 @@ export default function TranslationConfig({
                 className="w-full px-3 py-2 border rounded-lg"
                 disabled={disabled}
               >
-                {PROVIDER_MODELS.gemini.map((model) => (
+                {getModelsForProvider('gemini').map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name}
                   </option>
@@ -298,7 +331,7 @@ export default function TranslationConfig({
                 className="w-full px-3 py-2 border rounded-lg"
                 disabled={disabled}
               >
-                {PROVIDER_MODELS.mistral.map((model) => (
+                {getModelsForProvider('mistral').map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name}
                   </option>

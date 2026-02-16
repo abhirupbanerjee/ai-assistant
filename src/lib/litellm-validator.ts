@@ -1,10 +1,12 @@
 /**
- * LiteLLM Configuration Validator
+ * LiteLLM Configuration Validator & Model Discovery
  *
- * Validates that models defined in config/defaults.json exist in
- * litellm-proxy/litellm_config.yaml at application startup.
+ * Two responsibilities:
+ * 1. Validates that models defined in config/defaults.json exist in
+ *    litellm-proxy/litellm_config.yaml at application startup.
+ * 2. Parses LiteLLM config to auto-discover available models with metadata.
  *
- * Behavior:
+ * Validation Behavior:
  * - FAIL FAST: If default model is missing, exit with detailed error
  * - WARN ONLY: If other preset models are missing, log warning and continue
  */
@@ -249,4 +251,222 @@ export function validateLiteLLMOnStartup(): void {
     (m) => !result.errors.some((e) => e.includes(`'${m}'`))
   );
   logMissingModelsWarning(nonDefaultMissing);
+}
+
+// ============ Model Discovery ============
+
+/**
+ * Raw model entry from litellm_config.yaml
+ */
+interface LiteLLMModelEntry {
+  model_name: string;
+  litellm_params: {
+    model: string;
+    api_key?: string;
+    api_base?: string;
+  };
+  model_info?: {
+    supports_function_calling?: boolean;
+    supports_vision?: boolean;
+    max_input_tokens?: number;
+  };
+}
+
+/**
+ * Parsed model with derived metadata
+ */
+export interface ParsedLiteLLMModel {
+  id: string;              // model_name from YAML
+  name: string;            // auto-generated display name
+  description: string;     // auto-generated description
+  provider: string;        // derived from litellm_params.model
+  toolCapable: boolean;    // from model_info.supports_function_calling
+  visionCapable: boolean;  // from model_info.supports_vision
+  maxInputTokens?: number; // from model_info.max_input_tokens
+  modelType: 'chat' | 'embedding' | 'transcription';
+}
+
+/**
+ * Extract provider from LiteLLM model path
+ * Examples:
+ *   gemini/gemini-2.5-flash → gemini
+ *   mistral/mistral-large   → mistral
+ *   ollama/llama3.2         → ollama
+ *   gpt-4.1-mini            → openai (default)
+ */
+export function getProviderFromModelPath(modelPath: string): string {
+  const lowerPath = modelPath.toLowerCase();
+
+  if (lowerPath.startsWith('gemini/')) return 'gemini';
+  if (lowerPath.startsWith('mistral/')) return 'mistral';
+  if (lowerPath.startsWith('ollama/')) return 'ollama';
+  if (lowerPath.startsWith('azure/')) return 'azure';
+  if (lowerPath.startsWith('anthropic/')) return 'anthropic';
+
+  // Default to openai for models without prefix
+  return 'openai';
+}
+
+/**
+ * Generate human-friendly display name from model ID
+ * Examples:
+ *   gpt-4.1-mini        → GPT-4.1 Mini
+ *   gemini-2.5-flash    → Gemini 2.5 Flash
+ *   ollama-llama3.2     → Ollama Llama 3.2
+ *   mistral-small-3.2   → Mistral Small 3.2
+ */
+export function generateDisplayName(modelId: string): string {
+  // Split by hyphens and dots, keeping version numbers together
+  const parts = modelId.split(/[-.]/).filter(Boolean);
+
+  return parts.map((part, index) => {
+    // Uppercase known acronyms
+    if (['gpt', 'llm', 'ai'].includes(part.toLowerCase())) {
+      return part.toUpperCase();
+    }
+    // Keep version numbers as-is (e.g., "4.1", "2.5", "3.2")
+    if (/^\d+$/.test(part)) {
+      // If previous part was also a number, join with dot
+      if (index > 0 && /^\d+$/.test(parts[index - 1])) {
+        return '.' + part;
+      }
+      return part;
+    }
+    // Capitalize first letter of words
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join(' ').replace(/ \./g, '.'); // Fix spacing around dots
+}
+
+/**
+ * Generate description based on model characteristics
+ */
+function generateDescription(modelId: string, provider: string, toolCapable: boolean): string {
+  const id = modelId.toLowerCase();
+
+  // Determine tier
+  let tier = '';
+  if (id.includes('pro') || id.includes('large')) {
+    tier = 'High-performance';
+  } else if (id.includes('mini') || id.includes('flash') || id.includes('small')) {
+    tier = 'Balanced';
+  } else if (id.includes('nano') || id.includes('lite')) {
+    tier = 'Cost-effective';
+  }
+
+  // Provider display names
+  const providerNames: Record<string, string> = {
+    openai: 'OpenAI',
+    gemini: 'Google',
+    mistral: 'Mistral AI',
+    ollama: 'Local',
+    azure: 'Azure',
+    anthropic: 'Anthropic',
+  };
+
+  const providerLabel = providerNames[provider] || provider;
+  const toolLabel = toolCapable ? ' with tool support' : '';
+
+  if (tier) {
+    return `${tier} ${providerLabel} model${toolLabel}`;
+  }
+  return `${providerLabel} model${toolLabel}`;
+}
+
+/**
+ * Detect model type from model name
+ */
+function detectModelType(entry: LiteLLMModelEntry): 'chat' | 'embedding' | 'transcription' {
+  const id = entry.model_name.toLowerCase();
+  const model = entry.litellm_params.model.toLowerCase();
+
+  if (id.includes('embed') || model.includes('embed')) return 'embedding';
+  if (id.includes('whisper') || model.includes('whisper') ||
+      id.includes('voxtral') || model.includes('voxtral')) return 'transcription';
+  return 'chat';
+}
+
+// Cache for parsed models (cleared on restart)
+let _parsedModelsCache: ParsedLiteLLMModel[] | null = null;
+
+/**
+ * Parse LiteLLM config and return all models with metadata
+ * Results are cached for the lifetime of the process
+ */
+export function parseLiteLLMModels(): ParsedLiteLLMModel[] {
+  if (_parsedModelsCache) {
+    return _parsedModelsCache;
+  }
+
+  const yamlPath = path.join(
+    process.cwd(),
+    'litellm-proxy',
+    'litellm_config.yaml'
+  );
+
+  // Return empty array if YAML doesn't exist (fallback to hardcoded)
+  if (!fs.existsSync(yamlPath)) {
+    return [];
+  }
+
+  try {
+    const yamlContent = fs.readFileSync(yamlPath, 'utf-8');
+    const litellmConfig = yaml.parse(yamlContent) as {
+      model_list?: LiteLLMModelEntry[];
+    };
+
+    if (!litellmConfig.model_list || !Array.isArray(litellmConfig.model_list)) {
+      return [];
+    }
+
+    const parsedModels: ParsedLiteLLMModel[] = litellmConfig.model_list.map((entry) => {
+      const provider = getProviderFromModelPath(entry.litellm_params.model);
+      const toolCapable = entry.model_info?.supports_function_calling ?? false;
+
+      return {
+        id: entry.model_name,
+        name: generateDisplayName(entry.model_name),
+        description: generateDescription(entry.model_name, provider, toolCapable),
+        provider,
+        toolCapable,
+        visionCapable: entry.model_info?.supports_vision ?? false,
+        maxInputTokens: entry.model_info?.max_input_tokens,
+        modelType: detectModelType(entry),
+      };
+    });
+
+    _parsedModelsCache = parsedModels;
+    console.log(`[LiteLLM] Discovered ${parsedModels.length} models from YAML config`);
+
+    return parsedModels;
+  } catch (error) {
+    console.warn('[LiteLLM] Failed to parse config for model discovery:', error);
+    return [];
+  }
+}
+
+/**
+ * Get only chat models (excludes embedding and transcription)
+ * This is the main function used by config-loader.ts
+ */
+export function getLiteLLMChatModels(): ParsedLiteLLMModel[] {
+  return parseLiteLLMModels().filter(m => m.modelType === 'chat');
+}
+
+/**
+ * Get tool-capable model IDs from LiteLLM config
+ */
+export function getLiteLLMToolCapableModels(): Set<string> {
+  const models = parseLiteLLMModels();
+  return new Set(
+    models
+      .filter(m => m.toolCapable)
+      .map(m => m.id)
+  );
+}
+
+/**
+ * Clear the parsed models cache (useful for testing)
+ */
+export function clearLiteLLMCache(): void {
+  _parsedModelsCache = null;
 }

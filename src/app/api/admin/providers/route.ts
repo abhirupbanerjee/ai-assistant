@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import {
+  getModelPresetsFromConfig,
+  getToolCapableModels,
+  loadConfig,
+} from '@/lib/config-loader';
 import type { ApiError } from '@/types';
 
 interface ProviderStatus {
@@ -31,54 +36,64 @@ function checkProviderConfig(): Record<string, boolean> {
   };
 }
 
-// All configured models organized by category
-const MODEL_CONFIG = {
-  llm: [
-    // OpenAI
-    { model: 'gpt-4.1', name: 'GPT-4.1', provider: 'openai' },
-    { model: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', provider: 'openai' },
-    { model: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', provider: 'openai' },
-    { model: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai' },
-    // Mistral
-    { model: 'mistral-large-3', name: 'Mistral Large 3', provider: 'mistral' },
-    { model: 'mistral-medium-3.1', name: 'Mistral Medium 3.1', provider: 'mistral' },
-    { model: 'mistral-small-3.2', name: 'Mistral Small 3.2', provider: 'mistral' },
-    // Gemini
-    { model: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
-    { model: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'gemini' },
-    { model: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', provider: 'gemini' },
-    // Ollama
-    { model: 'ollama-llama3.2', name: 'Llama 3.2', provider: 'ollama' },
-    { model: 'ollama-llama3.1', name: 'Llama 3.1', provider: 'ollama' },
-    { model: 'ollama-mistral', name: 'Mistral (Local)', provider: 'ollama' },
-    { model: 'ollama-qwen2.5', name: 'Qwen 2.5', provider: 'ollama' },
-    { model: 'ollama-phi4', name: 'Phi-4', provider: 'ollama' },
-  ],
-  embedding: [
-    // OpenAI
-    { model: 'text-embedding-3-large', name: 'Embedding 3 Large', provider: 'openai' },
+// Model definition interface
+interface ModelDefinition {
+  model: string;
+  name: string;
+  provider: string;
+}
+
+interface ModelConfig {
+  llm: ModelDefinition[];
+  embedding: ModelDefinition[];
+  transcribe: ModelDefinition[];
+  ocr: ModelDefinition[];
+}
+
+/**
+ * Build model configuration dynamically from config-loader
+ * LLM models come from modelPresets, other categories use sensible defaults
+ */
+function getModelConfig(): ModelConfig {
+  const presets = getModelPresetsFromConfig();
+  const config = loadConfig();
+  const toolCapable = getToolCapableModels();
+
+  // Build LLM models from presets
+  const llmModels: ModelDefinition[] = Object.entries(presets).map(([id, preset]) => ({
+    model: id,
+    name: `${preset.name}${toolCapable.has(id) ? ' (Tools)' : ''}`,
+    provider: preset.provider,
+  }));
+
+  // Embedding models (from config or defaults)
+  const embeddingModels: ModelDefinition[] = [
+    { model: config.embedding?.model || 'text-embedding-3-large', name: 'Embedding 3 Large', provider: 'openai' },
     { model: 'text-embedding-3-small', name: 'Embedding 3 Small', provider: 'openai' },
-    // Mistral
     { model: 'mistral-embed', name: 'Mistral Embed', provider: 'mistral' },
-    { model: 'codestral-embed', name: 'Codestral Embed', provider: 'mistral' },
-    // Ollama
     { model: 'ollama-nomic-embed', name: 'Nomic Embed', provider: 'ollama' },
-    { model: 'ollama-mxbai-embed', name: 'MxBai Embed', provider: 'ollama' },
-  ],
-  transcribe: [
-    // OpenAI
-    { model: 'whisper-1', name: 'Whisper', provider: 'openai' },
-    // Mistral
+  ];
+
+  // Transcription models (from config or defaults)
+  const transcribeModels: ModelDefinition[] = [
+    { model: config.models?.transcription || 'whisper-1', name: 'Whisper', provider: 'openai' },
     { model: 'voxtral-small', name: 'Voxtral Small', provider: 'mistral' },
     { model: 'voxtral-mini', name: 'Voxtral Mini', provider: 'mistral' },
-  ],
-  ocr: [
-    // Azure
+  ];
+
+  // OCR models (static - external services)
+  const ocrModels: ModelDefinition[] = [
     { model: 'prebuilt-read', name: 'Azure Document Intelligence', provider: 'azure-di' },
-    // Mistral
     { model: 'pixtral-12b-2409', name: 'Pixtral OCR', provider: 'mistral' },
-  ],
-};
+  ];
+
+  return {
+    llm: llmModels,
+    embedding: embeddingModels,
+    transcribe: transcribeModels,
+    ocr: ocrModels,
+  };
+}
 
 // Check Azure Document Intelligence availability
 async function testAzureDI(): Promise<{ available: boolean; error?: string }> {
@@ -119,6 +134,7 @@ async function getAllServicesStatus(
   providerStatus: Record<string, ProviderStatus>
 ): Promise<ServiceStatus[]> {
   const services: ServiceStatus[] = [];
+  const MODEL_CONFIG = getModelConfig();
 
   // Azure DI special handling
   const azureDIConfigured = Boolean(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY);

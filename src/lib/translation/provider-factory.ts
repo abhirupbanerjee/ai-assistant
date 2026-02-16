@@ -6,6 +6,7 @@
  */
 
 import { getToolConfig } from '@/lib/db/tool-config';
+import { getDefaultLLMModel, getModelPresetsFromConfig } from '../config-loader';
 import { toolsLogger as logger } from '../logger';
 
 // ============ Types ============
@@ -93,24 +94,76 @@ export const SUPPORTED_LANGUAGES = ALL_LANGUAGES;
 
 // ============ Default Configuration ============
 
+/**
+ * Get translation defaults dynamically from config
+ * Uses config-loader to derive appropriate models per provider
+ */
+function getTranslationDefaults(): TranslationConfig {
+  const defaultModel = getDefaultLLMModel();
+  const presets = getModelPresetsFromConfig();
+
+  // Find best model for each provider from available presets
+  const findModelForProvider = (provider: string, fallback: string): string => {
+    // Look for models matching this provider
+    const providerModels = Object.entries(presets)
+      .filter(([, preset]) => preset.provider === provider)
+      .map(([id]) => id);
+
+    // Prefer specific models based on provider
+    if (provider === 'openai') {
+      return providerModels.find(m => m.includes('mini')) || providerModels[0] || fallback;
+    }
+    if (provider === 'gemini') {
+      return providerModels.find(m => m.includes('flash') && !m.includes('lite')) || providerModels[0] || fallback;
+    }
+    if (provider === 'mistral') {
+      return providerModels.find(m => m.includes('small')) || providerModels[0] || fallback;
+    }
+    return providerModels[0] || fallback;
+  };
+
+  return {
+    activeProvider: 'openai',
+    providers: {
+      openai: {
+        enabled: true,
+        model: findModelForProvider('openai', defaultModel),
+        temperature: 0.3,
+      },
+      gemini: {
+        enabled: true,
+        model: findModelForProvider('gemini', defaultModel),
+        temperature: 0.3,
+      },
+      mistral: {
+        enabled: true,
+        model: findModelForProvider('mistral', defaultModel),
+        temperature: 0.3,
+      },
+    },
+    languages: DEFAULT_LANGUAGE_SETTINGS,
+    formalStyle: true,
+  };
+}
+
+// Lazy-loaded defaults (computed once on first access)
+let _translationDefaults: TranslationConfig | null = null;
+
+export function getTranslationDefaultsLazy(): TranslationConfig {
+  if (!_translationDefaults) {
+    _translationDefaults = getTranslationDefaults();
+  }
+  return _translationDefaults;
+}
+
+// For backward compatibility - exports computed defaults
+// Note: This is evaluated at module load time
 export const TRANSLATION_DEFAULTS: TranslationConfig = {
   activeProvider: 'openai',
   providers: {
-    openai: {
-      enabled: true,
-      model: 'gpt-4.1-mini',
-      temperature: 0.3,
-    },
-    gemini: {
-      enabled: true,
-      model: 'gemini-2.5-flash',
-      temperature: 0.3,
-    },
-    mistral: {
-      enabled: true,
-      model: 'mistral-small-3.2',
-      temperature: 0.3,
-    },
+    openai: { enabled: true, model: 'gpt-4.1-mini', temperature: 0.3 },
+    gemini: { enabled: true, model: 'gemini-2.5-flash', temperature: 0.3 },
+    mistral: { enabled: true, model: 'mistral-small-3.2', temperature: 0.3 },
   },
   languages: DEFAULT_LANGUAGE_SETTINGS,
   formalStyle: true,
@@ -123,22 +176,23 @@ export const TRANSLATION_DEFAULTS: TranslationConfig = {
  */
 export function getTranslationConfig(): TranslationConfig {
   const toolConfig = getToolConfig('translation');
+  const defaults = getTranslationDefaultsLazy();
 
   if (toolConfig?.config) {
     const stored = toolConfig.config as Partial<TranslationConfig>;
     return {
-      activeProvider: stored.activeProvider ?? TRANSLATION_DEFAULTS.activeProvider,
+      activeProvider: stored.activeProvider ?? defaults.activeProvider,
       providers: {
         openai: {
-          ...TRANSLATION_DEFAULTS.providers.openai,
+          ...defaults.providers.openai,
           ...(stored.providers?.openai ?? {}),
         },
         gemini: {
-          ...TRANSLATION_DEFAULTS.providers.gemini,
+          ...defaults.providers.gemini,
           ...(stored.providers?.gemini ?? {}),
         },
         mistral: {
-          ...TRANSLATION_DEFAULTS.providers.mistral,
+          ...defaults.providers.mistral,
           ...(stored.providers?.mistral ?? {}),
         },
       },
@@ -146,11 +200,11 @@ export function getTranslationConfig(): TranslationConfig {
         ...DEFAULT_LANGUAGE_SETTINGS,
         ...(stored.languages ?? {}),
       },
-      formalStyle: stored.formalStyle ?? TRANSLATION_DEFAULTS.formalStyle,
+      formalStyle: stored.formalStyle ?? defaults.formalStyle,
     };
   }
 
-  return TRANSLATION_DEFAULTS;
+  return defaults;
 }
 
 /**
