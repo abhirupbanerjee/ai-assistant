@@ -191,6 +191,17 @@ let jinaReranker: {
   model: Awaited<ReturnType<typeof import('@xenova/transformers').AutoModelForSequenceClassification.from_pretrained>>;
 } | null = null;
 
+// Track if Jina model loading has failed to avoid repeated attempts
+let jinaLoadFailed = false;
+
+/**
+ * Reset the Jina reranker state (call to retry loading after fixing issues)
+ */
+export function resetJinaReranker(): void {
+  jinaReranker = null;
+  jinaLoadFailed = false;
+}
+
 /**
  * Sigmoid function to convert logits to probability
  */
@@ -225,18 +236,35 @@ async function rerankWithJina(
 
     // Lazy-load the Jina Reranker v2 model
     if (!jinaReranker) {
+      // Skip loading if previous attempt failed (avoid repeated failures)
+      if (jinaLoadFailed) {
+        console.log('[Reranker] Skipping Jina model load (previous attempt failed)');
+        return chunks;
+      }
+
       console.log('[Reranker] Loading Jina Reranker v2 model (first time may take a moment)...');
       const modelId = 'jinaai/jina-reranker-v2-base-multilingual';
 
-      const [tokenizer, model] = await Promise.all([
-        AutoTokenizer.from_pretrained(modelId),
-        AutoModelForSequenceClassification.from_pretrained(modelId, {
-          quantized: false, // Use full-precision (fp32) model for better accuracy
-        }),
-      ]);
+      try {
+        const [tokenizer, model] = await Promise.all([
+          AutoTokenizer.from_pretrained(modelId),
+          AutoModelForSequenceClassification.from_pretrained(modelId, {
+            quantized: false, // Use full-precision (fp32) model for better accuracy
+          }),
+        ]);
 
-      jinaReranker = { tokenizer, model };
-      console.log('[Reranker] Jina Reranker v2 model loaded successfully');
+        // Validate model loaded correctly
+        if (!tokenizer || !model) {
+          throw new Error('Model or tokenizer failed to initialize (null/undefined)');
+        }
+
+        jinaReranker = { tokenizer, model };
+        console.log('[Reranker] Jina Reranker v2 model loaded successfully');
+      } catch (loadError) {
+        jinaLoadFailed = true;
+        console.error('[Reranker] Failed to load Jina model - will use original chunks:', loadError);
+        return chunks;
+      }
     }
 
     const scoredChunks: RetrievedChunk[] = [];

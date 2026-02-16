@@ -284,7 +284,27 @@ If your organization uses a vision-capable model (GPT-4.1, Gemini, or Mistral La
 - "Extract the data from this table image"
 - "Does this diagram match our process documentation?"
 
-**Note:** Image analysis requires a vision-capable model to be configured by your admin.
+#### Image Processing Modes
+
+Depending on your organization's configuration, you may see different behaviors:
+
+| Warning | Meaning |
+|---------|---------|
+| *(No warning)* | Full visual analysis + OCR text extraction available |
+| **Yellow banner**: "Text will be extracted via OCR" | Your model doesn't support visual analysis, but text in images will be extracted |
+| **Red banner**: "Image uploads not available" | Neither vision nor OCR is configured; contact your admin |
+
+#### Troubleshooting Image Uploads
+
+If you see "Image uploads not available":
+- Your current model may not support vision
+- OCR services may not be configured
+- Contact your admin to enable image processing
+
+If you see "Text extracted via OCR":
+- Images are processed but only text content is extracted
+- Visual elements (charts, diagrams, photos) cannot be analyzed
+- For full visual analysis, ask your admin about vision-capable models
 
 ---
 

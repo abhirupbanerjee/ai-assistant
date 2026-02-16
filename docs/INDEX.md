@@ -280,6 +280,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **2.8** | February 2025 | Vision capability handling: runtime strategy detection (vision-and-ocr, ocr-only, none), `/api/config/capabilities` endpoint, FileUpload warnings |
 | **2.7** | February 2025 | Added Autonomous Agent (beta) documentation, Content Generation (image/diagram/translation), skill tool association, updated tech docs |
 | **2.6** | February 2025 | Superuser skill creation (priority 100+), updated permissions matrix, API spec alignment |
 | **2.5** | January 2025 | Added comprehensive feature documentation (PROMPTS.md, SKILLS.md, PWA.md), updated all guides with cross-references, added PWA sections throughout |

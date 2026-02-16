@@ -16,8 +16,8 @@ An enterprise RAG platform for policy document management and intelligent queryi
 
 ### Core Features
 - **RAG-Powered Q&A** - Natural language queries with source citations
-- **Multi-Provider LLM** - OpenAI, Mistral, Gemini, Ollama via LiteLLM
-- **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1, Gemini, Mistral)
+- **Multi-Provider LLM** - OpenAI, Anthropic Claude, DeepSeek, Mistral, Gemini, Ollama via LiteLLM
+- **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
 - **Voice Input** - Whisper transcription for audio questions
 - **Streaming Responses** - Real-time chat with typing indicators
 - **Artifacts Panel** - Right sidebar showing uploads, generated content, web/YouTube sources
@@ -190,10 +190,12 @@ Policy Bot integrates with several external services. All are optional except LL
 
 | Service | Get Key | Purpose | Local Alternative |
 |---------|---------|---------|-------------------|
-| **OpenAI** | [platform.openai.com](https://platform.openai.com/api-keys) | GPT-4, GPT-4o, embeddings | Ollama (local models) |
-| **Mistral** | [console.mistral.ai](https://console.mistral.ai/api-keys) | Mistral Large, vision, OCR | Ollama (local models) |
-| **Google Gemini** | [ai.google.dev](https://ai.google.dev/) | Gemini Pro, 1M context | Ollama (local models) |
-| **Ollama** | [ollama.ai](https://ollama.ai) | Local models (Llama, Mistral) | N/A (is the local option) |
+| **OpenAI** | [platform.openai.com](https://platform.openai.com/api-keys) | GPT-4.1, GPT-5.x, embeddings | Ollama (local models) |
+| **Anthropic** | [console.anthropic.com](https://console.anthropic.com/) | Claude Sonnet/Haiku/Opus 4.5, 1M context | N/A |
+| **DeepSeek** | [platform.deepseek.com](https://platform.deepseek.com/) | DeepSeek Reasoner, Chat (no vision) | Ollama (local models) |
+| **Mistral** | [console.mistral.ai](https://console.mistral.ai/api-keys) | Mistral Large 3, Small 3.2, vision, OCR | Ollama (local models) |
+| **Google Gemini** | [ai.google.dev](https://ai.google.dev/) | Gemini 2.5 Pro/Flash, 1M context | Ollama (local models) |
+| **Ollama** | [ollama.ai](https://ollama.ai) | Local models (Llama, Qwen, Mistral, Phi) | N/A (is the local option) |
 
 > **Tip:** Use [LiteLLM](https://docs.litellm.ai/) proxy (included) to switch providers without code changes.
 
@@ -236,7 +238,11 @@ Policy Bot integrates with several external services. All are optional except LL
 
 ```bash
 # Required (pick at least one LLM)
-OPENAI_API_KEY=sk-...          # Or use LiteLLM with other providers
+OPENAI_API_KEY=sk-...          # GPT-4.1, GPT-5.x models
+ANTHROPIC_API_KEY=sk-ant-...   # Claude Sonnet/Haiku/Opus 4.5
+DEEPSEEK_API_KEY=sk-...        # DeepSeek Reasoner, Chat
+GEMINI_API_KEY=...             # Gemini 2.5 Pro/Flash
+MISTRAL_API_KEY=...            # Mistral Large 3, Small 3.2
 
 # Production Auth (at least one)
 AZURE_AD_CLIENT_ID=...

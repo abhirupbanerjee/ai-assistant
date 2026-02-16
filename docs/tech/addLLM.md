@@ -508,6 +508,22 @@ If capabilities weren't auto-detected correctly:
 2. If not, update via API (see "Advanced: Manual Capability Configuration")
 3. Verify tools work by asking the model to use a function (e.g., "search for X")
 4. Verify vision works by uploading an image in chat
+5. Check `/api/config/capabilities` returns expected strategy
+
+### Vision Capability Runtime Behavior
+
+When images are uploaded, the system checks capabilities at runtime:
+
+| Model Vision | OCR Configured | Strategy | User Experience |
+|--------------|---------------|----------|-----------------|
+| ✅ Yes | ✅ Yes | `vision-and-ocr` | Full visual analysis + OCR text extraction |
+| ✅ Yes | ❌ No | `vision-only` | Visual analysis only |
+| ❌ No | ✅ Yes | `ocr-only` | Text extracted via OCR, yellow warning shown |
+| ❌ No | ❌ No | `none` | Upload blocked, red error shown |
+
+The capability checker (`src/lib/config-capability-checker.ts`) uses:
+- `enabled_models.vision_capable` from database (authoritative source)
+- OCR settings from admin config (Mistral OCR or Azure DI)
 
 ---
 
@@ -563,6 +579,21 @@ If capabilities weren't auto-detected correctly:
    ```bash
    npm run build
    ```
+
+#### Vision/image upload not working
+
+1. Check model has `visionCapable: true` in database
+2. Verify OCR is configured (Admin > Settings > OCR):
+   - Mistral OCR requires `MISTRAL_API_KEY` or admin-configured key
+   - Azure DI requires endpoint + key configured
+3. Check `/api/config/capabilities` response:
+   ```bash
+   curl http://localhost:3000/api/config/capabilities
+   ```
+4. If strategy is `none`, either:
+   - Enable OCR provider in admin settings
+   - Switch to a vision-capable model (GPT-4o, Gemini 2.5, Pixtral)
+5. If strategy is `ocr-only`, images are processed but only text is extracted
 
 #### Tools not working with model
 

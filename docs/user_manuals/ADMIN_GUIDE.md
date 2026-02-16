@@ -1302,6 +1302,28 @@ The following models support image analysis (multimodal):
 
 When a vision-capable model is configured, users can upload images in their chat threads for analysis.
 
+#### Image Processing Strategy
+
+The system automatically determines image handling based on model and OCR configuration:
+
+| Configuration | Strategy | User Experience |
+|--------------|----------|-----------------|
+| Vision model + OCR enabled | `vision-and-ocr` | Full visual analysis + text extraction |
+| Vision model + No OCR | `vision-only` | Visual analysis only |
+| Non-vision model + OCR enabled | `ocr-only` | Text extraction only (warning shown) |
+| Non-vision model + No OCR | `none` | Image upload blocked (error shown) |
+
+**To enable full image support:**
+1. Configure a vision-capable model (see table above)
+2. Enable at least one OCR provider in **Settings > OCR**:
+   - **Mistral OCR**: Requires Mistral API key
+   - **Azure Document Intelligence**: Requires endpoint + API key
+
+**User Notifications:**
+- Users see a yellow warning when only OCR is available (no visual analysis)
+- Users see a red error when images cannot be processed at all
+- The FileUpload component displays the current capability status
+
 ### Embedding Settings
 
 | Setting | Description |

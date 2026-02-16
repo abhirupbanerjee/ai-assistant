@@ -127,6 +127,20 @@ export default function DocumentsManagement({
   const [showFolderSyncs, setShowFolderSyncs] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
 
+  // Mobile detection - folder upload uses webkitdirectory which is not supported on mobile
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => {
+      // Check for touch capability and small screen (typical mobile indicators)
+      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isSmallScreen = window.innerWidth < 768;
+      setIsMobile(hasTouchScreen && isSmallScreen);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // Document search, filter, and sort state
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [docSortKey, setDocSortKey] = useState<keyof ManagedDocument | null>(null);
@@ -432,12 +446,10 @@ export default function DocumentsManagement({
         formData.append('categoryId', uploadCategory!.toString());
 
         // Add all files with their relative paths
-        const relativePaths: string[] = [];
         for (const item of folderFiles) {
           formData.append('files', item.file);
-          relativePaths.push(item.relativePath);
+          formData.append('paths', item.relativePath);
         }
-        formData.append('relativePaths', JSON.stringify(relativePaths));
 
         response = await fetch('/api/superuser/documents/folder', {
           method: 'POST',
@@ -961,18 +973,21 @@ export default function DocumentsManagement({
             <Youtube size={16} className="inline mr-2" />
             YouTube
           </button>
-          <button
-            type="button"
-            onClick={() => setUploadMode('folder')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              uploadMode === 'folder'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <FolderOpen size={16} className="inline mr-2" />
-            Folder
-          </button>
+          {/* Folder tab hidden on mobile - webkitdirectory API not supported */}
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => setUploadMode('folder')}
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                uploadMode === 'folder'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <FolderOpen size={16} className="inline mr-2" />
+              Folder
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleUploadDocument}>

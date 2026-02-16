@@ -244,6 +244,59 @@ User uploads image + question
 
 **Implementation**: Images are passed as `ImageContent` objects with base64 encoding, MIME type, and filename. The `generateResponseWithTools()` function builds multimodal content parts when images are present.
 
+### 2.2 Vision Capability Checking
+
+The system performs runtime capability checks to determine how images should be processed based on model and OCR availability:
+
+```
+Image Upload Request
+    │
+    ▼
+┌─────────────────────────┐
+│ getImageCapabilities()  │
+│ Check model + OCR config│
+└─────────────────────────┘
+    │
+    ├─── Vision + OCR ──────► Strategy: 'vision-and-ocr'
+    │                         Send images to LLM + OCR text in RAG
+    │
+    ├─── Vision only ───────► Strategy: 'vision-only'
+    │                         Send images to LLM (no OCR text)
+    │
+    ├─── OCR only ──────────► Strategy: 'ocr-only'
+    │                         Extract text via OCR, no visual analysis
+    │                         User notified of limitation
+    │
+    └─── Neither ───────────► Strategy: 'none'
+                              Block processing, show error message
+```
+
+**Capability Detection** (`src/lib/config-capability-checker.ts`):
+
+| Function | Purpose |
+|----------|---------|
+| `isVisionCapableModel(modelId)` | Check if model supports vision via `enabled_models` DB |
+| `isImageOcrAvailable()` | Check if Mistral or Azure DI OCR is configured |
+| `getImageCapabilities(modelId)` | Return full `ImageCapabilities` object with strategy |
+
+**ImageCapabilities Interface**:
+```typescript
+interface ImageCapabilities {
+  canProcessImages: boolean;    // Can system handle images at all?
+  hasVisionSupport: boolean;    // Can LLM analyze images visually?
+  hasOcrSupport: boolean;       // Can extract text from images?
+  strategy: 'vision-and-ocr' | 'vision-only' | 'ocr-only' | 'none';
+  message: string;              // User-facing explanation
+  modelId: string;              // Model used for check
+}
+```
+
+**Frontend Integration**: The FileUpload component fetches capabilities via `/api/config/capabilities` and displays:
+- Yellow warning banner for `ocr-only` mode
+- Red error banner for `none` mode (no image processing available)
+
+**Backend Enforcement**: Chat stream routes (`/api/chat/stream`, `/api/w/[slug]/chat/stream`) check capabilities before loading images and pass the strategy to `generateResponseWithTools()` for appropriate handling.
+
 ### 3. Document Ingestion
 
 Documents are ingested with category assignments. Two ingestion paths are supported:

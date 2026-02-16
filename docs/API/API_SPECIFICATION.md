@@ -108,6 +108,7 @@ When `AUTH_DISABLED=true` in environment:
 | GET | `/api/user/categories` | Yes | Any | Get accessible categories |
 | GET | `/api/user/subscriptions` | Yes | Any | Get user's subscriptions |
 | GET | `/api/branding` | No | - | Get branding settings |
+| GET | `/api/config/capabilities` | Yes | Any | Get image processing capabilities |
 | GET | `/api/admin/categories` | Yes | Admin | List all categories |
 | POST | `/api/admin/categories` | Yes | Admin | Create category |
 | GET | `/api/admin/categories/{id}` | Yes | Admin | Get category details |
@@ -1136,6 +1137,53 @@ curl -X GET https://policybot.abhirup.app/api/branding
 - `internet` - Globe icon
 - `systems` - Server icon
 - `policy` - ScrollText icon (default)
+
+---
+
+### 7.1 Configuration - Capabilities
+
+#### `GET /api/config/capabilities`
+
+Get current image processing capabilities based on model and OCR configuration.
+
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/config/capabilities \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  canProcessImages: boolean;      // Can system handle images at all?
+  hasVisionSupport: boolean;      // Can LLM analyze images visually?
+  hasOcrSupport: boolean;         // Can extract text from images?
+  strategy: 'vision-and-ocr' | 'vision-only' | 'ocr-only' | 'none';
+  message: string;                // User-facing explanation
+  modelId: string;                // Model used for capability check
+}
+```
+
+**Strategy Values**:
+
+| Strategy | Meaning |
+|----------|---------|
+| `vision-and-ocr` | Full visual analysis + OCR text extraction |
+| `vision-only` | Visual analysis available, no OCR |
+| `ocr-only` | Text extraction only, no visual analysis (warning shown to users) |
+| `none` | No image processing available (upload blocked) |
+
+**Error Responses**:
+
+| Code | Reason |
+|------|--------|
+| 401 | Not authenticated |
+| 500 | Configuration check failed |
 
 ---
 
