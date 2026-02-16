@@ -116,6 +116,12 @@ function runMigrations(database: Database.Database): void {
     database.exec('CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC)');
   }
 
+  // Add selected_model column for per-thread model override
+  if (!threadColumnNames.includes('selected_model')) {
+    database.exec('ALTER TABLE threads ADD COLUMN selected_model TEXT');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model)');
+  }
+
   // Check and add token_count column to messages
   const messagesColumns = database.pragma('table_info(messages)') as { name: string }[];
   const messageColumnNames = messagesColumns.map((c) => c.name);

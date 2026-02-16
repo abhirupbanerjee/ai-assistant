@@ -14,6 +14,7 @@ export interface DbThread {
   id: string;
   user_id: number;
   title: string;
+  selected_model: string | null;  // NULL = use global default, otherwise model ID override
   created_at: string;
   updated_at: string;
   is_summarized: number;
@@ -114,7 +115,7 @@ export function createThread(
  */
 export function getThreadById(threadId: string): DbThread | undefined {
   return queryOne<DbThread>(`
-    SELECT id, user_id, title, created_at, updated_at, is_summarized, total_tokens, is_pinned
+    SELECT id, user_id, title, selected_model, created_at, updated_at, is_summarized, total_tokens, is_pinned
     FROM threads
     WHERE id = ?
   `, [threadId]);
@@ -160,7 +161,7 @@ export function getThreadsForUser(
   offset: number = 0
 ): ThreadWithDetails[] {
   const threads = queryAll<DbThread>(`
-    SELECT id, user_id, title, created_at, updated_at, is_summarized, total_tokens, is_pinned
+    SELECT id, user_id, title, selected_model, created_at, updated_at, is_summarized, total_tokens, is_pinned
     FROM threads
     WHERE user_id = ?
     ORDER BY is_pinned DESC, updated_at DESC
@@ -226,6 +227,40 @@ export function toggleThreadPin(threadId: string): boolean {
   `, [newPinStatus, threadId]);
 
   return result.changes > 0;
+}
+
+/**
+ * Update thread's selected model
+ * @param threadId - Thread ID
+ * @param selectedModel - Model ID to use, or null to use global default
+ */
+export function updateThreadModel(threadId: string, selectedModel: string | null): boolean {
+  const result = execute(`
+    UPDATE threads
+    SET selected_model = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `, [selectedModel, threadId]);
+  return result.changes > 0;
+}
+
+/**
+ * Get effective model for a thread (resolves thread override → global default)
+ * @param threadId - Thread ID
+ * @returns Model ID to use for this thread
+ */
+export function getEffectiveModelForThread(threadId: string): string | null {
+  const thread = getThreadById(threadId);
+
+  // If thread has a selected model override, use it
+  if (thread?.selected_model) {
+    return thread.selected_model;
+  }
+
+  // Otherwise use global default from enabled_models
+  // Import dynamically to avoid circular dependency
+  const { getDefaultModel } = require('./enabled-models');
+  const defaultModel = getDefaultModel();
+  return defaultModel?.id || null;
 }
 
 /**
@@ -518,7 +553,7 @@ export function linkOutputsToMessage(threadId: string, messageId: string): numbe
  */
 export function getThreadsOlderThan(days: number): DbThread[] {
   return queryAll<DbThread>(`
-    SELECT id, user_id, title, created_at, updated_at
+    SELECT id, user_id, title, selected_model, created_at, updated_at, is_summarized, total_tokens, is_pinned
     FROM threads
     WHERE updated_at < datetime('now', '-' || ? || ' days')
     ORDER BY updated_at ASC

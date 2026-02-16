@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS threads (
   id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
   title TEXT NOT NULL,
+  selected_model TEXT,  -- NULL = use global default, otherwise override model ID
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   is_pinned INTEGER DEFAULT 0,
@@ -171,6 +172,7 @@ CREATE TABLE IF NOT EXISTS threads (
 CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);
 
 -- Thread category selection (many-to-many)
 CREATE TABLE IF NOT EXISTS thread_categories (

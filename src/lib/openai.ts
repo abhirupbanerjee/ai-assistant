@@ -133,7 +133,8 @@ export async function generateResponseWithTools(
   memoryContext?: string,
   categorySlugs?: string[],
   excludeTools?: string[],
-  imageCapabilities?: ImageCapabilities
+  imageCapabilities?: ImageCapabilities,
+  modelOverride?: string  // Optional model ID to override the default
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -145,12 +146,15 @@ export async function generateResponseWithTools(
   const llmSettings = getLlmSettings();
   const openai = getOpenAI();
 
+  // Use model override if provided, otherwise use default from settings
+  const effectiveModel = modelOverride || llmSettings.model;
+
   // Check if model supports tools, disable gracefully if not
-  const modelSupportsTools = isToolCapableModel(llmSettings.model);
+  const modelSupportsTools = isToolCapableModel(effectiveModel);
   const effectiveEnableTools = enableTools && modelSupportsTools;
 
   if (enableTools && !modelSupportsTools) {
-    logger.warn(`Model ${llmSettings.model} does not support tools, disabling`);
+    logger.warn(`Model ${effectiveModel} does not support tools, disabling`);
   }
 
   // Build unified conversation context with anchors, follow-up detection, and cache keys
@@ -320,10 +324,10 @@ export async function generateResponseWithTools(
   }
 
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
-  const effectiveMaxTokens = getEffectiveMaxTokens(llmSettings.model);
+  const effectiveMaxTokens = getEffectiveMaxTokens(effectiveModel);
 
   const completionParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
-    model: llmSettings.model,
+    model: effectiveModel,
     messages,
     tools,
     tool_choice: tools?.length ? toolChoice : undefined,

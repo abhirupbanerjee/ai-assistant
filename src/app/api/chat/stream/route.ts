@@ -14,7 +14,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail } from '@/lib/db/users';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
-import { linkOutputsToMessage } from '@/lib/db/threads';
+import { linkOutputsToMessage, getEffectiveModelForThread } from '@/lib/db/threads';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
@@ -119,6 +119,9 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
+
+        // Resolve effective model for this thread (thread override or global default)
+        const effectiveModel = getEffectiveModelForThread(threadId);
 
         send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
 
@@ -403,7 +406,8 @@ export async function POST(request: NextRequest) {
               memoryContext, // Memory context for cache key
               categorySlugs, // Category slugs for cache key
               excludeTools,
-              imageCapabilities // Image processing strategy
+              imageCapabilities, // Image processing strategy
+              effectiveModel || undefined // Per-thread model override
             );
 
             // Extract web sources from tool history

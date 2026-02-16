@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowUp, AlertCircle, Loader2, X } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
+import ModelSelector from './ModelSelector';
 import { ChatMode } from './ModeToggle';
 import type { ChatPreferences } from '@/types/stream';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -253,7 +254,7 @@ export default function MessageInput({
           }`}
         />
 
-        {/* Bottom row: Voice + Plus menu + Submit */}
+        {/* Bottom row: Voice + Plus menu + Model selector + Submit */}
         <div className="flex items-center justify-between mt-2">
           {/* Left actions: Voice + Plus menu */}
           <div className="flex items-center gap-1">
@@ -274,6 +275,9 @@ export default function MessageInput({
               disabled={disabled}
             />
           </div>
+
+          {/* Center: Model selector */}
+          <ModelSelector threadId={threadId} disabled={disabled} />
 
           {/* Right action: Send */}
           <SendButton />
