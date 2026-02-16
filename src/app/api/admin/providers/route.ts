@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
-  getModelPresetsFromConfig,
   getToolCapableModels,
   loadConfig,
 } from '@/lib/config-loader';
+import { getAvailableModels } from '@/lib/db/config';
 import type { ApiError } from '@/types';
 
 interface ProviderStatus {
@@ -51,19 +51,20 @@ interface ModelConfig {
 }
 
 /**
- * Build model configuration dynamically from config-loader
- * LLM models come from modelPresets, other categories use sensible defaults
+ * Build model configuration dynamically
+ * LLM models come from getAvailableModels() which respects admin configuration
+ * Other categories use sensible defaults from config
  */
 function getModelConfig(): ModelConfig {
-  const presets = getModelPresetsFromConfig();
+  const availableModels = getAvailableModels();
   const config = loadConfig();
   const toolCapable = getToolCapableModels();
 
-  // Build LLM models from presets
-  const llmModels: ModelDefinition[] = Object.entries(presets).map(([id, preset]) => ({
-    model: id,
-    name: `${preset.name}${toolCapable.has(id) ? ' (Tools)' : ''}`,
-    provider: preset.provider,
+  // Build LLM models from available models (respects admin configuration)
+  const llmModels: ModelDefinition[] = availableModels.map((model) => ({
+    model: model.id,
+    name: `${model.name}${toolCapable.has(model.id) ? ' (Tools)' : ''}`,
+    provider: model.provider,
   }));
 
   // Embedding models (from config or defaults)

@@ -93,15 +93,17 @@ export function getAllEnabledModels(): EnabledModel[] {
 }
 
 /**
- * Get only active (enabled=1) models
+ * Get only active (enabled=1) models from enabled providers
+ * Models are only active if BOTH the model AND its provider are enabled
  */
 export function getActiveModels(): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
-    SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           max_input_tokens, is_default, enabled, sort_order, created_at, updated_at
-    FROM enabled_models
-    WHERE enabled = 1
-    ORDER BY sort_order, display_name
+    SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
+           m.max_input_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
+    FROM enabled_models m
+    INNER JOIN llm_providers p ON m.provider_id = p.id
+    WHERE m.enabled = 1 AND p.enabled = 1
+    ORDER BY m.sort_order, m.display_name
   `);
   return rows.map(mapRowToModel);
 }
@@ -134,14 +136,15 @@ export function getEnabledModel(id: string): EnabledModel | null {
 }
 
 /**
- * Get the default model
+ * Get the default model (must be from an enabled provider)
  */
 export function getDefaultModel(): EnabledModel | null {
   const row = queryOne<EnabledModelRow>(`
-    SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           max_input_tokens, is_default, enabled, sort_order, created_at, updated_at
-    FROM enabled_models
-    WHERE is_default = 1 AND enabled = 1
+    SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
+           m.max_input_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
+    FROM enabled_models m
+    INNER JOIN llm_providers p ON m.provider_id = p.id
+    WHERE m.is_default = 1 AND m.enabled = 1 AND p.enabled = 1
   `);
   return row ? mapRowToModel(row) : null;
 }
@@ -316,12 +319,14 @@ export function isModelVisionCapable(id: string): boolean {
 }
 
 /**
- * Get all tool-capable model IDs
+ * Get all tool-capable model IDs (from enabled providers only)
  */
 export function getToolCapableModelIds(): Set<string> {
-  const rows = queryAll<{ id: string }>(
-    'SELECT id FROM enabled_models WHERE tool_capable = 1 AND enabled = 1'
-  );
+  const rows = queryAll<{ id: string }>(`
+    SELECT m.id FROM enabled_models m
+    INNER JOIN llm_providers p ON m.provider_id = p.id
+    WHERE m.tool_capable = 1 AND m.enabled = 1 AND p.enabled = 1
+  `);
   return new Set(rows.map(r => r.id));
 }
 
