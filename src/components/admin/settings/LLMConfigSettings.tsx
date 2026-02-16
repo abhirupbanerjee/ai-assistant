@@ -50,7 +50,7 @@ export default function LLMConfigSettings() {
   // Modal state
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
   const [selectedProviderForDiscovery, setSelectedProviderForDiscovery] = useState<string | null>(null);
-  const [showDeprecatedModal, setShowDeprecatedModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Model actions
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
@@ -214,6 +214,23 @@ export default function LLMConfigSettings() {
     setTimeout(() => setSuccess(null), 3000);
   };
 
+  const handleRefreshCapabilities = async () => {
+    setIsRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/llm/models/refresh', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to refresh');
+      await fetchModels();
+      setSuccess(`Refreshed capabilities for ${data.updated} models`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh capabilities');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // ============ Helpers ============
 
   const getProviderName = (providerId: string) => {
@@ -289,10 +306,11 @@ export default function LLMConfigSettings() {
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              onClick={() => setShowDeprecatedModal(true)}
-              disabled={enabledModels.length === 0}
+              onClick={handleRefreshCapabilities}
+              disabled={isRefreshing || enabledModels.length === 0}
             >
-              Manage Deprecated
+              <RefreshCw size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
             <Button
               onClick={() => {
@@ -614,27 +632,6 @@ export default function LLMConfigSettings() {
         initialProvider={selectedProviderForDiscovery}
         onModelsAdded={handleModelsAdded}
       />
-
-      {/* Deprecated Models Modal - placeholder for now */}
-      <Modal
-        isOpen={showDeprecatedModal}
-        onClose={() => setShowDeprecatedModal(false)}
-        title="Manage Deprecated Models"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            This feature will scan your enabled models against the provider APIs to find models that have been deprecated or removed.
-          </p>
-          <p className="text-sm text-gray-500">
-            Coming soon: Automatic detection of deprecated models.
-          </p>
-          <div className="flex justify-end">
-            <Button variant="secondary" onClick={() => setShowDeprecatedModal(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Click outside handler for model menu */}
       {activeModelMenu && (

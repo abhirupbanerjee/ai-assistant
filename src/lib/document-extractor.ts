@@ -9,6 +9,7 @@ import { extractTextWithAzureDI } from './azure-document-intelligence';
 import pdf from 'pdf-parse';
 import { getOcrSettings } from './db/config';
 import type { OcrProvider } from './db/config';
+import { isProviderConfigured } from '@/lib/provider-helpers';
 
 // ============================================
 // Types
@@ -207,7 +208,10 @@ async function attemptProvider(
 ): Promise<ExtractionResult | null> {
   switch (provider) {
     case 'mistral': {
-      if (!isMistralSupported(mimeType) || !process.env.MISTRAL_API_KEY) return null;
+      // Check OCR settings first, then LLM provider config
+      const ocrSettings = getOcrSettings();
+      const hasMistral = ocrSettings.mistralApiKey || isProviderConfigured('mistral');
+      if (!isMistralSupported(mimeType) || !hasMistral) return null;
       try {
         console.log(`[${tierLabel}] Attempting Mistral OCR for ${filename}...`);
         const result = await extractTextWithMistral(buffer, mimeType);
@@ -221,7 +225,11 @@ async function attemptProvider(
       }
     }
     case 'azure-di': {
-      if (!process.env.AZURE_DI_ENDPOINT || !process.env.AZURE_DI_KEY) return null;
+      // Check OCR settings first, then env vars
+      const azureOcrSettings = getOcrSettings();
+      const hasAzureDI = (azureOcrSettings.azureDiEndpoint && azureOcrSettings.azureDiKey) ||
+                         (process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY);
+      if (!hasAzureDI) return null;
       try {
         console.log(`[${tierLabel}] Attempting Azure DI for ${filename}...`);
         const result = await extractTextWithAzureDI(buffer, mimeType);

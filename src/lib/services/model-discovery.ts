@@ -122,9 +122,34 @@ function getContextWindow(modelId: string): number | null {
     return CONTEXT_WINDOWS[modelId];
   }
 
-  // Try prefix match
-  for (const [key, value] of Object.entries(CONTEXT_WINDOWS)) {
+  // Try prefix match (sort by key length descending for most specific match)
+  const sortedEntries = Object.entries(CONTEXT_WINDOWS)
+    .sort((a, b) => b[0].length - a[0].length);
+
+  for (const [key, value] of sortedEntries) {
     if (modelId.startsWith(key)) {
+      return value;
+    }
+  }
+
+  // Fallback: Try to match base model family with regex
+  const familyPatterns: [RegExp, number][] = [
+    [/^gpt-5/, 1000000],
+    [/^gpt-4\.1/, 1000000],
+    [/^gpt-4o/, 128000],
+    [/^gpt-4-turbo/, 128000],
+    [/^gpt-4/, 8192],
+    [/^gpt-3\.5/, 16385],
+    [/^o[134]-/, 200000],
+    [/^gemini-2\.5/, 1000000],
+    [/^gemini-1\.5/, 1000000],
+    [/^gemini-2/, 1000000],
+    [/^mistral-large/, 256000],
+    [/^mistral-small/, 32000],
+  ];
+
+  for (const [pattern, value] of familyPatterns) {
+    if (pattern.test(modelId)) {
       return value;
     }
   }
@@ -421,3 +446,8 @@ export async function discoverAllModels(): Promise<{
 
   return { providers: results, totalModels };
 }
+
+// ============ Exported Capability Functions ============
+// Used by enabled-models.ts to refresh model capabilities
+
+export { isToolCapable, isVisionCapable, getContextWindow };

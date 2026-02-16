@@ -7,17 +7,20 @@
 
 import OpenAI from 'openai';
 import { getLlmSettings } from './db/config';
+import { getApiKey } from '@/lib/provider-helpers';
 
 let openaiClient: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
-      : process.env.OPENAI_API_KEY;
+      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
+      : getApiKey('openai');
 
     openaiClient = new OpenAI({
-      apiKey,
+      apiKey: apiKey || '',
       baseURL: process.env.OPENAI_BASE_URL || undefined,
     });
   }

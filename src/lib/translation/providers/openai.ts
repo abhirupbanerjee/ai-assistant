@@ -12,6 +12,7 @@ import type {
   ProviderSettings,
 } from '../provider-factory';
 import { SUPPORTED_LANGUAGES, buildTranslationPrompt } from '../provider-factory';
+import { getApiKey } from '@/lib/provider-helpers';
 
 /**
  * Translate text using OpenAI's GPT models
@@ -86,11 +87,12 @@ export async function translateWithOpenAI(
       textLength: text.length,
     });
 
-    // Use LiteLLM proxy if configured, otherwise direct OpenAI
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
-      : process.env.OPENAI_API_KEY;
+      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
+      : getApiKey('openai');
 
     const openai = new OpenAI({
       baseURL,

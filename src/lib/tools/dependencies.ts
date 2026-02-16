@@ -6,6 +6,7 @@
  */
 
 import { getToolConfig, isToolEnabled } from '../db/tool-config';
+import { isProviderConfigured } from '@/lib/provider-helpers';
 
 // ============ Types ============
 
@@ -132,12 +133,13 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     requires: {
       envVars: [
         { name: 'OPENAI_API_KEY', description: 'OpenAI API key (for DALL-E)' },
-        { name: 'GOOGLE_AI_API_KEY', description: 'Google AI API key (for Gemini)' }
+        { name: 'GEMINI_API_KEY', description: 'Gemini API key (for Gemini)' }
       ]
     },
     validates: async () => {
-      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
-      const hasGemini = Boolean(process.env.GOOGLE_AI_API_KEY);
+      // Use centralized provider helper (DB-first, then env var fallback)
+      const hasOpenAI = isProviderConfigured('openai');
+      const hasGemini = isProviderConfigured('gemini');
       const hasAny = hasOpenAI || hasGemini;
 
       const providers: string[] = [];
@@ -148,11 +150,11 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
         ok: hasAny,
         message: hasAny
           ? `Ready - ${providers.join(' and ')} configured`
-          : 'Requires OpenAI or Google AI API key',
+          : 'Requires OpenAI or Gemini API key',
         details: {
           envVars: [
-            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'env' : undefined },
-            { name: 'GOOGLE_AI_API_KEY', set: hasGemini, source: hasGemini ? 'env' : undefined }
+            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'db/env' : undefined },
+            { name: 'GEMINI_API_KEY', set: hasGemini, source: hasGemini ? 'db/env' : undefined }
           ]
         }
       };
@@ -171,9 +173,10 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
       ]
     },
     validates: async () => {
-      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
-      const hasGemini = Boolean(process.env.GEMINI_API_KEY);
-      const hasMistral = Boolean(process.env.MISTRAL_API_KEY);
+      // Use centralized provider helper (DB-first, then env var fallback)
+      const hasOpenAI = isProviderConfigured('openai');
+      const hasGemini = isProviderConfigured('gemini');
+      const hasMistral = isProviderConfigured('mistral');
       const hasAny = hasOpenAI || hasGemini || hasMistral;
 
       const providers: string[] = [];
@@ -188,9 +191,9 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
           : 'Requires at least one provider API key (OpenAI, Gemini, or Mistral)',
         details: {
           envVars: [
-            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'env' : undefined },
-            { name: 'GEMINI_API_KEY', set: hasGemini, source: hasGemini ? 'env' : undefined },
-            { name: 'MISTRAL_API_KEY', set: hasMistral, source: hasMistral ? 'env' : undefined }
+            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'db/env' : undefined },
+            { name: 'GEMINI_API_KEY', set: hasGemini, source: hasGemini ? 'db/env' : undefined },
+            { name: 'MISTRAL_API_KEY', set: hasMistral, source: hasMistral ? 'db/env' : undefined }
           ]
         }
       };
@@ -207,7 +210,8 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
       ]
     },
     validates: async () => {
-      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+      // Use centralized provider helper (DB-first, then env var fallback)
+      const hasOpenAI = isProviderConfigured('openai');
       const hasLiteLLM = Boolean(process.env.OPENAI_BASE_URL);
       const hasAny = hasOpenAI || hasLiteLLM;
 
@@ -218,7 +222,7 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
           : 'Requires OpenAI API key or LiteLLM proxy',
         details: {
           envVars: [
-            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'env' : undefined },
+            { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'db/env' : undefined },
             { name: 'OPENAI_BASE_URL', set: hasLiteLLM, source: hasLiteLLM ? 'env' : undefined }
           ]
         }

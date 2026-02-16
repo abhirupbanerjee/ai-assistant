@@ -5,6 +5,7 @@
  */
 
 import { DocumentAnalysisClient, AzureKeyCredential } from '@azure/ai-form-recognizer';
+import { getOcrSettings } from '@/lib/db/config';
 
 // ============================================
 // Types
@@ -27,13 +28,26 @@ export interface AzureDIResult {
 
 let azureDIClient: DocumentAnalysisClient | null = null;
 
+/**
+ * Reset the Azure DI client (call when credentials change)
+ */
+export function resetAzureDIClient(): void {
+  azureDIClient = null;
+}
+
+/**
+ * Get or create Azure DI client
+ * Priority: OCR settings (DB) → env vars
+ */
 function getAzureDIClient(): DocumentAnalysisClient {
   if (!azureDIClient) {
-    const endpoint = process.env.AZURE_DI_ENDPOINT;
-    const key = process.env.AZURE_DI_KEY;
+    // Priority: OCR settings → env vars
+    const ocrSettings = getOcrSettings();
+    const endpoint = ocrSettings.azureDiEndpoint || process.env.AZURE_DI_ENDPOINT;
+    const key = ocrSettings.azureDiKey || process.env.AZURE_DI_KEY;
 
     if (!endpoint || !key) {
-      throw new Error('Azure Document Intelligence endpoint and key are required. Set AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.');
+      throw new Error('Azure Document Intelligence not configured. Set credentials in Settings > Document Processing or use AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.');
     }
 
     azureDIClient = new DocumentAnalysisClient(

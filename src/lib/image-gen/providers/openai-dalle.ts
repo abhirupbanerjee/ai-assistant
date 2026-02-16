@@ -11,6 +11,7 @@ import type {
   ImageGenToolArgs,
   AspectRatio,
 } from '@/types/image-gen';
+import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
 
 // ===== Client Management =====
 
@@ -19,15 +20,15 @@ let openaiClient: OpenAI | null = null;
 
 /**
  * Get or create OpenAI client
- * Uses OPENAI_API_KEY directly (not via LiteLLM)
+ * Uses centralized provider helper (DB-first, then env var fallback)
+ * Direct to OpenAI, NOT via LiteLLM (which doesn't proxy image APIs)
  */
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = getApiKey('openai');
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY environment variable is not set');
+      throw new Error('OpenAI API key not configured');
     }
-    // Direct to OpenAI, NOT via LiteLLM (which doesn't proxy image APIs)
     openaiClient = new OpenAI({ apiKey });
   }
   return openaiClient;
@@ -190,10 +191,10 @@ export async function testDalleConnection(): Promise<ConnectionTestResult> {
 }
 
 /**
- * Check if DALL-E provider is configured
+ * Check if DALL-E provider is configured (DB-first, then env var fallback)
  */
 export function isDalleConfigured(): boolean {
-  return !!process.env.OPENAI_API_KEY;
+  return isProviderConfigured('openai');
 }
 
 /**

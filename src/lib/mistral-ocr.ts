@@ -1,12 +1,28 @@
 import { Mistral } from '@mistralai/mistralai';
+import { getApiKey } from '@/lib/provider-helpers';
+import { getOcrSettings } from '@/lib/db/config';
 
 let mistralClient: Mistral | null = null;
 
+/**
+ * Reset the Mistral client (call when API key changes)
+ */
+export function resetMistralOcrClient(): void {
+  mistralClient = null;
+}
+
+/**
+ * Get or create Mistral client for OCR
+ * Priority: OCR settings → LLM provider config → env var
+ */
 function getMistralClient(): Mistral {
   if (!mistralClient) {
-    const apiKey = process.env.MISTRAL_API_KEY;
+    // Priority: OCR settings → LLM provider → env var
+    const ocrSettings = getOcrSettings();
+    const apiKey = ocrSettings.mistralApiKey || getApiKey('mistral');
+
     if (!apiKey) {
-      throw new Error('MISTRAL_API_KEY environment variable is required');
+      throw new Error('Mistral API key not configured. Set in Settings > Document Processing or Configure LLM.');
     }
     mistralClient = new Mistral({ apiKey });
   }

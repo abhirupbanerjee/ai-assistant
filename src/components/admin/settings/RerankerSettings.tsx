@@ -8,6 +8,8 @@ import Spinner from '@/components/ui/Spinner';
 interface RerankerSettings {
   enabled: boolean;
   provider: 'cohere' | 'jina' | 'local';
+  cohereApiKey?: string;
+  hasCohereApiKey?: boolean;
   topKForReranking: number;
   minRerankerScore: number;
   cacheTTLSeconds: number;
@@ -27,6 +29,7 @@ interface RerankerProviderStatus {
 export default function RerankerSettingsTab() {
   const [settings, setSettings] = useState<RerankerSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [cohereApiKeyInput, setCohereApiKeyInput] = useState('');
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,19 +95,30 @@ export default function RerankerSettingsTab() {
 
     try {
       setIsSaving(true);
+
+      // Include Cohere API key if it was entered
+      const settingsToSave = {
+        ...editedSettings,
+        ...(cohereApiKeyInput ? { cohereApiKey: cohereApiKeyInput } : {}),
+      };
+
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'reranker', settings: editedSettings }),
+        body: JSON.stringify({ type: 'reranker', settings: settingsToSave }),
       });
 
       if (!res.ok) throw new Error('Failed to save settings');
 
       const data = await res.json();
-      setSettings(data.reranker);
+      setSettings(data.settings);
+      setCohereApiKeyInput(''); // Clear the input after save
       setIsModified(false);
       setSuccess('Reranker settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
+
+      // Refresh status after saving
+      fetchSettings();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
@@ -121,6 +135,7 @@ export default function RerankerSettingsTab() {
         minRerankerScore: settings.minRerankerScore,
         cacheTTLSeconds: settings.cacheTTLSeconds,
       });
+      setCohereApiKeyInput('');
       setIsModified(false);
     }
   };
@@ -254,12 +269,46 @@ export default function RerankerSettingsTab() {
               </select>
               <p className="mt-1 text-xs text-gray-500">
                 {editedSettings.provider === 'cohere'
-                  ? 'Uses Cohere rerank-english-v3.0 model. Requires COHERE_API_KEY in environment.'
+                  ? 'Uses Cohere rerank-english-v3.0 model.'
                   : editedSettings.provider === 'jina'
                   ? 'Uses Jina Reranker v2 cross-encoder model. Best accuracy, ~500MB download on first use.'
                   : 'Legacy bi-encoder using all-MiniLM-L6-v2. Less accurate than cross-encoder rerankers.'}
               </p>
             </div>
+
+            {/* Cohere API Key - show only when Cohere provider is selected */}
+            {editedSettings.provider === 'cohere' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-1">Cohere API Key</label>
+                <input
+                  type="password"
+                  value={cohereApiKeyInput}
+                  onChange={(e) => {
+                    setCohereApiKeyInput(e.target.value);
+                    setIsModified(true);
+                  }}
+                  placeholder={settings?.hasCohereApiKey ? '••••••••' : 'Enter Cohere API key'}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  {settings?.hasCohereApiKey ? (
+                    <span className="text-green-600">API key configured. Enter a new key to update.</span>
+                  ) : (
+                    <>
+                      Get your API key from{' '}
+                      <a
+                        href="https://dashboard.cohere.com/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        dashboard.cohere.com
+                      </a>
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
 
             {/* Settings Grid */}
             <div className="grid grid-cols-2 gap-6">

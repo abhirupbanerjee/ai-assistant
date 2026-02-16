@@ -7,6 +7,7 @@
 
 import OpenAI from 'openai';
 import type { ModelSpec, AgentModelConfig } from '@/types/agent';
+import { getApiKey } from '@/lib/provider-helpers';
 
 let openaiClient: OpenAI | null = null;
 
@@ -54,13 +55,14 @@ async function generateOpenAI(
   maxTokens: number
 ): Promise<LLMResponse> {
   if (!openaiClient) {
-    // Reuse existing OpenAI client setup from openai.ts
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY
-      : process.env.OPENAI_API_KEY;
+      ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
+      : getApiKey('openai');
 
     openaiClient = new OpenAI({
-      apiKey,
+      apiKey: apiKey || undefined,
       baseURL: process.env.OPENAI_BASE_URL || undefined,
     });
   }
@@ -98,11 +100,12 @@ async function generateGemini(
 ): Promise<LLMResponse> {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
 
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not configured');
+  const apiKey = getApiKey('gemini');
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured');
   }
 
-  const client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const client = new GoogleGenerativeAI(apiKey);
   const genModel = client.getGenerativeModel({
     model,
   });
@@ -142,11 +145,12 @@ async function generateMistral(
 ): Promise<LLMResponse> {
   const { Mistral } = await import('@mistralai/mistralai');
 
-  if (!process.env.MISTRAL_API_KEY) {
-    throw new Error('MISTRAL_API_KEY not configured');
+  const apiKey = getApiKey('mistral');
+  if (!apiKey) {
+    throw new Error('Mistral API key not configured');
   }
 
-  const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
+  const client = new Mistral({ apiKey });
 
   const messages = [];
   if (systemPrompt) {

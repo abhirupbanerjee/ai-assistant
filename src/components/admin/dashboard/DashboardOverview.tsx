@@ -66,32 +66,38 @@ export default function DashboardOverview() {
   const [providerFilter, setProviderFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Fetch settings
+  // Fetch settings from the combined /api/admin/settings endpoint
   const fetchSettings = useCallback(async () => {
     try {
       setSettingsLoading(true);
-      const [llmRes, ragRes, rerankerRes, transcribeRes] = await Promise.all([
-        fetch('/api/admin/settings/llm'),
-        fetch('/api/admin/settings/rag'),
-        fetch('/api/admin/settings/reranker'),
-        fetch('/api/admin/settings/transcribe'),
-      ]);
+      const res = await fetch('/api/admin/settings');
 
-      if (llmRes.ok) {
-        const data = await llmRes.json();
-        setLlmSettings(data);
-      }
-      if (ragRes.ok) {
-        const data = await ragRes.json();
-        setEmbeddingSettings({ model: data.embeddingModel, dimensions: data.embeddingDimensions });
-      }
-      if (rerankerRes.ok) {
-        const data = await rerankerRes.json();
-        setRerankerSettings(data);
-      }
-      if (transcribeRes.ok) {
-        const data = await transcribeRes.json();
-        setTranscriptionModel(data.model || 'whisper-1');
+      if (res.ok) {
+        const data = await res.json();
+
+        // Extract LLM settings
+        setLlmSettings({
+          model: data.llm?.model,
+          temperature: data.llm?.temperature,
+          maxTokens: data.llm?.maxTokens,
+        });
+
+        // Extract Embedding settings
+        setEmbeddingSettings({
+          model: data.embedding?.model,
+          dimensions: data.embedding?.dimensions,
+        });
+
+        // Extract Reranker settings
+        setRerankerSettings({
+          enabled: data.reranker?.enabled,
+          provider: data.reranker?.provider,
+          topKForReranking: data.reranker?.topKForReranking,
+          minRerankerScore: data.reranker?.minRerankerScore,
+        });
+
+        // Extract Transcription model
+        setTranscriptionModel(data.models?.transcription || 'whisper-1');
       }
     } catch (err) {
       console.error('Failed to fetch settings:', err);

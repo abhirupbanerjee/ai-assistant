@@ -8,7 +8,7 @@
  * Supports: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF
  */
 
-import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+import { RecursiveTextSplitter } from './chunking/recursive-splitter';
 import path from 'path';
 import { createEmbeddings } from './openai';
 import { SemanticChunker } from './chunking/semantic-chunker';
@@ -53,9 +53,9 @@ import {
 } from './tools/tavily';
 
 // Create splitter with configurable settings
-function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveCharacterTextSplitter {
+function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveTextSplitter {
   if (chunkSize !== undefined && chunkOverlap !== undefined) {
-    return new RecursiveCharacterTextSplitter({
+    return new RecursiveTextSplitter({
       chunkSize,
       chunkOverlap,
       separators: ['\n\n', '\n', '. ', ' ', ''],
@@ -63,7 +63,7 @@ function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveCha
   }
 
   const settings = getRagSettings();
-  return new RecursiveCharacterTextSplitter({
+  return new RecursiveTextSplitter({
     chunkSize: settings.chunkSize,
     chunkOverlap: settings.chunkOverlap,
     separators: ['\n\n', '\n', '. ', ' ', ''],

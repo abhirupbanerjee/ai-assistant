@@ -7,6 +7,7 @@
 
 import OpenAI from 'openai';
 import { getLlmSettings } from '@/lib/db/config';
+import { getApiKey } from '@/lib/provider-helpers';
 import { getToolConfig } from '@/lib/db/tool-config';
 import { buildGenerationPrompt, DIAGRAM_TEMPLATES } from './templates';
 import { validateMermaidSyntax, sanitizeMermaidCode } from './validator';
@@ -50,11 +51,11 @@ let openaiClient: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
-    // Use LiteLLM proxy if configured, otherwise direct OpenAI
-    // Same pattern as src/lib/openai.ts
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY
-      : process.env.OPENAI_API_KEY;
+      ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
+      : getApiKey('openai');
 
     if (!apiKey && !process.env.OPENAI_BASE_URL) {
       throw new Error('OpenAI API key or LiteLLM proxy required for diagram generation');

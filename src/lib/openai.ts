@@ -18,6 +18,7 @@ import {
   getHistoryForAPI,
   type ConversationContext,
 } from './conversation-context';
+import { getApiKey } from '@/lib/provider-helpers';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -31,13 +32,13 @@ let openaiClient: OpenAI | null = null;
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise fall back to OPENAI_API_KEY for direct OpenAI access
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
-      : process.env.OPENAI_API_KEY;
+      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
+      : getApiKey('openai');
 
     openaiClient = new OpenAI({
-      apiKey,
+      apiKey: apiKey || undefined,
       baseURL: process.env.OPENAI_BASE_URL || undefined,
     });
   }

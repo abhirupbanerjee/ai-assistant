@@ -42,6 +42,7 @@ import {
 } from '@/lib/db/config';
 import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
+import { isProviderConfigured } from '@/lib/provider-helpers';
 import type { ApiError } from '@/types';
 
 // Available models are now loaded from getAvailableModels() in db/config
@@ -132,7 +133,9 @@ export async function GET() {
       },
       reranker: {
         ...rerankerSettings,
-        cohereApiKey: process.env.COHERE_API_KEY ? '••••••••' : '',
+        // Mask key if exists in DB or env, empty string otherwise
+        cohereApiKey: (rerankerSettings.cohereApiKey || process.env.COHERE_API_KEY) ? '••••••••' : '',
+        hasCohereApiKey: !!(rerankerSettings.cohereApiKey || process.env.COHERE_API_KEY),
         updatedAt: rerankerMeta?.updatedAt || new Date().toISOString(),
         updatedBy: rerankerMeta?.updatedBy || 'system',
       },
@@ -169,11 +172,19 @@ export async function GET() {
       retentionSettings,
       ocr: {
         ...ocrSettings,
+        // Mask sensitive credentials
+        mistralApiKey: ocrSettings.mistralApiKey ? '••••••••' : '',
+        azureDiKey: ocrSettings.azureDiKey ? '••••••••' : '',
+        // Availability flags
+        hasMistralApiKey: !!(ocrSettings.mistralApiKey),
+        hasAzureDiCredentials: !!(ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey),
+        // Check if Mistral key is available from LLM provider config
+        mistralFromLlmProvider: !ocrSettings.mistralApiKey && isProviderConfigured('mistral'),
         updatedAt: ocrMeta?.updatedAt || new Date().toISOString(),
         updatedBy: ocrMeta?.updatedBy || 'system',
         providerAvailability: {
-          mistral: Boolean(process.env.MISTRAL_API_KEY),
-          'azure-di': Boolean(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY),
+          mistral: Boolean(ocrSettings.mistralApiKey) || isProviderConfigured('mistral'),
+          'azure-di': Boolean((ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey) || (process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY)),
           'pdf-parse': true,
         },
       },
@@ -707,6 +718,7 @@ export async function PUT(request: NextRequest) {
         const {
           enabled,
           provider,
+          cohereApiKey,
           topKForReranking,
           minRerankerScore,
           cacheTTLSeconds,
@@ -724,6 +736,14 @@ export async function PUT(request: NextRequest) {
         if (!['cohere', 'jina', 'local'].includes(provider)) {
           return NextResponse.json<ApiError>(
             { error: 'Provider must be "cohere", "jina", or "local"', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate Cohere API key (optional - can use env var as fallback)
+        if (cohereApiKey !== undefined && typeof cohereApiKey !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Cohere API key must be a string', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
@@ -752,9 +772,16 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Reset Cohere client if API key is being changed (including when cleared)
+        if (cohereApiKey !== undefined) {
+          const { resetCohereClient } = await import('@/lib/reranker');
+          resetCohereClient();
+        }
+
         result = setRerankerSettings({
           enabled,
           provider,
+          ...(cohereApiKey !== undefined ? { cohereApiKey: cohereApiKey || undefined } : {}),
           topKForReranking,
           minRerankerScore,
           cacheTTLSeconds,
@@ -920,7 +947,7 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'ocr': {
-        const { providers } = settings;
+        const { providers, mistralApiKey, azureDiEndpoint, azureDiKey } = settings;
 
         // Validate providers is an array of exactly 3 items
         if (!Array.isArray(providers) || providers.length !== 3) {
@@ -972,11 +999,48 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate Mistral API key (optional)
+        if (mistralApiKey !== undefined && typeof mistralApiKey !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Mistral API key must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate Azure DI endpoint (optional)
+        if (azureDiEndpoint !== undefined && typeof azureDiEndpoint !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Azure DI endpoint must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate Azure DI key (optional)
+        if (azureDiKey !== undefined && typeof azureDiKey !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Azure DI key must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Reset OCR clients if credentials changed (including when cleared)
+        if (mistralApiKey !== undefined) {
+          const { resetMistralOcrClient } = await import('@/lib/mistral-ocr');
+          resetMistralOcrClient();
+        }
+        if (azureDiEndpoint !== undefined || azureDiKey !== undefined) {
+          const { resetAzureDIClient } = await import('@/lib/azure-document-intelligence');
+          resetAzureDIClient();
+        }
+
         result = setOcrSettings({
           providers: providers.map((p: { provider: string; enabled: boolean }) => ({
             provider: p.provider as 'mistral' | 'azure-di' | 'pdf-parse',
             enabled: p.enabled,
           })),
+          ...(mistralApiKey !== undefined ? { mistralApiKey: mistralApiKey || undefined } : {}),
+          ...(azureDiEndpoint !== undefined ? { azureDiEndpoint: azureDiEndpoint || undefined } : {}),
+          ...(azureDiKey !== undefined ? { azureDiKey: azureDiKey || undefined } : {}),
         }, user.email);
         break;
       }

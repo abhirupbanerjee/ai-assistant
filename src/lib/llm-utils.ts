@@ -7,16 +7,19 @@
 
 import OpenAI from 'openai';
 import { getDefaultLLMModel } from './config-loader';
+import { getApiKey } from '@/lib/provider-helpers';
 
 let openaiClient: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
+    // When using LiteLLM proxy, a dummy key is sufficient
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.LITELLM_BASE_URL;
-    const apiKey = baseURL ? 'dummy-key' : process.env.OPENAI_API_KEY;
+    const apiKey = baseURL ? 'dummy-key' : getApiKey('openai');
 
     openaiClient = new OpenAI({
-      apiKey,
+      apiKey: apiKey || undefined,
       baseURL,
     });
   }

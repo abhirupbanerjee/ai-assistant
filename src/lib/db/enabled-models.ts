@@ -384,3 +384,41 @@ export function findDeprecatedModels(availableModelIds: string[]): EnabledModel[
 
   return enabledModels.filter(m => !availableSet.has(m.id));
 }
+
+// ============ Model Capability Refresh ============
+
+/**
+ * Refresh a single model's capabilities using current detection patterns
+ * Updates toolCapable, visionCapable, and maxInputTokens from model-discovery
+ */
+export function refreshModelCapabilities(modelId: string): EnabledModel | null {
+  const model = getEnabledModel(modelId);
+  if (!model) return null;
+
+  // Import capability detection from model-discovery (lazy to avoid circular deps)
+  const { isToolCapable, isVisionCapable, getContextWindow } = require('../services/model-discovery');
+
+  const newTokens = getContextWindow(modelId);
+
+  return updateEnabledModel(modelId, {
+    toolCapable: isToolCapable(modelId),
+    visionCapable: isVisionCapable(modelId),
+    maxInputTokens: newTokens ?? model.maxInputTokens,
+  });
+}
+
+/**
+ * Refresh capabilities for all enabled models
+ * Returns count of updated models and the refreshed model list
+ */
+export function refreshAllModelCapabilities(): { updated: number; models: EnabledModel[] } {
+  const models = getAllEnabledModels();
+  const refreshed: EnabledModel[] = [];
+
+  for (const model of models) {
+    const updated = refreshModelCapabilities(model.id);
+    if (updated) refreshed.push(updated);
+  }
+
+  return { updated: refreshed.length, models: refreshed };
+}

@@ -9,6 +9,7 @@ import { execute, queryOne, queryAll } from './db';
 import { getMemorySettings } from './db/config';
 import { getLlmSettings } from './db/config';
 import OpenAI from 'openai';
+import { getApiKey } from '@/lib/provider-helpers';
 
 // ============ Types ============
 
@@ -216,11 +217,12 @@ export async function extractFacts(
     .replace('{maxFacts}', String(maxFacts));
 
   try {
-    // Use LiteLLM proxy or direct OpenAI (consistent with openai.ts)
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
-      : process.env.OPENAI_API_KEY;
+      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
+      : getApiKey('openai');
 
     const client = new OpenAI({
       baseURL,

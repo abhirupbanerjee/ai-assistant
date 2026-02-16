@@ -14,6 +14,7 @@ import type {
   AspectRatio,
   GeminiResponse,
 } from '@/types/image-gen';
+import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
 
 // ===== Constants =====
 
@@ -22,12 +23,12 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 // ===== API Key Management =====
 
 /**
- * Get Gemini API key from environment
+ * Get Gemini API key using centralized provider helper (DB-first, then env var fallback)
  */
 function getGeminiApiKey(): string {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getApiKey('gemini');
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not set');
+    throw new Error('Gemini API key not configured');
   }
   return apiKey;
 }
@@ -274,10 +275,10 @@ export async function testGeminiConnection(): Promise<ConnectionTestResult> {
 }
 
 /**
- * Check if Gemini provider is configured
+ * Check if Gemini provider is configured (DB-first, then env var fallback)
  */
 export function isGeminiConfigured(): boolean {
-  return !!process.env.GEMINI_API_KEY;
+  return isProviderConfigured('gemini');
 }
 
 /**

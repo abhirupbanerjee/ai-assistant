@@ -12,16 +12,17 @@ import type {
   ProviderSettings,
 } from '../provider-factory';
 import { SUPPORTED_LANGUAGES, buildTranslationPrompt } from '../provider-factory';
+import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 /**
- * Get Gemini API key from environment
+ * Get Gemini API key using centralized provider helper (DB-first, then env var fallback)
  */
 function getGeminiApiKey(): string {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getApiKey('gemini');
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not set');
+    throw new Error('Gemini API key not configured');
   }
   return apiKey;
 }
@@ -181,8 +182,8 @@ export async function translateWithGemini(
 }
 
 /**
- * Check if Gemini provider is configured
+ * Check if Gemini provider is configured (DB-first, then env var fallback)
  */
 export function isGeminiConfigured(): boolean {
-  return !!process.env.GEMINI_API_KEY;
+  return isProviderConfigured('gemini');
 }

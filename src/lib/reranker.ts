@@ -45,14 +45,24 @@ interface CohereClientInterface {
 let cohereClient: CohereClientInterface | null = null;
 
 /**
+ * Reset the Cohere client (call when API key changes)
+ */
+export function resetCohereClient(): void {
+  cohereClient = null;
+}
+
+/**
  * Get or create Cohere client
+ * Uses API key from Settings > Reranker (DB-first), falls back to COHERE_API_KEY env var
  */
 async function getCohereClient(): Promise<CohereClientInterface> {
   if (cohereClient) return cohereClient;
 
-  const apiKey = process.env.COHERE_API_KEY;
+  const settings = getRerankerSettings();
+  const apiKey = settings.cohereApiKey || process.env.COHERE_API_KEY;  // DB first
+
   if (!apiKey) {
-    throw new Error('COHERE_API_KEY environment variable is not set');
+    throw new Error('Cohere API key not configured. Set in Settings > Reranker or COHERE_API_KEY environment variable.');
   }
 
   const { CohereClient } = await import('cohere-ai');

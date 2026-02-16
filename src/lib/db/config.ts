@@ -108,6 +108,7 @@ export interface EmbeddingSettings {
 export interface RerankerSettings {
   enabled: boolean;
   provider: 'cohere' | 'jina' | 'local';   // Cohere API, Jina Reranker v2 (cross-encoder), or legacy local (bi-encoder)
+  cohereApiKey?: string;          // Cohere API key (stored, falls back to COHERE_API_KEY env var)
   topKForReranking: number;       // How many chunks to rerank (default: 50)
   minRerankerScore: number;       // Threshold 0-1 (default: 0.3)
   cacheTTLSeconds: number;        // Cache duration (default: 3600)
@@ -144,6 +145,11 @@ export interface OcrProviderConfig {
 
 export interface OcrSettings {
   providers: OcrProviderConfig[];  // Ordered by priority (index 0 = primary)
+  // Mistral OCR credentials (falls back to LLM provider config, then env var)
+  mistralApiKey?: string;
+  // Azure Document Intelligence credentials (falls back to env vars)
+  azureDiEndpoint?: string;
+  azureDiKey?: string;
 }
 
 export const DEFAULT_OCR_SETTINGS: OcrSettings = {
@@ -860,11 +866,18 @@ export function setSkillsSettings(settings: Partial<SkillsSettings>, updatedBy?:
 
 /**
  * Update OCR/document processing settings
- * Replaces the full provider list (order matters for priority)
+ * Merges with existing settings to preserve credentials not being updated
  */
-export function setOcrSettings(settings: OcrSettings, updatedBy?: string): OcrSettings {
-  setSetting('ocr-settings', settings, updatedBy);
-  return settings;
+export function setOcrSettings(settings: Partial<OcrSettings>, updatedBy?: string): OcrSettings {
+  const current = getOcrSettings();
+  const updated: OcrSettings = {
+    ...current,
+    ...settings,
+    // Ensure providers is always set (required field)
+    providers: settings.providers || current.providers,
+  };
+  setSetting('ocr-settings', updated, updatedBy);
+  return updated;
 }
 
 /**

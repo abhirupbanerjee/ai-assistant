@@ -13,17 +13,18 @@ import type {
   ProviderSettings,
 } from '../provider-factory';
 import { SUPPORTED_LANGUAGES, buildTranslationPrompt } from '../provider-factory';
+import { getApiKey, isProviderConfigured } from '@/lib/provider-helpers';
 
 let mistralClient: Mistral | null = null;
 
 /**
- * Get or create Mistral client
+ * Get or create Mistral client using centralized provider helper (DB-first, then env var fallback)
  */
 function getMistralClient(): Mistral {
   if (!mistralClient) {
-    const apiKey = process.env.MISTRAL_API_KEY;
+    const apiKey = getApiKey('mistral');
     if (!apiKey) {
-      throw new Error('MISTRAL_API_KEY environment variable is not set');
+      throw new Error('Mistral API key not configured');
     }
     mistralClient = new Mistral({ apiKey });
   }
@@ -154,8 +155,8 @@ export async function translateWithMistral(
 }
 
 /**
- * Check if Mistral provider is configured
+ * Check if Mistral provider is configured (DB-first, then env var fallback)
  */
 export function isMistralConfigured(): boolean {
-  return !!process.env.MISTRAL_API_KEY;
+  return isProviderConfigured('mistral');
 }
