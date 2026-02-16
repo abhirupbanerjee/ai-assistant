@@ -303,6 +303,39 @@ CREATE TABLE IF NOT EXISTS storage_alerts (
 
 CREATE INDEX IF NOT EXISTS idx_storage_alerts_pending ON storage_alerts(acknowledged_at) WHERE acknowledged_at IS NULL;
 
+-- ============ LLM Configuration ============
+
+-- LLM Provider configurations
+CREATE TABLE IF NOT EXISTS llm_providers (
+  id TEXT PRIMARY KEY,              -- 'openai', 'gemini', 'mistral', 'ollama'
+  name TEXT NOT NULL,               -- Display name: 'OpenAI', 'Google Gemini', etc.
+  api_key TEXT,                     -- Encrypted API key (null for ollama)
+  api_base TEXT,                    -- Custom endpoint (for ollama or Azure)
+  enabled INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Models enabled for use in Policy Bot
+CREATE TABLE IF NOT EXISTS enabled_models (
+  id TEXT PRIMARY KEY,              -- Model ID e.g., 'gpt-4.1-mini'
+  provider_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  tool_capable INTEGER DEFAULT 0,
+  vision_capable INTEGER DEFAULT 0,
+  max_input_tokens INTEGER,
+  is_default INTEGER DEFAULT 0,     -- Only one can be default
+  enabled INTEGER DEFAULT 1,        -- 0 = disabled/hidden
+  sort_order INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (provider_id) REFERENCES llm_providers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_enabled_models_provider ON enabled_models(provider_id);
+CREATE INDEX IF NOT EXISTS idx_enabled_models_enabled ON enabled_models(enabled);
+CREATE INDEX IF NOT EXISTS idx_enabled_models_default ON enabled_models(is_default);
+
 -- ============ Triggers ============
 
 -- Update user updated_at timestamp
@@ -324,4 +357,26 @@ CREATE TRIGGER IF NOT EXISTS update_thread_on_message
 AFTER INSERT ON messages
 BEGIN
   UPDATE threads SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.thread_id;
+END;
+
+-- Update llm_providers updated_at timestamp
+CREATE TRIGGER IF NOT EXISTS update_llm_provider_timestamp
+AFTER UPDATE ON llm_providers
+BEGIN
+  UPDATE llm_providers SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+-- Update enabled_models updated_at timestamp
+CREATE TRIGGER IF NOT EXISTS update_enabled_model_timestamp
+AFTER UPDATE ON enabled_models
+BEGIN
+  UPDATE enabled_models SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+-- Ensure only one default model
+CREATE TRIGGER IF NOT EXISTS ensure_single_default_model
+AFTER UPDATE OF is_default ON enabled_models
+WHEN NEW.is_default = 1
+BEGIN
+  UPDATE enabled_models SET is_default = 0 WHERE id != NEW.id AND is_default = 1;
 END;

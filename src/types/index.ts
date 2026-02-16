@@ -306,6 +306,7 @@ export type ErrorCode =
   | 'ACCESS_DENIED'
   | 'NOT_FOUND'
   | 'VALIDATION_ERROR'
+  | 'DUPLICATE_ERROR'
   | 'FILE_TOO_LARGE'
   | 'UPLOAD_LIMIT'
   | 'THREAD_UPLOAD_LIMIT'

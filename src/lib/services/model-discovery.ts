@@ -1,0 +1,390 @@
+/**
+ * Model Discovery Service
+ *
+ * Discovers available models from LLM provider APIs (OpenAI, Gemini, Mistral, Ollama)
+ */
+
+import { getProviderApiKey, getProviderApiBase } from '../db/llm-providers';
+import { getEnabledModel } from '../db/enabled-models';
+import { generateDisplayName, getProviderFromModelPath } from '../litellm-validator';
+
+// ============ Types ============
+
+export interface DiscoveredModel {
+  id: string;
+  name: string;           // Display name
+  provider: string;       // 'openai', 'gemini', 'mistral', 'ollama'
+  toolCapable: boolean;
+  visionCapable: boolean;
+  maxInputTokens: number | null;
+  isEnabled: boolean;     // Already enabled in Policy Bot
+}
+
+export interface DiscoveryResult {
+  success: boolean;
+  provider: string;
+  models: DiscoveredModel[];
+  error?: string;
+}
+
+// ============ Known Model Capabilities ============
+
+// Models known to support function calling
+const TOOL_CAPABLE_PATTERNS = [
+  // OpenAI
+  /^gpt-4/,
+  /^gpt-3\.5-turbo/,
+  /^o1/,
+  /^o3/,
+  // Gemini
+  /^gemini/,
+  // Mistral
+  /^mistral-large/,
+  /^mistral-small/,
+  /^mistral-medium/,
+  /^codestral/,
+  /^pixtral/,
+  // Ollama (some models)
+  /^llama3/,
+  /^qwen/,
+  /^mistral$/,
+];
+
+// Models known to support vision/images
+const VISION_CAPABLE_PATTERNS = [
+  // OpenAI
+  /^gpt-4o/,
+  /^gpt-4-turbo/,
+  /^gpt-4\.1/,
+  /^o1/,
+  /^o3/,
+  // Gemini
+  /^gemini-2/,
+  /^gemini-1\.5/,
+  // Mistral
+  /^pixtral/,
+  /^mistral-large/,  // Mistral Large 3+ supports vision
+  /^mistral-small-3/,
+];
+
+// Known context window sizes
+const CONTEXT_WINDOWS: Record<string, number> = {
+  // OpenAI
+  'gpt-4.1': 1000000,
+  'gpt-4.1-mini': 1000000,
+  'gpt-4.1-nano': 1000000,
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  'gpt-4-turbo': 128000,
+  'gpt-4': 8192,
+  'gpt-3.5-turbo': 16385,
+  'o1': 200000,
+  'o1-preview': 128000,
+  'o1-mini': 128000,
+  'o3-mini': 200000,
+  // Gemini
+  'gemini-2.5-pro': 1000000,
+  'gemini-2.5-flash': 1000000,
+  'gemini-2.5-flash-lite': 1000000,
+  'gemini-1.5-pro': 1000000,
+  'gemini-1.5-flash': 1000000,
+  // Mistral
+  'mistral-large-latest': 256000,
+  'mistral-small-latest': 32000,
+};
+
+// ============ Capability Detection ============
+
+function isToolCapable(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
+}
+
+function isVisionCapable(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return VISION_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
+}
+
+function getContextWindow(modelId: string): number | null {
+  // Try exact match first
+  if (CONTEXT_WINDOWS[modelId]) {
+    return CONTEXT_WINDOWS[modelId];
+  }
+
+  // Try prefix match
+  for (const [key, value] of Object.entries(CONTEXT_WINDOWS)) {
+    if (modelId.startsWith(key)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+// ============ Model Filtering ============
+
+// Models to exclude (embedding, audio, internal)
+const EXCLUDED_PATTERNS = [
+  /embed/i,
+  /whisper/i,
+  /tts/i,
+  /dall-e/i,
+  /text-moderation/i,
+  /babbage/i,
+  /davinci/i,
+  /curie/i,
+  /ada(?!-)/i,  // ada but not ada-embedding
+  /canary/i,
+  /deprecated/i,
+];
+
+function isChatModel(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return !EXCLUDED_PATTERNS.some(pattern => pattern.test(id));
+}
+
+// ============ Provider Discovery ============
+
+/**
+ * Discover models from OpenAI API
+ */
+async function discoverOpenAIModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch('https://api.openai.com/v1/models', {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { data: Array<{ id: string }> };
+
+  return data.data
+    .filter(m => isChatModel(m.id))
+    .map(m => ({
+      id: m.id,
+      name: generateDisplayName(m.id),
+      provider: 'openai',
+      toolCapable: isToolCapable(m.id),
+      visionCapable: isVisionCapable(m.id),
+      maxInputTokens: getContextWindow(m.id),
+      isEnabled: !!getEnabledModel(m.id),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Discover models from Google Gemini API
+ */
+async function discoverGeminiModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as {
+    models: Array<{
+      name: string;
+      supportedGenerationMethods: string[];
+      inputTokenLimit?: number;
+    }>;
+  };
+
+  return data.models
+    .filter(m => {
+      // Filter to generative models only
+      const methods = m.supportedGenerationMethods || [];
+      return methods.includes('generateContent') && isChatModel(m.name);
+    })
+    .map(m => {
+      // Extract model ID from full name (e.g., "models/gemini-2.5-flash" -> "gemini-2.5-flash")
+      const id = m.name.replace('models/', '');
+      return {
+        id,
+        name: generateDisplayName(id),
+        provider: 'gemini',
+        toolCapable: isToolCapable(id),
+        visionCapable: isVisionCapable(id),
+        maxInputTokens: m.inputTokenLimit || getContextWindow(id),
+        isEnabled: !!getEnabledModel(id),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Discover models from Mistral API
+ */
+async function discoverMistralModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch('https://api.mistral.ai/v1/models', {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Mistral API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { data: Array<{ id: string }> };
+
+  return data.data
+    .filter(m => isChatModel(m.id))
+    .map(m => ({
+      id: m.id,
+      name: generateDisplayName(m.id),
+      provider: 'mistral',
+      toolCapable: isToolCapable(m.id),
+      visionCapable: isVisionCapable(m.id),
+      maxInputTokens: getContextWindow(m.id),
+      isEnabled: !!getEnabledModel(m.id),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Discover models from Ollama local server
+ */
+async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]> {
+  const baseUrl = apiBase.replace(/\/+$/, '');
+  const response = await fetch(`${baseUrl}/api/tags`);
+
+  if (!response.ok) {
+    throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { models: Array<{ name: string }> };
+
+  return data.models
+    .filter(m => isChatModel(m.name))
+    .map(m => {
+      // Ollama model names often include tags like ":latest"
+      const baseName = m.name.split(':')[0];
+      const id = `ollama-${baseName}`;
+      return {
+        id,
+        name: generateDisplayName(id),
+        provider: 'ollama',
+        toolCapable: isToolCapable(baseName),
+        visionCapable: isVisionCapable(baseName),
+        maxInputTokens: null,  // Ollama doesn't report this
+        isEnabled: !!getEnabledModel(id),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ============ Main Discovery Function ============
+
+/**
+ * Discover available models from a provider
+ */
+export async function discoverModels(provider: string): Promise<DiscoveryResult> {
+  try {
+    let models: DiscoveredModel[];
+
+    switch (provider) {
+      case 'openai': {
+        const apiKey = getProviderApiKey('openai');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverOpenAIModels(apiKey);
+        break;
+      }
+
+      case 'gemini': {
+        const apiKey = getProviderApiKey('gemini');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverGeminiModels(apiKey);
+        break;
+      }
+
+      case 'mistral': {
+        const apiKey = getProviderApiKey('mistral');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverMistralModels(apiKey);
+        break;
+      }
+
+      case 'ollama': {
+        const apiBase = getProviderApiBase('ollama');
+        if (!apiBase) {
+          return { success: false, provider, models: [], error: 'API base URL not configured' };
+        }
+        models = await discoverOllamaModels(apiBase);
+        break;
+      }
+
+      default:
+        return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
+    }
+
+    return { success: true, provider, models };
+
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[Model Discovery] Error discovering ${provider} models:`, message);
+    return { success: false, provider, models: [], error: message };
+  }
+}
+
+/**
+ * Test provider connection by attempting to list models
+ */
+export async function testProviderConnection(provider: string): Promise<{
+  success: boolean;
+  message: string;
+  modelCount?: number;
+}> {
+  const result = await discoverModels(provider);
+
+  if (result.success) {
+    return {
+      success: true,
+      message: `Connected successfully. Found ${result.models.length} models.`,
+      modelCount: result.models.length,
+    };
+  }
+
+  return {
+    success: false,
+    message: result.error || 'Connection failed',
+  };
+}
+
+/**
+ * Discover models from all configured providers
+ */
+export async function discoverAllModels(): Promise<{
+  providers: Record<string, DiscoveryResult>;
+  totalModels: number;
+}> {
+  const providers = ['openai', 'gemini', 'mistral', 'ollama'];
+  const results: Record<string, DiscoveryResult> = {};
+  let totalModels = 0;
+
+  const discoveries = await Promise.allSettled(
+    providers.map(async (provider) => {
+      const result = await discoverModels(provider);
+      return { provider, result };
+    })
+  );
+
+  for (const discovery of discoveries) {
+    if (discovery.status === 'fulfilled') {
+      const { provider, result } = discovery.value;
+      results[provider] = result;
+      if (result.success) {
+        totalModels += result.models.length;
+      }
+    }
+  }
+
+  return { providers: results, totalModels };
+}

@@ -14,6 +14,13 @@ import {
   getSystemPromptFileHash,
   type ModelPresetConfig,
 } from '../config-loader';
+import {
+  getActiveModels,
+  getDefaultModel,
+  isModelToolCapable as isEnabledModelToolCapable,
+  hasEnabledModels,
+  getToolCapableModelIds as getDbToolCapableModelIds,
+} from './enabled-models';
 
 // ============ Types ============
 
@@ -211,10 +218,32 @@ export interface AvailableModel {
 }
 
 /**
- * Get available models from JSON config
- * Each model preset in config becomes an available model option
+ * Get available models
+ * Priority: Database (admin-configured) > LiteLLM YAML > Hardcoded presets
+ *
+ * When admin has configured models via Settings → Configure LLM,
+ * those take precedence over YAML/preset discovery.
  */
 export function getAvailableModels(): AvailableModel[] {
+  // Try database first (admin-configured models)
+  try {
+    if (hasEnabledModels()) {
+      const dbModels = getActiveModels();
+      if (dbModels.length > 0) {
+        return dbModels.map(model => ({
+          id: model.id,
+          name: model.displayName,
+          description: `${model.providerId} model${model.toolCapable ? ' with tool support' : ''}${model.visionCapable ? ' and vision' : ''}`,
+          provider: model.providerId as 'openai' | 'mistral' | 'gemini' | 'ollama',
+          defaultMaxTokens: model.maxInputTokens || 2000,
+        }));
+      }
+    }
+  } catch {
+    // Fall through to YAML/preset discovery
+  }
+
+  // Fall back to YAML/preset discovery
   const configPresets = getModelPresetsFromConfig();
   return Object.entries(configPresets).map(([id, config]) => ({
     id,
@@ -223,6 +252,44 @@ export function getAvailableModels(): AvailableModel[] {
     provider: config.provider as 'openai' | 'mistral' | 'gemini' | 'ollama',
     defaultMaxTokens: config.maxTokens,
   }));
+}
+
+/**
+ * Check if a model supports tool/function calling
+ * Priority: Database > YAML > Hardcoded list
+ */
+export function isToolCapableModelFromDb(modelId: string): boolean {
+  // Try database first
+  try {
+    if (hasEnabledModels()) {
+      return isEnabledModelToolCapable(modelId);
+    }
+  } catch {
+    // Fall through
+  }
+
+  // Fall back to config-loader
+  const { isToolCapableModel } = require('../config-loader');
+  return isToolCapableModel(modelId);
+}
+
+/**
+ * Get all tool-capable model IDs
+ * Priority: Database > YAML > Hardcoded list
+ */
+export function getToolCapableModels(): Set<string> {
+  // Try database first
+  try {
+    if (hasEnabledModels()) {
+      return getDbToolCapableModelIds();
+    }
+  } catch {
+    // Fall through
+  }
+
+  // Fall back to config-loader
+  const configLoader = require('../config-loader');
+  return configLoader.getToolCapableModels();
 }
 
 // Default model ID (loaded from config)

@@ -13,6 +13,7 @@ import * as path from 'path';
 import { validateLiteLLMOnStartup } from '../litellm-validator';
 import { seedCoreSkills } from '../skills/seed';
 import { removeCoreFlag } from './skills';
+import { seedDefaultProviders } from './llm-providers';
 
 // Database file path
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -45,6 +46,9 @@ export function getDatabase(): Database.Database {
 
   // Initialize default settings
   initializeDefaultSettings(db);
+
+  // Seed default LLM providers (idempotent)
+  seedDefaultProviders();
 
   // Seed core skills (idempotent)
   seedCoreSkills();
