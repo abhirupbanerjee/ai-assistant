@@ -117,12 +117,9 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'claude-3-sonnet': 200000,
   'claude-3-haiku': 200000,
   'claude-3-5-sonnet': 200000,
-  // DeepSeek
-  'deepseek-r1': 64000,
-  'deepseek-v3': 128000,
-  'deepseek-chat': 128000,
+  // DeepSeek (use actual API model IDs)
   'deepseek-reasoner': 64000,
-  'deepseek-coder': 128000,
+  'deepseek-chat': 128000,
 };
 
 // ============ Capability Detection ============

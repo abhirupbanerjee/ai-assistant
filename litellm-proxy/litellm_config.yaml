@@ -122,10 +122,11 @@ model_list:
   # ===========================================================================
   # DEEPSEEK MODELS
   # Note: DeepSeek models do NOT support vision
+  # Model names must match DeepSeek API model IDs
   # ===========================================================================
 
-  # DeepSeek R1 - Reasoning model with chain-of-thought
-  - model_name: deepseek-r1
+  # DeepSeek Reasoner - Reasoning model with chain-of-thought (V3.2 thinking mode)
+  - model_name: deepseek-reasoner
     litellm_params:
       model: deepseek/deepseek-reasoner
       api_key: os.environ/DEEPSEEK_API_KEY
@@ -134,8 +135,8 @@ model_list:
       supports_vision: false
       max_input_tokens: 64000
 
-  # DeepSeek V3 - General chat model
-  - model_name: deepseek-v3
+  # DeepSeek Chat - General chat model (V3.2 non-thinking mode)
+  - model_name: deepseek-chat
     litellm_params:
       model: deepseek/deepseek-chat
       api_key: os.environ/DEEPSEEK_API_KEY
