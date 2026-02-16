@@ -144,6 +144,124 @@ Navigate to **Admin > Settings > Configure LLM**:
 | **Disable** | Hide from dropdown but keep config (can re-enable) |
 | **Remove** | Permanently delete from enabled models |
 
+### Advanced: Manual Capability Configuration
+
+The Admin UI's **Edit** action only allows changing the display name. To manually configure **tool support**, **vision**, and **max tokens**, use the API directly.
+
+#### API Endpoint
+
+```
+PUT /api/admin/llm/models/{model-id}
+```
+
+#### Available Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `displayName` | string | Human-readable name shown in dropdowns |
+| `toolCapable` | boolean | Enable function/tool calling for this model |
+| `visionCapable` | boolean | Enable image input support |
+| `maxInputTokens` | number | Context window size (informational) |
+| `isDefault` | boolean | Set as default model for new chats |
+| `enabled` | boolean | Show/hide in model dropdown |
+| `sortOrder` | number | Position in model list |
+
+#### Examples
+
+**Enable tool support for a model:**
+
+```bash
+curl -X PUT http://localhost:3000/api/admin/llm/models/gpt-5 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION" \
+  -d '{"toolCapable": true}'
+```
+
+**Enable vision support:**
+
+```bash
+curl -X PUT http://localhost:3000/api/admin/llm/models/gemini-3-pro \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION" \
+  -d '{"visionCapable": true}'
+```
+
+**Set context window size:**
+
+```bash
+curl -X PUT http://localhost:3000/api/admin/llm/models/claude-4-opus \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION" \
+  -d '{"maxInputTokens": 200000}'
+```
+
+**Update multiple capabilities at once:**
+
+```bash
+curl -X PUT http://localhost:3000/api/admin/llm/models/mistral-next \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION" \
+  -d '{
+    "displayName": "Mistral Next (Custom)",
+    "toolCapable": true,
+    "visionCapable": true,
+    "maxInputTokens": 128000
+  }'
+```
+
+#### Development Mode (AUTH_DISABLED=true)
+
+When running with `AUTH_DISABLED=true` in `.env.local`, you can skip the session cookie:
+
+```bash
+curl -X PUT http://localhost:3000/api/admin/llm/models/gpt-5 \
+  -H "Content-Type: application/json" \
+  -d '{"toolCapable": true, "visionCapable": true}'
+```
+
+#### Verifying Changes
+
+After updating, verify the model shows correct capabilities:
+
+```bash
+curl http://localhost:3000/api/admin/llm/models/gpt-5 \
+  -H "Cookie: next-auth.session-token=YOUR_SESSION"
+```
+
+Response:
+
+```json
+{
+  "model": {
+    "id": "gpt-5",
+    "providerId": "openai",
+    "displayName": "GPT-5",
+    "toolCapable": true,
+    "visionCapable": true,
+    "maxInputTokens": 2000000,
+    "isDefault": false,
+    "enabled": true,
+    "sortOrder": 5
+  }
+}
+```
+
+#### Capability Detection
+
+When models are discovered via the **[+ Add Models]** dialog, capabilities are auto-detected using pattern matching on the model ID:
+
+| Pattern | Detected As |
+|---------|-------------|
+| Contains `gpt-4`, `gpt-5`, `o1`, `o3` | Tool + Vision capable |
+| Contains `gemini-2`, `gemini-3` | Tool + Vision capable |
+| Contains `mistral-large`, `mistral-small` | Tool capable |
+| Contains `llama3.2`, `llama4` | Tool capable |
+| Contains `pixtral`, `vision` | Vision capable |
+
+For models not matching these patterns, you'll need to manually set capabilities via API.
+
+---
+
 #### Managing Deprecated Models
 
 When providers retire models, they'll appear in the deprecated models manager:
@@ -378,8 +496,18 @@ After adding a new model:
 - [ ] OR startup logs show: `[LiteLLM] Discovered N models` (if using YAML)
 - [ ] Model appears in chat model dropdown
 - [ ] Tool badge (🔧) appears if tool-capable
+- [ ] Vision badge appears if vision-capable (for models with image support)
 - [ ] Chat works with new model selected
 - [ ] Translation tool shows model (for openai/gemini/mistral providers)
+
+### Capability Verification
+
+If capabilities weren't auto-detected correctly:
+
+1. Check model in Configure LLM - does it show 🔧 (tools) / Vision badges?
+2. If not, update via API (see "Advanced: Manual Capability Configuration")
+3. Verify tools work by asking the model to use a function (e.g., "search for X")
+4. Verify vision works by uploading an image in chat
 
 ---
 
@@ -401,6 +529,16 @@ After adding a new model:
 1. Verify `hasEnabledModels()` returns true
 2. Check database connection in startup logs
 3. Restart application to reinitialize
+
+#### Model capabilities not detected correctly
+1. Some models don't match auto-detection patterns
+2. Use the API to manually set capabilities:
+   ```bash
+   curl -X PUT http://localhost:3000/api/admin/llm/models/MODEL_ID \
+     -H "Content-Type: application/json" \
+     -d '{"toolCapable": true, "visionCapable": true}'
+   ```
+3. Verify changes in Configure LLM page
 
 ### YAML Configuration Issues
 
