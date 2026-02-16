@@ -46,6 +46,10 @@ const TOOL_CAPABLE_PATTERNS = [
   /^mistral-medium/,
   /^codestral/,
   /^pixtral/,
+  // Anthropic Claude
+  /^claude/,
+  // DeepSeek
+  /^deepseek/,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing
@@ -70,6 +74,9 @@ const VISION_CAPABLE_PATTERNS = [
   /^pixtral/,
   /^mistral-large/,  // Mistral Large 3+ supports vision
   /^mistral-small-3/,
+  // Anthropic Claude (all Claude 3+ models support vision)
+  /^claude/,
+  // Note: DeepSeek does NOT support vision
 ];
 
 // Known context window sizes
@@ -102,6 +109,20 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   // Mistral
   'mistral-large-latest': 256000,
   'mistral-small-latest': 32000,
+  // Anthropic Claude
+  'claude-sonnet-4-5': 1000000,
+  'claude-haiku-4-5': 1000000,
+  'claude-opus-4-5': 1000000,
+  'claude-3-opus': 200000,
+  'claude-3-sonnet': 200000,
+  'claude-3-haiku': 200000,
+  'claude-3-5-sonnet': 200000,
+  // DeepSeek
+  'deepseek-r1': 64000,
+  'deepseek-v3': 128000,
+  'deepseek-chat': 128000,
+  'deepseek-reasoner': 64000,
+  'deepseek-coder': 128000,
 };
 
 // ============ Capability Detection ============
@@ -146,6 +167,9 @@ function getContextWindow(modelId: string): number | null {
     [/^gemini-2/, 1000000],
     [/^mistral-large/, 256000],
     [/^mistral-small/, 32000],
+    [/^claude/, 1000000],
+    [/^deepseek-r/, 64000],
+    [/^deepseek/, 128000],
   ];
 
   for (const [pattern, value] of familyPatterns) {
@@ -333,6 +357,87 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Discover models from Anthropic API
+ * Note: Anthropic doesn't have a public models list endpoint,
+ * so we return a hardcoded list of known models
+ */
+async function discoverAnthropicModels(apiKey: string): Promise<DiscoveredModel[]> {
+  // Verify API key by making a simple request
+  // Anthropic doesn't have a models endpoint, so we test with a minimal completion
+  const testResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'hi' }],
+    }),
+  });
+
+  // Check if API key is valid (we don't need the response to succeed, just auth)
+  if (testResponse.status === 401) {
+    throw new Error('Anthropic API error: Invalid API key');
+  }
+
+  // Return hardcoded list of known Claude models
+  const knownModels = [
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+    'claude-opus-4-5',
+    'claude-3-5-sonnet',
+    'claude-3-opus',
+    'claude-3-sonnet',
+    'claude-3-haiku',
+  ];
+
+  return knownModels
+    .filter(m => isChatModel(m))
+    .map(m => ({
+      id: m,
+      name: generateDisplayName(m),
+      provider: 'anthropic',
+      toolCapable: isToolCapable(m),
+      visionCapable: isVisionCapable(m),
+      maxInputTokens: getContextWindow(m),
+      isEnabled: !!getEnabledModel(m),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Discover models from DeepSeek API
+ */
+async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch('https://api.deepseek.com/models', {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { data: Array<{ id: string }> };
+
+  return data.data
+    .filter(m => isChatModel(m.id))
+    .map(m => ({
+      id: m.id,
+      name: generateDisplayName(m.id),
+      provider: 'deepseek',
+      toolCapable: isToolCapable(m.id),
+      // DeepSeek does NOT support vision
+      visionCapable: false,
+      maxInputTokens: getContextWindow(m.id),
+      isEnabled: !!getEnabledModel(m.id),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ============ Main Discovery Function ============
 
 /**
@@ -376,6 +481,24 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
           return { success: false, provider, models: [], error: 'API base URL not configured' };
         }
         models = await discoverOllamaModels(apiBase);
+        break;
+      }
+
+      case 'anthropic': {
+        const apiKey = getProviderApiKey('anthropic');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverAnthropicModels(apiKey);
+        break;
+      }
+
+      case 'deepseek': {
+        const apiKey = getProviderApiKey('deepseek');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverDeepSeekModels(apiKey);
         break;
       }
 
@@ -423,7 +546,7 @@ export async function discoverAllModels(): Promise<{
   providers: Record<string, DiscoveryResult>;
   totalModels: number;
 }> {
-  const providers = ['openai', 'gemini', 'mistral', 'ollama'];
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek'];
   const results: Record<string, DiscoveryResult> = {};
   let totalModels = 0;
 

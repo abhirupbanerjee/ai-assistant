@@ -1,7 +1,7 @@
 # =============================================================================
 # LITELLM PROXY CONFIGURATION
 # Models synced with config/defaults.json
-# Updated: December 2025
+# Updated: February 2026
 # =============================================================================
 
 model_list:
@@ -36,6 +36,113 @@ model_list:
       supports_function_calling: true
       supports_vision: true
       max_input_tokens: 1000000
+
+  # ===========================================================================
+  # OPENAI CHAT MODELS - GPT-5 Family
+  # GPT-5.2 is the latest flagship model (August 2025 knowledge cutoff)
+  # All GPT-5 models support vision, function calling, and structured outputs
+  # ===========================================================================
+
+  # GPT-5.2 - Latest flagship model
+  - model_name: gpt-5.2
+    litellm_params:
+      model: gpt-5.2
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 400000
+
+  # GPT-5.2 Pro - Enhanced flagship
+  - model_name: gpt-5.2-pro
+    litellm_params:
+      model: gpt-5.2-pro
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 400000
+
+  # GPT-5.1 - Previous flagship, recommended for coding/agentic tasks
+  - model_name: gpt-5.1
+    litellm_params:
+      model: gpt-5.1
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 400000
+
+  # GPT-5 Mini - Lightweight variant
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: gpt-5-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 400000
+
+  # ===========================================================================
+  # ANTHROPIC CLAUDE MODELS
+  # All Claude 4.5 models support vision and function calling
+  # Context window: 1M tokens
+  # ===========================================================================
+
+  # Claude Sonnet 4.5 - Best balance of speed/capability
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5-20250929
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+
+  # Claude Haiku 4.5 - Fast and cost-effective
+  - model_name: claude-haiku-4-5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+
+  # Claude Opus 4.5 - Maximum capability
+  - model_name: claude-opus-4-5
+    litellm_params:
+      model: anthropic/claude-opus-4-5-20251101
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+
+  # ===========================================================================
+  # DEEPSEEK MODELS
+  # Note: DeepSeek models do NOT support vision
+  # ===========================================================================
+
+  # DeepSeek R1 - Reasoning model with chain-of-thought
+  - model_name: deepseek-r1
+    litellm_params:
+      model: deepseek/deepseek-reasoner
+      api_key: os.environ/DEEPSEEK_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 64000
+
+  # DeepSeek V3 - General chat model
+  - model_name: deepseek-v3
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 128000
 
   # ===========================================================================
   # MISTRAL AI MODELS

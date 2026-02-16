@@ -50,6 +50,8 @@ export const DEFAULT_PROVIDERS: Omit<LLMProvider, 'createdAt' | 'updatedAt'>[] =
   { id: 'gemini', name: 'Google Gemini', apiKey: null, apiBase: null, enabled: true },
   { id: 'mistral', name: 'Mistral AI', apiKey: null, apiBase: null, enabled: true },
   { id: 'ollama', name: 'Ollama (Local)', apiKey: null, apiBase: null, enabled: true },
+  { id: 'anthropic', name: 'Anthropic (Claude)', apiKey: null, apiBase: null, enabled: true },
+  { id: 'deepseek', name: 'DeepSeek', apiKey: null, apiBase: null, enabled: true },
 ];
 
 // Environment variable mapping for auto-seeding
@@ -58,6 +60,8 @@ const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> =
   gemini: { apiKey: 'GEMINI_API_KEY' },
   mistral: { apiKey: 'MISTRAL_API_KEY' },
   ollama: { apiBase: 'OLLAMA_API_BASE' },
+  anthropic: { apiKey: 'ANTHROPIC_API_KEY' },
+  deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
 };
 
 // ============ Row Mapper ============

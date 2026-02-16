@@ -48,6 +48,8 @@ import type { StreamEvent, Message, Source, MessageVisualization, GeneratedDocum
 import type { WorkspaceMessageSource } from '@/types/workspace';
 import { getWorkspaceUploadDetails } from '@/lib/workspace/uploads';
 import { readFileBuffer } from '@/lib/storage';
+import { getImageCapabilities } from '@/lib/config-capability-checker';
+import { getLlmSettings } from '@/lib/db/config';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -235,6 +237,10 @@ export async function POST(
             let userDocPaths: string[] = [];
             let imageContents: ImageContent[] = [];
 
+            // Check image processing capabilities for current model
+            const llmSettings = getLlmSettings();
+            const imageCapabilities = getImageCapabilities(llmSettings.model);
+
             if (attachments && attachments.length > 0 && workspace.file_upload_enabled) {
               const uploadDetails = await getWorkspaceUploadDetails(
                 workspace.id,
@@ -249,17 +255,38 @@ export async function POST(
                 ...uploadDetails.images.map(i => i.filepath),
               ];
 
-              // Load images as base64 for multimodal visual content
-              for (const img of uploadDetails.images) {
-                try {
-                  const buffer = await readFileBuffer(img.filepath);
-                  imageContents.push({
-                    base64: buffer.toString('base64'),
-                    mimeType: img.mimeType,
-                    filename: img.filename,
+              // Check capabilities before loading images
+              if (uploadDetails.images.length > 0) {
+                if (!imageCapabilities.canProcessImages) {
+                  // Scenario 1: No vision, no OCR - warn user
+                  send({
+                    type: 'status',
+                    phase: 'rag',
+                    content: `⚠️ Images cannot be processed. ${imageCapabilities.message}`,
                   });
-                } catch (err) {
-                  console.warn(`Failed to load image ${img.filename}:`, err);
+                } else if (imageCapabilities.strategy === 'ocr-only') {
+                  // Scenario 2: OCR only - inform user
+                  send({
+                    type: 'status',
+                    phase: 'rag',
+                    content: `ℹ️ ${imageCapabilities.message}`,
+                  });
+                }
+
+                // Only load images for LLM if vision is supported
+                if (imageCapabilities.hasVisionSupport) {
+                  for (const img of uploadDetails.images) {
+                    try {
+                      const buffer = await readFileBuffer(img.filepath);
+                      imageContents.push({
+                        base64: buffer.toString('base64'),
+                        mimeType: img.mimeType,
+                        filename: img.filename,
+                      });
+                    } catch (err) {
+                      console.warn(`Failed to load image ${img.filename}:`, err);
+                    }
+                  }
                 }
               }
             }
@@ -346,7 +373,8 @@ export async function POST(
               undefined, // summaryContext
               undefined, // memoryContext
               undefined, // categorySlugs
-              excludeTools.length > 0 ? excludeTools : undefined
+              excludeTools.length > 0 ? excludeTools : undefined,
+              imageCapabilities // Image processing strategy
             );
 
             // Extract web sources from tool history

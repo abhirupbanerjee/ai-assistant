@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint } from '@/types';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
+import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
@@ -131,7 +132,8 @@ export async function generateResponseWithTools(
   summaryContext?: string,
   memoryContext?: string,
   categorySlugs?: string[],
-  excludeTools?: string[]
+  excludeTools?: string[],
+  imageCapabilities?: ImageCapabilities
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -200,33 +202,57 @@ export async function generateResponseWithTools(
   const textContent = formatUserMessage(ctx, context, userMessage);
 
   if (images && images.length > 0) {
-    // Build multimodal content with images
-    const contentParts: OpenAI.Chat.ChatCompletionContentPart[] = [
-      { type: 'text', text: textContent },
-    ];
+    // Determine image handling strategy based on capabilities
+    const strategy = imageCapabilities?.strategy || 'vision-and-ocr';
 
-    // Add each image as visual content
-    for (const img of images) {
-      contentParts.push({
-        type: 'image_url',
-        image_url: {
-          url: `data:${img.mimeType};base64,${img.base64}`,
-          detail: 'high', // Use high detail for better analysis
-        },
+    if (strategy === 'vision-and-ocr' || strategy === 'vision-only') {
+      // Strategy: Send images to vision-capable model for visual analysis
+      const contentParts: OpenAI.Chat.ChatCompletionContentPart[] = [
+        { type: 'text', text: textContent },
+      ];
+
+      // Add each image as visual content
+      for (const img of images) {
+        contentParts.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${img.mimeType};base64,${img.base64}`,
+            detail: 'high', // Use high detail for better analysis
+          },
+        });
+        // Add filename context so LLM knows which image is which
+        contentParts.push({
+          type: 'text',
+          text: `[Above image: ${img.filename}]`,
+        });
+      }
+
+      messages.push({
+        role: 'user',
+        content: contentParts,
       });
-      // Add filename context so LLM knows which image is which
-      contentParts.push({
-        type: 'text',
-        text: `[Above image: ${img.filename}]`,
+
+      logger.info(`Vision+OCR: ${images.length} image(s) sent for visual analysis`);
+    } else if (strategy === 'ocr-only') {
+      // Strategy: Images processed via OCR only, text already in RAG context
+      // Don't send images to LLM - just include text with OCR note
+      const ocrNote = `\n\n---\n[Note: ${images.length} image(s) processed via OCR text extraction. Visual analysis not available with current model.]`;
+      messages.push({
+        role: 'user',
+        content: textContent + ocrNote,
       });
+
+      logger.info(`OCR-only: ${images.length} image(s) processed via text extraction (no visual analysis)`);
+    } else {
+      // Strategy: No processing available - should have been blocked upstream
+      const warningNote = `\n\n---\n[Warning: ${images.length} image(s) could not be processed. Please enable OCR or use a vision-capable model.]`;
+      messages.push({
+        role: 'user',
+        content: textContent + warningNote,
+      });
+
+      logger.warn(`No image processing: ${images.length} image(s) skipped`);
     }
-
-    messages.push({
-      role: 'user',
-      content: contentParts,
-    });
-
-    logger.info(`Multimodal request with ${images.length} image(s)`);
   } else {
     // Standard text-only message
     messages.push({

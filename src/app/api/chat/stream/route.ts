@@ -32,6 +32,8 @@ import { TONE_PRESETS } from '@/types/stream';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
+import { getImageCapabilities } from '@/lib/config-capability-checker';
+import { getLlmSettings } from '@/lib/db/config';
 
 // Route segment config for long-running autonomous tasks
 // 300 seconds = 5 minutes (Vercel Pro max, or adjust based on hosting provider)
@@ -263,6 +265,10 @@ export async function POST(request: NextRequest) {
         // Get user uploads - separate images from documents
         const uploadDetails = await getUploadDetails(user.id, threadId);
 
+        // Check image processing capabilities for current model
+        const llmSettings = getLlmSettings();
+        const imageCapabilities = getImageCapabilities(llmSettings.model);
+
         // Document paths for RAG text extraction (PDFs, DOCX, etc.)
         // Also include images for OCR text extraction as additional context
         const allDocPaths = [
@@ -270,18 +276,40 @@ export async function POST(request: NextRequest) {
           ...uploadDetails.images.map(i => i.filepath), // Images also get OCR text extraction
         ];
 
-        // Load images as base64 for multimodal visual content
+        // Load images as base64 for multimodal visual content (only if vision is supported)
         const imageContents: ImageContent[] = [];
-        for (const img of uploadDetails.images) {
-          try {
-            const buffer = await readFileBuffer(img.filepath);
-            imageContents.push({
-              base64: buffer.toString('base64'),
-              mimeType: img.mimeType,
-              filename: img.filename,
+
+        if (uploadDetails.images.length > 0) {
+          if (!imageCapabilities.canProcessImages) {
+            // Scenario 1: No vision, no OCR - warn user
+            send({
+              type: 'status',
+              phase: 'rag',
+              content: `⚠️ Images cannot be processed. ${imageCapabilities.message}`,
             });
-          } catch (err) {
-            console.warn(`Failed to load image ${img.filename}:`, err);
+          } else if (imageCapabilities.strategy === 'ocr-only') {
+            // Scenario 2: OCR only - inform user
+            send({
+              type: 'status',
+              phase: 'rag',
+              content: `ℹ️ ${imageCapabilities.message}`,
+            });
+          }
+
+          // Only load images for LLM if vision is supported
+          if (imageCapabilities.hasVisionSupport) {
+            for (const img of uploadDetails.images) {
+              try {
+                const buffer = await readFileBuffer(img.filepath);
+                imageContents.push({
+                  base64: buffer.toString('base64'),
+                  mimeType: img.mimeType,
+                  filename: img.filename,
+                });
+              } catch (err) {
+                console.warn(`Failed to load image ${img.filename}:`, err);
+              }
+            }
           }
         }
 
@@ -374,7 +402,8 @@ export async function POST(request: NextRequest) {
               summaryContext, // Summary context for dynamic positioning
               memoryContext, // Memory context for cache key
               categorySlugs, // Category slugs for cache key
-              excludeTools
+              excludeTools,
+              imageCapabilities // Image processing strategy
             );
 
             // Extract web sources from tool history

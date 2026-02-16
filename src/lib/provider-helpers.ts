@@ -70,6 +70,8 @@ export const PROVIDERS = {
   GEMINI: 'gemini',
   MISTRAL: 'mistral',
   OLLAMA: 'ollama',
+  ANTHROPIC: 'anthropic',
+  DEEPSEEK: 'deepseek',
 } as const;
 
 export type ProviderId = typeof PROVIDERS[keyof typeof PROVIDERS];
@@ -91,5 +93,11 @@ export const PROVIDER_ENV_VARS = {
   },
   ollama: {
     apiBase: 'OLLAMA_API_BASE',
+  },
+  anthropic: {
+    apiKey: 'ANTHROPIC_API_KEY',
+  },
+  deepseek: {
+    apiKey: 'DEEPSEEK_API_KEY',
   },
 } as const;

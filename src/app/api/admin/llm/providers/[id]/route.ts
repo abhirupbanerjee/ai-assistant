@@ -119,7 +119,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
 
     // Don't allow deleting core providers, just clear their config
-    const coreProviders = ['openai', 'gemini', 'mistral', 'ollama'];
+    const coreProviders = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek'];
     if (coreProviders.includes(id)) {
       // Clear API key instead of deleting
       const provider = updateProvider(id, { apiKey: '', apiBase: '', enabled: false });

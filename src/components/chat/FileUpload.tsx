@@ -42,6 +42,15 @@ interface UrlSourceInfo {
   title?: string;
 }
 
+interface ImageCapabilities {
+  canProcessImages: boolean;
+  hasVisionSupport: boolean;
+  hasOcrSupport: boolean;
+  strategy: 'vision-and-ocr' | 'vision-only' | 'ocr-only' | 'none';
+  message: string;
+  modelId: string;
+}
+
 interface FileUploadProps {
   threadId: string | null;
   currentUploads: string[];
@@ -108,21 +117,29 @@ export default function FileUpload({
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [webEnabled, setWebEnabled] = useState(false);
   const [youtubeEnabled, setYoutubeEnabled] = useState(false);
+  const [imageCapabilities, setImageCapabilities] = useState<ImageCapabilities | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check if URL extraction is available
+  // Check if URL extraction and image processing is available
   useEffect(() => {
     const checkCapabilities = async () => {
       try {
-        const response = await fetch('/api/admin/documents/url');
-        if (response.ok) {
-          const data = await response.json();
-          // API returns webEnabled (not tavilyConfigured)
+        // Check URL extraction capabilities
+        const urlResponse = await fetch('/api/admin/documents/url');
+        if (urlResponse.ok) {
+          const data = await urlResponse.json();
           setWebEnabled(data.webEnabled || false);
           setYoutubeEnabled(data.youtubeSupadataEnabled || false);
+        }
+
+        // Check image processing capabilities
+        const imgResponse = await fetch('/api/config/capabilities');
+        if (imgResponse.ok) {
+          const data = await imgResponse.json();
+          setImageCapabilities(data);
         }
       } catch {
         // Silently fail - features just won't be available
@@ -521,39 +538,66 @@ export default function FileUpload({
 
         {/* File Tab */}
         {activeTab === 'file' && (
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-            style={{
-              borderColor: isDragging ? 'var(--accent-color)' : '#d1d5db',
-              backgroundColor: isDragging ? 'var(--accent-lighter)' : 'transparent',
-            }}
-          >
-            <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-gray-600 mb-2 text-sm">
-              Drag & drop files here, or{' '}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="hover:underline"
-                style={{ color: 'var(--accent-color)' }}
-              >
-                browse
-              </button>
-            </p>
-            <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1">
-                <FileText size={12} />
-                PDF, TXT
-              </span>
-              <span className="flex items-center gap-1">
-                <ImageIcon size={12} />
-                PNG, JPG
-              </span>
-              <span>Max {MAX_FILE_SIZE_MB}MB</span>
+          <>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
+              style={{
+                borderColor: isDragging ? 'var(--accent-color)' : '#d1d5db',
+                backgroundColor: isDragging ? 'var(--accent-lighter)' : 'transparent',
+              }}
+            >
+              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-600 mb-2 text-sm">
+                Drag & drop files here, or{' '}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="hover:underline"
+                  style={{ color: 'var(--accent-color)' }}
+                >
+                  browse
+                </button>
+              </p>
+              <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1">
+                  <FileText size={12} />
+                  PDF, TXT
+                </span>
+                <span className="flex items-center gap-1">
+                  <ImageIcon size={12} />
+                  PNG, JPG
+                </span>
+                <span>Max {MAX_FILE_SIZE_MB}MB</span>
+              </div>
             </div>
-          </div>
+
+            {/* Image capability warnings */}
+            {imageCapabilities && imageCapabilities.strategy === 'ocr-only' && (
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Info size={16} className="flex-shrink-0 mt-0.5 text-yellow-600" />
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium">Limited image processing</p>
+                    <p className="text-xs mt-0.5">{imageCapabilities.message}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {imageCapabilities && imageCapabilities.strategy === 'none' && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-red-600" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium">Image uploads unavailable</p>
+                    <p className="text-xs mt-0.5">{imageCapabilities.message}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Web URL Tab */}
