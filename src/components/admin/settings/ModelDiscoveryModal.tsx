@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Wrench, Eye, Check, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Search, Wrench, Eye, Check, RefreshCw, AlertCircle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -54,10 +54,11 @@ export default function ModelDiscoveryModal({
   const [selectedProvider, setSelectedProvider] = useState<string>(initialProvider || providers[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [modelsToRemove, setModelsToRemove] = useState<Set<string>>(new Set());
 
   // Reset state when modal opens
   useEffect(() => {
@@ -66,6 +67,7 @@ export default function ModelDiscoveryModal({
       setSearchQuery('');
       setDiscoveryResult(null);
       setSelectedModels(new Set());
+      setModelsToRemove(new Set());
       setError(null);
     }
   }, [isOpen, initialProvider, providers]);
@@ -107,7 +109,7 @@ export default function ModelDiscoveryModal({
     model.id.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  // Toggle model selection
+  // Toggle model selection (for new models to add)
   const toggleModel = (modelId: string) => {
     const newSelected = new Set(selectedModels);
     if (newSelected.has(modelId)) {
@@ -116,6 +118,17 @@ export default function ModelDiscoveryModal({
       newSelected.add(modelId);
     }
     setSelectedModels(newSelected);
+  };
+
+  // Toggle model removal (for enabled models)
+  const toggleRemoveModel = (modelId: string) => {
+    const newSet = new Set(modelsToRemove);
+    if (newSet.has(modelId)) {
+      newSet.delete(modelId);
+    } else {
+      newSet.add(modelId);
+    }
+    setModelsToRemove(newSet);
   };
 
   // Select all visible models
@@ -129,41 +142,56 @@ export default function ModelDiscoveryModal({
     setSelectedModels(new Set());
   };
 
-  // Add selected models
-  const handleAddModels = async () => {
-    if (selectedModels.size === 0) return;
+  // Save changes (add new models and remove deselected ones)
+  const handleSaveChanges = async () => {
+    if (selectedModels.size === 0 && modelsToRemove.size === 0) return;
 
-    setIsAdding(true);
+    setIsSaving(true);
     setError(null);
 
     try {
-      const modelsToAdd = filteredModels
-        .filter(m => selectedModels.has(m.id))
-        .map(m => ({
-          id: m.id,
-          providerId: m.provider,
-          displayName: m.name,
-          toolCapable: m.toolCapable,
-          visionCapable: m.visionCapable,
-          maxInputTokens: m.maxInputTokens,
-        }));
+      // Add new models
+      if (selectedModels.size > 0) {
+        const modelsToAdd = filteredModels
+          .filter(m => selectedModels.has(m.id))
+          .map(m => ({
+            id: m.id,
+            providerId: m.provider,
+            displayName: m.name,
+            toolCapable: m.toolCapable,
+            visionCapable: m.visionCapable,
+            maxInputTokens: m.maxInputTokens,
+          }));
 
-      const res = await fetch('/api/admin/llm/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ models: modelsToAdd }),
-      });
+        const res = await fetch('/api/admin/llm/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ models: modelsToAdd }),
+        });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to add models');
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to add models');
+        }
+      }
+
+      // Remove deselected models
+      for (const modelId of modelsToRemove) {
+        const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+          method: 'DELETE',
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to remove model');
+        }
       }
 
       onModelsAdded();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add models');
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
     } finally {
-      setIsAdding(false);
+      setIsSaving(false);
     }
   };
 
@@ -294,21 +322,27 @@ export default function ModelDiscoveryModal({
                     {filteredModels.map(model => (
                       <tr
                         key={model.id}
-                        className={`${model.isEnabled ? 'bg-gray-50' : 'hover:bg-blue-50 cursor-pointer'}`}
-                        onClick={() => !model.isEnabled && toggleModel(model.id)}
+                        className={`cursor-pointer ${
+                          model.isEnabled && modelsToRemove.has(model.id)
+                            ? 'bg-red-50 hover:bg-red-100'
+                            : model.isEnabled
+                            ? 'hover:bg-gray-100'
+                            : selectedModels.has(model.id)
+                            ? 'bg-blue-50 hover:bg-blue-100'
+                            : 'hover:bg-blue-50'
+                        }`}
+                        onClick={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model.id)}
                       >
                         <td className="px-4 py-3">
-                          {model.isEnabled ? (
-                            <span className="text-gray-400">—</span>
-                          ) : (
-                            <input
-                              type="checkbox"
-                              checked={selectedModels.has(model.id)}
-                              onChange={() => toggleModel(model.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            checked={model.isEnabled ? !modelsToRemove.has(model.id) : selectedModels.has(model.id)}
+                            onChange={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`rounded border-gray-300 focus:ring-blue-500 ${
+                              model.isEnabled ? 'text-green-600' : 'text-blue-600'
+                            }`}
+                          />
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-sm text-gray-900">{model.name}</div>
@@ -335,12 +369,24 @@ export default function ModelDiscoveryModal({
                         </td>
                         <td className="px-4 py-3">
                           {model.isEnabled ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">
-                              <Check size={10} className="mr-1" />
-                              Enabled
-                            </span>
+                            modelsToRemove.has(model.id) ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">
+                                Will Remove
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">
+                                <Check size={10} className="mr-1" />
+                                Enabled
+                              </span>
+                            )
                           ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                            selectedModels.has(model.id) ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+                                Will Add
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )
                           )}
                         </td>
                       </tr>
@@ -355,18 +401,24 @@ export default function ModelDiscoveryModal({
         {/* Footer */}
         <div className="flex items-center justify-between pt-4 border-t">
           <div className="text-sm text-gray-500">
-            {selectedModels.size > 0 && `${selectedModels.size} model${selectedModels.size > 1 ? 's' : ''} selected`}
+            {(selectedModels.size > 0 || modelsToRemove.size > 0) && (
+              <>
+                {selectedModels.size > 0 && `${selectedModels.size} to add`}
+                {selectedModels.size > 0 && modelsToRemove.size > 0 && ', '}
+                {modelsToRemove.size > 0 && `${modelsToRemove.size} to remove`}
+              </>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>
               Cancel
             </Button>
             <Button
-              onClick={handleAddModels}
-              disabled={selectedModels.size === 0 || isAdding}
-              loading={isAdding}
+              onClick={handleSaveChanges}
+              disabled={(selectedModels.size === 0 && modelsToRemove.size === 0) || isSaving}
+              loading={isSaving}
             >
-              Add Selected
+              Save Changes
             </Button>
           </div>
         </div>

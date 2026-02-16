@@ -270,7 +270,7 @@ interface SystemStats {
 export default function AdminPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-
+  const [userRole, setUserRole] = useState<'admin' | 'superuser' | 'user'>('admin');
 
   // RAG/LLM settings state
   // Section state for expandable menus
@@ -333,9 +333,36 @@ export default function AdminPage() {
   const [statsLoading, setStatsLoading] = useState(true);
 
 
+  // Load user role
+  const loadUserRole = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/me');
+      if (response.ok) {
+        const data = await response.json();
+        setUserRole(data.role || 'user');
+        // If user is not admin or superuser, redirect to home
+        if (data.role !== 'admin' && data.role !== 'superuser') {
+          router.push('/');
+          return false;
+        }
+        return true;
+      } else if (response.status === 401) {
+        router.push('/');
+        return false;
+      }
+    } catch (error) {
+      console.error('Failed to load user role:', error);
+    }
+    return true;
+  }, [router]);
+
   // Load RAG/LLM settings
   const loadSettings = useCallback(async () => {
     try {
+      // First check user role
+      const hasAccess = await loadUserRole();
+      if (!hasAccess) return;
+
       const response = await fetch('/api/admin/settings');
 
       if (response.status === 403) {
@@ -459,7 +486,7 @@ export default function AdminPage() {
     } finally {
       setSettingsLoading(false);
     }
-  }, [router]);
+  }, [router, loadUserRole]);
 
   // Load system stats
   const loadStats = useCallback(async () => {
@@ -988,9 +1015,11 @@ export default function AdminPage() {
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+              <h1 className="text-xl font-bold text-gray-900">
+                {userRole === 'superuser' ? 'Dashboard' : 'Admin Dashboard'}
+              </h1>
               <p className="text-sm text-gray-500 hidden sm:block">
-                Manage documents and users
+                {userRole === 'superuser' ? 'View statistics for your assigned categories' : 'Manage documents and users'}
               </p>
             </div>
           </div>
@@ -1009,6 +1038,7 @@ export default function AdminPage() {
           skillsSection={skillsSection}
           tokensSection={tokensSection}
           settingsSection={settingsSection}
+          userRole={userRole}
           onTabChange={setActiveTab}
           onDashboardChange={setDashboardSection}
           onDocumentsChange={setDocumentsSection}

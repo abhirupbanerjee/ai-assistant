@@ -57,9 +57,10 @@ export async function GET() {
       );
     }
 
-    if (!user.isAdmin) {
+    // Allow both admin and superuser to read settings (for dashboard overview)
+    if (user.role !== 'admin' && user.role !== 'superuser') {
       return NextResponse.json<ApiError>(
-        { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
+        { error: 'Admin or superuser access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }
       );
     }

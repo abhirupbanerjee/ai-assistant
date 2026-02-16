@@ -340,6 +340,118 @@ export async function getSystemStats(): Promise<SystemStats> {
   };
 }
 
+// ============ Category-Filtered Database Statistics (for Superusers) ============
+
+export function getDatabaseStatsForCategories(categoryIds: number[]): DatabaseStats {
+  if (categoryIds.length === 0) {
+    return {
+      users: { total: 0, admins: 0, superUsers: 0, regularUsers: 0 },
+      categories: { total: 0, withDocuments: 0, totalSubscriptions: 0 },
+      threads: { total: 0, totalMessages: 0, totalUploads: 0 },
+      documents: { total: 0, globalDocuments: 0, categoryDocuments: 0, totalChunks: 0, byStatus: { processing: 0, ready: 0, error: 0 } },
+    };
+  }
+
+  const placeholders = categoryIds.map(() => '?').join(', ');
+
+  // User stats - count subscribers to assigned categories
+  const userCounts = queryOne<{
+    total: number;
+  }>(`
+    SELECT COUNT(DISTINCT u.id) as total
+    FROM users u
+    JOIN user_subscriptions us ON u.id = us.user_id
+    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
+  `, categoryIds);
+
+  // Category stats - only assigned categories
+  const categoryStats = queryOne<{
+    total: number;
+    withDocuments: number;
+    totalSubscriptions: number;
+  }>(`
+    SELECT
+      ? as total,
+      (SELECT COUNT(DISTINCT dc.category_id) FROM document_categories dc WHERE dc.category_id IN (${placeholders})) as withDocuments,
+      (SELECT COUNT(*) FROM user_subscriptions us WHERE us.category_id IN (${placeholders}) AND us.is_active = 1) as totalSubscriptions
+  `, [categoryIds.length, ...categoryIds, ...categoryIds]);
+
+  // Thread stats - threads from users subscribed to assigned categories
+  const threadStats = queryOne<{
+    total: number;
+    totalMessages: number;
+    totalUploads: number;
+  }>(`
+    SELECT
+      COUNT(DISTINCT t.id) as total,
+      (SELECT COUNT(*) FROM messages m WHERE m.thread_id IN (
+        SELECT DISTINCT t2.id FROM threads t2
+        JOIN users u ON t2.user_id = u.id
+        JOIN user_subscriptions us ON u.id = us.user_id
+        WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
+      )) as totalMessages,
+      (SELECT COUNT(*) FROM thread_uploads tu WHERE tu.thread_id IN (
+        SELECT DISTINCT t2.id FROM threads t2
+        JOIN users u ON t2.user_id = u.id
+        JOIN user_subscriptions us ON u.id = us.user_id
+        WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
+      )) as totalUploads
+    FROM threads t
+    JOIN users u ON t.user_id = u.id
+    JOIN user_subscriptions us ON u.id = us.user_id
+    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
+  `, [...categoryIds, ...categoryIds, ...categoryIds]);
+
+  // Document stats - documents in assigned categories
+  const documentStats = queryOne<{
+    total: number;
+    totalChunks: number;
+    processingCount: number;
+    readyCount: number;
+    errorCount: number;
+  }>(`
+    SELECT
+      COUNT(DISTINCT d.id) as total,
+      SUM(d.chunk_count) as totalChunks,
+      SUM(CASE WHEN d.status = 'processing' THEN 1 ELSE 0 END) as processingCount,
+      SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END) as readyCount,
+      SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END) as errorCount
+    FROM documents d
+    JOIN document_categories dc ON d.id = dc.document_id
+    WHERE dc.category_id IN (${placeholders})
+  `, categoryIds);
+
+  return {
+    users: {
+      total: userCounts?.total || 0,
+      admins: 0,
+      superUsers: 0,
+      regularUsers: userCounts?.total || 0,
+    },
+    categories: {
+      total: categoryStats?.total || 0,
+      withDocuments: categoryStats?.withDocuments || 0,
+      totalSubscriptions: categoryStats?.totalSubscriptions || 0,
+    },
+    threads: {
+      total: threadStats?.total || 0,
+      totalMessages: threadStats?.totalMessages || 0,
+      totalUploads: threadStats?.totalUploads || 0,
+    },
+    documents: {
+      total: documentStats?.total || 0,
+      globalDocuments: 0,
+      categoryDocuments: documentStats?.total || 0,
+      totalChunks: documentStats?.totalChunks || 0,
+      byStatus: {
+        processing: documentStats?.processingCount || 0,
+        ready: documentStats?.readyCount || 0,
+        error: documentStats?.errorCount || 0,
+      },
+    },
+  };
+}
+
 // ============ Recent Activity ============
 
 export interface RecentActivity {
@@ -409,6 +521,73 @@ export function getRecentActivity(limit: number = 10): RecentActivity {
     ORDER BY created_at DESC
     LIMIT ?
   `, [limit]);
+
+  return {
+    recentThreads,
+    recentDocuments,
+    recentUsers,
+  };
+}
+
+export function getRecentActivityForCategories(categoryIds: number[], limit: number = 10): RecentActivity {
+  if (categoryIds.length === 0) {
+    return { recentThreads: [], recentDocuments: [], recentUsers: [] };
+  }
+
+  const placeholders = categoryIds.map(() => '?').join(', ');
+
+  // Recent threads from users subscribed to assigned categories
+  const recentThreads = queryAll<{
+    id: string;
+    title: string;
+    userEmail: string;
+    messageCount: number;
+    createdAt: string;
+  }>(`
+    SELECT DISTINCT
+      t.id,
+      t.title,
+      u.email as userEmail,
+      (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id) as messageCount,
+      t.created_at as createdAt
+    FROM threads t
+    JOIN users u ON t.user_id = u.id
+    JOIN user_subscriptions us ON u.id = us.user_id
+    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
+    ORDER BY t.created_at DESC
+    LIMIT ?
+  `, [...categoryIds, limit]);
+
+  // Recent documents in assigned categories
+  const recentDocuments = queryAll<{
+    id: number;
+    filename: string;
+    uploadedBy: string;
+    status: string;
+    createdAt: string;
+  }>(`
+    SELECT DISTINCT d.id, d.filename, d.uploaded_by as uploadedBy, d.status, d.created_at as createdAt
+    FROM documents d
+    JOIN document_categories dc ON d.id = dc.document_id
+    WHERE dc.category_id IN (${placeholders})
+    ORDER BY d.created_at DESC
+    LIMIT ?
+  `, [...categoryIds, limit]);
+
+  // Recent users who subscribed to assigned categories
+  const recentUsers = queryAll<{
+    id: number;
+    email: string;
+    role: string;
+    createdAt: string;
+  }>(`
+    SELECT DISTINCT u.id, u.email, u.role, u.created_at as createdAt
+    FROM users u
+    JOIN user_subscriptions us ON u.id = us.user_id
+    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
+    ORDER BY us.subscribed_at DESC
+    LIMIT ?
+  `, [...categoryIds, limit]);
 
   return {
     recentThreads,

@@ -11,6 +11,12 @@ export async function isAdmin(email: string | null | undefined): Promise<boolean
   return role === 'admin';
 }
 
+export async function canAccessAdminDashboard(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false;
+  const role = await getUserRole(email);
+  return role === 'admin' || role === 'superuser';
+}
+
 export async function getCurrentUser(): Promise<User | null> {
   if (AUTH_DISABLED) {
     return {
@@ -18,6 +24,7 @@ export async function getCurrentUser(): Promise<User | null> {
       email: 'dev@localhost',
       name: 'Development User',
       isAdmin: true,
+      role: 'admin',
     };
   }
 
@@ -27,12 +34,15 @@ export async function getCurrentUser(): Promise<User | null> {
     return null;
   }
 
+  const role = await getUserRole(session.user.email);
+
   return {
     id: session.user.email,
     email: session.user.email,
     name: session.user.name || 'User',
     image: session.user.image || undefined,
-    isAdmin: await isAdmin(session.user.email),
+    isAdmin: role === 'admin',
+    role: role || 'user',
   };
 }
 

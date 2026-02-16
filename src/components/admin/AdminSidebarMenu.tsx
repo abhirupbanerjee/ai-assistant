@@ -180,6 +180,21 @@ export const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] =
   getMenuConfig('settings')?.submenu as { id: SettingsSection; label: string }[] || [];
 
 // ============================================================================
+// Role-based Menu Filtering
+// ============================================================================
+
+// Tabs that superusers can access (dashboard only)
+const SUPERUSER_ALLOWED_TABS: TabType[] = ['dashboard'];
+
+// Filter menu items based on user role
+const getFilteredMenuConfig = (userRole?: 'admin' | 'superuser' | 'user'): MenuConfigItem[] => {
+  if (userRole === 'superuser') {
+    return MENU_CONFIG.filter(item => SUPERUSER_ALLOWED_TABS.includes(item.id));
+  }
+  return MENU_CONFIG;
+};
+
+// ============================================================================
 // Component Props
 // ============================================================================
 
@@ -192,6 +207,7 @@ interface AdminSidebarMenuProps {
   skillsSection: SkillsSection;
   tokensSection: TokensSection;
   settingsSection: SettingsSection;
+  userRole?: 'admin' | 'superuser' | 'user';
   onTabChange: (tab: TabType) => void;
   onDashboardChange: (section: DashboardSection) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
@@ -215,6 +231,7 @@ export default function AdminSidebarMenu({
   skillsSection,
   tokensSection,
   settingsSection,
+  userRole = 'admin',
   onTabChange,
   onDashboardChange,
   onDocumentsChange,
@@ -229,6 +246,9 @@ export default function AdminSidebarMenu({
   const [expandedMenu, setExpandedMenu] = useState<TabType | null>(
     isExpandableMenu(activeTab) ? activeTab : null
   );
+
+  // Get filtered menu config based on user role
+  const filteredMenuConfig = getFilteredMenuConfig(userRole);
 
   // Get current active section for a menu
   const getActiveSection = (menuId: TabType): string => {
@@ -324,7 +344,9 @@ export default function AdminSidebarMenu({
     <>
       {showHeader && (
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <span className="font-semibold text-gray-900">Admin Menu</span>
+          <span className="font-semibold text-gray-900">
+            {userRole === 'superuser' ? 'Dashboard Menu' : 'Admin Menu'}
+          </span>
           {onClose && (
             <button
               onClick={onClose}
@@ -337,7 +359,7 @@ export default function AdminSidebarMenu({
         </div>
       )}
       <nav className="py-2 overflow-y-auto flex-1">
-        {MENU_CONFIG.map(menuItem => {
+        {filteredMenuConfig.map(menuItem => {
           const Icon = menuItem.icon;
           const isActive = activeTab === menuItem.id;
           const isExpanded = expandedMenu === menuItem.id;
@@ -387,7 +409,7 @@ export default function AdminSidebarMenu({
         </button>
       </div>
       <nav className="py-2 overflow-y-auto flex-1">
-        {MENU_CONFIG.map(menuItem => {
+        {filteredMenuConfig.map(menuItem => {
           const Icon = menuItem.icon;
           const isActive = activeTab === menuItem.id;
           const isExpanded = expandedMenu === menuItem.id && !isCollapsed;
@@ -428,7 +450,7 @@ export default function AdminSidebarMenu({
       {/* Mobile: Icons-only strip + expandable drawer */}
       <div className="md:hidden flex flex-col shrink-0 bg-white border-r h-[calc(100vh-64px)] w-14">
         <nav className="py-2 overflow-y-auto flex-1">
-          {MENU_CONFIG.map(menuItem => {
+          {filteredMenuConfig.map(menuItem => {
             const Icon = menuItem.icon;
             const isActive = activeTab === menuItem.id;
             return (
