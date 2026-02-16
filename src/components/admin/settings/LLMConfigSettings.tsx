@@ -28,6 +28,7 @@ interface EnabledModel {
   toolCapable: boolean;
   visionCapable: boolean;
   maxInputTokens: number | null;
+  maxOutputTokens: number | null;
   isDefault: boolean;
   enabled: boolean;
   providerEnabled?: boolean;
@@ -57,6 +58,8 @@ export default function LLMConfigSettings() {
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editedDisplayName, setEditedDisplayName] = useState('');
+  const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
+  const [editedMaxOutput, setEditedMaxOutput] = useState<number>(0);
 
   // ============ Data Loading ============
 
@@ -207,6 +210,31 @@ export default function LLMConfigSettings() {
     }
   };
 
+  const handleEditMaxOutput = async (modelId: string) => {
+    if (editedMaxOutput < 100 || editedMaxOutput > 100000) {
+      setError('Max output tokens must be between 100 and 100,000');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxOutputTokens: editedMaxOutput }),
+      });
+
+      if (!res.ok) throw new Error('Failed to update max output tokens');
+
+      await fetchModels();
+      setEditingMaxOutput(null);
+      setEditedMaxOutput(0);
+      setSuccess('Max output tokens updated');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update max output tokens');
+    }
+  };
+
   const handleModelsAdded = async () => {
     await fetchModels();
     setShowDiscoveryModal(false);
@@ -346,6 +374,9 @@ export default function LLMConfigSettings() {
                     Capabilities
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Max Output
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -417,6 +448,47 @@ export default function LLMConfigSettings() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {editingMaxOutput === model.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={editedMaxOutput}
+                            onChange={(e) => setEditedMaxOutput(parseInt(e.target.value) || 0)}
+                            className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                            min={100}
+                            max={100000}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleEditMaxOutput(model.id)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                          >
+                            <Check size={16} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingMaxOutput(null);
+                              setEditedMaxOutput(0);
+                            }}
+                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingMaxOutput(model.id);
+                            setEditedMaxOutput(model.maxOutputTokens || 16000);
+                          }}
+                          className="text-sm text-gray-600 hover:text-blue-600 hover:underline"
+                          title="Click to edit"
+                        >
+                          {model.maxOutputTokens ? `${(model.maxOutputTokens / 1000).toFixed(0)}K` : '—'}
+                        </button>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {model.providerEnabled === false ? (

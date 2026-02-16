@@ -17,6 +17,7 @@ export interface DiscoveredModel {
   toolCapable: boolean;
   visionCapable: boolean;
   maxInputTokens: number | null;
+  maxOutputTokens: number;  // Provider-based default or API value
   isEnabled: boolean;     // Already enabled in Policy Bot
 }
 
@@ -121,6 +122,23 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'deepseek-reasoner': 64000,
   'deepseek-chat': 128000,
 };
+
+// Provider-specific default output token limits
+const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
+  deepseek: 8000,
+  ollama: 2000,
+  openai: 16000,
+  anthropic: 16000,
+  gemini: 16000,
+  mistral: 16000,
+};
+
+/**
+ * Get default max output tokens for a provider
+ */
+export function getDefaultOutputTokens(provider: string): number {
+  return DEFAULT_OUTPUT_TOKENS[provider] ?? 16000;
+}
 
 // ============ Capability Detection ============
 
@@ -247,6 +265,7 @@ async function discoverOpenAIModels(apiKey: string): Promise<DiscoveredModel[]> 
       toolCapable: isToolCapable(m.id),
       visionCapable: isVisionCapable(m.id),
       maxInputTokens: getContextWindow(m.id),
+      maxOutputTokens: getDefaultOutputTokens('openai'),
       isEnabled: !!getEnabledModel(m.id),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -269,6 +288,7 @@ async function discoverGeminiModels(apiKey: string): Promise<DiscoveredModel[]> 
       name: string;
       supportedGenerationMethods: string[];
       inputTokenLimit?: number;
+      outputTokenLimit?: number;
     }>;
   };
 
@@ -288,6 +308,8 @@ async function discoverGeminiModels(apiKey: string): Promise<DiscoveredModel[]> 
         toolCapable: isToolCapable(id),
         visionCapable: isVisionCapable(id),
         maxInputTokens: m.inputTokenLimit || getContextWindow(id),
+        // Use actual outputTokenLimit from API if available, else provider default
+        maxOutputTokens: m.outputTokenLimit || getDefaultOutputTokens('gemini'),
         isEnabled: !!getEnabledModel(id),
       };
     })
@@ -317,6 +339,7 @@ async function discoverMistralModels(apiKey: string): Promise<DiscoveredModel[]>
       toolCapable: isToolCapable(m.id),
       visionCapable: isVisionCapable(m.id),
       maxInputTokens: getContextWindow(m.id),
+      maxOutputTokens: getDefaultOutputTokens('mistral'),
       isEnabled: !!getEnabledModel(m.id),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -348,6 +371,7 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
         toolCapable: isToolCapable(baseName),
         visionCapable: isVisionCapable(baseName),
         maxInputTokens: null,  // Ollama doesn't report this
+        maxOutputTokens: getDefaultOutputTokens('ollama'),
         isEnabled: !!getEnabledModel(id),
       };
     })
@@ -401,6 +425,7 @@ async function discoverAnthropicModels(apiKey: string): Promise<DiscoveredModel[
       toolCapable: isToolCapable(m),
       visionCapable: isVisionCapable(m),
       maxInputTokens: getContextWindow(m),
+      maxOutputTokens: getDefaultOutputTokens('anthropic'),
       isEnabled: !!getEnabledModel(m),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -430,6 +455,7 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
       // DeepSeek does NOT support vision
       visionCapable: false,
       maxInputTokens: getContextWindow(m.id),
+      maxOutputTokens: getDefaultOutputTokens('deepseek'),
       isEnabled: !!getEnabledModel(m.id),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));

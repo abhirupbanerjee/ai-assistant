@@ -1340,9 +1340,10 @@ User Request ("translate to French...")
 
 | Provider | Model | Notes |
 |----------|-------|-------|
-| **OpenAI** | GPT-4 | High quality, many languages |
-| **Google** | Gemini | Fast, good multilingual |
-| **Mistral** | Mistral Large | European languages |
+| **OpenAI** | GPT-4.1/5.x | High quality, many languages |
+| **Anthropic** | Claude 4.5 | High quality, nuanced translations |
+| **Google** | Gemini 2.5 | Fast, good multilingual |
+| **Mistral** | Mistral Large 3 | European languages |
 
 **Implementation:** `src/lib/translation/`
 

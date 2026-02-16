@@ -1033,6 +1033,20 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_compliance_message ON compliance_results(message_id);
     `);
   }
+
+  // Migration: Add max_output_tokens column to enabled_models table
+  const enabledModelsColumns = database.pragma('table_info(enabled_models)') as { name: string }[];
+  const enabledModelsColumnNames = enabledModelsColumns.map((c) => c.name);
+
+  if (!enabledModelsColumnNames.includes('max_output_tokens')) {
+    database.exec('ALTER TABLE enabled_models ADD COLUMN max_output_tokens INTEGER');
+    // Set provider-based defaults for existing models
+    database.exec(`
+      UPDATE enabled_models SET max_output_tokens = 8000 WHERE provider_id = 'deepseek';
+      UPDATE enabled_models SET max_output_tokens = 2000 WHERE provider_id = 'ollama';
+      UPDATE enabled_models SET max_output_tokens = 16000 WHERE provider_id NOT IN ('deepseek', 'ollama');
+    `);
+  }
 }
 
 /**

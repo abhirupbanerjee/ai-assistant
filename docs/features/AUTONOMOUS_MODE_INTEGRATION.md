@@ -434,9 +434,9 @@ Additional presets for different use cases are defined in [src/types/agent.ts](s
 
 | Preset | Use Case | Planner | Executor | Checker | Summarizer |
 |--------|----------|---------|----------|---------|------------|
-| **quality** | Best results | gemini-2.0-flash-exp | gpt-4o | gpt-4o | gpt-4o |
-| **economy** | Lower cost | mistral-large-latest | gpt-4o-mini | mistral-medium-latest | gpt-4o-mini |
-| **compliance** | Regulatory work | gemini-2.0-flash-exp | gemini-2.0-flash-exp | gpt-4o | gpt-4o |
+| **quality** | Best results | gemini-2.5-flash | gpt-4.1 | claude-sonnet-4-5 | gpt-4.1-mini |
+| **economy** | Lower cost | mistral-small-3.2 | gpt-4.1-mini | mistral-small-3.2 | gpt-4.1-mini |
+| **compliance** | Regulatory work | gemini-2.5-pro | claude-sonnet-4-5 | claude-sonnet-4-5 | gpt-4.1-mini |
 
 ### Token Limits
 

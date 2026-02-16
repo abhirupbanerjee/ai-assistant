@@ -16,6 +16,7 @@ export interface EnabledModel {
   toolCapable: boolean;
   visionCapable: boolean;
   maxInputTokens: number | null;
+  maxOutputTokens: number | null;  // Max tokens for LLM output
   isDefault: boolean;
   enabled: boolean;        // false = disabled/hidden
   providerEnabled?: boolean; // Whether the provider is enabled (for UI display)
@@ -31,6 +32,7 @@ interface EnabledModelRow {
   tool_capable: number;
   vision_capable: number;
   max_input_tokens: number | null;
+  max_output_tokens: number | null;
   is_default: number;
   enabled: number;
   provider_enabled?: number;
@@ -46,6 +48,7 @@ export interface CreateEnabledModelInput {
   toolCapable?: boolean;
   visionCapable?: boolean;
   maxInputTokens?: number;
+  maxOutputTokens?: number;
   isDefault?: boolean;
   enabled?: boolean;
   sortOrder?: number;
@@ -56,6 +59,7 @@ export interface UpdateEnabledModelInput {
   toolCapable?: boolean;
   visionCapable?: boolean;
   maxInputTokens?: number;
+  maxOutputTokens?: number;
   isDefault?: boolean;
   enabled?: boolean;
   sortOrder?: number;
@@ -71,6 +75,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     toolCapable: row.tool_capable === 1,
     visionCapable: row.vision_capable === 1,
     maxInputTokens: row.max_input_tokens,
+    maxOutputTokens: row.max_output_tokens,
     isDefault: row.is_default === 1,
     enabled: row.enabled === 1,
     providerEnabled: row.provider_enabled !== undefined ? row.provider_enabled === 1 : undefined,
@@ -88,7 +93,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
 export function getAllEnabledModels(): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
     SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
-           m.max_input_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at,
+           m.max_input_tokens, m.max_output_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at,
            p.enabled as provider_enabled
     FROM enabled_models m
     LEFT JOIN llm_providers p ON m.provider_id = p.id
@@ -104,7 +109,7 @@ export function getAllEnabledModels(): EnabledModel[] {
 export function getActiveModels(): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
     SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
-           m.max_input_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
+           m.max_input_tokens, m.max_output_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
     FROM enabled_models m
     INNER JOIN llm_providers p ON m.provider_id = p.id
     WHERE m.enabled = 1 AND p.enabled = 1
@@ -119,7 +124,7 @@ export function getActiveModels(): EnabledModel[] {
 export function getModelsByProvider(providerId: string): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
     SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           max_input_tokens, is_default, enabled, sort_order, created_at, updated_at
+           max_input_tokens, max_output_tokens, is_default, enabled, sort_order, created_at, updated_at
     FROM enabled_models
     WHERE provider_id = ?
     ORDER BY sort_order, display_name
@@ -133,7 +138,7 @@ export function getModelsByProvider(providerId: string): EnabledModel[] {
 export function getEnabledModel(id: string): EnabledModel | null {
   const row = queryOne<EnabledModelRow>(`
     SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           max_input_tokens, is_default, enabled, sort_order, created_at, updated_at
+           max_input_tokens, max_output_tokens, is_default, enabled, sort_order, created_at, updated_at
     FROM enabled_models
     WHERE id = ?
   `, [id]);
@@ -146,7 +151,7 @@ export function getEnabledModel(id: string): EnabledModel | null {
 export function getDefaultModel(): EnabledModel | null {
   const row = queryOne<EnabledModelRow>(`
     SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
-           m.max_input_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
+           m.max_input_tokens, m.max_output_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
     FROM enabled_models m
     INNER JOIN llm_providers p ON m.provider_id = p.id
     WHERE m.is_default = 1 AND m.enabled = 1 AND p.enabled = 1
@@ -173,9 +178,9 @@ export function createEnabledModel(input: CreateEnabledModelInput): EnabledModel
   execute(`
     INSERT INTO enabled_models (
       id, provider_id, display_name, tool_capable, vision_capable,
-      max_input_tokens, is_default, enabled, sort_order
+      max_input_tokens, max_output_tokens, is_default, enabled, sort_order
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.id,
     input.providerId,
@@ -183,6 +188,7 @@ export function createEnabledModel(input: CreateEnabledModelInput): EnabledModel
     input.toolCapable ? 1 : 0,
     input.visionCapable ? 1 : 0,
     input.maxInputTokens || null,
+    input.maxOutputTokens || null,
     input.isDefault ? 1 : 0,
     input.enabled !== false ? 1 : 0,
     sortOrder,
@@ -233,6 +239,10 @@ export function updateEnabledModel(id: string, input: UpdateEnabledModelInput): 
   if (input.maxInputTokens !== undefined) {
     updates.push('max_input_tokens = ?');
     params.push(input.maxInputTokens || null);
+  }
+  if (input.maxOutputTokens !== undefined) {
+    updates.push('max_output_tokens = ?');
+    params.push(input.maxOutputTokens || null);
   }
   if (input.isDefault !== undefined) {
     updates.push('is_default = ?');

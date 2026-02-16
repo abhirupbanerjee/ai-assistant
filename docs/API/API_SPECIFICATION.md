@@ -2083,7 +2083,7 @@ curl -X PATCH https://policybot.abhirup.app/api/admin/settings \
   -d '{
     "type": "llm",
     "settings": {
-      "model": "gpt-4o",
+      "model": "gpt-4.1-mini",
       "temperature": 0.7,
       "maxTokens": 4000
     }

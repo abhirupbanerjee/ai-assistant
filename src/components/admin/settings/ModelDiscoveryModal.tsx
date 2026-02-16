@@ -23,6 +23,7 @@ interface DiscoveredModel {
   toolCapable: boolean;
   visionCapable: boolean;
   maxInputTokens: number | null;
+  maxOutputTokens: number;
   isEnabled: boolean;
 }
 
@@ -59,6 +60,7 @@ export default function ModelDiscoveryModal({
   const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [modelsToRemove, setModelsToRemove] = useState<Set<string>>(new Set());
+  const [outputTokenOverrides, setOutputTokenOverrides] = useState<Map<string, number>>(new Map());
 
   // Reset state when modal opens
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function ModelDiscoveryModal({
       setDiscoveryResult(null);
       setSelectedModels(new Set());
       setModelsToRemove(new Set());
+      setOutputTokenOverrides(new Map());
       setError(null);
     }
   }, [isOpen, initialProvider, providers]);
@@ -142,6 +145,18 @@ export default function ModelDiscoveryModal({
     setSelectedModels(new Set());
   };
 
+  // Update output tokens for a model
+  const setModelOutputTokens = (modelId: string, tokens: number) => {
+    const newOverrides = new Map(outputTokenOverrides);
+    newOverrides.set(modelId, tokens);
+    setOutputTokenOverrides(newOverrides);
+  };
+
+  // Get output tokens for a model (override or default)
+  const getModelOutputTokens = (model: DiscoveredModel): number => {
+    return outputTokenOverrides.get(model.id) ?? model.maxOutputTokens;
+  };
+
   // Save changes (add new models and remove deselected ones)
   const handleSaveChanges = async () => {
     if (selectedModels.size === 0 && modelsToRemove.size === 0) return;
@@ -161,6 +176,7 @@ export default function ModelDiscoveryModal({
             toolCapable: m.toolCapable,
             visionCapable: m.visionCapable,
             maxInputTokens: m.maxInputTokens,
+            maxOutputTokens: getModelOutputTokens(m),
           }));
 
         const res = await fetch('/api/admin/llm/models', {
@@ -314,6 +330,9 @@ export default function ModelDiscoveryModal({
                         Capabilities
                       </th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Max Output
+                      </th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                         Status
                       </th>
                     </tr>
@@ -366,6 +385,22 @@ export default function ModelDiscoveryModal({
                               </span>
                             )}
                           </div>
+                        </td>
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          {model.isEnabled ? (
+                            <span className="text-xs text-gray-500">
+                              {model.maxOutputTokens ? `${(model.maxOutputTokens / 1000).toFixed(0)}K` : '—'}
+                            </span>
+                          ) : (
+                            <input
+                              type="number"
+                              value={getModelOutputTokens(model)}
+                              onChange={(e) => setModelOutputTokens(model.id, parseInt(e.target.value) || 0)}
+                              className="w-20 px-2 py-1 text-xs border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              min={1}
+                              max={100000}
+                            />
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {model.isEnabled ? (

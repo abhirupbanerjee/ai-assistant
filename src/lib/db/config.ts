@@ -20,7 +20,9 @@ import {
   isModelToolCapable as isEnabledModelToolCapable,
   hasEnabledModels,
   getToolCapableModelIds as getDbToolCapableModelIds,
+  getEnabledModel,
 } from './enabled-models';
+import { getDefaultOutputTokens } from '../services/model-discovery';
 
 // ============ Types ============
 
@@ -692,26 +694,25 @@ export function getModelTokenLimits(): ModelTokenLimits {
 
 /**
  * Get the effective max tokens for a specific model
- * Priority: Admin override > Model default > Fallback
+ * Priority: enabled_models.max_output_tokens > Provider default > Fallback
+ *
+ * Note: max_output_tokens is set during model discovery and can be edited
+ * in the enabled models table (Settings → Configure LLM)
  */
 export function getEffectiveMaxTokens(model: string): number {
-  // Check for admin override
-  const tokenLimits = getModelTokenLimits();
-  const override = tokenLimits[model];
-
-  if (typeof override === 'number') {
-    return override;
+  // Check enabled_models.max_output_tokens (set during discovery)
+  const enabledModel = getEnabledModel(model);
+  if (enabledModel?.maxOutputTokens) {
+    return enabledModel.maxOutputTokens;
   }
 
-  // Fall back to model's default max tokens
-  const models = getAvailableModels();
-  const modelConfig = models.find(m => m.id === model);
-  if (modelConfig) {
-    return modelConfig.defaultMaxTokens;
+  // Fall back to provider-based default
+  if (enabledModel?.providerId) {
+    return getDefaultOutputTokens(enabledModel.providerId);
   }
 
-  // Default fallback
-  return 2000;
+  // Ultimate fallback
+  return 16000;
 }
 
 /**

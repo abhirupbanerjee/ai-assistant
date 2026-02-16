@@ -29,8 +29,6 @@ import {
   DEFAULT_OCR_SETTINGS,
   getLimitsSettings,
   setLimitsSettings,
-  getModelTokenLimits,
-  setModelTokenLimit,
   getTokenLimitsSettings,
   setTokenLimitsSettings,
   getSettingMetadata,
@@ -78,7 +76,6 @@ export async function GET() {
     const memorySettings = getMemorySettings();
     const summarizationSettings = getSummarizationSettings();
     const limitsSettings = getLimitsSettings();
-    const modelTokenLimits = getModelTokenLimits();
     const tokenLimitsSettings = getTokenLimitsSettings();
     const ocrSettings = getOcrSettings();
 
@@ -93,7 +90,6 @@ export async function GET() {
     const memoryMeta = getSettingMetadata('memory-settings');
     const summarizationMeta = getSettingMetadata('summarization-settings');
     const limitsMeta = getSettingMetadata('limits-settings');
-    const modelTokensMeta = getSettingMetadata('model-token-limits');
     const tokenLimitsMeta = getSettingMetadata('token-limits-settings');
     const uploadMeta = getSettingMetadata('upload-limits');
     const ocrMeta = getSettingMetadata('ocr-settings');
@@ -154,11 +150,6 @@ export async function GET() {
         ...limitsSettings,
         updatedAt: limitsMeta?.updatedAt || new Date().toISOString(),
         updatedBy: limitsMeta?.updatedBy || 'system',
-      },
-      modelTokenLimits: {
-        limits: modelTokenLimits,
-        updatedAt: modelTokensMeta?.updatedAt || new Date().toISOString(),
-        updatedBy: modelTokensMeta?.updatedBy || 'system',
       },
       tokenLimits: {
         ...tokenLimitsSettings,
@@ -1182,50 +1173,6 @@ export async function PUT(request: NextRequest) {
         });
       }
 
-      case 'model-tokens': {
-        const { model, maxTokens } = settings;
-
-        // Validate model exists
-        if (!model || typeof model !== 'string') {
-          return NextResponse.json<ApiError>(
-            { error: 'Model name is required', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        // Check if model is valid (exists in presets or available models)
-        const availableModels = getAvailableModels();
-        if (!availableModels.some(m => m.id === model)) {
-          return NextResponse.json<ApiError>(
-            { error: 'Invalid model selected', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        // Validate maxTokens (number between 100-16000 or 'default')
-        if (maxTokens !== 'default') {
-          if (typeof maxTokens !== 'number' || maxTokens < 100 || maxTokens > 16000) {
-            return NextResponse.json<ApiError>(
-              { error: 'Max tokens must be between 100 and 16000, or "default"', code: 'VALIDATION_ERROR' },
-              { status: 400 }
-            );
-          }
-        }
-
-        result = setModelTokenLimit(model, maxTokens, user.email);
-
-        // Return with metadata
-        const meta = getSettingMetadata('model-token-limits');
-        return NextResponse.json({
-          success: true,
-          modelTokenLimits: {
-            limits: result,
-            updatedAt: meta?.updatedAt || new Date().toISOString(),
-            updatedBy: meta?.updatedBy || user.email,
-          },
-        });
-      }
-
       case 'restoreAllDefaults': {
         // Delete all settings from SQLite to fall back to JSON config defaults
         const settingKeys = [
@@ -1242,7 +1189,6 @@ export async function PUT(request: NextRequest) {
           'memory-settings',
           'summarization-settings',
           'skills-settings',
-          'model-token-limits',
           'ocr-settings',
         ] as const;
 

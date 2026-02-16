@@ -324,6 +324,7 @@ CREATE TABLE IF NOT EXISTS enabled_models (
   tool_capable INTEGER DEFAULT 0,
   vision_capable INTEGER DEFAULT 0,
   max_input_tokens INTEGER,
+  max_output_tokens INTEGER,        -- Max tokens for LLM output (provider-specific defaults)
   is_default INTEGER DEFAULT 0,     -- Only one can be default
   enabled INTEGER DEFAULT 1,        -- 0 = disabled/hidden
   sort_order INTEGER DEFAULT 0,

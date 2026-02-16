@@ -592,7 +592,7 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
    ```
 4. If strategy is `none`, either:
    - Enable OCR provider in admin settings
-   - Switch to a vision-capable model (GPT-4o, Gemini 2.5, Pixtral)
+   - Switch to a vision-capable model (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Pixtral)
 5. If strategy is `ocr-only`, images are processed but only text is extracted
 
 #### Tools not working with model

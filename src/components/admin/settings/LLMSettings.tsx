@@ -6,6 +6,9 @@ import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
 
+// Note: Per-model token limits have been consolidated into enabled_models.max_output_tokens
+// which is set during model discovery (Settings → Configure LLM → Add Models)
+
 interface LLMSettings {
   model: string;
   temperature: number;
@@ -30,12 +33,6 @@ interface ProviderStatus {
   error?: string;
 }
 
-interface ModelTokenLimitsState {
-  limits: Record<string, number | 'default'>;
-  updatedAt?: string;
-  updatedBy?: string;
-}
-
 export default function LLMSettingsTab() {
   // LLM settings state
   const [settings, setSettings] = useState<LLMSettings | null>(null);
@@ -45,15 +42,11 @@ export default function LLMSettingsTab() {
   // Model and provider state
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
-  const [modelTokenLimits, setModelTokenLimits] = useState<ModelTokenLimitsState | null>(null);
-  const [editedModelTokens, setEditedModelTokens] = useState<Record<string, number | 'default'>>({});
 
   // UI state
   const [llmSettingsExpanded, setLlmSettingsExpanded] = useState(true);
-  const [tokenLimitsExpanded, setTokenLimitsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [savingModelTokens, setSavingModelTokens] = useState(false);
   const [restoringDefaults, setRestoringDefaults] = useState(false);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,12 +87,6 @@ export default function LLMSettingsTab() {
 
       // Load available models
       setAvailableModels((settingsData.availableModels || []).filter(Boolean));
-
-      // Load model token limits
-      if (settingsData.modelTokenLimits) {
-        setModelTokenLimits(settingsData.modelTokenLimits);
-        setEditedModelTokens(settingsData.modelTokenLimits.limits || {});
-      }
 
       // Load provider status
       if (providersRes.ok) {
@@ -171,43 +158,6 @@ export default function LLMSettingsTab() {
       });
       setIsModified(false);
     }
-  };
-
-  const handleModelTokenChange = (model: string, value: number | 'default') => {
-    setEditedModelTokens(prev => ({ ...prev, [model]: value }));
-  };
-
-  const handleSaveModelToken = async (model: string) => {
-    setSavingModelTokens(true);
-    setError(null);
-
-    try {
-      const value = editedModelTokens[model];
-      const res = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'model-tokens',
-          settings: { model, maxTokens: value ?? 'default' }
-        }),
-      });
-
-      if (!res.ok) throw new Error('Failed to save model token limit');
-
-      const result = await res.json();
-      setModelTokenLimits(result.modelTokenLimits);
-      setEditedModelTokens(result.modelTokenLimits.limits || {});
-      setSuccess('Model token limit saved');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save model token limit');
-    } finally {
-      setSavingModelTokens(false);
-    }
-  };
-
-  const handleResetModelToken = (model: string) => {
-    handleModelTokenChange(model, 'default');
   };
 
   const handleRestoreAllDefaults = async () => {
@@ -388,117 +338,6 @@ export default function LLMSettingsTab() {
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Per-Model Token Limits Card */}
-      <div className="bg-white rounded-lg border shadow-sm">
-        <div
-          className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
-          onClick={() => setTokenLimitsExpanded(!tokenLimitsExpanded)}
-        >
-          <div className="flex items-center gap-3">
-            <button className="p-1 hover:bg-gray-100 rounded">
-              {tokenLimitsExpanded ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
-            </button>
-            <div>
-              <h2 className="font-semibold text-gray-900">Per-Model Token Limits</h2>
-              <p className="text-sm text-gray-500">Override default max tokens for specific models</p>
-            </div>
-          </div>
-        </div>
-        {tokenLimitsExpanded && (isLoading ? (
-          <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-        ) : (
-          <div className="p-6">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead>
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Default</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Custom Limit</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {availableModels.filter(Boolean).map((model) => {
-                    const modelId = model.id;
-                    const modelDefault = model.defaultMaxTokens;
-                    const currentValue = editedModelTokens[modelId];
-                    const isCustom = currentValue !== undefined && currentValue !== 'default';
-                    const savedValue = modelTokenLimits?.limits?.[modelId];
-                    const isTokenModified = currentValue !== (savedValue ?? 'default');
-
-                    return (
-                      <tr key={modelId} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {model.name}
-                          <span className="text-xs text-gray-400 ml-2">({modelId})</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {modelDefault.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="100"
-                              max="16000"
-                              value={isCustom ? currentValue : ''}
-                              placeholder={modelDefault.toString()}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (val === '') {
-                                  handleModelTokenChange(modelId, 'default');
-                                } else {
-                                  handleModelTokenChange(modelId, parseInt(val) || modelDefault);
-                                }
-                              }}
-                              className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                            {isCustom && (
-                              <span className="text-xs text-blue-600 font-medium">Custom</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {isTokenModified && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleSaveModelToken(modelId)}
-                                disabled={savingModelTokens}
-                                loading={savingModelTokens}
-                              >
-                                <Save size={14} className="mr-1" />
-                                Save
-                              </Button>
-                            )}
-                            {isCustom && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => handleResetModelToken(modelId)}
-                                disabled={savingModelTokens}
-                              >
-                                Reset
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {modelTokenLimits?.updatedAt && (
-              <p className="text-xs text-gray-500 mt-4 pt-4 border-t">
-                Last updated: {formatDate(modelTokenLimits.updatedAt)} by {modelTokenLimits.updatedBy}
-              </p>
-            )}
-          </div>
-        ))}
       </div>
 
       {/* Restore Defaults Confirmation Modal */}
