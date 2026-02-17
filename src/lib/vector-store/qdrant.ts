@@ -214,6 +214,11 @@ export class QdrantVectorStore implements VectorStoreClient {
   async deleteDocuments(collectionName: string, ids: string[]): Promise<void> {
     if (ids.length === 0) return;
 
+    // Skip if collection doesn't exist (nothing to delete)
+    if (!(await this.collectionExists(collectionName))) {
+      return;
+    }
+
     const qdrant = getClient();
 
     // Delete by original ID filter
@@ -236,6 +241,11 @@ export class QdrantVectorStore implements VectorStoreClient {
     collectionName: string,
     filter: Record<string, unknown>
   ): Promise<number> {
+    // Skip if collection doesn't exist (nothing to delete)
+    if (!(await this.collectionExists(collectionName))) {
+      return 0;
+    }
+
     const countBefore = await this.getCollectionCount(collectionName);
 
     await getClient().delete(collectionName, {
