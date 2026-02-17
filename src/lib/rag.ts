@@ -7,7 +7,7 @@
 
 import { createEmbeddings, generateResponseWithTools } from './openai';
 import type { OpenAI } from 'openai';
-import { queryCategories } from './chroma';
+import { getVectorStore, getCollectionNames } from './vector-store';
 import {
   getCachedQuery,
   cacheQuery,
@@ -144,23 +144,26 @@ export async function buildContext(
   // Collect all embeddings (original + expanded queries)
   const allEmbeddings = [queryEmbedding, ...additionalEmbeddings];
 
+  // Get vector store and collection names
+  const store = await getVectorStore();
+  const collNames = getCollectionNames();
+
   // Query with each embedding and collect results
   const allGlobalChunks: RetrievedChunk[] = [];
 
   for (const embedding of allEmbeddings) {
-    let results;
+    // Build list of collections to query
+    const collectionsToQuery = categorySlugs && categorySlugs.length > 0
+      ? [...categorySlugs.map(collNames.forCategory), collNames.global]
+      : [collNames.global, collNames.legacy];
 
-    // Use category-based search if categories specified, otherwise query global + legacy
-    if (categorySlugs && categorySlugs.length > 0) {
-      // Query across all specified categories + global collection
-      logger.debug('Querying categories', { categorySlugs });
-      results = await queryCategories(categorySlugs, embedding, topKChunks);
-    } else {
-      // No categories: query both global_documents and legacy collection
-      logger.debug('No categories - querying global + legacy collections');
-      // queryCategories with empty array will query global_documents collection
-      results = await queryCategories([], embedding, topKChunks);
-    }
+    logger.debug('Querying collections', { collectionsToQuery });
+
+    const results = await store.queryMultipleCollections(
+      collectionsToQuery,
+      embedding,
+      topKChunks
+    );
 
     logger.debug('Query returned', {
       documentCount: results.documents.length,
@@ -172,7 +175,7 @@ export async function buildContext(
       text: doc,
       documentName: results.metadatas[i]?.documentName || 'Unknown',
       pageNumber: results.metadatas[i]?.pageNumber || 1,
-      score: 1 - (results.distances[i] || 0), // Convert distance to similarity
+      score: results.scores[i] || 0, // Already similarity score from abstraction
       source: 'global' as const,
     }));
 

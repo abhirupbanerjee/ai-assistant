@@ -2451,3 +2451,133 @@ If migrating from the previous JSON-based storage:
 ```
 
 The migration is handled automatically on first run by checking for existing JSON files.
+
+---
+
+## 13. Database Migration System
+
+### How Migrations Work
+
+The database uses an **idempotent migration system** that runs automatically on application startup. Migrations are defined in `src/lib/db/index.ts` in the `runMigrations()` function.
+
+Each migration:
+1. Checks if the column/table already exists
+2. Only applies the change if it doesn't exist
+3. Logs the migration action for debugging
+
+```typescript
+// Example migration pattern (from index.ts)
+const threadsColumns = database.pragma('table_info(threads)') as { name: string }[];
+const threadColumnNames = threadsColumns.map((c) => c.name);
+
+if (!threadColumnNames.includes('selected_model')) {
+  database.exec('ALTER TABLE threads ADD COLUMN selected_model TEXT');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model)');
+  console.log('[DB Migration] Added selected_model column to threads');
+}
+```
+
+### Database Persistence Across VM Changes
+
+The SQLite database is persisted via Docker volume mount (defined in `docker-compose.yml`):
+
+```yaml
+volumes:
+  - ./data/app:/app/data
+```
+
+**Key file location:** `./data/app/policybot.db`
+
+#### VM Migration Checklist
+
+When migrating to a new VM:
+
+1. **Copy the data directory** - Transfer `./data/app/` containing `policybot.db`
+2. **Copy global documents** - Transfer `./data/app/global-docs/` if documents exist
+3. **Copy thread uploads** - Transfer `./data/app/threads/` for user uploads
+4. **Rebuild the Docker image** - `docker compose build app`
+5. **Start the containers** - `docker compose up -d`
+
+The migration system will automatically:
+- **On existing database**: Add any missing columns via `ALTER TABLE` migrations
+- **On new database**: Create full schema from scratch
+
+#### Verifying Migrations Ran
+
+Check Docker logs for migration messages:
+
+```bash
+docker compose logs app | grep -i migration
+```
+
+Expected output:
+```
+[DB] Initializing database schema and migrations...
+[DB Migration] Starting migrations...
+[DB Migration] Added selected_model column to threads
+[DB Migration] Migrations completed successfully
+```
+
+#### Manual Database Fixes (Emergency)
+
+If migrations fail to run (e.g., schema.sql not found in standalone build), apply schema changes manually from the **host machine**.
+
+**Important:** The Docker container doesn't include `sqlite3`. Use the host machine instead.
+
+**Step-by-step procedure:**
+
+```bash
+# 1. Stop the app container (releases database lock)
+docker compose stop app
+
+# 2. Run the migration from host (requires sqlite3 installed)
+#    Use sudo because the file is owned by container user (1001:1001)
+sudo sqlite3 ./data/app/policybot.db "ALTER TABLE threads ADD COLUMN selected_model TEXT; CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);"
+
+# 3. Start the app container
+docker compose start app
+
+# 4. Verify the fix worked
+docker logs policy-bot-app 2>&1 | head -20
+```
+
+**If sqlite3 isn't installed on the host:**
+
+```bash
+sudo apt-get update && sudo apt-get install -y sqlite3
+```
+
+**To verify the column was added:**
+
+```bash
+sqlite3 ./data/app/policybot.db ".schema threads"
+```
+
+**Common manual migrations:**
+
+| Column | Table | Command |
+|--------|-------|---------|
+| `selected_model` | threads | `ALTER TABLE threads ADD COLUMN selected_model TEXT` |
+| `is_pinned` | threads | `ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0` |
+| `is_summarized` | threads | `ALTER TABLE threads ADD COLUMN is_summarized INTEGER DEFAULT 0` |
+| `total_tokens` | threads | `ALTER TABLE threads ADD COLUMN total_tokens INTEGER DEFAULT 0` |
+
+#### Rollback Strategy
+
+Migrations are additive (nullable columns, new tables). To rollback:
+
+```sql
+-- Remove column (SQLite doesn't support DROP COLUMN directly)
+-- Option 1: Leave column in place (safe, no data loss)
+-- Option 2: Recreate table without column (requires data migration)
+
+-- For new tables, simply DROP:
+DROP TABLE IF EXISTS table_name;
+```
+
+### Migration Best Practices
+
+1. **Always check before adding** - Use `PRAGMA table_info()` to check existing columns
+2. **Use nullable columns** - New columns should be `NULL` or have `DEFAULT` values
+3. **Add logging** - Log when migrations run for debugging
+4. **Test on backup** - Test migrations on a database backup before production

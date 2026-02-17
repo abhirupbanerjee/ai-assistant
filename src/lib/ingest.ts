@@ -12,14 +12,7 @@ import { RecursiveTextSplitter } from './chunking/recursive-splitter';
 import path from 'path';
 import { createEmbeddings } from './openai';
 import { SemanticChunker } from './chunking/semantic-chunker';
-import {
-  addDocuments,
-  addDocumentsToCategories,
-  addGlobalDocuments,
-  deleteDocumentsByFilter,
-  deleteDocumentsByFilterFromCategories,
-  deleteDocumentsFromAllCollections,
-} from './chroma';
+import { getVectorStore, getCollectionNames } from './vector-store';
 import { readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, writeFileBuffer } from './storage';
 import { getRagSettings } from './db/config';
 import {
@@ -238,7 +231,7 @@ export async function ingestDocument(
       throw new Error('No text content extracted from document');
     }
 
-    // Get category slugs for ChromaDB collection names
+    // Get category slugs for collection names
     const categorySlugs: string[] = [];
     for (const catId of categoryIds) {
       const category = getCategoryById(catId);
@@ -247,6 +240,10 @@ export async function ingestDocument(
       }
     }
 
+    // Get vector store and collection names
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+
     // Create embeddings in batches
     const batchSize = 100;
     for (let i = 0; i < chunks.length; i += batchSize) {
@@ -254,36 +251,26 @@ export async function ingestDocument(
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
       const metadatas = batch.map(c => c.metadata);
+      const ids = batch.map(c => c.id);
 
-      // Global documents go into global_documents collection
+      // Global documents go into global collection and all category collections
       if (isGlobal) {
-        await addGlobalDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas
-        );
+        await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
+        // Also add to all existing category collections
+        const allCollections = await store.listCollections();
+        for (const name of allCollections.filter(collNames.isCategory)) {
+          await store.addDocuments(name, ids, embeddings, texts, metadatas);
+        }
       }
 
       // Documents with categories go into their category collections
-      // (This applies to BOTH global and non-global documents with categories)
       if (categorySlugs.length > 0) {
-        await addDocumentsToCategories(
-          categorySlugs,
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas,
-          false
-        );
+        for (const slug of categorySlugs) {
+          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+        }
       } else if (!isGlobal) {
         // Legacy: add to default collection (for uncategorized, non-global documents)
-        await addDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas
-        );
+        await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
     }
 
@@ -368,7 +355,7 @@ export async function ingestTextContent(
       throw new Error('No text content to process');
     }
 
-    // Get category slugs for ChromaDB collection names
+    // Get category slugs for collection names
     const categorySlugs: string[] = [];
     for (const catId of categoryIds) {
       const category = getCategoryById(catId);
@@ -377,6 +364,10 @@ export async function ingestTextContent(
       }
     }
 
+    // Get vector store and collection names
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+
     // Create embeddings in batches
     const batchSize = 100;
     for (let i = 0; i < chunks.length; i += batchSize) {
@@ -384,36 +375,26 @@ export async function ingestTextContent(
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
       const metadatas = batch.map(c => c.metadata);
+      const ids = batch.map(c => c.id);
 
-      // Global documents go into global_documents collection
+      // Global documents go into global collection and all category collections
       if (isGlobal) {
-        await addGlobalDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas
-        );
+        await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
+        // Also add to all existing category collections
+        const allCollections = await store.listCollections();
+        for (const name of allCollections.filter(collNames.isCategory)) {
+          await store.addDocuments(name, ids, embeddings, texts, metadatas);
+        }
       }
 
       // Documents with categories go into their category collections
-      // (This applies to BOTH global and non-global documents with categories)
       if (categorySlugs.length > 0) {
-        await addDocumentsToCategories(
-          categorySlugs,
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas,
-          false
-        );
+        for (const slug of categorySlugs) {
+          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+        }
       } else if (!isGlobal) {
         // Legacy: add to default collection (for uncategorized, non-global documents)
-        await addDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas
-        );
+        await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
     }
 
@@ -451,22 +432,28 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
   // Get category slugs for deletion
   const categorySlugs = doc.categories.map(c => c.slug);
 
-  // Delete from ChromaDB
+  // Get vector store and collection names
+  const store = await getVectorStore();
+  const collNames = getCollectionNames();
+
+  // Delete from vector store
   if (doc.isGlobal) {
     // Global doc: delete from all collections
-    await deleteDocumentsFromAllCollections([docId]);
+    await store.deleteDocumentsFromAllCollections([docId]);
   } else if (categorySlugs.length > 0) {
     // Category doc: delete from specific collections
-    await deleteDocumentsByFilterFromCategories(categorySlugs, { documentId: docId });
+    for (const slug of categorySlugs) {
+      await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
+    }
   } else {
     // Legacy: delete from default collection
-    await deleteDocumentsByFilter({ documentId: docId });
+    await store.deleteDocumentsByFilter(collNames.legacy, { documentId: docId });
   }
 
-  // Delete PDF file
+  // Delete file
   const globalDocsDir = getGlobalDocsDir();
-  const pdfPath = path.join(globalDocsDir, doc.filepath);
-  await deleteFile(pdfPath);
+  const filePath = path.join(globalDocsDir, doc.filepath);
+  await deleteFile(filePath);
 
   // Delete from SQLite
   dbDeleteDocument(numericId);
@@ -489,22 +476,28 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
   }
 
   const globalDocsDir = getGlobalDocsDir();
-  const pdfPath = path.join(globalDocsDir, doc.filepath);
+  const filePath = path.join(globalDocsDir, doc.filepath);
 
-  if (!await fileExists(pdfPath)) {
-    throw new Error('PDF file not found');
+  if (!await fileExists(filePath)) {
+    throw new Error('Document file not found');
   }
 
   // Get category slugs
   const categorySlugs = doc.categories.map(c => c.slug);
 
+  // Get vector store and collection names
+  const store = await getVectorStore();
+  const collNames = getCollectionNames();
+
   // Delete existing embeddings
   if (doc.isGlobal) {
-    await deleteDocumentsFromAllCollections([docId]);
+    await store.deleteDocumentsFromAllCollections([docId]);
   } else if (categorySlugs.length > 0) {
-    await deleteDocumentsByFilterFromCategories(categorySlugs, { documentId: docId });
+    for (const slug of categorySlugs) {
+      await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
+    }
   } else {
-    await deleteDocumentsByFilter({ documentId: docId });
+    await store.deleteDocumentsByFilter(collNames.legacy, { documentId: docId });
   }
 
   // Update status to processing
@@ -512,7 +505,7 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
 
   try {
     // Re-extract and chunk
-    const buffer = await readFileBuffer(pdfPath);
+    const buffer = await readFileBuffer(filePath);
     const mimeType = getMimeTypeFromFilename(doc.filename);
     const { text, pages } = await extractText(buffer, mimeType, doc.filename);
     const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
@@ -524,30 +517,21 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
       const metadatas = batch.map(c => c.metadata);
+      const ids = batch.map(c => c.id);
 
       if (doc.isGlobal) {
-        await addGlobalDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas
-        );
+        await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
+        // Also add to all existing category collections
+        const allCollections = await store.listCollections();
+        for (const name of allCollections.filter(collNames.isCategory)) {
+          await store.addDocuments(name, ids, embeddings, texts, metadatas);
+        }
       } else if (categorySlugs.length > 0) {
-        await addDocumentsToCategories(
-          categorySlugs,
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas,
-          false
-        );
+        for (const slug of categorySlugs) {
+          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+        }
       } else {
-        await addDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          metadatas
-        );
+        await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
     }
 
@@ -614,11 +598,15 @@ export async function updateDocumentCategories(
     }
   }
 
+  // Get vector store and collection names
+  const store = await getVectorStore();
+  const collNames = getCollectionNames();
+
   // If document has embeddings and categories changed, need to re-index
   if (doc.chunk_count > 0 && doc.status === 'ready') {
     // Delete from old categories
-    if (oldSlugs.length > 0) {
-      await deleteDocumentsByFilterFromCategories(oldSlugs, { documentId: docId });
+    for (const slug of oldSlugs) {
+      await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
     }
 
     // Re-add to new categories
@@ -635,15 +623,12 @@ export async function updateDocumentCategories(
         const batch = chunks.slice(i, i + batchSize);
         const texts = batch.map(c => c.text);
         const embeddings = await createEmbeddings(texts);
+        const ids = batch.map(c => c.id);
+        const metadatas = batch.map(c => c.metadata);
 
-        await addDocumentsToCategories(
-          newSlugs,
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          batch.map(c => c.metadata),
-          false
-        );
+        for (const slug of newSlugs) {
+          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+        }
       }
     }
   }
@@ -667,6 +652,10 @@ export async function toggleDocumentGlobal(
     throw new Error('Document not found');
   }
 
+  // Get vector store and collection names
+  const store = await getVectorStore();
+  const collNames = getCollectionNames();
+
   // If document has embeddings and status is changing, need to re-index
   if (doc.chunk_count > 0 && doc.status === 'ready' && doc.isGlobal !== isGlobal) {
     const globalDocsDir = getGlobalDocsDir();
@@ -678,11 +667,11 @@ export async function toggleDocumentGlobal(
 
     // Delete from current locations
     if (doc.isGlobal) {
-      await deleteDocumentsFromAllCollections([docId]);
+      await store.deleteDocumentsFromAllCollections([docId]);
     } else {
       const oldSlugs = doc.categories.map(c => c.slug);
-      if (oldSlugs.length > 0) {
-        await deleteDocumentsByFilterFromCategories(oldSlugs, { documentId: docId });
+      for (const slug of oldSlugs) {
+        await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
       }
     }
 
@@ -692,25 +681,20 @@ export async function toggleDocumentGlobal(
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
+      const ids = batch.map(c => c.id);
+      const metadatas = batch.map(c => c.metadata);
 
       if (isGlobal) {
-        await addGlobalDocuments(
-          batch.map(c => c.id),
-          embeddings,
-          texts,
-          batch.map(c => c.metadata)
-        );
+        await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
+        // Also add to all existing category collections
+        const allCollections = await store.listCollections();
+        for (const name of allCollections.filter(collNames.isCategory)) {
+          await store.addDocuments(name, ids, embeddings, texts, metadatas);
+        }
       } else {
         const newSlugs = doc.categories.map(c => c.slug);
-        if (newSlugs.length > 0) {
-          await addDocumentsToCategories(
-            newSlugs,
-            batch.map(c => c.id),
-            embeddings,
-            texts,
-            batch.map(c => c.metadata),
-            false
-          );
+        for (const slug of newSlugs) {
+          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
         }
       }
     }

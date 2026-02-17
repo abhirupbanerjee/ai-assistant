@@ -4,7 +4,7 @@ import { getUserRole } from '@/lib/users';
 import { saveTestResult, type TopChunk } from '@/lib/db/rag-testing';
 import { getRagSettings } from '@/lib/db/config';
 import { createEmbedding } from '@/lib/openai';
-import { queryCategories } from '@/lib/chroma';
+import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { getCategoryById } from '@/lib/db/categories';
 
 export async function POST(request: NextRequest) {
@@ -53,20 +53,23 @@ export async function POST(request: NextRequest) {
     // Create embedding for the query
     const embedding = await createEmbedding(query.trim());
 
-    // Query ChromaDB
-    // Use the correct signature: queryCategories(categorySlugs, embedding, nResults, whereFilter)
-    const results = await queryCategories(
-      categorySlugs,
+    // Query vector store
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+
+    // Build collection names from category slugs
+    const collectionNames = categorySlugs.map(slug => collNames.forCategory(slug));
+
+    const results = await store.queryMultipleCollections(
+      collectionNames,
       embedding,
-      testSettings.topKChunks || 20,
-      undefined // whereFilter
+      testSettings.topKChunks || 20
     );
 
     const latencyMs = Date.now() - startTime;
 
-    // Convert distances to similarity scores (ChromaDB uses cosine distance)
-    // Similarity = 1 - distance for cosine distance
-    const scores = results.distances.map(d => 1 - d);
+    // Results contain parallel arrays: ids[], documents[], metadatas[], scores[]
+    const scores = results.scores;
 
     // Calculate average similarity
     const avgSimilarity = scores.length > 0
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
       id: results.ids[i],
       documentName: results.metadatas[i]?.documentName || 'Unknown',
       text: results.documents[i]?.substring(0, 300) +
-        (results.documents[i]?.length > 300 ? '...' : ''),
+        (results.documents[i] && results.documents[i].length > 300 ? '...' : ''),
       score: Math.round(scores[i] * 10000) / 10000,
     }));
 

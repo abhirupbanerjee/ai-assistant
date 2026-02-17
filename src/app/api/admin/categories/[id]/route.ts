@@ -16,7 +16,7 @@ import {
   getSubscribersForCategory,
   getCategoryDocumentCount,
 } from '@/lib/db/categories';
-import { deleteCategoryCollection } from '@/lib/chroma';
+import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -151,8 +151,10 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Clean up ChromaDB collection for this category
-    await deleteCategoryCollection(existing.slug);
+    // Clean up vector store collection for this category
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+    await store.deleteCollection(collNames.forCategory(existing.slug));
 
     return NextResponse.json({
       success: true,

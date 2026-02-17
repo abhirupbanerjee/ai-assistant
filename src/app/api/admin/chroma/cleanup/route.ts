@@ -1,21 +1,22 @@
 /**
- * Admin API - ChromaDB Cleanup
+ * Admin API - Vector Store Cleanup
  *
- * POST /api/admin/chroma/cleanup - Delete orphaned ChromaDB collections
+ * POST /api/admin/chroma/cleanup - Delete orphaned vector store collections
  *
  * Query params:
  *   dryRun=true - Preview what would be deleted without actually deleting
+ *
+ * Note: Route path kept as /chroma for backward compatibility
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { getAllCategories } from '@/lib/db/categories';
 import {
-  listCategoryCollections,
-  deleteCategoryCollection,
-  collectionNames,
-  getCollectionCount,
-} from '@/lib/chroma';
+  getVectorStore,
+  getCollectionNames,
+  getVectorStoreProvider,
+} from '@/lib/vector-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,27 +25,39 @@ export async function POST(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const dryRun = searchParams.get('dryRun') === 'true';
 
+    const provider = getVectorStoreProvider();
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+
     // Get all category slugs from database
     const categories = getAllCategories();
     const validSlugs = new Set(categories.map((c) => c.slug));
 
-    // Get all ChromaDB category collections
-    const chromaCollections = await listCategoryCollections();
+    // Get all collections from vector store
+    const allCollections = await store.listCollections();
 
-    // Find orphaned collections (exist in ChromaDB but not in database)
+    // Filter to only category collections
+    const categoryCollections = allCollections
+      .filter(collNames.isCategory)
+      .map(name => ({
+        name,
+        slug: collNames.toSlug(name),
+      }));
+
+    // Find orphaned collections (exist in vector store but not in database)
     const orphaned: { name: string; slug: string; vectorCount: number }[] = [];
 
-    for (const slug of chromaCollections) {
+    for (const { name, slug } of categoryCollections) {
       if (!validSlugs.has(slug)) {
-        const collectionName = collectionNames.forCategory(slug);
-        const vectorCount = await getCollectionCount(collectionName);
-        orphaned.push({ name: collectionName, slug, vectorCount });
+        const vectorCount = await store.getCollectionCount(name);
+        orphaned.push({ name, slug, vectorCount });
       }
     }
 
     if (orphaned.length === 0) {
       return NextResponse.json({
         success: true,
+        provider,
         message: 'No orphaned collections found',
         orphaned: [],
         deleted: [],
@@ -54,6 +67,7 @@ export async function POST(request: NextRequest) {
     if (dryRun) {
       return NextResponse.json({
         success: true,
+        provider,
         dryRun: true,
         message: `Found ${orphaned.length} orphaned collection(s)`,
         orphaned,
@@ -65,9 +79,9 @@ export async function POST(request: NextRequest) {
     const deleted: string[] = [];
     const errors: { collection: string; error: string }[] = [];
 
-    for (const { slug, name } of orphaned) {
+    for (const { name } of orphaned) {
       try {
-        await deleteCategoryCollection(slug);
+        await store.deleteCollection(name);
         deleted.push(name);
       } catch (err) {
         errors.push({
@@ -79,6 +93,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      provider,
       message: `Deleted ${deleted.length} orphaned collection(s)`,
       orphaned,
       deleted,
@@ -92,9 +107,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    console.error('Error cleaning up ChromaDB:', error);
+    console.error('Error cleaning up vector store:', error);
     return NextResponse.json(
-      { error: 'Failed to cleanup ChromaDB collections' },
+      { error: 'Failed to cleanup vector store collections' },
       { status: 500 }
     );
   }

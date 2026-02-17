@@ -2,18 +2,32 @@
 
 This guide explains how to add a new LLM model to the Policy Bot system.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Reference: What to Update](#quick-reference-what-to-update)
+- [Method 1: Admin UI (Recommended)](#method-1-admin-ui-recommended)
+- [Method 2: YAML Configuration](#method-2-yaml-configuration-alternative)
+- [Adding a New Provider](#adding-a-new-provider)
+- [Capability Detection Patterns](#capability-detection-patterns)
+- [Per-Model Token Settings](#per-model-token-settings)
+- [Setting as Default Model](#setting-as-default-model)
+- [Verification Checklist](#verification-checklist)
+- [Troubleshooting](#troubleshooting)
+- [Files Reference](#files-reference)
+
+---
+
 ## Overview
 
 There are **two methods** to add LLM models:
 
-| Method | Best For | Requires |
-|--------|----------|----------|
-| **Admin UI** (Recommended) | Production, non-technical users | Web browser access |
-| **YAML Config** (Alternative) | CI/CD, infrastructure-as-code | File system access |
+| Method | Best For | Requires | Code Changes |
+|--------|----------|----------|--------------|
+| **Admin UI** (Recommended) | Production, non-technical users | Web browser access | None |
+| **YAML Config** (Alternative) | CI/CD, infrastructure-as-code | File system access | Optional |
 
----
-
-## Architecture Overview
+### Architecture Overview
 
 Models are loaded with the following priority:
 
@@ -36,6 +50,50 @@ Model Configuration Priority:
         │  (config-loader.ts)                 │
         └─────────────────────────────────────┘
 ```
+
+### Supported Providers
+
+The system currently supports these LLM providers out of the box:
+
+| Provider | ID | Models Examples | Vision Support |
+|----------|-----|-----------------|----------------|
+| **OpenAI** | `openai` | GPT-4.1, GPT-5.x, o1, o3 | Yes |
+| **Anthropic** | `anthropic` | Claude Sonnet/Haiku/Opus 4.5 | Yes |
+| **Google** | `gemini` | Gemini 2.5 Pro/Flash | Yes |
+| **Mistral** | `mistral` | Mistral Large 3, Small 3.2 | Yes |
+| **DeepSeek** | `deepseek` | DeepSeek Chat, Reasoner | No |
+| **Ollama** | `ollama` | Llama 3.2, Qwen 2.5, Phi4 | Varies |
+
+---
+
+## Quick Reference: What to Update
+
+Use this table to determine what files need updating based on your scenario:
+
+### Scenario 1: Adding a Model from an Existing Provider (e.g., GPT-5.3)
+
+| What | File | Required? |
+|------|------|-----------|
+| Enable via Admin UI | Web browser | **Yes** (easiest) |
+| OR add to YAML | `litellm-proxy/litellm_config.yaml` | Alternative |
+| Update capability patterns | `src/lib/services/model-discovery.ts` | Only if auto-detection fails |
+
+### Scenario 2: Adding a New Model Family (e.g., GPT-6.x)
+
+| What | File | Required? |
+|------|------|-----------|
+| Add to YAML | `litellm-proxy/litellm_config.yaml` | **Yes** |
+| Add capability patterns | `src/lib/services/model-discovery.ts` | **Yes** |
+| Add context windows | `src/lib/services/model-discovery.ts` | Recommended |
+
+### Scenario 3: Adding a New Provider (e.g., Cohere, xAI)
+
+| What | File | Required? |
+|------|------|-----------|
+| Add provider constants | `src/lib/db/llm-providers.ts` | **Yes** |
+| Add discovery function | `src/lib/services/model-discovery.ts` | **Yes** |
+| Add to YAML | `litellm-proxy/litellm_config.yaml` | **Yes** |
+| Add capability patterns | `src/lib/services/model-discovery.ts` | **Yes** |
 
 ---
 
@@ -140,13 +198,13 @@ Navigate to **Admin > Settings > Configure LLM**:
 | Action | Description |
 |--------|-------------|
 | **Set Default** | Make this the default model for new chats |
-| **Edit** | Change display name |
+| **Edit** | Change display name and max output tokens |
 | **Disable** | Hide from dropdown but keep config (can re-enable) |
 | **Remove** | Permanently delete from enabled models |
 
 ### Advanced: Manual Capability Configuration
 
-The Admin UI's **Edit** action only allows changing the display name. To manually configure **tool support**, **vision**, and **max tokens**, use the API directly.
+The Admin UI's **Edit** action allows changing display name and max output tokens. To manually configure **tool support**, **vision**, and **max input tokens**, use the API directly.
 
 #### API Endpoint
 
@@ -162,6 +220,7 @@ PUT /api/admin/llm/models/{model-id}
 | `toolCapable` | boolean | Enable function/tool calling for this model |
 | `visionCapable` | boolean | Enable image input support |
 | `maxInputTokens` | number | Context window size (informational) |
+| `maxOutputTokens` | number | Maximum tokens the model can output per response |
 | `isDefault` | boolean | Set as default model for new chats |
 | `enabled` | boolean | Show/hide in model dropdown |
 | `sortOrder` | number | Position in model list |
@@ -186,13 +245,13 @@ curl -X PUT http://localhost:3000/api/admin/llm/models/gemini-3-pro \
   -d '{"visionCapable": true}'
 ```
 
-**Set context window size:**
+**Set context window and output token limit:**
 
 ```bash
 curl -X PUT http://localhost:3000/api/admin/llm/models/claude-4-opus \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=YOUR_SESSION" \
-  -d '{"maxInputTokens": 200000}'
+  -d '{"maxInputTokens": 200000, "maxOutputTokens": 8000}'
 ```
 
 **Update multiple capabilities at once:**
@@ -205,7 +264,8 @@ curl -X PUT http://localhost:3000/api/admin/llm/models/mistral-next \
     "displayName": "Mistral Next (Custom)",
     "toolCapable": true,
     "visionCapable": true,
-    "maxInputTokens": 128000
+    "maxInputTokens": 128000,
+    "maxOutputTokens": 8000
   }'
 ```
 
@@ -239,26 +299,13 @@ Response:
     "toolCapable": true,
     "visionCapable": true,
     "maxInputTokens": 2000000,
+    "maxOutputTokens": 16000,
     "isDefault": false,
     "enabled": true,
     "sortOrder": 5
   }
 }
 ```
-
-#### Capability Detection
-
-When models are discovered via the **[+ Add Models]** dialog, capabilities are auto-detected using pattern matching on the model ID:
-
-| Pattern | Detected As |
-|---------|-------------|
-| Contains `gpt-4`, `gpt-5`, `o1`, `o3` | Tool + Vision capable |
-| Contains `gemini-2`, `gemini-3` | Tool + Vision capable |
-| Contains `mistral-large`, `mistral-small` | Tool capable |
-| Contains `llama3.2`, `llama4` | Tool capable |
-| Contains `pixtral`, `vision` | Vision capable |
-
-For models not matching these patterns, you'll need to manually set capabilities via API.
 
 ---
 
@@ -365,6 +412,19 @@ Check startup logs for confirmation:
     max_input_tokens: 2000000
 ```
 
+#### Anthropic Claude
+
+```yaml
+- model_name: claude-sonnet-4-5
+  litellm_params:
+    model: anthropic/claude-sonnet-4-5-20250929
+    api_key: os.environ/ANTHROPIC_API_KEY
+  model_info:
+    supports_function_calling: true
+    supports_vision: true
+    max_input_tokens: 1000000
+```
+
 #### Google Gemini
 
 ```yaml
@@ -388,6 +448,19 @@ Check startup logs for confirmation:
   model_info:
     supports_function_calling: true
     supports_vision: true
+```
+
+#### DeepSeek
+
+```yaml
+- model_name: deepseek-chat
+  litellm_params:
+    model: deepseek/deepseek-chat
+    api_key: os.environ/DEEPSEEK_API_KEY
+  model_info:
+    supports_function_calling: true
+    supports_vision: false  # DeepSeek does NOT support vision
+    max_input_tokens: 128000
 ```
 
 #### Ollama (Local)
@@ -428,6 +501,8 @@ Model IDs are automatically converted to human-friendly names:
 | `gemini-2.5-flash` | Gemini 2.5 Flash |
 | `ollama-llama3.2` | Ollama Llama 3.2 |
 | `mistral-small-3.2` | Mistral Small 3.2 |
+| `claude-sonnet-4-5` | Claude Sonnet 4.5 |
+| `deepseek-reasoner` | DeepSeek Reasoner |
 
 #### Provider Detection
 
@@ -439,6 +514,8 @@ Providers are detected from the `litellm_params.model` prefix:
 | `mistral/mistral-large` | mistral |
 | `ollama/llama3.2` | ollama |
 | `azure/gpt-4` | azure |
+| `anthropic/claude-...` | anthropic |
+| `deepseek/deepseek-...` | deepseek |
 | `gpt-4.1-mini` (no prefix) | openai |
 
 #### Tier-Based Defaults
@@ -447,10 +524,366 @@ Settings are automatically applied based on keywords in the model ID:
 
 | Tier Keywords | Temperature | Max Output Tokens |
 |---------------|-------------|-------------------|
-| `pro`, `large` | 0.1 | 8000 |
-| `mini`, `flash`, `small` | 0.2 | 3000 |
+| `pro`, `large`, `opus` | 0.1 | 8000 |
+| `mini`, `flash`, `small`, `haiku` | 0.2 | 3000 |
 | `nano`, `lite` | 0.2 | 1000 |
 | (none matched) | 0.2 | 2000 |
+
+---
+
+## Adding a New Provider
+
+If you need to add support for a completely new LLM provider (e.g., Cohere, xAI, Together AI), follow these steps:
+
+### Step 1: Add Provider Constants
+
+Edit `src/lib/db/llm-providers.ts`:
+
+```typescript
+// Add to DEFAULT_PROVIDERS array (around line 48-55)
+export const DEFAULT_PROVIDERS: Omit<LLMProvider, 'createdAt' | 'updatedAt'>[] = [
+  { id: 'openai', name: 'OpenAI', apiKey: null, apiBase: null, enabled: true },
+  // ... existing providers ...
+  { id: 'cohere', name: 'Cohere', apiKey: null, apiBase: null, enabled: true },  // ADD THIS
+];
+
+// Add to PROVIDER_ENV_KEYS (around line 58-65)
+const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> = {
+  openai: { apiKey: 'OPENAI_API_KEY' },
+  // ... existing providers ...
+  cohere: { apiKey: 'COHERE_API_KEY' },  // ADD THIS
+};
+```
+
+### Step 2: Add Discovery Function
+
+Edit `src/lib/services/model-discovery.ts`:
+
+```typescript
+// Add discovery function (after other discover functions, around line 460)
+/**
+ * Discover models from Cohere API
+ */
+async function discoverCohereModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch('https://api.cohere.ai/v1/models', {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Cohere API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { models: Array<{ name: string; endpoints: string[] }> };
+
+  return data.models
+    .filter(m => m.endpoints?.includes('chat') && isChatModel(m.name))
+    .map(m => ({
+      id: m.name,
+      name: generateDisplayName(m.name),
+      provider: 'cohere',
+      toolCapable: isToolCapable(m.name),
+      visionCapable: isVisionCapable(m.name),
+      maxInputTokens: getContextWindow(m.name),
+      maxOutputTokens: getDefaultOutputTokens('cohere'),
+      isEnabled: !!getEnabledModel(m.name),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+```
+
+### Step 3: Add to Discovery Switch
+
+In the same file, add case to `discoverModels()` function (around line 470-530):
+
+```typescript
+export async function discoverModels(provider: string): Promise<DiscoveryResult> {
+  try {
+    let models: DiscoveredModel[];
+
+    switch (provider) {
+      // ... existing cases ...
+
+      case 'cohere': {
+        const apiKey = getProviderApiKey('cohere');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverCohereModels(apiKey);
+        break;
+      }
+
+      default:
+        return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
+    }
+
+    return { success: true, provider, models };
+  } catch (error) {
+    // ... error handling ...
+  }
+}
+```
+
+### Step 4: Add Default Output Tokens
+
+In `src/lib/services/model-discovery.ts`, add to `DEFAULT_OUTPUT_TOKENS` (around line 127-134):
+
+```typescript
+const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
+  deepseek: 8000,
+  ollama: 2000,
+  openai: 16000,
+  anthropic: 16000,
+  gemini: 16000,
+  mistral: 16000,
+  cohere: 4000,  // ADD THIS - check provider docs for actual limit
+};
+```
+
+### Step 5: Update discoverAllModels
+
+Add to the providers list in `discoverAllModels()` function (around line 570):
+
+```typescript
+export async function discoverAllModels(): Promise<{...}> {
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'cohere'];  // ADD 'cohere'
+  // ...
+}
+```
+
+### Step 6: Add Capability Patterns
+
+See [Capability Detection Patterns](#capability-detection-patterns) section below.
+
+### Step 7: Add to YAML Config
+
+Add model entries to `litellm-proxy/litellm_config.yaml`:
+
+```yaml
+# ===========================================================================
+# COHERE MODELS
+# ===========================================================================
+- model_name: command-r-plus
+  litellm_params:
+    model: cohere/command-r-plus
+    api_key: os.environ/COHERE_API_KEY
+  model_info:
+    supports_function_calling: true
+    supports_vision: false
+    max_input_tokens: 128000
+```
+
+### Step 8: Test
+
+1. Add API key to `.env.local`: `COHERE_API_KEY=your-key`
+2. Restart the application
+3. Go to **Admin > Configure LLM** and verify provider appears
+4. Click **Test** to verify connection
+5. Click **Add Models** to discover available models
+
+---
+
+## Capability Detection Patterns
+
+When models are discovered via the Admin UI, capabilities are auto-detected using regex patterns. These patterns are defined in `src/lib/services/model-discovery.ts`.
+
+### Understanding the Pattern System
+
+The system checks model IDs against these pattern arrays to determine capabilities:
+
+```
+Model ID: "gpt-4.1-mini"
+           ↓
+    Check TOOL_CAPABLE_PATTERNS → matches /^gpt-4/ → toolCapable: true
+           ↓
+    Check VISION_CAPABLE_PATTERNS → matches /^gpt-4\.1/ → visionCapable: true
+           ↓
+    Check CONTEXT_WINDOWS → matches 'gpt-4.1-mini' → maxInputTokens: 1000000
+```
+
+### TOOL_CAPABLE_PATTERNS
+
+**Location:** `src/lib/services/model-discovery.ts` (lines 34-59)
+
+Models matching these patterns will have **function/tool calling** enabled:
+
+```typescript
+const TOOL_CAPABLE_PATTERNS = [
+  // OpenAI
+  /^gpt-4/,
+  /^gpt-5/,
+  /^gpt-3\.5-turbo/,
+  /^o1/,
+  /^o3/,
+  /^o4/,
+  // Gemini
+  /^gemini/,
+  // Mistral
+  /^mistral-large/,
+  /^mistral-small/,
+  /^mistral-medium/,
+  /^codestral/,
+  /^pixtral/,
+  // Anthropic Claude
+  /^claude/,
+  // DeepSeek
+  /^deepseek/,
+  // Ollama (some models)
+  /^llama3/,
+  /^llama4/,
+  /^qwen/,
+  /^mistral$/,
+];
+```
+
+**To add a new model family:** Add a regex pattern that matches the model ID prefix.
+
+Example - Adding support for "gpt-6" models:
+```typescript
+/^gpt-6/,  // Add this line
+```
+
+### VISION_CAPABLE_PATTERNS
+
+**Location:** `src/lib/services/model-discovery.ts` (lines 62-81)
+
+Models matching these patterns will have **image/vision input** enabled:
+
+```typescript
+const VISION_CAPABLE_PATTERNS = [
+  // OpenAI
+  /^gpt-4o/,
+  /^gpt-4-turbo/,
+  /^gpt-4\.1/,
+  /^gpt-5/,
+  /^o1/,
+  /^o3/,
+  /^o4/,
+  // Gemini
+  /^gemini-2/,
+  /^gemini-1\.5/,
+  // Mistral
+  /^pixtral/,
+  /^mistral-large/,
+  /^mistral-small-3/,
+  // Anthropic Claude (all Claude 3+ models support vision)
+  /^claude/,
+  // Note: DeepSeek does NOT support vision - intentionally excluded
+];
+```
+
+**Important:** Some providers (like DeepSeek) do not support vision. Do NOT add them to this list.
+
+### CONTEXT_WINDOWS
+
+**Location:** `src/lib/services/model-discovery.ts` (lines 84-124)
+
+Known context window sizes (max input tokens) for specific models:
+
+```typescript
+const CONTEXT_WINDOWS: Record<string, number> = {
+  // OpenAI - GPT-5 family
+  'gpt-5': 1000000,
+  'gpt-5.1': 1000000,
+  'gpt-5.2': 1000000,
+  // OpenAI - GPT-4 family
+  'gpt-4.1': 1000000,
+  'gpt-4.1-mini': 1000000,
+  'gpt-4.1-nano': 1000000,
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  // ... more models ...
+  // Anthropic Claude
+  'claude-sonnet-4-5': 1000000,
+  'claude-haiku-4-5': 1000000,
+  'claude-opus-4-5': 1000000,
+  // DeepSeek
+  'deepseek-reasoner': 64000,
+  'deepseek-chat': 128000,
+};
+```
+
+**To add a new model:** Add the exact model ID as key and token count as value.
+
+### DEFAULT_OUTPUT_TOKENS
+
+**Location:** `src/lib/services/model-discovery.ts` (lines 127-134)
+
+Default maximum output tokens when a model is discovered (provider-level defaults):
+
+```typescript
+const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
+  deepseek: 8000,
+  ollama: 2000,
+  openai: 16000,
+  anthropic: 16000,
+  gemini: 16000,
+  mistral: 16000,
+};
+```
+
+These defaults are used when:
+1. A model is first discovered via Admin UI
+2. No per-model output limit is set
+
+---
+
+## Per-Model Token Settings
+
+### Understanding Token Limits
+
+Each model has two token-related settings:
+
+| Setting | Description | Where Set |
+|---------|-------------|-----------|
+| **Max Input Tokens** | Context window size - how much text the model can read | Auto-detected or YAML `max_input_tokens` |
+| **Max Output Tokens** | Maximum response length - how much text the model can generate | Per-model in Admin UI or via API |
+
+### Setting Max Output Tokens
+
+#### Via Admin UI
+
+1. Go to **Admin > Settings > Configure LLM**
+2. Find the model in the Enabled Models table
+3. Click **[⋯]** menu → **Edit**
+4. Update the **Max Output Tokens** field
+5. Click **Save**
+
+#### Via API
+
+```bash
+curl -X PUT http://localhost:3000/api/admin/llm/models/gpt-4.1-mini \
+  -H "Content-Type: application/json" \
+  -d '{"maxOutputTokens": 4000}'
+```
+
+### Provider Default Output Tokens
+
+When models are discovered, they inherit default output token limits based on provider:
+
+| Provider | Default Max Output | Notes |
+|----------|-------------------|-------|
+| OpenAI | 16,000 | GPT-4.1+ support higher limits |
+| Anthropic | 16,000 | Claude 4.5 supports up to 64K |
+| Gemini | 16,000 | Gemini 2.5 supports up to 65K |
+| Mistral | 16,000 | - |
+| DeepSeek | 8,000 | Reasoning model may need more |
+| Ollama | 2,000 | Local models vary significantly |
+
+### Database Storage
+
+Token settings are stored in the `enabled_models` table:
+
+```sql
+CREATE TABLE enabled_models (
+  id TEXT PRIMARY KEY,
+  provider_id TEXT NOT NULL,
+  max_input_tokens INTEGER,   -- Context window (nullable)
+  max_output_tokens INTEGER,  -- Per-model output limit (nullable)
+  -- ... other fields
+);
+```
+
+If `max_output_tokens` is NULL, the system uses the provider default from `DEFAULT_OUTPUT_TOKENS`.
 
 ---
 
@@ -499,16 +932,18 @@ After adding a new model:
 - [ ] Vision badge appears if vision-capable (for models with image support)
 - [ ] Chat works with new model selected
 - [ ] Translation tool shows model (for openai/gemini/mistral providers)
+- [ ] Max output tokens displays correctly in model info
 
 ### Capability Verification
 
 If capabilities weren't auto-detected correctly:
 
 1. Check model in Configure LLM - does it show 🔧 (tools) / Vision badges?
-2. If not, update via API (see "Advanced: Manual Capability Configuration")
-3. Verify tools work by asking the model to use a function (e.g., "search for X")
-4. Verify vision works by uploading an image in chat
-5. Check `/api/config/capabilities` returns expected strategy
+2. If not, check if model ID matches patterns in `model-discovery.ts`
+3. Update via API if needed (see "Advanced: Manual Capability Configuration")
+4. Verify tools work by asking the model to use a function (e.g., "search for X")
+5. Verify vision works by uploading an image in chat
+6. Check `/api/config/capabilities` returns expected strategy
 
 ### Vision Capability Runtime Behavior
 
@@ -547,14 +982,15 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 3. Restart application to reinitialize
 
 #### Model capabilities not detected correctly
-1. Some models don't match auto-detection patterns
-2. Use the API to manually set capabilities:
+1. Check if model ID matches patterns in `src/lib/services/model-discovery.ts`
+2. Add new pattern if needed (see [Capability Detection Patterns](#capability-detection-patterns))
+3. Or use the API to manually set capabilities:
    ```bash
    curl -X PUT http://localhost:3000/api/admin/llm/models/MODEL_ID \
      -H "Content-Type: application/json" \
      -d '{"toolCapable": true, "visionCapable": true}'
    ```
-3. Verify changes in Configure LLM page
+4. Verify changes in Configure LLM page
 
 ### YAML Configuration Issues
 
@@ -635,13 +1071,24 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 
 ## Files Reference
 
-### Admin UI Files (Phase 3)
+### Quick Reference by Task
+
+| Task | Primary File(s) |
+|------|-----------------|
+| Add model via UI | Admin UI (no code changes) |
+| Add model via YAML | `litellm-proxy/litellm_config.yaml` |
+| Fix capability detection | `src/lib/services/model-discovery.ts` |
+| Add new provider | `src/lib/db/llm-providers.ts` + `src/lib/services/model-discovery.ts` |
+| Change default model | `src/lib/config-loader.ts` |
+| Debug model issues | Check `enabled_models` table in database |
+
+### Admin UI Files
 
 | File | Purpose |
 |------|---------|
-| `src/lib/db/llm-providers.ts` | Provider CRUD operations |
-| `src/lib/db/enabled-models.ts` | Enabled models CRUD |
-| `src/lib/services/model-discovery.ts` | Provider API discovery (OpenAI, Gemini, Mistral, Ollama) |
+| `src/lib/db/llm-providers.ts` | Provider CRUD operations, `DEFAULT_PROVIDERS` |
+| `src/lib/db/enabled-models.ts` | Enabled models CRUD, capability helpers |
+| `src/lib/services/model-discovery.ts` | Provider API discovery, capability patterns |
 | `src/components/admin/settings/LLMConfigSettings.tsx` | Main Configure LLM UI |
 | `src/components/admin/settings/ProviderCard.tsx` | Provider configuration cards |
 | `src/components/admin/settings/ModelDiscoveryModal.tsx` | Model browser/selector modal |
@@ -661,6 +1108,13 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 | `src/lib/config-loader.ts` | Model presets API, fallback defaults |
 | `src/lib/db/config.ts` | `getAvailableModels()` with DB-first priority |
 | `src/lib/constants.ts` | Re-exports `isToolCapableModel()` |
+
+### Database Schema
+
+| Table | Purpose |
+|-------|---------|
+| `llm_providers` | Provider configurations (id, name, api_key, api_base, enabled) |
+| `enabled_models` | Model configurations (id, provider_id, display_name, tool_capable, vision_capable, max_input_tokens, max_output_tokens, is_default, enabled, sort_order) |
 
 ---
 

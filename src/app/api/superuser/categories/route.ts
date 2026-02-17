@@ -20,7 +20,7 @@ import { assignCategoryToSuperUser, getSuperUserWithAssignments } from '@/lib/db
 import { getSuperuserSettings } from '@/lib/db/config';
 import { deleteDocument } from '@/lib/ingest';
 import { getDocumentById } from '@/lib/db/documents';
-import { deleteCategoryCollection } from '@/lib/chroma';
+import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 
 // GET - List super user's assigned categories
 export async function GET() {
@@ -190,8 +190,10 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // Clean up ChromaDB collection for this category
-    await deleteCategoryCollection(category.slug);
+    // Clean up vector store collection for this category
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+    await store.deleteCollection(collNames.forCategory(category.slug));
 
     return NextResponse.json({
       success: true,

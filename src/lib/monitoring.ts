@@ -3,7 +3,7 @@
  *
  * Provides system statistics for admin dashboard:
  * - Database statistics (users, threads, documents)
- * - ChromaDB collection stats
+ * - Vector store collection stats (ChromaDB or Qdrant)
  * - File storage usage
  */
 
@@ -12,9 +12,11 @@ import path from 'path';
 import { getDataDir, getGlobalDocsDir, getThreadsDir } from './storage';
 import { queryOne, queryAll } from './db';
 import {
-  getChromaClient,
-  getCollectionCount,
-} from './chroma';
+  getVectorStore,
+  getVectorStoreProvider,
+  getCollectionNames,
+  checkVectorStoreHealth,
+} from './vector-store';
 
 // ============ Types ============
 
@@ -48,7 +50,8 @@ export interface DatabaseStats {
   };
 }
 
-export interface ChromaStats {
+export interface VectorStoreStats {
+  provider: string;
   connected: boolean;
   collections: {
     name: string;
@@ -58,6 +61,9 @@ export interface ChromaStats {
   legacyCollectionCount: number;
   globalCollectionCount: number;
 }
+
+// Backward compatibility alias
+export type ChromaStats = VectorStoreStats;
 
 export interface FileStorageStats {
   globalDocsDir: {
@@ -85,8 +91,10 @@ export interface FileStorageStats {
 export interface SystemStats {
   timestamp: string;
   database: DatabaseStats;
-  chroma: ChromaStats;
+  vectorStore: VectorStoreStats;
   storage: FileStorageStats;
+  /** @deprecated Use vectorStore instead */
+  chroma?: VectorStoreStats;
 }
 
 // ============ Database Statistics ============
@@ -183,12 +191,27 @@ export function getDatabaseStats(): DatabaseStats {
   };
 }
 
-// ============ ChromaDB Statistics ============
+// ============ Vector Store Statistics ============
 
-export async function getChromaStats(): Promise<ChromaStats> {
+export async function getVectorStats(): Promise<VectorStoreStats> {
+  const provider = getVectorStoreProvider();
+  const collNames = getCollectionNames();
+
   try {
-    const client = await getChromaClient();
-    const collections = await client.listCollections();
+    const healthResult = await checkVectorStoreHealth();
+    if (!healthResult.healthy) {
+      return {
+        provider,
+        connected: false,
+        collections: [],
+        totalVectors: 0,
+        legacyCollectionCount: 0,
+        globalCollectionCount: 0,
+      };
+    }
+
+    const store = await getVectorStore();
+    const collections = await store.listCollections();
 
     // Get counts for each collection
     const collectionStats: { name: string; documentCount: number }[] = [];
@@ -196,15 +219,15 @@ export async function getChromaStats(): Promise<ChromaStats> {
     let legacyCount = 0;
     let globalCount = 0;
 
-    for (const name of collections as string[]) {
+    for (const name of collections) {
       try {
-        const count = await getCollectionCount(name);
+        const count = await store.getCollectionCount(name);
         collectionStats.push({ name, documentCount: count });
         totalVectors += count;
 
-        if (name === 'organizational_documents') {
+        if (name === collNames.legacy) {
           legacyCount = count;
-        } else if (name === 'global_documents') {
+        } else if (name === collNames.global) {
           globalCount = count;
         }
       } catch {
@@ -213,6 +236,7 @@ export async function getChromaStats(): Promise<ChromaStats> {
     }
 
     return {
+      provider,
       connected: true,
       collections: collectionStats,
       totalVectors,
@@ -220,8 +244,9 @@ export async function getChromaStats(): Promise<ChromaStats> {
       globalCollectionCount: globalCount,
     };
   } catch (error) {
-    console.error('Failed to get ChromaDB stats:', error);
+    console.error(`Failed to get ${provider} stats:`, error);
     return {
+      provider,
       connected: false,
       collections: [],
       totalVectors: 0,
@@ -230,6 +255,9 @@ export async function getChromaStats(): Promise<ChromaStats> {
     };
   }
 }
+
+// Backward compatibility alias
+export const getChromaStats = getVectorStats;
 
 // ============ File Storage Statistics ============
 
@@ -326,17 +354,19 @@ export async function getFileStorageStats(): Promise<FileStorageStats> {
 // ============ Combined System Stats ============
 
 export async function getSystemStats(): Promise<SystemStats> {
-  const [database, chroma, storage] = await Promise.all([
+  const [database, vectorStore, storage] = await Promise.all([
     Promise.resolve(getDatabaseStats()),
-    getChromaStats(),
+    getVectorStats(),
     getFileStorageStats(),
   ]);
 
   return {
     timestamp: new Date().toISOString(),
     database,
-    chroma,
+    vectorStore,
     storage,
+    // Backward compatibility
+    chroma: vectorStore,
   };
 }
 

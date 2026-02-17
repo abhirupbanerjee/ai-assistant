@@ -34,8 +34,12 @@ services:
     container_name: policy-bot-app
     environment:
       - NODE_ENV=production
+      # Vector Store Configuration
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      # Other Services
       - REDIS_URL=redis://redis:6379
       - DATA_DIR=/app/data
       - CONFIG_DIR=/app/config
@@ -83,6 +87,27 @@ services:
     networks:
       - policy-bot-network
     restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: policy-bot-qdrant
+    restart: unless-stopped
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - policy-bot-network
 
   redis:
     image: redis:7-alpine

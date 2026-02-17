@@ -41,7 +41,8 @@ export function getDatabase(): Database.Database {
   db.pragma('foreign_keys = ON');
   db.pragma('journal_mode = WAL');
 
-  // Initialize schema
+  // Initialize schema and run migrations
+  console.log('[DB] Initializing database schema and migrations...');
   initializeSchema(db);
 
   // Initialize default settings
@@ -99,27 +100,33 @@ function initializeSchema(database: Database.Database): void {
  * Run migrations for adding new columns to existing tables
  */
 function runMigrations(database: Database.Database): void {
+  console.log('[DB Migration] Starting migrations...');
+
   // Check and add is_summarized column to threads
   const threadsColumns = database.pragma('table_info(threads)') as { name: string }[];
   const threadColumnNames = threadsColumns.map((c) => c.name);
 
   if (!threadColumnNames.includes('is_summarized')) {
     database.exec('ALTER TABLE threads ADD COLUMN is_summarized INTEGER DEFAULT 0');
+    console.log('[DB Migration] Added is_summarized column to threads');
   }
 
   if (!threadColumnNames.includes('total_tokens')) {
     database.exec('ALTER TABLE threads ADD COLUMN total_tokens INTEGER DEFAULT 0');
+    console.log('[DB Migration] Added total_tokens column to threads');
   }
 
   if (!threadColumnNames.includes('is_pinned')) {
     database.exec('ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0');
     database.exec('CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC)');
+    console.log('[DB Migration] Added is_pinned column to threads');
   }
 
   // Add selected_model column for per-thread model override
   if (!threadColumnNames.includes('selected_model')) {
     database.exec('ALTER TABLE threads ADD COLUMN selected_model TEXT');
     database.exec('CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model)');
+    console.log('[DB Migration] Added selected_model column to threads');
   }
 
   // Check and add token_count column to messages
@@ -1052,7 +1059,10 @@ function runMigrations(database: Database.Database): void {
       UPDATE enabled_models SET max_output_tokens = 2000 WHERE provider_id = 'ollama';
       UPDATE enabled_models SET max_output_tokens = 16000 WHERE provider_id NOT IN ('deepseek', 'ollama');
     `);
+    console.log('[DB Migration] Added max_output_tokens column to enabled_models');
   }
+
+  console.log('[DB Migration] Migrations completed successfully');
 }
 
 /**
@@ -1141,12 +1151,16 @@ CREATE TABLE IF NOT EXISTS threads (
   id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
   title TEXT NOT NULL,
+  selected_model TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  is_pinned INTEGER DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);
 
 -- Thread category selection
 CREATE TABLE IF NOT EXISTS thread_categories (
