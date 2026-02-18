@@ -8,6 +8,10 @@ import {
 } from '@/lib/backup';
 import type { ApiError } from '@/types';
 
+// Route segment config for large backup file uploads (up to 500MB)
+export const runtime = 'nodejs';
+export const maxDuration = 300; // 5 minutes timeout for large restores
+
 /**
  * POST /api/admin/backup/restore
  * Restore from a backup ZIP file
