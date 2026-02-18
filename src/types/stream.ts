@@ -109,7 +109,7 @@ export type StreamEvent =
   | { type: 'chunk'; content: string }
 
   // Completion
-  | { type: 'done'; messageId: string; threadId: string }
+  | { type: 'done'; messageId: string; threadId: string; model?: string; totalMs?: number; llmMs?: number; ragMs?: number; completionTokens?: number }
 
   // Error
   | { type: 'error'; code: StreamErrorCode; message: string; recoverable: boolean }

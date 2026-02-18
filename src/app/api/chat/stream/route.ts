@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
 
         // Resolve effective model for this thread (thread override or global default)
         const effectiveModel = getEffectiveModelForThread(threadId);
+        const requestStart = Date.now();
 
         send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
 
@@ -332,6 +333,7 @@ export async function POST(request: NextRequest) {
             // ============ Phase 2: RAG Retrieval ============
             send({ type: 'status', phase: 'rag', content: getPhaseMessage('rag') });
 
+            const ragStart = Date.now();
             const ragResult = await performRAGRetrieval(
               message,
               categorySlugs,
@@ -341,6 +343,7 @@ export async function POST(request: NextRequest) {
               send,
               conversationHistory  // Pass for follow-up context boosting
             );
+            const ragMs = Date.now() - ragStart;
 
             // Send sources from RAG
             send({ type: 'sources', data: ragResult.sources });
@@ -371,6 +374,7 @@ export async function POST(request: NextRequest) {
             // Pass images for multimodal visual analysis (in addition to OCR text in context)
             // Uses conversation context manager for smart history (anchors + recent),
             // follow-up detection, and context-aware cache keys
+            const llmStart = Date.now();
             const toolResult = await generateResponseWithTools(
               effectiveSystemPrompt,
               conversationHistory.slice(0, -1), // Full history, context manager optimizes
@@ -409,6 +413,7 @@ export async function POST(request: NextRequest) {
               imageCapabilities, // Image processing strategy
               effectiveModel || undefined // Per-thread model override
             );
+            const llmMs = Date.now() - llmStart;
 
             // Extract web sources from tool history
             for (const msg of toolResult.fullHistory) {
@@ -550,8 +555,17 @@ export async function POST(request: NextRequest) {
               processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(() => {});
             }
 
-            // Send completion
-            send({ type: 'done', messageId: assistantMessageId, threadId });
+            // Send completion with metadata
+            send({
+              type: 'done',
+              messageId: assistantMessageId,
+              threadId,
+              model: effectiveModel || undefined,
+              totalMs: Date.now() - requestStart,
+              llmMs,
+              ragMs,
+              completionTokens: countTokens(fullContent),
+            });
           }
         );
       } catch (error) {

@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import ChatWindow, { type ChatWindowRef } from '@/components/chat/ChatWindow';
-import ThreadSidebar from '@/components/layout/ThreadSidebar';
+import ThreadSidebar, { type ThreadSidebarRef } from '@/components/layout/ThreadSidebar';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
@@ -15,6 +16,7 @@ import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInf
 export default function Home() {
   const { data: session } = useSession();
   const chatWindowRef = useRef<ChatWindowRef>(null);
+  const sidebarRef = useRef<ThreadSidebarRef>(null);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
@@ -138,6 +140,12 @@ export default function Home() {
     }
   }, [artifactsData.threadId]);
 
+  // Swipe gestures for mobile: swipe right from edge to open sidebar, swipe left to close
+  useSwipeGesture({
+    onSwipeRight: () => sidebarRef.current?.setCollapsed(false),
+    onSwipeLeft: () => sidebarRef.current?.setCollapsed(true),
+  });
+
   // Input focus handlers for hiding sidebars on mobile
   const handleInputFocus = useCallback(() => {
     setIsInputFocused(true);
@@ -165,6 +173,7 @@ export default function Home() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left sidebar - Thread list (manages its own collapsed state) */}
         <ThreadSidebar
+          ref={sidebarRef}
           onThreadSelect={handleThreadSelect}
           onThreadCreated={handleThreadCreated}
           selectedThreadId={activeThread?.id}

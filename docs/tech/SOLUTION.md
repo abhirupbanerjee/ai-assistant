@@ -1347,6 +1347,27 @@ User Request ("translate to French...")
 
 **Implementation:** `src/lib/translation/`
 
+#### 16.4 Content Generation & Database Context
+
+Image generation (`image_gen`) and document generation (`doc_gen`) both save output files to disk and record them in the `thread_outputs` table. Before saving, they call `getThreadContext(threadId)` to confirm the thread exists:
+
+```
+getThreadContext(threadId)
+    │
+    ├── Query PostgreSQL threads table
+    ├── Query PostgreSQL workspace_threads
+    ├── Query PostgreSQL workspace_sessions
+    │
+    └── SQLite fallback (if DATABASE_PROVIDER=postgres)
+            └── sync.getThreadById(threadId)
+                    ↓ Found → return { exists: true }
+                    ↓ Not found → return { exists: false } → save fails
+```
+
+The `thread_outputs.thread_id` FK is intentionally not enforced in PostgreSQL — the startup migration drops it — so outputs can be saved even when the thread exists only in SQLite (pre-migration data). Diagram generation (`diagram_gen`) is unaffected as it returns Mermaid code inline with no database save.
+
+**Implementation:** `src/lib/image-gen/provider-factory.ts`, `src/lib/docgen/document-generator.ts`, `src/lib/db/compat/threads.ts`
+
 ---
 
 ## User Roles & Permissions
@@ -1489,10 +1510,13 @@ Admin/Super User manages subscriptions:
 - Enables organizational hierarchy for large deployments
 
 ### 4. Hybrid Storage Strategy
-- **SQLite**: Structured metadata (users, categories, documents, config)
-- **ChromaDB**: Vector embeddings for semantic search
+- **SQLite** (always active): Sync primary store for structured metadata — users, categories, documents, config, threads
+- **PostgreSQL** (optional, `DATABASE_PROVIDER=postgres`): Async mirror of SQLite; becomes primary read store at scale; SQLite fallback for migrated/legacy data
+- **ChromaDB / Qdrant**: Vector embeddings for semantic search
 - **Redis**: Fast caching and session management
-- **Filesystem**: Thread messages and PDF files
+- **Filesystem**: Generated files (images, PDFs, DOCX) and thread uploads
+
+**Dual-Write Pattern**: When `DATABASE_PROVIDER=postgres`, writes go to SQLite synchronously, then mirror to PostgreSQL asynchronously. Reads hit PostgreSQL first with automatic SQLite fallback, enabling zero-downtime migration. The `thread_outputs.thread_id` FK is intentionally absent so generated files can reference threads that exist only in SQLite.
 
 ### 5. Multi-Turn Context (5 Messages)
 - Enables follow-up questions like "what about section 3?"

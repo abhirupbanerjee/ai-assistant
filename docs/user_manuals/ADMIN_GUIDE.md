@@ -1445,6 +1445,54 @@ Administrative functions for system maintenance.
 | **Reindex** | Rebuild search indexes |
 | **Clear Cache** | Clear temporary data |
 
+### Database & Vector Store Selection
+
+Policy Bot supports two database backends and two vector store backends. Choose the combination that fits your deployment size.
+
+#### Database Options
+
+| Option | Users | Setup | Concurrency | Notes |
+|--------|-------|-------|-------------|-------|
+| **SQLite** (default) | Up to ~50 | Zero config | WAL mode | Single file at `data/app/policybot.db` |
+| **PostgreSQL** | 50+ | One-time init | Connection pool (10) | Requires `DATABASE_PROVIDER=postgres` |
+
+#### Vector Store Options
+
+| Option | Scale | Memory | Setup |
+|--------|-------|--------|-------|
+| **ChromaDB** (default) | Up to ~100K chunks | Lower | `--profile chromadb` |
+| **Qdrant** | 100K+ chunks | ~512MB | `--profile qdrant` |
+
+#### Enabling PostgreSQL
+
+Set these environment variables in `.env` before starting containers:
+
+```env
+DATABASE_PROVIDER=postgres
+DATABASE_URL=postgresql://policybot:password@postgres:5432/policybot
+POSTGRES_USER=policybot
+POSTGRES_PASSWORD=<strong-password>
+POSTGRES_DB=policybot
+```
+
+Then start with the postgres profile:
+
+```bash
+docker compose --profile postgres --profile <chromadb|qdrant> up -d --build
+```
+
+The app waits for PostgreSQL to be healthy before starting. An idempotent schema migration runs automatically on first connection — no manual SQL steps required.
+
+#### Migrating from SQLite to PostgreSQL
+
+1. Create a full backup: **Settings → Backup → Create Backup** (include Database + Files + Config)
+2. Update `.env`: set `DATABASE_PROVIDER=postgres`, `DATABASE_URL`, and Postgres credentials
+3. Restart containers with the postgres profile: `docker compose --profile postgres --profile <chromadb|qdrant> up -d --build`
+4. Restore the backup: **Settings → Restore → Upload Backup**
+5. Verify data integrity via the Dashboard statistics cards
+
+> **Note:** During and after migration, the system automatically falls back to SQLite for any data not yet available in PostgreSQL, so there is no service interruption.
+
 ### Processing Queue
 
 View and manage document processing:

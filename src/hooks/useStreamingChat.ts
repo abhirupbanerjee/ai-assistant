@@ -95,7 +95,7 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[]) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], metadata?: import('@/types').MessageMetadata) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
@@ -488,7 +488,14 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }
         setState(prev => {
           const finalContent = contentBufferRef.current || prev.currentContent;
-          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images, prev.diagrams);
+          const metadata = (event.model || event.totalMs || event.completionTokens) ? {
+            model: event.model,
+            totalMs: event.totalMs,
+            llmMs: event.llmMs,
+            ragMs: event.ragMs,
+            completionTokens: event.completionTokens,
+          } : undefined;
+          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images, prev.diagrams, metadata);
           return {
             ...prev,
             isStreaming: false,

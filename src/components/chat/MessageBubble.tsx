@@ -3,27 +3,60 @@
 import { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
-import type { Message } from '@/types';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import type { Message, MessageMetadata } from '@/types';
 import SourceCard from './SourceCard';
 import DocumentResultCard from './DocumentResultCard';
 import ImageDisplay from './ImageDisplay';
 import DataVisualization from './DataVisualization';
 import MermaidDiagram from '@/components/markdown/MermaidDiagram';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
+import MessageActions from './MessageActions';
 
 const MAX_SOURCES_DISPLAYED = 5;
+
+function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const modelLabel = metadata.model
+    ? metadata.model.replace(/^(gpt-|claude-|gemini-)/i, '').replace(/-(\d)/g, ' $1').replace(/-/g, ' ').trim()
+    : null;
+  const totalSec = metadata.totalMs ? (metadata.totalMs / 1000).toFixed(1) + 's' : null;
+
+  return (
+    <div className="text-xs text-gray-400 flex items-center gap-2">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-1.5 hover:text-gray-600 transition-colors"
+        title="Response details"
+      >
+        {modelLabel && <span>{modelLabel}</span>}
+        {totalSec && <span>{totalSec}</span>}
+        {metadata.completionTokens && <span>~{metadata.completionTokens} tok</span>}
+      </button>
+
+      {expanded && (metadata.llmMs || metadata.ragMs) && (
+        <span className="text-gray-300">
+          {metadata.llmMs ? `LLM ${(metadata.llmMs / 1000).toFixed(1)}s` : ''}
+          {metadata.llmMs && metadata.ragMs ? ' · ' : ''}
+          {metadata.ragMs ? `RAG ${(metadata.ragMs / 1000).toFixed(1)}s` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
 
 interface MessageBubbleProps {
   message: Message;
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
+  /** Callback to regenerate the assistant response (assistant messages only) */
+  onRegenerate?: () => void;
 }
 
-export default function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
+export default function MessageBubble({ message, isStreaming = false, onRegenerate }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
-  const [copied, setCopied] = useState(false);
   const isUser = message.role === 'user';
 
   // Sort sources by score (highest first) and limit to top sources
@@ -38,16 +71,6 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
 
   const hasMoreSources = sortedSources.length > MAX_SOURCES_DISPLAYED;
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString('en-US', {
       hour: 'numeric',
@@ -57,7 +80,7 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 group`}>
       <div
         className={`max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
@@ -172,20 +195,18 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
 
         <div className={`flex items-center justify-between gap-2 mt-2 ${isUser ? 'text-white/70' : 'text-gray-500'}`}>
           <span className="text-xs">{formatTime(message.timestamp)}</span>
-          {!isUser && (
-            <button
-              onClick={handleCopy}
-              className="p-1 rounded hover:bg-gray-200 transition-colors"
-              title={copied ? 'Copied!' : 'Copy response'}
-            >
-              {copied ? (
-                <Check size={14} className="text-green-600" />
-              ) : (
-                <Copy size={14} className="text-gray-400 hover:text-gray-600" />
-              )}
-            </button>
+          {!isUser && !isStreaming && message.metadata && (
+            <MetadataFooter metadata={message.metadata} />
           )}
         </div>
+
+        {/* Message action bar — visible on hover, assistant messages only, not while streaming */}
+        {!isUser && !isStreaming && (
+          <MessageActions
+            content={message.content}
+            onRegenerate={onRegenerate}
+          />
+        )}
       </div>
     </div>
   );

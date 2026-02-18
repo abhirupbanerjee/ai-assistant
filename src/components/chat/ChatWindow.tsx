@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
-import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences } from '@/types';
+import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -143,7 +143,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
 
   // Streaming chat hook
@@ -153,7 +155,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     sources: Source[],
     visualizations: MessageVisualization[],
     documents: GeneratedDocumentInfo[],
-    images: GeneratedImageInfo[]
+    images: GeneratedImageInfo[],
+    _diagrams: DiagramHint[],
+    metadata?: MessageMetadata
   ) => {
     const assistantMessage: Message = {
       id: messageId,
@@ -164,6 +168,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       generatedDocuments: documents.length > 0 ? documents : undefined,
       generatedImages: images.length > 0 ? images : undefined,
       timestamp: new Date(),
+      metadata,
     };
     setMessages(prev => [...prev, assistantMessage]);
     setLoading(false);
@@ -318,10 +323,24 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   };
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom (only when user hasn't scrolled up)
   useEffect(() => {
+    if (!isScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, streamingState.currentContent, isScrolledUp]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    setIsScrolledUp(!atBottom);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingState.currentContent]);
+    setIsScrolledUp(false);
+  }, []);
 
   const loadThread = async (id: string) => {
     try {
@@ -510,7 +529,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       )}
 
       {/* Messages */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 scroll-container">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative"
+      >
         {messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
@@ -537,8 +560,27 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           </div>
         )}
 
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+        {messages.map((message, index) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            onRegenerate={
+              message.role === 'assistant' && !streamingState.isStreaming
+                ? () => {
+                    // Find the most recent user message before this assistant message
+                    const precedingUserMsg = [...messages]
+                      .slice(0, index)
+                      .reverse()
+                      .find(m => m.role === 'user');
+                    if (precedingUserMsg) {
+                      // Remove this assistant message and resend the user message
+                      setMessages(prev => prev.slice(0, index));
+                      sendMessage(precedingUserMsg.content);
+                    }
+                  }
+                : undefined
+            }
+          />
         ))}
 
         {/* Streaming UI - Processing Indicator */}
@@ -624,6 +666,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         )}
 
         <div ref={messagesEndRef} />
+
+        {/* Scroll to bottom FAB */}
+        {isScrolledUp && (
+          <button
+            onClick={scrollToBottom}
+            className="sticky bottom-4 float-right mr-2 p-2 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all text-gray-600"
+            title="Scroll to bottom"
+          >
+            <ArrowDown size={16} />
+          </button>
+        )}
       </div>
 
       {/* Input */}

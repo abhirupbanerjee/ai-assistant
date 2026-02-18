@@ -52,6 +52,18 @@ src/lib/db/
 - Auto-initialised via Docker's `/docker-entrypoint-initdb.d/` on first start
 - Connection pool: max 10 connections, 30s idle timeout
 - Requires: `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- Idempotent startup migrations run in `src/lib/db/kysely.ts` for existing databases (schema changes not covered by the init script)
+
+### Dual-Database Architecture
+
+Both SQLite and PostgreSQL are active simultaneously when `DATABASE_PROVIDER=postgres`. Writes go to SQLite first (sync), then are mirrored to PostgreSQL asynchronously. Reads go to PostgreSQL with automatic SQLite fallback for any records not yet present (e.g. threads created before migration).
+
+This means:
+- No data loss during a SQLite → PostgreSQL migration
+- `getThreadContext()` transparently serves threads from either store
+- Admin tool config updates use `upsertToolConfigAsync()` to keep both stores in sync
+
+**`thread_outputs` FK note:** The `thread_id` foreign key is intentionally absent from `thread_outputs` in both the schema (`postgres.sql`) and existing deployments (dropped via startup migration). This allows image and document generation to save outputs for threads that exist only in SQLite, without requiring a full data migration.
 
 ### SQLite-Specific Notes
 
@@ -1019,11 +1031,11 @@ AI-generated files (images, documents).
 | Column | Type | Description |
 |--------|------|-------------|
 | id | INTEGER | Auto-increment primary key |
-| thread_id | TEXT | FK to threads.id |
+| thread_id | TEXT | Thread identifier (no FK — supports cross-store threads) |
 | message_id | TEXT | FK to messages.id (nullable) |
 | filename | TEXT | Generated filename |
 | filepath | TEXT | Path to stored file |
-| file_type | TEXT | `image`, `pdf`, `docx`, `xlsx`, `pptx` |
+| file_type | TEXT | `image`, `pdf`, `docx`, `xlsx`, `pptx`, `md` |
 | file_size | INTEGER | File size in bytes |
 | created_at | DATETIME | Creation timestamp |
 

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
-  PanelLeftClose, PanelLeftOpen, Share2
+  PanelLeftClose, PanelLeftOpen, Share2, Download
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -41,13 +41,17 @@ interface ThreadSidebarProps {
   hidden?: boolean; // For mobile: hide when input is focused
 }
 
-export default function ThreadSidebar({
+export interface ThreadSidebarRef {
+  setCollapsed: (collapsed: boolean) => void;
+}
+
+const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function ThreadSidebar({
   onThreadSelect,
   onThreadCreated,
   selectedThreadId,
   onShareThread,
   hidden = false,
-}: ThreadSidebarProps) {
+}, ref) {
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +79,11 @@ export default function ThreadSidebar({
     collapseThreshold: 120,
     side: 'left',
   });
+
+  // Expose setCollapsed for external control (e.g. swipe gestures)
+  useImperativeHandle(ref, () => ({
+    setCollapsed: (collapsed: boolean) => setIsCollapsed(collapsed),
+  }), [setIsCollapsed]);
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
@@ -508,6 +517,15 @@ export default function ThreadSidebar({
                               <Share2 size={14} />
                             </button>
                           )}
+                          <a
+                            href={`/api/threads/${thread.id}/export`}
+                            download
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1 text-gray-400 hover:text-green-600 rounded"
+                            title="Export as Markdown"
+                          >
+                            <Download size={14} />
+                          </a>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -608,6 +626,15 @@ export default function ThreadSidebar({
                               <Share2 size={14} />
                             </button>
                           )}
+                          <a
+                            href={`/api/threads/${thread.id}/export`}
+                            download
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1 text-gray-400 hover:text-green-600 rounded"
+                            title="Export as Markdown"
+                          >
+                            <Download size={14} />
+                          </a>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -775,4 +802,6 @@ export default function ThreadSidebar({
       </Modal>
     </>
   );
-}
+});
+
+export default ThreadSidebar;

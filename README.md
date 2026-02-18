@@ -7,7 +7,7 @@ An enterprise RAG platform for policy document management and intelligent queryi
 | Benefit | Description |
 |---------|-------------|
 | **No Vendor Lock-In** | Switch between OpenAI, Mistral, Gemini, or run locally with Ollama |
-| **Data Sovereignty** | All data stored locally (SQLite, ChromaDB, filesystem) with full backup control |
+| **Data Sovereignty** | All data stored locally (SQLite or PostgreSQL, ChromaDB or Qdrant, filesystem) with full backup control |
 | **Department Isolation** | Category-based access ensures users only see relevant policies |
 | **Cost Optimization** | Shared infrastructure reduces per-user AI costs vs individual subscriptions |
 | **Extensible Tools** | Connect to internal APIs, databases, and external services |
@@ -113,7 +113,7 @@ policy-bot/
 │   │   ├── workspace/          # Workspace components (embed + standalone)
 │   │   └── ui/                 # Shared UI components
 │   ├── lib/                    # Core libraries
-│   │   ├── db/                 # SQLite layer (users, categories, documents, config)
+│   │   ├── db/                 # Database layer — SQLite + PostgreSQL (users, categories, documents, config)
 │   │   ├── tools/              # Tool implementations (web search, charts, data sources)
 │   │   ├── agent/              # Autonomous agent (planner, executor, checker, summarizer)
 │   │   ├── image-gen/          # Image generation (DALL-E, Gemini Imagen)
@@ -141,7 +141,7 @@ policy-bot/
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md # Autonomous mode
 │   ├── tech/                   # Technical architecture
 │   │   ├── SOLUTION.md         # Architecture and design decisions
-│   │   ├── DATABASE.md         # Complete SQLite/ChromaDB/Redis schema
+│   │   ├── DATABASE.md         # Complete SQLite/PostgreSQL/ChromaDB/Redis schema
 │   │   ├── INFRASTRUCTURE.md   # Deployment and operations
 │   │   ├── Bot-Config-architecture.md # Configuration architecture
 │   │   └── UI_WIREFRAMES.md    # Interface designs
@@ -160,16 +160,26 @@ policy-bot/
 ### Development
 ```bash
 cp .env.example .env.local
-# Configure OPENAI_API_KEY, ADMIN_EMAILS
+# Configure OPENAI_API_KEY, ADMIN_EMAILS, DATABASE_PROVIDER, VECTOR_STORE_PROVIDER
 
+# SQLite + ChromaDB (default)
 docker compose -f docker-compose.dev.yml up -d
+npm install && npm run dev
+
+# Or PostgreSQL + Qdrant
+docker compose -f docker-compose.dev.yml --profile postgres --profile qdrant up -d
 npm install && npm run dev
 ```
 
 ### Production
 ```bash
 # Configure .env with auth providers and domain
-docker compose up -d --build
+
+# SQLite + ChromaDB (default, ≤50 users)
+docker compose --profile chromadb up -d --build
+
+# PostgreSQL + Qdrant (recommended for 50+ users)
+docker compose --profile postgres --profile qdrant up -d --build
 ```
 
 ## Infrastructure
@@ -177,7 +187,9 @@ docker compose up -d --build
 | Service | Purpose |
 |---------|---------|
 | **Next.js** | Application (port 3000) |
-| **ChromaDB** | Vector database (port 8000) |
+| **ChromaDB** | Vector database (port 8000) — default, `--profile chromadb` |
+| **Qdrant** | Vector database (port 6333) — alternative, `--profile qdrant` |
+| **PostgreSQL** | Relational database (port 5432) — optional, `--profile postgres` |
 | **Redis** | Cache + sessions (port 6379) |
 | **LiteLLM** | Multi-provider LLM gateway (port 4000) |
 | **Traefik** | Reverse proxy + TLS (ports 80, 443) |
