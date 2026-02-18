@@ -3,7 +3,7 @@ import type { NextConfig } from 'next';
 // Configurable via environment variable (requires rebuild to take effect)
 // Default: 500mb, Max recommended: 2gb
 // Set MAX_UPLOAD_SIZE in .env to override (e.g., MAX_UPLOAD_SIZE=1gb)
-const maxUploadSize = process.env.MAX_UPLOAD_SIZE || '500mb';
+const maxUploadSize = (process.env.MAX_UPLOAD_SIZE || '500mb') as `${number}${'kb' | 'mb' | 'gb'}`;
 
 const nextConfig: NextConfig = {
   output: 'standalone',

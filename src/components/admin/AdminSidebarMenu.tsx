@@ -30,7 +30,7 @@ import {
 type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'skills' | 'agent' | 'tokens' | 'workspaces' | 'backup' | 'settings';
 
 // Section types for expandable menus
-type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health';
+type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts';
@@ -70,6 +70,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'doc-stats', label: 'Document Statistics' },
       { id: 'query-stats', label: 'Query Statistics' },
       { id: 'system-health', label: 'System Health' },
+      { id: 'infrastructure', label: 'Infrastructure' },
     ]
   },
   { id: 'categories', label: 'Categories', icon: FolderOpen, expandable: false },

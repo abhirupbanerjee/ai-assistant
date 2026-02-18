@@ -26,6 +26,7 @@ import UserStatistics from '@/components/admin/dashboard/UserStatistics';
 import DocumentStatistics from '@/components/admin/dashboard/DocumentStatistics';
 import QueryStatistics from '@/components/admin/dashboard/QueryStatistics';
 import SystemHealth from '@/components/admin/dashboard/SystemHealth';
+import InfrastructureStatus from '@/components/admin/dashboard/InfrastructureStatus';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
 import DocumentsManagement from '@/components/admin/documents/DocumentsManagement';
@@ -125,7 +126,7 @@ interface AvailableModel {
 
 // New menu structure types - matching AdminSidebarMenu
 type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'skills' | 'agent' | 'tokens' | 'workspaces' | 'backup' | 'settings';
-type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health';
+type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts';
@@ -1072,6 +1073,7 @@ export default function AdminPage() {
             {dashboardSection === 'doc-stats' && <DocumentStatistics />}
             {dashboardSection === 'query-stats' && <QueryStatistics />}
             {dashboardSection === 'system-health' && <SystemHealth />}
+            {dashboardSection === 'infrastructure' && <InfrastructureStatus />}
           </>
         )}
 
