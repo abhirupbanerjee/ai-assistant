@@ -6,6 +6,7 @@
  * we delegate to the sync module for SQLite and provide PostgreSQL support.
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import { getDb, getDatabaseProvider } from '../kysely';
 import * as sync from '../config';
 
@@ -396,7 +397,8 @@ export type { ToolConfig } from '../tool-config';
 
 /**
  * Get tool configuration by name (async version)
- * Works with both SQLite and PostgreSQL
+ * Works with both SQLite and PostgreSQL.
+ * When PostgreSQL has no record, auto-seeds from SQLite (one-time migration per tool).
  */
 export async function getToolConfigAsync(toolName: string): Promise<toolConfig.ToolConfig | undefined> {
   if (getDatabaseProvider() === 'sqlite') {
@@ -410,7 +412,18 @@ export async function getToolConfigAsync(toolName: string): Promise<toolConfig.T
     .where('tool_name', '=', toolName)
     .executeTakeFirst();
 
-  if (!row) return undefined;
+  if (!row) {
+    // PostgreSQL has no record — auto-seed from SQLite (fire-and-forget migration)
+    const sqliteConfig = toolConfig.getToolConfig(toolName);
+    if (sqliteConfig) {
+      upsertToolConfigAsync(toolName, {
+        isEnabled: sqliteConfig.isEnabled,
+        config: sqliteConfig.config,
+        descriptionOverride: sqliteConfig.descriptionOverride,
+      }, 'system-migration').catch(() => {});
+    }
+    return sqliteConfig;
+  }
 
   return {
     id: row.id as string,
@@ -422,4 +435,45 @@ export async function getToolConfigAsync(toolName: string): Promise<toolConfig.T
     updatedAt: row.updated_at as string,
     updatedBy: row.updated_by as string,
   };
+}
+
+/**
+ * Upsert tool configuration in PostgreSQL (INSERT or UPDATE on conflict).
+ * No-op for SQLite — sync path handles that.
+ * Use this to dual-write after every admin SQLite write.
+ */
+export async function upsertToolConfigAsync(
+  toolName: string,
+  updates: {
+    isEnabled: boolean;
+    config: Record<string, unknown>;
+    descriptionOverride?: string | null;
+  },
+  updatedBy: string
+): Promise<void> {
+  if (getDatabaseProvider() === 'sqlite') return;
+  const db = await getDb();
+  const id = uuidv4();
+  const configJson = JSON.stringify(updates.config);
+  const now = new Date().toISOString();
+  await db
+    .insertInto('tool_configs')
+    .values({
+      id,
+      tool_name: toolName,
+      is_enabled: updates.isEnabled ? 1 : 0,
+      config_json: configJson,
+      description_override: updates.descriptionOverride ?? null,
+      updated_by: updatedBy,
+    })
+    .onConflict((oc) =>
+      oc.column('tool_name').doUpdateSet({
+        is_enabled: updates.isEnabled ? 1 : 0,
+        config_json: configJson,
+        description_override: updates.descriptionOverride ?? null,
+        updated_at: now,
+        updated_by: updatedBy,
+      })
+    )
+    .execute();
 }

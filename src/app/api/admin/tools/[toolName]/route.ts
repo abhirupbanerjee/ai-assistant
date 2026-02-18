@@ -17,6 +17,7 @@ import {
 } from '@/lib/db/tool-config';
 import { getTool, validateToolConfig, initializeTools } from '@/lib/tools';
 import { invalidateTavilyCache } from '@/lib/redis';
+import { upsertToolConfigAsync } from '@/lib/db/compat';
 
 /**
  * Mask sensitive data like API keys in responses
@@ -160,6 +161,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         );
       }
 
+      // Mirror reset to PostgreSQL
+      await upsertToolConfigAsync(toolName, {
+        isEnabled: updated.isEnabled,
+        config: updated.config,
+        descriptionOverride: updated.descriptionOverride,
+      }, user.email);
+
       // Invalidate cache for web_search
       if (toolName === 'web_search') {
         await invalidateTavilyCache();
@@ -223,6 +231,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         updated = created;
       }
 
+      // Mirror to PostgreSQL
+      await upsertToolConfigAsync(toolName, {
+        isEnabled: updated.isEnabled,
+        config: updated.config,
+        descriptionOverride: updated.descriptionOverride,
+      }, user.email);
+
       // Invalidate cache for web_search
       if (toolName === 'web_search') {
         await invalidateTavilyCache();
@@ -274,6 +289,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         }
         updated = created;
       }
+
+      // Mirror to PostgreSQL
+      await upsertToolConfigAsync(toolName, {
+        isEnabled: updated.isEnabled,
+        config: updated.config,
+        descriptionOverride: updated.descriptionOverride,
+      }, user.email);
 
       return NextResponse.json({
         success: true,

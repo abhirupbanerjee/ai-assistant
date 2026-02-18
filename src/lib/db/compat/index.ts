@@ -153,6 +153,7 @@ export {
   getAllSettings,
   // Tool Config (async)
   getToolConfigAsync,
+  upsertToolConfigAsync,
 } from './config';
 
 // ============ Categories ============
