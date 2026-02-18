@@ -708,6 +708,27 @@ export async function getThreadContext(threadId: string): Promise<ThreadContext>
     };
   }
 
+  // SQLite fallback: for PostgreSQL deployments with legacy threads (created before
+  // DATABASE_PROVIDER=postgres was set). Auto-seeds the thread into PostgreSQL so
+  // that addThreadOutput's FK constraint on thread_outputs.thread_id is satisfied.
+  if (getDatabaseProvider() === 'postgres') {
+    const sqliteThread = sync.getThreadById(threadId);
+    if (sqliteThread) {
+      // Fire-and-forget seed — if user_id doesn't exist in PostgreSQL, catch silently
+      db.insertInto('threads')
+        .values({
+          id: sqliteThread.id,
+          user_id: sqliteThread.user_id,
+          title: sqliteThread.title,
+          selected_model: sqliteThread.selected_model ?? null,
+        })
+        .onConflict((oc) => oc.column('id').doNothing())
+        .execute()
+        .catch(() => {});
+      return { exists: true, isWorkspace: false };
+    }
+  }
+
   return { exists: false, isWorkspace: false };
 }
 

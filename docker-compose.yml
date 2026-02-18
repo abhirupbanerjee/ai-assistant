@@ -89,13 +89,16 @@ services:
     volumes:
       - ./data/app:/app/data
       - ./config:/app/config:ro
-    # Note: Vector store (chroma/qdrant) and database (postgres) dependencies
-    # are handled via profiles. The app connects on startup and retries if needed.
+    # Note: Vector store (chroma/qdrant) dependencies are handled via profiles.
+    # PostgreSQL: waits for healthy status when the postgres profile is active.
     depends_on:
       redis:
         condition: service_healthy
       litellm:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false  # Only enforced when postgres profile is active
     networks:
       - policy-bot-network
     restart: unless-stopped
