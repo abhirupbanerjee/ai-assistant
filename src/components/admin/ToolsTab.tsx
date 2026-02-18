@@ -20,7 +20,6 @@ import {
   FileText,
   Database,
   Zap,
-  ListTodo,
   Route,
   Wrench,
   ImageIcon,
@@ -31,7 +30,6 @@ import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
 import DataSourcesTab from './DataSourcesTab';
 import FunctionAPITab from './FunctionAPITab';
-import TaskPlannerTemplates from './TaskPlannerTemplates';
 // ToolRoutingTab is deprecated - tool routing now handled via Skills
 import ImageGenConfig from './ImageGenConfig';
 import TranslationConfig from './TranslationConfig';
@@ -125,8 +123,6 @@ function getToolIcon(toolName: string) {
       return Database;
     case 'function_api':
       return Zap;
-    case 'task_planner':
-      return ListTodo;
     case 'image_gen':
       return ImageIcon;
     case 'translation':
@@ -1306,13 +1302,6 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
           <FunctionAPITab
             apiBasePath="/api/admin/function-apis"
             categoriesPath="/api/admin/categories"
-          />
-        );
-      case 'task_planner':
-        // Task planner has template management UI
-        return (
-          <TaskPlannerTemplates
-            isSuperuser={forSuperuser}
           />
         );
       case 'image_gen':

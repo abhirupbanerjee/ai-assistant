@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get document metadata
-    const doc = getDocument(docIdNum);
+    const doc = await getDocument(docIdNum);
     if (!doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const fileBuffer = fs.readFileSync(doc.filepath);
 
     // Increment download count
-    incrementDownloadCount(docIdNum);
+    await incrementDownloadCount(docIdNum);
 
     // Determine content type
     const contentType = getContentType(doc.fileType);

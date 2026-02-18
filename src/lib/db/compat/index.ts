@@ -241,12 +241,49 @@ export {
   getThreadContext,
   // Workspace Outputs
   addWorkspaceOutput,
+  // Thread Output Helpers (for docgen)
+  getExpiredThreadOutputs,
+  deleteThreadOutput,
+  incrementThreadOutputDownloadCount,
+  getThreadOutputDownloadCount,
   // Cleanup
   getThreadsOlderThan,
   deleteThreadsOlderThan,
   getThreadUploadsStorageSize,
   getThreadOutputsStorageSize,
 } from './threads';
+
+// ============ Sharing ============
+export {
+  generateShareToken,
+  validateShareAccess,
+  createThreadShare,
+  getShareById,
+  getShareByToken,
+  getThreadShares,
+  getUserShares,
+  countActiveThreadShares,
+  countUserSharesInLastHour,
+  updateShare,
+  revokeShare,
+  deleteShare,
+  recordShareView,
+  logShareAccess,
+  getShareAccessLog,
+  getSharingStats,
+} from './sharing';
+
+// ============ Compliance ============
+export {
+  type ComplianceStats,
+  saveComplianceResult,
+  updateHitlResponse,
+  getComplianceResult,
+  getComplianceResultsForConversation,
+  getRecentComplianceResults,
+  getComplianceStats,
+  deleteOldComplianceResults,
+} from './compliance';
 
 // ============ Documents ============
 export {

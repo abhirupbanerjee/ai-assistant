@@ -236,27 +236,6 @@ const DEFAULT_ROUTING_RULES: ToolRoutingRuleInput[] = [
     forceMode: 'required',
     priority: 10,
   },
-  // Task Planner
-  {
-    toolName: 'task_planner',
-    ruleName: 'Assessment and Planning Keywords',
-    ruleType: 'keyword',
-    patterns: [
-      'initiate',
-      'assessment',
-      'evaluate all',
-      'assess all',
-      'review all',
-      'step by step',
-      'create a plan',
-      'multi-step',
-      'assessment plan',
-      'task plan',
-      'structured workflow',
-    ],
-    forceMode: 'required',
-    priority: 10,
-  },
   // Document Generator
   {
     toolName: 'doc_gen',

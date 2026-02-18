@@ -73,7 +73,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const shares = getSharesForThread(threadId);
+    const shares = await getSharesForThread(threadId);
     const { config } = getShareThreadConfig();
 
     // Build share URLs
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { allowDownload, expiresInDays, sendEmail, recipientEmail } = body;
 
     // Create share
-    const result = createShare({
+    const result = await createShare({
       threadId,
       createdBy: dbUser.id,
       allowDownload,

@@ -16,7 +16,7 @@ import type {
 } from '../../types/compliance';
 import { runComplianceCheck, DEFAULT_COMPLIANCE_CONFIG } from '../compliance/engine';
 import { handleComplianceFailure } from '../compliance/hitl';
-import { saveComplianceResult } from '../db/compliance';
+import { saveComplianceResult } from '@/lib/db/compat';
 
 // ===== Types =====
 
@@ -308,7 +308,7 @@ export const complianceCheckerTool: ToolDefinition = {
       let savedResultId: number | undefined;
       if (typedArgs.messageId && typedArgs.conversationId) {
         const skillIds = typedArgs.matchedSkills.map(s => s.id);
-        savedResultId = saveComplianceResult(
+        savedResultId = await saveComplianceResult(
           typedArgs.messageId,
           typedArgs.conversationId,
           skillIds,

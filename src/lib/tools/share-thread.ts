@@ -19,7 +19,7 @@ import {
   updateShare,
   getShareById,
   validateShareAccess,
-} from '../db/sharing';
+} from '@/lib/db/compat';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type { ShareThreadToolConfig, ThreadShare } from '@/types';
 
@@ -67,9 +67,9 @@ export function canRoleShare(role: string): boolean {
 /**
  * Check rate limit for share creation
  */
-export function checkShareRateLimit(userId: number): { allowed: boolean; message?: string } {
+export async function checkShareRateLimit(userId: number): Promise<{ allowed: boolean; message?: string }> {
   const { config } = getShareThreadConfig();
-  const recentCount = countUserSharesInLastHour(userId);
+  const recentCount = await countUserSharesInLastHour(userId);
 
   if (recentCount >= config.rateLimitPerHour) {
     return {
@@ -84,9 +84,9 @@ export function checkShareRateLimit(userId: number): { allowed: boolean; message
 /**
  * Check if thread has reached max shares
  */
-export function checkMaxSharesPerThread(threadId: string): { allowed: boolean; message?: string } {
+export async function checkMaxSharesPerThread(threadId: string): Promise<{ allowed: boolean; message?: string }> {
   const { config } = getShareThreadConfig();
-  const activeCount = countActiveThreadShares(threadId);
+  const activeCount = await countActiveThreadShares(threadId);
 
   if (activeCount >= config.maxSharesPerThread) {
     return {
@@ -110,28 +110,28 @@ export interface CreateShareOptions {
 /**
  * Create a new share with validation
  */
-export function createShare(options: CreateShareOptions): {
+export async function createShare(options: CreateShareOptions): Promise<{
   success: boolean;
   share?: ThreadShare;
   error?: string;
-} {
+}> {
   const { threadId, createdBy, allowDownload, expiresInDays } = options;
   const { config } = getShareThreadConfig();
 
   // Check rate limit
-  const rateCheck = checkShareRateLimit(createdBy);
+  const rateCheck = await checkShareRateLimit(createdBy);
   if (!rateCheck.allowed) {
     return { success: false, error: rateCheck.message };
   }
 
   // Check max shares per thread
-  const maxCheck = checkMaxSharesPerThread(threadId);
+  const maxCheck = await checkMaxSharesPerThread(threadId);
   if (!maxCheck.allowed) {
     return { success: false, error: maxCheck.message };
   }
 
   try {
-    const share = createThreadShare(threadId, createdBy, {
+    const share = await createThreadShare(threadId, createdBy, {
       allowDownload: allowDownload ?? config.allowDownloadsByDefault,
       expiresInDays: expiresInDays ?? config.defaultExpiryDays,
     });
@@ -148,24 +148,24 @@ export function createShare(options: CreateShareOptions): {
 /**
  * Get shares for a thread with active status
  */
-export function getSharesForThread(threadId: string): ThreadShare[] {
+export async function getSharesForThread(threadId: string): Promise<ThreadShare[]> {
   return getThreadShares(threadId);
 }
 
 /**
  * Revoke a share by ID
  */
-export function revokeShareById(shareId: string): boolean {
+export async function revokeShareById(shareId: string): Promise<boolean> {
   return revokeShare(shareId);
 }
 
 /**
  * Update share settings
  */
-export function updateShareSettings(
+export async function updateShareSettings(
   shareId: string,
   updates: { allowDownload?: boolean; expiresInDays?: number | null }
-): ThreadShare | undefined {
+): Promise<ThreadShare | undefined> {
   return updateShare(shareId, updates);
 }
 

@@ -118,14 +118,6 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     validates: async () => ({ ok: true, message: 'Ready - uses youtube-transcript npm package' })
   },
 
-  task_planner: {
-    name: 'task_planner',
-    displayName: 'Task Planner',
-    description: 'Multi-step task management',
-    requires: {},
-    validates: async () => ({ ok: true, message: 'Ready - no external dependencies' })
-  },
-
   image_gen: {
     name: 'image_gen',
     displayName: 'Image Generation',

@@ -5,7 +5,7 @@ import { dataSourceTool } from './tools/data-source';
 import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction } from './tools/function-api';
 import { youtubeToolDefinition } from './tools/youtube';
 import { chartGenTool } from './tools/chart-gen';
-import { taskPlannerTool } from './tools/task-planner';
+
 import { imageGenTool } from './tools/image-gen';
 import { translationTool } from './tools/translation';
 import { shareThreadTool } from './tools/share-thread';
@@ -91,7 +91,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   function_api: functionApiTool,
   youtube: youtubeToolDefinition,
   chart_gen: chartGenTool,
-  task_planner: taskPlannerTool,
+
   image_gen: imageGenTool,
   translation: translationTool,
   share_thread: shareThreadTool,

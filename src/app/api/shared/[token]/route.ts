@@ -11,7 +11,7 @@ import {
   validateShareAccess,
   recordShareView,
   logShareAccess,
-} from '@/lib/db/sharing';
+} from '@/lib/db/compat';
 import { getThreadWithDetails, getMessagesForThread, getThreadUploads, getThreadOutputs } from '@/lib/db/threads';
 import { isToolEnabled } from '@/lib/tools';
 import type { ApiError } from '@/types';
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get share by token
-    const share = getShareByToken(token);
+    const share = await getShareByToken(token);
     if (!share) {
       return NextResponse.json<ApiError>(
         { error: 'Share not found or invalid link', code: 'NOT_FOUND' },
@@ -84,8 +84,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const messages = getMessagesForThread(share.threadId);
 
     // Record the view and log access
-    recordShareView(share.id);
-    logShareAccess(share.id, dbUser.id, 'view');
+    await recordShareView(share.id);
+    await logShareAccess(share.id, dbUser.id, 'view');
 
     // Determine if this user is the thread owner or share creator
     const isOwner = thread.user_id === dbUser.id;

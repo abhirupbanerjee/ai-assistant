@@ -13,7 +13,7 @@ import {
   updateShareSettings,
   revokeShareById,
 } from '@/lib/tools/share-thread';
-import { getShareAccessLog } from '@/lib/db/sharing';
+import { getShareAccessLog } from '@/lib/db/compat';
 import { isToolEnabled } from '@/lib/tools';
 import type { ApiError } from '@/types';
 
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get share
-    const share = getShareById(shareId);
+    const share = await getShareById(shareId);
     if (!share) {
       return NextResponse.json<ApiError>(
         { error: 'Share not found', code: 'NOT_FOUND' },
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get access log
-    const accessLog = getShareAccessLog(shareId, 50);
+    const accessLog = await getShareAccessLog(shareId, 50);
 
     // Build share URL
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -119,7 +119,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get existing share
-    const existingShare = getShareById(shareId);
+    const existingShare = await getShareById(shareId);
     if (!existingShare) {
       return NextResponse.json<ApiError>(
         { error: 'Share not found', code: 'NOT_FOUND' },
@@ -140,7 +140,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { allowDownload, expiresInDays } = body;
 
     // Update share
-    const updatedShare = updateShareSettings(shareId, {
+    const updatedShare = await updateShareSettings(shareId, {
       allowDownload,
       expiresInDays,
     });
@@ -197,7 +197,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get existing share
-    const existingShare = getShareById(shareId);
+    const existingShare = await getShareById(shareId);
     if (!existingShare) {
       return NextResponse.json<ApiError>(
         { error: 'Share not found', code: 'NOT_FOUND' },
@@ -214,7 +214,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Revoke share
-    const revoked = revokeShareById(shareId);
+    const revoked = await revokeShareById(shareId);
 
     if (!revoked) {
       return NextResponse.json<ApiError>(

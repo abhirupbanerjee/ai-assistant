@@ -457,10 +457,6 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
     },
   },
-  task_planner: {
-    enabled: true,
-    config: {},
-  },
   image_gen: {
     enabled: false, // Disabled until API keys configured
     config: {

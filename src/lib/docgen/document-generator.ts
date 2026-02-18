@@ -18,7 +18,18 @@ import {
   getOutputDirectory,
   generateDocumentFilename,
 } from './branding';
-import { execute, queryOne, queryAll } from '../db/index';
+import {
+  type DbThreadOutput,
+  getThreadContext,
+  addThreadOutput,
+  addWorkspaceOutput,
+  getThreadOutputById,
+  getThreadOutputs,
+  getExpiredThreadOutputs,
+  deleteThreadOutput,
+  incrementThreadOutputDownloadCount,
+  getThreadOutputDownloadCount,
+} from '@/lib/db/compat';
 
 // ============ Types ============
 
@@ -59,22 +70,6 @@ export interface DocGenConfig {
   branding: BrandingConfig;
   expirationDays: number;
   maxDocumentSizeMB: number;
-}
-
-// ============ Database Types ============
-
-interface DbThreadOutput {
-  id: number;
-  thread_id: string;
-  message_id: string | null;
-  filename: string;
-  filepath: string;
-  file_type: string;
-  file_size: number;
-  generation_config: string | null;
-  expires_at: string | null;
-  download_count: number;
-  created_at: string;
 }
 
 // ============ Document Generator Class ============
@@ -178,19 +173,9 @@ export class DocumentGenerator {
     }
 
     // Check if this is a main chat thread or workspace thread/session
-    const mainThreadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [effectiveThreadId]);
-    const workspaceThread = queryOne<{ id: string; workspace_id: string; session_id: string }>(
-      'SELECT id, workspace_id, session_id FROM workspace_threads WHERE id = ?',
-      [effectiveThreadId]
-    );
-    const workspaceSession = queryOne<{ id: string; workspace_id: string }>(
-      'SELECT id, workspace_id FROM workspace_sessions WHERE id = ?',
-      [effectiveThreadId]
-    );
+    const threadContext = await getThreadContext(effectiveThreadId);
 
-    const isWorkspaceContext = workspaceThread || workspaceSession;
-
-    if (!mainThreadExists && !isWorkspaceContext) {
+    if (!threadContext.exists) {
       console.error('[DocGen] Thread not found in database:', effectiveThreadId);
       throw new Error(`Thread ${effectiveThreadId} not found - cannot save generated document`);
     }
@@ -205,55 +190,39 @@ export class DocumentGenerator {
     });
 
     // Store in appropriate database table based on context
-    let result;
+    let docId: number;
     let downloadUrlPrefix: string;
 
-    if (isWorkspaceContext) {
+    if (threadContext.isWorkspace) {
       // Workspace context - use workspace_outputs table
-      const workspaceId = workspaceThread?.workspace_id || workspaceSession?.workspace_id;
-      const sessionId = workspaceThread?.session_id || workspaceSession?.id;
-      const actualThreadId = workspaceThread?.id || null;
-
-      result = execute(
-        `INSERT INTO workspace_outputs (
-          workspace_id, session_id, thread_id, filename, filepath, file_type, file_size,
-          generation_config, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          workspaceId,
-          sessionId,
-          actualThreadId,
-          filename,
-          filepath,
-          options.format,
-          buffer.length,
-          generationConfig,
-          expiresAt,
-        ]
+      const wsResult = await addWorkspaceOutput(
+        threadContext.workspaceId!,
+        threadContext.sessionId!,
+        threadContext.actualThreadId ?? null,
+        filename,
+        filepath,
+        options.format as 'pdf' | 'docx' | 'md',
+        buffer.length,
+        generationConfig,
+        expiresAt
       );
+      docId = wsResult.id;
       downloadUrlPrefix = '/api/workspace-documents';
     } else {
       // Main chat context - use thread_outputs table
-      result = execute(
-        `INSERT INTO thread_outputs (
-          thread_id, message_id, filename, filepath, file_type, file_size,
-          generation_config, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          effectiveThreadId,
-          options.messageId || null,
-          filename,
-          filepath,
-          options.format,
-          buffer.length,
-          generationConfig,
-          expiresAt,
-        ]
+      const outputResult = await addThreadOutput(
+        effectiveThreadId,
+        options.messageId || null,
+        filename,
+        filepath,
+        options.format as 'pdf' | 'docx',
+        buffer.length,
+        generationConfig,
+        expiresAt
       );
+      docId = outputResult.id;
       downloadUrlPrefix = '/api/documents';
     }
-
-    const docId = result.lastInsertRowid as number;
 
     return {
       id: docId,
@@ -289,48 +258,33 @@ export class DocumentGenerator {
 /**
  * Get a document by ID
  */
-export function getDocument(docId: number): GeneratedDocument | null {
-  const row = queryOne<DbThreadOutput>(
-    'SELECT * FROM thread_outputs WHERE id = ?',
-    [docId]
-  );
-
+export async function getDocument(docId: number): Promise<GeneratedDocument | null> {
+  const row = await getThreadOutputById(docId);
   if (!row) return null;
-
   return mapDbToDocument(row);
 }
 
 /**
  * Get documents for a thread
  */
-export function getThreadDocuments(threadId: string): GeneratedDocument[] {
-  const rows = queryAll<DbThreadOutput>(
-    'SELECT * FROM thread_outputs WHERE thread_id = ? ORDER BY created_at DESC',
-    [threadId]
-  );
-
+export async function getThreadDocuments(threadId: string): Promise<GeneratedDocument[]> {
+  const rows = await getThreadOutputs(threadId);
   return rows.map(mapDbToDocument);
 }
 
 /**
  * Get expired documents
  */
-export function getExpiredDocuments(): GeneratedDocument[] {
-  const rows = queryAll<DbThreadOutput>(
-    `SELECT * FROM thread_outputs
-     WHERE expires_at IS NOT NULL AND expires_at < datetime('now')
-     ORDER BY expires_at ASC`,
-    []
-  );
-
+export async function getExpiredDocuments(): Promise<GeneratedDocument[]> {
+  const rows = await getExpiredThreadOutputs();
   return rows.map(mapDbToDocument);
 }
 
 /**
  * Delete a document
  */
-export function deleteDocument(docId: number): boolean {
-  const doc = getDocument(docId);
+export async function deleteDocument(docId: number): Promise<boolean> {
+  const doc = await getDocument(docId);
   if (!doc) return false;
 
   // Delete file from disk
@@ -339,7 +293,7 @@ export function deleteDocument(docId: number): boolean {
   }
 
   // Delete from database
-  execute('DELETE FROM thread_outputs WHERE id = ?', [docId]);
+  await deleteThreadOutput(docId);
 
   return true;
 }
@@ -347,12 +301,12 @@ export function deleteDocument(docId: number): boolean {
 /**
  * Clean up expired documents
  */
-export function cleanupExpiredDocuments(): number {
-  const expired = getExpiredDocuments();
+export async function cleanupExpiredDocuments(): Promise<number> {
+  const expired = await getExpiredDocuments();
   let deleted = 0;
 
   for (const doc of expired) {
-    if (deleteDocument(doc.id)) {
+    if (await deleteDocument(doc.id)) {
       deleted++;
     }
   }
@@ -363,22 +317,15 @@ export function cleanupExpiredDocuments(): number {
 /**
  * Increment download count for a document
  */
-export function incrementDownloadCount(docId: number): void {
-  execute(
-    'UPDATE thread_outputs SET download_count = download_count + 1 WHERE id = ?',
-    [docId]
-  );
+export async function incrementDownloadCount(docId: number): Promise<void> {
+  await incrementThreadOutputDownloadCount(docId);
 }
 
 /**
  * Get download count for a document
  */
-export function getDownloadCount(docId: number): number {
-  const row = queryOne<{ download_count: number }>(
-    'SELECT download_count FROM thread_outputs WHERE id = ?',
-    [docId]
-  );
-  return row?.download_count ?? 0;
+export async function getDownloadCount(docId: number): Promise<number> {
+  return getThreadOutputDownloadCount(docId);
 }
 
 // ============ Mappers ============
@@ -393,7 +340,7 @@ function mapDbToDocument(row: DbThreadOutput): GeneratedDocument {
     fileType: row.file_type as DocumentFormat,
     fileSize: row.file_size,
     downloadUrl: `/api/documents/${row.id}/download`,
-    expiresAt: row.expires_at,
+    expiresAt: row.expires_at ?? null,
     createdAt: row.created_at,
   };
 }

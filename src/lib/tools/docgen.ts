@@ -8,6 +8,7 @@
 
 import type { ToolDefinition, ValidationResult } from '../tools';
 import { getToolConfig, TOOL_DEFAULTS } from '../db/tool-config';
+import { getToolConfigAsync } from '@/lib/db/compat';
 import { getEffectiveToolConfig, type BrandingConfig } from '../db/category-tool-config';
 import {
   createDocumentGenerator,
@@ -270,7 +271,7 @@ export const documentGenerationTool: ToolDefinition = {
       }
 
       // Get tool configuration
-      const toolConfig = getToolConfig('doc_gen');
+      const toolConfig = await getToolConfigAsync('doc_gen');
       const config = toolConfig?.config || TOOL_DEFAULTS.doc_gen.config;
 
       // Build DocGenConfig

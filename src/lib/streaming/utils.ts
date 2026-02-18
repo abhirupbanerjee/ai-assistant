@@ -52,7 +52,6 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   doc_gen: 'Document Generator',
   chart_gen: 'Chart Generator',
   data_source: 'Data Query',
-  task_planner: 'Task Planner',
   function_api: 'External API',
   youtube: 'YouTube',
 };

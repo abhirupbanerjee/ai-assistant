@@ -750,3 +750,65 @@ export async function addWorkspaceOutput(
 
   return { id: result.id as number };
 }
+
+// ============ Thread Output Helpers (for docgen) ============
+
+/**
+ * Get expired thread outputs
+ */
+export async function getExpiredThreadOutputs(): Promise<DbThreadOutput[]> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.getExpiredThreadOutputs();
+  }
+  const db = await getDb();
+  const now = new Date().toISOString();
+  return db
+    .selectFrom('thread_outputs')
+    .selectAll()
+    .where('expires_at', 'is not', null)
+    .where('expires_at', '<', now)
+    .orderBy('expires_at', 'asc')
+    .execute() as unknown as DbThreadOutput[];
+}
+
+/**
+ * Delete a thread output by ID
+ */
+export async function deleteThreadOutput(outputId: number): Promise<void> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.deleteThreadOutput(outputId);
+  }
+  const db = await getDb();
+  await db.deleteFrom('thread_outputs').where('id', '=', outputId).execute();
+}
+
+/**
+ * Increment download count for a thread output
+ */
+export async function incrementThreadOutputDownloadCount(outputId: number): Promise<void> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.incrementThreadOutputDownloadCount(outputId);
+  }
+  const db = await getDb();
+  await db
+    .updateTable('thread_outputs')
+    .set({ download_count: sql`download_count + 1` })
+    .where('id', '=', outputId)
+    .execute();
+}
+
+/**
+ * Get download count for a thread output
+ */
+export async function getThreadOutputDownloadCount(outputId: number): Promise<number> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.getThreadOutputDownloadCount(outputId);
+  }
+  const db = await getDb();
+  const row = await db
+    .selectFrom('thread_outputs')
+    .select('download_count')
+    .where('id', '=', outputId)
+    .executeTakeFirst();
+  return (row?.download_count as number) ?? 0;
+}

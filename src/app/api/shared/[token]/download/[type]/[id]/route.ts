@@ -11,7 +11,7 @@ import {
   getShareByToken,
   validateShareAccess,
   logShareAccess,
-} from '@/lib/db/sharing';
+} from '@/lib/db/compat';
 import { getThreadUploadById, getThreadOutputById } from '@/lib/db/threads';
 import { isToolEnabled } from '@/lib/tools';
 import type { ApiError } from '@/types';
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get share by token
-    const share = getShareByToken(token);
+    const share = await getShareByToken(token);
     if (!share) {
       return NextResponse.json<ApiError>(
         { error: 'Share not found or invalid link', code: 'NOT_FOUND' },
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Log the download
-    logShareAccess(share.id, dbUser.id, 'download', type, id);
+    await logShareAccess(share.id, dbUser.id, 'download', type, id);
 
     // Read file and return
     const fileBuffer = fs.readFileSync(filepath);

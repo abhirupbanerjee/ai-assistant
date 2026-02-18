@@ -55,6 +55,9 @@ export interface DbThreadOutput {
   filepath: string;
   file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx';
   file_size: number;
+  generation_config?: string | null;
+  expires_at?: string | null;
+  download_count?: number;
   created_at: string;
 }
 
@@ -546,6 +549,43 @@ export function linkOutputsToMessage(threadId: string, messageId: string): numbe
     WHERE thread_id = ? AND message_id IS NULL
   `, [messageId, threadId]);
   return result.changes;
+}
+
+// ============ Thread Output Helpers (for docgen) ============
+
+/**
+ * Get expired thread outputs (expires_at < now)
+ */
+export function getExpiredThreadOutputs(): DbThreadOutput[] {
+  return queryAll<DbThreadOutput>(
+    `SELECT * FROM thread_outputs WHERE expires_at IS NOT NULL AND expires_at < datetime('now') ORDER BY expires_at ASC`,
+    []
+  );
+}
+
+/**
+ * Delete a thread output by ID
+ */
+export function deleteThreadOutput(outputId: number): void {
+  execute('DELETE FROM thread_outputs WHERE id = ?', [outputId]);
+}
+
+/**
+ * Increment download count for a thread output
+ */
+export function incrementThreadOutputDownloadCount(outputId: number): void {
+  execute('UPDATE thread_outputs SET download_count = download_count + 1 WHERE id = ?', [outputId]);
+}
+
+/**
+ * Get download count for a thread output
+ */
+export function getThreadOutputDownloadCount(outputId: number): number {
+  const row = queryOne<{ download_count: number }>(
+    'SELECT download_count FROM thread_outputs WHERE id = ?',
+    [outputId]
+  );
+  return row?.download_count ?? 0;
 }
 
 // ============ Cleanup ============
