@@ -41,6 +41,7 @@ function getOpenAI(): OpenAI {
     openaiClient = new OpenAI({
       apiKey: apiKey || undefined,
       baseURL: process.env.OPENAI_BASE_URL || undefined,
+      timeout: 300 * 1000, // 5 minutes — matches maxDuration in route.ts and LiteLLM request_timeout
     });
   }
   return openaiClient;
