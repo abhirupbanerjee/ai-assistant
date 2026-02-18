@@ -21,6 +21,7 @@ import {
   extractIP,
   hashIP,
   getWorkspaceSystemPrompt,
+  getWorkspaceLLMConfig,
 } from '@/lib/workspace/validator';
 import { getSession, isSessionValid, incrementMessageCount } from '@/lib/db/workspace-sessions';
 import { getThread, createThread, touchThread } from '@/lib/db/workspace-threads';
@@ -49,7 +50,6 @@ import type { WorkspaceMessageSource } from '@/types/workspace';
 import { getWorkspaceUploadDetails } from '@/lib/workspace/uploads';
 import { readFileBuffer } from '@/lib/storage';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
-import { getLlmSettings } from '@/lib/db/config';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -173,6 +173,9 @@ export async function POST(
           ? getCategoryIdsBySlugs(categorySlugs)
           : [];
 
+        // Resolve effective LLM config (workspace override → global default)
+        const workspaceLLMConfig = getWorkspaceLLMConfig(workspace);
+
         // Get system prompt
         const systemPromptOverride = getWorkspaceSystemPrompt(workspace);
 
@@ -238,8 +241,7 @@ export async function POST(
             let imageContents: ImageContent[] = [];
 
             // Check image processing capabilities for current model
-            const llmSettings = getLlmSettings();
-            const imageCapabilities = getImageCapabilities(llmSettings.model);
+            const imageCapabilities = getImageCapabilities(workspaceLLMConfig.model);
 
             if (attachments && attachments.length > 0 && workspace.file_upload_enabled) {
               const uploadDetails = await getWorkspaceUploadDetails(
@@ -374,7 +376,8 @@ export async function POST(
               undefined, // memoryContext
               undefined, // categorySlugs
               excludeTools.length > 0 ? excludeTools : undefined,
-              imageCapabilities // Image processing strategy
+              imageCapabilities, // Image processing strategy
+              workspaceLLMConfig.model || undefined // modelOverride
             );
 
             // Extract web sources from tool history

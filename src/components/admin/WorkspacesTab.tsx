@@ -35,6 +35,15 @@ interface Category {
   slug: string;
 }
 
+interface EnabledModel {
+  id: string;
+  providerId: string;
+  displayName: string;
+  toolCapable: boolean;
+  visionCapable: boolean;
+  isDefault: boolean;
+}
+
 interface Workspace {
   id: string;
   slug: string;
@@ -125,6 +134,7 @@ interface WorkspacesTabProps {
 export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [availableModels, setAvailableModels] = useState<EnabledModel[]>([]);
   const [featureEnabled, setFeatureEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,9 +168,10 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const [workspacesRes, categoriesRes] = await Promise.all([
+      const [workspacesRes, categoriesRes, modelsRes] = await Promise.all([
         fetch(`${apiBase}/workspaces`),
         fetch(`${apiBase}/categories`),
+        fetch('/api/admin/llm/models?active=true'),
       ]);
 
       if (!workspacesRes.ok) throw new Error('Failed to fetch workspaces');
@@ -172,6 +183,11 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
       setWorkspaces(workspacesData.workspaces || []);
       setFeatureEnabled(workspacesData.featureEnabled ?? true);
       setCategories(categoriesData.categories || []);
+
+      if (modelsRes.ok) {
+        const modelsData = await modelsRes.json();
+        setAvailableModels(modelsData.models || []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -501,6 +517,7 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
           formData={formData}
           setFormData={setFormData}
           categories={categories}
+          availableModels={availableModels}
           onSubmit={handleCreate}
           onCancel={() => setShowCreateModal(false)}
           isLoading={isSaving}
@@ -518,6 +535,7 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
           formData={formData}
           setFormData={setFormData}
           categories={categories}
+          availableModels={availableModels}
           onSubmit={handleUpdate}
           onCancel={() => setShowEditModal(false)}
           isLoading={isSaving}
@@ -767,6 +785,7 @@ function WorkspaceForm({
   formData,
   setFormData,
   categories,
+  availableModels,
   onSubmit,
   onCancel,
   isLoading,
@@ -776,13 +795,14 @@ function WorkspaceForm({
   formData: WorkspaceFormData;
   setFormData: (data: WorkspaceFormData) => void;
   categories: Category[];
+  availableModels: EnabledModel[];
   onSubmit: () => void;
   onCancel: () => void;
   isLoading: boolean;
   submitLabel: string;
   isEdit?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<'basic' | 'branding' | 'limits'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'branding' | 'limits' | 'ai'>('basic');
 
   const updateField = <K extends keyof WorkspaceFormData>(
     field: K,
@@ -795,7 +815,7 @@ function WorkspaceForm({
     <div className="space-y-4">
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
-        {(['basic', 'branding', 'limits'] as const).map((tab) => (
+        {(['basic', 'branding', 'limits', 'ai'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -805,7 +825,7 @@ function WorkspaceForm({
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'ai' ? 'AI' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
@@ -1057,6 +1077,74 @@ function WorkspaceForm({
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* AI tab */}
+      {activeTab === 'ai' && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              LLM Model
+            </label>
+            <select
+              value={formData.llmModel}
+              onChange={(e) => {
+                const selected = availableModels.find((m) => m.id === e.target.value);
+                updateField('llmModel', e.target.value);
+                updateField('llmProvider', selected?.providerId || '');
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Use global default</option>
+              {availableModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName}
+                  {model.toolCapable ? ' [tools]' : ''}
+                  {model.visionCapable ? ' [vision]' : ''}
+                  {model.isDefault ? ' ★' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Overrides the global default model for this workspace. Leave blank to use the system default.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Temperature
+            </label>
+            <input
+              type="number"
+              value={formData.temperature ?? ''}
+              onChange={(e) => updateField('temperature', e.target.value === '' ? null : parseFloat(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              placeholder="Use global default"
+              min={0}
+              max={2}
+              step={0.1}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave blank to use the global default temperature.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              System Prompt Override
+            </label>
+            <textarea
+              value={formData.systemPrompt}
+              onChange={(e) => updateField('systemPrompt', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              rows={5}
+              placeholder="Custom instructions prepended to the global system prompt..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Additional instructions prepended to the system prompt for this workspace. Leave blank to use the global prompt only.
+            </p>
+          </div>
         </div>
       )}
 

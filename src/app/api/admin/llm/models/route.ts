@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, requireElevated } from '@/lib/auth';
 import {
   getAllEnabledModels,
   getActiveModels,
@@ -16,15 +16,10 @@ import {
 import type { ApiError } from '@/types';
 
 // GET /api/admin/llm/models
+// Accessible by admins and superusers (needed for workspace model selector)
 export async function GET(request: NextRequest) {
   try {
-    const user = await getCurrentUser();
-    if (!user?.isAdmin) {
-      return NextResponse.json<ApiError>(
-        { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
-        { status: 403 }
-      );
-    }
+    await requireElevated();
 
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('active') === 'true';
@@ -33,6 +28,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ models });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json<ApiError>({ error: 'Unauthorized', code: 'AUTH_REQUIRED' }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === 'Elevated access required') {
+      return NextResponse.json<ApiError>({ error: 'Elevated access required', code: 'ADMIN_REQUIRED' }, { status: 403 });
+    }
     console.error('[Enabled Models] GET error:', error);
     return NextResponse.json<ApiError>(
       {
