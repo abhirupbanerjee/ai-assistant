@@ -71,9 +71,8 @@ import {
   importThreadShares,
   importTaskPlans,
   clearAllData,
-} from './db/backup';
+} from './db/compat/backup';
 import { getGlobalDocsDir, getThreadsDir, ensureDir } from './storage';
-import { transaction } from './db/index';
 
 // ============ Types ============
 
@@ -217,65 +216,65 @@ export async function createBackup(
   const warnings: string[] = [];
   let totalFileSize = 0;
 
-  // Export database data
-  const documents = options.includeDocuments ? exportDocuments() : [];
-  const categories = options.includeCategories ? exportCategories() : [];
+  // Export database data (async for PostgreSQL support)
+  const documents = options.includeDocuments ? await exportDocuments() : [];
+  const categories = options.includeCategories ? await exportCategories() : [];
   const documentCategories = options.includeDocuments || options.includeCategories
-    ? exportDocumentCategories()
+    ? await exportDocumentCategories()
     : [];
-  const users = options.includeUsers ? exportUsers() : [];
-  const userSubscriptions = options.includeUsers ? exportUserSubscriptions() : [];
-  const superUserCategories = options.includeUsers ? exportSuperUserCategories() : [];
-  const settings = options.includeSettings ? exportSettings() : [];
+  const users = options.includeUsers ? await exportUsers() : [];
+  const userSubscriptions = options.includeUsers ? await exportUserSubscriptions() : [];
+  const superUserCategories = options.includeUsers ? await exportSuperUserCategories() : [];
+  const settings = options.includeSettings ? await exportSettings() : [];
 
   // Thread data
-  let threads: ReturnType<typeof exportThreads> = [];
-  let messages: ReturnType<typeof exportMessages> = [];
-  let threadCategories: ReturnType<typeof exportThreadCategories> = [];
-  let threadUploads: ReturnType<typeof exportThreadUploads> = [];
-  let threadOutputs: ReturnType<typeof exportThreadOutputs> = [];
+  let threads: Awaited<ReturnType<typeof exportThreads>> = [];
+  let messages: Awaited<ReturnType<typeof exportMessages>> = [];
+  let threadCategories: Awaited<ReturnType<typeof exportThreadCategories>> = [];
+  let threadUploads: Awaited<ReturnType<typeof exportThreadUploads>> = [];
+  let threadOutputs: Awaited<ReturnType<typeof exportThreadOutputs>> = [];
 
   if (options.includeThreads) {
-    threads = exportThreads();
-    messages = exportMessages();
-    threadCategories = exportThreadCategories();
-    threadUploads = exportThreadUploads();
-    threadOutputs = exportThreadOutputs();
+    threads = await exportThreads();
+    messages = await exportMessages();
+    threadCategories = await exportThreadCategories();
+    threadUploads = await exportThreadUploads();
+    threadOutputs = await exportThreadOutputs();
   }
 
   // Tools, skills, and category prompts data
-  const toolConfigs = options.includeTools ? exportToolConfigs() : [];
-  const categoryToolConfigs = options.includeTools ? exportCategoryToolConfigs() : [];
-  const skills = options.includeSkills ? exportSkills() : [];
-  const categorySkills = options.includeSkills ? exportCategorySkills() : [];
-  const categoryPrompts = options.includeCategoryPrompts ? exportCategoryPrompts() : [];
+  const toolConfigs = options.includeTools ? await exportToolConfigs() : [];
+  const categoryToolConfigs = options.includeTools ? await exportCategoryToolConfigs() : [];
+  const skills = options.includeSkills ? await exportSkills() : [];
+  const categorySkills = options.includeSkills ? await exportCategorySkills() : [];
+  const categoryPrompts = options.includeCategoryPrompts ? await exportCategoryPrompts() : [];
 
   // Data sources
-  const dataApiConfigs = options.includeDataSources ? exportDataApiConfigs() : [];
-  const dataApiCategories = options.includeDataSources ? exportDataApiCategories() : [];
-  const dataCsvConfigs = options.includeDataSources ? exportDataCsvConfigs() : [];
-  const dataCsvCategories = options.includeDataSources ? exportDataCsvCategories() : [];
+  const dataApiConfigs = options.includeDataSources ? await exportDataApiConfigs() : [];
+  const dataApiCategories = options.includeDataSources ? await exportDataApiCategories() : [];
+  const dataCsvConfigs = options.includeDataSources ? await exportDataCsvConfigs() : [];
+  const dataCsvCategories = options.includeDataSources ? await exportDataCsvCategories() : [];
 
   // NEW: Workspaces
-  const workspaces = options.includeWorkspaces ? exportWorkspaces() : [];
-  const workspaceCategories = options.includeWorkspaces ? exportWorkspaceCategories() : [];
-  const workspaceUsers = options.includeWorkspaces ? exportWorkspaceUsers() : [];
+  const workspaces = options.includeWorkspaces ? await exportWorkspaces() : [];
+  const workspaceCategories = options.includeWorkspaces ? await exportWorkspaceCategories() : [];
+  const workspaceUsers = options.includeWorkspaces ? await exportWorkspaceUsers() : [];
 
   // NEW: Function APIs
-  const functionApiConfigs = options.includeFunctionApis ? exportFunctionApiConfigs() : [];
-  const functionApiCategories = options.includeFunctionApis ? exportFunctionApiCategories() : [];
+  const functionApiConfigs = options.includeFunctionApis ? await exportFunctionApiConfigs() : [];
+  const functionApiCategories = options.includeFunctionApis ? await exportFunctionApiCategories() : [];
 
   // NEW: User memories
-  const userMemories = options.includeUserMemories ? exportUserMemories() : [];
+  const userMemories = options.includeUserMemories ? await exportUserMemories() : [];
 
   // NEW: Tool routing rules
-  const toolRoutingRules = options.includeToolRouting ? exportToolRoutingRules() : [];
+  const toolRoutingRules = options.includeToolRouting ? await exportToolRoutingRules() : [];
 
   // NEW: Thread shares
-  const threadShares = options.includeThreadShares ? exportThreadShares() : [];
+  const threadShares = options.includeThreadShares ? await exportThreadShares() : [];
 
   // NEW: Task plans
-  const taskPlans = options.includeTaskPlans ? exportTaskPlans() : [];
+  const taskPlans = options.includeTaskPlans ? await exportTaskPlans() : [];
 
   // Create manifest
   const manifest: BackupManifest = {
@@ -545,7 +544,7 @@ export async function restoreBackup(
 
     // Clear existing data if requested
     if (options.clearExisting) {
-      clearAllData();
+      await clearAllData();
     }
 
     // Helper to read JSON from ZIP
@@ -562,221 +561,219 @@ export async function restoreBackup(
       }
     };
 
-    // Restore in transaction for atomicity
-    transaction(() => {
-      // Restore categories first (other tables depend on it)
-      if (options.restoreCategories && manifest.contents.categories) {
-        const categories = readJsonFromZip<ReturnType<typeof exportCategories>>('data/categories.json');
-        if (categories && categories.length > 0) {
-          importCategories(categories);
-          result.details.categoriesRestored = categories.length;
-        }
+    // Restore data (async for PostgreSQL support)
+    // Restore categories first (other tables depend on it)
+    if (options.restoreCategories && manifest.contents.categories) {
+      const categories = readJsonFromZip<Awaited<ReturnType<typeof exportCategories>>>('data/categories.json');
+      if (categories && categories.length > 0) {
+        await importCategories(categories);
+        result.details.categoriesRestored = categories.length;
+      }
+    }
+
+    // Restore users
+    if (options.restoreUsers && manifest.contents.users) {
+      const users = readJsonFromZip<Awaited<ReturnType<typeof exportUsers>>>('data/users.json');
+      if (users && users.length > 0) {
+        await importUsers(users);
+        result.details.usersRestored = users.length;
       }
 
-      // Restore users
-      if (options.restoreUsers && manifest.contents.users) {
-        const users = readJsonFromZip<ReturnType<typeof exportUsers>>('data/users.json');
-        if (users && users.length > 0) {
-          importUsers(users);
-          result.details.usersRestored = users.length;
-        }
-
-        const userSubs = readJsonFromZip<ReturnType<typeof exportUserSubscriptions>>('data/user_subscriptions.json');
-        if (userSubs && userSubs.length > 0) {
-          importUserSubscriptions(userSubs);
-        }
-
-        const superUserCats = readJsonFromZip<ReturnType<typeof exportSuperUserCategories>>('data/super_user_categories.json');
-        if (superUserCats && superUserCats.length > 0) {
-          importSuperUserCategories(superUserCats);
-        }
+      const userSubs = readJsonFromZip<Awaited<ReturnType<typeof exportUserSubscriptions>>>('data/user_subscriptions.json');
+      if (userSubs && userSubs.length > 0) {
+        await importUserSubscriptions(userSubs);
       }
 
-      // Restore documents
-      if (options.restoreDocuments && manifest.contents.documents) {
-        const documents = readJsonFromZip<ReturnType<typeof exportDocuments>>('data/documents.json');
-        if (documents && documents.length > 0) {
-          importDocuments(documents);
-          result.details.documentsRestored = documents.length;
-        }
+      const superUserCats = readJsonFromZip<Awaited<ReturnType<typeof exportSuperUserCategories>>>('data/super_user_categories.json');
+      if (superUserCats && superUserCats.length > 0) {
+        await importSuperUserCategories(superUserCats);
+      }
+    }
 
-        const docCats = readJsonFromZip<ReturnType<typeof exportDocumentCategories>>('data/document_categories.json');
-        if (docCats && docCats.length > 0) {
-          importDocumentCategories(docCats);
-        }
+    // Restore documents
+    if (options.restoreDocuments && manifest.contents.documents) {
+      const documents = readJsonFromZip<Awaited<ReturnType<typeof exportDocuments>>>('data/documents.json');
+      if (documents && documents.length > 0) {
+        await importDocuments(documents);
+        result.details.documentsRestored = documents.length;
       }
 
-      // Restore threads
-      if (options.restoreThreads && manifest.contents.threads) {
-        const threads = readJsonFromZip<ReturnType<typeof exportThreads>>('data/threads.json');
-        if (threads && threads.length > 0) {
-          importThreads(threads);
-          result.details.threadsRestored = threads.length;
-        }
+      const docCats = readJsonFromZip<Awaited<ReturnType<typeof exportDocumentCategories>>>('data/document_categories.json');
+      if (docCats && docCats.length > 0) {
+        await importDocumentCategories(docCats);
+      }
+    }
 
-        const messages = readJsonFromZip<ReturnType<typeof exportMessages>>('data/messages.json');
-        if (messages && messages.length > 0) {
-          importMessages(messages);
-        }
-
-        const threadCats = readJsonFromZip<ReturnType<typeof exportThreadCategories>>('data/thread_categories.json');
-        if (threadCats && threadCats.length > 0) {
-          importThreadCategories(threadCats);
-        }
-
-        const threadUploads = readJsonFromZip<ReturnType<typeof exportThreadUploads>>('data/thread_uploads.json');
-        if (threadUploads && threadUploads.length > 0) {
-          importThreadUploads(threadUploads);
-        }
-
-        const threadOutputs = readJsonFromZip<ReturnType<typeof exportThreadOutputs>>('data/thread_outputs.json');
-        if (threadOutputs && threadOutputs.length > 0) {
-          importThreadOutputs(threadOutputs);
-        }
+    // Restore threads
+    if (options.restoreThreads && manifest.contents.threads) {
+      const threads = readJsonFromZip<Awaited<ReturnType<typeof exportThreads>>>('data/threads.json');
+      if (threads && threads.length > 0) {
+        await importThreads(threads);
+        result.details.threadsRestored = threads.length;
       }
 
-      // Restore settings
-      if (options.restoreSettings && manifest.contents.settings) {
-        const settings = readJsonFromZip<ReturnType<typeof exportSettings>>('data/settings.json');
-        if (settings && settings.length > 0) {
-          importSettings(settings);
-          result.details.settingsRestored = settings.length;
-        }
+      const messages = readJsonFromZip<Awaited<ReturnType<typeof exportMessages>>>('data/messages.json');
+      if (messages && messages.length > 0) {
+        await importMessages(messages);
       }
 
-      // Restore tools
-      if (options.restoreTools && manifest.contents.tools) {
-        const toolConfigs = readJsonFromZip<ReturnType<typeof exportToolConfigs>>('data/tool_configs.json');
-        if (toolConfigs && toolConfigs.length > 0) {
-          importToolConfigs(toolConfigs);
-          result.details.toolsRestored = toolConfigs.length;
-        }
-
-        const categoryToolConfigs = readJsonFromZip<ReturnType<typeof exportCategoryToolConfigs>>('data/category_tool_configs.json');
-        if (categoryToolConfigs && categoryToolConfigs.length > 0) {
-          importCategoryToolConfigs(categoryToolConfigs);
-        }
+      const threadCats = readJsonFromZip<Awaited<ReturnType<typeof exportThreadCategories>>>('data/thread_categories.json');
+      if (threadCats && threadCats.length > 0) {
+        await importThreadCategories(threadCats);
       }
 
-      // Restore skills
-      if (options.restoreSkills && manifest.contents.skills) {
-        const skills = readJsonFromZip<ReturnType<typeof exportSkills>>('data/skills.json');
-        if (skills && skills.length > 0) {
-          importSkills(skills);
-          result.details.skillsRestored = skills.length;
-        }
-
-        const categorySkills = readJsonFromZip<ReturnType<typeof exportCategorySkills>>('data/category_skills.json');
-        if (categorySkills && categorySkills.length > 0) {
-          importCategorySkills(categorySkills);
-        }
+      const threadUploads = readJsonFromZip<Awaited<ReturnType<typeof exportThreadUploads>>>('data/thread_uploads.json');
+      if (threadUploads && threadUploads.length > 0) {
+        await importThreadUploads(threadUploads);
       }
 
-      // Restore category prompts (includes starter prompts)
-      if (options.restoreCategoryPrompts && manifest.contents.categoryPrompts) {
-        const categoryPrompts = readJsonFromZip<ReturnType<typeof exportCategoryPrompts>>('data/category_prompts.json');
-        if (categoryPrompts && categoryPrompts.length > 0) {
-          importCategoryPrompts(categoryPrompts);
-          result.details.categoryPromptsRestored = categoryPrompts.length;
-        }
+      const threadOutputs = readJsonFromZip<Awaited<ReturnType<typeof exportThreadOutputs>>>('data/thread_outputs.json');
+      if (threadOutputs && threadOutputs.length > 0) {
+        await importThreadOutputs(threadOutputs);
+      }
+    }
+
+    // Restore settings
+    if (options.restoreSettings && manifest.contents.settings) {
+      const settings = readJsonFromZip<Awaited<ReturnType<typeof exportSettings>>>('data/settings.json');
+      if (settings && settings.length > 0) {
+        await importSettings(settings);
+        result.details.settingsRestored = settings.length;
+      }
+    }
+
+    // Restore tools
+    if (options.restoreTools && manifest.contents.tools) {
+      const toolConfigs = readJsonFromZip<Awaited<ReturnType<typeof exportToolConfigs>>>('data/tool_configs.json');
+      if (toolConfigs && toolConfigs.length > 0) {
+        await importToolConfigs(toolConfigs);
+        result.details.toolsRestored = toolConfigs.length;
       }
 
-      // Restore data sources
-      if (options.restoreDataSources && manifest.contents.dataSources) {
-        // Restore API configs first, then categories
-        const dataApiConfigs = readJsonFromZip<ReturnType<typeof exportDataApiConfigs>>('data/data_api_configs.json');
-        if (dataApiConfigs && dataApiConfigs.length > 0) {
-          importDataApiConfigs(dataApiConfigs);
-          result.details.dataSourcesRestored += dataApiConfigs.length;
-        }
+      const categoryToolConfigs = readJsonFromZip<Awaited<ReturnType<typeof exportCategoryToolConfigs>>>('data/category_tool_configs.json');
+      if (categoryToolConfigs && categoryToolConfigs.length > 0) {
+        await importCategoryToolConfigs(categoryToolConfigs);
+      }
+    }
 
-        const dataApiCategories = readJsonFromZip<ReturnType<typeof exportDataApiCategories>>('data/data_api_categories.json');
-        if (dataApiCategories && dataApiCategories.length > 0) {
-          importDataApiCategories(dataApiCategories);
-        }
-
-        // Restore CSV configs first, then categories
-        const dataCsvConfigs = readJsonFromZip<ReturnType<typeof exportDataCsvConfigs>>('data/data_csv_configs.json');
-        if (dataCsvConfigs && dataCsvConfigs.length > 0) {
-          importDataCsvConfigs(dataCsvConfigs);
-          result.details.dataSourcesRestored += dataCsvConfigs.length;
-        }
-
-        const dataCsvCategories = readJsonFromZip<ReturnType<typeof exportDataCsvCategories>>('data/data_csv_categories.json');
-        if (dataCsvCategories && dataCsvCategories.length > 0) {
-          importDataCsvCategories(dataCsvCategories);
-        }
+    // Restore skills
+    if (options.restoreSkills && manifest.contents.skills) {
+      const skills = readJsonFromZip<Awaited<ReturnType<typeof exportSkills>>>('data/skills.json');
+      if (skills && skills.length > 0) {
+        await importSkills(skills);
+        result.details.skillsRestored = skills.length;
       }
 
-      // NEW: Restore workspaces
-      if (options.restoreWorkspaces && manifest.contents.workspaces) {
-        const workspaces = readJsonFromZip<ReturnType<typeof exportWorkspaces>>('data/workspaces.json');
-        if (workspaces && workspaces.length > 0) {
-          importWorkspaces(workspaces);
-          result.details.workspacesRestored = workspaces.length;
-        }
+      const categorySkills = readJsonFromZip<Awaited<ReturnType<typeof exportCategorySkills>>>('data/category_skills.json');
+      if (categorySkills && categorySkills.length > 0) {
+        await importCategorySkills(categorySkills);
+      }
+    }
 
-        const workspaceCategories = readJsonFromZip<ReturnType<typeof exportWorkspaceCategories>>('data/workspace_categories.json');
-        if (workspaceCategories && workspaceCategories.length > 0) {
-          importWorkspaceCategories(workspaceCategories);
-        }
+    // Restore category prompts (includes starter prompts)
+    if (options.restoreCategoryPrompts && manifest.contents.categoryPrompts) {
+      const categoryPrompts = readJsonFromZip<Awaited<ReturnType<typeof exportCategoryPrompts>>>('data/category_prompts.json');
+      if (categoryPrompts && categoryPrompts.length > 0) {
+        await importCategoryPrompts(categoryPrompts);
+        result.details.categoryPromptsRestored = categoryPrompts.length;
+      }
+    }
 
-        const workspaceUsers = readJsonFromZip<ReturnType<typeof exportWorkspaceUsers>>('data/workspace_users.json');
-        if (workspaceUsers && workspaceUsers.length > 0) {
-          importWorkspaceUsers(workspaceUsers);
-        }
+    // Restore data sources
+    if (options.restoreDataSources && manifest.contents.dataSources) {
+      // Restore API configs first, then categories
+      const dataApiConfigs = readJsonFromZip<Awaited<ReturnType<typeof exportDataApiConfigs>>>('data/data_api_configs.json');
+      if (dataApiConfigs && dataApiConfigs.length > 0) {
+        await importDataApiConfigs(dataApiConfigs);
+        result.details.dataSourcesRestored += dataApiConfigs.length;
       }
 
-      // NEW: Restore function APIs
-      if (options.restoreFunctionApis && manifest.contents.functionApis) {
-        const functionApiConfigs = readJsonFromZip<ReturnType<typeof exportFunctionApiConfigs>>('data/function_api_configs.json');
-        if (functionApiConfigs && functionApiConfigs.length > 0) {
-          importFunctionApiConfigs(functionApiConfigs);
-          result.details.functionApisRestored = functionApiConfigs.length;
-        }
-
-        const functionApiCategories = readJsonFromZip<ReturnType<typeof exportFunctionApiCategories>>('data/function_api_categories.json');
-        if (functionApiCategories && functionApiCategories.length > 0) {
-          importFunctionApiCategories(functionApiCategories);
-        }
+      const dataApiCategories = readJsonFromZip<Awaited<ReturnType<typeof exportDataApiCategories>>>('data/data_api_categories.json');
+      if (dataApiCategories && dataApiCategories.length > 0) {
+        await importDataApiCategories(dataApiCategories);
       }
 
-      // NEW: Restore user memories
-      if (options.restoreUserMemories && manifest.contents.userMemories) {
-        const userMemories = readJsonFromZip<ReturnType<typeof exportUserMemories>>('data/user_memories.json');
-        if (userMemories && userMemories.length > 0) {
-          importUserMemories(userMemories);
-          result.details.userMemoriesRestored = userMemories.length;
-        }
+      // Restore CSV configs first, then categories
+      const dataCsvConfigs = readJsonFromZip<Awaited<ReturnType<typeof exportDataCsvConfigs>>>('data/data_csv_configs.json');
+      if (dataCsvConfigs && dataCsvConfigs.length > 0) {
+        await importDataCsvConfigs(dataCsvConfigs);
+        result.details.dataSourcesRestored += dataCsvConfigs.length;
       }
 
-      // NEW: Restore tool routing rules
-      if (options.restoreToolRouting && manifest.contents.toolRouting) {
-        const toolRoutingRules = readJsonFromZip<ReturnType<typeof exportToolRoutingRules>>('data/tool_routing_rules.json');
-        if (toolRoutingRules && toolRoutingRules.length > 0) {
-          importToolRoutingRules(toolRoutingRules);
-          result.details.toolRoutingRulesRestored = toolRoutingRules.length;
-        }
+      const dataCsvCategories = readJsonFromZip<Awaited<ReturnType<typeof exportDataCsvCategories>>>('data/data_csv_categories.json');
+      if (dataCsvCategories && dataCsvCategories.length > 0) {
+        await importDataCsvCategories(dataCsvCategories);
+      }
+    }
+
+    // NEW: Restore workspaces
+    if (options.restoreWorkspaces && manifest.contents.workspaces) {
+      const workspaces = readJsonFromZip<Awaited<ReturnType<typeof exportWorkspaces>>>('data/workspaces.json');
+      if (workspaces && workspaces.length > 0) {
+        await importWorkspaces(workspaces);
+        result.details.workspacesRestored = workspaces.length;
       }
 
-      // NEW: Restore thread shares
-      if (options.restoreThreadShares && manifest.contents.threadShares) {
-        const threadShares = readJsonFromZip<ReturnType<typeof exportThreadShares>>('data/thread_shares.json');
-        if (threadShares && threadShares.length > 0) {
-          importThreadShares(threadShares);
-          result.details.threadSharesRestored = threadShares.length;
-        }
+      const workspaceCategories = readJsonFromZip<Awaited<ReturnType<typeof exportWorkspaceCategories>>>('data/workspace_categories.json');
+      if (workspaceCategories && workspaceCategories.length > 0) {
+        await importWorkspaceCategories(workspaceCategories);
       }
 
-      // NEW: Restore task plans
-      if (options.restoreTaskPlans && manifest.contents.taskPlans) {
-        const taskPlans = readJsonFromZip<ReturnType<typeof exportTaskPlans>>('data/task_plans.json');
-        if (taskPlans && taskPlans.length > 0) {
-          importTaskPlans(taskPlans);
-          result.details.taskPlansRestored = taskPlans.length;
-        }
+      const workspaceUsers = readJsonFromZip<Awaited<ReturnType<typeof exportWorkspaceUsers>>>('data/workspace_users.json');
+      if (workspaceUsers && workspaceUsers.length > 0) {
+        await importWorkspaceUsers(workspaceUsers);
       }
-    });
+    }
+
+    // NEW: Restore function APIs
+    if (options.restoreFunctionApis && manifest.contents.functionApis) {
+      const functionApiConfigs = readJsonFromZip<Awaited<ReturnType<typeof exportFunctionApiConfigs>>>('data/function_api_configs.json');
+      if (functionApiConfigs && functionApiConfigs.length > 0) {
+        await importFunctionApiConfigs(functionApiConfigs);
+        result.details.functionApisRestored = functionApiConfigs.length;
+      }
+
+      const functionApiCategories = readJsonFromZip<Awaited<ReturnType<typeof exportFunctionApiCategories>>>('data/function_api_categories.json');
+      if (functionApiCategories && functionApiCategories.length > 0) {
+        await importFunctionApiCategories(functionApiCategories);
+      }
+    }
+
+    // NEW: Restore user memories
+    if (options.restoreUserMemories && manifest.contents.userMemories) {
+      const userMemories = readJsonFromZip<Awaited<ReturnType<typeof exportUserMemories>>>('data/user_memories.json');
+      if (userMemories && userMemories.length > 0) {
+        await importUserMemories(userMemories);
+        result.details.userMemoriesRestored = userMemories.length;
+      }
+    }
+
+    // NEW: Restore tool routing rules
+    if (options.restoreToolRouting && manifest.contents.toolRouting) {
+      const toolRoutingRules = readJsonFromZip<Awaited<ReturnType<typeof exportToolRoutingRules>>>('data/tool_routing_rules.json');
+      if (toolRoutingRules && toolRoutingRules.length > 0) {
+        await importToolRoutingRules(toolRoutingRules);
+        result.details.toolRoutingRulesRestored = toolRoutingRules.length;
+      }
+    }
+
+    // NEW: Restore thread shares
+    if (options.restoreThreadShares && manifest.contents.threadShares) {
+      const threadShares = readJsonFromZip<Awaited<ReturnType<typeof exportThreadShares>>>('data/thread_shares.json');
+      if (threadShares && threadShares.length > 0) {
+        await importThreadShares(threadShares);
+        result.details.threadSharesRestored = threadShares.length;
+      }
+    }
+
+    // NEW: Restore task plans
+    if (options.restoreTaskPlans && manifest.contents.taskPlans) {
+      const taskPlans = readJsonFromZip<Awaited<ReturnType<typeof exportTaskPlans>>>('data/task_plans.json');
+      if (taskPlans && taskPlans.length > 0) {
+        await importTaskPlans(taskPlans);
+        result.details.taskPlansRestored = taskPlans.length;
+      }
+    }
 
     // Restore document files (outside transaction - file system ops)
     if (options.restoreDocumentFiles && manifest.contents.documentFiles) {

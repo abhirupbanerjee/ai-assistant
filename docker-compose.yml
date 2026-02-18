@@ -39,6 +39,9 @@ services:
       - CHROMA_PORT=8000
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      # Database Configuration
+      - DATABASE_PROVIDER=${DATABASE_PROVIDER:-sqlite}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-policybot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-policybot}
       # Other Services
       - REDIS_URL=redis://redis:6379
       - DATA_DIR=/app/data
@@ -106,6 +109,28 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - policy-bot-network
+
+  # PostgreSQL Database (optional - use when DATABASE_PROVIDER=postgres)
+  # Comment out this service if using SQLite (default)
+  postgres:
+    image: postgres:16-alpine
+    container_name: policy-bot-postgres
+    restart: unless-stopped
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-policybot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-policybot}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-policybot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - policy-bot-network
 
