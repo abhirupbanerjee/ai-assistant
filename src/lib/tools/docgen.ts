@@ -270,6 +270,25 @@ export const documentGenerationTool: ToolDefinition = {
         });
       }
 
+      // Fix C: Guard against oversized content (before any processing or allocation)
+      const MAX_CONTENT_CHARS = 200_000; // ~50k tokens worst case
+      if (args.content && args.content.length > MAX_CONTENT_CHARS) {
+        console.warn(`[DocGen] Content too large: ${args.content.length} chars`);
+        return JSON.stringify({
+          error: `Content too large (${args.content.length} chars). Maximum is ${MAX_CONTENT_CHARS}.`,
+          errorCode: 'CONTENT_TOO_LARGE',
+        });
+      }
+
+      // Fix B: Detect likely LLM truncation via unclosed code fences and auto-close
+      if (args.content) {
+        const codeFences = (args.content.match(/^```/gm) || []).length;
+        if (codeFences % 2 !== 0) {
+          console.warn('[DocGen] Odd number of code fences detected — content may be truncated by LLM. Auto-closing.');
+          args.content = args.content + '\n```';
+        }
+      }
+
       // Get tool configuration
       const toolConfig = await getToolConfigAsync('doc_gen');
       const config = toolConfig?.config || TOOL_DEFAULTS.doc_gen.config;

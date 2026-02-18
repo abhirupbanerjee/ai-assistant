@@ -19,12 +19,12 @@ import {
   PageNumber,
   ImageRun,
   BorderStyle,
-  TableOfContents,
   Table,
   TableRow,
   TableCell,
   WidthType,
   Packer,
+  LevelFormat,
 } from 'docx';
 import {
   type BrandingConfig,
@@ -46,7 +46,6 @@ export interface DocxOptions {
     keywords?: string[];
     description?: string;
   };
-  includeToc?: boolean;
 }
 
 export interface DocxResult {
@@ -122,17 +121,6 @@ export class DocxBuilder {
     // Add page break so content starts on page 2
     children.push(new Paragraph({ pageBreakBefore: true }));
 
-    // Add table of contents if requested
-    if (this.options.includeToc) {
-      children.push(
-        new TableOfContents('Table of Contents', {
-          hyperlink: true,
-          headingStyleRange: '1-3',
-        })
-      );
-      children.push(new Paragraph({ spacing: { after: 400 } }));
-    }
-
     // Add content sections
     for (const section of sections) {
       children.push(...this.renderSection(section));
@@ -146,6 +134,26 @@ export class DocxBuilder {
       keywords: this.options.metadata?.keywords?.join(', '),
       description: this.options.metadata?.description,
       styles: this.getDocumentStyles(),
+      numbering: {
+        config: [
+          {
+            reference: 'default-numbering',
+            levels: [
+              {
+                level: 0,
+                format: LevelFormat.DECIMAL,
+                text: '%1.',
+                alignment: AlignmentType.LEFT,
+                style: {
+                  paragraph: {
+                    indent: { left: 720, hanging: 360 },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
       sections: [
         {
           headers: this.branding.header?.enabled ? { default: this.createHeader() } : undefined,
@@ -490,7 +498,7 @@ export class DocxBuilder {
    */
   private parseContent(content: string, documentTitle?: string): ContentSection[] {
     const sections: ContentSection[] = [];
-    const lines = content.split('\n');
+    const lines = content.replace(/\r\n/g, '\n').split('\n');
     let currentSection: ContentSection = { type: 'paragraph', content: [] };
     let inCodeBlock = false;
     let codeBlockLines: string[] = [];
@@ -754,9 +762,9 @@ export class DocxBuilder {
   /**
    * Create a data table from parsed rows
    */
-  private createDataTable(rows: string[][]): Table {
+  private createDataTable(rows: string[][]): Table | Paragraph {
     if (rows.length === 0) {
-      return new Table({ rows: [] });
+      return new Paragraph({ text: '' });
     }
 
     return new Table({

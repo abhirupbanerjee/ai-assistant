@@ -200,7 +200,7 @@ export class PdfBuilder {
    */
   private renderContent(content: string, documentTitle?: string): void {
     const { doc } = this;
-    const lines = content.split('\n');
+    const lines = content.replace(/\r\n/g, '\n').split('\n');
     let inCodeBlock = false;
     let codeBlockLines: string[] = [];
     let inTable = false;
