@@ -208,8 +208,10 @@ export function useEmbedChat({
               case 'error':
                 throw new Error(event.message);
             }
-          } catch {
+          } catch (parseError) {
             // Ignore parse errors for incomplete events
+            if (parseError instanceof SyntaxError) continue;
+            throw parseError;
           }
         }
       }

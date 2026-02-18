@@ -2,14 +2,13 @@ import OpenAI from 'openai';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint } from '@/types';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
-import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
+import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
 import { resolveToolRouting } from './tool-routing';
 import { resolveSkills } from './skills/resolver';
 import { toolsLogger as logger } from './logger';
 import {
-  isToolCapableModel,
   MAX_TOOL_CALL_ITERATIONS,
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
 } from './constants';
@@ -203,7 +202,8 @@ export async function generateResponseWithTools(
   const effectiveModel = modelOverride || llmSettings.model;
 
   // Check if model supports tools, disable gracefully if not
-  const modelSupportsTools = isToolCapableModel(effectiveModel);
+  // Use DB-aware check so models added via admin UI (enabled_models) are recognized
+  const modelSupportsTools = isToolCapableModelFromDb(effectiveModel);
   const effectiveEnableTools = enableTools && modelSupportsTools;
 
   if (enableTools && !modelSupportsTools) {
