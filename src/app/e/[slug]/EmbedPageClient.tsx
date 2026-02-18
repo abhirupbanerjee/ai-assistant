@@ -14,6 +14,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Copy, Check } from 'lucide-react';
 import VoiceInput from '@/components/chat/VoiceInput';
 import { WorkspaceFileUpload, AttachmentChip } from '@/components/workspace/WorkspaceFileUpload';
 import './embed.css';
@@ -56,6 +57,8 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -305,6 +308,8 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
                   message.role === 'user' ? 'embed-message-user' : 'embed-message-assistant'
                 }`}
                 style={message.role === 'user' ? { backgroundColor: config.primaryColor } : undefined}
+                onMouseEnter={() => message.role === 'assistant' && setHoveredId(message.id)}
+                onMouseLeave={() => setHoveredId(null)}
               >
                 {message.role === 'assistant' ? (
                   <div className="embed-markdown">
@@ -317,6 +322,37 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
                 )}
                 {message.isStreaming && (
                   <span className="embed-cursor" />
+                )}
+                {message.role === 'assistant' && !message.isStreaming && hoveredId === message.id && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(message.content);
+                        setCopiedId(message.id);
+                        setTimeout(() => setCopiedId(null), 2000);
+                      } catch {
+                        // clipboard access denied
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginTop: '6px',
+                      padding: '3px 6px',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#9ca3af',
+                      fontSize: '11px',
+                    }}
+                    title={copiedId === message.id ? 'Copied!' : 'Copy'}
+                  >
+                    {copiedId === message.id
+                      ? <Check size={12} color="#16a34a" />
+                      : <Copy size={12} />
+                    }
+                  </button>
                 )}
               </div>
             ))}
@@ -396,6 +432,15 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
           >
             Clear chat
           </button>
+          {messages.length > 0 && sessionId && (
+            <a
+              href={`/api/w/${workspaceSlug}/session/export?sessionId=${sessionId}`}
+              download
+              className="embed-clear-btn"
+            >
+              Export chat
+            </a>
+          )}
           {config.footerText && (
             <span className="embed-footer-text">{config.footerText}</span>
           )}

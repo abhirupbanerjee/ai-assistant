@@ -8,7 +8,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, RefreshCw } from 'lucide-react';
+import { ArrowUp, RefreshCw, ArrowDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Source } from '@/types';
@@ -16,6 +16,8 @@ import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 import VoiceInput from '@/components/chat/VoiceInput';
 import { WorkspaceFileUpload, AttachmentChip } from './WorkspaceFileUpload';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
+import MessageActions from '@/components/chat/MessageActions';
+import type { MessageMetadata } from '@/types';
 
 export interface WorkspaceChatMessage {
   id: string;
@@ -24,6 +26,7 @@ export interface WorkspaceChatMessage {
   timestamp: Date;
   sources?: Source[];
   isStreaming?: boolean;
+  metadata?: MessageMetadata;
 }
 
 interface UploadedFile {
@@ -71,14 +74,33 @@ export function WorkspaceChatInterface({
 }: WorkspaceChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isTouchDevice = useIsTouchDevice();
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages (only if user hasn't scrolled up)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+    if (isScrolledUp) return;
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages, streamingContent, isScrolledUp]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    setIsScrolledUp(distanceFromBottom > 100);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+    setIsScrolledUp(false);
+  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -124,7 +146,11 @@ export function WorkspaceChatInterface({
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 overflow-y-auto p-4 relative"
+      >
         {showWelcome ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <p className="text-lg text-gray-600 mb-6 max-w-md">
@@ -189,6 +215,17 @@ export function WorkspaceChatInterface({
 
             <div ref={messagesEndRef} />
           </div>
+        )}
+
+        {/* Scroll to bottom FAB */}
+        {isScrolledUp && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-4 right-4 z-10 w-8 h-8 rounded-full bg-white shadow-md border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
+            title="Scroll to bottom"
+          >
+            <ArrowDown size={16} />
+          </button>
         )}
       </div>
 
@@ -256,6 +293,37 @@ export function WorkspaceChatInterface({
   );
 }
 
+// Metadata footer sub-component
+function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const modelLabel = metadata.model
+    ? metadata.model.replace(/^(gpt-|claude-|gemini-)/i, '').replace(/-(\d)/g, ' $1').replace(/-/g, ' ').trim()
+    : null;
+  const totalSec = metadata.totalMs ? (metadata.totalMs / 1000).toFixed(1) + 's' : null;
+
+  return (
+    <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-1.5 hover:text-gray-600 transition-colors"
+        title="Response details"
+      >
+        {modelLabel && <span>{modelLabel}</span>}
+        {totalSec && <span>{totalSec}</span>}
+        {metadata.completionTokens && <span>~{metadata.completionTokens} tok</span>}
+      </button>
+      {expanded && (metadata.llmMs || metadata.ragMs) && (
+        <span className="text-gray-300">
+          {metadata.llmMs ? `LLM ${(metadata.llmMs / 1000).toFixed(1)}s` : ''}
+          {metadata.llmMs && metadata.ragMs ? ' · ' : ''}
+          {metadata.ragMs ? `RAG ${(metadata.ragMs / 1000).toFixed(1)}s` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Message bubble component
 interface MessageBubbleProps {
   message: WorkspaceChatMessage;
@@ -267,7 +335,7 @@ function MessageBubble({ message, primaryColor }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-3 ${
           isUser ? 'text-white' : 'bg-gray-100 text-gray-900'
@@ -318,6 +386,16 @@ function MessageBubble({ message, primaryColor }: MessageBubbleProps) {
               </div>
             )}
           </div>
+        )}
+
+        {/* Metadata footer (assistant only, not while streaming) */}
+        {!isUser && !message.isStreaming && message.metadata && (
+          <MetadataFooter metadata={message.metadata} />
+        )}
+
+        {/* Action bar: copy + read aloud (assistant only, not while streaming) */}
+        {!isUser && !message.isStreaming && (
+          <MessageActions content={message.content} />
         )}
       </div>
     </div>

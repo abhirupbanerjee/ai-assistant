@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import type { StreamEvent, StreamPhase, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { StreamEvent, StreamPhase, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, MessageMetadata } from '@/types';
 
 export interface WorkspaceMessage {
   id: string;
@@ -17,6 +17,7 @@ export interface WorkspaceMessage {
   timestamp: Date;
   sources?: Source[];
   isStreaming?: boolean;
+  metadata?: MessageMetadata;
 }
 
 export interface WorkspaceStreamingState {
@@ -34,7 +35,7 @@ export interface UseWorkspaceChatOptions {
   workspaceSlug: string;
   sessionId: string;
   threadId?: string;
-  onComplete?: (messageId: string, content: string, sources: Source[]) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], metadata?: MessageMetadata) => void;
   onError?: (message: string) => void;
 }
 
@@ -105,6 +106,7 @@ export function useWorkspaceChat({
 
     let accumulatedSources: Source[] = [];
     let messageId = '';
+    let completedMetadata: MessageMetadata | undefined;
 
     try {
       const response = await fetch(`/api/w/${workspaceSlug}/chat/stream`, {
@@ -198,6 +200,15 @@ export function useWorkspaceChat({
 
               case 'done':
                 messageId = event.messageId;
+                completedMetadata = (event.model || event.totalMs || event.completionTokens)
+                  ? {
+                      model: event.model,
+                      totalMs: event.totalMs,
+                      llmMs: event.llmMs,
+                      ragMs: event.ragMs,
+                      completionTokens: event.completionTokens,
+                    }
+                  : undefined;
                 // Flush any remaining content immediately (not via RAF)
                 if (contentBufferRef.current) {
                   const finalContent = contentBufferRef.current;
@@ -231,7 +242,7 @@ export function useWorkspaceChat({
 
       // Call onComplete callback with accumulated content from ref (avoids stale closure)
       if (onComplete && messageId) {
-        onComplete(messageId, accumulatedContentRef.current, accumulatedSources);
+        onComplete(messageId, accumulatedContentRef.current, accumulatedSources, completedMetadata);
       }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {

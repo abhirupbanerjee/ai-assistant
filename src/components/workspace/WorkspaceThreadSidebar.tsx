@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Plus, MessageSquare, Archive, MoreVertical, Trash2, Edit2 } from 'lucide-react';
+import { Plus, MessageSquare, Archive, MoreVertical, Trash2, Edit2, Download } from 'lucide-react';
 import type { WorkspaceThread } from '@/types/workspace';
 
 interface WorkspaceThreadSidebarProps {
@@ -15,6 +15,8 @@ interface WorkspaceThreadSidebarProps {
   activeThreadId: string | null;
   isLoading: boolean;
   primaryColor: string;
+  workspaceSlug: string;
+  sessionId: string;
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onRenameThread?: (threadId: string, newTitle: string) => void;
@@ -27,6 +29,8 @@ export function WorkspaceThreadSidebar({
   activeThreadId,
   isLoading,
   primaryColor,
+  workspaceSlug,
+  sessionId,
   onSelectThread,
   onNewThread,
   onRenameThread,
@@ -197,6 +201,15 @@ export function WorkspaceThreadSidebar({
                             Archive
                           </button>
                         )}
+                        <a
+                          href={`/api/w/${workspaceSlug}/threads/${thread.id}/export?sessionId=${sessionId}`}
+                          download
+                          onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          <Download className="w-4 h-4" />
+                          Export as Markdown
+                        </a>
                         {onDeleteThread && (
                           <button
                             onClick={(e) => {

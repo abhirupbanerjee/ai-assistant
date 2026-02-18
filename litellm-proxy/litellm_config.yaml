@@ -83,6 +83,36 @@ model_list:
       supports_vision: true
       max_input_tokens: 400000
 
+  # GPT-5 - Base model
+  - model_name: gpt-5
+    litellm_params:
+      model: gpt-5
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+
+  # GPT-5 Nano - Lightweight variant
+  - model_name: gpt-5-nano
+    litellm_params:
+      model: gpt-5-nano
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+
+  # GPT-5 Chat Latest - Rolling alias to latest chat model
+  - model_name: gpt-5-chat-latest
+    litellm_params:
+      model: gpt-5-chat-latest
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+
   # ===========================================================================
   # ANTHROPIC CLAUDE MODELS
   # All Claude 4.5 models support vision and function calling
@@ -150,7 +180,7 @@ model_list:
   # Mistral Large 3+ and Small 3.2+ support vision via Pixtral architecture
   # Uses same image_url format as OpenAI
   # ===========================================================================
-  - model_name: mistral-large-3
+  - model_name: mistral-large-latest
     litellm_params:
       model: mistral/mistral-large-latest
       api_key: os.environ/MISTRAL_API_KEY
@@ -198,6 +228,24 @@ model_list:
       supports_function_calling: true
       supports_vision: true
       max_input_tokens: 1000000
+
+  - model_name: gemini-3-flash-preview
+    litellm_params:
+      model: gemini/gemini-3.0-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1049000
+
+  - model_name: gemini-3-pro-preview
+    litellm_params:
+      model: gemini/gemini-3.0-pro-preview
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1049000
 
   # ===========================================================================
   # OLLAMA LOCAL MODELS

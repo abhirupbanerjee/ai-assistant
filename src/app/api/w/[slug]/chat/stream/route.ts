@@ -50,6 +50,7 @@ import type { WorkspaceMessageSource } from '@/types/workspace';
 import { getWorkspaceUploadDetails } from '@/lib/workspace/uploads';
 import { readFileBuffer } from '@/lib/storage';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
+import { countTokens } from '@/lib/summarization';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -165,6 +166,7 @@ export async function POST(
         }
 
         send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
+        const requestStart = Date.now();
 
         // ============ Setup ============
         // Get workspace categories for RAG
@@ -295,6 +297,7 @@ export async function POST(
 
             // No memory context for workspace chat
             // No summary context for workspace chat
+            const ragStart = Date.now();
             const ragResult = await performRAGRetrieval(
               message,
               categorySlugs,
@@ -303,6 +306,7 @@ export async function POST(
               '', // No summary context
               send
             );
+            const ragMs = Date.now() - ragStart;
 
             // Apply workspace system prompt override
             let finalSystemPrompt = ragResult.systemPrompt;
@@ -332,6 +336,7 @@ export async function POST(
             }
 
             // Execute tools with streaming callbacks
+            const llmStart = Date.now();
             const toolResult = await generateResponseWithTools(
               finalSystemPrompt,
               conversationHistory,
@@ -381,6 +386,7 @@ export async function POST(
               imageCapabilities, // Image processing strategy
               workspaceLLMConfig.model || undefined // modelOverride
             );
+            const llmMs = Date.now() - llmStart;
 
             // Extract web sources from tool history
             for (const msg of toolResult.fullHistory) {
@@ -438,6 +444,11 @@ export async function POST(
               type: 'done',
               messageId: assistantMessageId,
               threadId: currentThreadId || sessionId,
+              model: workspaceLLMConfig.model || undefined,
+              totalMs: Date.now() - requestStart,
+              llmMs,
+              ragMs,
+              completionTokens: countTokens(fullContent),
             });
           }
         );

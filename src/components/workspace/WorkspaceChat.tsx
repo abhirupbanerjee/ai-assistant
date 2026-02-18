@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { WorkspaceThread } from '@/types/workspace';
-import type { Source } from '@/types';
+import type { Source, MessageMetadata } from '@/types';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceThreadSidebar } from './WorkspaceThreadSidebar';
 import { WorkspaceChatInterface, type WorkspaceChatMessage } from './WorkspaceChatInterface';
@@ -178,7 +178,7 @@ export function WorkspaceChat({
     workspaceSlug,
     sessionId: sessionId || '',
     threadId: activeThreadId || undefined,
-    onComplete: (_messageId: string, content: string, sources: Source[]) => {
+    onComplete: (_messageId: string, content: string, sources: Source[], metadata?: MessageMetadata) => {
       // Add the completed assistant message
       const assistantMessage: WorkspaceChatMessage = {
         id: `msg-${Date.now()}`,
@@ -186,6 +186,7 @@ export function WorkspaceChat({
         content,
         timestamp: new Date(),
         sources,
+        metadata,
       };
       setMessages(prev => [...prev, assistantMessage]);
     },
@@ -423,6 +424,8 @@ export function WorkspaceChat({
             activeThreadId={activeThreadId}
             isLoading={isLoadingThreads}
             primaryColor={config.primaryColor}
+            workspaceSlug={workspaceSlug}
+            sessionId={sessionId || ''}
             onSelectThread={handleSelectThread}
             onNewThread={handleNewThread}
             onRenameThread={handleRenameThread}
