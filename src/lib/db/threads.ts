@@ -499,12 +499,14 @@ export function addThreadOutput(
   filename: string,
   filepath: string,
   fileType: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx',
-  fileSize: number
+  fileSize: number,
+  generationConfig?: string,
+  expiresAt?: string | null
 ): DbThreadOutput {
   const result = execute(`
-    INSERT INTO thread_outputs (thread_id, message_id, filename, filepath, file_type, file_size)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, [threadId, messageId, filename, filepath, fileType, fileSize]);
+    INSERT INTO thread_outputs (thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, [threadId, messageId, filename, filepath, fileType, fileSize, generationConfig ?? null, expiresAt ?? null]);
 
   return getThreadOutputById(result.lastInsertRowid as number)!;
 }

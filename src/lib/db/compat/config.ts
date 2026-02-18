@@ -386,3 +386,40 @@ export async function getAllSettings(): Promise<{
 }> {
   return sync.getAllSettings();
 }
+
+// ============ Tool Config (async version) ============
+
+import * as toolConfig from '../tool-config';
+
+// Re-export ToolConfig type
+export type { ToolConfig } from '../tool-config';
+
+/**
+ * Get tool configuration by name (async version)
+ * Works with both SQLite and PostgreSQL
+ */
+export async function getToolConfigAsync(toolName: string): Promise<toolConfig.ToolConfig | undefined> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return toolConfig.getToolConfig(toolName);
+  }
+
+  const db = await getDb();
+  const row = await db
+    .selectFrom('tool_configs')
+    .select(['id', 'tool_name', 'is_enabled', 'config_json', 'description_override', 'created_at', 'updated_at', 'updated_by'])
+    .where('tool_name', '=', toolName)
+    .executeTakeFirst();
+
+  if (!row) return undefined;
+
+  return {
+    id: row.id as string,
+    toolName: row.tool_name as string,
+    isEnabled: (row.is_enabled as number) === 1,
+    config: JSON.parse(row.config_json as string),
+    descriptionOverride: row.description_override as string | null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+    updatedBy: row.updated_by as string,
+  };
+}

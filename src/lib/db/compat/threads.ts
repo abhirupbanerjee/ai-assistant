@@ -528,10 +528,12 @@ export async function addThreadOutput(
   filename: string,
   filepath: string,
   fileType: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx',
-  fileSize: number
+  fileSize: number,
+  generationConfig?: string,
+  expiresAt?: string | null
 ): Promise<DbThreadOutput> {
   if (getDatabaseProvider() === 'sqlite') {
-    return sync.addThreadOutput(threadId, messageId, filename, filepath, fileType, fileSize);
+    return sync.addThreadOutput(threadId, messageId, filename, filepath, fileType, fileSize, generationConfig, expiresAt);
   }
   const db = await getDb();
   const result = await db
@@ -543,6 +545,8 @@ export async function addThreadOutput(
       filepath,
       file_type: fileType,
       file_size: fileSize,
+      generation_config: generationConfig ?? null,
+      expires_at: expiresAt ?? null,
     })
     .returning(['id', 'thread_id', 'message_id', 'filename', 'filepath', 'file_type', 'file_size', 'created_at'])
     .executeTakeFirstOrThrow();
@@ -641,4 +645,108 @@ export async function getThreadOutputsStorageSize(): Promise<number> {
     .select(sql<number>`COALESCE(SUM(file_size), 0)`.as('total'))
     .executeTakeFirst();
   return result?.total ?? 0;
+}
+
+// ============ Thread Context (for image generation) ============
+
+export interface ThreadContext {
+  exists: boolean;
+  isWorkspace: boolean;
+  workspaceId?: string;
+  sessionId?: string;
+  actualThreadId?: string;
+}
+
+/**
+ * Get thread context for image generation
+ * Checks if the thread exists in main threads, workspace threads, or workspace sessions
+ */
+export async function getThreadContext(threadId: string): Promise<ThreadContext> {
+  const db = await getDb();
+
+  // Check main threads table
+  const mainThread = await db
+    .selectFrom('threads')
+    .select('id')
+    .where('id', '=', threadId)
+    .executeTakeFirst();
+
+  if (mainThread) {
+    return { exists: true, isWorkspace: false };
+  }
+
+  // Check workspace_threads table
+  const workspaceThread = await db
+    .selectFrom('workspace_threads')
+    .select(['id', 'workspace_id', 'session_id'])
+    .where('id', '=', threadId)
+    .executeTakeFirst();
+
+  if (workspaceThread) {
+    return {
+      exists: true,
+      isWorkspace: true,
+      workspaceId: workspaceThread.workspace_id,
+      sessionId: workspaceThread.session_id,
+      actualThreadId: workspaceThread.id,
+    };
+  }
+
+  // Check workspace_sessions table (threadId might be a session ID)
+  const workspaceSession = await db
+    .selectFrom('workspace_sessions')
+    .select(['id', 'workspace_id'])
+    .where('id', '=', threadId)
+    .executeTakeFirst();
+
+  if (workspaceSession) {
+    return {
+      exists: true,
+      isWorkspace: true,
+      workspaceId: workspaceSession.workspace_id,
+      sessionId: workspaceSession.id,
+    };
+  }
+
+  return { exists: false, isWorkspace: false };
+}
+
+// ============ Workspace Outputs ============
+
+export interface WorkspaceOutputResult {
+  id: number;
+}
+
+/**
+ * Add an output file to workspace_outputs table
+ */
+export async function addWorkspaceOutput(
+  workspaceId: string,
+  sessionId: string,
+  threadId: string | null,
+  filename: string,
+  filepath: string,
+  fileType: 'pdf' | 'docx' | 'image' | 'chart' | 'md',
+  fileSize: number,
+  generationConfig?: string,
+  expiresAt?: string | null
+): Promise<WorkspaceOutputResult> {
+  const db = await getDb();
+  const result = await db
+    .insertInto('workspace_outputs')
+    .values({
+      workspace_id: workspaceId,
+      session_id: sessionId,
+      thread_id: threadId,
+      filename,
+      filepath,
+      file_type: fileType,
+      file_size: fileSize,
+      generation_config: generationConfig ?? null,
+      expires_at: expiresAt ?? null,
+    })
+    .returning(['id'])
+    .executeTakeFirstOrThrow();
+
+  return { id: result.id as number };
 }

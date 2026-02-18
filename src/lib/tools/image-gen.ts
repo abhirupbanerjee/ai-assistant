@@ -307,8 +307,8 @@ Guidelines:
   execute: async (args: Record<string, unknown>): Promise<string> => {
     const typedArgs = args as unknown as ImageGenToolArgs;
 
-    // Check if enabled
-    if (!isImageGenEnabled()) {
+    // Check if enabled (async - works with both SQLite and PostgreSQL)
+    if (!(await isImageGenEnabled())) {
       return JSON.stringify({
         success: false,
         error: {
@@ -395,7 +395,7 @@ export interface ImageGenTestResult {
  * Test image generation connectivity
  */
 export async function testImageGen(): Promise<ImageGenTestResult> {
-  const config = getImageGenConfig();
+  const config = await getImageGenConfig();
   const providers: ImageGenTestResult['providers'] = {};
 
   const startTime = Date.now();

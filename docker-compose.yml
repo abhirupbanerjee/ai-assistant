@@ -1,3 +1,25 @@
+# =============================================================================
+# Policy Bot - Docker Compose Configuration
+# =============================================================================
+#
+# PROFILES: Use profiles to select which services to run:
+#
+#   Vector Store (choose one):
+#     --profile chromadb    → ChromaDB (default, set VECTOR_STORE_PROVIDER=chromadb)
+#     --profile qdrant      → Qdrant (set VECTOR_STORE_PROVIDER=qdrant)
+#
+#   Database (choose one):
+#     (no profile)          → SQLite (default, set DATABASE_PROVIDER=sqlite)
+#     --profile postgres    → PostgreSQL (set DATABASE_PROVIDER=postgres)
+#
+# EXAMPLES:
+#   SQLite + ChromaDB:     docker compose --profile chromadb up -d
+#   SQLite + Qdrant:       docker compose --profile qdrant up -d
+#   PostgreSQL + ChromaDB: docker compose --profile postgres --profile chromadb up -d
+#   PostgreSQL + Qdrant:   docker compose --profile postgres --profile qdrant up -d
+#
+# =============================================================================
+
 services:
   traefik:
     image: traefik:v3.6.1
@@ -67,9 +89,9 @@ services:
     volumes:
       - ./data/app:/app/data
       - ./config:/app/config:ro
+    # Note: Vector store (chroma/qdrant) and database (postgres) dependencies
+    # are handled via profiles. The app connects on startup and retries if needed.
     depends_on:
-      chroma:
-        condition: service_started
       redis:
         condition: service_healthy
       litellm:
@@ -78,9 +100,13 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
+  # ChromaDB Vector Store (use when VECTOR_STORE_PROVIDER=chromadb)
+  # Start with: docker compose --profile chromadb up -d
   chroma:
     image: chromadb/chroma:latest
     container_name: policy-bot-chroma
+    profiles:
+      - chromadb
     volumes:
       - ./data/chroma:/data
     environment:
@@ -91,9 +117,13 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
+  # Qdrant Vector Store (use when VECTOR_STORE_PROVIDER=qdrant)
+  # Start with: docker compose --profile qdrant up -d
   qdrant:
     image: qdrant/qdrant:latest
     container_name: policy-bot-qdrant
+    profiles:
+      - qdrant
     restart: unless-stopped
     volumes:
       - ./data/qdrant:/qdrant/storage

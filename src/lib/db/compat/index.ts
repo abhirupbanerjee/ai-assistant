@@ -92,6 +92,7 @@ export {
   type ModelTokenLimits,
   type AvailableModel,
   type SettingKey,
+  type ToolConfig,
   // Constants
   DEFAULT_PWA_SETTINGS,
   DEFAULT_OCR_SETTINGS,
@@ -150,6 +151,8 @@ export {
   setSuperuserSettings,
   // Bulk Operations
   getAllSettings,
+  // Tool Config (async)
+  getToolConfigAsync,
 } from './config';
 
 // ============ Categories ============
@@ -201,6 +204,8 @@ export {
   type DbThreadOutput,
   type ThreadWithDetails,
   type ParsedMessage,
+  type ThreadContext,
+  type WorkspaceOutputResult,
   // Thread CRUD
   createThread,
   getThreadById,
@@ -232,6 +237,10 @@ export {
   getThreadOutputById,
   getThreadOutputs,
   linkOutputsToMessage,
+  // Thread Context (for image generation)
+  getThreadContext,
+  // Workspace Outputs
+  addWorkspaceOutput,
   // Cleanup
   getThreadsOlderThan,
   deleteThreadsOlderThan,

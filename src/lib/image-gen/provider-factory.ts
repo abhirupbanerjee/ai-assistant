@@ -11,8 +11,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { getToolConfig } from '@/lib/db/tool-config';
-import { execute, queryOne } from '@/lib/db/index';
+import {
+  getToolConfigAsync,
+  getThreadContext,
+  addThreadOutput,
+  addWorkspaceOutput,
+} from '@/lib/db/compat';
 import { getRequestContext } from '@/lib/request-context';
 import { generateWithDalle } from './providers/openai-dalle';
 import { generateWithGemini } from './providers/gemini-imagen';
@@ -63,10 +67,10 @@ export const IMAGE_GEN_DEFAULTS: ImageGenConfig = {
 };
 
 /**
- * Get image generation configuration from database
+ * Get image generation configuration from database (async)
  */
-export function getImageGenConfig(): ImageGenConfig {
-  const config = getToolConfig('image_gen');
+export async function getImageGenConfig(): Promise<ImageGenConfig> {
+  const config = await getToolConfigAsync('image_gen');
 
   if (config?.config) {
     // Merge with defaults to ensure all fields exist
@@ -89,10 +93,10 @@ export function getImageGenConfig(): ImageGenConfig {
 }
 
 /**
- * Check if image generation is enabled
+ * Check if image generation is enabled (async)
  */
-export function isImageGenEnabled(): boolean {
-  const config = getToolConfig('image_gen');
+export async function isImageGenEnabled(): Promise<boolean> {
+  const config = await getToolConfigAsync('image_gen');
   return config?.isEnabled ?? false;
 }
 
@@ -230,7 +234,7 @@ function getOutputDirectory(): string {
 }
 
 /**
- * Save image to disk and database
+ * Save image to disk and database (async - works with both SQLite and PostgreSQL)
  */
 async function saveImage(
   buffer: Buffer,
@@ -267,29 +271,19 @@ async function saveImage(
   }
 
   // Get thread context for foreign key constraint
-  const context = getRequestContext();
-  const threadId = context.threadId;
+  const requestContext = getRequestContext();
+  const threadId = requestContext.threadId;
 
   if (!threadId) {
     throw new Error('No thread context available for image generation');
   }
 
   // Check if this is a main chat thread or workspace thread/session
-  // Main chat uses 'threads' table, workspace uses 'workspace_threads' or session ID
-  const mainThreadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [threadId]);
-  const workspaceThread = queryOne<{ id: string; workspace_id: string; session_id: string }>(
-    'SELECT id, workspace_id, session_id FROM workspace_threads WHERE id = ?',
-    [threadId]
-  );
-  const workspaceSession = queryOne<{ id: string; workspace_id: string }>(
-    'SELECT id, workspace_id FROM workspace_sessions WHERE id = ?',
-    [threadId]
-  );
+  // Uses async compat layer that works with both SQLite and PostgreSQL
+  const threadContext = await getThreadContext(threadId);
 
-  const isWorkspaceContext = workspaceThread || workspaceSession;
-
-  if (!mainThreadExists && !isWorkspaceContext) {
-    console.error('[ImageGen] Thread not found in database:', { threadId, context });
+  if (!threadContext.exists) {
+    console.error('[ImageGen] Thread not found in database:', { threadId, requestContext });
     throw new Error(`Thread ${threadId} not found - cannot save generated image`);
   }
 
@@ -309,52 +303,38 @@ async function saveImage(
   });
 
   // Store in appropriate database table based on context
-  let result;
+  let docId: number;
   let downloadUrlPrefix: string;
 
   try {
-    if (isWorkspaceContext) {
+    if (threadContext.isWorkspace) {
       // Workspace context - use workspace_outputs table
-      const workspaceId = workspaceThread?.workspace_id || workspaceSession?.workspace_id;
-      const sessionId = workspaceThread?.session_id || workspaceSession?.id;
-      const actualThreadId = workspaceThread?.id || null;
-
-      result = execute(
-        `INSERT INTO workspace_outputs (
-          workspace_id, session_id, thread_id, filename, filepath, file_type, file_size,
-          generation_config, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          workspaceId,
-          sessionId,
-          actualThreadId,
-          filename,
-          filepath,
-          'image', // file_type
-          metadata.sizeBytes,
-          generationConfig,
-          null, // expires_at (images don't expire by default)
-        ]
+      const result = await addWorkspaceOutput(
+        threadContext.workspaceId!,
+        threadContext.sessionId!,
+        threadContext.actualThreadId || null,
+        filename,
+        filepath,
+        'image',
+        metadata.sizeBytes,
+        generationConfig,
+        null // expires_at (images don't expire by default)
       );
+      docId = result.id;
       downloadUrlPrefix = '/api/workspace-documents';
     } else {
       // Main chat context - use thread_outputs table
-      result = execute(
-        `INSERT INTO thread_outputs (
-          thread_id, message_id, filename, filepath, file_type, file_size,
-          generation_config, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          threadId,
-          null, // message_id
-          filename,
-          filepath,
-          'image', // file_type
-          metadata.sizeBytes,
-          generationConfig,
-          null, // expires_at (images don't expire by default)
-        ]
+      const result = await addThreadOutput(
+        threadId,
+        null, // message_id
+        filename,
+        filepath,
+        'image',
+        metadata.sizeBytes,
+        generationConfig,
+        null // expires_at (images don't expire by default)
       );
+      docId = result.id;
       downloadUrlPrefix = '/api/documents';
     }
   } catch (dbError) {
@@ -363,12 +343,10 @@ async function saveImage(
       threadId,
       filename,
       filepath,
-      isWorkspaceContext: !!isWorkspaceContext,
+      isWorkspaceContext: threadContext.isWorkspace,
     });
     throw dbError;
   }
-
-  const docId = result.lastInsertRowid as number;
 
   return {
     id: imageId,
@@ -401,7 +379,7 @@ async function saveImage(
 export async function generateImage(
   args: ImageGenToolArgs
 ): Promise<ImageGenResponse> {
-  const config = getImageGenConfig();
+  const config = await getImageGenConfig();
 
   // Check if enabled
   if (config.activeProvider === 'none') {
