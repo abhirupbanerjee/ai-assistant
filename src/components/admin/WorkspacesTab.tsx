@@ -1091,8 +1091,7 @@ function WorkspaceForm({
               value={formData.llmModel}
               onChange={(e) => {
                 const selected = availableModels.find((m) => m.id === e.target.value);
-                updateField('llmModel', e.target.value);
-                updateField('llmProvider', selected?.providerId || '');
+                setFormData({ ...formData, llmModel: e.target.value, llmProvider: selected?.providerId || '' });
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
