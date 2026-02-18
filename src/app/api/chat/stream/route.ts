@@ -383,6 +383,12 @@ export async function POST(request: NextRequest) {
               true, // Enable tools
               ragResult.categoryIds,
               {
+                // For English responses: forward content tokens directly to the client as they
+                // are generated (true streaming). For non-English: omit so tokens accumulate
+                // internally and can be translated before delivery.
+                onChunk: (targetLanguage && targetLanguage !== 'en')
+                  ? undefined
+                  : (text: string) => send({ type: 'chunk', content: text }),
                 onToolStart: (name, displayName) => {
                   send({ type: 'tool_start', name, displayName });
                 },
@@ -440,23 +446,21 @@ export async function POST(request: NextRequest) {
             // Combine all sources
             const allSources = [...ragResult.sources, ...webSources];
 
-            // ============ Phase 4: Stream Final Response ============
-            send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
-
-            // The response content is already in toolResult.content (non-streaming from tool execution)
-            // For true streaming of the final response, we would need to make a separate streaming call
-            // For now, we send the complete response in chunks to simulate streaming
+            // ============ Phase 4: Finalize Content ============
+            // For English: content tokens were already streamed token-by-token via onChunk
+            // during generateResponseWithTools above — no further action needed.
+            // For non-English: translate the accumulated content, then chunk it to the client.
 
             let fullContent = toolResult.content;
 
-            // Translate response if targetLanguage is not English
             if (targetLanguage && targetLanguage !== 'en') {
+              send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
               try {
                 const translationResult = await translate({
                   text: fullContent,
                   targetLanguage,
                   context: 'policy document assistant response',
-                  formalStyle: true, // Use formal style for policy documents
+                  formalStyle: true,
                 });
                 if (translationResult.success) {
                   fullContent = translationResult.translated;
@@ -465,17 +469,13 @@ export async function POST(request: NextRequest) {
                 }
               } catch (translationError) {
                 console.warn('[Stream] Translation failed, using original response:', translationError);
-                // Continue with original content if translation fails
               }
-            }
-
-            const chunkSize = 20; // Characters per chunk for smooth typing effect
-
-            for (let i = 0; i < fullContent.length; i += chunkSize) {
-              const chunk = fullContent.slice(i, i + chunkSize);
-              send({ type: 'chunk', content: chunk });
-              // Small delay for typing effect (in real streaming this would be natural)
-              await new Promise(resolve => setTimeout(resolve, 10));
+              // Stream translated content in chunks (true LLM streaming not possible post-translation)
+              const chunkSize = 20;
+              for (let i = 0; i < fullContent.length; i += chunkSize) {
+                send({ type: 'chunk', content: fullContent.slice(i, i + chunkSize) });
+                await new Promise(resolve => setTimeout(resolve, 10));
+              }
             }
 
             // ============ Phase 5: Compliance Checking ============

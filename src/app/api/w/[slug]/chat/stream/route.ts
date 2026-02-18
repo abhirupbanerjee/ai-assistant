@@ -340,6 +340,8 @@ export async function POST(
               true, // Enable tools
               ragResult.categoryIds,
               {
+                // Stream content tokens directly to the client as they are generated
+                onChunk: (text: string) => send({ type: 'chunk', content: text }),
                 onToolStart: (name, displayName) => {
                   send({ type: 'tool_start', name, displayName });
                 },
@@ -405,17 +407,9 @@ export async function POST(
             // Combine all sources
             const allSources = [...ragResult.sources, ...webSources];
 
-            // ============ Phase 4: Stream Final Response ============
-            send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
-
+            // ============ Phase 4: Finalize Content ============
+            // Content tokens were already streamed token-by-token via onChunk above.
             const fullContent = toolResult.content;
-            const chunkSize = 20;
-
-            for (let i = 0; i < fullContent.length; i += chunkSize) {
-              const chunk = fullContent.slice(i, i + chunkSize);
-              send({ type: 'chunk', content: chunk });
-              await new Promise(resolve => setTimeout(resolve, 10));
-            }
 
             // ============ Save Message ============
             // Convert sources to workspace format

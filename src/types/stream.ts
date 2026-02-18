@@ -268,6 +268,7 @@ export interface ProcessingDetails {
  * Used by generateResponseWithTools when streaming is enabled
  */
 export interface StreamingCallbacks {
+  onChunk?: (text: string) => void;
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (type: 'visualization' | 'document' | 'image' | 'diagram', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint) => void;

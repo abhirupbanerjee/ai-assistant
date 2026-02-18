@@ -120,6 +120,58 @@ export async function generateResponse(
   return response.choices[0].message.content || '';
 }
 
+/**
+ * Streams a single LLM completion, accumulating content tokens and tool call fragments.
+ * Calls onChunk for each content token (only fires when the model produces text, not tool calls).
+ * Returns the fully assembled { content, tool_calls } mirroring the non-streaming message shape.
+ */
+async function streamOneCompletion(
+  openai: OpenAI,
+  params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
+  onChunk?: (text: string) => void,
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageToolCall[] | undefined }> {
+  const stream = await openai.chat.completions.create({ ...params, stream: true });
+
+  let content = '';
+  const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta;
+    if (!delta) continue;
+
+    if (delta.content) {
+      content += delta.content;
+      onChunk?.(delta.content);
+    }
+
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index;
+        if (!toolCallMap.has(idx)) {
+          toolCallMap.set(idx, { id: '', name: '', arguments: '' });
+        }
+        const acc = toolCallMap.get(idx)!;
+        // id and name arrive complete in the first chunk for each tool call
+        if (tc.id) acc.id = tc.id;
+        if (tc.function?.name) acc.name = tc.function.name;
+        // arguments arrive as partial JSON fragments — concatenate
+        if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+      }
+    }
+  }
+
+  const tool_calls: OpenAI.Chat.ChatCompletionMessageToolCall[] | undefined =
+    toolCallMap.size > 0
+      ? [...toolCallMap.values()].map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.arguments },
+        }))
+      : undefined;
+
+  return { content: content || null, tool_calls };
+}
+
 export async function generateResponseWithTools(
   systemPrompt: string,
   conversationHistory: Message[],
@@ -326,7 +378,7 @@ export async function generateResponseWithTools(
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
   const effectiveMaxTokens = getEffectiveMaxTokens(effectiveModel);
 
-  const completionParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+  const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
     model: effectiveModel,
     messages,
     tools,
@@ -335,9 +387,8 @@ export async function generateResponseWithTools(
     temperature: llmSettings.temperature,
   };
 
-  // First API call
-  let response = await openai.chat.completions.create(completionParams);
-  let responseMessage = response.choices[0].message;
+  // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
+  let responseMessage = await streamOneCompletion(openai, completionParams, callbacks?.onChunk);
 
   // Tool call loop (max iterations to prevent runaway)
   let iterations = 0;
@@ -546,14 +597,17 @@ export async function generateResponseWithTools(
       break;
     }
 
-    // Get next response with tool results
+    // Get next response with tool results — streaming so the final text answer is forwarded live
     // Only apply forced tool_choice on first iteration, then let LLM decide
-    response = await openai.chat.completions.create({
-      ...completionParams,
-      messages,
-      tool_choice: toolChoiceAppliedByRouting ? 'auto' : completionParams.tool_choice,
-    });
-    responseMessage = response.choices[0].message;
+    responseMessage = await streamOneCompletion(
+      openai,
+      {
+        ...completionParams,
+        messages,
+        tool_choice: toolChoiceAppliedByRouting ? 'auto' : completionParams.tool_choice,
+      },
+      callbacks?.onChunk,
+    );
   }
 
   if (iterations >= MAX_TOOL_CALL_ITERATIONS && responseMessage.tool_calls) {

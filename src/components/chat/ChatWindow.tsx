@@ -326,9 +326,19 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Auto-scroll to bottom (only when user hasn't scrolled up)
   useEffect(() => {
     if (!isScrolledUp) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      if (streamingState.isStreaming) {
+        // Instant scroll during streaming — smooth scroll causes competing animations
+        // as the scroll target keeps moving with each chunk, creating visible shake/jitter
+        const container = messagesContainerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      } else {
+        // Smooth scroll for new messages (non-streaming)
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
     }
-  }, [messages, streamingState.currentContent, isScrolledUp]);
+  }, [messages, streamingState.currentContent, isScrolledUp, streamingState.isStreaming]);
 
   const handleMessagesScroll = useCallback(() => {
     const container = messagesContainerRef.current;
