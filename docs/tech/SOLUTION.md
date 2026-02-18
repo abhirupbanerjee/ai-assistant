@@ -39,9 +39,9 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            │            │            │            │
            ▼            ▼            ▼            ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│     SQLITE      │ │    CHROMADB     │ │     REDIS       │ │   FILESYSTEM    │
-│   (Metadata)    │ │  Vector Store   │ │  Cache/Session  │ │  Threads/Docs   │
-│ Users,Cats,Docs │ │  (Embeddings)   │ │                 │ │                 │
+│    DATABASE     │ │  VECTOR STORE   │ │     REDIS       │ │   FILESYSTEM    │
+│ SQLite (default)│ │ChromaDB(default)│ │  Cache/Session  │ │  Threads/Docs   │
+│ or PostgreSQL   │ │   or Qdrant     │ │                 │ │                 │
 └─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
            │
            ▼

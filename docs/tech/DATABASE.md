@@ -2,17 +2,60 @@
 
 ## Overview
 
-Policy Bot uses a hybrid storage approach:
-- **SQLite**: Structured metadata (users, categories, documents, threads, messages, settings)
-- **ChromaDB**: Vector embeddings for semantic search (per-category collections)
+Policy Bot uses a pluggable, hybrid storage approach:
+- **Database** (SQLite or PostgreSQL): Structured metadata — users, categories, documents, threads, messages, settings
+- **Vector Store** (ChromaDB or Qdrant): Vector embeddings for semantic search (per-category collections)
 - **Redis**: Caching (RAG responses, Tavily results) and session management
 - **Filesystem**: PDF files (global-docs, thread uploads)
 
+Both database and vector store providers implement the same interface — application code is provider-agnostic. Selection is controlled by environment variables:
+
+| Variable | Options | Default |
+|----------|---------|---------|
+| `DATABASE_PROVIDER` | `sqlite` \| `postgres` | `sqlite` |
+| `VECTOR_STORE_PROVIDER` | `chromadb` \| `qdrant` | `chromadb` |
+
+See [INFRASTRUCTURE.md](INFRASTRUCTURE.md#infrastructure-selection-guide) for guidance on choosing the right combination.
+
 ---
 
-## 1. SQLite Database Schema
+## 1. Primary Database Schema (SQLite / PostgreSQL)
 
-The SQLite database (`data/policy-bot.db`) stores all structured metadata with ACID transactions and efficient queries.
+Both providers use the same schema and table structure. The database stores all structured metadata with ACID transactions.
+
+### Database Abstraction Layer (Kysely)
+
+The application uses [Kysely](https://kysely.dev) as a type-safe query builder with a compatibility layer that adapts queries for either provider:
+
+```
+src/lib/db/
+  kysely.ts          → Kysely instance factory (reads DATABASE_PROVIDER)
+  db-types.ts        → Shared TypeScript type definitions
+  compat/            → Async wrapper functions (same API for both providers)
+    users.ts
+    categories.ts
+    documents.ts
+    threads.ts
+    config.ts
+    backup.ts
+  schema/
+    postgres.sql     → PostgreSQL schema (auto-applied on first container start)
+```
+
+**SQLite** (`DATABASE_PROVIDER=sqlite`):
+- File: `data/app/policybot.db`
+- WAL mode enabled for improved concurrency
+- Zero configuration required
+
+**PostgreSQL** (`DATABASE_PROVIDER=postgres`):
+- Schema file: `src/lib/db/schema/postgres.sql`
+- Auto-initialised via Docker's `/docker-entrypoint-initdb.d/` on first start
+- Connection pool: max 10 connections, 30s idle timeout
+- Requires: `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+
+### SQLite-Specific Notes
+
+The SQLite database (`data/app/policybot.db`) uses WAL mode and is compatible with better-sqlite3 for synchronous access patterns.
 
 ### Entity Relationship Diagram
 
@@ -1891,14 +1934,16 @@ export interface WorkspaceAnalytics {
 
 ---
 
-## 4. ChromaDB Schema
+## 4. Vector Store Schema (ChromaDB / Qdrant)
+
+Both providers use the same collection naming convention and document schema. The active provider is selected via `VECTOR_STORE_PROVIDER`.
 
 ### Category-Based Collections
 
-Each category has its own ChromaDB collection with the naming pattern `policy_{category_slug}`:
+Each category has its own collection with the naming pattern `policy_{category_slug}`:
 
 ```
-ChromaDB Collections:
+Collections (both ChromaDB and Qdrant use same naming):
 ├── policy_hr           ← HR category documents
 ├── policy_finance      ← Finance category documents
 ├── policy_it           ← IT category documents
@@ -1907,7 +1952,26 @@ ChromaDB Collections:
 
 **Global Documents**: When `is_global=1`, document chunks are indexed into ALL category collections.
 
-### Collection Configuration
+### Chunk Document Schema (Both Providers)
+
+```typescript
+interface VectorDocument {
+  id: string;           // Format: "{docId}-chunk-{index}"
+  embedding: number[];  // 3072 dimensions (text-embedding-3-large)
+  document: string;     // The actual chunk text
+  metadata: {
+    documentId: number;      // Parent document ID (database)
+    documentName: string;    // Original filename
+    pageNumber: number;      // Page where chunk appears
+    chunkIndex: number;      // Position in document
+    source: 'global' | 'user';  // Document source type
+    threadId?: string;       // Only for user uploads
+    userId?: number;         // Only for user uploads
+  }
+}
+```
+
+### ChromaDB Configuration
 
 ```typescript
 {
@@ -1918,21 +1982,14 @@ ChromaDB Collections:
 }
 ```
 
-### Chunk Document Schema
+### Qdrant Configuration
 
 ```typescript
-interface ChromaDocument {
-  id: string;           // Format: "{docId}-chunk-{index}"
-  embedding: number[];  // 3072 dimensions (text-embedding-3-large)
-  document: string;     // The actual chunk text
-  metadata: {
-    documentId: number;      // Parent document ID (SQLite)
-    documentName: string;    // Original filename
-    pageNumber: number;      // Page where chunk appears
-    chunkIndex: number;      // Position in document
-    source: 'global' | 'user';  // Document source type
-    threadId?: string;       // Only for user uploads
-    userId?: number;         // Only for user uploads
+{
+  name: "policy_{slug}",
+  vectors: {
+    size: 3072,           // text-embedding-3-large dimensions
+    distance: "Cosine"
   }
 }
 ```

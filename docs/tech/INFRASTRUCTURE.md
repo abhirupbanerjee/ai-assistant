@@ -2,10 +2,20 @@
 
 ## Overview
 
-Policy Bot uses Docker Compose for containerized deployment with three environments:
+Policy Bot uses Docker Compose for containerized deployment with a flexible, profile-based service selection system:
 - **Local Development**: Local services with hot reload
-- **Pre-Production**: Full stack with TLS (policybot.abhirup.app)
-- **Production**: To be configured later
+- **Production**: Full stack with Traefik TLS, provider selected via Docker profiles
+
+### Infrastructure Provider Choices
+
+Policy Bot supports pluggable database and vector store backends, selected at deployment time:
+
+| Component | Options | Selection Method |
+|-----------|---------|-----------------|
+| **Database** | SQLite (default) or PostgreSQL | `DATABASE_PROVIDER` env var + Docker profile |
+| **Vector Store** | ChromaDB or Qdrant | `VECTOR_STORE_PROVIDER` env var + Docker profile |
+
+> **Important:** Always use explicit `--profile` flags — do not rely on `COMPOSE_PROFILES` env var (unreliable across Docker versions).
 
 ---
 
@@ -32,20 +42,23 @@ Policy Bot uses Docker Compose for containerized deployment with three environme
 │         │              │              │              │                   │
 │         ▼              ▼              ▼              ▼                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
-│  │   SQLITE    │ │  CHROMADB   │ │    REDIS    │ │   LITELLM   │        │
-│  │  /app/data  │ │  Port 8000  │ │  Port 6379  │ │  Port 4000  │        │
-│  │  /policy-   │ │  (internal) │ │  (internal) │ │  (internal) │        │
-│  │  bot.db     │ └─────────────┘ └─────────────┘ └─────────────┘        │
-│  └─────────────┘       │              │              │                   │
-│         │              ▼              ▼              │                   │
-│         │        ┌─────────────┐ ┌─────────────┐    │                   │
-│         │        │ chroma_data │ │ redis_data  │    │                   │
-│         │        │  (volume)   │ │  (volume)   │    │                   │
-│         │        └─────────────┘ └─────────────┘    │                   │
+│  │  DATABASE   │ │VECTOR STORE │ │    REDIS    │ │   LITELLM   │        │
+│  │ SQLite  or  │ │ ChromaDB or │ │  Port 6379  │ │  Port 4000  │        │
+│  │ PostgreSQL  │ │   Qdrant    │ │  (internal) │ │  (internal) │        │
+│  │  Port 5432* │ │ Port 8000*  │ │             │ │             │        │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘        │
+│  * optional containers, via Docker profiles                              │
+│         │              │              │              │                   │
+│         ▼              ▼              ▼              │                   │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │                   │
+│  │  data/app   │ │ data/chroma │ │ data/redis  │    │                   │
+│  │  (sqlite or │ │ or data/    │ │  (volume)   │    │                   │
+│  │  app files) │ │   qdrant    │ └─────────────┘    │                   │
+│  └─────────────┘ └─────────────┘                    │                   │
 │         │                                           │                   │
 │         ▼                                           ▼                   │
 │  ┌─────────────┐                     ┌────────────────────────────┐     │
-│  │  app_data   │ ◄── SQLite DB +     │      EXTERNAL SERVICES     │     │
+│  │  app_data   │ ◄── DB files +      │      EXTERNAL SERVICES     │     │
 │  │  (volume)   │     global-docs +   │  ┌────────┐ ┌────────┐     │     │
 │  └─────────────┘     threads         │  │ OpenAI │ │Mistral │     │     │
 │                                      │  ├────────┤ ├────────┤     │     │
@@ -61,42 +74,65 @@ Policy Bot uses Docker Compose for containerized deployment with three environme
 
 ## Data Storage Architecture
 
-### SQLite Database
+### Primary Database (SQLite or PostgreSQL)
 
-Policy Bot uses SQLite (via better-sqlite3) for all metadata storage:
+Policy Bot stores all structured metadata in the primary database. The provider is selected via `DATABASE_PROVIDER` env var:
 
-| Data | Storage Location | Notes |
-|------|------------------|-------|
-| Users | `data/policy-bot.db` | users table |
-| Categories | `data/policy-bot.db` | categories table |
-| Documents metadata | `data/policy-bot.db` | documents, document_categories tables |
-| Subscriptions | `data/policy-bot.db` | user_subscriptions table |
-| Super user assignments | `data/policy-bot.db` | super_user_categories table |
-| Threads | `data/policy-bot.db` | threads, thread_categories tables |
-| Messages | `data/policy-bot.db` | messages table |
-| Settings | `data/policy-bot.db` | settings table |
+| Data | Table | Notes |
+|------|-------|-------|
+| Users | `users` | Authentication, roles |
+| Categories | `categories` | Category definitions |
+| Documents metadata | `documents`, `document_categories` | Upload status, category links |
+| Subscriptions | `user_subscriptions` | User → category access |
+| Super user assignments | `super_user_categories` | Category management rights |
+| Threads | `threads`, `thread_categories` | Chat sessions |
+| Messages | `messages` | Chat history |
+| Settings | `settings` | System configuration |
 
-### ChromaDB Collections
+**SQLite** (`DATABASE_PROVIDER=sqlite`):
+- File at `data/app/policybot.db`
+- Zero configuration, WAL mode enabled for concurrency
+- Best for: development, small deployments (<50 users)
 
-Category-based vector storage:
+**PostgreSQL** (`DATABASE_PROVIDER=postgres`):
+- Container: `policy-bot-postgres` (port 5432 internal)
+- Schema auto-initialised on first start via `/docker-entrypoint-initdb.d/`
+- Best for: production, high-concurrency, 50+ users
+
+### Vector Store (ChromaDB or Qdrant)
+
+Stores document embeddings for semantic search. The provider is selected via `VECTOR_STORE_PROVIDER` env var. Both use the same collection naming pattern:
 
 | Collection Pattern | Purpose |
 |-------------------|---------|
 | `policy_hr` | HR category documents |
 | `policy_finance` | Finance category documents |
-| `policy_it` | IT category documents |
 | `policy_{slug}` | Dynamic per category |
 
 Global documents are indexed into ALL category collections.
+
+**ChromaDB** (`VECTOR_STORE_PROVIDER=chromadb`):
+- Container: `policy-bot-chroma` (port 8000 internal)
+- Data at `data/chroma/`
+- Best for: development, <100K document chunks
+
+**Qdrant** (`VECTOR_STORE_PROVIDER=qdrant`):
+- Container: `policy-bot-qdrant` (port 6333 internal)
+- Data at `data/qdrant/`
+- Memory limit: 512MB (configurable in docker-compose)
+- Best for: production, large document libraries, >100K chunks
 
 ### Filesystem
 
 | Path | Purpose |
 |------|---------|
-| `data/policy-bot.db` | SQLite database |
-| `data/global-docs/` | Admin-uploaded policy PDFs |
-| `data/threads/{userId}/{threadId}/uploads/` | User-uploaded PDFs |
-| `data/threads/{userId}/{threadId}/outputs/` | AI-generated files |
+| `data/app/policybot.db` | SQLite database (if using SQLite) |
+| `data/postgres/` | PostgreSQL data directory (if using PostgreSQL) |
+| `data/chroma/` | ChromaDB vector data (if using ChromaDB) |
+| `data/qdrant/` | Qdrant vector data (if using Qdrant) |
+| `data/app/global-docs/` | Admin-uploaded policy PDFs |
+| `data/app/threads/{userId}/{threadId}/uploads/` | User-uploaded PDFs |
+| `data/app/threads/{userId}/{threadId}/outputs/` | AI-generated files |
 
 ---
 
@@ -119,15 +155,22 @@ COHERE_API_KEY=your-cohere-api-key
 
 # LiteLLM Proxy (Optional - for multi-provider support)
 LITELLM_MASTER_KEY=sk-litellm-master-change-this
-LITELLM_HOST=http://localhost:4000
 
 # Embeddings (defaults shown)
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
 
-# Chroma
+# Database provider: sqlite | postgres (default: sqlite)
+DATABASE_PROVIDER=sqlite
+SQLITE_DB_PATH=./data/policybot.db
+
+# Vector store provider: chromadb | qdrant (default: chromadb)
+VECTOR_STORE_PROVIDER=chromadb
 CHROMA_HOST=localhost
 CHROMA_PORT=8000
+# Qdrant (if VECTOR_STORE_PROVIDER=qdrant)
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -138,13 +181,13 @@ NEXTAUTH_SECRET=local-dev-secret-change-in-production
 AUTH_DISABLED=true
 
 # Admin
-ADMIN_EMAILS=mailabhirupbanerjee@gmail.com
+ADMIN_EMAILS=admin@example.com
 
 # Storage
 DATA_DIR=./data
 ```
 
-### Pre-Production (.env.preprod)
+### Production (.env)
 
 ```env
 # OpenAI
@@ -161,21 +204,34 @@ COHERE_API_KEY=your-cohere-api-key
 
 # LiteLLM Proxy
 LITELLM_MASTER_KEY=sk-litellm-master-change-this
-LITELLM_HOST=http://litellm:4000
 
 # Embeddings
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
 
-# Chroma (internal Docker network)
+# Database provider: sqlite | postgres
+# Must match the --profile flag used with docker compose
+DATABASE_PROVIDER=postgres
+POSTGRES_USER=policybot
+POSTGRES_PASSWORD=your-strong-password
+POSTGRES_DB=policybot
+
+# Vector store provider: chromadb | qdrant
+# Must match the --profile flag used with docker compose
+VECTOR_STORE_PROVIDER=qdrant
 CHROMA_HOST=chroma
 CHROMA_PORT=8000
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
+
+# Max upload size for backup restore (requires rebuild to change)
+MAX_UPLOAD_SIZE=500mb
 
 # Redis (internal Docker network)
 REDIS_URL=redis://redis:6379
 
 # Auth
-NEXTAUTH_URL=https://policybot.abhirup.app
+NEXTAUTH_URL=https://your-domain.com
 NEXTAUTH_SECRET=generate-32-char-random-string
 
 # Azure AD OAuth
@@ -183,207 +239,74 @@ AZURE_AD_CLIENT_ID=your-azure-client-id
 AZURE_AD_CLIENT_SECRET=your-azure-client-secret
 AZURE_AD_TENANT_ID=your-azure-tenant-id
 
-# Google OAuth
+# Google OAuth (optional)
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Access Control
 ACCESS_MODE=allowlist
-# ALLOWED_DOMAINS=example.com,company.org  # Only used when ACCESS_MODE=domain
 
 AUTH_DISABLED=false
 
 # Admin
-ADMIN_EMAILS=mailabhirupbanerjee@gmail.com
+ADMIN_EMAILS=admin@example.com
 
 # Storage
 DATA_DIR=/app/data
 
 # Domain
-DOMAIN=policybot.abhirup.app
-ACME_EMAIL=mailabhirupbanerjee@gmail.com
-```
-
-### Production (.env.prod)
-
-```env
-# To be configured later
+DOMAIN=your-domain.com
+ACME_EMAIL=admin@example.com
 ```
 
 ---
 
-## Docker Compose Files
+## Docker Compose — Profile-Based Services
 
-### Development Stack (docker-compose.dev.yml)
+`docker-compose.yml` uses Docker profiles to start only the services you need. Always use explicit `--profile` flags.
 
-For local development - runs only Chroma and Redis.
+### Profile Reference
 
-```yaml
-version: '3.8'
+```
+Vector Store (choose one):
+  --profile chromadb    → ChromaDB   (set VECTOR_STORE_PROVIDER=chromadb)
+  --profile qdrant      → Qdrant     (set VECTOR_STORE_PROVIDER=qdrant)
 
-services:
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: policy-bot-chroma
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      - ANONYMIZED_TELEMETRY=false
-      - ALLOW_RESET=true
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+Database (choose one):
+  (no profile)          → SQLite     (set DATABASE_PROVIDER=sqlite)
+  --profile postgres    → PostgreSQL (set DATABASE_PROVIDER=postgres)
 
-  redis:
-    image: redis:7-alpine
-    container_name: policy-bot-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-volumes:
-  chroma_data:
-    name: policy-bot-chroma-data
-  redis_data:
-    name: policy-bot-redis-data
+Always-on services (no profile needed):
+  traefik, app, redis, litellm
 ```
 
-### Pre-Production/Production Stack (docker-compose.yml)
+### Startup Command Examples
 
-Full stack with Traefik for TLS.
+```bash
+# SQLite + ChromaDB
+docker compose --profile chromadb up -d
 
-```yaml
-services:
-  traefik:
-    image: traefik:v3.6.1
-    container_name: policy-bot-traefik
-    command:
-      - "--api.insecure=false"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - letsencrypt:/letsencrypt
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
+# SQLite + Qdrant
+docker compose --profile qdrant up -d
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: policy-bot-app
-    environment:
-      - NODE_ENV=production
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
-      - REDIS_URL=redis://redis:6379
-      - DATA_DIR=/app/data
-    env_file:
-      - .env
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.app.entrypoints=websecure"
-      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
-      - "traefik.http.services.app.loadbalancer.server.port=3000"
-    volumes:
-      - app_data:/app/data
-    depends_on:
-      chroma:
-        condition: service_started
-      redis:
-        condition: service_healthy
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
+# PostgreSQL + ChromaDB
+docker compose --profile postgres --profile chromadb up -d
 
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: policy-bot-chroma
-    volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      - ANONYMIZED_TELEMETRY=false
-      - ALLOW_RESET=false
-      - IS_PERSISTENT=TRUE
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: policy-bot-redis
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
-
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    container_name: policy-bot-litellm
-    volumes:
-      - ./litellm_config.yaml:/app/config.yaml
-    env_file:
-      - .env
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
-    command: --config /app/config.yaml --port 4000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-networks:
-  policy-bot-network:
-    name: policy-bot-network
-
-volumes:
-  letsencrypt:
-    name: policy-bot-letsencrypt
-  app_data:
-    name: policy-bot-app-data
-  chroma_data:
-    name: policy-bot-chroma-data
-  redis_data:
-    name: policy-bot-redis-data
+# PostgreSQL + Qdrant (production recommended)
+docker compose --profile postgres --profile qdrant up -d
 ```
 
-**Note**: ChromaDB no longer uses a healthcheck as the Python-based check was unreliable. The app uses `service_started` dependency instead.
+### Shutdown — Use Same Profiles as Startup
+
+```bash
+# Must include same profiles to stop profile-controlled containers
+docker compose --profile postgres --profile qdrant down
+
+# Stop ALL (useful when unsure which profiles are active)
+docker compose --profile postgres --profile chromadb --profile qdrant down
+```
+
+> **Note:** `COMPOSE_PROFILES` env var is not reliable across Docker versions. Always pass `--profile` flags explicitly on the command line.
 
 ---
 
@@ -442,6 +365,84 @@ CMD ["node", "server.js"]
 ```
 
 **Note**: Uses `npm ci` (not `npm ci --only=production`) because TypeScript and other devDependencies are required during the build stage.
+
+---
+
+## Infrastructure Selection Guide
+
+Before deploying, choose the right combination of database and vector store for your scale.
+
+### Choosing a Database
+
+| Factor | SQLite | PostgreSQL |
+|--------|--------|------------|
+| Users | Up to ~50 | 50+ |
+| Concurrent writes | Limited (WAL mode) | High (connection pooling, max 10) |
+| Setup | Zero config | Auto-init via Docker |
+| Ops overhead | Minimal | Low |
+| Backup method | Admin UI + file copy | Admin UI + pg_dump |
+| HA / replication | No | Yes (external managed DB) |
+| Best for | Dev, pilots, small orgs | Production, growing orgs |
+
+**Use SQLite when:** Small deployment, single server, simplest operations, PoC/staging.
+
+**Use PostgreSQL when:** 50+ concurrent users, high document ingestion volume, existing PostgreSQL infrastructure, or planning for future scaling.
+
+### Choosing a Vector Store
+
+| Factor | ChromaDB | Qdrant |
+|--------|----------|--------|
+| Document chunks | Up to ~100K | 100K+ |
+| Memory usage | Lower | ~512MB baseline |
+| Advanced filtering | Basic | Advanced (payload filters) |
+| Scalability | Single node | Cluster-ready |
+| Setup | Very easy | Easy |
+| Best for | Dev, small-medium libraries | Production, large libraries |
+
+**Use ChromaDB when:** Getting started, <100K document chunks, minimal overhead preferred.
+
+**Use Qdrant when:** Large document libraries, need advanced metadata filtering, high-throughput search, or future cluster deployment.
+
+### Recommended Combinations
+
+| Scenario | Database | Vector Store | Command |
+|----------|----------|--------------|---------|
+| Development | SQLite | ChromaDB | `--profile chromadb` |
+| Small org (<50 users) | SQLite | ChromaDB | `--profile chromadb` |
+| Medium org (50–200 users) | PostgreSQL | ChromaDB | `--profile postgres --profile chromadb` |
+| Large org (200+ users) | PostgreSQL | Qdrant | `--profile postgres --profile qdrant` |
+| High-volume RAG | PostgreSQL | Qdrant | `--profile postgres --profile qdrant` |
+
+### Migration Path (Switching Providers)
+
+Migrating between providers is done via the Admin UI backup/restore flow:
+
+1. Go to **Admin → Backup** → Create full backup on the current system
+2. Update `DATABASE_PROVIDER` / `VECTOR_STORE_PROVIDER` in `.env`
+3. Bring up new containers with updated profiles
+4. Go to **Admin → Restore** → Upload backup and restore
+5. Re-index documents if switching vector stores (use the re-embed option in restore)
+
+### Scalability Signals
+
+**When to move from SQLite → PostgreSQL:**
+- Log errors: `SQLITE_BUSY` or lock timeouts during heavy document ingestion
+- Slow admin dashboard queries during peak usage
+
+**When to move from ChromaDB → Qdrant:**
+- Similarity search response time >2 seconds
+- High memory usage on the chroma container
+- Collections growing beyond 100K chunks
+
+### Tuning for Large Deployments
+
+**PostgreSQL:**
+- Default connection pool: 10 max connections (sufficient for most cases)
+- For very high traffic, use a managed PostgreSQL (Azure Database, AWS RDS, Supabase)
+
+**Qdrant:**
+- Default memory limit: 512MB (set in `docker-compose.yml` `deploy.resources.limits`)
+- Increase to 1–2GB for collections >500K vectors by editing docker-compose.yml
 
 ---
 
@@ -550,17 +551,21 @@ cd policy-bot
 
 # 3. Create production environment file
 cp .env.example .env
-# Edit .env with production values
-
-# Required values:
+# Edit .env — set required values:
 # - OPENAI_API_KEY
 # - NEXTAUTH_SECRET (generate with: openssl rand -base64 32)
-# - AZURE_AD_* credentials
-# - DOMAIN=policybot.abhirup.app
-# - ACME_EMAIL=mailabhirupbanerjee@gmail.com
+# - DATABASE_PROVIDER=postgres (or sqlite)
+# - VECTOR_STORE_PROVIDER=qdrant (or chromadb)
+# - POSTGRES_PASSWORD (if using postgres)
+# - DOMAIN=your-domain.com
+# - ACME_EMAIL=admin@example.com
 
-# 4. Build and start
-docker compose up -d --build
+# 4. Choose profiles matching your DATABASE_PROVIDER and VECTOR_STORE_PROVIDER
+# Example: PostgreSQL + Qdrant
+docker compose --profile postgres --profile qdrant up -d --build
+
+# Example: SQLite + ChromaDB
+# docker compose --profile chromadb up -d --build
 
 # 5. Check status
 docker compose ps
@@ -610,8 +615,15 @@ docker compose logs -f app
 # All logs
 docker compose logs -f
 
-# SQLite database size
-du -h data/policy-bot.db
+# Database size (SQLite)
+du -h data/app/policybot.db
+
+# Database size (PostgreSQL)
+docker exec policy-bot-postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
+
+# Vector store data size
+du -sh data/chroma/   # if using ChromaDB
+du -sh data/qdrant/   # if using Qdrant
 ```
 
 ### Backup
@@ -701,20 +713,34 @@ echo "Restore completed from: $DATE"
 
 ### Database Maintenance
 
+#### SQLite (`DATABASE_PROVIDER=sqlite`)
+
 ```bash
-# Vacuum SQLite database (reclaim space)
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'VACUUM;'"
+# Vacuum database (reclaim space — run monthly)
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'VACUUM;'"
 
-# Check database integrity
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'PRAGMA integrity_check;'"
-
-# View database statistics
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT * FROM sqlite_master WHERE type=\"table\";'"
+# Check integrity
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'PRAGMA integrity_check;'"
 
 # Count records
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(*) FROM users;'"
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(*) FROM categories;'"
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(*) FROM documents;'"
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'SELECT COUNT(*) FROM users;'"
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'SELECT COUNT(*) FROM documents;'"
+```
+
+#### PostgreSQL (`DATABASE_PROVIDER=postgres`)
+
+```bash
+# Check connection and record counts
+docker exec policy-bot-postgres psql -U policybot -c "SELECT COUNT(*) FROM users;"
+docker exec policy-bot-postgres psql -U policybot -c "SELECT COUNT(*) FROM documents;"
+
+# Database size
+docker exec policy-bot-postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
+
+# Active connections
+docker exec policy-bot-postgres psql -U policybot -c "SELECT count(*) FROM pg_stat_activity;"
+
+# Note: PostgreSQL performs auto-vacuum automatically — no manual VACUUM needed
 ```
 
 ### Updates
@@ -723,8 +749,8 @@ docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(
 # Pull latest code
 git pull origin main
 
-# Rebuild and restart
-docker compose up -d --build
+# Rebuild and restart (use same profiles as your deployment)
+docker compose --profile postgres --profile qdrant up -d --build
 
 # Verify
 docker compose ps
@@ -735,9 +761,9 @@ docker compose logs -f app
 
 ```bash
 # If update fails, rollback to previous image
-docker compose down
+docker compose --profile postgres --profile qdrant down
 git checkout <previous-commit>
-docker compose up -d --build
+docker compose --profile postgres --profile qdrant up -d --build
 ```
 
 ### Progressive Web App (PWA) Deployment
@@ -912,55 +938,71 @@ Policy Bot's PWA implementation has intentional limitations:
 
 ### Endpoints
 
-| Service | URL | Expected |
-|---------|-----|----------|
-| App | `/api/auth/session` | 200 OK |
-| Chroma | `http://chroma:8000/api/v1/heartbeat` | 200 OK |
-| Redis | `redis-cli ping` | PONG |
-| LiteLLM | `http://litellm:4000/health` | 200 OK |
+| Service | URL / Command | Expected | When Active |
+|---------|--------------|----------|-------------|
+| App | `/api/auth/session` | 200 OK | Always |
+| Redis | `redis-cli ping` | PONG | Always |
+| LiteLLM | `http://litellm:4000/health/liveliness` | 200 OK | Always |
+| ChromaDB | `http://chroma:8000/api/v1/heartbeat` | 200 OK | `--profile chromadb` |
+| Qdrant | `http://qdrant:6333/readyz` | 200 OK | `--profile qdrant` |
+| PostgreSQL | `pg_isready -U policybot` | accepting | `--profile postgres` |
+
+> **Tip:** Use Admin → Dashboard → Infrastructure to check provider status via the UI.
 
 ### Health Check Script
 
 ```bash
 #!/bin/bash
-# healthcheck.sh
+# healthcheck.sh — adjust APP_URL and uncomment active providers
 
-APP_URL="https://policybot.abhirup.app"
+APP_URL="https://your-domain.com"
 
-# Check app
+# Always-on services
 if curl -sf "$APP_URL/api/auth/session" > /dev/null; then
   echo "✓ App: healthy"
 else
   echo "✗ App: unhealthy"
 fi
 
-# Check Chroma
-if docker exec policy-bot-chroma curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null; then
-  echo "✓ Chroma: healthy"
-else
-  echo "✗ Chroma: unhealthy"
-fi
-
-# Check Redis
 if docker exec policy-bot-redis redis-cli ping | grep -q PONG; then
   echo "✓ Redis: healthy"
 else
   echo "✗ Redis: unhealthy"
 fi
 
-# Check LiteLLM
-if docker exec policy-bot-litellm curl -sf http://localhost:4000/health > /dev/null; then
+if docker exec policy-bot-litellm curl -sf http://localhost:4000/health/liveliness > /dev/null; then
   echo "✓ LiteLLM: healthy"
 else
   echo "✗ LiteLLM: unhealthy"
 fi
 
-# Check SQLite database
-if docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT 1;'" | grep -q 1; then
-  echo "✓ SQLite: healthy"
-else
-  echo "✗ SQLite: unhealthy"
-fi
+# ChromaDB (uncomment if VECTOR_STORE_PROVIDER=chromadb)
+# if docker exec policy-bot-chroma curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null; then
+#   echo "✓ ChromaDB: healthy"
+# else
+#   echo "✗ ChromaDB: unhealthy"
+# fi
+
+# Qdrant (uncomment if VECTOR_STORE_PROVIDER=qdrant)
+# if docker exec policy-bot-qdrant curl -sf http://localhost:6333/readyz > /dev/null; then
+#   echo "✓ Qdrant: healthy"
+# else
+#   echo "✗ Qdrant: unhealthy"
+# fi
+
+# PostgreSQL (uncomment if DATABASE_PROVIDER=postgres)
+# if docker exec policy-bot-postgres pg_isready -U policybot | grep -q "accepting"; then
+#   echo "✓ PostgreSQL: healthy"
+# else
+#   echo "✗ PostgreSQL: unhealthy"
+# fi
+
+# SQLite (uncomment if DATABASE_PROVIDER=sqlite)
+# if docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'SELECT 1;'" | grep -q 1; then
+#   echo "✓ SQLite: healthy"
+# else
+#   echo "✗ SQLite: unhealthy"
+# fi
 ```
 
 ---
@@ -1005,8 +1047,9 @@ fi
 - [ ] Update base images monthly
 - [ ] Rotate secrets quarterly
 - [ ] Review user allowlist regularly
-- [ ] Monitor SQLite database size
-- [ ] Run database VACUUM monthly
+- [ ] Monitor database storage size (`du -sh data/app/` or PostgreSQL `pg_database_size`)
+- [ ] SQLite: run VACUUM monthly; PostgreSQL: auto-vacuumed (no action needed)
+- [ ] Monitor vector store data size (`du -sh data/chroma/` or `data/qdrant/`)
 
 ---
 
@@ -1030,14 +1073,43 @@ dig policybot.abhirup.app
 #### ChromaDB Connection Failed
 
 ```bash
-# Check if running
-docker compose ps chroma
+# Check if running (requires --profile chromadb)
+docker compose --profile chromadb ps chroma
 
 # Check logs
-docker compose logs chroma
+docker compose --profile chromadb logs chroma
 
 # Test connection from app container
 docker exec policy-bot-app curl http://chroma:8000/api/v1/heartbeat
+```
+
+#### Qdrant Connection Failed
+
+```bash
+# Check if running (requires --profile qdrant)
+docker compose --profile qdrant ps qdrant
+
+# Check logs
+docker compose --profile qdrant logs qdrant
+
+# Test connection
+docker exec policy-bot-qdrant curl http://localhost:6333/readyz
+```
+
+#### PostgreSQL Connection Failed
+
+```bash
+# Check if running (requires --profile postgres)
+docker compose --profile postgres ps postgres
+
+# Check logs
+docker compose --profile postgres logs postgres
+
+# Test connection
+docker exec policy-bot-postgres pg_isready -U policybot
+
+# Check schema was initialised (should show 49+ tables)
+docker exec policy-bot-postgres psql -U policybot -c "\dt" | wc -l
 ```
 
 #### Redis Connection Failed
@@ -1057,16 +1129,12 @@ docker exec policy-bot-redis redis-cli ping
 
 ```bash
 # Check database file exists
-docker exec policy-bot-app ls -la /app/data/policy-bot.db
-
-# Check permissions
-docker exec policy-bot-app stat /app/data/policy-bot.db
+docker exec policy-bot-app ls -la /app/data/policybot.db
 
 # Check integrity
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'PRAGMA integrity_check;'"
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'PRAGMA integrity_check;'"
 
-# If corrupted, restore from backup
-./restore.sh YYYYMMDD_HHMMSS
+# If corrupted, restore from Admin UI backup or file backup
 ```
 
 #### Out of Memory
@@ -1105,13 +1173,23 @@ sudo swapon /swapfile
 
 ### Storage Breakdown
 
-| Component | Typical Size |
-|-----------|--------------|
-| SQLite database | 10-100 MB |
-| Global documents | 100 MB - 1 GB |
-| ChromaDB vectors | 50-500 MB |
-| Redis cache | 10-100 MB |
-| Thread data | 50 MB - 500 MB |
+| Component | Typical Size | Notes |
+|-----------|--------------|-------|
+| SQLite database | 10–100 MB | `data/app/policybot.db` |
+| PostgreSQL data | 50–500 MB | `data/postgres/` |
+| Global documents | 100 MB – 1 GB | `data/app/global-docs/` |
+| ChromaDB vectors | 50–500 MB | `data/chroma/` |
+| Qdrant vectors | 100 MB – 2 GB | `data/qdrant/` |
+| Redis cache | 10–100 MB | Sessions + RAG cache |
+| Thread data | 50 MB – 500 MB | Uploads and outputs |
+
+### Additional RAM by Provider
+
+| Provider | Additional RAM |
+|----------|---------------|
+| ChromaDB | ~100–300 MB |
+| Qdrant | ~512 MB (hard limit in docker-compose) |
+| PostgreSQL | ~100–256 MB |
 
 ### Autonomous Agent (Beta)
 

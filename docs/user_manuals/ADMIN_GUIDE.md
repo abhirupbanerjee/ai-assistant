@@ -84,8 +84,8 @@ The dashboard displays system component status:
 
 | Component | Description |
 |-----------|-------------|
-| **Database** | SQLite database connection status |
-| **Vector Store** | Embedding/search engine status |
+| **Database** | Primary database connection status (SQLite or PostgreSQL) |
+| **Vector Store** | Vector store connection status (ChromaDB or Qdrant) |
 | **LLM Proxy** | LiteLLM proxy connection |
 | **OCR Service** | Document processing pipeline |
 
@@ -100,7 +100,7 @@ Widgets showing recent system activity:
 
 | Tab | Purpose |
 |-----|---------|
-| **Dashboard** | Overview and system health |
+| **Dashboard** | Overview, system health, and infrastructure status |
 | **Stats** | Detailed usage statistics |
 | **Categories** | Manage document categories |
 | **Documents** | All documents across categories |
@@ -109,6 +109,17 @@ Widgets showing recent system activity:
 | **Tools** | Tool management, dependencies, and routing |
 | **Workspaces** | Embed and standalone chatbot instances |
 | **Settings** | LLM, RAG, reranker, memory, and system configuration |
+
+### Dashboard Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **Overview** | Summary statistics cards |
+| **User Statistics** | User activity and growth trends |
+| **Document Statistics** | Upload volume and processing status |
+| **Query Statistics** | Chat usage and response times |
+| **System Health** | Service connection status |
+| **Infrastructure** | Active database/vector store provider, connection status, collection stats, and environment configuration. Use this to verify your deployment is using the correct stack. |
 
 ### Prompts Submenu
 
@@ -1422,6 +1433,10 @@ Administrative functions for system maintenance.
 
 > **Warning:** Restore overwrites current data.
 
+> **Large backups:** Production backup files may be 50–500MB. The restore endpoint supports up to 500MB by default. If you need a larger limit, set `MAX_UPLOAD_SIZE=1gb` (or higher) in your `.env` file and rebuild the container.
+
+> **Cross-provider migration:** You can migrate between database providers (SQLite ↔ PostgreSQL) by creating a backup on the source system and restoring on a new deployment with a different `DATABASE_PROVIDER` setting. Update `.env` and restart containers with the appropriate Docker profile before restoring.
+
 ### Database Management
 
 | Action | Description |
@@ -1639,6 +1654,7 @@ For issues not covered here:
 | Text content | 10MB |
 | Web URLs | 5 per batch |
 | YouTube | 1 per request |
+| Backup restore | 500MB (default, configurable via `MAX_UPLOAD_SIZE` env var — requires rebuild) |
 
 ### Supported File Types
 
@@ -1698,4 +1714,4 @@ User
 
 ---
 
-*Last updated: February 2025 (v2.5 - Updated skills section: superusers can now create skills with priority 100+)*
+*Last updated: February 2025 (v2.9 - Added Infrastructure dashboard section, PostgreSQL/Qdrant support notes, backup size limits)*

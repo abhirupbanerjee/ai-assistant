@@ -20,8 +20,8 @@ Technical architecture and system design documentation.
 | Document | Description | Key Topics |
 |----------|-------------|------------|
 | [tech/SOLUTION.md](tech/SOLUTION.md) | Complete system architecture, RAG pipeline, design decisions | System overview, RAG pipeline, category system, authentication, tool routing, PWA architecture |
-| [tech/DATABASE.md](tech/DATABASE.md) | SQLite schema, ChromaDB collections, Redis patterns | Database tables, relationships, vector storage, caching strategy |
-| [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) | Docker deployment, scaling, backup/restore, PWA deployment | Container orchestration, environment configuration, operations, health checks |
+| [tech/DATABASE.md](tech/DATABASE.md) | SQLite/PostgreSQL schema, ChromaDB/Qdrant collections, Redis patterns, Kysely abstraction layer | Database tables, relationships, vector storage, provider selection, caching strategy |
+| [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) | Docker deployment, profile-based provider selection, scalability guide, backup/restore, PWA deployment | Container orchestration, environment configuration, infrastructure selection, operations, health checks |
 | [tech/Bot-Config-architecture.md](tech/Bot-Config-architecture.md) | Configuration architecture and settings management | Configuration layers, settings hierarchy |
 | [tech/UI_WIREFRAMES.md](tech/UI_WIREFRAMES.md) | Interface designs and user flow diagrams | UI components, user workflows |
 
@@ -233,11 +233,14 @@ Quick reference for feature availability by user role.
 | Technology | Documentation |
 |------------|---------------|
 | **Next.js 15** | [tech/SOLUTION.md § Technology Stack](tech/SOLUTION.md#technology-stack) |
-| **SQLite** | [tech/DATABASE.md](tech/DATABASE.md) |
-| **ChromaDB** | [tech/DATABASE.md](tech/DATABASE.md) |
+| **SQLite** (default DB) | [tech/DATABASE.md](tech/DATABASE.md) |
+| **PostgreSQL** (optional DB) | [tech/DATABASE.md](tech/DATABASE.md), [tech/INFRASTRUCTURE.md § Selection Guide](tech/INFRASTRUCTURE.md#infrastructure-selection-guide) |
+| **ChromaDB** (default vector store) | [tech/DATABASE.md](tech/DATABASE.md) |
+| **Qdrant** (optional vector store) | [tech/DATABASE.md](tech/DATABASE.md), [tech/INFRASTRUCTURE.md § Selection Guide](tech/INFRASTRUCTURE.md#infrastructure-selection-guide) |
 | **Redis** | [tech/DATABASE.md](tech/DATABASE.md) |
+| **Kysely** (DB abstraction) | [tech/DATABASE.md § Abstraction Layer](tech/DATABASE.md#database-abstraction-layer-kysely) |
 | **LiteLLM** | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
-| **Docker** | [tech/INFRASTRUCTURE.md § Docker Compose](tech/INFRASTRUCTURE.md#docker-compose-files) |
+| **Docker** | [tech/INFRASTRUCTURE.md § Docker Compose](tech/INFRASTRUCTURE.md#docker-compose--profile-based-services) |
 | **Traefik** | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
 
 ---
@@ -280,6 +283,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **2.9** | February 2025 | PostgreSQL + Qdrant support, Docker Compose profile-based service selection, Infrastructure dashboard (Admin → Dashboard → Infrastructure), MAX_UPLOAD_SIZE for large backup restores, scalability guide |
 | **2.8** | February 2025 | Vision capability handling: runtime strategy detection (vision-and-ocr, ocr-only, none), `/api/config/capabilities` endpoint, FileUpload warnings |
 | **2.7** | February 2025 | Added Autonomous Agent (beta) documentation, Content Generation (image/diagram/translation), skill tool association, updated tech docs |
 | **2.6** | February 2025 | Superuser skill creation (priority 100+), updated permissions matrix, API spec alignment |
@@ -324,4 +328,4 @@ When updating documentation:
 
 ---
 
-*Last updated: February 2025 (v2.7)*
+*Last updated: February 2025 (v2.9)*
