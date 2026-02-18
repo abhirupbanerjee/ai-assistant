@@ -64,6 +64,9 @@ export async function getDb(): Promise<Kysely<DB>> {
         }),
       }),
     });
+
+    // Run idempotent PostgreSQL migrations for existing databases
+    await runPostgresMigrations(db);
   } else {
     // SQLite
     const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -91,6 +94,19 @@ export async function getDb(): Promise<Kysely<DB>> {
   }
 
   return db;
+}
+
+/**
+ * Run idempotent PostgreSQL schema migrations for existing databases.
+ * The docker-entrypoint init script only runs on first init, so schema
+ * changes for existing deployments must be applied here.
+ */
+async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
+  console.log('[Kysely] Running PostgreSQL migrations...');
+  // Drop FK from thread_outputs.thread_id so outputs can be saved for threads
+  // that exist only in SQLite (SQLite→PostgreSQL migration scenario).
+  await sql`ALTER TABLE thread_outputs DROP CONSTRAINT IF EXISTS thread_outputs_thread_id_fkey`.execute(database);
+  console.log('[Kysely] PostgreSQL migrations completed');
 }
 
 /**

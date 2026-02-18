@@ -226,7 +226,6 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
   expires_at TIMESTAMP,
   download_count INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT NOW(),
-  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
   FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
 );
 
