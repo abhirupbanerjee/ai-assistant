@@ -27,6 +27,19 @@ import { getApiKey } from '@/lib/provider-helpers';
  */
 const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
 
+/**
+ * Generate a prompt for the LLM to summarize a terminal tool result.
+ * Works generically for any terminal tool.
+ */
+function getTerminalToolSummaryPrompt(toolName: string): string {
+  // Convert tool name to human-readable format (e.g., "image_gen" -> "image generation")
+  const toolLabel = toolName
+    .replace(/_gen$/, ' generation')
+    .replace(/_/g, ' ');
+
+  return `The ${toolLabel} tool has completed successfully. Based on the tool result above, provide a brief, helpful summary (1-2 sentences) explaining what was created. Mention key details like the output type/format and how the user can access or download it. Do not use markdown formatting.`;
+}
+
 let openaiClient: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
@@ -394,6 +407,7 @@ export async function generateResponseWithTools(
   // Tool call loop (max iterations to prevent runaway)
   let iterations = 0;
   let terminalToolSucceeded = false;
+  let terminalToolResult: { toolName: string; parsedResult: Record<string, unknown> } | null = null;
 
   // Collect tool execution results for compliance checking
   const toolExecutionResults: ToolExecutionRecord[] = [];
@@ -520,6 +534,7 @@ export async function generateResponseWithTools(
             if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
               logger.debug(`Terminal tool ${toolName} succeeded, stopping tool loop`);
               terminalToolSucceeded = true;
+              terminalToolResult = { toolName, parsedResult: parsed };
             }
           }
         } catch (parseError) {
@@ -613,6 +628,37 @@ export async function generateResponseWithTools(
 
   if (iterations >= MAX_TOOL_CALL_ITERATIONS && responseMessage.tool_calls) {
     logger.warn('Max tool call iterations reached');
+  }
+
+  // Generate LLM summary for terminal tool success
+  if (terminalToolSucceeded && terminalToolResult) {
+    const summaryPrompt = getTerminalToolSummaryPrompt(terminalToolResult.toolName);
+
+    // Add the summary request to messages (tool result already present from tool execution)
+    const summaryMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      ...messages,
+      {
+        role: 'user' as const,
+        content: summaryPrompt,
+      }
+    ];
+
+    logger.debug(`Generating summary for terminal tool: ${terminalToolResult.toolName}`);
+
+    // Make final LLM call for summary (no tools needed)
+    const summaryResponse = await streamOneCompletion(
+      openai,
+      {
+        ...completionParams,
+        messages: summaryMessages,
+        tools: undefined,
+        tool_choice: undefined,
+      },
+      callbacks?.onChunk,
+    );
+
+    // Update responseMessage with the summary
+    responseMessage = summaryResponse;
   }
 
   return {
