@@ -8,19 +8,20 @@ This document describes the AI tools system that extends the bot's capabilities 
 
 1. [Overview](#overview)
 2. [Tool Categories](#tool-categories)
-3. [Web Search Tool](#web-search-tool)
-4. [Document Generator Tool](#document-generator-tool)
-5. [Data Source Tool](#data-source-tool)
-6. [Chart Generator Tool](#chart-generator-tool)
-7. [Function API Tool](#function-api-tool)
-8. [Task Planner Tool](#task-planner-tool)
-9. [YouTube Tool](#youtube-tool)
-10. [Thread Sharing Tool](#thread-sharing-tool)
-11. [Email Tool](#email-tool)
-12. [Tool Routing](#tool-routing)
-13. [Tool Configuration](#tool-configuration)
-14. [Category-Level Overrides](#category-level-overrides)
-15. [API Reference](#api-reference)
+3. [Terminal Tools](#terminal-tools)
+4. [Web Search Tool](#web-search-tool)
+5. [Document Generator Tool](#document-generator-tool)
+6. [Data Source Tool](#data-source-tool)
+7. [Chart Generator Tool](#chart-generator-tool)
+8. [Function API Tool](#function-api-tool)
+9. [Task Planner Tool](#task-planner-tool)
+10. [YouTube Tool](#youtube-tool)
+11. [Thread Sharing Tool](#thread-sharing-tool)
+12. [Email Tool](#email-tool)
+13. [Tool Routing](#tool-routing)
+14. [Tool Configuration](#tool-configuration)
+15. [Category-Level Overrides](#category-level-overrides)
+16. [API Reference](#api-reference)
 
 ---
 
@@ -71,6 +72,89 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 Processor tools are applied to the AI's response after generation. They transform or enhance the output.
 
 **Note:** Data visualization is now integrated into the `data_source` tool as automatic chart rendering.
+
+---
+
+## Terminal Tools
+
+### Purpose
+
+Terminal tools are a special category of autonomous tools that produce final outputs (images, documents, charts, diagrams). When a terminal tool succeeds, the tool loop stops to prevent redundant re-execution, and the system automatically generates an LLM summary explaining what was created.
+
+### Current Terminal Tools
+
+| Tool | Output Type | Description |
+|------|-------------|-------------|
+| `image_gen` | Image | AI-generated images (DALL-E, Imagen) |
+| `doc_gen` | Document | PDF, DOCX, Markdown files |
+| `chart_gen` | Visualization | Interactive charts from LLM-constructed data |
+| `diagram_gen` | Diagram | Mermaid diagrams (flowcharts, sequence, etc.) |
+
+### Planned Terminal Tools
+
+| Tool | Output Type | Description |
+|------|-------------|-------------|
+| `ppt_gen` | Presentation | PowerPoint/presentation files |
+| `excel_gen` | Spreadsheet | Excel/spreadsheet files |
+| `podcast_gen` | Audio | AI-generated podcast episodes |
+
+### Behavior
+
+When a terminal tool executes successfully:
+
+1. **Tool executes** - Generates the artifact (image, document, etc.)
+2. **Artifact sent to client** - Via `onArtifact` callback
+3. **Tool loop stops** - Prevents redundant tool calls
+4. **LLM generates summary** - Automatically makes one more API call to explain what was created
+5. **Summary streams to user** - Via `onChunk` callback alongside the artifact
+
+This ensures users always receive both the artifact AND an explanatory text response.
+
+### Implementation
+
+Terminal tools are defined in `src/lib/openai.ts`:
+
+```typescript
+const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
+```
+
+### Adding New Terminal Tools
+
+To add a new terminal tool (e.g., `ppt_gen`):
+
+1. **Add to TERMINAL_TOOLS set** in `src/lib/openai.ts`:
+   ```typescript
+   const TERMINAL_TOOLS = new Set([
+     'image_gen', 'doc_gen', 'chart_gen', 'diagram_gen',
+     'ppt_gen'  // Add new tool here
+   ]);
+   ```
+
+2. **Return consistent JSON structure** from the tool:
+   ```typescript
+   {
+     success: true,
+     document?: { id, filename, downloadUrl, ... },  // for documents
+     imageHint?: { url, width, height, ... },        // for images
+     audioHint?: { url, duration, ... },             // for audio
+     // Additional metadata as needed
+   }
+   ```
+
+3. **No other changes needed** - The generic summary prompt automatically handles any terminal tool by converting the tool name to a human-readable label (e.g., `ppt_gen` → "ppt generation").
+
+### Summary Prompt
+
+The system uses a generic prompt that works for any terminal tool:
+
+```
+The [tool label] tool has completed successfully. Based on the tool result above,
+provide a brief, helpful summary (1-2 sentences) explaining what was created.
+Mention key details like the output type/format and how the user can access or
+download it. Do not use markdown formatting.
+```
+
+This generates natural, context-aware summaries without tool-specific hardcoding.
 
 ---
 

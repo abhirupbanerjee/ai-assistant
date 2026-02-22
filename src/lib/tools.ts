@@ -81,6 +81,13 @@ export interface LegacyToolDefinition {
 // ============ Tool Registry ============
 
 /**
+ * Hybrid tools that function both as autonomous tools (LLM can call them)
+ * AND as processors (system auto-applies based on settings).
+ * Example: Translation can be explicitly requested OR auto-applied for non-English responses.
+ */
+export const HYBRID_TOOLS = new Set(['translation']);
+
+/**
  * Tool registry - maps tool names to their definitions
  * Import tool implementations from separate files for modularity
  */

@@ -48,6 +48,8 @@ interface Tool {
   defaultConfig: Record<string, unknown>;
   descriptionOverride: string | null;
   defaultDescription: string;
+  isTerminal: boolean;
+  isHybrid: boolean;
   metadata: {
     id: string;
     createdAt: string;
@@ -55,6 +57,26 @@ interface Tool {
     updatedBy: string;
   } | null;
 }
+
+// Tool category/type explanations for tooltips
+const TOOL_EXPLANATIONS = {
+  autonomous: {
+    title: 'Autonomous Tool',
+    description: 'LLM-triggered via function calling. The AI decides when to invoke this tool based on user queries.',
+  },
+  processor: {
+    title: 'Processor Tool',
+    description: 'Post-response output processor. Applied after the AI generates a response to transform or enhance the output.',
+  },
+  hybrid: {
+    title: 'Hybrid Tool',
+    description: 'Functions both as autonomous (LLM can call it) AND as a processor (system auto-applies based on settings).',
+  },
+  terminal: {
+    title: 'Terminal Tool',
+    description: 'Produces final outputs (images, documents, charts). When successful, the tool loop stops and an LLM summary is generated.',
+  },
+};
 
 interface AuditEntry {
   id: number;
@@ -97,6 +119,8 @@ interface SuperuserTool {
   description: string;
   category: string;
   globalEnabled: boolean;
+  isTerminal: boolean;
+  isHybrid: boolean;
   categories: CategoryToolStatus[];
 }
 
@@ -1521,15 +1545,34 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                         <Icon size={24} className={effectiveEnabled ? 'text-blue-600' : 'text-gray-400'} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-gray-900">{tool.displayName}</h3>
-                          <span className={`px-2 py-0.5 text-xs rounded-full ${
-                            tool.category === 'autonomous'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded-full cursor-help ${
+                              tool.category === 'autonomous'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                            title={`${TOOL_EXPLANATIONS[tool.category as keyof typeof TOOL_EXPLANATIONS]?.title || tool.category}: ${TOOL_EXPLANATIONS[tool.category as keyof typeof TOOL_EXPLANATIONS]?.description || ''}`}
+                          >
                             {tool.category}
                           </span>
+                          {tool.isHybrid && (
+                            <span
+                              className="px-2 py-0.5 text-xs rounded-full bg-teal-100 text-teal-700 cursor-help"
+                              title={`${TOOL_EXPLANATIONS.hybrid.title}: ${TOOL_EXPLANATIONS.hybrid.description}`}
+                            >
+                              hybrid
+                            </span>
+                          )}
+                          {tool.isTerminal && (
+                            <span
+                              className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700 cursor-help"
+                              title={`${TOOL_EXPLANATIONS.terminal.title}: ${TOOL_EXPLANATIONS.terminal.description}`}
+                            >
+                              terminal
+                            </span>
+                          )}
                           {/* Global status indicator */}
                           <span className={`px-2 py-0.5 text-xs rounded-full ${
                             tool.globalEnabled ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'
@@ -1655,15 +1698,34 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                         <Icon size={24} className={tool.enabled ? 'text-blue-600' : 'text-gray-400'} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-gray-900">{tool.displayName}</h3>
-                          <span className={`px-2 py-0.5 text-xs rounded-full ${
-                            tool.category === 'autonomous'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded-full cursor-help ${
+                              tool.category === 'autonomous'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                            title={`${TOOL_EXPLANATIONS[tool.category].title}: ${TOOL_EXPLANATIONS[tool.category].description}`}
+                          >
                             {tool.category}
                           </span>
+                          {tool.isHybrid && (
+                            <span
+                              className="px-2 py-0.5 text-xs rounded-full bg-teal-100 text-teal-700 cursor-help"
+                              title={`${TOOL_EXPLANATIONS.hybrid.title}: ${TOOL_EXPLANATIONS.hybrid.description}`}
+                            >
+                              hybrid
+                            </span>
+                          )}
+                          {tool.isTerminal && (
+                            <span
+                              className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700 cursor-help"
+                              title={`${TOOL_EXPLANATIONS.terminal.title}: ${TOOL_EXPLANATIONS.terminal.description}`}
+                            >
+                              terminal
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">{tool.description}</p>
                       </div>

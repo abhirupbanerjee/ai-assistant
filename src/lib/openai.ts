@@ -25,7 +25,7 @@ import { getApiKey } from '@/lib/provider-helpers';
  * These tools produce final outputs (images, documents) and should not be called again
  * unless the user explicitly requests it.
  */
-const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
+export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
 
 /**
  * Generate a prompt for the LLM to summarize a terminal tool result.

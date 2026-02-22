@@ -12,7 +12,8 @@ import {
   ensureToolConfigsExist,
   TOOL_DEFAULTS,
 } from '@/lib/db/tool-config';
-import { getAllTools, initializeTools } from '@/lib/tools';
+import { getAllTools, initializeTools, HYBRID_TOOLS } from '@/lib/tools';
+import { TERMINAL_TOOLS } from '@/lib/openai';
 
 /**
  * Mask sensitive data like API keys in responses
@@ -71,6 +72,8 @@ export async function GET() {
         config: safeConfig,
         configSchema: tool.configSchema,
         defaultConfig: tool.defaultConfig,
+        isTerminal: TERMINAL_TOOLS.has(tool.name),
+        isHybrid: HYBRID_TOOLS.has(tool.name),
         metadata: config ? {
           id: config.id,
           createdAt: config.createdAt,

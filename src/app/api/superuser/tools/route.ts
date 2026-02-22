@@ -16,7 +16,8 @@ import {
   getEffectiveToolConfig,
   type CategoryToolConfig,
 } from '@/lib/db/category-tool-config';
-import { getAllTools, initializeTools } from '@/lib/tools';
+import { getAllTools, initializeTools, HYBRID_TOOLS } from '@/lib/tools';
+import { TERMINAL_TOOLS } from '@/lib/openai';
 
 interface CategoryToolStatus {
   categoryId: number;
@@ -33,6 +34,8 @@ interface ToolWithCategories {
   description: string;
   category: string;
   globalEnabled: boolean;
+  isTerminal: boolean;
+  isHybrid: boolean;
   categories: CategoryToolStatus[];
 }
 
@@ -103,6 +106,8 @@ export async function GET() {
         description: tool.description,
         category: tool.category,
         globalEnabled,
+        isTerminal: TERMINAL_TOOLS.has(tool.name),
+        isHybrid: HYBRID_TOOLS.has(tool.name),
         categories,
       };
     });

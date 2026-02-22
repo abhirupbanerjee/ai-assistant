@@ -261,7 +261,7 @@ AZURE_AD_CLIENT_ID=...
 GOOGLE_CLIENT_ID=...
 
 # Optional Enhancements
-COHERE_API_KEY=...             # Or use local reranker
+COHERE_API_KEY=...             # Or use local reranker / JIna
 TAVILY_API_KEY=...             # For web search
 AZURE_DI_ENDPOINT=...          # For Office docs
 
