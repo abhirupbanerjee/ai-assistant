@@ -32,7 +32,10 @@ import type {
   GeminiVoice,
   TTSProvider,
   AudioFormat,
+  VoiceCategory,
+  VoiceGender,
 } from '@/types/podcast-gen';
+import { GEMINI_VOICE_INFO } from '@/types/podcast-gen';
 
 // ===== Constants =====
 
@@ -533,14 +536,149 @@ async function savePodcast(
   };
 }
 
+// ===== Voice Selection =====
+
+/**
+ * Filter voices by gender and category preferences
+ */
+function filterVoices(
+  genderPreference: VoiceGender | 'any' | undefined,
+  categoryPreference: VoiceCategory | 'any' | undefined
+): GeminiVoice[] {
+  const voices = Object.entries(GEMINI_VOICE_INFO) as [GeminiVoice, typeof GEMINI_VOICE_INFO[GeminiVoice]][];
+
+  return voices
+    .filter(([, info]) => {
+      if (genderPreference && genderPreference !== 'any' && info.gender !== genderPreference) {
+        return false;
+      }
+      if (categoryPreference && categoryPreference !== 'any' && info.category !== categoryPreference) {
+        return false;
+      }
+      return true;
+    })
+    .map(([voice]) => voice);
+}
+
+/**
+ * Select best voices using LLM based on topic and character descriptions
+ */
+async function selectVoicesWithLLM(
+  topic: string,
+  geminiConfig: GeminiTTSConfig
+): Promise<{ hostVoice: GeminiVoice; expertVoice: GeminiVoice }> {
+  const openai = getChatClient();
+  const llmSettings = getLlmSettings();
+  const model = llmSettings.model || 'gpt-4o-mini';
+
+  // Filter available voices by preferences
+  const hostVoices = filterVoices(geminiConfig.hostGenderPreference, geminiConfig.hostCategoryPreference);
+  const expertVoices = filterVoices(geminiConfig.expertGenderPreference, geminiConfig.expertCategoryPreference);
+
+  // If no voices match filters, fall back to all voices
+  const availableHostVoices = hostVoices.length > 0 ? hostVoices : (Object.keys(GEMINI_VOICE_INFO) as GeminiVoice[]);
+  const availableExpertVoices = expertVoices.length > 0 ? expertVoices : (Object.keys(GEMINI_VOICE_INFO) as GeminiVoice[]);
+
+  // Build voice descriptions for the prompt
+  const formatVoiceList = (voices: GeminiVoice[]) =>
+    voices.map(v => {
+      const info = GEMINI_VOICE_INFO[v];
+      return `- ${v}: ${info.description} (${info.gender}, ${info.category})`;
+    }).join('\n');
+
+  const systemPrompt = `You are a voice casting assistant. Select the most appropriate voices for a podcast based on the topic and character descriptions.
+
+Consider:
+- Match gender to character description (e.g., "mother" = female, "father" = male)
+- Match tone/style to character description (e.g., "professional" = informative, "friendly" = conversational)
+- Match age/energy to character description (e.g., "young" = youthful/upbeat, "mature" = mature/warm)
+
+Respond with ONLY valid JSON in this format:
+{"hostVoice": "VoiceName", "expertVoice": "VoiceName"}`;
+
+  const userPrompt = `Topic: ${topic}
+
+Host character: ${geminiConfig.hostAccent || 'Not specified - choose a good conversational voice'}
+Expert character: ${geminiConfig.expertAccent || 'Not specified - choose a good informative voice'}
+
+Available voices for Host:
+${formatVoiceList(availableHostVoices)}
+
+Available voices for Expert:
+${formatVoiceList(availableExpertVoices)}
+
+Select the best matching voice for each role.`;
+
+  console.log(`[PodcastGen] Auto-selecting voices with LLM for: Host="${geminiConfig.hostAccent || 'default'}", Expert="${geminiConfig.expertAccent || 'default'}"`);
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 100,
+    });
+
+    const response = completion.choices[0]?.message?.content?.trim() || '';
+
+    // Parse JSON response
+    const jsonMatch = response.match(/\{[^}]+\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]) as { hostVoice?: string; expertVoice?: string };
+
+      // Validate voices exist
+      const hostVoice = (parsed.hostVoice && parsed.hostVoice in GEMINI_VOICE_INFO)
+        ? parsed.hostVoice as GeminiVoice
+        : geminiConfig.hostVoice;
+      const expertVoice = (parsed.expertVoice && parsed.expertVoice in GEMINI_VOICE_INFO)
+        ? parsed.expertVoice as GeminiVoice
+        : geminiConfig.expertVoice;
+
+      console.log(`[PodcastGen] LLM selected voices: Host=${hostVoice} (${GEMINI_VOICE_INFO[hostVoice].gender}), Expert=${expertVoice} (${GEMINI_VOICE_INFO[expertVoice].gender})`);
+
+      return { hostVoice, expertVoice };
+    }
+  } catch (error) {
+    console.warn('[PodcastGen] Voice auto-selection failed, using defaults:', error);
+  }
+
+  // Fall back to configured defaults
+  return {
+    hostVoice: geminiConfig.hostVoice,
+    expertVoice: geminiConfig.expertVoice,
+  };
+}
+
 // ===== Main Generation Function =====
 
 /**
  * Generate a podcast from text content
+ * @param args - Tool arguments (topic, content, style, length)
+ * @param configOverride - Optional skill-level config override
  */
-export async function generatePodcast(args: PodcastGenToolArgs): Promise<PodcastGenResponse> {
-  const config = await getPodcastGenConfig();
+export async function generatePodcast(
+  args: PodcastGenToolArgs,
+  configOverride?: Record<string, unknown>
+): Promise<PodcastGenResponse> {
+  const baseConfig = await getPodcastGenConfig();
   const startTime = Date.now();
+
+  // Merge skill-level config override with global config
+  let config: PodcastGenConfig = baseConfig;
+  if (configOverride) {
+    const overrideProviders = configOverride.providers as Record<string, Record<string, unknown>> | undefined;
+    config = {
+      ...baseConfig,
+      ...configOverride,
+      providers: {
+        openai: { ...baseConfig.providers.openai, ...(overrideProviders?.openai || {}) },
+        gemini: { ...baseConfig.providers.gemini, ...(overrideProviders?.gemini || {}) },
+      },
+    } as PodcastGenConfig;
+  }
 
   // Check if enabled
   if (config.activeProvider === 'none') {
@@ -591,6 +729,13 @@ export async function generatePodcast(args: PodcastGenToolArgs): Promise<Podcast
     if (provider === 'gemini') {
       // Gemini path: Multi-speaker dialogue format + Gemini TTS
       const geminiConfig = config.providers.gemini;
+
+      // Step 0: Auto-select voices if enabled
+      if (geminiConfig.autoSelectVoices && (geminiConfig.hostAccent || geminiConfig.expertAccent)) {
+        const selectedVoices = await selectVoicesWithLLM(args.topic, geminiConfig);
+        geminiConfig.hostVoice = selectedVoices.hostVoice;
+        geminiConfig.expertVoice = selectedVoices.expertVoice;
+      }
 
       // Step 1: Format content for dialogue (if multi-speaker) or single narrator
       if (geminiConfig.multiSpeaker) {
@@ -937,8 +1082,9 @@ IMPORTANT: Do NOT call this tool again unless the user explicitly requests anoth
   defaultConfig: PODCAST_GEN_DEFAULTS as unknown as Record<string, unknown>,
   validateConfig: validatePodcastGenConfig,
 
-  execute: async (args: Record<string, unknown>): Promise<string> => {
+  execute: async (args: Record<string, unknown>, options?: { configOverride?: Record<string, unknown> }): Promise<string> => {
     const typedArgs = args as unknown as PodcastGenToolArgs;
+    const configOverride = options?.configOverride;
 
     // Check if enabled
     if (!(await isPodcastGenEnabled())) {
@@ -1007,8 +1153,8 @@ IMPORTANT: Do NOT call this tool again unless the user explicitly requests anoth
       });
     }
 
-    // Generate podcast
-    const result = await generatePodcast(typedArgs);
+    // Generate podcast (pass configOverride for skill-level settings)
+    const result = await generatePodcast(typedArgs, configOverride);
     return JSON.stringify(result);
   },
 };

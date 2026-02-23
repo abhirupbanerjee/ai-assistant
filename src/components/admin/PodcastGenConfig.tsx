@@ -37,45 +37,79 @@ const VOICE_INFO: Record<string, { description: string; quality: 'best' | 'good'
   verse: { description: 'Poetic, rhythmic', quality: 'good' },
 };
 
-// Gemini voice options with categories
-const GEMINI_VOICES = {
-  conversational: [
-    { name: 'Aoede', description: 'Breezy' },
-    { name: 'Puck', description: 'Upbeat' },
-    { name: 'Leda', description: 'Youthful' },
-    { name: 'Callirrhoe', description: 'Easy-going' },
-    { name: 'Umbriel', description: 'Easy-going' },
-    { name: 'Algieba', description: 'Smooth' },
-    { name: 'Despina', description: 'Smooth' },
-    { name: 'Laomedeia', description: 'Upbeat' },
-    { name: 'Achird', description: 'Friendly' },
-    { name: 'Zubenelgenubi', description: 'Casual' },
-    { name: 'Sulafat', description: 'Warm' },
-  ],
-  informative: [
-    { name: 'Charon', description: 'Informative' },
-    { name: 'Kore', description: 'Firm' },
-    { name: 'Orus', description: 'Firm' },
-    { name: 'Iapetus', description: 'Clear' },
-    { name: 'Erinome', description: 'Clear' },
-    { name: 'Rasalgethi', description: 'Informative' },
-    { name: 'Alnilam', description: 'Firm' },
-    { name: 'Schedar', description: 'Even' },
-    { name: 'Gacrux', description: 'Mature' },
-    { name: 'Sadaltager', description: 'Knowledgeable' },
-  ],
-  expressive: [
-    { name: 'Zephyr', description: 'Bright' },
-    { name: 'Fenrir', description: 'Excitable' },
-    { name: 'Autonoe', description: 'Bright' },
-    { name: 'Enceladus', description: 'Breathy' },
-    { name: 'Algenib', description: 'Gravelly' },
-    { name: 'Achernar', description: 'Soft' },
-    { name: 'Pulcherrima', description: 'Forward' },
-    { name: 'Vindemiatrix', description: 'Gentle' },
-    { name: 'Sadachbia', description: 'Lively' },
-  ],
-};
+// Gemini voice options with categories and gender
+type VoiceGender = 'female' | 'male';
+type VoiceCategory = 'conversational' | 'informative' | 'expressive';
+
+interface VoiceInfo {
+  name: string;
+  description: string;
+  gender: VoiceGender;
+  category: VoiceCategory;
+}
+
+const GEMINI_VOICES: VoiceInfo[] = [
+  // Female Conversational
+  { name: 'Aoede', description: 'Breezy', gender: 'female', category: 'conversational' },
+  { name: 'Leda', description: 'Youthful', gender: 'female', category: 'conversational' },
+  { name: 'Callirrhoe', description: 'Easy-going', gender: 'female', category: 'conversational' },
+  { name: 'Despina', description: 'Smooth', gender: 'female', category: 'conversational' },
+  { name: 'Laomedeia', description: 'Upbeat', gender: 'female', category: 'conversational' },
+  { name: 'Sulafat', description: 'Warm', gender: 'female', category: 'conversational' },
+  // Male Conversational
+  { name: 'Puck', description: 'Upbeat', gender: 'male', category: 'conversational' },
+  { name: 'Umbriel', description: 'Easy-going', gender: 'male', category: 'conversational' },
+  { name: 'Algieba', description: 'Smooth', gender: 'male', category: 'conversational' },
+  { name: 'Achird', description: 'Friendly', gender: 'male', category: 'conversational' },
+  { name: 'Zubenelgenubi', description: 'Casual', gender: 'male', category: 'conversational' },
+  // Female Informative
+  { name: 'Kore', description: 'Firm', gender: 'female', category: 'informative' },
+  { name: 'Erinome', description: 'Clear', gender: 'female', category: 'informative' },
+  { name: 'Gacrux', description: 'Mature', gender: 'female', category: 'informative' },
+  // Male Informative
+  { name: 'Charon', description: 'Informative', gender: 'male', category: 'informative' },
+  { name: 'Orus', description: 'Firm', gender: 'male', category: 'informative' },
+  { name: 'Iapetus', description: 'Clear', gender: 'male', category: 'informative' },
+  { name: 'Rasalgethi', description: 'Informative', gender: 'male', category: 'informative' },
+  { name: 'Alnilam', description: 'Firm', gender: 'male', category: 'informative' },
+  { name: 'Schedar', description: 'Even', gender: 'male', category: 'informative' },
+  { name: 'Sadaltager', description: 'Knowledgeable', gender: 'male', category: 'informative' },
+  // Female Expressive
+  { name: 'Zephyr', description: 'Bright', gender: 'female', category: 'expressive' },
+  { name: 'Autonoe', description: 'Bright', gender: 'female', category: 'expressive' },
+  { name: 'Achernar', description: 'Soft', gender: 'female', category: 'expressive' },
+  { name: 'Pulcherrima', description: 'Forward', gender: 'female', category: 'expressive' },
+  { name: 'Vindemiatrix', description: 'Gentle', gender: 'female', category: 'expressive' },
+  // Male Expressive
+  { name: 'Fenrir', description: 'Excitable', gender: 'male', category: 'expressive' },
+  { name: 'Enceladus', description: 'Breathy', gender: 'male', category: 'expressive' },
+  { name: 'Algenib', description: 'Gravelly', gender: 'male', category: 'expressive' },
+  { name: 'Sadachbia', description: 'Lively', gender: 'male', category: 'expressive' },
+];
+
+// Filter voices by gender and category
+function filterVoices(
+  voices: VoiceInfo[],
+  genderFilter: VoiceGender | 'all',
+  categoryFilter: VoiceCategory | 'all'
+): VoiceInfo[] {
+  return voices.filter(v => {
+    if (genderFilter !== 'all' && v.gender !== genderFilter) return false;
+    if (categoryFilter !== 'all' && v.category !== categoryFilter) return false;
+    return true;
+  });
+}
+
+// Group voices by category for optgroup display
+function groupByCategory(voices: VoiceInfo[]): Record<VoiceCategory, VoiceInfo[]> {
+  const grouped: Record<VoiceCategory, VoiceInfo[]> = {
+    conversational: [],
+    informative: [],
+    expressive: [],
+  };
+  voices.forEach(v => grouped[v.category].push(v));
+  return grouped;
+}
 
 export default function PodcastGenConfig({
   config,
@@ -329,95 +363,215 @@ export default function PodcastGenConfig({
               </div>
             </div>
 
+            {/* Auto-Select Voice Toggle */}
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+              <input
+                type="checkbox"
+                id="autoSelectVoices"
+                checked={(geminiConfig.autoSelectVoices as boolean) || false}
+                onChange={(e) =>
+                  handleProviderChange('gemini', 'autoSelectVoices', e.target.checked)
+                }
+                className="w-4 h-4 text-blue-600 rounded"
+                disabled={disabled}
+              />
+              <label htmlFor="autoSelectVoices" className="text-sm">
+                <span className="font-medium text-gray-800">Auto-select voices based on character description</span>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  LLM will pick the best voice matching &quot;Host Accent&quot; (e.g., &quot;Indian mother aged 40&quot; → female voice)
+                </p>
+              </label>
+            </div>
+
             {/* Voice Selection */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              {/* Host Voice Section */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
                   Host Voice
                 </label>
+                {/* Filter Dropdowns */}
+                <div className="flex gap-2">
+                  <select
+                    value={(geminiConfig.hostGenderPreference as string) || 'any'}
+                    onChange={(e) =>
+                      handleProviderChange('gemini', 'hostGenderPreference', e.target.value)
+                    }
+                    className="flex-1 px-2 py-1 text-xs border rounded"
+                    disabled={disabled}
+                  >
+                    <option value="any">Any Gender</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                  </select>
+                  <select
+                    value={(geminiConfig.hostCategoryPreference as string) || 'any'}
+                    onChange={(e) =>
+                      handleProviderChange('gemini', 'hostCategoryPreference', e.target.value)
+                    }
+                    className="flex-1 px-2 py-1 text-xs border rounded"
+                    disabled={disabled}
+                  >
+                    <option value="any">Any Tone</option>
+                    <option value="conversational">Conversational</option>
+                    <option value="informative">Informative</option>
+                    <option value="expressive">Expressive</option>
+                  </select>
+                </div>
+                {/* Voice Select */}
                 <select
                   value={(geminiConfig.hostVoice as string) || 'Aoede'}
                   onChange={(e) =>
                     handleProviderChange('gemini', 'hostVoice', e.target.value)
                   }
                   className="w-full px-3 py-2 border rounded-lg"
-                  disabled={disabled}
+                  disabled={disabled || (geminiConfig.autoSelectVoices as boolean)}
                 >
-                  <optgroup label="Conversational">
-                    {GEMINI_VOICES.conversational.map((v) => (
-                      <option key={v.name} value={v.name}>
-                        {v.name} - {v.description}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Informative">
-                    {GEMINI_VOICES.informative.map((v) => (
-                      <option key={v.name} value={v.name}>
-                        {v.name} - {v.description}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Expressive">
-                    {GEMINI_VOICES.expressive.map((v) => (
-                      <option key={v.name} value={v.name}>
-                        {v.name} - {v.description}
-                      </option>
-                    ))}
-                  </optgroup>
+                  {(() => {
+                    const filtered = filterVoices(
+                      GEMINI_VOICES,
+                      ((geminiConfig.hostGenderPreference as string) || 'all') as VoiceGender | 'all',
+                      ((geminiConfig.hostCategoryPreference as string) || 'all') as VoiceCategory | 'all'
+                    );
+                    const grouped = groupByCategory(filtered.length > 0 ? filtered : GEMINI_VOICES);
+                    return (
+                      <>
+                        {grouped.conversational.length > 0 && (
+                          <optgroup label="Conversational">
+                            {grouped.conversational.map((v) => (
+                              <option key={v.name} value={v.name}>
+                                {v.name} - {v.description} ({v.gender === 'female' ? 'F' : 'M'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {grouped.informative.length > 0 && (
+                          <optgroup label="Informative">
+                            {grouped.informative.map((v) => (
+                              <option key={v.name} value={v.name}>
+                                {v.name} - {v.description} ({v.gender === 'female' ? 'F' : 'M'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {grouped.expressive.length > 0 && (
+                          <optgroup label="Expressive">
+                            {grouped.expressive.map((v) => (
+                              <option key={v.name} value={v.name}>
+                                {v.name} - {v.description} ({v.gender === 'female' ? 'F' : 'M'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
+                    );
+                  })()}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Guides the conversation
+                <p className="text-xs text-gray-500">
+                  {(geminiConfig.autoSelectVoices as boolean)
+                    ? 'Voice will be auto-selected based on Host Accent'
+                    : 'Guides the conversation'}
                 </p>
               </div>
 
+              {/* Expert Voice Section */}
               {(geminiConfig.multiSpeaker as boolean) && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
                     Expert Voice
                   </label>
+                  {/* Filter Dropdowns */}
+                  <div className="flex gap-2">
+                    <select
+                      value={(geminiConfig.expertGenderPreference as string) || 'any'}
+                      onChange={(e) =>
+                        handleProviderChange('gemini', 'expertGenderPreference', e.target.value)
+                      }
+                      className="flex-1 px-2 py-1 text-xs border rounded"
+                      disabled={disabled}
+                    >
+                      <option value="any">Any Gender</option>
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                    </select>
+                    <select
+                      value={(geminiConfig.expertCategoryPreference as string) || 'any'}
+                      onChange={(e) =>
+                        handleProviderChange('gemini', 'expertCategoryPreference', e.target.value)
+                      }
+                      className="flex-1 px-2 py-1 text-xs border rounded"
+                      disabled={disabled}
+                    >
+                      <option value="any">Any Tone</option>
+                      <option value="conversational">Conversational</option>
+                      <option value="informative">Informative</option>
+                      <option value="expressive">Expressive</option>
+                    </select>
+                  </div>
+                  {/* Voice Select */}
                   <select
                     value={(geminiConfig.expertVoice as string) || 'Charon'}
                     onChange={(e) =>
                       handleProviderChange('gemini', 'expertVoice', e.target.value)
                     }
                     className="w-full px-3 py-2 border rounded-lg"
-                    disabled={disabled}
+                    disabled={disabled || (geminiConfig.autoSelectVoices as boolean)}
                   >
-                    <optgroup label="Informative (Recommended)">
-                      {GEMINI_VOICES.informative.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} - {v.description}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Conversational">
-                      {GEMINI_VOICES.conversational.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} - {v.description}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Expressive">
-                      {GEMINI_VOICES.expressive.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} - {v.description}
-                        </option>
-                      ))}
-                    </optgroup>
+                    {(() => {
+                      const filtered = filterVoices(
+                        GEMINI_VOICES,
+                        ((geminiConfig.expertGenderPreference as string) || 'all') as VoiceGender | 'all',
+                        ((geminiConfig.expertCategoryPreference as string) || 'all') as VoiceCategory | 'all'
+                      );
+                      const grouped = groupByCategory(filtered.length > 0 ? filtered : GEMINI_VOICES);
+                      return (
+                        <>
+                          {grouped.informative.length > 0 && (
+                            <optgroup label="Informative (Recommended)">
+                              {grouped.informative.map((v) => (
+                                <option key={v.name} value={v.name}>
+                                  {v.name} - {v.description} ({v.gender === 'female' ? 'F' : 'M'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {grouped.conversational.length > 0 && (
+                            <optgroup label="Conversational">
+                              {grouped.conversational.map((v) => (
+                                <option key={v.name} value={v.name}>
+                                  {v.name} - {v.description} ({v.gender === 'female' ? 'F' : 'M'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {grouped.expressive.length > 0 && (
+                            <optgroup label="Expressive">
+                              {grouped.expressive.map((v) => (
+                                <option key={v.name} value={v.name}>
+                                  {v.name} - {v.description} ({v.gender === 'female' ? 'F' : 'M'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </>
+                      );
+                    })()}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Provides detailed explanations
+                  <p className="text-xs text-gray-500">
+                    {(geminiConfig.autoSelectVoices as boolean)
+                      ? 'Voice will be auto-selected based on Expert Accent'
+                      : 'Provides detailed explanations'}
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Optional Accents */}
+            {/* Character Descriptions / Accents */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Host Accent
-                  <span className="text-xs text-gray-400 ml-2">(optional)</span>
+                  Host Character
+                  <span className="text-xs text-gray-400 ml-2">(for auto-select)</span>
                 </label>
                 <input
                   type="text"
@@ -425,20 +579,20 @@ export default function PodcastGenConfig({
                   onChange={(e) =>
                     handleProviderChange('gemini', 'hostAccent', e.target.value)
                   }
-                  placeholder="e.g., British English from London"
+                  placeholder="e.g., Indian mother aged 40, British child aged 10"
                   className="w-full px-3 py-2 border rounded-lg"
                   disabled={disabled}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Be specific for best results
+                  Describe gender, age, accent for best voice matching
                 </p>
               </div>
 
               {(geminiConfig.multiSpeaker as boolean) && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Expert Accent
-                    <span className="text-xs text-gray-400 ml-2">(optional)</span>
+                    Expert Character
+                    <span className="text-xs text-gray-400 ml-2">(for auto-select)</span>
                   </label>
                   <input
                     type="text"
@@ -446,12 +600,12 @@ export default function PodcastGenConfig({
                     onChange={(e) =>
                       handleProviderChange('gemini', 'expertAccent', e.target.value)
                     }
-                    placeholder="e.g., American English from New York"
+                    placeholder="e.g., British professor aged 55, American doctor"
                     className="w-full px-3 py-2 border rounded-lg"
                     disabled={disabled}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Different from host for variety
+                    Describe gender, age, accent for best voice matching
                   </p>
                 </div>
               )}

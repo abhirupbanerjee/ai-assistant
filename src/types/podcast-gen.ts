@@ -32,38 +32,46 @@ export type GeminiVoice =
   | 'Alnilam' | 'Schedar' | 'Gacrux' | 'Pulcherrima' | 'Achird'
   | 'Zubenelgenubi' | 'Vindemiatrix' | 'Sadachbia' | 'Sadaltager' | 'Sulafat';
 
-// Gemini voice personality descriptions
-export const GEMINI_VOICE_INFO: Record<GeminiVoice, { description: string; category: 'conversational' | 'informative' | 'expressive' }> = {
-  Zephyr: { description: 'Bright', category: 'expressive' },
-  Puck: { description: 'Upbeat', category: 'conversational' },
-  Charon: { description: 'Informative', category: 'informative' },
-  Kore: { description: 'Firm', category: 'informative' },
-  Fenrir: { description: 'Excitable', category: 'expressive' },
-  Leda: { description: 'Youthful', category: 'conversational' },
-  Orus: { description: 'Firm', category: 'informative' },
-  Aoede: { description: 'Breezy', category: 'conversational' },
-  Callirrhoe: { description: 'Easy-going', category: 'conversational' },
-  Autonoe: { description: 'Bright', category: 'expressive' },
-  Enceladus: { description: 'Breathy', category: 'expressive' },
-  Iapetus: { description: 'Clear', category: 'informative' },
-  Umbriel: { description: 'Easy-going', category: 'conversational' },
-  Algieba: { description: 'Smooth', category: 'conversational' },
-  Despina: { description: 'Smooth', category: 'conversational' },
-  Erinome: { description: 'Clear', category: 'informative' },
-  Algenib: { description: 'Gravelly', category: 'expressive' },
-  Rasalgethi: { description: 'Informative', category: 'informative' },
-  Laomedeia: { description: 'Upbeat', category: 'conversational' },
-  Achernar: { description: 'Soft', category: 'expressive' },
-  Alnilam: { description: 'Firm', category: 'informative' },
-  Schedar: { description: 'Even', category: 'informative' },
-  Gacrux: { description: 'Mature', category: 'informative' },
-  Pulcherrima: { description: 'Forward', category: 'expressive' },
-  Achird: { description: 'Friendly', category: 'conversational' },
-  Zubenelgenubi: { description: 'Casual', category: 'conversational' },
-  Vindemiatrix: { description: 'Gentle', category: 'expressive' },
-  Sadachbia: { description: 'Lively', category: 'expressive' },
-  Sadaltager: { description: 'Knowledgeable', category: 'informative' },
-  Sulafat: { description: 'Warm', category: 'conversational' },
+// Voice category type
+export type VoiceCategory = 'conversational' | 'informative' | 'expressive';
+
+// Voice gender type
+export type VoiceGender = 'female' | 'male';
+
+// Gemini voice personality descriptions with gender
+export const GEMINI_VOICE_INFO: Record<GeminiVoice, { description: string; category: VoiceCategory; gender: VoiceGender }> = {
+  // Female voices (14)
+  Zephyr: { description: 'Bright', category: 'expressive', gender: 'female' },
+  Kore: { description: 'Firm', category: 'informative', gender: 'female' },
+  Leda: { description: 'Youthful', category: 'conversational', gender: 'female' },
+  Aoede: { description: 'Breezy', category: 'conversational', gender: 'female' },
+  Callirrhoe: { description: 'Easy-going', category: 'conversational', gender: 'female' },
+  Autonoe: { description: 'Bright', category: 'expressive', gender: 'female' },
+  Despina: { description: 'Smooth', category: 'conversational', gender: 'female' },
+  Erinome: { description: 'Clear', category: 'informative', gender: 'female' },
+  Laomedeia: { description: 'Upbeat', category: 'conversational', gender: 'female' },
+  Achernar: { description: 'Soft', category: 'expressive', gender: 'female' },
+  Gacrux: { description: 'Mature', category: 'informative', gender: 'female' },
+  Pulcherrima: { description: 'Forward', category: 'expressive', gender: 'female' },
+  Vindemiatrix: { description: 'Gentle', category: 'expressive', gender: 'female' },
+  Sulafat: { description: 'Warm', category: 'conversational', gender: 'female' },
+  // Male voices (16)
+  Puck: { description: 'Upbeat', category: 'conversational', gender: 'male' },
+  Charon: { description: 'Informative', category: 'informative', gender: 'male' },
+  Fenrir: { description: 'Excitable', category: 'expressive', gender: 'male' },
+  Orus: { description: 'Firm', category: 'informative', gender: 'male' },
+  Enceladus: { description: 'Breathy', category: 'expressive', gender: 'male' },
+  Iapetus: { description: 'Clear', category: 'informative', gender: 'male' },
+  Umbriel: { description: 'Easy-going', category: 'conversational', gender: 'male' },
+  Algieba: { description: 'Smooth', category: 'conversational', gender: 'male' },
+  Algenib: { description: 'Gravelly', category: 'expressive', gender: 'male' },
+  Rasalgethi: { description: 'Informative', category: 'informative', gender: 'male' },
+  Alnilam: { description: 'Firm', category: 'informative', gender: 'male' },
+  Schedar: { description: 'Even', category: 'informative', gender: 'male' },
+  Achird: { description: 'Friendly', category: 'conversational', gender: 'male' },
+  Zubenelgenubi: { description: 'Casual', category: 'conversational', gender: 'male' },
+  Sadachbia: { description: 'Lively', category: 'expressive', gender: 'male' },
+  Sadaltager: { description: 'Knowledgeable', category: 'informative', gender: 'male' },
 };
 
 // ===== Provider Configuration Types =====
@@ -85,10 +93,20 @@ export interface GeminiTTSConfig {
   hostVoice: GeminiVoice;
   /** Voice for expert speaker in multi-speaker mode */
   expertVoice: GeminiVoice;
-  /** Optional accent for host (e.g., "British English from London") */
+  /** Optional accent/character description for host (e.g., "Indian mother aged 40") */
   hostAccent?: string;
-  /** Optional accent for expert (e.g., "American English from New York") */
+  /** Optional accent/character description for expert (e.g., "British professor aged 55") */
   expertAccent?: string;
+  /** Enable LLM-based voice auto-selection based on accent/character descriptions */
+  autoSelectVoices?: boolean;
+  /** Gender preference for host voice when auto-selecting */
+  hostGenderPreference?: VoiceGender | 'any';
+  /** Category preference for host voice when auto-selecting */
+  hostCategoryPreference?: VoiceCategory | 'any';
+  /** Gender preference for expert voice when auto-selecting */
+  expertGenderPreference?: VoiceGender | 'any';
+  /** Category preference for expert voice when auto-selecting */
+  expertCategoryPreference?: VoiceCategory | 'any';
 }
 
 // ===== Main Tool Configuration =====

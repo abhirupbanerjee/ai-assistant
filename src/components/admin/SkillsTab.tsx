@@ -1491,7 +1491,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                         </div>
                       )}
 
-                      {/* podcast_gen: Style and Length */}
+                      {/* podcast_gen: Style, Length, and Voice Preferences */}
                       {formData.tool_name === 'podcast_gen' && (
                         <>
                           <div className="mb-3">
@@ -1519,6 +1519,104 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                               <option value="medium">Medium (3-5 minutes)</option>
                               <option value="long">Long (8-10 minutes)</option>
                             </select>
+                          </div>
+
+                          {/* Voice Preferences Section */}
+                          <div className="border-t pt-3 mt-3">
+                            <label className="block text-xs font-medium text-gray-700 mb-2">Voice Preferences</label>
+
+                            {/* Auto-select toggle */}
+                            <div className="flex items-center gap-2 mb-3 p-2 bg-blue-50 rounded">
+                              <input
+                                type="checkbox"
+                                id="skill-autoSelectVoices"
+                                checked={getConfigValue('autoSelectVoices') === 'true'}
+                                onChange={(e) => setConfigValue('autoSelectVoices', e.target.checked ? 'true' : '')}
+                              />
+                              <label htmlFor="skill-autoSelectVoices" className="text-xs text-gray-700">
+                                Auto-select voices based on character description
+                              </label>
+                            </div>
+
+                            {/* Host Preferences */}
+                            <div className="mb-3">
+                              <label className="block text-xs text-gray-500 mb-1">Host Voice Preferences</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <select
+                                  value={getConfigValue('hostGenderPreference') || ''}
+                                  onChange={(e) => setConfigValue('hostGenderPreference', e.target.value)}
+                                  className="px-2 py-1 text-xs border rounded"
+                                >
+                                  <option value="">Use default</option>
+                                  <option value="any">Any Gender</option>
+                                  <option value="female">Female</option>
+                                  <option value="male">Male</option>
+                                </select>
+                                <select
+                                  value={getConfigValue('hostCategoryPreference') || ''}
+                                  onChange={(e) => setConfigValue('hostCategoryPreference', e.target.value)}
+                                  className="px-2 py-1 text-xs border rounded"
+                                >
+                                  <option value="">Use default</option>
+                                  <option value="any">Any Tone</option>
+                                  <option value="conversational">Conversational</option>
+                                  <option value="informative">Informative</option>
+                                  <option value="expressive">Expressive</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Expert Preferences */}
+                            <div className="mb-3">
+                              <label className="block text-xs text-gray-500 mb-1">Expert Voice Preferences</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <select
+                                  value={getConfigValue('expertGenderPreference') || ''}
+                                  onChange={(e) => setConfigValue('expertGenderPreference', e.target.value)}
+                                  className="px-2 py-1 text-xs border rounded"
+                                >
+                                  <option value="">Use default</option>
+                                  <option value="any">Any Gender</option>
+                                  <option value="female">Female</option>
+                                  <option value="male">Male</option>
+                                </select>
+                                <select
+                                  value={getConfigValue('expertCategoryPreference') || ''}
+                                  onChange={(e) => setConfigValue('expertCategoryPreference', e.target.value)}
+                                  className="px-2 py-1 text-xs border rounded"
+                                >
+                                  <option value="">Use default</option>
+                                  <option value="any">Any Tone</option>
+                                  <option value="conversational">Conversational</option>
+                                  <option value="informative">Informative</option>
+                                  <option value="expressive">Expressive</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Character Descriptions */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Host Character</label>
+                                <input
+                                  type="text"
+                                  value={getConfigValue('hostAccent') || ''}
+                                  onChange={(e) => setConfigValue('hostAccent', e.target.value)}
+                                  placeholder="e.g., Indian mother aged 40"
+                                  className="w-full px-2 py-1 text-xs border rounded"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Expert Character</label>
+                                <input
+                                  type="text"
+                                  value={getConfigValue('expertAccent') || ''}
+                                  onChange={(e) => setConfigValue('expertAccent', e.target.value)}
+                                  placeholder="e.g., British professor aged 55"
+                                  className="w-full px-2 py-1 text-xs border rounded"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </>
                       )}

@@ -1,73 +1,22 @@
-# Policy Bot - Database & Storage Architecture
+# Policy Bot - Database Schema Reference
 
 ## Overview
 
-Policy Bot uses a pluggable, hybrid storage approach:
-- **Database** (SQLite or PostgreSQL): Structured metadata — users, categories, documents, threads, messages, settings
-- **Vector Store** (ChromaDB or Qdrant): Vector embeddings for semantic search (per-category collections)
-- **Redis**: Caching (RAG responses, Tavily results) and session management
-- **Filesystem**: PDF files (global-docs, thread uploads)
+This document provides detailed schema definitions, column descriptions, and data models for the Policy Bot database.
 
-Both database and vector store providers implement the same interface — application code is provider-agnostic. Selection is controlled by environment variables:
+**For architecture documentation** (SQLite vs PostgreSQL, connection pooling, operations mapping), see [DB-techstack.md](DB-techstack.md).
 
-| Variable | Options | Default |
-|----------|---------|---------|
-| `DATABASE_PROVIDER` | `sqlite` \| `postgres` | `sqlite` |
-| `VECTOR_STORE_PROVIDER` | `chromadb` \| `qdrant` | `chromadb` |
-
-See [INFRASTRUCTURE.md](INFRASTRUCTURE.md#infrastructure-selection-guide) for guidance on choosing the right combination.
+**Storage Components:**
+- **Database** (SQLite or PostgreSQL): Structured metadata
+- **Vector Store** (ChromaDB or Qdrant): Embeddings for semantic search
+- **Redis**: Caching and session management
+- **Filesystem**: PDF files and uploads
 
 ---
 
-## 1. Primary Database Schema (SQLite / PostgreSQL)
+## 1. Database Schema
 
-Both providers use the same schema and table structure. The database stores all structured metadata with ACID transactions.
-
-### Database Abstraction Layer (Kysely)
-
-The application uses [Kysely](https://kysely.dev) as a type-safe query builder with a compatibility layer that adapts queries for either provider:
-
-```
-src/lib/db/
-  kysely.ts          → Kysely instance factory (reads DATABASE_PROVIDER)
-  db-types.ts        → Shared TypeScript type definitions
-  compat/            → Async wrapper functions (same API for both providers)
-    users.ts
-    categories.ts
-    documents.ts
-    threads.ts
-    config.ts
-    backup.ts
-  schema/
-    postgres.sql     → PostgreSQL schema (auto-applied on first container start)
-```
-
-**SQLite** (`DATABASE_PROVIDER=sqlite`):
-- File: `data/app/policybot.db`
-- WAL mode enabled for improved concurrency
-- Zero configuration required
-
-**PostgreSQL** (`DATABASE_PROVIDER=postgres`):
-- Schema file: `src/lib/db/schema/postgres.sql`
-- Auto-initialised via Docker's `/docker-entrypoint-initdb.d/` on first start
-- Connection pool: max 10 connections, 30s idle timeout
-- Requires: `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
-- Idempotent startup migrations run in `src/lib/db/kysely.ts` for existing databases (schema changes not covered by the init script)
-
-### Dual-Database Architecture
-
-Both SQLite and PostgreSQL are active simultaneously when `DATABASE_PROVIDER=postgres`. Writes go to SQLite first (sync), then are mirrored to PostgreSQL asynchronously. Reads go to PostgreSQL with automatic SQLite fallback for any records not yet present (e.g. threads created before migration).
-
-This means:
-- No data loss during a SQLite → PostgreSQL migration
-- `getThreadContext()` transparently serves threads from either store
-- Admin tool config updates use `upsertToolConfigAsync()` to keep both stores in sync
-
-**`thread_outputs` FK note:** The `thread_id` foreign key is intentionally absent from `thread_outputs` in both the schema (`postgres.sql`) and existing deployments (dropped via startup migration). This allows image and document generation to save outputs for threads that exist only in SQLite, without requiring a full data migration.
-
-### SQLite-Specific Notes
-
-The SQLite database (`data/app/policybot.db`) uses WAL mode and is compatible with better-sqlite3 for synchronous access patterns.
+Both SQLite and PostgreSQL use the same schema and table structure. The database stores all structured metadata with ACID transactions.
 
 ### Entity Relationship Diagram
 
