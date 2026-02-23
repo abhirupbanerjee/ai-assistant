@@ -86,6 +86,7 @@ function toMessage(parsed: ParsedMessage): Message {
     generatedDocuments: parsed.generatedDocuments || undefined,
     visualizations: parsed.visualizations || undefined,
     generatedImages: parsed.generatedImages || undefined,
+    generatedPodcasts: parsed.generatedPodcasts || undefined,
     timestamp: parsed.createdAt,
   };
 }
