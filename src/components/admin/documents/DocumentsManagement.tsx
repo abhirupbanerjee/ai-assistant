@@ -64,10 +64,26 @@ interface FolderUploadFile {
 }
 
 interface DocumentsManagementProps {
-  documentsSection: 'documents' | 'acronyms';
+  documentsSection?: 'documents' | 'acronyms'; // Now optional - component manages its own state
 }
 
-export default function DocumentsManagement({ documentsSection }: DocumentsManagementProps) {
+export default function DocumentsManagement({ documentsSection: initialSection }: DocumentsManagementProps) {
+  // Accordion state for expandable sections
+  const [expandedSections, setExpandedSections] = useState<Set<'documents' | 'acronyms'>>(
+    new Set([initialSection || 'documents'])
+  );
+
+  const toggleSection = (section: 'documents' | 'acronyms') => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) {
+        newSet.delete(section);
+      } else {
+        newSet.add(section);
+      }
+      return newSet;
+    });
+  };
   // Documents state
   const [documents, setDocuments] = useState<GlobalDocument[]>([]);
   const [totalChunks, setTotalChunks] = useState(0);
@@ -866,21 +882,36 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
   }
 
   return (
-    <>
+    <div className="space-y-4">
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
           <p className="text-sm text-red-700">{error}</p>
           <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">&times;</button>
         </div>
       )}
 
-      {documentsSection === 'documents' && (
-        <div className="bg-white rounded-lg border shadow-sm">
-          <div className="px-6 py-4 border-b">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-gray-900">Knowledge Base Documents</h2>
-                <p className="text-sm text-gray-500">
+      {/* Documents Accordion Section */}
+      <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <button
+          onClick={() => toggleSection('documents')}
+          className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <FileText size={20} className="text-gray-600" />
+            <div className="text-left">
+              <h2 className="font-semibold text-gray-900">Documents</h2>
+              <p className="text-sm text-gray-500">Manage knowledge base documents</p>
+            </div>
+          </div>
+          {expandedSections.has('documents') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+        </button>
+        {expandedSections.has('documents') && (
+          <div className="border-t">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Knowledge Base Documents</h3>
+                  <p className="text-sm text-gray-500">
                   {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents, {totalChunks} chunks indexed
                 </p>
               </div>
@@ -1215,17 +1246,33 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
               )}
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
-      {documentsSection === 'acronyms' && (
-        <div className="bg-white rounded-lg border shadow-sm">
-          <div className="px-6 py-4 border-b">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-gray-900">Acronym Mappings</h2>
-                <p className="text-sm text-gray-500">
-                  Define acronyms and their expansions for better search and understanding
+      {/* Acronyms Accordion Section */}
+      <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <button
+          onClick={() => toggleSection('acronyms')}
+          className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Tag size={20} className="text-gray-600" />
+            <div className="text-left">
+              <h2 className="font-semibold text-gray-900">Acronyms</h2>
+              <p className="text-sm text-gray-500">Define acronym expansions for better search</p>
+            </div>
+          </div>
+          {expandedSections.has('acronyms') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+        </button>
+        {expandedSections.has('acronyms') && (
+          <div className="border-t">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Acronym Mappings</h3>
+                  <p className="text-sm text-gray-500">
+                    Define acronyms and their expansions for better search and understanding
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1258,8 +1305,9 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
               </p>
             )}
           </div>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {/* Delete Document Modal */}
       <Modal
@@ -2114,6 +2162,6 @@ export default function DocumentsManagement({ documentsSection }: DocumentsManag
           </Button>
         </div>
       </Modal>
-    </>
+    </div>
   );
 }

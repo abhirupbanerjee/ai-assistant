@@ -27,7 +27,7 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'skills' | 'agent' | 'tokens' | 'workspaces' | 'backup' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'skills' | 'settings';
 
 // Section types for expandable menus
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
@@ -36,7 +36,7 @@ type UsersSection = 'management' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type SkillsSection = 'tools' | 'skill-library';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache';
+type SettingsSection = 'llm' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -74,60 +74,22 @@ const MENU_CONFIG: MenuConfigItem[] = [
     ]
   },
   { id: 'categories', label: 'Categories', icon: FolderOpen, expandable: false },
-  {
-    id: 'documents',
-    label: 'Documents',
-    icon: FileText,
-    expandable: true,
-    submenu: [
-      { id: 'documents', label: 'Documents' },
-      { id: 'acronyms', label: 'Acronyms' },
-    ]
-  },
-  {
-    id: 'users',
-    label: 'Users',
-    icon: Users,
-    expandable: true,
-    submenu: [
-      { id: 'management', label: 'User Management' },
-      { id: 'superuser', label: 'Superuser Settings' },
-    ]
-  },
-  {
-    id: 'prompts',
-    label: 'Prompts',
-    icon: MessageSquare,
-    expandable: true,
-    submenu: [
-      { id: 'system-prompt', label: 'System Prompt' },
-      { id: 'category-prompts', label: 'Category Prompts' },
-    ]
-  },
+  { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
+  { id: 'users', label: 'Users', icon: Users, expandable: false },
+  { id: 'prompts', label: 'Prompts', icon: MessageSquare, expandable: false },
+  { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
+  { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },
+  { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
   {
     id: 'skills',
-    label: 'Skills',
+    label: 'Skill Library',
     icon: Sparkles,
     expandable: true,
     submenu: [
       { id: 'tools', label: 'Tools' },
-      { id: 'skill-library', label: 'Skill Library' },
+      { id: 'skill-library', label: 'Skills' },
     ]
   },
-  { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
-  {
-    id: 'tokens',
-    label: 'Tokens',
-    icon: Coins,
-    expandable: true,
-    submenu: [
-      { id: 'memory', label: 'Memory' },
-      { id: 'summarization', label: 'Summarization' },
-      { id: 'limits', label: 'Limits' },
-    ]
-  },
-  { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
-  { id: 'backup', label: 'Backup', icon: Database, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
@@ -141,6 +103,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'reranker', label: 'Reranker' },
       { id: 'ocr', label: 'Document Processing' },
       { id: 'cache', label: 'Cache' },
+      { id: 'backup', label: 'Backup' },
     ]
   },
 ];
@@ -162,20 +125,30 @@ const getMenuConfig = (menuId: TabType): MenuConfigItem | undefined =>
 export const DASHBOARD_SUBMENU: { id: DashboardSection; label: string }[] =
   getMenuConfig('dashboard')?.submenu as { id: DashboardSection; label: string }[] || [];
 
-export const DOCUMENTS_SUBMENU: { id: DocumentsSection; label: string }[] =
-  getMenuConfig('documents')?.submenu as { id: DocumentsSection; label: string }[] || [];
+// These are now used for accordion sections in page content (no longer in sidebar submenu)
+export const DOCUMENTS_SUBMENU: { id: DocumentsSection; label: string }[] = [
+  { id: 'documents', label: 'Documents' },
+  { id: 'acronyms', label: 'Acronyms' },
+];
 
-export const USERS_SUBMENU: { id: UsersSection; label: string }[] =
-  getMenuConfig('users')?.submenu as { id: UsersSection; label: string }[] || [];
+export const USERS_SUBMENU: { id: UsersSection; label: string }[] = [
+  { id: 'management', label: 'User Management' },
+  { id: 'superuser', label: 'Superuser Settings' },
+];
 
-export const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] =
-  getMenuConfig('prompts')?.submenu as { id: PromptsSection; label: string }[] || [];
+export const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
+  { id: 'system-prompt', label: 'System Prompt' },
+  { id: 'category-prompts', label: 'Category Prompts' },
+];
 
 export const SKILLS_SUBMENU: { id: SkillsSection; label: string }[] =
   getMenuConfig('skills')?.submenu as { id: SkillsSection; label: string }[] || [];
 
-export const TOKENS_SUBMENU: { id: TokensSection; label: string }[] =
-  getMenuConfig('tokens')?.submenu as { id: TokensSection; label: string }[] || [];
+export const TOKENS_SUBMENU: { id: TokensSection; label: string }[] = [
+  { id: 'memory', label: 'Memory' },
+  { id: 'summarization', label: 'Summarization' },
+  { id: 'limits', label: 'Limits' },
+];
 
 export const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] =
   getMenuConfig('settings')?.submenu as { id: SettingsSection; label: string }[] || [];

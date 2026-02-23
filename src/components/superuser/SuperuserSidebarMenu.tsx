@@ -9,7 +9,7 @@ import {
   Users,
   FileText,
   MessageSquare,
-  Globe,
+  Sparkles,
   Settings,
   ChevronDown,
   ChevronRight,
@@ -18,16 +18,19 @@ import {
   Layers,
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'workspaces' | 'settings';
-type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
+type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'settings';
+type PromptsSection = 'global-prompt' | 'category-prompts';
+type SkillsSection = 'tools' | 'skills';
 type SettingsSection = 'rag-tuning' | 'backup';
 
 interface SuperuserSidebarMenuProps {
   activeTab: TabType;
   promptsSection: PromptsSection;
+  skillsSection: SkillsSection;
   settingsSection: SettingsSection;
   onTabChange: (tab: TabType) => void;
   onPromptsChange: (section: PromptsSection) => void;
+  onSkillsChange: (section: SkillsSection) => void;
   onSettingsChange: (section: SettingsSection) => void;
 }
 
@@ -37,14 +40,18 @@ const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] 
   { id: 'users', label: 'Users', icon: Users },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare },
-  { id: 'tools', label: 'Tools', icon: Globe },
   { id: 'workspaces', label: 'Workspaces', icon: Layers },
+  { id: 'skills', label: 'Skill Library', icon: Sparkles },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
   { id: 'global-prompt', label: 'Global Prompt' },
   { id: 'category-prompts', label: 'Category Prompts' },
+];
+
+const SKILLS_SUBMENU: { id: SkillsSection; label: string }[] = [
+  { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
 ];
 
@@ -56,19 +63,21 @@ const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
 export default function SuperuserSidebarMenu({
   activeTab,
   promptsSection,
+  skillsSection,
   settingsSection,
   onTabChange,
   onPromptsChange,
+  onSkillsChange,
   onSettingsChange,
 }: SuperuserSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'settings' | null>(
-    activeTab === 'prompts' ? 'prompts' : activeTab === 'settings' ? 'settings' : null
+  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'skills' | 'settings' | null>(
+    activeTab === 'prompts' ? 'prompts' : activeTab === 'skills' ? 'skills' : activeTab === 'settings' ? 'settings' : null
   );
 
   const handleTabClick = (tabId: TabType) => {
-    if (tabId === 'prompts' || tabId === 'settings') {
+    if (tabId === 'prompts' || tabId === 'skills' || tabId === 'settings') {
       // If collapsed, expand sidebar first and show submenu
       if (isCollapsed) {
         setIsCollapsed(false);
@@ -88,6 +97,12 @@ export default function SuperuserSidebarMenu({
     setIsMobileOpen(false);
   };
 
+  const handleSkillsSubClick = (section: SkillsSection) => {
+    onTabChange('skills');
+    onSkillsChange(section);
+    setIsMobileOpen(false);
+  };
+
   const handleSettingsSubClick = (section: SettingsSection) => {
     onTabChange('settings');
     onSettingsChange(section);
@@ -98,6 +113,10 @@ export default function SuperuserSidebarMenu({
     if (activeTab === 'prompts') {
       const sub = PROMPTS_SUBMENU.find(s => s.id === promptsSection);
       return `Prompts > ${sub?.label || ''}`;
+    }
+    if (activeTab === 'skills') {
+      const sub = SKILLS_SUBMENU.find(s => s.id === skillsSection);
+      return `Skill Library > ${sub?.label || ''}`;
     }
     if (activeTab === 'settings') {
       const sub = SETTINGS_SUBMENU.find(s => s.id === settingsSection);
@@ -127,7 +146,7 @@ export default function SuperuserSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings';
+          const hasSubmenu = tab.id === 'prompts' || tab.id === 'skills' || tab.id === 'settings';
           const isExpanded = expandedMenu === tab.id;
 
           return (
@@ -160,6 +179,25 @@ export default function SuperuserSidebarMenu({
                       onClick={() => handlePromptsSubClick(sub.id)}
                       className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
                         activeTab === 'prompts' && promptsSection === sub.id
+                          ? 'bg-blue-100 text-blue-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Skills Submenu */}
+              {tab.id === 'skills' && isExpanded && (
+                <div className="bg-gray-50/80">
+                  {SKILLS_SUBMENU.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => handleSkillsSubClick(sub.id)}
+                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+                        activeTab === 'skills' && skillsSection === sub.id
                           ? 'bg-blue-100 text-blue-700 font-medium'
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}
@@ -213,7 +251,7 @@ export default function SuperuserSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings';
+          const hasSubmenu = tab.id === 'prompts' || tab.id === 'skills' || tab.id === 'settings';
           const isExpanded = expandedMenu === tab.id && !isCollapsed;
 
           return (
@@ -247,6 +285,25 @@ export default function SuperuserSidebarMenu({
                       onClick={() => handlePromptsSubClick(sub.id)}
                       className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
                         activeTab === 'prompts' && promptsSection === sub.id
+                          ? 'bg-blue-100 text-blue-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Skills Submenu - only show when expanded and not collapsed */}
+              {tab.id === 'skills' && isExpanded && (
+                <div className="bg-gray-50/80">
+                  {SKILLS_SUBMENU.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => handleSkillsSubClick(sub.id)}
+                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+                        activeTab === 'skills' && skillsSection === sub.id
                           ? 'bg-blue-100 text-blue-700 font-medium'
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}
@@ -296,7 +353,7 @@ export default function SuperuserSidebarMenu({
                 onClick={() => {
                   setIsMobileOpen(true);
                   // If has submenu, expand it
-                  if (tab.id === 'prompts' || tab.id === 'settings') {
+                  if (tab.id === 'prompts' || tab.id === 'skills' || tab.id === 'settings') {
                     setExpandedMenu(tab.id);
                   }
                 }}

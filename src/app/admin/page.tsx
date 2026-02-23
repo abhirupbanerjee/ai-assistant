@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -125,14 +125,14 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'skills' | 'agent' | 'tokens' | 'workspaces' | 'backup' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'skills' | 'settings';
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type SkillsSection = 'tools' | 'skill-library';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache';
+type SettingsSection = 'llm' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -285,6 +285,38 @@ export default function AdminPage() {
 
   // Legacy tools section for backward compatibility
   const [toolsSection, setToolsSection] = useState<ToolsSection>('management');
+
+  // Accordion expanded states for flattened menu items
+  const [expandedUsersSections, setExpandedUsersSections] = useState<Set<UsersSection>>(new Set(['management']));
+  const [expandedPromptsSections, setExpandedPromptsSections] = useState<Set<PromptsSection>>(new Set(['system-prompt']));
+  const [expandedTokensSections, setExpandedTokensSections] = useState<Set<TokensSection>>(new Set(['memory']));
+
+  const toggleUsersSection = (section: UsersSection) => {
+    setExpandedUsersSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) newSet.delete(section);
+      else newSet.add(section);
+      return newSet;
+    });
+  };
+
+  const togglePromptsSection = (section: PromptsSection) => {
+    setExpandedPromptsSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) newSet.delete(section);
+      else newSet.add(section);
+      return newSet;
+    });
+  };
+
+  const toggleTokensSection = (section: TokensSection) => {
+    setExpandedTokensSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) newSet.delete(section);
+      else newSet.add(section);
+      return newSet;
+    });
+  };
 
   // LLM collapse state
   const [llmSettingsExpanded, setLlmSettingsExpanded] = useState(true);
@@ -1087,17 +1119,53 @@ export default function AdminPage() {
           <CategoriesManagement />
         )}
 
-        {/* Users Tab */}
+        {/* Users Tab - Accordion UI */}
         {activeTab === 'users' && (
-          <>
-            {usersSection === 'management' && (
-              <UserManagement />
-            )}
+          <div className="space-y-4">
+            {/* User Management Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleUsersSection('management')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Users size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">User Management</h2>
+                    <p className="text-sm text-gray-500">Manage users and their permissions</p>
+                  </div>
+                </div>
+                {expandedUsersSections.has('management') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedUsersSections.has('management') && (
+                <div className="border-t">
+                  <UserManagement />
+                </div>
+              )}
+            </div>
 
-            {usersSection === 'superuser' && (
-              <SuperuserSettingsTab />
-            )}
-          </>
+            {/* Superuser Settings Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleUsersSection('superuser')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Settings size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Superuser Settings</h2>
+                    <p className="text-sm text-gray-500">Configure superuser permissions and categories</p>
+                  </div>
+                </div>
+                {expandedUsersSections.has('superuser') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedUsersSections.has('superuser') && (
+                <div className="border-t">
+                  <SuperuserSettingsTab />
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Settings Tab */}
@@ -1136,15 +1204,53 @@ export default function AdminPage() {
         )}
 
         {/* Prompts Tab */}
+        {/* Prompts Tab - Accordion UI */}
         {activeTab === 'prompts' && (
-          <>
-              {/* System Prompt Section */}
-              {promptsSection === 'system-prompt' && <SystemPromptSettings />}
+          <div className="space-y-4">
+            {/* System Prompt Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => togglePromptsSection('system-prompt')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">System Prompt</h2>
+                    <p className="text-sm text-gray-500">Configure the global system prompt</p>
+                  </div>
+                </div>
+                {expandedPromptsSections.has('system-prompt') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedPromptsSections.has('system-prompt') && (
+                <div className="border-t">
+                  <SystemPromptSettings />
+                </div>
+              )}
+            </div>
 
-              {/* Category Prompts Section */}
-              {promptsSection === 'category-prompts' && <CategoryPromptsSettings />}
-              {/* Acronyms moved to Documents tab, Skills is now its own top-level tab */}
-          </>
+            {/* Category Prompts Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => togglePromptsSection('category-prompts')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Category Prompts</h2>
+                    <p className="text-sm text-gray-500">Configure prompts for specific categories</p>
+                  </div>
+                </div>
+                {expandedPromptsSections.has('category-prompts') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedPromptsSections.has('category-prompts') && (
+                <div className="border-t">
+                  <CategoryPromptsSettings />
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Skills Tab (renamed from Tools) */}
@@ -1164,8 +1270,8 @@ export default function AdminPage() {
           <WorkspacesTab isAdmin={true} />
         )}
 
-        {/* Backup Tab (promoted from Settings) */}
-        {activeTab === 'backup' && (
+        {/* Backup Tab (now under Settings) */}
+        {activeTab === 'settings' && settingsSection === 'backup' && (
           <BackupTab />
         )}
 
@@ -1180,14 +1286,75 @@ export default function AdminPage() {
         )}
 
         {/* Tokens Tab - Memory, Summarization, Limits */}
+        {/* Tokens Tab - Accordion UI */}
         {activeTab === 'tokens' && (
-          <>
-            {tokensSection === 'memory' && <MemorySettingsTab />}
-            {tokensSection === 'summarization' && <SummarizationSettingsTab />}
-            {tokensSection === 'limits' && (
-              <TokenLimitsSettingsTab />
-            )}
-          </>
+          <div className="space-y-4">
+            {/* Memory Settings Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleTokensSection('memory')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Coins size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Memory</h2>
+                    <p className="text-sm text-gray-500">Configure conversation memory settings</p>
+                  </div>
+                </div>
+                {expandedTokensSections.has('memory') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedTokensSections.has('memory') && (
+                <div className="border-t">
+                  <MemorySettingsTab />
+                </div>
+              )}
+            </div>
+
+            {/* Summarization Settings Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleTokensSection('summarization')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Coins size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Summarization</h2>
+                    <p className="text-sm text-gray-500">Configure summarization behavior</p>
+                  </div>
+                </div>
+                {expandedTokensSections.has('summarization') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedTokensSections.has('summarization') && (
+                <div className="border-t">
+                  <SummarizationSettingsTab />
+                </div>
+              )}
+            </div>
+
+            {/* Token Limits Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleTokensSection('limits')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Coins size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Token Limits</h2>
+                    <p className="text-sm text-gray-500">Configure token usage limits</p>
+                  </div>
+                </div>
+                {expandedTokensSections.has('limits') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedTokensSections.has('limits') && (
+                <div className="border-t">
+                  <TokenLimitsSettingsTab />
+                </div>
+              )}
+            </div>
+          </div>
         )}
         </main>
       </div>

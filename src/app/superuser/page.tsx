@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Trash2, Edit2, Save, RefreshCw, CheckCircle, Wand2 } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Trash2, Edit2, Save, RefreshCw, CheckCircle, Wand2, ChevronUp, ChevronDown, MessageSquare } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -138,11 +138,26 @@ export default function SuperUserPage() {
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'workspaces' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'settings'>('dashboard');
 
   // Prompts sidebar section state
-  type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
+  type PromptsSection = 'global-prompt' | 'category-prompts';
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('category-prompts');
+
+  // Accordion state for Prompts sections
+  const [expandedPromptsSections, setExpandedPromptsSections] = useState<Set<PromptsSection>>(new Set(['category-prompts']));
+  const togglePromptsSection = (section: PromptsSection) => {
+    setExpandedPromptsSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) newSet.delete(section);
+      else newSet.add(section);
+      return newSet;
+    });
+  };
+
+  // Skills sidebar section state
+  type SkillsSection = 'tools' | 'skills';
+  const [skillsSection, setSkillsSection] = useState<SkillsSection>('tools');
 
   // Settings sidebar section state
   type SettingsSection = 'rag-tuning' | 'backup';
@@ -604,9 +619,11 @@ export default function SuperUserPage() {
         <SuperuserSidebarMenu
           activeTab={activeTab}
           promptsSection={promptsSection}
+          skillsSection={skillsSection}
           settingsSection={settingsSection}
           onTabChange={setActiveTab}
           onPromptsChange={setPromptsSection}
+          onSkillsChange={setSkillsSection}
           onSettingsChange={setSettingsSection}
         />
 
@@ -840,105 +857,122 @@ export default function SuperUserPage() {
         )}
 
         {/* Prompts Section */}
+        {/* Prompts Tab - Accordion UI */}
         {activeTab === 'prompts' && (
-          <>
-              {/* Global System Prompt (Read-only) */}
-              {promptsSection === 'global-prompt' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
+          <div className="space-y-4">
+            {/* Global System Prompt Accordion (Read-only) */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => togglePromptsSection('global-prompt')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={20} className="text-gray-600" />
+                  <div className="text-left">
                     <h2 className="font-semibold text-gray-900">Global System Prompt</h2>
-                    <p className="text-sm text-gray-500">
-                      This prompt applies to all categories (view only - set by administrator)
-                    </p>
-                  </div>
-                  <div className="p-6">
-                    {globalPromptLoading ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Spinner size="sm" />
-                        <span className="ml-2 text-gray-500 text-sm">Loading prompt...</span>
-                      </div>
-                    ) : globalPrompt ? (
-                      <div className="bg-gray-50 border rounded-lg p-4 max-h-96 overflow-y-auto">
-                        <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
-                          {globalPrompt}
-                        </pre>
-                      </div>
-                    ) : assignedCategories.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No categories assigned. Contact admin to view system prompt.
-                      </p>
-                    ) : (
-                      <p className="text-gray-500 text-sm">
-                        Unable to load global system prompt.
-                      </p>
-                    )}
+                    <p className="text-sm text-gray-500">View the system prompt (read-only)</p>
                   </div>
                 </div>
-              )}
-
-              {/* Category Prompts */}
-              {promptsSection === 'category-prompts' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <h2 className="font-semibold text-gray-900">Category-Specific Prompts</h2>
-                    <p className="text-sm text-gray-500">
-                      Add custom prompt guidance for your assigned categories
+                {expandedPromptsSections.has('global-prompt') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedPromptsSections.has('global-prompt') && (
+                <div className="border-t p-6">
+                  {globalPromptLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Spinner size="sm" />
+                      <span className="ml-2 text-gray-500 text-sm">Loading prompt...</span>
+                    </div>
+                  ) : globalPrompt ? (
+                    <div className="bg-gray-50 border rounded-lg p-4 max-h-96 overflow-y-auto">
+                      <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
+                        {globalPrompt}
+                      </pre>
+                    </div>
+                  ) : assignedCategories.length === 0 ? (
+                    <p className="text-gray-500 text-sm">
+                      No categories assigned. Contact admin to view system prompt.
                     </p>
+                  ) : (
+                    <p className="text-gray-500 text-sm">
+                      Unable to load global system prompt.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Category Prompts Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => togglePromptsSection('category-prompts')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Category Prompts</h2>
+                    <p className="text-sm text-gray-500">Custom prompt guidance for your categories</p>
                   </div>
-                  <div className="p-6">
-                    {assignedCategories.length === 0 ? (
-                      <p className="text-gray-500 text-center py-4">
-                        No categories assigned to you.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left">
-                              <th className="pb-3 font-medium text-gray-700">Category</th>
-                              <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
-                              <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
+                </div>
+                {expandedPromptsSections.has('category-prompts') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedPromptsSections.has('category-prompts') && (
+                <div className="border-t p-6">
+                  {assignedCategories.length === 0 ? (
+                    <p className="text-gray-500 text-center py-4">
+                      No categories assigned to you.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left">
+                            <th className="pb-3 font-medium text-gray-700">Category</th>
+                            <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
+                            <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {assignedCategories.map((cat) => (
+                            <tr key={cat.categoryId} className="hover:bg-gray-50">
+                              <td className="py-3">
+                                <span className="font-medium text-gray-900">{cat.categoryName}</span>
+                              </td>
+                              <td className="py-3">
+                                <span className="text-gray-500 text-xs">Click Edit to configure</span>
+                              </td>
+                              <td className="py-3 text-right">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleOpenCategoryPromptModal(cat.categoryId)}
+                                >
+                                  <Edit2 size={14} className="mr-1" />
+                                  Edit
+                                </Button>
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {assignedCategories.map((cat) => (
-                              <tr key={cat.categoryId} className="hover:bg-gray-50">
-                                <td className="py-3">
-                                  <span className="font-medium text-gray-900">{cat.categoryName}</span>
-                                </td>
-                                <td className="py-3">
-                                  <span className="text-gray-500 text-xs">Click Edit to configure</span>
-                                </td>
-                                <td className="py-3 text-right">
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleOpenCategoryPromptModal(cat.categoryId)}
-                                  >
-                                    <Edit2 size={14} className="mr-1" />
-                                    Edit
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
-
-              {/* Skills Section */}
-              {promptsSection === 'skills' && (
-                <SkillsTab isSuperuser />
-              )}
-          </>
+            </div>
+          </div>
         )}
 
-        {/* Tools Section */}
-        {activeTab === 'tools' && (
-          <ToolsTab isSuperuser />
+        {/* Skills Tab (Skill Library) */}
+        {activeTab === 'skills' && (
+          <>
+            {skillsSection === 'tools' && (
+              <ToolsTab isSuperuser />
+            )}
+            {skillsSection === 'skills' && (
+              <SkillsTab isSuperuser />
+            )}
+          </>
         )}
 
         {/* Workspaces Section */}
