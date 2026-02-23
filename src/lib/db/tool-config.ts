@@ -570,9 +570,10 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       providers: {
         openai: {
           enabled: false,
-          model: 'tts-1-hd',
-          voice: 'nova',
+          model: 'gpt-4o-mini-tts',
+          voice: 'marin',  // Best quality voice
           speed: 1.0,
+          instructions: '',  // Voice style control
         },
       },
       defaultStyle: 'conversational',

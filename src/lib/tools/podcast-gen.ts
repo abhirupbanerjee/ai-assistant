@@ -48,9 +48,10 @@ export const PODCAST_GEN_DEFAULTS: PodcastGenConfig = {
   providers: {
     openai: {
       enabled: false,
-      model: 'tts-1-hd',
-      voice: 'nova',
+      model: 'gpt-4o-mini-tts',
+      voice: 'marin',
       speed: 1.0,
+      instructions: '',
     },
   },
   defaultStyle: 'conversational',
@@ -429,14 +430,19 @@ const podcastGenConfigSchema = {
             model: {
               type: 'string',
               title: 'Model',
-              enum: ['tts-1', 'tts-1-hd'],
-              default: 'tts-1-hd',
+              enum: ['gpt-4o-mini-tts'],
+              default: 'gpt-4o-mini-tts',
             },
             voice: {
               type: 'string',
               title: 'Voice',
-              enum: ['alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer'],
-              default: 'nova',
+              description: 'marin and cedar are recommended for best quality',
+              enum: [
+                'marin', 'cedar',  // Best quality
+                'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable',
+                'nova', 'onyx', 'sage', 'shimmer', 'verse',
+              ],
+              default: 'marin',
             },
             speed: {
               type: 'number',
@@ -445,6 +451,31 @@ const podcastGenConfigSchema = {
               minimum: 0.25,
               maximum: 4.0,
               default: 1.0,
+            },
+            instructions: {
+              type: 'string',
+              title: 'Voice Instructions',
+              description: 'Control voice style with natural language (e.g., "Speak calmly")',
+              default: '',
+            },
+          },
+        },
+        gemini: {
+          type: 'object',
+          title: 'Google Gemini TTS (Future)',
+          properties: {
+            enabled: { type: 'boolean', title: 'Enable Gemini TTS', default: false },
+            model: {
+              type: 'string',
+              title: 'Model',
+              enum: ['gemini-2.5-flash-tts', 'gemini-2.5-pro-tts'],
+              default: 'gemini-2.5-flash-tts',
+            },
+            multiSpeaker: {
+              type: 'boolean',
+              title: 'Multi-Speaker Mode',
+              description: 'Enable multi-speaker conversations',
+              default: false,
             },
           },
         },

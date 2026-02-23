@@ -33,6 +33,7 @@ import FunctionAPITab from './FunctionAPITab';
 // ToolRoutingTab is deprecated - tool routing now handled via Skills
 import ImageGenConfig from './ImageGenConfig';
 import TranslationConfig from './TranslationConfig';
+import PodcastGenConfig from './PodcastGenConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
 
@@ -1347,6 +1348,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'compliance_checker':
         return (
           <ComplianceCheckerConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'podcast_gen':
+        return (
+          <PodcastGenConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}

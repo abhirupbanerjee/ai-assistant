@@ -6,7 +6,7 @@
 
 // ===== Provider Types =====
 
-export type TTSProvider = 'openai';
+export type TTSProvider = 'openai' | 'gemini';
 
 export type PodcastStyle = 'formal' | 'conversational' | 'news';
 
@@ -14,15 +14,30 @@ export type PodcastLength = 'short' | 'medium' | 'long';
 
 export type AudioFormat = 'mp3';
 
-export type OpenAIVoice = 'alloy' | 'echo' | 'fable' | 'nova' | 'onyx' | 'shimmer';
+// All 13 gpt-4o-mini-tts voices (marin and cedar are best quality)
+export type OpenAIVoice =
+  | 'marin' | 'cedar'  // Best quality (recommended)
+  | 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'fable'
+  | 'nova' | 'onyx' | 'sage' | 'shimmer' | 'verse';
+
+// Future Gemini TTS models
+export type GeminiTTSModel = 'gemini-2.5-flash-tts' | 'gemini-2.5-pro-tts';
 
 // ===== Provider Configuration Types =====
 
 export interface OpenAITTSConfig {
   enabled: boolean;
-  model: 'tts-1' | 'tts-1-hd';
+  model: 'gpt-4o-mini-tts';  // Single model only
   voice: OpenAIVoice;
   speed: number; // 0.25 to 4.0
+  instructions?: string;  // Voice style control
+}
+
+// Future Gemini TTS config
+export interface GeminiTTSConfig {
+  enabled: boolean;
+  model: GeminiTTSModel;
+  multiSpeaker: boolean;
 }
 
 // ===== Main Tool Configuration =====
@@ -34,6 +49,7 @@ export interface PodcastGenConfig {
   /** Provider-specific configurations */
   providers: {
     openai: OpenAITTSConfig;
+    gemini?: GeminiTTSConfig;  // Optional - for future multi-speaker support
   };
 
   /** Default podcast style */
