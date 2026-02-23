@@ -133,9 +133,12 @@ export function WorkspaceChatInterface({
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // On touch devices: Enter creates new line (default behavior)
-    // On desktop: Enter submits, Shift+Enter creates new line
-    if (e.key === 'Enter' && !e.shiftKey && !isTouchDevice) {
+    if (e.key === 'Enter') {
+      // Shift+Enter or Ctrl/Cmd+Enter = new line
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        return; // Allow default new line behavior
+      }
+      // Enter alone = submit
       e.preventDefault();
       handleSubmit();
     }

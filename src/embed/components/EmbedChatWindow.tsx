@@ -52,7 +52,12 @@ export function EmbedChatWindow({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter') {
+      // Shift+Enter or Ctrl/Cmd+Enter = new line
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        return; // Allow default new line behavior
+      }
+      // Enter alone = submit
       e.preventDefault();
       handleSubmit();
     }

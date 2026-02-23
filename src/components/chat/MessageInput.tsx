@@ -83,17 +83,13 @@ export default function MessageInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      if (isMobile) {
-        // Mobile: Enter = new line (default behavior)
-        return;
-      } else {
-        // Desktop: Enter = new line, Ctrl+Enter = submit
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          handleSubmit();
-        }
-        // Otherwise, allow default new line behavior
+      // Shift+Enter or Ctrl/Cmd+Enter = new line
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        return; // Allow default new line behavior
       }
+      // Enter alone = submit
+      e.preventDefault();
+      handleSubmit();
     }
   };
 
@@ -176,28 +172,6 @@ export default function MessageInput({
       </div>
     ) : null;
 
-  // Send button
-  const SendButton = () => (
-    <button
-      onClick={handleSubmit}
-      disabled={disabled || !message.trim()}
-      className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-      style={{
-        backgroundColor: 'var(--accent-color)',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled && message.trim()) {
-          e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = 'var(--accent-color)';
-      }}
-    >
-      <ArrowUp size={18} strokeWidth={2.5} />
-    </button>
-  );
-
   // Unified layout for both mobile and desktop
   return (
     <div className="bg-white p-4 safe-area-bottom">
@@ -248,7 +222,7 @@ export default function MessageInput({
           placeholder="Ask a question..."
           disabled={disabled || isUploading}
           rows={isMobile ? 2 : 1}
-          enterKeyHint={isMobile ? 'enter' : 'send'}
+          enterKeyHint="send"
           className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${
             isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[150px]'
           }`}
@@ -280,7 +254,24 @@ export default function MessageInput({
           <ModelSelector threadId={threadId} disabled={disabled} />
 
           {/* Right action: Send */}
-          <SendButton />
+          <button
+            onClick={handleSubmit}
+            disabled={disabled || !message.trim()}
+            className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+            style={{
+              backgroundColor: 'var(--accent-color)',
+            }}
+            onMouseEnter={(e) => {
+              if (!disabled && message.trim()) {
+                e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--accent-color)';
+            }}
+          >
+            <ArrowUp size={18} strokeWidth={2.5} />
+          </button>
         </div>
       </div>
     </div>
