@@ -106,6 +106,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // Drop FK from thread_outputs.thread_id so outputs can be saved for threads
   // that exist only in SQLite (SQLite→PostgreSQL migration scenario).
   await sql`ALTER TABLE thread_outputs DROP CONSTRAINT IF EXISTS thread_outputs_thread_id_fkey`.execute(database);
+
+  // Migration: Update thread_outputs file_type CHECK constraint to include audio formats (mp3, wav)
+  // This matches the SQLite migration in index.ts lines 641-729
+  await sql`
+    ALTER TABLE thread_outputs
+    DROP CONSTRAINT IF EXISTS thread_outputs_file_type_check
+  `.execute(database);
+  await sql`
+    ALTER TABLE thread_outputs
+    ADD CONSTRAINT thread_outputs_file_type_check
+    CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav'))
+  `.execute(database);
+  console.log('[Kysely] Updated thread_outputs file_type constraint for audio formats');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 }
 

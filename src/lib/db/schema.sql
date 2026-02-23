@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
   message_id TEXT,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav')),
   file_size INTEGER NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
