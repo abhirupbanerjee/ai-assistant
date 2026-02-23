@@ -29,7 +29,7 @@ import {
 } from '@/lib/streaming';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
@@ -355,6 +355,7 @@ export async function POST(request: NextRequest) {
             const visualizations: MessageVisualization[] = [];
             const documents: GeneratedDocumentInfo[] = [];
             const images: GeneratedImageInfo[] = [];
+            const podcasts: PodcastHint[] = [];
             const webSources: Source[] = [];
 
             // Prepare system prompt with tone injection if needed
@@ -408,6 +409,10 @@ export async function POST(request: NextRequest) {
                     const img = data as GeneratedImageInfo;
                     images.push(img);
                     send({ type: 'artifact', subtype: 'image', data: img });
+                  } else if (type === 'podcast') {
+                    const podcast = data as PodcastHint;
+                    podcasts.push(podcast);
+                    send({ type: 'artifact', subtype: 'podcast', data: podcast });
                   }
                 },
               },
@@ -524,6 +529,7 @@ export async function POST(request: NextRequest) {
               sources: allSources,
               generatedDocuments: documents.length > 0 ? documents : undefined,
               generatedImages: images.length > 0 ? images : undefined,
+              generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
               visualizations: visualizations.length > 0 ? visualizations : undefined,
               timestamp: new Date(),
             };
@@ -531,9 +537,9 @@ export async function POST(request: NextRequest) {
             await addMessage(user.id, threadId, assistantMessage);
             updateThreadTokenCount(threadId, countTokens(fullContent));
 
-            // Link any generated outputs (documents, images) to this message
+            // Link any generated outputs (documents, images, podcasts) to this message
             // This must happen after addMessage since message_id is a foreign key
-            if (documents.length > 0 || images.length > 0) {
+            if (documents.length > 0 || images.length > 0 || podcasts.length > 0) {
               try {
                 linkOutputsToMessage(threadId, assistantMessageId);
               } catch (linkError) {
