@@ -4,7 +4,9 @@
  * Autonomous tool for generating audio podcasts from text content.
  * Uses a two-stage approach:
  * 1. Content formatter transforms text for audio (handles tables, lists, etc.)
- * 2. OpenAI TTS generates the audio file
+ * 2. TTS provider (OpenAI or Gemini) generates the audio file
+ *
+ * Gemini TTS supports multi-speaker mode with Host/Expert format.
  */
 
 import * as fs from 'fs';
@@ -16,6 +18,7 @@ import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/
 import { getRequestContext } from '@/lib/request-context';
 import { getApiKey } from '@/lib/provider-helpers';
 import { getLlmSettings } from '@/lib/db/config';
+import { pcmToWav, GEMINI_TTS_PCM_OPTIONS, estimateDurationFromPCM } from '@/lib/audio/pcm-to-wav';
 import type {
   PodcastGenConfig,
   PodcastGenToolArgs,
@@ -25,6 +28,10 @@ import type {
   FormatterResult,
   LENGTH_CONFIG,
   STYLE_DESCRIPTIONS,
+  GeminiTTSConfig,
+  GeminiVoice,
+  TTSProvider,
+  AudioFormat,
 } from '@/types/podcast-gen';
 
 // ===== Constants =====
@@ -53,6 +60,15 @@ export const PODCAST_GEN_DEFAULTS: PodcastGenConfig = {
       speed: 1.0,
       instructions: '',
     },
+    gemini: {
+      enabled: false,
+      model: 'gemini-2.5-flash-preview-tts',
+      multiSpeaker: true,
+      hostVoice: 'Aoede',  // Breezy - good for conversational host
+      expertVoice: 'Charon',  // Informative - good for expert explanations
+      hostAccent: '',
+      expertAccent: '',
+    },
   },
   defaultStyle: 'conversational',
   defaultLength: 'medium',
@@ -75,6 +91,7 @@ export async function getPodcastGenConfig(): Promise<PodcastGenConfig> {
       ...stored,
       providers: {
         openai: { ...PODCAST_GEN_DEFAULTS.providers.openai, ...stored.providers?.openai },
+        gemini: { ...PODCAST_GEN_DEFAULTS.providers.gemini, ...stored.providers?.gemini },
       },
     };
   }
@@ -245,6 +262,184 @@ async function generateAudioWithOpenAI(
   return { buffer, duration };
 }
 
+// ===== Gemini TTS Generation =====
+
+/**
+ * Multi-speaker dialogue formatter prompt
+ */
+const DIALOGUE_FORMATTER_PROMPT = `You are a podcast script writer. Transform the following content into a natural two-person podcast dialogue.
+
+FORMAT RULES:
+1. Use exactly two speakers: "Host" and "Expert"
+2. Format each turn as: "Host: [text]" or "Expert: [text]"
+3. Host asks questions, guides conversation, and provides transitions
+4. Expert provides detailed explanations and insights
+5. Keep exchanges natural and conversational
+6. Include brief transitions and acknowledgments
+7. The Expert should sound knowledgeable but approachable
+8. The Host should be curious and help guide the listener through complex topics
+
+TONE: {{STYLE}}
+TARGET LENGTH: ~{{WORD_COUNT}} words total
+
+OUTPUT: The dialogue script only. No stage directions besides speaker labels (Host: or Expert:).`;
+
+/**
+ * Format content for multi-speaker dialogue (Gemini TTS)
+ */
+async function formatContentForDialogue(
+  content: string,
+  style: 'formal' | 'conversational' | 'news',
+  length: 'short' | 'medium' | 'long'
+): Promise<FormatterResult> {
+  const openai = getChatClient();
+  const llmSettings = getLlmSettings();
+  const model = llmSettings.model || 'gpt-4o-mini';
+
+  const lengthConfig = LENGTH_CONFIG_DATA[length];
+  const styleDesc = STYLE_DESCRIPTIONS_DATA[style];
+
+  const systemPrompt = DIALOGUE_FORMATTER_PROMPT
+    .replace('{{STYLE}}', styleDesc)
+    .replace('{{WORD_COUNT}}', lengthConfig.words.toString());
+
+  // Truncate content if too long
+  const truncatedContent = content.length > 4000
+    ? content.substring(0, 4000) + '\n\n[Content truncated for length...]'
+    : content;
+
+  const userPrompt = `Transform the following content into a two-person podcast dialogue:\n\n${truncatedContent}`;
+
+  console.log(`[PodcastGen] Formatting content for dialogue with model: ${model}`);
+
+  const completion = await openai.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.7,
+    max_tokens: lengthConfig.words * 2,
+  });
+
+  const script = completion.choices[0]?.message?.content?.trim() || '';
+  const wordCount = script.split(/\s+/).length;
+  const estimatedDuration = Math.ceil((wordCount / 150) * 60);
+
+  console.log(`[PodcastGen] Formatted dialogue: ${wordCount} words, ~${estimatedDuration}s estimated`);
+
+  return {
+    script,
+    estimatedDuration,
+    wordCount,
+  };
+}
+
+/**
+ * Generate audio using Gemini TTS with multi-speaker support
+ */
+async function generateAudioWithGemini(
+  script: string,
+  config: PodcastGenConfig
+): Promise<{ buffer: Buffer; duration: number; format: AudioFormat }> {
+  const { GoogleGenAI } = await import('@google/genai');
+
+  const apiKey = getApiKey('gemini');
+  if (!apiKey) {
+    throw new Error('Gemini API key not configured for TTS');
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const geminiConfig = config.providers.gemini;
+
+  console.log(`[PodcastGen] Generating audio with Gemini: model=${geminiConfig.model}, multiSpeaker=${geminiConfig.multiSpeaker}`);
+
+  // Build Director's Notes for accents if specified
+  let directorNotes = '';
+  if (geminiConfig.hostAccent || geminiConfig.expertAccent) {
+    const notes: string[] = [];
+    if (geminiConfig.hostAccent) {
+      notes.push(`Host's accent: ${geminiConfig.hostAccent}`);
+    }
+    if (geminiConfig.expertAccent) {
+      notes.push(`Expert's accent: ${geminiConfig.expertAccent}`);
+    }
+    directorNotes = `[Director's Notes: ${notes.join('. ')}]\n\n`;
+  }
+
+  const fullScript = directorNotes + script;
+
+  // Build request config based on multi-speaker mode
+  const requestConfig: Record<string, unknown> = {
+    responseModalities: ['AUDIO'],
+  };
+
+  if (geminiConfig.multiSpeaker) {
+    // Multi-speaker mode with Host and Expert voices
+    requestConfig.speechConfig = {
+      multiSpeakerVoiceConfig: {
+        speakerVoiceConfigs: [
+          {
+            speaker: 'Host',
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: geminiConfig.hostVoice },
+            },
+          },
+          {
+            speaker: 'Expert',
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: geminiConfig.expertVoice },
+            },
+          },
+        ],
+      },
+    };
+  } else {
+    // Single speaker mode (uses hostVoice)
+    requestConfig.speechConfig = {
+      voiceConfig: {
+        prebuiltVoiceConfig: { voiceName: geminiConfig.hostVoice },
+      },
+    };
+  }
+
+  const response = await ai.models.generateContent({
+    model: geminiConfig.model,
+    contents: [{ parts: [{ text: fullScript }] }],
+    config: requestConfig,
+  });
+
+  // Extract audio data from response
+  const candidate = response.candidates?.[0];
+  const parts = candidate?.content?.parts || [];
+
+  let audioData: string | undefined;
+  for (const part of parts) {
+    if (part.inlineData?.data) {
+      audioData = part.inlineData.data;
+      break;
+    }
+  }
+
+  if (!audioData) {
+    console.error('[PodcastGen] Gemini response:', JSON.stringify(response, null, 2));
+    throw new Error('Gemini TTS returned no audio data');
+  }
+
+  // Decode base64 PCM data
+  const pcmBuffer = Buffer.from(audioData, 'base64');
+
+  // Convert PCM to WAV
+  const wavBuffer = await pcmToWav(pcmBuffer, GEMINI_TTS_PCM_OPTIONS);
+
+  // Calculate duration from PCM data
+  const duration = Math.ceil(estimateDurationFromPCM(pcmBuffer, GEMINI_TTS_PCM_OPTIONS));
+
+  console.log(`[PodcastGen] Generated Gemini audio: ${wavBuffer.length} bytes, ${duration}s`);
+
+  return { buffer: wavBuffer, duration, format: 'wav' };
+}
+
 // ===== Storage =====
 
 /**
@@ -266,7 +461,11 @@ async function savePodcast(
   args: PodcastGenToolArgs,
   config: PodcastGenConfig,
   formatterResult: FormatterResult,
-  duration: number
+  duration: number,
+  actualFormat: AudioFormat,
+  provider: TTSProvider,
+  providerModel: string,
+  providerVoice: string
 ): Promise<{ id: string; docId: number; downloadUrl: string }> {
   const podcastId = uuidv4();
   const outputDir = getOutputDirectory();
@@ -276,8 +475,8 @@ async function savePodcast(
     .replace(/[^a-zA-Z0-9-_\s]/g, '')
     .replace(/\s+/g, '_')
     .substring(0, 50);
-  const filename = `${safeTopic}_podcast.${config.outputFormat}`;
-  const filepath = path.join(outputDir, `${podcastId}.${config.outputFormat}`);
+  const filename = `${safeTopic}_podcast.${actualFormat}`;
+  const filepath = path.join(outputDir, `${podcastId}.${actualFormat}`);
 
   // Save file
   fs.writeFileSync(filepath, buffer);
@@ -305,10 +504,10 @@ async function savePodcast(
   // Build metadata for storage
   const metadata: PodcastMetadata = {
     duration,
-    format: config.outputFormat,
-    provider: config.activeProvider as 'openai',
-    model: config.providers.openai.model,
-    voice: config.providers.openai.voice,
+    format: actualFormat,
+    provider,
+    model: providerModel,
+    voice: providerVoice,
     style: (args.style || config.defaultStyle) as 'formal' | 'conversational' | 'news',
     length: (args.length || config.defaultLength) as 'short' | 'medium' | 'long',
     wordCount: formatterResult.wordCount,
@@ -321,7 +520,7 @@ async function savePodcast(
     null, // message_id
     filename,
     filepath,
-    'mp3',
+    actualFormat,  // 'mp3' or 'wav'
     buffer.length,
     JSON.stringify(metadata),
     expiresAt
@@ -354,8 +553,8 @@ export async function generatePodcast(args: PodcastGenToolArgs): Promise<Podcast
     };
   }
 
-  // Validate OpenAI is configured
-  if (!config.providers.openai.enabled) {
+  // Validate selected provider is enabled
+  if (config.activeProvider === 'openai' && !config.providers.openai.enabled) {
     return {
       success: false,
       error: {
@@ -365,30 +564,95 @@ export async function generatePodcast(args: PodcastGenToolArgs): Promise<Podcast
     };
   }
 
+  if (config.activeProvider === 'gemini' && !config.providers.gemini.enabled) {
+    return {
+      success: false,
+      error: {
+        code: 'PROVIDER_DISABLED',
+        message: 'Gemini TTS provider is not enabled.',
+      },
+    };
+  }
+
   try {
     const style = args.style || config.defaultStyle;
     const length = args.length || config.defaultLength;
+    const provider = config.activeProvider as TTSProvider;
 
-    console.log(`[PodcastGen] Starting generation: topic="${args.topic}", style=${style}, length=${length}`);
+    console.log(`[PodcastGen] Starting generation: topic="${args.topic}", provider=${provider}, style=${style}, length=${length}`);
 
-    // Step 1: Format content for audio
-    const formatterResult = await formatContentForAudio(args.content, style, length);
+    let formatterResult: FormatterResult;
+    let buffer: Buffer;
+    let duration: number;
+    let actualFormat: AudioFormat;
+    let providerModel: string;
+    let providerVoice: string;
 
-    if (!formatterResult.script) {
-      return {
-        success: false,
-        error: {
-          code: 'FORMAT_ERROR',
-          message: 'Failed to format content for audio',
-        },
-      };
+    if (provider === 'gemini') {
+      // Gemini path: Multi-speaker dialogue format + Gemini TTS
+      const geminiConfig = config.providers.gemini;
+
+      // Step 1: Format content for dialogue (if multi-speaker) or single narrator
+      if (geminiConfig.multiSpeaker) {
+        formatterResult = await formatContentForDialogue(args.content, style, length);
+      } else {
+        formatterResult = await formatContentForAudio(args.content, style, length);
+      }
+
+      if (!formatterResult.script) {
+        return {
+          success: false,
+          error: {
+            code: 'FORMAT_ERROR',
+            message: 'Failed to format content for audio',
+          },
+        };
+      }
+
+      // Step 2: Generate audio with Gemini TTS
+      const geminiResult = await generateAudioWithGemini(formatterResult.script, config);
+      buffer = geminiResult.buffer;
+      duration = geminiResult.duration;
+      actualFormat = geminiResult.format;  // 'wav' for Gemini
+      providerModel = geminiConfig.model;
+      providerVoice = geminiConfig.multiSpeaker
+        ? `${geminiConfig.hostVoice}/${geminiConfig.expertVoice}`
+        : geminiConfig.hostVoice;
+    } else {
+      // OpenAI path: Single narrator + OpenAI TTS
+      formatterResult = await formatContentForAudio(args.content, style, length);
+
+      if (!formatterResult.script) {
+        return {
+          success: false,
+          error: {
+            code: 'FORMAT_ERROR',
+            message: 'Failed to format content for audio',
+          },
+        };
+      }
+
+      // Step 2: Generate audio with OpenAI TTS
+      const openaiResult = await generateAudioWithOpenAI(formatterResult.script, config);
+      buffer = openaiResult.buffer;
+      duration = openaiResult.duration;
+      actualFormat = config.outputFormat;  // 'mp3' for OpenAI
+      providerModel = config.providers.openai.model;
+      providerVoice = config.providers.openai.voice;
     }
 
-    // Step 2: Generate audio with TTS
-    const { buffer, duration } = await generateAudioWithOpenAI(formatterResult.script, config);
-
     // Step 3: Save to disk and database
-    const saved = await savePodcast(buffer, args, config, formatterResult, duration);
+    const saved = await savePodcast(
+      buffer,
+      args,
+      config,
+      formatterResult,
+      duration,
+      actualFormat,
+      provider,
+      providerModel,
+      providerVoice
+    );
 
     const processingTimeMs = Date.now() - startTime;
     console.log(`[PodcastGen] Completed in ${processingTimeMs}ms: ${saved.downloadUrl}`);
@@ -396,9 +660,9 @@ export async function generatePodcast(args: PodcastGenToolArgs): Promise<Podcast
     // Build response with podcast hint for frontend
     const podcastHint: PodcastHint = {
       id: saved.id,
-      filename: `${args.topic.substring(0, 50)}_podcast.${config.outputFormat}`,
+      filename: `${args.topic.substring(0, 50)}_podcast.${actualFormat}`,
       duration,
-      format: config.outputFormat,
+      format: actualFormat,
       downloadUrl: saved.downloadUrl,
       streamUrl: saved.downloadUrl, // Same endpoint, browser will stream
     };
@@ -408,9 +672,9 @@ export async function generatePodcast(args: PodcastGenToolArgs): Promise<Podcast
       message: `Podcast generated successfully (${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}). Do NOT call podcast_gen again unless the user explicitly requests another podcast.`,
       podcastHint,
       metadata: {
-        provider: config.activeProvider as 'openai',
-        model: config.providers.openai.model,
-        voice: config.providers.openai.voice,
+        provider,
+        model: providerModel,
+        voice: providerVoice,
         style,
         length,
         processingTimeMs,
@@ -446,7 +710,7 @@ const podcastGenConfigSchema = {
       type: 'string',
       title: 'Active TTS Provider',
       description: 'Select the text-to-speech provider to use',
-      enum: ['none', 'openai'],
+      enum: ['none', 'openai', 'gemini'],
       default: 'none',
     },
     providers: {
@@ -493,20 +757,44 @@ const podcastGenConfigSchema = {
         },
         gemini: {
           type: 'object',
-          title: 'Google Gemini TTS (Future)',
+          title: 'Google Gemini TTS (Multi-Speaker)',
           properties: {
             enabled: { type: 'boolean', title: 'Enable Gemini TTS', default: false },
             model: {
               type: 'string',
               title: 'Model',
-              enum: ['gemini-2.5-flash-tts', 'gemini-2.5-pro-tts'],
-              default: 'gemini-2.5-flash-tts',
+              enum: ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'],
+              default: 'gemini-2.5-flash-preview-tts',
             },
             multiSpeaker: {
               type: 'boolean',
               title: 'Multi-Speaker Mode',
-              description: 'Enable multi-speaker conversations',
-              default: false,
+              description: 'Enable Host/Expert dialogue format (recommended)',
+              default: true,
+            },
+            hostVoice: {
+              type: 'string',
+              title: 'Host Voice',
+              description: 'Voice for the podcast host',
+              default: 'Aoede',
+            },
+            expertVoice: {
+              type: 'string',
+              title: 'Expert Voice',
+              description: 'Voice for the expert (multi-speaker mode)',
+              default: 'Charon',
+            },
+            hostAccent: {
+              type: 'string',
+              title: 'Host Accent (optional)',
+              description: 'e.g., "British English from London"',
+              default: '',
+            },
+            expertAccent: {
+              type: 'string',
+              title: 'Expert Accent (optional)',
+              description: 'e.g., "American English from New York"',
+              default: '',
             },
           },
         },
@@ -543,8 +831,8 @@ function validatePodcastGenConfig(config: Record<string, unknown>): ValidationRe
   const errors: string[] = [];
 
   // Validate activeProvider
-  if (config.activeProvider && !['none', 'openai'].includes(config.activeProvider as string)) {
-    errors.push('activeProvider must be none or openai');
+  if (config.activeProvider && !['none', 'openai', 'gemini'].includes(config.activeProvider as string)) {
+    errors.push('activeProvider must be none, openai, or gemini');
   }
 
   // Validate defaultStyle
@@ -559,9 +847,11 @@ function validatePodcastGenConfig(config: Record<string, unknown>): ValidationRe
     errors.push(`defaultLength must be one of: ${validLengths.join(', ')}`);
   }
 
-  // Validate OpenAI provider config
+  // Validate provider configs
   if (config.providers) {
     const providers = config.providers as Record<string, unknown>;
+
+    // Validate OpenAI provider config
     if (providers.openai) {
       const openai = providers.openai as Record<string, unknown>;
       if (openai.speed !== undefined) {
@@ -569,6 +859,15 @@ function validatePodcastGenConfig(config: Record<string, unknown>): ValidationRe
         if (typeof speed !== 'number' || speed < 0.25 || speed > 4.0) {
           errors.push('OpenAI speed must be between 0.25 and 4.0');
         }
+      }
+    }
+
+    // Validate Gemini provider config
+    if (providers.gemini) {
+      const gemini = providers.gemini as Record<string, unknown>;
+      const validModels = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'];
+      if (gemini.model && !validModels.includes(gemini.model as string)) {
+        errors.push(`Gemini model must be one of: ${validModels.join(', ')}`);
       }
     }
   }

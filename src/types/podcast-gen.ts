@@ -12,7 +12,7 @@ export type PodcastStyle = 'formal' | 'conversational' | 'news';
 
 export type PodcastLength = 'short' | 'medium' | 'long';
 
-export type AudioFormat = 'mp3';
+export type AudioFormat = 'mp3' | 'wav';
 
 // All 13 gpt-4o-mini-tts voices (marin and cedar are best quality)
 export type OpenAIVoice =
@@ -20,8 +20,51 @@ export type OpenAIVoice =
   | 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'fable'
   | 'nova' | 'onyx' | 'sage' | 'shimmer' | 'verse';
 
-// Future Gemini TTS models
-export type GeminiTTSModel = 'gemini-2.5-flash-tts' | 'gemini-2.5-pro-tts';
+// Gemini TTS models (preview)
+export type GeminiTTSModel = 'gemini-2.5-flash-preview-tts' | 'gemini-2.5-pro-preview-tts';
+
+// Gemini TTS voices (30 available)
+export type GeminiVoice =
+  | 'Zephyr' | 'Puck' | 'Charon' | 'Kore' | 'Fenrir'
+  | 'Leda' | 'Orus' | 'Aoede' | 'Callirrhoe' | 'Autonoe'
+  | 'Enceladus' | 'Iapetus' | 'Umbriel' | 'Algieba' | 'Despina'
+  | 'Erinome' | 'Algenib' | 'Rasalgethi' | 'Laomedeia' | 'Achernar'
+  | 'Alnilam' | 'Schedar' | 'Gacrux' | 'Pulcherrima' | 'Achird'
+  | 'Zubenelgenubi' | 'Vindemiatrix' | 'Sadachbia' | 'Sadaltager' | 'Sulafat';
+
+// Gemini voice personality descriptions
+export const GEMINI_VOICE_INFO: Record<GeminiVoice, { description: string; category: 'conversational' | 'informative' | 'expressive' }> = {
+  Zephyr: { description: 'Bright', category: 'expressive' },
+  Puck: { description: 'Upbeat', category: 'conversational' },
+  Charon: { description: 'Informative', category: 'informative' },
+  Kore: { description: 'Firm', category: 'informative' },
+  Fenrir: { description: 'Excitable', category: 'expressive' },
+  Leda: { description: 'Youthful', category: 'conversational' },
+  Orus: { description: 'Firm', category: 'informative' },
+  Aoede: { description: 'Breezy', category: 'conversational' },
+  Callirrhoe: { description: 'Easy-going', category: 'conversational' },
+  Autonoe: { description: 'Bright', category: 'expressive' },
+  Enceladus: { description: 'Breathy', category: 'expressive' },
+  Iapetus: { description: 'Clear', category: 'informative' },
+  Umbriel: { description: 'Easy-going', category: 'conversational' },
+  Algieba: { description: 'Smooth', category: 'conversational' },
+  Despina: { description: 'Smooth', category: 'conversational' },
+  Erinome: { description: 'Clear', category: 'informative' },
+  Algenib: { description: 'Gravelly', category: 'expressive' },
+  Rasalgethi: { description: 'Informative', category: 'informative' },
+  Laomedeia: { description: 'Upbeat', category: 'conversational' },
+  Achernar: { description: 'Soft', category: 'expressive' },
+  Alnilam: { description: 'Firm', category: 'informative' },
+  Schedar: { description: 'Even', category: 'informative' },
+  Gacrux: { description: 'Mature', category: 'informative' },
+  Pulcherrima: { description: 'Forward', category: 'expressive' },
+  Achird: { description: 'Friendly', category: 'conversational' },
+  Zubenelgenubi: { description: 'Casual', category: 'conversational' },
+  Vindemiatrix: { description: 'Gentle', category: 'expressive' },
+  Sadachbia: { description: 'Lively', category: 'expressive' },
+  Sadaltager: { description: 'Knowledgeable', category: 'informative' },
+  Sulafat: { description: 'Warm', category: 'conversational' },
+};
 
 // ===== Provider Configuration Types =====
 
@@ -33,11 +76,19 @@ export interface OpenAITTSConfig {
   instructions?: string;  // Voice style control
 }
 
-// Future Gemini TTS config
+// Gemini TTS configuration
 export interface GeminiTTSConfig {
   enabled: boolean;
   model: GeminiTTSModel;
   multiSpeaker: boolean;
+  /** Voice for host speaker in multi-speaker mode */
+  hostVoice: GeminiVoice;
+  /** Voice for expert speaker in multi-speaker mode */
+  expertVoice: GeminiVoice;
+  /** Optional accent for host (e.g., "British English from London") */
+  hostAccent?: string;
+  /** Optional accent for expert (e.g., "American English from New York") */
+  expertAccent?: string;
 }
 
 // ===== Main Tool Configuration =====
@@ -49,7 +100,7 @@ export interface PodcastGenConfig {
   /** Provider-specific configurations */
   providers: {
     openai: OpenAITTSConfig;
-    gemini?: GeminiTTSConfig;  // Optional - for future multi-speaker support
+    gemini: GeminiTTSConfig;
   };
 
   /** Default podcast style */

@@ -575,6 +575,15 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
           speed: 1.0,
           instructions: '',  // Voice style control
         },
+        gemini: {
+          enabled: false,
+          model: 'gemini-2.5-flash-preview-tts',
+          multiSpeaker: true,  // Multi-speaker mode enabled by default
+          hostVoice: 'Aoede',  // Breezy - good for conversational host
+          expertVoice: 'Charon',  // Informative - good for expert explanations
+          hostAccent: '',  // Optional: e.g., "British English from London"
+          expertAccent: '',  // Optional: e.g., "American English from New York"
+        },
       },
       defaultStyle: 'conversational',
       defaultLength: 'medium',

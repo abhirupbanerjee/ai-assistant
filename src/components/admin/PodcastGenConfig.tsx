@@ -4,14 +4,15 @@
  * Podcast Generation Tool Configuration Component
  *
  * Admin UI for configuring the podcast_gen tool:
- * - Provider selection (OpenAI TTS / future Gemini TTS)
+ * - Provider selection (OpenAI TTS / Gemini TTS)
  * - OpenAI voice, speed, and instructions settings
+ * - Gemini multi-speaker configuration with 30 voices
  * - Default style and length preferences
  * - Expiration settings
  */
 
 import React from 'react';
-import { Info, Mic, Sparkles, Settings2 } from 'lucide-react';
+import { Info, Mic, Sparkles, Settings2, Users } from 'lucide-react';
 
 interface PodcastGenConfigProps {
   config: Record<string, unknown>;
@@ -34,6 +35,46 @@ const VOICE_INFO: Record<string, { description: string; quality: 'best' | 'good'
   ash: { description: 'Soft, gentle', quality: 'good' },
   ballad: { description: 'Musical, flowing', quality: 'good' },
   verse: { description: 'Poetic, rhythmic', quality: 'good' },
+};
+
+// Gemini voice options with categories
+const GEMINI_VOICES = {
+  conversational: [
+    { name: 'Aoede', description: 'Breezy' },
+    { name: 'Puck', description: 'Upbeat' },
+    { name: 'Leda', description: 'Youthful' },
+    { name: 'Callirrhoe', description: 'Easy-going' },
+    { name: 'Umbriel', description: 'Easy-going' },
+    { name: 'Algieba', description: 'Smooth' },
+    { name: 'Despina', description: 'Smooth' },
+    { name: 'Laomedeia', description: 'Upbeat' },
+    { name: 'Achird', description: 'Friendly' },
+    { name: 'Zubenelgenubi', description: 'Casual' },
+    { name: 'Sulafat', description: 'Warm' },
+  ],
+  informative: [
+    { name: 'Charon', description: 'Informative' },
+    { name: 'Kore', description: 'Firm' },
+    { name: 'Orus', description: 'Firm' },
+    { name: 'Iapetus', description: 'Clear' },
+    { name: 'Erinome', description: 'Clear' },
+    { name: 'Rasalgethi', description: 'Informative' },
+    { name: 'Alnilam', description: 'Firm' },
+    { name: 'Schedar', description: 'Even' },
+    { name: 'Gacrux', description: 'Mature' },
+    { name: 'Sadaltager', description: 'Knowledgeable' },
+  ],
+  expressive: [
+    { name: 'Zephyr', description: 'Bright' },
+    { name: 'Fenrir', description: 'Excitable' },
+    { name: 'Autonoe', description: 'Bright' },
+    { name: 'Enceladus', description: 'Breathy' },
+    { name: 'Algenib', description: 'Gravelly' },
+    { name: 'Achernar', description: 'Soft' },
+    { name: 'Pulcherrima', description: 'Forward' },
+    { name: 'Vindemiatrix', description: 'Gentle' },
+    { name: 'Sadachbia', description: 'Lively' },
+  ],
 };
 
 export default function PodcastGenConfig({
@@ -82,7 +123,8 @@ export default function PodcastGenConfig({
           disabled={disabled}
         >
           <option value="none">Disabled</option>
-          <option value="openai">OpenAI (gpt-4o-mini-tts)</option>
+          <option value="openai">OpenAI (gpt-4o-mini-tts) - Single Speaker, MP3</option>
+          <option value="gemini">Google Gemini TTS - Multi-Speaker, WAV</option>
         </select>
         <p className="text-xs text-gray-500 mt-1">
           Select the text-to-speech provider to use
@@ -93,9 +135,19 @@ export default function PodcastGenConfig({
       <div className="p-3 bg-purple-50 rounded-lg flex items-start gap-2">
         <Info size={16} className="text-purple-600 mt-0.5 flex-shrink-0" />
         <div className="text-sm text-purple-800">
-          <strong>Tip:</strong> OpenAI&apos;s gpt-4o-mini-tts model provides the highest quality
-          text-to-speech with natural-sounding voices. The <strong>marin</strong> and{' '}
-          <strong>cedar</strong> voices are recommended for best quality.
+          {(config.activeProvider as string) === 'gemini' ? (
+            <>
+              <strong>Gemini TTS:</strong> Supports multi-speaker podcasts with Host/Expert dialogue format.
+              Choose from 30 voices across conversational, informative, and expressive styles.
+              Output format: <strong>WAV</strong>.
+            </>
+          ) : (
+            <>
+              <strong>OpenAI TTS:</strong> High-quality single-speaker narration.
+              The <strong>marin</strong> and <strong>cedar</strong> voices are recommended.
+              Output format: <strong>MP3</strong>.
+            </>
+          )}
         </div>
       </div>
 
@@ -210,30 +262,202 @@ export default function PodcastGenConfig({
         )}
       </div>
 
-      {/* Gemini Settings (Coming Soon) */}
-      <div className="border rounded-lg p-4 opacity-60">
-        <div className="flex items-center justify-between mb-2">
+      {/* Gemini Settings */}
+      <div className="border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-purple-600" />
             <h4 className="font-medium text-gray-900">Google Gemini TTS</h4>
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-              Coming Soon
+            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+              Multi-Speaker
             </span>
           </div>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={false}
-              disabled={true}
+              checked={(geminiConfig.enabled as boolean) || false}
+              onChange={(e) =>
+                handleProviderChange('gemini', 'enabled', e.target.checked)
+              }
+              disabled={disabled}
               className="rounded"
             />
-            <span className="text-sm text-gray-400">Enabled</span>
+            <span className="text-sm">Enabled</span>
           </label>
         </div>
-        <p className="text-xs text-gray-500">
-          Multi-speaker conversations with gemini-2.5-flash-tts and gemini-2.5-pro-tts.
-          Support for up to 30 speakers in 80+ locales.
-        </p>
+
+        {(geminiConfig.enabled as boolean) && (
+          <div className="space-y-4">
+            {/* Model Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Model
+                </label>
+                <select
+                  value={(geminiConfig.model as string) || 'gemini-2.5-flash-preview-tts'}
+                  onChange={(e) =>
+                    handleProviderChange('gemini', 'model', e.target.value)
+                  }
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled={disabled}
+                >
+                  <option value="gemini-2.5-flash-preview-tts">Flash (faster, lower cost)</option>
+                  <option value="gemini-2.5-pro-preview-tts">Pro (higher quality)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                  <Users size={14} />
+                  Multi-Speaker Mode
+                </label>
+                <select
+                  value={(geminiConfig.multiSpeaker as boolean) ? 'true' : 'false'}
+                  onChange={(e) =>
+                    handleProviderChange('gemini', 'multiSpeaker', e.target.value === 'true')
+                  }
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled={disabled}
+                >
+                  <option value="true">Host + Expert Dialogue</option>
+                  <option value="false">Single Speaker</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Multi-speaker creates natural conversations
+                </p>
+              </div>
+            </div>
+
+            {/* Voice Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Host Voice
+                </label>
+                <select
+                  value={(geminiConfig.hostVoice as string) || 'Aoede'}
+                  onChange={(e) =>
+                    handleProviderChange('gemini', 'hostVoice', e.target.value)
+                  }
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled={disabled}
+                >
+                  <optgroup label="Conversational">
+                    {GEMINI_VOICES.conversational.map((v) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} - {v.description}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Informative">
+                    {GEMINI_VOICES.informative.map((v) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} - {v.description}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Expressive">
+                    {GEMINI_VOICES.expressive.map((v) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} - {v.description}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Guides the conversation
+                </p>
+              </div>
+
+              {(geminiConfig.multiSpeaker as boolean) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Expert Voice
+                  </label>
+                  <select
+                    value={(geminiConfig.expertVoice as string) || 'Charon'}
+                    onChange={(e) =>
+                      handleProviderChange('gemini', 'expertVoice', e.target.value)
+                    }
+                    className="w-full px-3 py-2 border rounded-lg"
+                    disabled={disabled}
+                  >
+                    <optgroup label="Informative (Recommended)">
+                      {GEMINI_VOICES.informative.map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name} - {v.description}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Conversational">
+                      {GEMINI_VOICES.conversational.map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name} - {v.description}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Expressive">
+                      {GEMINI_VOICES.expressive.map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name} - {v.description}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Provides detailed explanations
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Optional Accents */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Host Accent
+                  <span className="text-xs text-gray-400 ml-2">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={(geminiConfig.hostAccent as string) || ''}
+                  onChange={(e) =>
+                    handleProviderChange('gemini', 'hostAccent', e.target.value)
+                  }
+                  placeholder="e.g., British English from London"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  disabled={disabled}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Be specific for best results
+                </p>
+              </div>
+
+              {(geminiConfig.multiSpeaker as boolean) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Expert Accent
+                    <span className="text-xs text-gray-400 ml-2">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={(geminiConfig.expertAccent as string) || ''}
+                    onChange={(e) =>
+                      handleProviderChange('gemini', 'expertAccent', e.target.value)
+                    }
+                    placeholder="e.g., American English from New York"
+                    className="w-full px-3 py-2 border rounded-lg"
+                    disabled={disabled}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Different from host for variety
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* General Settings */}
@@ -309,18 +533,32 @@ export default function PodcastGenConfig({
         <h5 className="text-sm font-medium text-gray-700 mb-2">
           API Information
         </h5>
-        <div className="text-xs text-gray-600 space-y-1">
-          <div className="flex justify-between">
-            <span>OpenAI gpt-4o-mini-tts</span>
-            <span>~$0.015 per 1K characters</span>
+        <div className="text-xs text-gray-600 space-y-2">
+          <div className="pb-2 border-b border-gray-200">
+            <div className="font-medium text-gray-700 mb-1">OpenAI TTS</div>
+            <div className="flex justify-between">
+              <span>Price</span>
+              <span>~$0.015 per 1K characters</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Output format</span>
+              <span>MP3</span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span>Max input length</span>
-            <span>4,096 characters</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Output format</span>
-            <span>MP3</span>
+          <div>
+            <div className="font-medium text-gray-700 mb-1">Gemini TTS (Preview)</div>
+            <div className="flex justify-between">
+              <span>Flash model</span>
+              <span>~$0.01 per 1K characters</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Pro model</span>
+              <span>~$0.04 per 1K characters</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Output format</span>
+              <span>WAV (larger files)</span>
+            </div>
           </div>
         </div>
       </div>

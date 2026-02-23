@@ -89,7 +89,7 @@ async function generateOpenAI(
 }
 
 /**
- * Generate using Google Gemini
+ * Generate using Google Gemini (using @google/genai SDK)
  */
 async function generateGemini(
   model: string,
@@ -98,32 +98,30 @@ async function generateGemini(
   temperature: number,
   maxTokens: number
 ): Promise<LLMResponse> {
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleGenAI } = await import('@google/genai');
 
   const apiKey = getApiKey('gemini');
   if (!apiKey) {
     throw new Error('Gemini API key not configured');
   }
 
-  const client = new GoogleGenerativeAI(apiKey);
-  const genModel = client.getGenerativeModel({
-    model,
-  });
+  const ai = new GoogleGenAI({ apiKey });
 
-  // Prepend system prompt to user prompt for older Gemini SDK versions
+  // Combine system prompt and user prompt
   const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
-  const result = await genModel.generateContent({
-    contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-    generationConfig: {
+  const response = await ai.models.generateContent({
+    model,
+    contents: [{ parts: [{ text: fullPrompt }] }],
+    config: {
       temperature,
       maxOutputTokens: maxTokens,
     },
   });
 
-  const text = result.response.text();
-  // Estimate tokens for older SDK versions (usageMetadata not available in 0.1.3)
-  const tokensUsed = Math.ceil((fullPrompt.length + text.length) / 4);
+  const text = response.text || '';
+  // Use actual token count from response if available, otherwise estimate
+  const tokensUsed = response.usageMetadata?.totalTokenCount || Math.ceil((fullPrompt.length + text.length) / 4);
 
   return {
     content: text,

@@ -683,6 +683,51 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Added mp3 file type to thread_outputs');
   }
 
+  // Migration: Update file_type CHECK constraint to include 'wav' format for Gemini TTS podcast generation
+  try {
+    // Test if 'wav' is allowed by the current constraint
+    database.exec(`
+      INSERT INTO thread_outputs (thread_id, filename, filepath, file_type, file_size)
+      VALUES ('__migration_test_wav__', '__test__', '__test__', 'wav', 0)
+    `);
+    // If successful, delete the test row
+    database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test_wav__'`);
+  } catch {
+    // 'wav' is not allowed, need to recreate the table with updated constraint
+    database.exec(`
+      -- Create new table with updated constraint (includes wav for Gemini TTS)
+      CREATE TABLE thread_outputs_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL,
+        message_id TEXT,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav')),
+        file_size INTEGER NOT NULL,
+        generation_config TEXT,
+        expires_at DATETIME,
+        download_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+      );
+
+      -- Copy existing data
+      INSERT INTO thread_outputs_new (id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at)
+      SELECT id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at
+      FROM thread_outputs;
+
+      -- Drop old table and rename new one
+      DROP TABLE thread_outputs;
+      ALTER TABLE thread_outputs_new RENAME TO thread_outputs;
+
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+    `);
+    console.log('[DB Migration] Added wav file type to thread_outputs');
+  }
+
   // Migration: Create thread_shares table for thread sharing feature
   const threadSharesTableExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_shares'"
@@ -868,7 +913,7 @@ function runMigrations(database: Database.Database): void {
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       );
 
-      -- Workspace AI-generated outputs (images, documents for workspace chats)
+      -- Workspace AI-generated outputs (images, documents, podcasts for workspace chats)
       CREATE TABLE IF NOT EXISTS workspace_outputs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         workspace_id TEXT NOT NULL,
@@ -876,7 +921,7 @@ function runMigrations(database: Database.Database): void {
         thread_id TEXT,
         filename TEXT NOT NULL,
         filepath TEXT NOT NULL,
-        file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md')),
+        file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav')),
         file_size INTEGER NOT NULL,
         generation_config TEXT,
         expires_at DATETIME,
@@ -924,7 +969,7 @@ function runMigrations(database: Database.Database): void {
 
     if (wsTableExists) {
       database.exec(`
-        -- Workspace AI-generated outputs (images, documents for workspace chats)
+        -- Workspace AI-generated outputs (images, documents, podcasts for workspace chats)
         CREATE TABLE IF NOT EXISTS workspace_outputs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           workspace_id TEXT NOT NULL,
@@ -932,7 +977,7 @@ function runMigrations(database: Database.Database): void {
           thread_id TEXT,
           filename TEXT NOT NULL,
           filepath TEXT NOT NULL,
-          file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md')),
+          file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav')),
           file_size INTEGER NOT NULL,
           generation_config TEXT,
           expires_at DATETIME,
@@ -1165,6 +1210,53 @@ function runMigrations(database: Database.Database): void {
 
       console.log('[DB Migration] Added xlsx/pptx support to workspace_outputs');
     }
+
+    // Check if mp3/wav migration is needed
+    const tableInfoAfterXlsx = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='workspace_outputs'"
+    ).get() as { sql: string } | undefined;
+
+    if (tableInfoAfterXlsx && !tableInfoAfterXlsx.sql.includes('wav')) {
+      console.log('[DB Migration] Adding mp3/wav support to workspace_outputs...');
+
+      database.exec(`
+        -- Create new table with updated CHECK constraint (includes mp3/wav for podcasts)
+        CREATE TABLE workspace_outputs_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workspace_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          thread_id TEXT,
+          filename TEXT NOT NULL,
+          filepath TEXT NOT NULL,
+          file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav')),
+          file_size INTEGER NOT NULL,
+          generation_config TEXT,
+          expires_at DATETIME,
+          download_count INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+          FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE SET NULL
+        );
+
+        -- Copy existing data
+        INSERT INTO workspace_outputs_new
+        SELECT * FROM workspace_outputs;
+
+        -- Drop old table
+        DROP TABLE workspace_outputs;
+
+        -- Rename new table
+        ALTER TABLE workspace_outputs_new RENAME TO workspace_outputs;
+
+        -- Recreate indexes
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_workspace ON workspace_outputs(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_session ON workspace_outputs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_thread ON workspace_outputs(thread_id);
+      `);
+
+      console.log('[DB Migration] Added mp3/wav support to workspace_outputs');
+    }
   }
 
   console.log('[DB Migration] Migrations completed successfully');
@@ -1313,7 +1405,7 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
   message_id TEXT,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav')),
   file_size INTEGER NOT NULL,
   generation_config TEXT,
   expires_at DATETIME,
