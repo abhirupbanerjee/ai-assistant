@@ -10,7 +10,7 @@ import { getDb, getDatabaseProvider, transaction } from '../kysely';
 import * as sync from '../threads';
 import { v4 as uuidv4 } from 'uuid';
 import { sql } from 'kysely';
-import type { Source, ToolCall, GeneratedDocumentInfo, MessageVisualization, GeneratedImageInfo } from '@/types';
+import type { Source, ToolCall, GeneratedDocumentInfo, MessageVisualization, GeneratedImageInfo, PodcastHint } from '@/types';
 
 // Re-export types
 export type {
@@ -47,6 +47,7 @@ function parseMessage(msg: DbMessage): ParsedMessage {
     generatedDocuments: msg.generated_documents_json ? JSON.parse(msg.generated_documents_json) : null,
     visualizations: msg.visualizations_json ? JSON.parse(msg.visualizations_json) : null,
     generatedImages: msg.generated_images_json ? JSON.parse(msg.generated_images_json) : null,
+    generatedPodcasts: msg.generated_podcasts_json ? JSON.parse(msg.generated_podcasts_json) : null,
     createdAt: new Date(msg.created_at),
   };
 }
@@ -358,6 +359,7 @@ export async function addMessage(
     generatedDocuments?: GeneratedDocumentInfo[];
     visualizations?: MessageVisualization[];
     generatedImages?: GeneratedImageInfo[];
+    generatedPodcasts?: PodcastHint[];
   }
 ): Promise<ParsedMessage> {
   if (getDatabaseProvider() === 'sqlite') {
@@ -382,6 +384,7 @@ export async function addMessage(
       generated_documents_json: options?.generatedDocuments ? JSON.stringify(options.generatedDocuments) : null,
       visualizations_json: options?.visualizations ? JSON.stringify(options.visualizations) : null,
       generated_images_json: options?.generatedImages ? JSON.stringify(options.generatedImages) : null,
+      generated_podcasts_json: options?.generatedPodcasts ? JSON.stringify(options.generatedPodcasts) : null,
     })
     .execute();
 
@@ -409,6 +412,7 @@ export async function getMessageById(messageId: string): Promise<ParsedMessage |
       'generated_documents_json',
       'visualizations_json',
       'generated_images_json',
+      'generated_podcasts_json',
       'created_at',
     ])
     .where('id', '=', messageId)
@@ -438,6 +442,7 @@ export async function getMessagesForThread(threadId: string): Promise<ParsedMess
       'generated_documents_json',
       'visualizations_json',
       'generated_images_json',
+      'generated_podcasts_json',
       'created_at',
     ])
     .where('thread_id', '=', threadId)

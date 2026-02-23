@@ -182,6 +182,7 @@ export interface MessagesTable {
   generated_documents_json: string | null;
   visualizations_json: string | null;
   generated_images_json: string | null;
+  generated_podcasts_json: string | null;
   mode: Generated<string | null>;
   plan_id: string | null;
 }
