@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint } from '@/types';
+import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/config';
@@ -25,7 +25,7 @@ import { getApiKey } from '@/lib/provider-helpers';
  * These tools produce final outputs (images, documents) and should not be called again
  * unless the user explicitly requests it.
  */
-export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
+export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen', 'podcast_gen']);
 
 /**
  * Generate a prompt for the LLM to summarize a terminal tool result.
@@ -523,6 +523,11 @@ export async function generateResponseWithTools(
                     title: parsed.diagramHint.title,
                   };
                   callbacks.onArtifact('diagram', diagram);
+                }
+
+                // Check for generated podcast
+                if (parsed.success && parsed.podcastHint) {
+                  callbacks.onArtifact('podcast', parsed.podcastHint);
                 }
               } catch (artifactError) {
                 // Log artifact callback error but don't fail the tool execution

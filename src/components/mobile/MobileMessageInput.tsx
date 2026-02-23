@@ -36,6 +36,7 @@ interface MobileMessageInputProps {
  * Mobile-optimized message input with collapsible state.
  * Collapsed: thin bar with voice and attach buttons
  * Expanded: full textarea with preferences menu
+ * Hides while scrolling to maximize reading space.
  */
 export default function MobileMessageInput({
   onSend,
@@ -59,16 +60,24 @@ export default function MobileMessageInput({
   const prefsMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenu = useMobileMenuOptional();
 
+  // Should hide input while scrolling (from context)
+  const shouldHideInput = mobileMenu?.shouldHideInput ?? false;
+
   // Update context when expanded state changes
   useEffect(() => {
     mobileMenu?.setInputExpanded(isExpanded);
   }, [isExpanded, mobileMenu]);
 
-  // Auto-resize textarea
+  // Auto-resize textarea: 1 line default (~24px), expand up to 4 lines (~96px), then scroll
+  const LINE_HEIGHT = 24;
+  const MAX_LINES = 4;
+  const MAX_HEIGHT = LINE_HEIGHT * MAX_LINES; // 96px
+
   useEffect(() => {
     if (textareaRef.current && isExpanded) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      textareaRef.current.style.height = `${LINE_HEIGHT}px`;
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, MAX_HEIGHT)}px`;
     }
   }, [message, isExpanded]);
 
@@ -188,10 +197,12 @@ export default function MobileMessageInput({
     preferences.responseTone !== 'default',
   ].filter(Boolean).length;
 
-  // Collapsed state - thin bar
+  // Collapsed state - thin bar (hidden while scrolling)
   if (!isExpanded) {
     return (
-      <div className="bg-white p-3 safe-area-bottom">
+      <div className={`bg-white p-3 safe-area-bottom transition-all duration-200 ${
+        shouldHideInput ? 'translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+      }`}>
         <div
           onClick={handleExpand}
           className="bg-gray-50 rounded-2xl border border-gray-200 px-4 py-3 flex items-center gap-3 cursor-text"
@@ -268,7 +279,7 @@ export default function MobileMessageInput({
           </div>
         )}
 
-        {/* Textarea */}
+        {/* Textarea - 1 line default, expands to 4 lines, then scrolls */}
         <textarea
           ref={textareaRef}
           value={message}
@@ -278,9 +289,10 @@ export default function MobileMessageInput({
           onBlur={handleCollapse}
           placeholder="Ask a question..."
           disabled={disabled || isUploading}
-          rows={2}
+          rows={1}
           enterKeyHint="send"
-          className="w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 min-h-[56px] max-h-[120px]"
+          className="w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400"
+          style={{ minHeight: `${LINE_HEIGHT}px`, maxHeight: `${MAX_HEIGHT}px`, lineHeight: `${LINE_HEIGHT}px` }}
           autoFocus
         />
 

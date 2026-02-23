@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
   message_id TEXT,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3')),
   file_size INTEGER NOT NULL,
   generation_config TEXT,
   expires_at TIMESTAMP,

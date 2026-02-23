@@ -527,7 +527,7 @@ export async function addThreadOutput(
   messageId: string | null,
   filename: string,
   filepath: string,
-  fileType: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx',
+  fileType: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3',
   fileSize: number,
   generationConfig?: string,
   expiresAt?: string | null

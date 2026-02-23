@@ -68,14 +68,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await incrementDownloadCount(docIdNum);
 
     // Determine content type
-    const contentType = getContentType(doc.fileType);
+    const fileType = doc.fileType as string;
+    const contentType = getContentType(fileType);
+
+    // Use inline disposition for audio (streaming) and attachment for downloads
+    const disposition = fileType === 'mp3' ? 'inline' : 'attachment';
 
     // Create response with file
     const response = new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.filename)}"`,
+        'Content-Disposition': `${disposition}; filename="${encodeURIComponent(doc.filename)}"`,
         'Content-Length': doc.fileSize.toString(),
         'Cache-Control': 'private, no-cache',
       },
@@ -102,6 +106,7 @@ function getContentType(fileType: string): string {
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     md: 'text/markdown',
     image: 'image/webp', // Generated images are stored as WebP
+    mp3: 'audio/mpeg', // Generated podcasts
   };
 
   return contentTypes[fileType] || 'application/octet-stream';

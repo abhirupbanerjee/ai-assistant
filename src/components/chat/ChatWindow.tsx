@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -12,6 +12,8 @@ import ProcessingIndicator from './ProcessingIndicator';
 import AutonomousTaskList from './AutonomousTaskList';
 import ShareModal from '@/components/sharing/ShareModal';
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
+import { useScrollHide } from '@/hooks/useScrollHide';
+import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 
 interface WelcomeConfig {
   title?: string;
@@ -34,6 +36,7 @@ interface ChatWindowProps {
     uploads: string[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
+    generatedPodcasts: PodcastHint[];
     urlSources: UrlSource[];
   }) => void;
   // Callbacks for input focus (mobile sidebar hiding)
@@ -147,6 +150,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
+  // Mobile scroll-based hiding
+  const { isHidden: isScrollingDown, onScroll: onScrollHide } = useScrollHide();
+  const mobileMenu = useMobileMenuOptional();
+
+  // Sync scroll state to mobile menu context
+  useEffect(() => {
+    mobileMenu?.setScrollingDown(isScrollingDown);
+  }, [isScrollingDown, mobileMenu]);
+
 
   // Streaming chat hook
   const handleStreamComplete = useCallback((
@@ -157,6 +169,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     documents: GeneratedDocumentInfo[],
     images: GeneratedImageInfo[],
     _diagrams: DiagramHint[],
+    podcasts: PodcastHint[],
     metadata?: MessageMetadata
   ) => {
     const assistantMessage: Message = {
@@ -167,6 +180,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       visualizations: visualizations.length > 0 ? visualizations : undefined,
       generatedDocuments: documents.length > 0 ? documents : undefined,
       generatedImages: images.length > 0 ? images : undefined,
+      generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
       timestamp: new Date(),
       metadata,
     };
@@ -197,14 +211,16 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
 
-  // Compute generated docs and images from all messages + streaming state
-  const { generatedDocs, generatedImages } = useMemo(() => {
+  // Compute generated docs, images, and podcasts from all messages + streaming state
+  const { generatedDocs, generatedImages, generatedPodcasts } = useMemo(() => {
     const docs: GeneratedDocumentInfo[] = [];
     const images: GeneratedImageInfo[] = [];
+    const podcasts: PodcastHint[] = [];
     // Include artifacts from saved messages
     for (const msg of messages) {
       if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
       if (msg.generatedImages) images.push(...msg.generatedImages);
+      if (msg.generatedPodcasts) podcasts.push(...msg.generatedPodcasts);
     }
     // Include real-time streaming artifacts (for sidebar updates during generation)
     if (streamingState.documents) {
@@ -222,8 +238,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         }
       }
     }
-    return { generatedDocs: docs, generatedImages: images };
-  }, [messages, streamingState.documents, streamingState.images]);
+    if (streamingState.podcasts) {
+      for (const podcast of streamingState.podcasts) {
+        if (!podcasts.some(p => p.id === podcast.id)) {
+          podcasts.push(podcast);
+        }
+      }
+    }
+    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts };
+  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts]);
 
   // Notify parent of artifacts changes
   useEffect(() => {
@@ -232,9 +255,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       uploads,
       generatedDocs,
       generatedImages,
+      generatedPodcasts,
       urlSources,
     });
-  }, [threadId, uploads, generatedDocs, generatedImages, urlSources, onArtifactsChange]);
+  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, urlSources, onArtifactsChange]);
 
   // Load thread messages when active thread changes
   useEffect(() => {
@@ -340,12 +364,14 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   }, [messages, streamingState.currentContent, isScrolledUp, streamingState.isStreaming]);
 
-  const handleMessagesScroll = useCallback(() => {
+  const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = messagesContainerRef.current;
     if (!container) return;
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setIsScrolledUp(!atBottom);
-  }, []);
+    // Also update mobile scroll-hide state
+    onScrollHide(e);
+  }, [onScrollHide]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

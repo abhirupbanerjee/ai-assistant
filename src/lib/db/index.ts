@@ -633,6 +633,51 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Migration: Update file_type CHECK constraint to include 'mp3' format for podcast generation
+  try {
+    // Test if 'mp3' is allowed by the current constraint
+    database.exec(`
+      INSERT INTO thread_outputs (thread_id, filename, filepath, file_type, file_size)
+      VALUES ('__migration_test_mp3__', '__test__', '__test__', 'mp3', 0)
+    `);
+    // If successful, delete the test row
+    database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test_mp3__'`);
+  } catch {
+    // 'mp3' is not allowed, need to recreate the table with updated constraint
+    database.exec(`
+      -- Create new table with updated constraint (includes mp3 for podcast generation)
+      CREATE TABLE thread_outputs_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL,
+        message_id TEXT,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3')),
+        file_size INTEGER NOT NULL,
+        generation_config TEXT,
+        expires_at DATETIME,
+        download_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+      );
+
+      -- Copy existing data
+      INSERT INTO thread_outputs_new (id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at)
+      SELECT id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at
+      FROM thread_outputs;
+
+      -- Drop old table and rename new one
+      DROP TABLE thread_outputs;
+      ALTER TABLE thread_outputs_new RENAME TO thread_outputs;
+
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+    `);
+    console.log('[DB Migration] Added mp3 file type to thread_outputs');
+  }
+
   // Migration: Create thread_shares table for thread sharing feature
   const threadSharesTableExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_shares'"

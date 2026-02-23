@@ -12,15 +12,17 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
 import MobileMenuDrawer from '@/components/ui/MobileMenuDrawer';
 import { useMobileMenu } from '@/contexts/MobileMenuContext';
+import PodcastPlayer from '@/components/chat/PodcastPlayer';
 
 interface MobileArtifactsMenuProps {
   threadId: string | null;
   uploads: string[];
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
+  generatedPodcasts: PodcastHint[];
   urlSources: UrlSource[];
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
@@ -46,6 +48,7 @@ export default function MobileArtifactsMenu({
   uploads,
   generatedDocs,
   generatedImages,
+  generatedPodcasts,
   urlSources,
   onRemoveUpload,
   onRemoveUrlSource,
@@ -68,7 +71,7 @@ export default function MobileArtifactsMenu({
   const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
 
   // Count totals
-  const aiGeneratedCount = generatedDocs.length + generatedImages.length;
+  const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length;
   const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
   const toggleSection = (section: keyof SectionState) => {
@@ -135,6 +138,9 @@ export default function MobileArtifactsMenu({
                         <ImageIcon size={14} className="text-purple-500 flex-shrink-0" />
                         <span className="text-xs text-gray-700 truncate flex-1">{img.alt || 'Generated image'}</span>
                       </a>
+                    ))}
+                    {generatedPodcasts.map((podcast) => (
+                      <PodcastPlayer key={podcast.id} podcast={podcast} compact />
                     ))}
                   </div>
                 )}

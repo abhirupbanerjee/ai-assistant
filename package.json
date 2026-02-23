@@ -16,7 +16,8 @@
     "docker:prod:down": "docker compose down",
     "docker:logs": "docker compose logs -f app",
     "db:setup": "npx tsx src/lib/db/setup.ts",
-    "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts"
+    "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts",
+    "cleanup:expired": "npx tsx src/scripts/cleanup-expired-outputs.ts"
   },
   "dependencies": {
     "@azure/ai-form-recognizer": "^5.1.0",

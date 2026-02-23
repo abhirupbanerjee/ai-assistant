@@ -22,6 +22,7 @@ import type {
   GeneratedDocumentInfo,
   GeneratedImageInfo,
   DiagramHint,
+  PodcastHint,
   ChatPreferences,
 } from '@/types';
 
@@ -76,6 +77,8 @@ export interface StreamingState {
   images: GeneratedImageInfo[];
   /** Generated diagrams from tools */
   diagrams: DiagramHint[];
+  /** Generated podcasts from tools */
+  podcasts: PodcastHint[];
   /** Autonomous plan state (for autonomous mode) */
   autonomousPlan: AutonomousPlanState | null;
   /** Budget warning info (for autonomous mode) */
@@ -95,7 +98,7 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], metadata?: import('@/types').MessageMetadata) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
@@ -146,6 +149,7 @@ const initialState: StreamingState = {
   documents: [],
   images: [],
   diagrams: [],
+  podcasts: [],
   autonomousPlan: null,
   budgetWarning: null,
   error: null,
@@ -266,6 +270,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           setState(prev => ({
             ...prev,
             diagrams: [...prev.diagrams, event.data],
+          }));
+        } else if (event.subtype === 'podcast') {
+          setState(prev => ({
+            ...prev,
+            podcasts: [...prev.podcasts, event.data],
           }));
         }
         break;
@@ -495,7 +504,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             ragMs: event.ragMs,
             completionTokens: event.completionTokens,
           } : undefined;
-          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images, prev.diagrams, metadata);
+          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images, prev.diagrams, prev.podcasts, metadata);
           return {
             ...prev,
             isStreaming: false,

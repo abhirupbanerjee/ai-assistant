@@ -15,7 +15,7 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
 
 // Inner component that uses the mobile menu context
 function HomeContent() {
@@ -37,12 +37,14 @@ function HomeContent() {
     uploads: string[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
+    generatedPodcasts: PodcastHint[];
     urlSources: UrlSource[];
   }>({
     threadId: null,
     uploads: [],
     generatedDocs: [],
     generatedImages: [],
+    generatedPodcasts: [],
     urlSources: [],
   });
 
@@ -97,6 +99,7 @@ function HomeContent() {
     uploads: string[];
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
+    generatedPodcasts: PodcastHint[];
     urlSources: UrlSource[];
   }) => {
     setArtifactsData(data);
@@ -191,6 +194,7 @@ function HomeContent() {
   // Calculate artifact count for FAB badge
   const artifactCount = artifactsData.generatedDocs.length +
     artifactsData.generatedImages.length +
+    artifactsData.generatedPodcasts.length +
     artifactsData.uploads.length +
     artifactsData.urlSources.length;
 
@@ -273,6 +277,7 @@ function HomeContent() {
             uploads={artifactsData.uploads}
             generatedDocs={artifactsData.generatedDocs}
             generatedImages={artifactsData.generatedImages}
+            generatedPodcasts={artifactsData.generatedPodcasts}
             urlSources={artifactsData.urlSources}
             onRemoveUpload={handleRemoveUpload}
             onRemoveUrlSource={handleRemoveUrlSource}
@@ -299,6 +304,7 @@ function HomeContent() {
             uploads={artifactsData.uploads}
             generatedDocs={artifactsData.generatedDocs}
             generatedImages={artifactsData.generatedImages}
+            generatedPodcasts={artifactsData.generatedPodcasts}
             urlSources={artifactsData.urlSources}
             onRemoveUpload={handleRemoveUpload}
             onRemoveUrlSource={handleRemoveUrlSource}

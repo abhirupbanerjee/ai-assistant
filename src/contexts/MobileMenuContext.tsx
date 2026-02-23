@@ -13,6 +13,9 @@ interface MobileMenuContextValue {
   // Computed: should hide FABs (typing or scrolling)
   shouldHideFABs: boolean;
 
+  // Computed: should hide input (scrolling down, not typing)
+  shouldHideInput: boolean;
+
   // Scroll state (for FAB hiding)
   isScrollingDown: boolean;
 
@@ -78,11 +81,15 @@ export function MobileMenuProvider({ children }: MobileMenuProviderProps) {
   // Compute shouldHideFABs: hide when typing (input expanded) or scrolling down or menu open
   const shouldHideFABs = isInputExpanded || isScrollingDown || isThreadsMenuOpen || isArtifactsMenuOpen;
 
+  // Compute shouldHideInput: hide when scrolling down (but not when input is expanded/typing)
+  const shouldHideInput = isScrollingDown && !isInputExpanded;
+
   const value: MobileMenuContextValue = {
     isThreadsMenuOpen,
     isArtifactsMenuOpen,
     isInputExpanded,
     shouldHideFABs,
+    shouldHideInput,
     isScrollingDown,
     openThreadsMenu,
     closeThreadsMenu,

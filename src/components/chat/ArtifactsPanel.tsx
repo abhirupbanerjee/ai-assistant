@@ -14,15 +14,17 @@ import {
   PanelRightClose,
   PanelRightOpen
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
 import { useResizableSidebar } from '@/hooks/useResizableSidebar';
 import ResizeHandle from '@/components/ui/ResizeHandle';
+import PodcastPlayer from './PodcastPlayer';
 
 interface ArtifactsPanelProps {
   threadId: string | null;
   uploads: string[];
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
+  generatedPodcasts: PodcastHint[];
   urlSources: UrlSource[];
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
@@ -50,6 +52,7 @@ export default function ArtifactsPanel({
   uploads,
   generatedDocs,
   generatedImages,
+  generatedPodcasts,
   urlSources,
   onRemoveUpload,
   onRemoveUrlSource,
@@ -90,7 +93,7 @@ export default function ArtifactsPanel({
   const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
 
   // Count totals (use filtered fileUploads to avoid double-counting)
-  const aiGeneratedCount = generatedDocs.length + generatedImages.length;
+  const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length;
   const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
   const toggleSection = (section: keyof SectionState) => {
@@ -216,6 +219,9 @@ export default function ArtifactsPanel({
                           {img.alt || 'Generated image'}
                         </span>
                       </a>
+                    ))}
+                    {generatedPodcasts.map((podcast) => (
+                      <PodcastPlayer key={podcast.id} podcast={podcast} compact />
                     ))}
                   </div>
                 )}

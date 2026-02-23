@@ -563,6 +563,24 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       allowAcceptFlagged: true,
     },
   },
+  podcast_gen: {
+    enabled: false, // Disabled by default - requires TTS provider setup
+    config: {
+      activeProvider: 'none',
+      providers: {
+        openai: {
+          enabled: false,
+          model: 'tts-1-hd',
+          voice: 'nova',
+          speed: 1.0,
+        },
+      },
+      defaultStyle: 'conversational',
+      defaultLength: 'medium',
+      outputFormat: 'mp3',
+      expirationDays: 30,
+    },
+  },
 };
 
 /**

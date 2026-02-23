@@ -209,7 +209,7 @@ export interface ThreadOutputsTable {
   message_id: string | null;
   filename: string;
   filepath: string;
-  file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md';
+  file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3';
   file_size: number;
   generation_config: string | null;
   expires_at: string | null;
