@@ -172,6 +172,8 @@ export interface ImageHint {
   id: string;
   /** Download URL */
   url: string;
+  /** Full filepath on disk (for internal use, e.g., PPTX embedding) */
+  filepath: string;
   /** Thumbnail URL for preview */
   thumbnailUrl?: string;
   /** Image width */

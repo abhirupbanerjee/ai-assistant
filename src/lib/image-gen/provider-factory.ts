@@ -471,6 +471,7 @@ export async function generateImage(
     const imageHint: ImageHint = {
       id: savedImage.id,
       url: savedImage.url,
+      filepath: savedImage.filepath,
       thumbnailUrl: savedImage.thumbnailUrl,
       width: savedImage.width,
       height: savedImage.height,

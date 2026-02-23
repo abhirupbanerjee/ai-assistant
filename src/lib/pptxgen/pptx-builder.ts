@@ -400,28 +400,29 @@ export class PptxBuilder {
       console.log(`[PptxBuilder] Generating image for slide: "${slide.title}"`);
       const imageResult = await generateImage(imageArgs);
 
-      if (!imageResult.success || !imageResult.imageHint?.url) {
+      if (!imageResult.success || !imageResult.imageHint?.filepath) {
         throw new Error(imageResult.error?.message || 'Image generation failed');
       }
 
-      // Read image file from the filepath
-      // The URL is like /api/images/{id}/download, we need the actual filepath
-      // For now, let's use a simpler approach - check if we can get the filepath
-      const imageUrl = imageResult.imageHint.url;
+      const imageFilepath = imageResult.imageHint.filepath;
+      console.log(`[PptxBuilder] Image generated successfully, filepath: ${imageFilepath}`);
 
-      // Try to extract filepath from metadata or construct it
-      // Since generateImage saves to disk, we can try to read it
-      // The image is saved with a specific naming pattern
+      // Read the actual image file and convert to base64
+      const imageBuffer = fs.readFileSync(imageFilepath);
+      const base64Image = imageBuffer.toString('base64');
+      const extension = path.extname(imageFilepath).slice(1) || 'webp';
 
-      // For simplicity, we'll use a placeholder approach for the image
-      // In production, you'd want to properly track the image filepath
-      console.log(`[PptxBuilder] Image generated successfully, URL: ${imageUrl}`);
+      // Add full-bleed background image
+      pptxSlide.addImage({
+        data: `image/${extension};base64,${base64Image}`,
+        x: 0,
+        y: 0,
+        w: '100%',
+        h: '100%',
+        sizing: { type: 'cover', w: '100%', h: '100%' },
+      });
 
-      // Add a simple slide with title (since embedding requires the actual file)
-      // This is a simplified version - full implementation would read the file
-      pptxSlide.background = { color: primary };
-
-      // Add title on dark background
+      // Add title overlay with shadow for readability on image background
       pptxSlide.addText(slide.title, {
         x: 0.5,
         y: 4.1,
@@ -432,22 +433,11 @@ export class PptxBuilder {
         color: 'FFFFFF',
         bold: true,
         align: 'center',
-      });
-
-      // Add a note about the generated image
-      pptxSlide.addText(`[Image: ${slide.imagePrompt}]`, {
-        x: 0.5,
-        y: 2.5,
-        w: '90%',
-        h: 1.0,
-        fontSize: 16,
-        fontFace: 'Arial',
-        color: 'CCCCCC',
-        align: 'center',
+        shadow: { type: 'outer', blur: 3, offset: 2, angle: 45, color: '000000', opacity: 0.6 },
       });
 
       this.imageSlideCount++;
-      console.log(`[PptxBuilder] Image slide created: "${slide.title}"`);
+      console.log(`[PptxBuilder] Image slide created with embedded image: "${slide.title}"`);
     } catch (error) {
       console.error(`[PptxBuilder] Image generation failed for slide "${slide.title}":`, error);
       this.failedImageCount++;
