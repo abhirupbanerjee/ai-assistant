@@ -736,7 +736,7 @@ export async function addWorkspaceOutput(
   threadId: string | null,
   filename: string,
   filepath: string,
-  fileType: 'pdf' | 'docx' | 'image' | 'chart' | 'md',
+  fileType: 'pdf' | 'docx' | 'image' | 'chart' | 'md' | 'xlsx' | 'pptx',
   fileSize: number,
   generationConfig?: string,
   expiresAt?: string | null

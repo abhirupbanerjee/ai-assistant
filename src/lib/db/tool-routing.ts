@@ -352,6 +352,48 @@ const DEFAULT_ROUTING_RULES: ToolRoutingRuleInput[] = [
     forceMode: 'required',
     priority: 15,
   },
+  // Spreadsheet Generator
+  {
+    toolName: 'xlsx_gen',
+    ruleName: 'Spreadsheet Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'create spreadsheet',
+      'create a spreadsheet',
+      'make excel',
+      'create excel',
+      'generate spreadsheet',
+      'xlsx',
+      'excel file',
+      'build a tracker',
+      'create a budget',
+      'financial model',
+      'export to excel',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
+  // Presentation Generator
+  {
+    toolName: 'pptx_gen',
+    ruleName: 'Presentation Keywords',
+    ruleType: 'keyword',
+    patterns: [
+      'create presentation',
+      'create a presentation',
+      'make slides',
+      'create slides',
+      'generate presentation',
+      'slide deck',
+      'pitch deck',
+      'powerpoint',
+      'pptx',
+      'make a deck',
+      'presentation about',
+    ],
+    forceMode: 'required',
+    priority: 15,
+  },
 ];
 
 /**

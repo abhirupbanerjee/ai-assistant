@@ -12,6 +12,8 @@ import { shareThreadTool } from './tools/share-thread';
 import { sendEmailTool } from './tools/send-email';
 import { diagramGenTool } from './tools/diagram-gen';
 import { complianceCheckerTool } from './tools/compliance-checker';
+import { xlsxGenTool } from './tools/xlsx-gen';
+import { pptxGenTool } from './tools/pptx-gen';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -105,6 +107,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   send_email: sendEmailTool,
   diagram_gen: diagramGenTool,
   compliance_checker: complianceCheckerTool,
+  xlsx_gen: xlsxGenTool,
+  pptx_gen: pptxGenTool,
 };
 
 // ============ Initialization ============

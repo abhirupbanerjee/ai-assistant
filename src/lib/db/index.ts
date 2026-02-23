@@ -1062,6 +1062,61 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Added max_output_tokens column to enabled_models');
   }
 
+  // Migration: Add xlsx and pptx to workspace_outputs file_type CHECK constraint
+  // SQLite requires table recreation to modify CHECK constraints
+  const workspaceOutputsExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='workspace_outputs'"
+  ).get();
+
+  if (workspaceOutputsExists) {
+    // Check if migration is needed by looking at table definition
+    const tableInfo = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='workspace_outputs'"
+    ).get() as { sql: string } | undefined;
+
+    if (tableInfo && !tableInfo.sql.includes('xlsx')) {
+      console.log('[DB Migration] Adding xlsx/pptx support to workspace_outputs...');
+
+      database.exec(`
+        -- Create new table with updated CHECK constraint
+        CREATE TABLE workspace_outputs_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workspace_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          thread_id TEXT,
+          filename TEXT NOT NULL,
+          filepath TEXT NOT NULL,
+          file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx')),
+          file_size INTEGER NOT NULL,
+          generation_config TEXT,
+          expires_at DATETIME,
+          download_count INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+          FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE SET NULL
+        );
+
+        -- Copy existing data
+        INSERT INTO workspace_outputs_new
+        SELECT * FROM workspace_outputs;
+
+        -- Drop old table
+        DROP TABLE workspace_outputs;
+
+        -- Rename new table
+        ALTER TABLE workspace_outputs_new RENAME TO workspace_outputs;
+
+        -- Recreate indexes
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_workspace ON workspace_outputs(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_session ON workspace_outputs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_thread ON workspace_outputs(thread_id);
+      `);
+
+      console.log('[DB Migration] Added xlsx/pptx support to workspace_outputs');
+    }
+  }
+
   console.log('[DB Migration] Migrations completed successfully');
 }
 

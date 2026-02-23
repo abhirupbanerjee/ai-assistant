@@ -368,7 +368,7 @@ export function getOutputDirectory(): string {
  */
 export function generateDocumentFilename(
   baseName: string,
-  format: 'pdf' | 'docx' | 'md',
+  format: 'pdf' | 'docx' | 'md' | 'xlsx' | 'pptx',
   threadId?: string
 ): string {
   const timestamp = Date.now();

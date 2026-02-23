@@ -667,7 +667,7 @@ export interface WorkspaceOutputsTable {
   thread_id: string | null;
   filename: string;
   filepath: string;
-  file_type: 'pdf' | 'docx' | 'image' | 'chart' | 'md';
+  file_type: 'pdf' | 'docx' | 'image' | 'chart' | 'md' | 'xlsx' | 'pptx';
   file_size: number;
   generation_config: string | null;
   expires_at: string | null;
