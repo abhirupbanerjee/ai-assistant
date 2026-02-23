@@ -134,6 +134,7 @@ function getTTSClient(): OpenAI {
 
     ttsClient = new OpenAI({
       apiKey,
+      baseURL: 'https://api.openai.com/v1', // Force direct OpenAI, bypass LiteLLM proxy
       timeout: 120 * 1000, // 2 minutes for audio generation
     });
   }
