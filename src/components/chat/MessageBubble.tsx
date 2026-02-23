@@ -8,6 +8,7 @@ import type { Message, MessageMetadata } from '@/types';
 import SourceCard from './SourceCard';
 import DocumentResultCard from './DocumentResultCard';
 import ImageDisplay from './ImageDisplay';
+import PodcastPlayer from './PodcastPlayer';
 import DataVisualization from './DataVisualization';
 import MermaidDiagram from '@/components/markdown/MermaidDiagram';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
@@ -115,6 +116,15 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
           <div className="mt-4 space-y-4">
             {message.generatedImages.map((image) => (
               <ImageDisplay key={image.id} image={image} />
+            ))}
+          </div>
+        )}
+
+        {/* Generated Podcasts */}
+        {message.generatedPodcasts && message.generatedPodcasts.length > 0 && (
+          <div className="mt-4 space-y-4">
+            {message.generatedPodcasts.map((podcast) => (
+              <PodcastPlayer key={podcast.id} podcast={podcast} />
             ))}
           </div>
         )}
