@@ -134,7 +134,7 @@ export const pptxGenTool: ToolDefinition = {
   displayName: 'Presentation Generator',
   description:
     'Generate PowerPoint presentations (.pptx) with professional themes, layouts, and AI-generated images',
-  category: 'processor',
+  category: 'autonomous',
 
   definition: {
     type: 'function' as const,

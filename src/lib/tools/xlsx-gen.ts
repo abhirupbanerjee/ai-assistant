@@ -131,7 +131,7 @@ export const xlsxGenTool: ToolDefinition = {
   name: 'xlsx_gen',
   displayName: 'Spreadsheet Generator',
   description: 'Generate Excel spreadsheets (.xlsx) with data, formulas, and formatting',
-  category: 'processor',
+  category: 'autonomous',
 
   definition: {
     type: 'function' as const,

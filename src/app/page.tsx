@@ -11,9 +11,14 @@ import AppFooter from '@/components/layout/AppFooter';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenuContext';
+import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
+import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
+import MobileFABs from '@/components/mobile/MobileFABs';
 import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
 
-export default function Home() {
+// Inner component that uses the mobile menu context
+function HomeContent() {
   const { data: session } = useSession();
   const chatWindowRef = useRef<ChatWindowRef>(null);
   const sidebarRef = useRef<ThreadSidebarRef>(null);
@@ -22,8 +27,9 @@ export default function Home() {
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareThread, setShareThread] = useState<Thread | null>(null);
-  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [threadCount, setThreadCount] = useState(0);
   const isMobile = useIsMobile();
+  const mobileMenu = useMobileMenuOptional();
 
   // Artifacts state (lifted from ChatWindow)
   const [artifactsData, setArtifactsData] = useState<{
@@ -40,7 +46,7 @@ export default function Home() {
     urlSources: [],
   });
 
-  // Load user subscriptions and branding on mount
+  // Load user subscriptions, branding, and thread count on mount
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -57,6 +63,13 @@ export default function Home() {
           const brandingData = await brandingResponse.json();
           setBrandingName(brandingData.botName || 'Policy Bot');
         }
+
+        // Load thread count for mobile FAB badge
+        const threadsResponse = await fetch('/api/threads');
+        if (threadsResponse.ok) {
+          const threadsData = await threadsResponse.json();
+          setThreadCount(threadsData.threads?.length || 0);
+        }
       } catch (err) {
         console.error('Failed to load user data:', err);
       }
@@ -64,17 +77,18 @@ export default function Home() {
     loadData();
   }, []);
 
-  const handleThreadSelect = (thread: Thread | null) => {
+  const handleThreadSelect = useCallback((thread: Thread | null) => {
     setActiveThread(thread);
-  };
+  }, []);
 
-  const handleThreadCreated = (thread: Thread) => {
+  const handleThreadCreated = useCallback((thread: Thread) => {
     setActiveThread(thread);
-  };
+    setThreadCount(prev => prev + 1);
+  }, []);
 
   const handleShareThread = useCallback((thread: Thread) => {
     setShareThread(thread);
-    setActiveThread(thread); // Select the thread
+    setActiveThread(thread);
     setShowShareModal(true);
   }, []);
 
@@ -98,9 +112,7 @@ export default function Home() {
       );
 
       if (response.ok) {
-        // Update ChatWindow's internal state via ref
         chatWindowRef.current?.removeUpload(filename);
-        // Also update local artifacts state (for immediate UI feedback)
         setArtifactsData(prev => ({
           ...prev,
           uploads: prev.uploads.filter(f => f !== filename),
@@ -124,9 +136,7 @@ export default function Home() {
       );
 
       if (response.ok) {
-        // Update ChatWindow's internal state via ref
         chatWindowRef.current?.removeUrlSource(filename);
-        // Also update local artifacts state (for immediate UI feedback)
         setArtifactsData(prev => ({
           ...prev,
           urlSources: prev.urlSources.filter(s => s.filename !== filename),
@@ -140,23 +150,37 @@ export default function Home() {
     }
   }, [artifactsData.threadId]);
 
-  // Swipe gestures for mobile: swipe right from edge to open sidebar, swipe left to close
+  // Swipe gestures for mobile
   useSwipeGesture({
-    onSwipeRight: () => sidebarRef.current?.setCollapsed(false),
-    onSwipeLeft: () => sidebarRef.current?.setCollapsed(true),
+    onSwipeRight: () => {
+      if (isMobile) {
+        mobileMenu?.openThreadsMenu();
+      } else {
+        sidebarRef.current?.setCollapsed(false);
+      }
+    },
+    onSwipeLeft: () => {
+      if (isMobile) {
+        // If threads menu is open, close it; otherwise open artifacts
+        if (mobileMenu?.isThreadsMenuOpen) {
+          mobileMenu.closeThreadsMenu();
+        } else if (activeThread) {
+          mobileMenu?.openArtifactsMenu();
+        }
+      } else {
+        sidebarRef.current?.setCollapsed(true);
+      }
+    },
   });
 
-  // Input focus handlers for hiding sidebars on mobile
+  // Input focus handlers - update mobile menu context
   const handleInputFocus = useCallback(() => {
-    setIsInputFocused(true);
-  }, []);
+    mobileMenu?.setInputExpanded(true);
+  }, [mobileMenu]);
 
   const handleInputBlur = useCallback(() => {
-    setIsInputFocused(false);
-  }, []);
-
-  // Determine if sidebars should be hidden (mobile + input focused)
-  const hideSidebars = isMobile && isInputFocused;
+    mobileMenu?.setInputExpanded(false);
+  }, [mobileMenu]);
 
   // Header always shows the bot name (branding)
   const getHeaderTitle = () => brandingName;
@@ -164,22 +188,58 @@ export default function Home() {
   // Get user role for WelcomeScreen
   const userRole = (session?.user as { role?: string })?.role as 'user' | 'superuser' | 'admin' | undefined;
 
+  // Calculate artifact count for FAB badge
+  const artifactCount = artifactsData.generatedDocs.length +
+    artifactsData.generatedImages.length +
+    artifactsData.uploads.length +
+    artifactsData.urlSources.length;
+
+  // Handler for creating new thread from mobile header
+  const handleNewThreadFromHeader = useCallback(async () => {
+    try {
+      const response = await fetch('/api/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        const thread = await response.json();
+        const newThread = {
+          ...thread,
+          createdAt: new Date(thread.createdAt),
+          updatedAt: new Date(thread.updatedAt),
+        };
+        setActiveThread(newThread);
+        setThreadCount(prev => prev + 1);
+      }
+    } catch (err) {
+      console.error('Failed to create thread:', err);
+    }
+  }, []);
+
   return (
     <div className="fixed-layout bg-gray-50">
-      {/* Full-width header - clean, only bot icon and name */}
-      <AppHeader title={getHeaderTitle()} />
+      {/* Header - shows MobileHeader on mobile when thread active */}
+      <AppHeader
+        title={getHeaderTitle()}
+        isMobile={isMobile}
+        activeThread={activeThread}
+        onOpenThreadsMenu={mobileMenu?.openThreadsMenu}
+        onNewThread={handleNewThreadFromHeader}
+      />
 
-      {/* Content area with sidebars */}
+      {/* Content area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left sidebar - Thread list (manages its own collapsed state) */}
-        <ThreadSidebar
-          ref={sidebarRef}
-          onThreadSelect={handleThreadSelect}
-          onThreadCreated={handleThreadCreated}
-          selectedThreadId={activeThread?.id}
-          onShareThread={handleShareThread}
-          hidden={hideSidebars}
-        />
+        {/* Left sidebar - Desktop only */}
+        {!isMobile && (
+          <ThreadSidebar
+            ref={sidebarRef}
+            onThreadSelect={handleThreadSelect}
+            onThreadCreated={handleThreadCreated}
+            selectedThreadId={activeThread?.id}
+            onShareThread={handleShareThread}
+          />
+        )}
 
         {/* Main content area */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -206,21 +266,57 @@ export default function Home() {
           )}
         </main>
 
-        {/* Right sidebar - Artifacts panel (manages its own collapsed state) */}
-        <ArtifactsPanel
-          threadId={artifactsData.threadId}
-          uploads={artifactsData.uploads}
-          generatedDocs={artifactsData.generatedDocs}
-          generatedImages={artifactsData.generatedImages}
-          urlSources={artifactsData.urlSources}
-          onRemoveUpload={handleRemoveUpload}
-          onRemoveUrlSource={handleRemoveUrlSource}
-          hidden={hideSidebars}
-        />
+        {/* Right sidebar - Desktop only */}
+        {!isMobile && (
+          <ArtifactsPanel
+            threadId={artifactsData.threadId}
+            uploads={artifactsData.uploads}
+            generatedDocs={artifactsData.generatedDocs}
+            generatedImages={artifactsData.generatedImages}
+            urlSources={artifactsData.urlSources}
+            onRemoveUpload={handleRemoveUpload}
+            onRemoveUrlSource={handleRemoveUrlSource}
+          />
+        )}
       </div>
+
+      {/* Mobile-only: FABs and full-page menus */}
+      {isMobile && (
+        <>
+          <MobileFABs
+            threadCount={threadCount}
+            artifactCount={artifactCount}
+            hasActiveThread={!!activeThread}
+          />
+          <MobileThreadsMenu
+            onThreadSelect={handleThreadSelect}
+            onThreadCreated={handleThreadCreated}
+            selectedThreadId={activeThread?.id}
+            onShareThread={handleShareThread}
+          />
+          <MobileArtifactsMenu
+            threadId={artifactsData.threadId}
+            uploads={artifactsData.uploads}
+            generatedDocs={artifactsData.generatedDocs}
+            generatedImages={artifactsData.generatedImages}
+            urlSources={artifactsData.urlSources}
+            onRemoveUpload={handleRemoveUpload}
+            onRemoveUrlSource={handleRemoveUrlSource}
+          />
+        </>
+      )}
 
       {/* Full-width footer */}
       <AppFooter />
     </div>
+  );
+}
+
+// Main export wraps content in MobileMenuProvider
+export default function Home() {
+  return (
+    <MobileMenuProvider>
+      <HomeContent />
+    </MobileMenuProvider>
   );
 }
