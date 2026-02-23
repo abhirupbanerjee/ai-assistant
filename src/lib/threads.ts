@@ -326,6 +326,7 @@ export async function addMessage(
     generatedDocuments: message.generatedDocuments,
     visualizations: message.visualizations,
     generatedImages: message.generatedImages,
+    generatedPodcasts: message.generatedPodcasts,
   });
 
   // Update title if this is the first user message and title is default
