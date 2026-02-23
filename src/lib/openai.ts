@@ -646,13 +646,14 @@ export async function generateResponseWithTools(
     logger.debug(`Generating summary for terminal tool: ${terminalToolResult.toolName}`);
 
     // Make final LLM call for summary (no tools needed)
+    // Explicitly construct params without tools/tool_choice to avoid Anthropic API errors
     const summaryResponse = await streamOneCompletion(
       openai,
       {
-        ...completionParams,
+        model: completionParams.model,
         messages: summaryMessages,
-        tools: undefined,
-        tool_choice: undefined,
+        max_tokens: completionParams.max_tokens,
+        temperature: completionParams.temperature,
       },
       callbacks?.onChunk,
     );
