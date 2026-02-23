@@ -1491,6 +1491,38 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                         </div>
                       )}
 
+                      {/* podcast_gen: Style and Length */}
+                      {formData.tool_name === 'podcast_gen' && (
+                        <>
+                          <div className="mb-3">
+                            <label className="block text-xs text-gray-600 mb-1">Podcast Style</label>
+                            <select
+                              value={getConfigValue('style')}
+                              onChange={(e) => setConfigValue('style', e.target.value)}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">Use tool default</option>
+                              <option value="formal">Formal - Professional and authoritative</option>
+                              <option value="conversational">Conversational - Friendly and approachable</option>
+                              <option value="news">News - Clear and objective broadcast style</option>
+                            </select>
+                          </div>
+                          <div className="mb-3">
+                            <label className="block text-xs text-gray-600 mb-1">Podcast Length</label>
+                            <select
+                              value={getConfigValue('length')}
+                              onChange={(e) => setConfigValue('length', e.target.value)}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">Use tool default</option>
+                              <option value="short">Short (1-2 minutes)</option>
+                              <option value="medium">Medium (3-5 minutes)</option>
+                              <option value="long">Long (8-10 minutes)</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+
                       {/* Advanced JSON toggle for power users */}
                       <details className="mt-2">
                         <summary className="text-xs text-blue-600 cursor-pointer hover:text-blue-800">

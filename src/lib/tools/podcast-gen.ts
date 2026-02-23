@@ -90,13 +90,43 @@ export async function isPodcastGenEnabled(): Promise<boolean> {
   return config?.isEnabled ?? false;
 }
 
-// ===== OpenAI Client =====
+// ===== OpenAI Clients =====
 
+// Two separate clients needed:
+// 1. chatClient: Uses LiteLLM proxy for chat completions (content formatting)
+// 2. ttsClient: Direct OpenAI API for TTS (not available via LiteLLM)
+
+let chatClient: OpenAI | null = null;
 let ttsClient: OpenAI | null = null;
 
-function getOpenAIClient(): OpenAI {
+/**
+ * Get client for chat completions (uses LiteLLM proxy if configured)
+ */
+function getChatClient(): OpenAI {
+  if (!chatClient) {
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    const apiKey = process.env.OPENAI_BASE_URL
+      ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
+      : getApiKey('openai');
+
+    if (!apiKey && !process.env.OPENAI_BASE_URL) {
+      throw new Error('OpenAI API key or LiteLLM proxy required for podcast formatting');
+    }
+
+    chatClient = new OpenAI({
+      apiKey: apiKey || 'dummy-key-for-litellm',
+      baseURL: process.env.OPENAI_BASE_URL || undefined,
+    });
+  }
+  return chatClient;
+}
+
+/**
+ * Get client for TTS (always direct OpenAI API)
+ */
+function getTTSClient(): OpenAI {
   if (!ttsClient) {
-    // For TTS, we always use direct OpenAI API (not LiteLLM proxy)
+    // TTS always uses direct OpenAI API (not available via LiteLLM)
     const apiKey = getApiKey('openai');
     if (!apiKey) {
       throw new Error('OpenAI API key not configured for TTS');
@@ -136,7 +166,7 @@ async function formatContentForAudio(
   style: 'formal' | 'conversational' | 'news',
   length: 'short' | 'medium' | 'long'
 ): Promise<FormatterResult> {
-  const openai = getOpenAIClient();
+  const openai = getChatClient();
   const llmSettings = getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
@@ -189,7 +219,7 @@ async function generateAudioWithOpenAI(
   script: string,
   config: PodcastGenConfig
 ): Promise<{ buffer: Buffer; duration: number }> {
-  const openai = getOpenAIClient();
+  const openai = getTTSClient();
   const providerConfig = config.providers.openai;
 
   console.log(`[PodcastGen] Generating audio with model: ${providerConfig.model}, voice: ${providerConfig.voice}`);
