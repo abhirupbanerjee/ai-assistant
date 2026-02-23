@@ -645,8 +645,9 @@ export async function generateResponseWithTools(
 
     logger.debug(`Generating summary for terminal tool: ${terminalToolResult.toolName}`);
 
-    // Make final LLM call for summary (no tools needed)
-    // Explicitly construct params without tools/tool_choice to avoid Anthropic API errors
+    // Make final LLM call for summary
+    // Anthropic requires tools array when messages contain tool_calls/tool responses
+    // Use tool_choice: 'none' to prevent new tool calls
     const summaryResponse = await streamOneCompletion(
       openai,
       {
@@ -654,6 +655,8 @@ export async function generateResponseWithTools(
         messages: summaryMessages,
         max_tokens: completionParams.max_tokens,
         temperature: completionParams.temperature,
+        tools: completionParams.tools,
+        tool_choice: 'none',
       },
       callbacks?.onChunk,
     );
