@@ -62,12 +62,30 @@ const BaseMarkdownComponents: Partial<Components> = {
     );
   },
 
-  // Link renderer with external link icon
+  // Link renderer with external link icon and URL sanitization
   a: ({ href, children, title }) => {
-    const isExternal = href && !href.startsWith('/') && !href.startsWith('#');
+    let sanitizedHref = href;
+
+    // Sanitize URLs: If an internal API path has an external domain prefix, strip it
+    // This prevents LLM-hallucinated absolute URLs from redirecting to external domains
+    if (href) {
+      const internalPaths = ['/api/documents/', '/api/workspace-documents/', '/api/agent-bots/'];
+      const matchingPath = internalPaths.find(path => href.includes(path));
+
+      if (matchingPath) {
+        const pathIndex = href.indexOf(matchingPath);
+        if (pathIndex > 0) {
+          // Has domain prefix - strip it and use relative path
+          sanitizedHref = href.substring(pathIndex);
+          console.warn(`[URL Sanitization] Stripped external domain from internal URL: ${href} -> ${sanitizedHref}`);
+        }
+      }
+    }
+
+    const isExternal = sanitizedHref && !sanitizedHref.startsWith('/') && !sanitizedHref.startsWith('#');
     return (
       <a
-        href={href}
+        href={sanitizedHref}
         title={title}
         target={isExternal ? '_blank' : undefined}
         rel={isExternal ? 'noopener noreferrer' : undefined}
