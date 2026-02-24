@@ -16,9 +16,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Layers,
+  Bot,
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'agent-bots' | 'settings';
 type PromptsSection = 'global-prompt' | 'category-prompts';
 type SkillsSection = 'tools' | 'skills';
 type SettingsSection = 'rag-tuning' | 'backup';
@@ -42,6 +43,7 @@ const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] 
   { id: 'prompts', label: 'Prompts', icon: MessageSquare },
   { id: 'workspaces', label: 'Workspaces', icon: Layers },
   { id: 'skills', label: 'Skill Library', icon: Sparkles },
+  { id: 'agent-bots', label: 'Agent Bots', icon: Bot },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

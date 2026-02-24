@@ -847,6 +847,193 @@ CREATE INDEX IF NOT EXISTS idx_compliance_decision ON compliance_results(decisio
 CREATE INDEX IF NOT EXISTS idx_compliance_hitl ON compliance_results(hitl_triggered, validated_at);
 CREATE INDEX IF NOT EXISTS idx_compliance_message ON compliance_results(message_id);
 
+-- ============ Agent Bots ============
+
+-- Core agent bot entity
+CREATE TABLE IF NOT EXISTS agent_bots (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  is_active INTEGER DEFAULT 1,
+  created_by TEXT NOT NULL,
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bots_slug ON agent_bots(slug);
+CREATE INDEX IF NOT EXISTS idx_agent_bots_active ON agent_bots(is_active);
+
+-- Versioned configurations for agent bots
+CREATE TABLE IF NOT EXISTS agent_bot_versions (
+  id TEXT PRIMARY KEY,
+  agent_bot_id TEXT NOT NULL,
+  version_number INTEGER NOT NULL,
+  version_label TEXT,
+  is_default INTEGER DEFAULT 0,
+  input_schema TEXT NOT NULL,
+  output_config TEXT NOT NULL,
+  system_prompt TEXT,
+  llm_model TEXT,
+  temperature REAL,
+  max_tokens INTEGER,
+  is_active INTEGER DEFAULT 1,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(agent_bot_id, version_number),
+  FOREIGN KEY (agent_bot_id) REFERENCES agent_bots(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_versions_bot ON agent_bot_versions(agent_bot_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_versions_default ON agent_bot_versions(agent_bot_id, is_default);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_versions_active ON agent_bot_versions(is_active);
+
+-- Version to categories mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS agent_bot_version_categories (
+  version_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  PRIMARY KEY (version_id, category_id),
+  FOREIGN KEY (version_id) REFERENCES agent_bot_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_version_categories_version ON agent_bot_version_categories(version_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_version_categories_category ON agent_bot_version_categories(category_id);
+
+-- Version to skills mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS agent_bot_version_skills (
+  version_id TEXT NOT NULL,
+  skill_id INTEGER NOT NULL,
+  PRIMARY KEY (version_id, skill_id),
+  FOREIGN KEY (version_id) REFERENCES agent_bot_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_version_skills_version ON agent_bot_version_skills(version_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_version_skills_skill ON agent_bot_version_skills(skill_id);
+
+-- Version tool configurations with optional overrides
+CREATE TABLE IF NOT EXISTS agent_bot_version_tools (
+  id TEXT PRIMARY KEY,
+  version_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  is_enabled INTEGER DEFAULT 1,
+  config_override TEXT,
+  UNIQUE(version_id, tool_name),
+  FOREIGN KEY (version_id) REFERENCES agent_bot_versions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_version_tools_version ON agent_bot_version_tools(version_id);
+
+-- API keys for agent bot authentication
+CREATE TABLE IF NOT EXISTS agent_bot_api_keys (
+  id TEXT PRIMARY KEY,
+  agent_bot_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  key_prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL,
+  permissions TEXT NOT NULL DEFAULT '["invoke"]',
+  rate_limit_rpm INTEGER DEFAULT 60,
+  rate_limit_rpd INTEGER DEFAULT 1000,
+  expires_at TIMESTAMP,
+  last_used_at TIMESTAMP,
+  is_active INTEGER DEFAULT 1,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  revoked_at TIMESTAMP,
+  FOREIGN KEY (agent_bot_id) REFERENCES agent_bots(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_api_keys_bot ON agent_bot_api_keys(agent_bot_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_api_keys_prefix ON agent_bot_api_keys(key_prefix);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_api_keys_active ON agent_bot_api_keys(is_active);
+
+-- Jobs for tracking async execution
+CREATE TABLE IF NOT EXISTS agent_bot_jobs (
+  id TEXT PRIMARY KEY,
+  agent_bot_id TEXT NOT NULL,
+  version_id TEXT NOT NULL,
+  api_key_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+  input_json TEXT NOT NULL,
+  input_files_json TEXT,
+  output_type TEXT NOT NULL DEFAULT 'text',
+  webhook_url TEXT,
+  webhook_secret TEXT,
+  priority INTEGER DEFAULT 100,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  error_message TEXT,
+  error_code TEXT,
+  processing_time_ms INTEGER,
+  token_usage_json TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP,
+  FOREIGN KEY (agent_bot_id) REFERENCES agent_bots(id) ON DELETE CASCADE,
+  FOREIGN KEY (version_id) REFERENCES agent_bot_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY (api_key_id) REFERENCES agent_bot_api_keys(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_jobs_bot ON agent_bot_jobs(agent_bot_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_jobs_status ON agent_bot_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_jobs_api_key ON agent_bot_jobs(api_key_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_jobs_created ON agent_bot_jobs(created_at DESC);
+
+-- Job outputs (generated files and content)
+CREATE TABLE IF NOT EXISTS agent_bot_job_outputs (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  output_type TEXT NOT NULL CHECK (output_type IN ('text', 'json', 'pdf', 'docx', 'xlsx', 'pptx', 'image', 'podcast', 'md')),
+  content TEXT,
+  filename TEXT,
+  filepath TEXT,
+  file_size INTEGER,
+  mime_type TEXT,
+  metadata_json TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (job_id) REFERENCES agent_bot_jobs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_job_outputs_job ON agent_bot_job_outputs(job_id);
+
+-- Job input files (uploaded documents)
+CREATE TABLE IF NOT EXISTS agent_bot_job_files (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
+  stored_filepath TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  mime_type TEXT NOT NULL,
+  extracted_text TEXT,
+  extraction_status TEXT DEFAULT 'pending' CHECK (extraction_status IN ('pending', 'processing', 'ready', 'error')),
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (job_id) REFERENCES agent_bot_jobs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_job_files_job ON agent_bot_job_files(job_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_job_files_status ON agent_bot_job_files(extraction_status);
+
+-- Usage tracking for rate limiting and analytics
+CREATE TABLE IF NOT EXISTS agent_bot_usage (
+  id SERIAL PRIMARY KEY,
+  api_key_id TEXT NOT NULL,
+  agent_bot_id TEXT NOT NULL,
+  date DATE NOT NULL,
+  hour INTEGER NOT NULL,
+  request_count INTEGER DEFAULT 0,
+  token_count INTEGER DEFAULT 0,
+  error_count INTEGER DEFAULT 0,
+  UNIQUE(api_key_id, date, hour),
+  FOREIGN KEY (api_key_id) REFERENCES agent_bot_api_keys(id) ON DELETE CASCADE,
+  FOREIGN KEY (agent_bot_id) REFERENCES agent_bots(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_key ON agent_bot_usage(api_key_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_bot ON agent_bot_usage(agent_bot_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_date ON agent_bot_usage(date);
+
 -- ============ Triggers (PostgreSQL syntax) ============
 
 -- Update user updated_at timestamp
@@ -941,3 +1128,52 @@ CREATE TRIGGER ensure_single_default_model
   FOR EACH ROW
   WHEN (NEW.is_default = 1)
   EXECUTE FUNCTION ensure_single_default_model();
+
+-- Update agent_bots updated_at timestamp
+CREATE OR REPLACE FUNCTION update_agent_bot_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_agent_bot_timestamp ON agent_bots;
+CREATE TRIGGER update_agent_bot_timestamp
+  BEFORE UPDATE ON agent_bots
+  FOR EACH ROW
+  EXECUTE FUNCTION update_agent_bot_timestamp();
+
+-- Update agent_bot_versions updated_at timestamp
+CREATE OR REPLACE FUNCTION update_agent_bot_version_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_agent_bot_version_timestamp ON agent_bot_versions;
+CREATE TRIGGER update_agent_bot_version_timestamp
+  BEFORE UPDATE ON agent_bot_versions
+  FOR EACH ROW
+  EXECUTE FUNCTION update_agent_bot_version_timestamp();
+
+-- Ensure only one default version per agent bot
+CREATE OR REPLACE FUNCTION ensure_single_default_agent_bot_version()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.is_default = 1 THEN
+    UPDATE agent_bot_versions SET is_default = 0
+    WHERE agent_bot_id = NEW.agent_bot_id AND id != NEW.id AND is_default = 1;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS ensure_single_default_agent_bot_version ON agent_bot_versions;
+CREATE TRIGGER ensure_single_default_agent_bot_version
+  AFTER UPDATE OF is_default ON agent_bot_versions
+  FOR EACH ROW
+  WHEN (NEW.is_default = 1)
+  EXECUTE FUNCTION ensure_single_default_agent_bot_version();

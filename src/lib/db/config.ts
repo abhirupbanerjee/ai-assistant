@@ -166,6 +166,16 @@ export interface SuperuserSettings {
   maxCategoriesPerSuperuser: number;  // Max categories a superuser can create (default: 5)
 }
 
+export interface AgentBotsSettings {
+  enabled: boolean;                    // Whether agent bots feature is enabled
+  maxJobsPerMinute: number;            // Global rate limit per minute
+  maxJobsPerDay: number;               // Global rate limit per day
+  defaultRateLimitRpm: number;         // Default API key rate limit per minute
+  defaultRateLimitRpd: number;         // Default API key rate limit per day
+  maxOutputSizeMB: number;             // Max output file size in MB
+  jobRetentionDays: number;            // How long to keep job records
+}
+
 export interface LimitsSettings {
   conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
 }
@@ -338,7 +348,9 @@ export type SettingKey =
   // Streaming configuration
   | 'streaming_keepalive_interval'
   | 'streaming_max_duration'
-  | 'streaming_tool_timeout';
+  | 'streaming_tool_timeout'
+  // Agent Bots
+  | 'agent-bots-settings';
 
 // ============ Generic Operations ============
 
@@ -735,6 +747,37 @@ export function getSuperuserSettings(): SuperuserSettings {
   return {
     maxCategoriesPerSuperuser: 5,
   };
+}
+
+/**
+ * Get agent bots settings
+ * Priority: SQLite > hardcoded defaults
+ */
+export function getAgentBotsSettings(): AgentBotsSettings {
+  const dbSettings = getSetting<AgentBotsSettings>('agent-bots-settings');
+  if (dbSettings) return dbSettings;
+  return {
+    enabled: true,
+    maxJobsPerMinute: 100,
+    maxJobsPerDay: 10000,
+    defaultRateLimitRpm: 60,
+    defaultRateLimitRpd: 1000,
+    maxOutputSizeMB: 50,
+    jobRetentionDays: 30,
+  };
+}
+
+/**
+ * Update agent bots settings
+ */
+export function updateAgentBotsSettings(
+  settings: Partial<AgentBotsSettings>,
+  updatedBy?: string
+): AgentBotsSettings {
+  const current = getAgentBotsSettings();
+  const updated = { ...current, ...settings };
+  setSetting('agent-bots-settings', updated, updatedBy);
+  return updated;
 }
 
 // ============ Typed Setters ============

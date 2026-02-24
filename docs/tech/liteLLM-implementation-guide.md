@@ -2,6 +2,67 @@
 
 > Customized for multi-provider LLM abstraction with proxy approach, embeddings routing, function calling support, and audio transcription.
 
+---
+
+## LLM Service Routing Overview
+
+Policy Bot uses a **hybrid architecture**: core chat services route through LiteLLM proxy for unified model management, while specialized services (images, audio, OCR) call provider APIs directly for capabilities not available through the proxy.
+
+### Service Routing Table
+
+| Service | Policy Bot Feature | Routes Through | Provider(s) | Notes |
+|---------|-------------------|----------------|-------------|-------|
+| **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, Ollama | Primary conversation engine |
+| **Embeddings** | Document indexing, search | ✅ LiteLLM | OpenAI | `text-embedding-3-large` default |
+| **Diagram Generation** | `diagram_gen` tool | ✅ LiteLLM | OpenAI, Gemini, Mistral | Generates Mermaid syntax |
+| **Summarization** | Message compression | ✅ LiteLLM | OpenAI, Gemini, Mistral | Long conversation handling |
+| **Memory Extraction** | User fact storage | ✅ LiteLLM | OpenAI, Gemini, Mistral | Per-category memory |
+| **Prompt Optimization** | Query refinement | ✅ LiteLLM | OpenAI, Gemini, Mistral | Pre-RAG processing |
+| **Compliance Checks** | HITL clarification | ✅ LiteLLM | OpenAI, Gemini, Mistral | Skill compliance |
+| **Translation** | Multi-language support | ✅ LiteLLM / ❌ Direct | OpenAI (proxy), Gemini/Mistral (direct) | Provider-dependent |
+| **Audio Transcription** | Voice input | ❌ Direct | OpenAI Whisper | Not available via LiteLLM |
+| **Image Generation** | `image_gen` tool | ❌ Direct | OpenAI DALL-E, Gemini Imagen | Specialized APIs |
+| **Podcast Generation** | `podcast_gen` tool | ❌ Direct | OpenAI TTS, Gemini TTS | Multi-voice audio synthesis |
+| **OCR** | PDF/image text extraction | ❌ Direct | Mistral OCR | Document processing |
+| **Reranking** | Search result scoring | ❌ Direct | Cohere | Not an LLM service |
+| **PPTX Generation** | `pptx_gen` tool | N/A | None | Template-based (no LLM) |
+| **XLSX Generation** | `xlsx_gen` tool | N/A | None | ExcelJS-based (no LLM) |
+| **Chart Generation** | `chart_gen` tool | N/A | None | Client-side rendering |
+
+### Legend
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ LiteLLM | Routes through LiteLLM proxy (port 4000) |
+| ❌ Direct | Calls provider API directly (bypasses LiteLLM) |
+| N/A | No LLM calls required |
+
+### Why Some Services Bypass LiteLLM
+
+| Service | Reason |
+|---------|--------|
+| **Image Generation** | DALL-E and Gemini Imagen APIs not supported by LiteLLM proxy |
+| **Podcast TTS** | OpenAI TTS and Gemini TTS are audio generation APIs, not chat completions |
+| **Transcription** | Whisper API uses different endpoint structure (`/audio/transcriptions`) |
+| **OCR** | Mistral OCR is a specialized document API with unique request format |
+| **Reranking** | Cohere reranker is a specialized search API, not a chat model |
+
+### Proxy Detection Logic
+
+```typescript
+// Services detect LiteLLM mode by checking the base URL
+const isUsingProxy = baseUrl.includes('litellm') || baseUrl.includes(':4000');
+
+if (isUsingProxy) {
+  // Use LITELLM_MASTER_KEY for authentication
+  // All chat requests route through unified proxy
+} else {
+  // Use provider-specific API keys directly
+}
+```
+
+---
+
 ## Policy Bot Integration
 
 This guide is configured for the Policy Bot RAG application. Default model preset:

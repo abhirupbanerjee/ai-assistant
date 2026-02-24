@@ -111,7 +111,7 @@ Policy Bot PWA provides these capabilities:
 #### 6. Auto-Updates
 - ✅ Service worker checks for updates
 - ✅ New version installed automatically
-- ✅ User prompted to reload when update available
+- ✅ Page auto-reloads when new version activates
 - ✅ No manual update process
 
 ### ❌ Limitations
@@ -122,7 +122,7 @@ Policy Bot PWA has these limitations:
 - ❌ No offline document search (requires server)
 - ❌ No offline chat (requires LLM API)
 - ❌ Thread data not cached locally
-- ⚠️ Basic offline page shown when disconnected
+- ⚠️ Offline banner notification shown when disconnected
 
 **Why:** Document search, embedding generation, and LLM chat all require server connectivity.
 
@@ -140,7 +140,7 @@ Policy Bot PWA has these limitations:
 **Why:** All operations are server-dependent.
 
 #### 4. Limited Offline Functionality
-- ⚠️ Only basic offline page available
+- ⚠️ Only offline banner notification (no dedicated offline page)
 - ❌ Cannot browse cached threads
 - ❌ Cannot search documents offline
 
@@ -325,44 +325,34 @@ When launched as a PWA, Policy Bot runs in **standalone mode**:
 4. Prompts user to reload when ready
 
 #### Update Process
-```
-┌────────────────────────────────┐
-│ 🔄 Update Available            │
-│ A new version of Policy Bot is │
-│ available. Reload to update?   │
-│ [Later] [Reload Now]           │
-└────────────────────────────────┘
-```
 
-User can:
-- **Reload Now** - Apply update immediately
-- **Later** - Continue with current version, update on next launch
+When a new version is deployed:
+
+1. Service worker detects the update
+2. New service worker installs and activates
+3. Page automatically reloads to apply the update
+4. User sees the latest version
+
+**Note:** Updates are automatic - no user prompt is shown. The page reloads seamlessly when a new service worker takes control.
 
 ### Offline Behavior
 
 When internet connection is lost:
 
 ```
-┌────────────────────────────────┐
-│ 🌐 You're Offline              │
-│                                │
-│ Policy Bot requires an internet│
-│ connection to access documents │
-│ and chat with the AI.          │
-│                                │
-│ Please check your connection   │
-│ and try again.                 │
-│                                │
-│ [Retry Connection]             │
-└────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ 📶 You're offline. Some features may be unavailable.             │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
+An amber notification banner appears at the top of the screen.
+
 **What Happens:**
-- ✅ Offline page displayed
-- ❌ Cannot chat or search
+- ✅ Offline banner displayed at top of page
+- ✅ Cached static assets (JS, CSS, icons) still load
+- ❌ Cannot chat or search (requires server)
 - ❌ Cannot load new data
-- ✅ Retry button to check connection
-- ✅ Auto-reconnects when online
+- ✅ Banner auto-hides when connection restored
 
 ---
 
@@ -426,51 +416,60 @@ Policy Bot uses a **dynamic manifest** generated at runtime:
 
 ### Service Worker
 
-**Location:** `/sw.js` (generated during build)
+**Location:** `/public/sw.js` (static file)
+
+**Current Version:** v3
 
 **Responsibilities:**
-- Cache static assets (JS, CSS, fonts)
-- Handle offline requests
-- Update management
-- Background sync (if enabled)
+- Cache static Next.js assets (`/_next/static/*`)
+- Cache application icons (`/icons/*`)
+- Update management with automatic activation
 
 **Caching Strategy:**
-- **Static assets** - Cache-first (with network fallback)
-- **API requests** - Network-only (no cache)
-- **Images** - Cache-first with expiration
+- **Static Next.js assets** (`/_next/static/*`) - Cache-first with network fallback
+- **Icons** (`/icons/*`) - Cache-first with network fallback
+- **API requests** (`/api/*`) - Bypassed (network-only)
+- **Next.js data routes** (`/_next/data/*`) - Bypassed (network-only)
+- **Other requests** - Pass through without SW intervention
 
 **Update Strategy:**
-1. Service worker checks for updates on launch
-2. If new version detected, downloads in background
-3. Waits for all tabs to close (or prompts user)
-4. Activates new service worker
-5. Updates take effect on next launch
+1. Service worker uses `skipWaiting()` for immediate activation
+2. Old caches are cleaned up based on version number
+3. When new SW takes control, page auto-reloads via `controllerchange` event
+4. Updates take effect immediately
 
 ### Icon Generation
 
-Icons are automatically generated from branding settings:
+Icons are configured via admin branding settings:
+
+**Available Options:**
+1. **Preset Icons** (12 options):
+   - Government, Operations, Finance, KPI, Logs, Data
+   - Monitoring, Architecture, Internet, Systems, Policy
+2. **Custom Upload** - Upload custom PNG/JPEG/WebP (max 5MB)
 
 **Process:**
-1. Admin selects bot icon in branding settings
-2. Icon is saved to database
-3. Script generates 192x192 and 512x512 PNG versions
-4. Icons saved to `/public/icons/`
-5. Manifest updated with icon paths
+1. Admin selects preset icon OR uploads custom icon in branding settings
+2. Custom icons are saved to `/public/icons/` directory
+3. Manifest automatically references the configured icon paths
+4. Both 192x192 and 512x512 sizes are supported
 
 **Icon Requirements:**
 - **192x192** - Home screen icon (Android)
 - **512x512** - Splash screen (Android)
 - **Maskable** - Adaptive icons (Android)
 
-### Offline Page
+### Offline Banner
 
-**Location:** `/offline` route
+**Component:** `src/components/pwa/OfflineBanner.tsx`
 
-**Content:**
-- Friendly offline message
-- Explanation of why app is offline
-- Retry button to check connection
-- Branding consistent with app
+**Behavior:**
+- Displays amber banner at top of page when offline
+- Shows WiFi icon with "You're offline" message
+- Automatically hides when connection is restored
+- Uses `useOnlineStatus` hook to detect connectivity
+
+**Note:** There is no dedicated offline page. The app shows a notification banner while the existing page content remains visible (though non-functional).
 
 ### Browser APIs Used
 
@@ -572,18 +571,18 @@ Icons are automatically generated from branding settings:
 3. Check browser PWA settings
 4. Reinstall the app
 
-### Issue: Offline Page Not Showing
+### Issue: Offline Banner Not Showing
 
 **Possible Causes:**
-- Service worker not registered
-- Cache not populated
-- Browser doesn't support service worker
+- JavaScript not loaded
+- Component not mounted
+- Browser doesn't support online/offline events
 
 **Solutions:**
-1. Check service worker in DevTools
-2. Visit app while online first
-3. Clear cache and reload
-4. Check browser console for errors
+1. Hard refresh the page while online
+2. Check browser console for errors
+3. Verify `OfflineBanner` component is rendered in layout
+4. Test by toggling network in DevTools (Network tab → Offline)
 
 ### Issue: Update Not Installing
 
@@ -629,11 +628,11 @@ Configure PWA appearance:
 | **Accent Color** | Primary color | User customization (not PWA theme) |
 
 **Setting Bot Icon:**
-1. Navigate to Branding settings
-2. Select icon from presets or upload custom
-3. Save settings
-4. Icons automatically generated for PWA
-5. Manifest updated with new icon paths
+1. Navigate to Admin → Settings → Branding
+2. Choose from 12 preset icons OR upload a custom icon
+3. Custom icons: PNG/JPEG/WebP, max 5MB, saved to `/public/icons/`
+4. Save settings
+5. Manifest automatically updated with new icon paths
 
 ### PWA Settings
 
@@ -679,10 +678,10 @@ Configure PWA appearance:
 - ✅ HTTPS enabled (required for PWA)
 - ✅ SSL certificate valid
 - ✅ Branding settings configured
-- ✅ Icons generated (192x192, 512x512)
-- ✅ Service worker deployed
+- ✅ Icons available (192x192, 512x512)
+- ✅ Service worker deployed (`/sw.js`)
 - ✅ Manifest accessible at `/manifest.webmanifest`
-- ✅ Offline page functional
+- ✅ Offline banner functional
 - ✅ Test installation on multiple devices
 
 **Performance:**
@@ -693,4 +692,4 @@ Configure PWA appearance:
 
 ---
 
-*Last updated: January 2025 (v1.0)*
+*Last updated: February 2026 (v1.1)*

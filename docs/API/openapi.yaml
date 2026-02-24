@@ -60,6 +60,14 @@ tags:
     description: Function API configuration with OpenAI-format schemas
   - name: Branding
     description: Public branding endpoints
+  - name: Admin - Agent Bots
+    description: Agent bot management (admin/superuser)
+  - name: Agent Bots - Public
+    description: Agent bot invocation API (API key auth)
+  - name: Admin - LLM
+    description: LLM provider and model management (admin only)
+  - name: Autonomous
+    description: Autonomous plan control
 
 components:
   securitySchemes:
@@ -446,6 +454,335 @@ components:
           format: date-time
         updatedBy:
           type: string
+
+    AgentBot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "HR Assistant"
+        slug:
+          type: string
+          example: "hr-assistant"
+        description:
+          type: string
+        is_active:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - is_active
+        - created_by
+        - created_at
+
+    AgentBotVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agent_bot_id:
+          type: string
+          format: uuid
+        version_label:
+          type: string
+          example: "v1.0"
+        is_default:
+          type: boolean
+        is_active:
+          type: boolean
+        input_schema:
+          $ref: '#/components/schemas/InputSchema'
+        output_config:
+          $ref: '#/components/schemas/OutputConfig'
+        system_prompt:
+          type: string
+        llm_model:
+          type: string
+        temperature:
+          type: number
+        max_tokens:
+          type: integer
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InputSchema:
+      type: object
+      properties:
+        parameters:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              type:
+                type: string
+                enum: [string, number, boolean, array]
+              description:
+                type: string
+              required:
+                type: boolean
+              default:
+                type: string
+
+    OutputConfig:
+      type: object
+      properties:
+        enabledTypes:
+          type: array
+          items:
+            type: string
+            enum: [text, json, pdf, pptx, xlsx, mp3]
+        defaultType:
+          type: string
+          enum: [text, json, pdf, pptx, xlsx, mp3]
+      required:
+        - enabledTypes
+        - defaultType
+
+    AgentBotApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agent_bot_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        key_prefix:
+          type: string
+          example: "pb_abc..."
+        permissions:
+          type: array
+          items:
+            type: string
+        rate_limit_rpm:
+          type: integer
+          example: 60
+        rate_limit_rpd:
+          type: integer
+          example: 1000
+        expires_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+
+    InvokeRequest:
+      type: object
+      properties:
+        input:
+          type: object
+          additionalProperties: true
+        version:
+          type: string
+          description: "Version ID or 'latest'"
+        outputType:
+          type: string
+          enum: [text, json, pdf, pptx, xlsx, mp3]
+        async:
+          type: boolean
+          description: "If true, returns immediately with jobId"
+        webhookUrl:
+          type: string
+          format: uri
+        webhookSecret:
+          type: string
+      required:
+        - input
+
+    InvokeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        jobId:
+          type: string
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvokeOutput'
+        tokenUsage:
+          $ref: '#/components/schemas/TokenUsage'
+        processingTimeMs:
+          type: integer
+
+    InvokeOutput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [text, json, pdf, pptx, xlsx, mp3]
+        content:
+          type: string
+        downloadUrl:
+          type: string
+        filename:
+          type: string
+        fileSize:
+          type: integer
+        mimeType:
+          type: string
+
+    TokenUsage:
+      type: object
+      properties:
+        promptTokens:
+          type: integer
+        completionTokens:
+          type: integer
+        totalTokens:
+          type: integer
+
+    JobStatus:
+      type: object
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvokeOutput'
+        tokenUsage:
+          $ref: '#/components/schemas/TokenUsage'
+        processingTimeMs:
+          type: integer
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+            code:
+              type: string
+
+    LLMProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "openai"
+        name:
+          type: string
+          example: "OpenAI"
+        apiKey:
+          type: string
+          description: "Masked API key"
+        apiKeyConfigured:
+          type: boolean
+        apiBase:
+          type: string
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EnabledModel:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "gpt-4o"
+        providerId:
+          type: string
+          example: "openai"
+        displayName:
+          type: string
+          example: "GPT-4o"
+        isDefault:
+          type: boolean
+        isActive:
+          type: boolean
+        toolCapable:
+          type: boolean
+        visionCapable:
+          type: boolean
+        maxInputTokens:
+          type: integer
+        costPer1kInput:
+          type: number
+        costPer1kOutput:
+          type: number
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AutonomousPlanResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [active, paused, stopped]
+        completed_tasks:
+          type: integer
+        remaining_tasks:
+          type: integer
+        skipped_tasks:
+          type: integer
+        total_tasks:
+          type: integer
+        message:
+          type: string
+
+  securitySchemes:
+    apiKeyAuth:
+      type: http
+      scheme: bearer
+      description: API key for agent bot invocation
 
   responses:
     Unauthorized:
@@ -3760,6 +4097,1142 @@ paths:
           required: true
           schema:
             type: string
+      responses:
+        '200':
+          description: Test results
+
+  # ========================================
+  # Agent Bots Admin APIs
+  # ========================================
+
+  /admin/agent-bots:
+    get:
+      tags:
+        - Admin - Agent Bots
+      summary: List all agent bots
+      operationId: listAgentBots
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of agent bots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agentBots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentBot'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Agent Bots
+      summary: Create agent bot
+      operationId: createAgentBot
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                slug:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Agent bot created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agentBot:
+                    $ref: '#/components/schemas/AgentBot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Name or slug already exists
+
+  /admin/agent-bots/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags:
+        - Admin - Agent Bots
+      summary: Get agent bot details
+      operationId: getAgentBot
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Agent bot details with versions and API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agentBot:
+                    $ref: '#/components/schemas/AgentBot'
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentBotVersion'
+                  apiKeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentBotApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Admin - Agent Bots
+      summary: Update agent bot
+      operationId: updateAgentBot
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                description:
+                  type: string
+                is_active:
+                  type: boolean
+      responses:
+        '200':
+          description: Agent bot updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Name or slug already exists
+
+    delete:
+      tags:
+        - Admin - Agent Bots
+      summary: Delete agent bot
+      operationId: deleteAgentBot
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Agent bot deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/agent-bots/{id}/versions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags:
+        - Admin - Agent Bots
+      summary: List versions
+      operationId: listAgentBotVersions
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentBotVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Admin - Agent Bots
+      summary: Create version
+      operationId: createAgentBotVersion
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input_schema, output_config]
+              properties:
+                version_label:
+                  type: string
+                is_default:
+                  type: boolean
+                input_schema:
+                  $ref: '#/components/schemas/InputSchema'
+                output_config:
+                  $ref: '#/components/schemas/OutputConfig'
+                system_prompt:
+                  type: string
+                llm_model:
+                  type: string
+                temperature:
+                  type: number
+                max_tokens:
+                  type: integer
+                category_ids:
+                  type: array
+                  items:
+                    type: integer
+                skill_ids:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '201':
+          description: Version created
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/agent-bots/{id}/versions/{versionId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: versionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags:
+        - Admin - Agent Bots
+      summary: Get version details
+      operationId: getAgentBotVersion
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Version details with relations
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Admin - Agent Bots
+      summary: Update version
+      operationId: updateAgentBotVersion
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version_label:
+                  type: string
+                is_default:
+                  type: boolean
+                is_active:
+                  type: boolean
+                input_schema:
+                  $ref: '#/components/schemas/InputSchema'
+                output_config:
+                  $ref: '#/components/schemas/OutputConfig'
+                system_prompt:
+                  type: string
+                llm_model:
+                  type: string
+                temperature:
+                  type: number
+                max_tokens:
+                  type: integer
+      responses:
+        '200':
+          description: Version updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Agent Bots
+      summary: Delete version
+      operationId: deleteAgentBotVersion
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Version deleted
+        '400':
+          description: Cannot delete default version
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/agent-bots/{id}/api-keys:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags:
+        - Admin - Agent Bots
+      summary: List API keys
+      operationId: listAgentBotApiKeys
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentBotApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Admin - Agent Bots
+      summary: Create API key
+      description: The full key is only returned once in the response
+      operationId: createAgentBotApiKey
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                rate_limit_rpm:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  default: 60
+                rate_limit_rpd:
+                  type: integer
+                  minimum: 1
+                  maximum: 100000
+                  default: 1000
+                expires_in_days:
+                  type: integer
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    $ref: '#/components/schemas/AgentBotApiKey'
+                  fullKey:
+                    type: string
+                    description: The full API key - only shown once
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/agent-bots/{id}/api-keys/{keyId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      tags:
+        - Admin - Agent Bots
+      summary: Revoke API key
+      operationId: revokeAgentBotApiKey
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: API key revoked
+        '400':
+          description: API key already revoked
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/agent-bots/{id}/analytics:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags:
+        - Admin - Agent Bots
+      summary: Get usage analytics
+      operationId: getAgentBotAnalytics
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: Usage analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      totalRequests:
+                        type: integer
+                      totalTokens:
+                        type: integer
+                      totalErrors:
+                        type: integer
+                      successRate:
+                        type: number
+                      avgProcessingTimeMs:
+                        type: integer
+                  dailyStats:
+                    type: array
+                    items:
+                      type: object
+                  byOutputType:
+                    type: object
+                  byStatus:
+                    type: object
+                  recentJobs:
+                    type: array
+                    items:
+                      type: object
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ========================================
+  # Agent Bots Public API (API Key Auth)
+  # ========================================
+
+  /agent-bots/{slug}/invoke:
+    post:
+      tags:
+        - Agent Bots - Public
+      summary: Invoke agent bot
+      description: Execute an agent bot with provided input. Supports sync and async modes.
+      operationId: invokeAgentBot
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvokeRequest'
+      responses:
+        '200':
+          description: Synchronous execution result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvokeResponse'
+          headers:
+            X-RateLimit-Limit-RPM:
+              schema:
+                type: integer
+            X-RateLimit-Remaining-RPM:
+              schema:
+                type: integer
+            X-RateLimit-Limit-RPD:
+              schema:
+                type: integer
+            X-RateLimit-Remaining-RPD:
+              schema:
+                type: integer
+        '202':
+          description: Async job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending]
+        '401':
+          description: Invalid or missing API key
+        '404':
+          description: Agent bot or version not found
+        '422':
+          description: Input validation error
+        '429':
+          description: Rate limit exceeded
+
+  /agent-bots/{slug}/jobs/{jobId}:
+    get:
+      tags:
+        - Agent Bots - Public
+      summary: Get job status
+      description: Get the status and results of an async job
+      operationId: getAgentBotJob
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '404':
+          description: Job not found
+
+  /agent-bots/{slug}/jobs/{jobId}/outputs/{outputId}/download:
+    get:
+      tags:
+        - Agent Bots - Public
+      summary: Download output
+      description: Download a generated output file
+      operationId: downloadAgentBotOutput
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: outputId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Binary file content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Output not found
+
+  # ========================================
+  # LLM Management APIs
+  # ========================================
+
+  /admin/llm/providers:
+    get:
+      tags:
+        - Admin - LLM
+      summary: List LLM providers
+      operationId: listLLMProviders
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMProvider'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - LLM
+      summary: Create LLM provider
+      operationId: createLLMProvider
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                apiKey:
+                  type: string
+                apiBase:
+                  type: string
+                enabled:
+                  type: boolean
+      responses:
+        '201':
+          description: Provider created
+        '409':
+          description: Provider already exists
+
+  /admin/llm/providers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Admin - LLM
+      summary: Get provider details
+      operationId: getLLMProvider
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Provider details
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Admin - LLM
+      summary: Update provider
+      operationId: updateLLMProvider
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                apiKey:
+                  type: string
+                apiBase:
+                  type: string
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Provider updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - LLM
+      summary: Delete or clear provider
+      description: Core providers are cleared rather than deleted
+      operationId: deleteLLMProvider
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Provider deleted or cleared
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/llm/providers/{id}/test:
+    post:
+      tags:
+        - Admin - LLM
+      summary: Test provider connection
+      operationId: testLLMProvider
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Test results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provider:
+                    type: string
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  models:
+                    type: array
+                    items:
+                      type: string
+                  error:
+                    type: string
+
+  /admin/llm/models:
+    get:
+      tags:
+        - Admin - LLM
+      summary: List enabled models
+      operationId: listEnabledModels
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+          description: If true, only return active models
+      responses:
+        '200':
+          description: List of enabled models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EnabledModel'
+
+    post:
+      tags:
+        - Admin - LLM
+      summary: Enable models (batch)
+      operationId: enableModels
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [models]
+              properties:
+                models:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, providerId, displayName]
+                    properties:
+                      id:
+                        type: string
+                      providerId:
+                        type: string
+                      displayName:
+                        type: string
+                      isDefault:
+                        type: boolean
+                      isActive:
+                        type: boolean
+                      toolCapable:
+                        type: boolean
+                      visionCapable:
+                        type: boolean
+      responses:
+        '200':
+          description: Models enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EnabledModel'
+                  skipped:
+                    type: integer
+
+  /admin/llm/models/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Admin - LLM
+      summary: Get model details
+      operationId: getEnabledModel
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Model details
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Admin - LLM
+      summary: Update model
+      operationId: updateEnabledModel
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                isDefault:
+                  type: boolean
+                isActive:
+                  type: boolean
+                toolCapable:
+                  type: boolean
+                visionCapable:
+                  type: boolean
+                maxInputTokens:
+                  type: integer
+                sortOrder:
+                  type: integer
+      responses:
+        '200':
+          description: Model updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - LLM
+      summary: Remove model
+      operationId: removeEnabledModel
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Model removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/llm/models/refresh:
+    post:
+      tags:
+        - Admin - LLM
+      summary: Refresh model capabilities
+      operationId: refreshModelCapabilities
+      security:
+        - sessionAuth: []
+      responses:
+        '200':
+          description: Capabilities refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  updated:
+                    type: integer
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EnabledModel'
+
+  /admin/llm/discover:
+    get:
+      tags:
+        - Admin - LLM
+      summary: Discover available models
+      operationId: discoverModels
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+          description: Specific provider ID, or omit for all providers
+      responses:
+        '200':
+          description: Discovered models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  provider:
+                    type: string
+                  models:
+                    type: array
+                    items:
+                      type: string
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                        success:
+                          type: boolean
+                        models:
+                          type: array
+                          items:
+                            type: string
+
+  # ========================================
+  # Autonomous Plan Control APIs
+  # ========================================
+
+  /autonomous/{planId}/pause:
+    post:
+      tags:
+        - Autonomous
+      summary: Pause autonomous plan
+      description: Pause an active plan after the current task completes
+      operationId: pauseAutonomousPlan
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Plan paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutonomousPlanResponse'
+        '400':
+          description: Cannot pause plan with current status
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /autonomous/{planId}/resume:
+    post:
+      tags:
+        - Autonomous
+      summary: Resume paused plan
+      operationId: resumeAutonomousPlan
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plan resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutonomousPlanResponse'
+        '400':
+          description: Cannot resume plan with current status
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /autonomous/{planId}/stop:
+    post:
+      tags:
+        - Autonomous
+      summary: Stop autonomous plan
+      description: Gracefully stop a plan, keeping all completed work
+      operationId: stopAutonomousPlan
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Plan stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutonomousPlanResponse'
+        '400':
+          description: Cannot stop plan with current status
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /autonomous/{planId}/tasks/{taskId}/skip:
+    post:
+      tags:
+        - Autonomous
+      summary: Skip task in plan
+      operationId: skipAutonomousTask
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Task skipped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  task_id:
+                    type: integer
+                  status:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          description: Cannot skip task with current status
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       responses:
         '200':
           description: Test results

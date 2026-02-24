@@ -14,6 +14,7 @@ import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
 import DocumentsManagement from '@/components/superuser/DocumentsManagement';
 import SuperuserDashboard from '@/components/superuser/SuperuserDashboard';
+import SuperuserAgentBotsList from '@/components/superuser/SuperuserAgentBotsList';
 
 interface StarterPrompt {
   label: string;
@@ -138,7 +139,7 @@ export default function SuperUserPage() {
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'agent-bots' | 'settings'>('dashboard');
 
   // Prompts sidebar section state
   type PromptsSection = 'global-prompt' | 'category-prompts';
@@ -978,6 +979,11 @@ export default function SuperUserPage() {
         {/* Workspaces Section */}
         {activeTab === 'workspaces' && (
           <WorkspacesTab isAdmin={false} />
+        )}
+
+        {/* Agent Bots Section */}
+        {activeTab === 'agent-bots' && (
+          <SuperuserAgentBotsList />
         )}
 
         {/* Settings Section */}

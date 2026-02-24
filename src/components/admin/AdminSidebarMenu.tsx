@@ -27,7 +27,7 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'skills' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'agent-bots' | 'skills' | 'settings';
 
 // Section types for expandable menus
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
@@ -80,6 +80,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
   { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
+  { id: 'agent-bots', label: 'Agent Bots', icon: Bot, expandable: false },
   {
     id: 'skills',
     label: 'Skill Library',

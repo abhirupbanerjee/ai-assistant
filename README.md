@@ -1,16 +1,51 @@
 # Policy Bot
 
-An enterprise RAG platform for policy document management and intelligent querying. Built with Next.js, ChromaDB, and multi-provider LLM support.
+**An open-source, interoperable AI platform for governments, ministries, and enterprises.**
 
-## Platform Benefits
+Deploy AI-powered solutions across your organization while maintaining complete control over your data, infrastructure, and AI providers. No vendor lock-in. No data leaves your premises. No ML expertise required.
 
-| Benefit | Description |
-|---------|-------------|
-| **No Vendor Lock-In** | Switch between OpenAI, Mistral, Gemini, or run locally with Ollama |
-| **Data Sovereignty** | All data stored locally (SQLite or PostgreSQL, ChromaDB or Qdrant, filesystem) with full backup control |
-| **Department Isolation** | Category-based access ensures users only see relevant policies |
-| **Cost Optimization** | Shared infrastructure reduces per-user AI costs vs individual subscriptions |
-| **Extensible Tools** | Connect to internal APIs, databases, and external services |
+## Why Policy Bot?
+
+Governments and organizations face a critical challenge: **how to adopt AI responsibly** while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
+
+Policy Bot solves this by providing:
+
+| Requirement | How We Deliver |
+|-------------|----------------|
+| **Data Sovereignty** | All data remains on your infrastructure—databases, vector stores, and files never leave your control |
+| **Open Source** | Polyform NonCommercial licensed, fully auditable code with no proprietary dependencies |
+| **Interoperability** | Switch AI providers freely (OpenAI, Anthropic, Mistral, Gemini, DeepSeek, or local Ollama) |
+| **No Lock-In** | Standard PostgreSQL/SQLite databases, portable vector stores, exportable configurations |
+| **Zero ML Complexity** | Admin dashboard handles all AI configuration—no data scientists required |
+| **Enterprise Security** | Role-based access, department isolation, audit trails, SSO integration |
+| **Cost Control** | Shared infrastructure reduces per-user costs; budget controls on AI spending |
+
+## Use Cases
+
+Deploy across ministries, departments, and public-facing services:
+
+| Domain | Application |
+|--------|-------------|
+| **Citizen Services** | 24/7 portals answering queries on government policies, procedures, permits, and entitlements |
+| **Customer Support** | AI helpdesk with knowledge base integration, ticket routing, and escalation workflows |
+| **Public Communications** | Generate tailored messaging for different audiences—citizens, officials, media, international |
+| **Tourism & Culture** | Multilingual visitor support with real-time translation and local information guides |
+| **Education** | Create accessible learning materials: podcasts, infographics, simplified explainers |
+| **Teacher & Training** | Generate lesson plans, assessments, and teaching aids from official curricula |
+| **Task Automation** | Autonomous agents handling multi-step workflows, document processing, and approvals |
+| **Policy & Compliance** | RAG-powered Q&A on internal policies with source citations and version tracking |
+| **Internal Knowledge** | Unified search across organizational documents, procedures, and institutional memory |
+
+## Technical Foundation
+
+Built with enterprise-grade, open-source technologies:
+
+- **Next.js** - Modern React framework with server-side rendering
+- **PostgreSQL/SQLite** - Battle-tested relational databases
+- **ChromaDB/Qdrant** - Open-source vector databases for semantic search
+- **LiteLLM** - Unified gateway to 100+ LLM providers
+- **Redis** - High-performance caching and session management
+- **Traefik** - Production-ready reverse proxy with automatic TLS
 
 ## Capabilities
 
@@ -42,7 +77,8 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Tool Routing** - Pattern-based forced tool invocation for reliable behavior
 - **User Memory** - Recall user-specific facts across conversations
 - **Thread Summarization** - Compress long conversations
-- **Reranking** - Cohere API or local Transformers.js
+- **Reranking** - Cohere, Jina, or local Transformers.js
+- **Autonomous Agent** - Multi-step task planning with budget controls and quality checks
 
 ### Collaboration
 - **Thread Sharing** - Share conversations via secure links with expiration
@@ -67,6 +103,9 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Task Planning** - Multi-step workflow execution with templates
 - **YouTube** - Extract and query video transcripts
 - **Document Generation** - Create PDF, DOCX, Markdown files
+- **Presentation Generation** - Create PPTX slides with layouts and styling
+- **Spreadsheet Generation** - Create XLSX files with formulas and formatting
+- **Podcast Generation** - Generate multi-voice audio content (OpenAI TTS, Gemini)
 - **Image Generation** - DALL-E 3 and Gemini Imagen integration
 - **Diagram Generation** - Mermaid flowcharts, sequences, mindmaps
 - **Translation** - Multi-provider translation (OpenAI, Gemini, Mistral)
@@ -175,24 +214,49 @@ npm install && npm run dev
 ```bash
 # Configure .env with auth providers and domain
 
-# SQLite + ChromaDB (default, ≤50 users)
+# SQLite + ChromaDB (small teams, ≤25 users)
 docker compose --profile chromadb up -d --build
 
-# PostgreSQL + Qdrant (recommended for 50+ users)
+# PostgreSQL + Qdrant (recommended for 25+ users)
 docker compose --profile postgres --profile qdrant up -d --build
 ```
 
+## Scaling Guide
+
+Choose your configuration based on concurrent user count:
+
+| Users | Database | Pool | Vector Store | Redis | Instances | Est. Cost |
+|-------|----------|------|--------------|-------|-----------|-----------|
+| **1-25** | SQLite | N/A | ChromaDB | Optional | 1 | $20-50/mo |
+| **26-100** | PostgreSQL | 25 | ChromaDB/Qdrant | Yes | 1-2 | $100-200/mo |
+| **100-250** | PostgreSQL | 40 | Qdrant | Dedicated | 2-3 | $300-600/mo |
+| **250-500** | PostgreSQL HA | 50 | Qdrant Cluster | Cluster | 4-5 | $800-1500/mo |
+| **500+** | PgBouncer+PG | 50×N | Qdrant Cluster | Cluster | 8+ | $2000+/mo |
+
+**Key Configuration:**
+```bash
+# Database pool size (PostgreSQL only)
+DATABASE_POOL_MAX=20                      # Default, adjust per tier
+
+# Provider selection
+DATABASE_PROVIDER=postgres                # sqlite | postgres
+VECTOR_STORE_PROVIDER=qdrant              # chromadb | qdrant
+```
+
+See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, configuration examples, and migration guides.
+
 ## Infrastructure
 
-| Service | Purpose |
-|---------|---------|
-| **Next.js** | Application (port 3000) |
-| **ChromaDB** | Vector database (port 8000) — default, `--profile chromadb` |
-| **Qdrant** | Vector database (port 6333) — alternative, `--profile qdrant` |
-| **PostgreSQL** | Relational database (port 5432) — optional, `--profile postgres` |
-| **Redis** | Cache + sessions (port 6379) |
-| **LiteLLM** | Multi-provider LLM gateway (port 4000) |
-| **Traefik** | Reverse proxy + TLS (ports 80, 443) |
+| Service | Purpose | Profile |
+|---------|---------|---------|
+| **Traefik** | Reverse proxy + TLS (ports 80, 443) | Default |
+| **Next.js** | Application (port 3000) | Default |
+| **Redis** | Cache + sessions (port 6379) | Default |
+| **SQLite** | Relational database (file-based) | Default |
+| **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
+| **ChromaDB** | Vector database (port 8000) | `--profile chromadb` |
+| **Qdrant** | Vector database (port 6333) | `--profile qdrant` |
+| **LiteLLM** | Multi-provider LLM gateway (port 4000) | `--profile litellm` |
 
 ## External API Keys & Licenses
 
@@ -223,12 +287,20 @@ Policy Bot integrates with several external services. All are optional except LL
 | Service | Get Key | Purpose | Local Alternative |
 |---------|---------|---------|-------------------|
 | **Azure Document Intelligence** | [Azure Portal](https://portal.azure.com) → Cognitive Services | Enhanced Office docs (DOCX, XLSX, PPTX) with layout preservation | Basic text extraction (included) |
+| **Mistral OCR** | [console.mistral.ai](https://console.mistral.ai/api-keys) | Vision-based PDF/image OCR with layout understanding | pdf-parse (included) |
+
+> **Local PDF Processing:** Policy Bot includes `pdf-parse` for basic PDF text extraction. No API key required.
 
 ### RAG Enhancements (Optional)
 
 | Service | Get Key | Purpose | Local Alternative |
 |---------|---------|---------|-------------------|
-| **Cohere** | [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) | Chunk reranking for better search relevance | Local ONNX reranker (Transformers.js, included) |
+| **Cohere** | [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) | Chunk reranking for better search relevance | Local ONNX reranker (included) |
+| **Jina AI** | [jina.ai](https://jina.ai/) | Reranking and embeddings | Local ONNX reranker (included) |
+
+**Chunking Strategies:**
+- **Recursive** - Default chunking with configurable size and overlap
+- **Semantic** - Context-aware chunking based on content boundaries
 
 > **Local Reranker:** Policy Bot includes a local reranker using `onnxruntime-node` and Transformers.js. Enable via Admin > Settings > Reranker. No API key required.
 
@@ -272,34 +344,8 @@ AZURE_DI_ENDPOINT=...          # For Office docs
 
 See `.env.example` for complete configuration reference.
 
----
-
-## Documentation
-
-### Core Architecture
-| Document | Content |
-|----------|---------|
-| [SOLUTION.md](docs/tech/SOLUTION.md) | Architecture, RAG pipeline, design decisions |
-| [DATABASE.md](docs/tech/DATABASE.md) | SQLite schema, ChromaDB collections, Redis patterns |
-| [INFRASTRUCTURE.md](docs/tech/INFRASTRUCTURE.md) | Docker deployment, scaling, backup/restore |
-| [Bot-Config-architecture.md](docs/tech/Bot-Config-architecture.md) | Configuration architecture |
-
-### Features
-| Document | Content |
-|----------|---------|
-| [PROMPTS.md](docs/features/PROMPTS.md) | Prompts system: global, category, starter prompts, acronyms |
-| [SKILLS.md](docs/features/SKILLS.md) | Skills system: trigger types, tool routing, compliance, priority, examples |
-| [Tools.md](docs/features/Tools.md) | Tools: web search, data sources, charts, task planning |
-| [PWA.md](docs/features/PWA.md) | Progressive Web App: installation, capabilities, limitations |
-
-### API & User Guides
-| Document | Content |
-|----------|---------|
-| [API_SPECIFICATION.md](docs/API/API_SPECIFICATION.md) | Complete REST API reference |
-| [USER_GUIDE.md](docs/user_manuals/USER_GUIDE.md) | End user guide for chat, uploads, voice input |
-| [ADMIN_GUIDE.md](docs/user_manuals/ADMIN_GUIDE.md) | Admin dashboard guide for system management |
-| [SUPERUSER_GUIDE.md](docs/user_manuals/SUPERUSER_GUIDE.md) | Superuser guide for category management |
-
 ## License
 
-MIT
+**Polyform NonCommercial 1.0.0**
+
+This software is free to use for non-commercial purposes. Commercial use requires a separate license agreement. See [LICENSE](LICENSE) for full terms.

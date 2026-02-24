@@ -13,6 +13,7 @@ import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
+import { AgentBotsManagement, AgentBotDetail } from '@/components/admin/agent-bots';
 import MemorySettingsTab from '@/components/admin/settings/MemorySettings';
 import SummarizationSettingsTab from '@/components/admin/settings/SummarizationSettings';
 import SuperuserSettingsTab from '@/components/admin/settings/SuperuserSettings';
@@ -125,7 +126,7 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'skills' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'agent-bots' | 'skills' | 'settings';
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser';
@@ -282,6 +283,9 @@ export default function AdminPage() {
   const [skillsSection, setSkillsSection] = useState<SkillsSection>('tools');
   const [tokensSection, setTokensSection] = useState<TokensSection>('memory');
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
+
+  // Agent Bots state - track selected bot for detail view
+  const [selectedAgentBotId, setSelectedAgentBotId] = useState<string | null>(null);
 
   // Legacy tools section for backward compatibility
   const [toolsSection, setToolsSection] = useState<ToolsSection>('management');
@@ -1268,6 +1272,20 @@ export default function AdminPage() {
         {/* Workspaces Tab */}
         {activeTab === 'workspaces' && (
           <WorkspacesTab isAdmin={true} />
+        )}
+
+        {/* Agent Bots Tab */}
+        {activeTab === 'agent-bots' && (
+          selectedAgentBotId ? (
+            <AgentBotDetail
+              botId={selectedAgentBotId}
+              onBack={() => setSelectedAgentBotId(null)}
+            />
+          ) : (
+            <AgentBotsManagement
+              onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
+            />
+          )
         )}
 
         {/* Backup Tab (now under Settings) */}

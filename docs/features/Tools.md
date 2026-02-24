@@ -11,17 +11,21 @@ This document describes the AI tools system that extends the bot's capabilities 
 3. [Terminal Tools](#terminal-tools)
 4. [Web Search Tool](#web-search-tool)
 5. [Document Generator Tool](#document-generator-tool)
-6. [Data Source Tool](#data-source-tool)
-7. [Chart Generator Tool](#chart-generator-tool)
-8. [Function API Tool](#function-api-tool)
-9. [Task Planner Tool](#task-planner-tool)
-10. [YouTube Tool](#youtube-tool)
-11. [Thread Sharing Tool](#thread-sharing-tool)
-12. [Email Tool](#email-tool)
-13. [Tool Routing](#tool-routing)
-14. [Tool Configuration](#tool-configuration)
-15. [Category-Level Overrides](#category-level-overrides)
-16. [API Reference](#api-reference)
+6. [PowerPoint Generator Tool](#powerpoint-generator-tool)
+7. [Excel Generator Tool](#excel-generator-tool)
+8. [Podcast Generator Tool](#podcast-generator-tool)
+9. [Data Source Tool](#data-source-tool)
+10. [Chart Generator Tool](#chart-generator-tool)
+11. [Function API Tool](#function-api-tool)
+12. [Task Planner Tool](#task-planner-tool)
+13. [YouTube Tool](#youtube-tool)
+14. [Thread Sharing Tool](#thread-sharing-tool)
+15. [Email Tool](#email-tool)
+16. [Tool Routing](#tool-routing)
+17. [Tool Configuration](#tool-configuration)
+18. [Category-Level Overrides](#category-level-overrides)
+19. [Creating a New Tool](#creating-a-new-tool)
+20. [API Reference](#api-reference)
 
 ---
 
@@ -61,6 +65,9 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 **Current autonomous tools:**
 - `web_search` - Search the web for current information
 - `doc_gen` - Generate formatted documents (PDF, DOCX, Markdown)
+- `pptx_gen` - Generate PowerPoint presentations with multiple slide types
+- `xlsx_gen` - Generate Excel spreadsheets with formulas and styling
+- `podcast_gen` - Generate audio podcasts using Text-to-Speech
 - `data_source` - Query external APIs and CSV data with visualization
 - `chart_gen` - Generate charts from LLM-constructed data
 - `function_api` - Dynamic function calling with OpenAI-format schemas
@@ -87,16 +94,11 @@ Terminal tools are a special category of autonomous tools that produce final out
 |------|-------------|-------------|
 | `image_gen` | Image | AI-generated images (DALL-E, Imagen) |
 | `doc_gen` | Document | PDF, DOCX, Markdown files |
+| `pptx_gen` | Presentation | PowerPoint presentations (.pptx) |
+| `xlsx_gen` | Spreadsheet | Excel spreadsheets (.xlsx) |
+| `podcast_gen` | Audio | AI-generated podcast episodes (MP3/WAV) |
 | `chart_gen` | Visualization | Interactive charts from LLM-constructed data |
 | `diagram_gen` | Diagram | Mermaid diagrams (flowcharts, sequence, etc.) |
-
-### Planned Terminal Tools
-
-| Tool | Output Type | Description |
-|------|-------------|-------------|
-| `ppt_gen` | Presentation | PowerPoint/presentation files |
-| `excel_gen` | Spreadsheet | Excel/spreadsheet files |
-| `podcast_gen` | Audio | AI-generated podcast episodes |
 
 ### Behavior
 
@@ -115,18 +117,19 @@ This ensures users always receive both the artifact AND an explanatory text resp
 Terminal tools are defined in `src/lib/openai.ts`:
 
 ```typescript
-const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen']);
+const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen', 'podcast_gen', 'chart_gen', 'diagram_gen']);
 ```
 
 ### Adding New Terminal Tools
 
-To add a new terminal tool (e.g., `ppt_gen`):
+To add a new terminal tool:
 
 1. **Add to TERMINAL_TOOLS set** in `src/lib/openai.ts`:
    ```typescript
    const TERMINAL_TOOLS = new Set([
-     'image_gen', 'doc_gen', 'chart_gen', 'diagram_gen',
-     'ppt_gen'  // Add new tool here
+     'image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen', 'podcast_gen',
+     'chart_gen', 'diagram_gen',
+     'new_tool'  // Add new tool here
    ]);
    ```
 
@@ -398,6 +401,606 @@ The document generation system uses specialized builders for each format:
 > - Annual leave entitlements
 > - Application procedures
 > - Approval workflow
+
+---
+
+## PowerPoint Generator Tool
+
+### Purpose
+
+Enables the AI to generate professional PowerPoint presentations (.pptx) with multiple slide types, visual themes, and optional AI-generated images.
+
+### Features
+
+- **Multiple Slide Types**: 7 different slide layouts
+- **Visual Themes**: 4 pre-configured color themes
+- **AI Image Integration**: Optional image generation for image slides
+- **Speaker Notes**: Support for presenter notes on each slide
+- **Branding Support**: Custom logos and organization names
+
+### Supported Slide Types
+
+| Type | Description | Content |
+|------|-------------|---------|
+| `title` | Opening slide | Title and subtitle |
+| `content` | Standard content | Title with bullet points |
+| `two-column` | Side-by-side | Two columns of content |
+| `comparison` | Compare/contrast | Two boxes for pros/cons or before/after |
+| `stats` | Key statistics | 2-4 large numbers with labels |
+| `image` | Visual slide | Full-bleed background with AI-generated imagery |
+| `closing` | Final slide | Thank you or contact information |
+
+### Visual Themes
+
+| Theme | Description |
+|-------|-------------|
+| `corporate` | Professional business look (default) |
+| `modern` | Contemporary design |
+| `minimal` | Clean, minimalist aesthetic |
+| `bold` | Vibrant, eye-catching styling |
+
+### Image Generation
+
+Image slides support optional AI-generated imagery:
+
+| Property | Description |
+|----------|-------------|
+| `imagePrompt` | Description of the desired image |
+| `imageStyle` | Style: `infographic`, `photo`, `illustration`, `diagram` |
+
+Images integrate with the `image_gen` tool. If image generation fails or is unavailable, slides fall back to text content.
+
+### Configuration
+
+```typescript
+interface PptxGenConfig {
+  maxSlides: number;           // 1-20, default: 12
+  maxImageSlides: number;      // 0-5, default: 3
+  defaultTheme: 'corporate' | 'modern' | 'minimal' | 'bold';
+  enableImageGeneration: boolean;  // Allow AI image generation
+  branding: {
+    enabled: boolean;
+    logoUrl?: string;
+    organizationName?: string;
+  };
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "maxSlides": 12,
+    "maxImageSlides": 3,
+    "defaultTheme": "corporate",
+    "enableImageGeneration": true,
+    "branding": {
+      "enabled": false,
+      "logoUrl": "",
+      "organizationName": ""
+    }
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "pptx_gen",
+  "description": "Generate a PowerPoint presentation with multiple slides and visual themes.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Presentation title"
+      },
+      "theme": {
+        "type": "string",
+        "enum": ["corporate", "modern", "minimal", "bold"],
+        "description": "Visual theme for the presentation"
+      },
+      "slides": {
+        "type": "array",
+        "description": "Array of slide definitions (max 12)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["title", "content", "two-column", "comparison", "stats", "image", "closing"]
+            },
+            "title": { "type": "string" },
+            "subtitle": { "type": "string" },
+            "bullets": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "leftColumn": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "bullets": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "rightColumn": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "bullets": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "stats": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "value": { "type": "string" },
+                  "label": { "type": "string" }
+                }
+              }
+            },
+            "imagePrompt": { "type": "string" },
+            "imageStyle": {
+              "type": "string",
+              "enum": ["infographic", "photo", "illustration", "diagram"]
+            },
+            "speakerNotes": { "type": "string" }
+          },
+          "required": ["type"]
+        }
+      }
+    },
+    "required": ["title", "slides"]
+  }
+}
+```
+
+### Constraints
+
+- Maximum **12 slides** per presentation
+- Maximum **3 AI-generated image slides**
+- Maximum payload size: **5 MB**
+- 16:9 aspect ratio layout
+
+### Example Usage
+
+**User:** "Create a presentation about our Q4 results"
+
+**AI Response:**
+> I've generated a PowerPoint presentation summarizing your Q4 results.
+>
+> 📊 [Download Q4 Results Presentation (PPTX)](link)
+>
+> The presentation includes 8 slides:
+> - Title slide
+> - Executive summary
+> - Revenue highlights (stats)
+> - Regional breakdown (comparison)
+> - Key achievements
+> - Challenges and learnings
+> - 2025 outlook
+> - Thank you slide
+
+---
+
+## Excel Generator Tool
+
+### Purpose
+
+Enables the AI to generate Excel spreadsheets (.xlsx) with multiple sheets, formulas, formatting, and automatic styling.
+
+### Features
+
+- **Multiple Sheets**: Up to 10 sheets per workbook
+- **Formula Support**: Full Excel formula syntax (=SUM, =AVERAGE, etc.)
+- **Auto-Formatting**: Header styling, alternate row colors, auto-filter
+- **Column Widths**: Custom or auto-calculated based on content
+- **Data Types**: Strings, numbers, booleans, null values
+
+### Configuration
+
+```typescript
+interface XlsxGenConfig {
+  maxRows: number;              // 1-10000, default: 1000
+  maxColumns: number;           // 1-100, default: 25
+  maxSheets: number;            // 1-20, default: 10
+  defaultHeaderStyle: 'bold' | 'highlighted' | 'bordered';
+  enableAlternateRows: boolean;
+  enableAutoFilter: boolean;
+  enableFreezeHeader: boolean;
+  branding: {
+    organizationName?: string;  // Added to file creator metadata
+  };
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "maxRows": 1000,
+    "maxColumns": 25,
+    "maxSheets": 10,
+    "defaultHeaderStyle": "highlighted",
+    "enableAlternateRows": true,
+    "enableAutoFilter": true,
+    "enableFreezeHeader": true,
+    "branding": {
+      "organizationName": ""
+    }
+  }
+}
+```
+
+### Header Styles
+
+| Style | Description |
+|-------|-------------|
+| `bold` | Simple bold text |
+| `highlighted` | Bold text with blue background (#1E3A5F) |
+| `bordered` | Bold text with background and borders |
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "xlsx_gen",
+  "description": "Generate an Excel spreadsheet with multiple sheets, formulas, and formatting.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Workbook title (used for filename)"
+      },
+      "sheets": {
+        "type": "array",
+        "description": "Array of sheet definitions (max 10)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Sheet name (max 31 characters)"
+            },
+            "headers": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Column headers"
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {}
+              },
+              "description": "Data rows (strings, numbers, booleans, formulas)"
+            },
+            "columnWidths": {
+              "type": "array",
+              "items": { "type": "number" },
+              "description": "Custom column widths (optional)"
+            },
+            "sheetType": {
+              "type": "string",
+              "enum": ["data", "summary", "template"],
+              "description": "Sheet type hint"
+            }
+          },
+          "required": ["name", "headers", "rows"]
+        }
+      },
+      "headerStyle": {
+        "type": "string",
+        "enum": ["bold", "highlighted", "bordered"],
+        "description": "Header formatting style"
+      },
+      "alternateRows": {
+        "type": "boolean",
+        "description": "Enable alternate row coloring"
+      },
+      "freezeHeader": {
+        "type": "boolean",
+        "description": "Freeze header row"
+      },
+      "autoFilter": {
+        "type": "boolean",
+        "description": "Enable auto-filter on headers"
+      }
+    },
+    "required": ["title", "sheets"]
+  }
+}
+```
+
+### Formula Support
+
+Excel formulas are supported in cell values:
+
+```json
+{
+  "rows": [
+    ["Product A", 100, 50, "=B2+C2"],
+    ["Product B", 200, 75, "=B3+C3"],
+    ["Total", "=SUM(B2:B3)", "=SUM(C2:C3)", "=SUM(D2:D3)"]
+  ]
+}
+```
+
+### Constraints
+
+- Maximum **1,000 rows** total across all sheets
+- Maximum **25 columns** per sheet
+- Maximum **10 sheets** per workbook
+- Sheet names: **31 character** limit (Excel constraint)
+- Maximum payload size: **5 MB**
+
+### Example Usage
+
+**User:** "Create a spreadsheet with our department budgets"
+
+**AI Response:**
+> I've generated an Excel spreadsheet with your department budgets.
+>
+> 📊 [Download Department Budgets (XLSX)](link)
+>
+> The workbook contains:
+> - **Summary** sheet with totals and formulas
+> - **Q1-Q4** sheets with quarterly breakdowns
+> - Auto-calculated totals using SUM formulas
+> - Formatted headers with alternate row colors
+
+---
+
+## Podcast Generator Tool
+
+### Purpose
+
+Enables the AI to convert text content into audio podcasts using Text-to-Speech (TTS). Supports multiple TTS providers, voice options, and a multi-speaker dialogue mode.
+
+### Features
+
+- **Multiple TTS Providers**: OpenAI and Google Gemini
+- **Multi-Speaker Mode**: Host/Expert dialogue format (Gemini only)
+- **Content Formatting**: Automatic conversion of tables, lists, and data to spoken format
+- **Voice Selection**: 13 OpenAI voices, 30 Gemini voices with gender/category metadata
+- **LLM Voice Auto-Selection**: Automatic voice selection based on accent descriptions
+
+### TTS Providers
+
+#### OpenAI TTS
+
+| Property | Value |
+|----------|-------|
+| Model | `gpt-4o-mini-tts` |
+| Output Format | MP3 |
+| Voices | 13 available |
+| Speed Control | 0.25x to 4.0x |
+
+**OpenAI Voices:**
+- **Recommended**: `marin`, `cedar` (best quality)
+- **Others**: `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`, `verse`
+
+#### Gemini TTS
+
+| Property | Value |
+|----------|-------|
+| Models | `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts` |
+| Output Format | WAV |
+| Voices | 30 available |
+| Multi-Speaker | ✅ Supported |
+
+**Gemini Voice Categories:**
+
+| Gender | Voices |
+|--------|--------|
+| Female (14) | Zephyr, Kore, Leda, Aoede, Callirrhoe, Autonoe, Despina, Erinome, Laomedeia, Achernar, Gacrux, Pulcherrima, Vindemiatrix, Sulafat |
+| Male (16) | Puck, Charon, Fenrir, Orus, Enceladus, Iapetus, Umbriel, Algieba, Algenib, Rasalgethi, Alnilam, Schedar, Achird, Zubenelgenubi, Sadachbia, Sadaltager |
+
+**Default Multi-Speaker Voices:**
+- **Host**: Aoede (Breezy, conversational, female)
+- **Expert**: Charon (Informative, male)
+
+### Podcast Styles
+
+| Style | Description | Use Case |
+|-------|-------------|----------|
+| `formal` | Professional and authoritative | Official communications, policy announcements |
+| `conversational` | Friendly and approachable | Internal updates, team communications |
+| `news` | Clear and objective | News broadcasts, reports |
+
+### Podcast Length
+
+| Length | Target Words | Duration |
+|--------|--------------|----------|
+| `short` | ~250 words | 1-2 minutes |
+| `medium` | ~600 words | 3-5 minutes (default) |
+| `long` | ~1,200 words | 8-10 minutes |
+
+### Configuration
+
+```typescript
+interface PodcastGenConfig {
+  defaultProvider: 'openai' | 'gemini';
+  openai: {
+    enabled: boolean;
+    defaultVoice: string;
+    defaultSpeed: number;      // 0.25-4.0, default: 1.0
+  };
+  gemini: {
+    enabled: boolean;
+    defaultModel: string;
+    defaultVoice: string;
+    enableMultiSpeaker: boolean;
+    defaultHostVoice: string;
+    defaultExpertVoice: string;
+  };
+  defaultStyle: 'formal' | 'conversational' | 'news';
+  defaultLength: 'short' | 'medium' | 'long';
+  expirationDays: number;      // 0-365, default: 30
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "defaultProvider": "openai",
+    "openai": {
+      "enabled": true,
+      "defaultVoice": "marin",
+      "defaultSpeed": 1.0
+    },
+    "gemini": {
+      "enabled": false,
+      "defaultModel": "gemini-2.5-flash-preview-tts",
+      "defaultVoice": "Kore",
+      "enableMultiSpeaker": true,
+      "defaultHostVoice": "Aoede",
+      "defaultExpertVoice": "Charon"
+    },
+    "defaultStyle": "conversational",
+    "defaultLength": "medium",
+    "expirationDays": 30
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "podcast_gen",
+  "description": "Generate an audio podcast from text content using Text-to-Speech.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Podcast episode title"
+      },
+      "content": {
+        "type": "string",
+        "description": "Text content to convert to audio (min 50 characters)"
+      },
+      "provider": {
+        "type": "string",
+        "enum": ["openai", "gemini"],
+        "description": "TTS provider to use"
+      },
+      "voice": {
+        "type": "string",
+        "description": "Voice name (provider-specific)"
+      },
+      "style": {
+        "type": "string",
+        "enum": ["formal", "conversational", "news"],
+        "description": "Speaking style"
+      },
+      "length": {
+        "type": "string",
+        "enum": ["short", "medium", "long"],
+        "description": "Target podcast length"
+      },
+      "speed": {
+        "type": "number",
+        "description": "Playback speed 0.25-4.0 (OpenAI only)"
+      },
+      "multiSpeaker": {
+        "type": "boolean",
+        "description": "Enable host/expert dialogue (Gemini only)"
+      },
+      "hostVoice": {
+        "type": "string",
+        "description": "Host voice for multi-speaker (Gemini only)"
+      },
+      "expertVoice": {
+        "type": "string",
+        "description": "Expert voice for multi-speaker (Gemini only)"
+      },
+      "hostAccent": {
+        "type": "string",
+        "description": "Description of host accent/persona for auto voice selection"
+      },
+      "expertAccent": {
+        "type": "string",
+        "description": "Description of expert accent/persona for auto voice selection"
+      }
+    },
+    "required": ["title", "content"]
+  }
+}
+```
+
+### Content Processing
+
+The tool automatically formats content for audio:
+
+| Content Type | Processing |
+|--------------|------------|
+| Tables | Converted to narrative descriptions |
+| Lists | Converted to verbal enumeration |
+| Data/Charts | Described verbally with rounded numbers |
+| Citations | Referenced naturally in speech |
+| Acronyms | Spelled out on first use |
+| Code blocks | Skipped with description of purpose |
+
+### Multi-Speaker Mode (Gemini)
+
+When `multiSpeaker: true`, content is formatted as a dialogue between a host and expert:
+
+```
+HOST: Welcome to today's episode where we'll discuss the new policy changes.
+
+EXPERT: Thanks for having me. The key changes affect three main areas...
+
+HOST: Can you elaborate on the first area?
+
+EXPERT: Certainly. The first change relates to...
+```
+
+### Constraints
+
+- Minimum **50 characters** of input content
+- Maximum **4,000 characters** input (auto-truncated)
+- Disabled by default (requires admin enablement)
+- Provider must be explicitly enabled
+
+### Example Usage
+
+**User:** "Create a podcast summarizing this policy document"
+
+**AI Response:**
+> I've generated a podcast episode summarizing the policy document.
+>
+> 🎙️ [Listen to Policy Summary Podcast (MP3)](link)
+>
+> Episode details:
+> - Duration: 4 minutes 32 seconds
+> - Voice: Marin (OpenAI)
+> - Style: Conversational
+> - Word count: 580 words
+
+**User:** "Create a two-person podcast discussing the Q4 results"
+
+**AI Response:**
+> I've generated a multi-speaker podcast discussing the Q4 results.
+>
+> 🎙️ [Listen to Q4 Discussion (WAV)](link)
+>
+> Episode details:
+> - Duration: 6 minutes 15 seconds
+> - Host: Aoede | Expert: Charon (Gemini)
+> - Format: Host/Expert dialogue
+> - Style: Conversational
 
 ---
 
@@ -2043,6 +2646,630 @@ function getEffectiveToolConfig(toolName: string, categoryId: number) {
 
 ---
 
+## Creating a New Tool
+
+This guide walks through the process of creating a new tool in Policy Bot, based on the patterns established in tools like `podcast_gen`, `pptx_gen`, and `xlsx_gen`.
+
+### Overview
+
+Creating a new tool requires:
+
+1. **Type definitions** - Interfaces for arguments, config, and response
+2. **Tool implementation** - Core logic, config helpers, and execution function
+3. **Tool registration** - Adding to the tools registry
+4. **OpenAI integration** - (Optional) Terminal tool handling and artifact callbacks
+
+### File Structure
+
+```
+src/
+├── types/
+│   └── my-tool.ts              # Type definitions
+├── lib/
+│   ├── tools/
+│   │   └── my-tool.ts          # Tool implementation
+│   ├── tools.ts                # Tool registry (add import + registration)
+│   └── openai.ts               # (Optional) Add to TERMINAL_TOOLS
+└── lib/db/
+    └── my-tool.ts              # (Optional) Database operations
+```
+
+### Step 1: Create Type Definitions
+
+Create `src/types/my-tool.ts`:
+
+```typescript
+/**
+ * Arguments passed from LLM function call
+ */
+export interface MyToolArgs {
+  title: string;                    // Required parameter
+  content: string;
+  format?: 'option1' | 'option2';   // Optional with enum
+  maxItems?: number;                // Optional with default
+}
+
+/**
+ * Tool configuration (stored in database)
+ */
+export interface MyToolConfig {
+  defaultFormat: 'option1' | 'option2';
+  maxItems: number;
+  apiKey?: string;                  // Optional external API key
+  branding?: {
+    enabled: boolean;
+    organizationName?: string;
+  };
+}
+
+/**
+ * Tool execution response
+ */
+export interface MyToolResponse {
+  success: boolean;
+  message?: string;
+
+  // For artifact-producing tools
+  document?: {
+    id: string;
+    filename: string;
+    downloadUrl: string;
+    fileSize: number;
+    mimeType: string;
+  };
+
+  // Standard error format
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+```
+
+### Step 2: Create Tool Implementation
+
+Create `src/lib/tools/my-tool.ts`:
+
+```typescript
+import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
+import type { MyToolArgs, MyToolConfig, MyToolResponse } from '@/types/my-tool';
+import { getToolConfigAsync } from '@/lib/db/compat';
+
+// ============================================
+// 1. DEFAULT CONFIGURATION
+// ============================================
+
+export const MY_TOOL_DEFAULTS: MyToolConfig = {
+  defaultFormat: 'option1',
+  maxItems: 100,
+  apiKey: '',
+  branding: {
+    enabled: false,
+    organizationName: '',
+  },
+};
+
+// ============================================
+// 2. CONFIGURATION HELPERS
+// ============================================
+
+export async function getMyToolConfig(): Promise<MyToolConfig> {
+  const config = await getToolConfigAsync('my_tool');
+  return {
+    ...MY_TOOL_DEFAULTS,
+    ...(config?.config || {}),
+  };
+}
+
+export async function isMyToolEnabled(): Promise<boolean> {
+  const config = await getToolConfigAsync('my_tool');
+  return config?.isEnabled ?? false;
+}
+
+// ============================================
+// 3. MAIN EXECUTION FUNCTION
+// ============================================
+
+export async function executeMyTool(
+  args: MyToolArgs,
+  configOverride?: Record<string, unknown>
+): Promise<MyToolResponse> {
+  // Get config (with optional skill-level override)
+  const baseConfig = await getMyToolConfig();
+  const config = configOverride
+    ? { ...baseConfig, ...configOverride }
+    : baseConfig;
+
+  // Check if enabled
+  if (!(await isMyToolEnabled())) {
+    return {
+      success: false,
+      error: {
+        code: 'DISABLED',
+        message: 'My Tool is not enabled. Contact your administrator.',
+      },
+    };
+  }
+
+  // Validate required arguments
+  if (!args.title || !args.content) {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_ARGS',
+        message: 'Title and content are required.',
+      },
+    };
+  }
+
+  try {
+    // === YOUR TOOL LOGIC HERE ===
+
+    // Example: Generate a file
+    const result = await generateOutput(args, config);
+
+    return {
+      success: true,
+      message: `Generated ${result.filename}`,
+      document: {
+        id: result.id,
+        filename: result.filename,
+        downloadUrl: result.downloadUrl,
+        fileSize: result.fileSize,
+        mimeType: result.mimeType,
+      },
+    };
+  } catch (error) {
+    console.error('[my_tool] Execution error:', error);
+    return {
+      success: false,
+      error: {
+        code: 'EXECUTION_ERROR',
+        message: error instanceof Error ? error.message : 'Unknown error occurred',
+      },
+    };
+  }
+}
+
+// ============================================
+// 4. VALIDATION SCHEMA (for Admin UI)
+// ============================================
+
+const myToolConfigSchema = {
+  type: 'object',
+  properties: {
+    defaultFormat: {
+      type: 'string',
+      title: 'Default Format',
+      enum: ['option1', 'option2'],
+      default: 'option1',
+    },
+    maxItems: {
+      type: 'number',
+      title: 'Maximum Items',
+      minimum: 1,
+      maximum: 1000,
+      default: 100,
+    },
+    apiKey: {
+      type: 'string',
+      title: 'API Key',
+      format: 'password',
+      description: 'External API key (if required)',
+    },
+    branding: {
+      type: 'object',
+      title: 'Branding',
+      properties: {
+        enabled: {
+          type: 'boolean',
+          title: 'Enable Branding',
+          default: false,
+        },
+        organizationName: {
+          type: 'string',
+          title: 'Organization Name',
+        },
+      },
+    },
+  },
+};
+
+// ============================================
+// 5. VALIDATION FUNCTION
+// ============================================
+
+function validateMyToolConfig(config: Record<string, unknown>): ValidationResult {
+  const errors: string[] = [];
+
+  // Validate maxItems
+  if (config.maxItems !== undefined) {
+    const maxItems = config.maxItems as number;
+    if (maxItems < 1 || maxItems > 1000) {
+      errors.push('Maximum items must be between 1 and 1000');
+    }
+  }
+
+  // Validate format
+  if (config.defaultFormat !== undefined) {
+    const format = config.defaultFormat as string;
+    if (!['option1', 'option2'].includes(format)) {
+      errors.push('Invalid default format');
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ============================================
+// 6. TOOL DEFINITION
+// ============================================
+
+export const myToolDefinition: ToolDefinition = {
+  name: 'my_tool',
+  displayName: 'My Tool',
+  description: 'Brief description of what this tool does',
+  category: 'autonomous',  // or 'processor'
+
+  // OpenAI function definition (for autonomous tools)
+  definition: {
+    type: 'function',
+    function: {
+      name: 'my_tool',
+      description: `Detailed description for the LLM explaining when and how to use this tool.
+
+Use this tool when the user asks to [specific use cases].
+
+Guidelines:
+- Guideline 1
+- Guideline 2`,
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'The title for the output',
+          },
+          content: {
+            type: 'string',
+            description: 'The content to process',
+          },
+          format: {
+            type: 'string',
+            enum: ['option1', 'option2'],
+            description: 'Output format (default: option1)',
+          },
+          maxItems: {
+            type: 'number',
+            description: 'Maximum number of items to include',
+          },
+        },
+        required: ['title', 'content'],
+      },
+    },
+  },
+
+  // Execute function called by the tool system
+  execute: async (
+    args: Record<string, unknown>,
+    options?: ToolExecutionOptions
+  ): Promise<string> => {
+    const typedArgs = args as unknown as MyToolArgs;
+    const configOverride = options?.configOverride;
+
+    try {
+      const result = await executeMyTool(typedArgs, configOverride);
+      return JSON.stringify(result);
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: {
+          code: 'EXECUTION_ERROR',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+    }
+  },
+
+  validateConfig: validateMyToolConfig,
+  defaultConfig: MY_TOOL_DEFAULTS as Record<string, unknown>,
+  configSchema: myToolConfigSchema,
+};
+
+export default myToolDefinition;
+```
+
+### Step 3: Register the Tool
+
+Update `src/lib/tools.ts`:
+
+```typescript
+// Add import at the top
+import { myToolDefinition } from './tools/my-tool';
+
+// Add to AVAILABLE_TOOLS map
+export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
+  // ... existing tools
+  my_tool: myToolDefinition,
+};
+```
+
+### Step 4: Terminal Tool Setup (Optional)
+
+If your tool generates final artifacts (documents, images, audio), add to `TERMINAL_TOOLS` in `src/lib/openai.ts`:
+
+```typescript
+const TERMINAL_TOOLS = new Set([
+  'image_gen',
+  'doc_gen',
+  'pptx_gen',
+  'xlsx_gen',
+  'podcast_gen',
+  'chart_gen',
+  'diagram_gen',
+  'my_tool',  // Add here
+]);
+```
+
+Terminal tools:
+- Stop the tool loop after successful execution (prevents re-calling)
+- Automatically get an LLM-generated summary explaining what was created
+- Can emit artifacts via the callback system
+
+### Step 5: Artifact Callbacks (Optional)
+
+If your tool produces artifacts, return them in a hint structure:
+
+```typescript
+// In your tool response
+return {
+  success: true,
+  // For documents
+  document: {
+    id: string,
+    filename: string,
+    downloadUrl: string,
+    fileSize: number,
+    mimeType: string,
+  },
+  // For images
+  imageHint: {
+    url: string,
+    width: number,
+    height: number,
+  },
+  // For audio
+  podcastHint: {
+    id: string,
+    downloadUrl: string,
+    duration: number,
+    provider: string,
+  },
+  // For diagrams
+  diagramHint: {
+    svg: string,
+    title: string,
+  },
+};
+```
+
+The system automatically detects these hints and calls `callbacks?.onArtifact(type, data)`.
+
+### Error Handling Patterns
+
+#### Standard Error Response
+
+Always return errors in this format:
+
+```typescript
+{
+  success: false,
+  error: {
+    code: 'ERROR_CODE',      // Machine-readable
+    message: 'User message'   // Human-readable
+  }
+}
+```
+
+#### Common Error Codes
+
+| Code | When to Use |
+|------|-------------|
+| `DISABLED` | Tool is disabled in admin settings |
+| `INVALID_ARGS` | Required arguments missing or invalid |
+| `INVALID_API_KEY` | Missing or invalid API credentials |
+| `RATE_LIMIT` | External API rate limited |
+| `EXECUTION_ERROR` | Runtime error during execution |
+| `PROVIDER_DISABLED` | Specific provider not enabled |
+| `FILE_TOO_LARGE` | Input exceeds size limits |
+
+#### Never Throw Exceptions
+
+The `execute` function should always return a JSON string, never throw:
+
+```typescript
+execute: async (args, options): Promise<string> => {
+  try {
+    const result = await executeMyTool(args);
+    return JSON.stringify(result);
+  } catch (error) {
+    // Catch and return as JSON
+    return JSON.stringify({
+      success: false,
+      error: {
+        code: 'EXECUTION_ERROR',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
+  }
+}
+```
+
+### Configuration Patterns
+
+#### Skill-Level Overrides
+
+Tools can receive configuration overrides from skills:
+
+```typescript
+export async function executeMyTool(
+  args: MyToolArgs,
+  configOverride?: Record<string, unknown>
+): Promise<MyToolResponse> {
+  const baseConfig = await getMyToolConfig();
+
+  // Merge base config with skill-level override
+  const config = configOverride
+    ? { ...baseConfig, ...configOverride }
+    : baseConfig;
+
+  // Use merged config
+}
+```
+
+#### API Key Management
+
+```typescript
+import { getApiKey } from '@/lib/provider-helpers';
+
+// Database-first, env-var fallback
+const apiKey = config.apiKey || getApiKey('my_provider');
+
+// With LiteLLM proxy support
+const apiKey = process.env.OPENAI_BASE_URL
+  ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
+  : getApiKey('openai');
+```
+
+### Database Storage (Optional)
+
+For tools that generate files, use `addThreadOutput`:
+
+```typescript
+import { addThreadOutput } from '@/lib/db/compat';
+
+const output = await addThreadOutput(
+  threadId,           // Thread ID
+  messageId,          // Message ID
+  filename,           // e.g., 'report.pdf'
+  filepath,           // Server path
+  fileType,           // e.g., 'document'
+  fileSize,           // In bytes
+  JSON.stringify(metadata),  // Tool-specific metadata
+  expiresAt           // Optional expiration date
+);
+```
+
+### Tool Categories
+
+| Category | Triggered By | Has Definition | Examples |
+|----------|--------------|----------------|----------|
+| `autonomous` | LLM function call | Yes | `web_search`, `podcast_gen`, `image_gen` |
+| `processor` | System after response | No | `send_email`, `compliance_checker` |
+
+### Checklist
+
+```
+Creating a new tool:
+
+[ ] 1. Create src/types/my-tool.ts
+    - MyToolArgs interface
+    - MyToolConfig interface
+    - MyToolResponse interface
+
+[ ] 2. Create src/lib/tools/my-tool.ts
+    - MY_TOOL_DEFAULTS constant
+    - getMyToolConfig() helper
+    - isMyToolEnabled() helper
+    - executeMyTool() function
+    - Config validation schema
+    - validateMyToolConfig() function
+    - myToolDefinition export
+
+[ ] 3. Register in src/lib/tools.ts
+    - Import myToolDefinition
+    - Add to AVAILABLE_TOOLS map
+
+[ ] 4. (If terminal) Update src/lib/openai.ts
+    - Add to TERMINAL_TOOLS set
+    - Ensure artifact hints are handled
+
+[ ] 5. Test
+    - Tool appears in admin UI
+    - Configuration saves correctly
+    - Execution returns valid JSON
+    - Errors handled gracefully
+```
+
+### Example: Minimal Tool
+
+Here's a minimal working tool:
+
+```typescript
+// src/types/hello-tool.ts
+export interface HelloToolArgs {
+  name: string;
+}
+
+export interface HelloToolResponse {
+  success: boolean;
+  greeting?: string;
+  error?: { code: string; message: string };
+}
+
+// src/lib/tools/hello-tool.ts
+import type { ToolDefinition } from '../tools';
+
+export const helloToolDefinition: ToolDefinition = {
+  name: 'hello_tool',
+  displayName: 'Hello Tool',
+  description: 'A simple greeting tool',
+  category: 'autonomous',
+
+  definition: {
+    type: 'function',
+    function: {
+      name: 'hello_tool',
+      description: 'Generate a greeting for the user',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Name to greet',
+          },
+        },
+        required: ['name'],
+      },
+    },
+  },
+
+  execute: async (args): Promise<string> => {
+    const { name } = args as { name: string };
+
+    if (!name) {
+      return JSON.stringify({
+        success: false,
+        error: { code: 'INVALID_ARGS', message: 'Name is required' },
+      });
+    }
+
+    return JSON.stringify({
+      success: true,
+      greeting: `Hello, ${name}! Welcome to Policy Bot.`,
+    });
+  },
+
+  validateConfig: () => ({ valid: true, errors: [] }),
+  defaultConfig: {},
+  configSchema: { type: 'object', properties: {} },
+};
+
+export default helloToolDefinition;
+```
+
+---
+
 ## API Reference
 
 ### Admin Endpoints
@@ -2116,6 +3343,9 @@ Response:
 | `src/lib/tools.ts` | Main tool registry and API |
 | `src/lib/tools/tavily.ts` | Web search implementation |
 | `src/lib/tools/docgen.ts` | Document generator implementation |
+| `src/lib/tools/pptx-gen.ts` | PowerPoint generator implementation |
+| `src/lib/tools/xlsx-gen.ts` | Excel generator implementation |
+| `src/lib/tools/podcast-gen.ts` | Podcast generator implementation |
 | `src/lib/tools/data-source.ts` | Data source tool implementation |
 | `src/lib/tools/chart-gen.ts` | Chart generator tool implementation |
 | `src/lib/tools/function-api.ts` | Function API tool implementation |
@@ -2123,6 +3353,8 @@ Response:
 | `src/lib/docgen/docx-builder.ts` | DOCX generation |
 | `src/lib/docgen/md-builder.ts` | Markdown generation |
 | `src/lib/docgen/branding.ts` | Branding configuration |
+| `src/lib/pptxgen/pptx-builder.ts` | PowerPoint slide building |
+| `src/lib/xlsxgen/xlsx-builder.ts` | Excel workbook building |
 | `src/lib/data-sources/api-caller.ts` | External API request handling |
 | `src/lib/data-sources/csv-handler.ts` | CSV file querying |
 | `src/lib/data-sources/aggregation.ts` | Data aggregation operations |
@@ -2134,5 +3366,8 @@ Response:
 | `src/lib/tool-routing.ts` | Tool routing engine |
 | `src/types/data-sources.ts` | Data source type definitions |
 | `src/types/chart-gen.ts` | Chart generator type definitions |
+| `src/types/pptx-gen.ts` | PowerPoint generator type definitions |
+| `src/types/xlsx-gen.ts` | Excel generator type definitions |
+| `src/types/podcast-gen.ts` | Podcast generator type definitions |
 | `src/types/function-api.ts` | Function API type definitions |
 | `src/types/tool-routing.ts` | Tool routing type definitions |

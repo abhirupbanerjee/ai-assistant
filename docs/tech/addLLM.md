@@ -18,6 +18,73 @@ This guide explains how to add a new LLM model to the Policy Bot system.
 
 ---
 
+## When Providers Release New Models
+
+Understanding when new models are automatically discovered vs when code changes are required:
+
+### Automatic Discovery (No Code Changes)
+
+For most providers, new models are **automatically discovered** when you click "Add Models" in the Admin UI:
+
+| Provider | API Endpoint | New Models Auto-Discovered |
+|----------|--------------|---------------------------|
+| **OpenAI** | `api.openai.com/v1/models` | ✅ Yes |
+| **Gemini** | `generativelanguage.googleapis.com/v1beta/models` | ✅ Yes |
+| **Mistral** | `api.mistral.ai/v1/models` | ✅ Yes |
+| **DeepSeek** | `api.deepseek.com/models` | ✅ Yes |
+| **Ollama** | `{apiBase}/api/tags` | ✅ Yes |
+| **Anthropic** | ❌ No public API | ⚠️ **Hardcoded - requires code update** |
+
+### When Code Changes ARE Required
+
+| Scenario | What to Update | Example |
+|----------|---------------|---------|
+| **New Anthropic/Claude model** | Add to hardcoded list in `model-discovery.ts` | Claude 4, Claude 5 |
+| **New model family** (different naming pattern) | Add capability detection patterns | GPT-6.x, Gemini 3.x, o5-series |
+| **Model has different capabilities than pattern suggests** | Override via Admin UI API or add specific pattern | A mini model that supports vision |
+
+### Anthropic Models (Hardcoded)
+
+Anthropic doesn't provide a public models list API. Models are hardcoded in `src/lib/services/model-discovery.ts` (lines 409-417):
+
+```typescript
+const knownModels = [
+  'claude-sonnet-4-5',
+  'claude-haiku-4-5',
+  'claude-opus-4-5',
+  'claude-3-5-sonnet',
+  'claude-3-opus',
+  'claude-3-sonnet',
+  'claude-3-haiku',
+];
+```
+
+**To add a new Claude model:**
+
+1. Edit `src/lib/services/model-discovery.ts`
+2. Add the new model ID to the `knownModels` array in `discoverAnthropicModels()`
+3. If needed, add context window to `CONTEXT_WINDOWS`
+4. Rebuild and restart
+
+### Capability Detection for New Model Families
+
+When a provider releases a new model **family** (e.g., GPT-6, Gemini 3, o5), you may need to add capability patterns even though the model is auto-discovered:
+
+```typescript
+// In TOOL_CAPABLE_PATTERNS - add:
+/^gpt-6/,
+/^o5/,
+/^gemini-3/,
+
+// In VISION_CAPABLE_PATTERNS - add if the family supports vision:
+/^gpt-6/,
+/^gemini-3/,
+```
+
+Without these patterns, auto-discovered models will appear but may not have correct tool/vision capability flags.
+
+---
+
 ## Overview
 
 There are **two methods** to add LLM models:
@@ -55,14 +122,16 @@ Model Configuration Priority:
 
 The system currently supports these LLM providers out of the box:
 
-| Provider | ID | Models Examples | Vision Support |
-|----------|-----|-----------------|----------------|
-| **OpenAI** | `openai` | GPT-4.1, GPT-5.x, o1, o3 | Yes |
-| **Anthropic** | `anthropic` | Claude Sonnet/Haiku/Opus 4.5 | Yes |
-| **Google** | `gemini` | Gemini 2.5 Pro/Flash | Yes |
-| **Mistral** | `mistral` | Mistral Large 3, Small 3.2 | Yes |
-| **DeepSeek** | `deepseek` | DeepSeek Chat, Reasoner | No |
-| **Ollama** | `ollama` | Llama 3.2, Qwen 2.5, Phi4 | Varies |
+| Provider | ID | Models Examples | Vision | Auto-Discovery |
+|----------|-----|-----------------|--------|----------------|
+| **OpenAI** | `openai` | GPT-4.1, GPT-5.x, o1, o3 | Yes | ✅ API |
+| **Anthropic** | `anthropic` | Claude Sonnet/Haiku/Opus 4.5 | Yes | ⚠️ Hardcoded* |
+| **Google** | `gemini` | Gemini 2.5 Pro/Flash | Yes | ✅ API |
+| **Mistral** | `mistral` | Mistral Large 3, Small 3.2 | Yes | ✅ API |
+| **DeepSeek** | `deepseek` | DeepSeek Chat, Reasoner | No | ✅ API |
+| **Ollama** | `ollama` | Llama 3.2, Qwen 2.5, Phi4 | Varies | ✅ API |
+
+*Anthropic doesn't have a public models list API. New Claude models require a code update - see [When Providers Release New Models](#when-providers-release-new-models).
 
 ---
 
@@ -1079,6 +1148,7 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 | Add model via YAML | `litellm-proxy/litellm_config.yaml` |
 | Fix capability detection | `src/lib/services/model-discovery.ts` |
 | Add new provider | `src/lib/db/llm-providers.ts` + `src/lib/services/model-discovery.ts` |
+| **Add new Claude/Anthropic model** | `src/lib/services/model-discovery.ts` (hardcoded list at line ~409) |
 | Change default model | `src/lib/config-loader.ts` |
 | Debug model issues | Check `enabled_models` table in database |
 

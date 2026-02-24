@@ -241,6 +241,40 @@ When `AUTH_DISABLED=true` in environment:
 | GET | `/api/superuser/workspaces/{id}/users` | Yes | Superuser | List workspace users |
 | POST | `/api/superuser/workspaces/{id}/users` | Yes | Superuser | Add user to workspace |
 | DELETE | `/api/superuser/workspaces/{id}/users/{userId}` | Yes | Superuser | Remove workspace user |
+| GET | `/api/admin/agent-bots` | Yes | Admin/Superuser | List all agent bots |
+| POST | `/api/admin/agent-bots` | Yes | Admin/Superuser | Create agent bot |
+| GET | `/api/admin/agent-bots/{id}` | Yes | Admin/Superuser | Get agent bot details |
+| PATCH | `/api/admin/agent-bots/{id}` | Yes | Admin/Superuser | Update agent bot |
+| DELETE | `/api/admin/agent-bots/{id}` | Yes | Admin/Superuser | Delete agent bot |
+| GET | `/api/admin/agent-bots/{id}/versions` | Yes | Admin/Superuser | List versions |
+| POST | `/api/admin/agent-bots/{id}/versions` | Yes | Admin/Superuser | Create version |
+| GET | `/api/admin/agent-bots/{id}/versions/{versionId}` | Yes | Admin/Superuser | Get version details |
+| PATCH | `/api/admin/agent-bots/{id}/versions/{versionId}` | Yes | Admin/Superuser | Update version |
+| DELETE | `/api/admin/agent-bots/{id}/versions/{versionId}` | Yes | Admin/Superuser | Delete version |
+| GET | `/api/admin/agent-bots/{id}/api-keys` | Yes | Admin/Superuser | List API keys |
+| POST | `/api/admin/agent-bots/{id}/api-keys` | Yes | Admin/Superuser | Create API key |
+| DELETE | `/api/admin/agent-bots/{id}/api-keys/{keyId}` | Yes | Admin/Superuser | Revoke API key |
+| GET | `/api/admin/agent-bots/{id}/analytics` | Yes | Admin/Superuser | Get usage analytics |
+| POST | `/api/agent-bots/{slug}/invoke` | API Key | - | Invoke agent bot |
+| GET | `/api/agent-bots/{slug}/jobs/{jobId}` | API Key | - | Get job status |
+| GET | `/api/agent-bots/{slug}/jobs/{jobId}/outputs/{outputId}/download` | API Key | - | Download output |
+| GET | `/api/admin/llm/providers` | Yes | Admin | List LLM providers |
+| POST | `/api/admin/llm/providers` | Yes | Admin | Create LLM provider |
+| GET | `/api/admin/llm/providers/{id}` | Yes | Admin | Get provider details |
+| PUT | `/api/admin/llm/providers/{id}` | Yes | Admin | Update provider |
+| DELETE | `/api/admin/llm/providers/{id}` | Yes | Admin | Delete provider |
+| POST | `/api/admin/llm/providers/{id}/test` | Yes | Admin | Test provider connection |
+| GET | `/api/admin/llm/models` | Yes | Admin/Superuser | List enabled models |
+| POST | `/api/admin/llm/models` | Yes | Admin | Enable models (batch) |
+| GET | `/api/admin/llm/models/{id}` | Yes | Admin | Get model details |
+| PUT | `/api/admin/llm/models/{id}` | Yes | Admin | Update model |
+| DELETE | `/api/admin/llm/models/{id}` | Yes | Admin | Remove model |
+| POST | `/api/admin/llm/models/refresh` | Yes | Admin | Refresh model capabilities |
+| GET | `/api/admin/llm/discover` | Yes | Admin | Discover available models |
+| POST | `/api/autonomous/{planId}/pause` | Yes | Owner | Pause autonomous plan |
+| POST | `/api/autonomous/{planId}/resume` | Yes | Owner | Resume paused plan |
+| POST | `/api/autonomous/{planId}/stop` | Yes | Owner | Stop autonomous plan |
+| POST | `/api/autonomous/{planId}/tasks/{taskId}/skip` | Yes | Owner | Skip task in plan |
 
 ---
 
@@ -4137,6 +4171,1099 @@ curl -X POST https://policybot.abhirup.app/api/admin/tool-routing/test \
   - `'auto'`: No routing match, LLM decides
   - `'required'`: Multiple tools matched, LLM must use one
   - `{ type: 'function', function: { name: '...' } }`: Specific tool forced
+
+---
+
+### 25. Admin - Agent Bots
+
+Agent bots are configurable AI agents that can be invoked via API keys. Each agent bot can have multiple versions with different configurations, and API keys for access control.
+
+#### `GET /api/admin/agent-bots`
+
+List all agent bots.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/agent-bots \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  agentBots: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/agent-bots`
+
+Create a new agent bot.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Request Body**:
+
+```typescript
+{
+  name: string;         // Required: 2-100 characters
+  slug?: string;        // Optional: auto-generated from name if not provided
+  description?: string; // Optional: description
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/agent-bots \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "name": "HR Assistant",
+    "description": "Handles HR-related queries"
+  }'
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  agentBot: {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Solution |
+|--------|-------|----------|
+| 400 | "Name is required" | Include name field |
+| 400 | "Name must be between 2 and 100 characters" | Adjust name length |
+| 409 | "An agent bot with this name already exists" | Use unique name |
+| 409 | "An agent bot with this slug already exists" | Use unique slug |
+
+---
+
+#### `GET /api/admin/agent-bots/{id}`
+
+Get agent bot details with versions and API keys.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Response** `200 OK`:
+
+```typescript
+{
+  agentBot: {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+  };
+  versions: Array<AgentBotVersion>;
+  apiKeys: Array<{
+    id: string;
+    name: string;
+    key_prefix: string;
+    permissions: string[];
+    rate_limit_rpm: number;
+    rate_limit_rpd: number;
+    expires_at?: string;
+    last_used_at?: string;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+  }>;
+}
+```
+
+---
+
+#### `PATCH /api/admin/agent-bots/{id}`
+
+Update an agent bot.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Request Body** (all fields optional):
+
+```typescript
+{
+  name?: string;
+  slug?: string;
+  description?: string;
+  is_active?: boolean;
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  agentBot: AgentBot;
+}
+```
+
+---
+
+#### `DELETE /api/admin/agent-bots/{id}`
+
+Delete an agent bot (cascades to versions, API keys, and jobs).
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+}
+```
+
+---
+
+#### `GET /api/admin/agent-bots/{id}/versions`
+
+List all versions for an agent bot.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Response** `200 OK`:
+
+```typescript
+{
+  versions: Array<{
+    id: string;
+    agent_bot_id: string;
+    version_label: string;
+    is_default: boolean;
+    is_active: boolean;
+    input_schema: InputSchema;
+    output_config: OutputConfig;
+    system_prompt?: string;
+    llm_model?: string;
+    temperature?: number;
+    max_tokens?: number;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/agent-bots/{id}/versions`
+
+Create a new version for an agent bot.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Request Body**:
+
+```typescript
+{
+  version_label?: string;
+  is_default?: boolean;
+  input_schema: {
+    parameters: Array<{
+      name: string;
+      type: 'string' | 'number' | 'boolean' | 'array';
+      description?: string;
+      required?: boolean;
+      default?: any;
+    }>;
+  };
+  output_config: {
+    enabledTypes: Array<'text' | 'json' | 'pdf' | 'pptx' | 'xlsx' | 'mp3'>;
+    defaultType: string;
+  };
+  system_prompt?: string;
+  llm_model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  category_ids?: number[];
+  skill_ids?: number[];
+  tools?: Array<{
+    tool_name: string;
+    is_enabled: boolean;
+    config_override?: Record<string, unknown>;
+  }>;
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/agent-bots/abc123/versions \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "version_label": "v1.0",
+    "is_default": true,
+    "input_schema": {
+      "parameters": [
+        { "name": "query", "type": "string", "required": true }
+      ]
+    },
+    "output_config": {
+      "enabledTypes": ["text", "json"],
+      "defaultType": "text"
+    }
+  }'
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  version: AgentBotVersion;
+}
+```
+
+---
+
+#### `GET /api/admin/agent-bots/{id}/versions/{versionId}`
+
+Get version details with relations (categories, skills, tools).
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Response** `200 OK`:
+
+```typescript
+{
+  version: {
+    ...AgentBotVersion;
+    categories: Array<{ id: number; name: string }>;
+    skills: Array<{ id: number; name: string }>;
+    tools: Array<{ tool_name: string; is_enabled: boolean; config_override?: object }>;
+  };
+}
+```
+
+---
+
+#### `PATCH /api/admin/agent-bots/{id}/versions/{versionId}`
+
+Update a version.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Request Body** (all fields optional):
+
+```typescript
+{
+  version_label?: string;
+  is_default?: boolean;
+  is_active?: boolean;
+  input_schema?: InputSchema;
+  output_config?: OutputConfig;
+  system_prompt?: string;
+  llm_model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  category_ids?: number[];
+  skill_ids?: number[];
+  tools?: Array<{ tool_name: string; is_enabled: boolean; config_override?: object }>;
+}
+```
+
+---
+
+#### `DELETE /api/admin/agent-bots/{id}/versions/{versionId}`
+
+Delete a version. Cannot delete the default version.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Error Responses**:
+
+| Status | Error | Solution |
+|--------|-------|----------|
+| 400 | "Cannot delete the default version" | Set another version as default first |
+
+---
+
+#### `GET /api/admin/agent-bots/{id}/api-keys`
+
+List API keys for an agent bot.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Response** `200 OK`:
+
+```typescript
+{
+  apiKeys: Array<{
+    id: string;
+    agent_bot_id: string;
+    name: string;
+    key_prefix: string;
+    permissions: string[];
+    rate_limit_rpm: number;
+    rate_limit_rpd: number;
+    expires_at?: string;
+    last_used_at?: string;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+    revoked_at?: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/agent-bots/{id}/api-keys`
+
+Create a new API key. **The full key is only returned once.**
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Request Body**:
+
+```typescript
+{
+  name: string;             // Required: 2-100 characters
+  permissions?: string[];   // Optional: permissions array
+  rate_limit_rpm?: number;  // Default: 60 (1-1000)
+  rate_limit_rpd?: number;  // Default: 1000 (1-100000)
+  expires_in_days?: number; // Optional: days until expiration
+}
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  apiKey: {
+    id: string;
+    name: string;
+    key_prefix: string;
+    // ...
+  };
+  fullKey: string;  // Only shown once! Store securely.
+}
+```
+
+---
+
+#### `DELETE /api/admin/agent-bots/{id}/api-keys/{keyId}`
+
+Revoke an API key.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+}
+```
+
+---
+
+#### `GET /api/admin/agent-bots/{id}/analytics`
+
+Get usage statistics for an agent bot.
+
+**Authentication**: Required
+**Role**: Admin or Superuser
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| days | number | 30 | Number of days to analyze |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  summary: {
+    totalRequests: number;
+    totalTokens: number;
+    totalErrors: number;
+    successRate: number;       // Percentage
+    avgProcessingTimeMs: number;
+  };
+  dailyStats: Array<{
+    date: string;
+    requests: number;
+    tokens: number;
+    errors: number;
+  }>;
+  byOutputType: Record<string, number>;
+  byStatus: Record<string, number>;
+  recentJobs: Array<{
+    id: string;
+    status: string;
+    output_type: string;
+    processing_time_ms: number;
+    created_at: string;
+    completed_at?: string;
+    error_message?: string;
+  }>;
+}
+```
+
+---
+
+### 26. Agent Bots - Public API
+
+These endpoints are authenticated via API key (Bearer token) rather than session cookies.
+
+#### `POST /api/agent-bots/{slug}/invoke`
+
+Invoke an agent bot to execute a task.
+
+**Authentication**: API Key (Bearer token)
+
+**Headers**:
+
+| Header | Value | Required |
+|--------|-------|----------|
+| Authorization | Bearer {api_key} | Yes |
+| Content-Type | application/json | Yes |
+
+**Request Body**:
+
+```typescript
+{
+  input: Record<string, any>;           // Input parameters matching the version's schema
+  version?: string;                     // Optional: version ID or "latest" (default)
+  outputType?: 'text' | 'json' | 'pdf' | 'pptx' | 'xlsx' | 'mp3';  // Override default
+  async?: boolean;                      // If true, returns immediately with jobId
+  webhookUrl?: string;                  // For async: webhook to call on completion
+  webhookSecret?: string;               // For async: shared secret for webhook signature
+}
+```
+
+**Example Request (Sync)**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
+  -H "Authorization: Bearer pb_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "query": "What is the annual leave policy?"
+    },
+    "outputType": "text"
+  }'
+```
+
+**Response (Sync)** `200 OK`:
+
+```typescript
+{
+  success: true;
+  jobId: string;
+  outputs: Array<{
+    type: 'text' | 'json' | 'pdf' | 'pptx' | 'xlsx' | 'mp3';
+    content?: string;             // For text/json
+    downloadUrl?: string;         // For file outputs
+    filename?: string;
+    fileSize?: number;
+    mimeType?: string;
+  }>;
+  tokenUsage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  processingTimeMs: number;
+}
+```
+
+**Response (Async)** `202 Accepted`:
+
+```typescript
+{
+  jobId: string;
+  status: 'pending';
+}
+```
+
+**Rate Limit Headers**:
+
+| Header | Description |
+|--------|-------------|
+| X-RateLimit-Limit-RPM | Requests per minute limit |
+| X-RateLimit-Remaining-RPM | Remaining requests this minute |
+| X-RateLimit-Limit-RPD | Requests per day limit |
+| X-RateLimit-Remaining-RPD | Remaining requests today |
+
+**Error Responses**:
+
+| Status | Error Code | Description |
+|--------|------------|-------------|
+| 401 | AUTH_REQUIRED | Missing or invalid API key |
+| 403 | FORBIDDEN | API key expired or revoked |
+| 404 | AGENT_NOT_FOUND | Agent bot not found or inactive |
+| 404 | VERSION_NOT_FOUND | Version not found or inactive |
+| 422 | INPUT_VALIDATION_ERROR | Input doesn't match schema |
+| 429 | RATE_LIMITED | Rate limit exceeded |
+| 500 | PROCESSING_ERROR | Internal processing error |
+
+---
+
+#### `GET /api/agent-bots/{slug}/jobs/{jobId}`
+
+Get the status and results of an async job.
+
+**Authentication**: API Key (Bearer token)
+
+**Response** `200 OK`:
+
+```typescript
+{
+  jobId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  outputs?: Array<{       // Only if completed
+    type: string;
+    content?: string;
+    downloadUrl?: string;
+    filename?: string;
+    fileSize?: number;
+    mimeType?: string;
+  }>;
+  tokenUsage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  processingTimeMs?: number;
+  error?: {               // Only if failed
+    message: string;
+    code: string;
+  };
+}
+```
+
+---
+
+#### `GET /api/agent-bots/{slug}/jobs/{jobId}/outputs/{outputId}/download`
+
+Download a generated output file.
+
+**Authentication**: API Key (Bearer token)
+
+**Response**: Binary file with appropriate Content-Type header.
+
+**Headers**:
+
+| Header | Description |
+|--------|-------------|
+| Content-Type | MIME type of the file |
+| Content-Disposition | `attachment; filename="..."` |
+| Content-Length | File size in bytes |
+
+---
+
+### 27. Admin - LLM Management
+
+Manage LLM providers and enabled models for the system.
+
+#### `GET /api/admin/llm/providers`
+
+List all configured LLM providers.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  providers: Array<{
+    id: string;           // e.g., "openai", "anthropic", "gemini"
+    name: string;
+    apiKey: string;       // Masked (e.g., "sk-abc...xyz")
+    apiKeyConfigured: boolean;
+    apiBase?: string;     // Custom base URL
+    enabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/llm/providers`
+
+Create a new LLM provider configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  id: string;           // Required: provider identifier
+  name: string;         // Required: display name
+  apiKey?: string;      // Optional: API key
+  apiBase?: string;     // Optional: custom base URL
+  enabled?: boolean;    // Default: true
+}
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  provider: {
+    id: string;
+    name: string;
+    apiKey: string;       // Masked
+    apiKeyConfigured: boolean;
+    enabled: boolean;
+  };
+}
+```
+
+---
+
+#### `GET /api/admin/llm/providers/{id}`
+
+Get a specific provider's configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  provider: LLMProvider;
+}
+```
+
+---
+
+#### `PUT /api/admin/llm/providers/{id}`
+
+Update a provider's configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body** (all fields optional):
+
+```typescript
+{
+  name?: string;
+  apiKey?: string;
+  apiBase?: string;
+  enabled?: boolean;
+}
+```
+
+---
+
+#### `DELETE /api/admin/llm/providers/{id}`
+
+Delete or clear a provider configuration. Core providers (openai, gemini, etc.) are cleared rather than deleted.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: "Provider deleted successfully" | "Provider configuration cleared";
+}
+```
+
+---
+
+#### `POST /api/admin/llm/providers/{id}/test`
+
+Test a provider's connection by attempting to list models.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  provider: string;
+  success: boolean;
+  message?: string;
+  models?: string[];     // List of available models if successful
+  error?: string;        // Error message if failed
+}
+```
+
+---
+
+#### `GET /api/admin/llm/models`
+
+List all enabled models.
+
+**Authentication**: Required
+**Role**: Admin or Superuser (Superusers need this for workspace model selector)
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| active | boolean | false | If true, only return active models |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  models: Array<{
+    id: string;
+    providerId: string;
+    displayName: string;
+    isDefault: boolean;
+    isActive: boolean;
+    toolCapable: boolean;
+    visionCapable: boolean;
+    maxInputTokens?: number;
+    costPer1kInput?: number;
+    costPer1kOutput?: number;
+    sortOrder: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/llm/models`
+
+Enable models in batch.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  models: Array<{
+    id: string;           // Required: model ID
+    providerId: string;   // Required: provider ID
+    displayName: string;  // Required: display name
+    isDefault?: boolean;
+    isActive?: boolean;
+    toolCapable?: boolean;
+    visionCapable?: boolean;
+    maxInputTokens?: number;
+    costPer1kInput?: number;
+    costPer1kOutput?: number;
+    sortOrder?: number;
+  }>;
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: string;        // e.g., "Added 5 models"
+  models: Array<EnabledModel>;
+  skipped: number;        // Number of duplicates skipped
+}
+```
+
+---
+
+#### `GET /api/admin/llm/models/{id}`
+
+Get a specific model's configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  model: EnabledModel;
+}
+```
+
+---
+
+#### `PUT /api/admin/llm/models/{id}`
+
+Update a model's configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body** (all fields optional):
+
+```typescript
+{
+  displayName?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  toolCapable?: boolean;
+  visionCapable?: boolean;
+  maxInputTokens?: number;
+  costPer1kInput?: number;
+  costPer1kOutput?: number;
+  sortOrder?: number;
+}
+```
+
+---
+
+#### `DELETE /api/admin/llm/models/{id}`
+
+Remove a model from the enabled list.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: "Model removed successfully";
+}
+```
+
+---
+
+#### `POST /api/admin/llm/models/refresh`
+
+Refresh capabilities for all enabled models using current detection patterns.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  updated: number;        // Number of models updated
+  models: Array<EnabledModel>;
+}
+```
+
+---
+
+#### `GET /api/admin/llm/discover`
+
+Discover available models from providers.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| provider | string | No | Specific provider ID, or omit for all |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  // If specific provider:
+  success: boolean;
+  provider: string;
+  models: string[];
+  error?: string;
+
+  // If all providers:
+  results: Array<{
+    provider: string;
+    success: boolean;
+    models: string[];
+    error?: string;
+  }>;
+}
+```
+
+---
+
+### 28. Autonomous Plan Control
+
+Control autonomous task plans that are executing multi-step operations.
+
+#### `POST /api/autonomous/{planId}/pause`
+
+Pause an active autonomous plan after the current task completes.
+
+**Authentication**: Required
+**Role**: Plan owner only
+
+**Request Body** (optional):
+
+```typescript
+{
+  reason?: string;        // Optional pause reason
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  status: "paused";
+  completed_tasks: number;
+  total_tasks: number;
+  message: string;        // e.g., "Plan paused at 3/10 tasks"
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Cannot pause plan with status '...'" | INVALID_STATE | Plan must be active |
+| 403 | "Unauthorized" | AUTH_REQUIRED | Must be plan owner |
+| 404 | "Plan not found" | NOT_FOUND | Verify plan ID |
+
+---
+
+#### `POST /api/autonomous/{planId}/resume`
+
+Resume a paused autonomous plan.
+
+**Authentication**: Required
+**Role**: Plan owner only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  status: "active";
+  remaining_tasks: number;
+  total_tasks: number;
+  message: string;        // e.g., "Plan resumed with 7 remaining tasks"
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Cannot resume plan with status '...'" | INVALID_STATE | Plan must be paused |
+
+---
+
+#### `POST /api/autonomous/{planId}/stop`
+
+Gracefully stop an autonomous plan, keeping all completed work.
+
+**Authentication**: Required
+**Role**: Plan owner only
+
+**Request Body** (optional):
+
+```typescript
+{
+  reason?: string;        // Optional stop reason
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  status: "stopped";
+  completed_tasks: number;
+  skipped_tasks: number;
+  total_tasks: number;
+  message: string;        // e.g., "Plan stopped at 5/10 tasks. 5 tasks skipped."
+}
+```
+
+---
+
+#### `POST /api/autonomous/{planId}/tasks/{taskId}/skip`
+
+Skip a specific pending task in an autonomous plan.
+
+**Authentication**: Required
+**Role**: Plan owner only
+
+**Request Body** (optional):
+
+```typescript
+{
+  reason?: string;        // Optional skip reason
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  task_id: number;
+  status: "skipped";
+  message: string;        // e.g., "Task 3 skipped: Not needed"
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Cannot skip task with status '...'" | INVALID_STATE | Task must be pending |
+| 400 | "Invalid task ID" | VALIDATION_ERROR | Task ID must be numeric |
+| 404 | "Task not found" | NOT_FOUND | Verify task ID |
 
 ---
 
