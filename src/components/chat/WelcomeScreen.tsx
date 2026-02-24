@@ -12,8 +12,25 @@ import {
   Wrench,
   ChevronDown,
   ChevronUp,
-  ArrowDown,
   ExternalLink,
+  FileUp,
+  FolderSync,
+  Link,
+  Youtube,
+  Mic,
+  BarChart3,
+  FileSpreadsheet,
+  Languages,
+  Image,
+  AlertTriangle,
+  Map,
+  MessageCircle,
+  BookOpen,
+  GanttChart,
+  ClipboardList,
+  Landmark,
+  Settings,
+  Sparkles,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -49,6 +66,15 @@ interface ActionCard {
   iconBgClass: string;
 }
 
+interface UseCaseCard {
+  id: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  colorClass: string;
+  iconBgClass: string;
+}
+
 const ROLE_HIERARCHY = { user: 0, superuser: 1, admin: 2 };
 
 function canAccess(
@@ -65,15 +91,17 @@ export default function WelcomeScreen({
 }: WelcomeScreenProps) {
   const router = useRouter();
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'setup' | 'usecases'>('usecases');
 
   const toggleCard = (id: string) => {
     setExpandedCard(expandedCard === id ? null : id);
   };
 
-  const actionCards: ActionCard[] = [
+  // Setup the Platform cards
+  const setupCards: ActionCard[] = [
     {
       id: 'chat',
-      icon: <MessageSquarePlus size={28} />,
+      icon: <MessageSquarePlus size={24} />,
       title: 'Start a Chat',
       shortDescription: 'Ask questions about your documents',
       expandedContent: {
@@ -85,33 +113,44 @@ export default function WelcomeScreen({
           'Get answers from your document library',
         ],
       },
-      actionButton: undefined, // Uses onNewThread instead
+      actionButton: undefined,
       minRole: 'user',
       colorClass: 'border-blue-200 hover:border-blue-300',
       iconBgClass: 'bg-blue-100 text-blue-600',
     },
     {
       id: 'category',
-      icon: <FolderOpen size={28} />,
-      title: 'Setup a Category',
-      shortDescription: 'Create topic areas with documents & users',
+      icon: <FolderOpen size={24} />,
+      title: 'Setup Categories',
+      shortDescription: 'Organize knowledge into domains',
       expandedContent: {
-        description: 'Organize knowledge into distinct domains.',
+        description:
+          'Create topic areas to organize your knowledge base. Each category can have its own documents and user access controls.',
         bullets: [
-          'Each category maps to a knowledge base',
-          'Control access per category',
-          'Examples: HR Policies, Legal, Finance',
+          'Create domains like HR Policies, Legal, Finance',
+          'Control user access per category',
+          'Add category-specific AI behaviors',
         ],
         subItems: [
           {
-            icon: <FileText size={16} className="text-amber-600" />,
-            label: 'Documents',
-            description: 'Upload PDFs to train the AI',
+            icon: <FileUp size={16} className="text-blue-600" />,
+            label: 'File Upload',
+            description: 'Upload PDFs, DOCX, TXT files',
           },
           {
-            icon: <Users size={16} className="text-emerald-600" />,
-            label: 'Users',
-            description: 'Control who can access',
+            icon: <FolderSync size={16} className="text-purple-600" />,
+            label: 'Folder Sync',
+            description: 'Sync from Google Drive, OneDrive',
+          },
+          {
+            icon: <Link size={16} className="text-green-600" />,
+            label: 'Web URLs',
+            description: 'Scrape content from websites',
+          },
+          {
+            icon: <Youtube size={16} className="text-red-600" />,
+            label: 'YouTube',
+            description: 'Extract video transcripts',
           },
         ],
       },
@@ -124,8 +163,31 @@ export default function WelcomeScreen({
       iconBgClass: 'bg-purple-100 text-purple-600',
     },
     {
+      id: 'users',
+      icon: <Users size={24} />,
+      title: 'Manage Users',
+      shortDescription: 'Control access and permissions',
+      expandedContent: {
+        description:
+          'Add users and assign them to categories they can access.',
+        bullets: [
+          'Add users by email',
+          'Assign roles: User, Superuser, Admin',
+          'Subscribe users to specific categories',
+          'Superusers can manage their assigned categories',
+        ],
+      },
+      actionButton: {
+        label: 'Manage Users',
+        route: '/admin?tab=users',
+      },
+      minRole: 'admin',
+      colorClass: 'border-emerald-200 hover:border-emerald-300',
+      iconBgClass: 'bg-emerald-100 text-emerald-600',
+    },
+    {
       id: 'skills',
-      icon: <Zap size={28} />,
+      icon: <Zap size={24} />,
       title: 'Create Skills',
       shortDescription: 'Define custom AI behaviors',
       expandedContent: {
@@ -139,8 +201,7 @@ export default function WelcomeScreen({
           {
             icon: <Wrench size={16} className="text-slate-600" />,
             label: 'Tools',
-            description:
-              'Web search, charts, docs, image gen, podcasts...',
+            description: 'Web search, charts, docs, image gen, podcasts...',
           },
         ],
       },
@@ -154,7 +215,7 @@ export default function WelcomeScreen({
     },
     {
       id: 'chatbot',
-      icon: <Globe size={28} />,
+      icon: <Globe size={24} />,
       title: 'Create Chatbot',
       shortDescription: 'Embed on external websites',
       expandedContent: {
@@ -176,7 +237,7 @@ export default function WelcomeScreen({
     },
     {
       id: 'agent',
-      icon: <Bot size={28} />,
+      icon: <Bot size={24} />,
       title: 'Create Agent',
       shortDescription: 'API for external systems',
       expandedContent: {
@@ -199,20 +260,113 @@ export default function WelcomeScreen({
     },
   ];
 
-  const visibleCards = actionCards.filter((card) =>
+  // Things to do here - use cases
+  const useCaseCards: UseCaseCard[] = [
+    {
+      id: 'policy-explainer',
+      icon: <BookOpen size={24} />,
+      title: 'Policy Explainer',
+      description: 'Get clear explanations of complex policy documents',
+      colorClass: 'border-blue-200 hover:border-blue-300 hover:shadow-md',
+      iconBgClass: 'bg-blue-100 text-blue-600',
+    },
+    {
+      id: 'podcasts',
+      icon: <Mic size={24} />,
+      title: 'Generate Podcasts',
+      description: 'Create audio content from your documents',
+      colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
+      iconBgClass: 'bg-purple-100 text-purple-600',
+    },
+    {
+      id: 'infographics',
+      icon: <Image size={24} />,
+      title: 'Create Infographics',
+      description: 'Generate visual summaries and diagrams',
+      colorClass: 'border-pink-200 hover:border-pink-300 hover:shadow-md',
+      iconBgClass: 'bg-pink-100 text-pink-600',
+    },
+    {
+      id: 'charts',
+      icon: <BarChart3 size={24} />,
+      title: 'Generate Charts',
+      description: 'Create data visualizations from your content',
+      colorClass: 'border-indigo-200 hover:border-indigo-300 hover:shadow-md',
+      iconBgClass: 'bg-indigo-100 text-indigo-600',
+    },
+    {
+      id: 'gantt',
+      icon: <GanttChart size={24} />,
+      title: 'Gantt Charts',
+      description: 'Build project timelines and schedules',
+      colorClass: 'border-orange-200 hover:border-orange-300 hover:shadow-md',
+      iconBgClass: 'bg-orange-100 text-orange-600',
+    },
+    {
+      id: 'roadmaps',
+      icon: <Map size={24} />,
+      title: 'Create Roadmaps',
+      description: 'Plan and visualize project milestones',
+      colorClass: 'border-teal-200 hover:border-teal-300 hover:shadow-md',
+      iconBgClass: 'bg-teal-100 text-teal-600',
+    },
+    {
+      id: 'govt-initiatives',
+      icon: <Landmark size={24} />,
+      title: 'Government Initiatives',
+      description: 'Roadmaps for policy implementation',
+      colorClass: 'border-slate-200 hover:border-slate-300 hover:shadow-md',
+      iconBgClass: 'bg-slate-100 text-slate-600',
+    },
+    {
+      id: 'raid-logs',
+      icon: <ClipboardList size={24} />,
+      title: 'RAID Logs',
+      description: 'Track Risks, Assumptions, Issues, Dependencies',
+      colorClass: 'border-red-200 hover:border-red-300 hover:shadow-md',
+      iconBgClass: 'bg-red-100 text-red-600',
+    },
+    {
+      id: 'translate',
+      icon: <Languages size={24} />,
+      title: 'Translate Documents',
+      description: 'Multi-language translation support',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
+    },
+    {
+      id: 'feedback',
+      icon: <MessageCircle size={24} />,
+      title: 'Service Feedback',
+      description: 'Analyze and summarize feedback data',
+      colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
+      iconBgClass: 'bg-amber-100 text-amber-600',
+    },
+    {
+      id: 'external-systems',
+      icon: <Bot size={24} />,
+      title: 'External Integrations',
+      description: 'Connect to APIs and external systems',
+      colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
+      iconBgClass: 'bg-emerald-100 text-emerald-600',
+    },
+    {
+      id: 'spreadsheets',
+      icon: <FileSpreadsheet size={24} />,
+      title: 'Analyze Spreadsheets',
+      description: 'Extract insights from Excel and CSV data',
+      colorClass: 'border-green-200 hover:border-green-300 hover:shadow-md',
+      iconBgClass: 'bg-green-100 text-green-600',
+    },
+  ];
+
+  const visibleSetupCards = setupCards.filter((card) =>
     canAccess(userRole, card.minRole)
   );
 
-  // Flow questions between cards
-  const flowQuestions: Record<string, string> = {
-    chat: 'Where does the knowledge come from?',
-    category: 'How can I customize AI responses?',
-    skills: 'How can I deploy this externally?',
-  };
-
   return (
     <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 overflow-y-auto">
-      <div className="max-w-3xl w-full">
+      <div className="max-w-4xl w-full">
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
@@ -234,339 +388,199 @@ export default function WelcomeScreen({
           </Button>
         </div>
 
-        {/* Section Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            What You Can Do
-          </h2>
+        {/* Tabs */}
+        <div className="flex justify-center mb-6">
+          <div className="inline-flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('usecases')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'usecases'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles size={16} />
+                Things to Do Here
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('setup')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'setup'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Settings size={16} />
+                Setup the Platform
+              </span>
+            </button>
+          </div>
         </div>
 
-        {/* Action Flow */}
-        <div className="space-y-3">
-          {visibleCards.map((card, index) => {
-            const isExpanded = expandedCard === card.id;
-            const showFlowQuestion =
-              flowQuestions[card.id] &&
-              index < visibleCards.length - 1 &&
-              canAccess(userRole, visibleCards[index + 1]?.minRole || 'admin');
-
-            // Check if this is the last single card or part of the deployment pair
-            const isDeploymentCard =
-              card.id === 'chatbot' || card.id === 'agent';
-            const nextCard = visibleCards[index + 1];
-            const isFirstOfDeploymentPair =
-              card.id === 'chatbot' && nextCard?.id === 'agent';
-            const isSecondOfDeploymentPair = card.id === 'agent';
-
-            // Render deployment cards side by side
-            if (isSecondOfDeploymentPair) {
-              return null; // Will be rendered with chatbot
-            }
-
-            if (isFirstOfDeploymentPair) {
-              const agentCard = nextCard;
-              const agentExpanded = expandedCard === 'agent';
-
-              return (
-                <div key="deployment-pair">
-                  {/* Flow connector */}
-                  <div className="flex flex-col items-center py-2">
-                    <ArrowDown size={20} className="text-gray-300" />
-                  </div>
-
-                  {/* Side by side deployment cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Chatbot Card */}
+        {/* Tab Content */}
+        {activeTab === 'usecases' && (
+          <div className="space-y-4">
+            {/* Use Case Cards Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {useCaseCards.map((card) => (
+                <div
+                  key={card.id}
+                  onClick={onNewThread}
+                  className={`bg-white rounded-xl border-2 ${card.colorClass} p-4 cursor-pointer transition-all duration-200`}
+                >
+                  <div className="flex flex-col items-center text-center gap-2">
                     <div
-                      className={`bg-white rounded-xl border-2 ${card.colorClass} transition-all duration-200 cursor-pointer`}
-                      onClick={() => toggleCard(card.id)}
+                      className={`p-2.5 rounded-xl ${card.iconBgClass}`}
                     >
-                      <div className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`shrink-0 p-2.5 rounded-xl ${card.iconBgClass}`}
-                          >
-                            {card.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold text-gray-900">
-                                {card.title}
-                              </h3>
-                              {isExpanded ? (
-                                <ChevronUp
-                                  size={18}
-                                  className="text-gray-400"
-                                />
-                              ) : (
-                                <ChevronDown
-                                  size={18}
-                                  className="text-gray-400"
-                                />
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-500 mt-0.5">
-                              {card.shortDescription}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Expanded content */}
-                        {isExpanded && (
-                          <div className="mt-4 pt-4 border-t border-gray-100">
-                            <p className="text-sm text-gray-700 mb-3">
-                              {card.expandedContent.description}
-                            </p>
-                            <ul className="space-y-1.5 mb-4">
-                              {card.expandedContent.bullets.map(
-                                (bullet, idx) => (
-                                  <li
-                                    key={idx}
-                                    className="text-sm text-gray-600 flex items-start gap-2"
-                                  >
-                                    <span className="text-gray-400 mt-1">
-                                      •
-                                    </span>
-                                    {bullet}
-                                  </li>
-                                )
-                              )}
-                            </ul>
-                            {card.actionButton && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(card.actionButton!.route);
-                                }}
-                                className="flex items-center gap-1.5"
-                              >
-                                {card.actionButton.label}
-                                <ExternalLink size={14} />
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      {card.icon}
                     </div>
-
-                    {/* Agent Card */}
-                    <div
-                      className={`bg-white rounded-xl border-2 ${agentCard.colorClass} transition-all duration-200 cursor-pointer`}
-                      onClick={() => toggleCard(agentCard.id)}
-                    >
-                      <div className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`shrink-0 p-2.5 rounded-xl ${agentCard.iconBgClass}`}
-                          >
-                            {agentCard.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold text-gray-900">
-                                {agentCard.title}
-                              </h3>
-                              {agentExpanded ? (
-                                <ChevronUp
-                                  size={18}
-                                  className="text-gray-400"
-                                />
-                              ) : (
-                                <ChevronDown
-                                  size={18}
-                                  className="text-gray-400"
-                                />
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-500 mt-0.5">
-                              {agentCard.shortDescription}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Expanded content */}
-                        {agentExpanded && (
-                          <div className="mt-4 pt-4 border-t border-gray-100">
-                            <p className="text-sm text-gray-700 mb-3">
-                              {agentCard.expandedContent.description}
-                            </p>
-                            <ul className="space-y-1.5 mb-4">
-                              {agentCard.expandedContent.bullets.map(
-                                (bullet, idx) => (
-                                  <li
-                                    key={idx}
-                                    className="text-sm text-gray-600 flex items-start gap-2"
-                                  >
-                                    <span className="text-gray-400 mt-1">
-                                      •
-                                    </span>
-                                    {bullet}
-                                  </li>
-                                )
-                              )}
-                            </ul>
-                            {agentCard.actionButton && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(agentCard.actionButton!.route);
-                                }}
-                                className="flex items-center gap-1.5"
-                              >
-                                {agentCard.actionButton.label}
-                                <ExternalLink size={14} />
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <h3 className="font-medium text-gray-900 text-sm">
+                      {card.title}
+                    </h3>
+                    <p className="text-xs text-gray-500 line-clamp-2">
+                      {card.description}
+                    </p>
                   </div>
                 </div>
-              );
-            }
+              ))}
+            </div>
+          </div>
+        )}
 
-            return (
-              <div key={card.id}>
-                {/* Flow connector with question */}
-                {index > 0 && (
-                  <div className="flex flex-col items-center py-2">
-                    <ArrowDown size={20} className="text-gray-300" />
-                  </div>
-                )}
+        {activeTab === 'setup' && (
+          <div className="space-y-4">
+            {/* Setup Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {visibleSetupCards.map((card) => {
+                const isExpanded = expandedCard === card.id;
 
-                {/* Card */}
-                <div
-                  className={`bg-white rounded-xl border-2 ${card.colorClass} transition-all duration-200 cursor-pointer`}
-                  onClick={() => toggleCard(card.id)}
-                >
-                  <div className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`shrink-0 p-2.5 rounded-xl ${card.iconBgClass}`}
-                      >
-                        {card.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-semibold text-gray-900">
-                            {card.title}
-                          </h3>
-                          {isExpanded ? (
-                            <ChevronUp size={18} className="text-gray-400" />
-                          ) : (
-                            <ChevronDown size={18} className="text-gray-400" />
-                          )}
+                return (
+                  <div
+                    key={card.id}
+                    className={`bg-white rounded-xl border-2 ${card.colorClass} transition-all duration-200 cursor-pointer`}
+                    onClick={() => toggleCard(card.id)}
+                  >
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`shrink-0 p-2 rounded-xl ${card.iconBgClass}`}
+                        >
+                          {card.icon}
                         </div>
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {card.shortDescription}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900">
+                              {card.title}
+                            </h3>
+                            {isExpanded ? (
+                              <ChevronUp size={18} className="text-gray-400" />
+                            ) : (
+                              <ChevronDown
+                                size={18}
+                                className="text-gray-400"
+                              />
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 mt-0.5">
+                            {card.shortDescription}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Expanded content */}
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
-                        <p className="text-sm text-gray-700 mb-3">
-                          {card.expandedContent.description}
-                        </p>
-                        <ul className="space-y-1.5 mb-4">
-                          {card.expandedContent.bullets.map((bullet, idx) => (
-                            <li
-                              key={idx}
-                              className="text-sm text-gray-600 flex items-start gap-2"
-                            >
-                              <span className="text-gray-400 mt-1">•</span>
-                              {bullet}
-                            </li>
-                          ))}
-                        </ul>
+                      {/* Expanded content */}
+                      {isExpanded && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                          <p className="text-sm text-gray-700 mb-3">
+                            {card.expandedContent.description}
+                          </p>
+                          <ul className="space-y-1.5 mb-4">
+                            {card.expandedContent.bullets.map((bullet, idx) => (
+                              <li
+                                key={idx}
+                                className="text-sm text-gray-600 flex items-start gap-2"
+                              >
+                                <span className="text-gray-400 mt-1">•</span>
+                                {bullet}
+                              </li>
+                            ))}
+                          </ul>
 
-                        {/* Sub-items */}
-                        {card.expandedContent.subItems && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-                            {card.expandedContent.subItems.map(
-                              (subItem, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg"
-                                >
-                                  <div className="shrink-0">{subItem.icon}</div>
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-medium text-gray-700">
-                                      {subItem.label}
-                                    </div>
-                                    <div className="text-xs text-gray-500 truncate">
-                                      {subItem.description}
+                          {/* Sub-items */}
+                          {card.expandedContent.subItems && (
+                            <div className="grid grid-cols-2 gap-2 mb-4">
+                              {card.expandedContent.subItems.map(
+                                (subItem, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"
+                                  >
+                                    <div className="shrink-0">{subItem.icon}</div>
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-medium text-gray-700">
+                                        {subItem.label}
+                                      </div>
+                                      <div className="text-xs text-gray-500 truncate">
+                                        {subItem.description}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
+                                )
+                              )}
+                            </div>
+                          )}
 
-                        {/* Action button */}
-                        {card.actionButton && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(card.actionButton!.route);
-                            }}
-                            className="flex items-center gap-1.5"
-                          >
-                            {card.actionButton.label}
-                            <ExternalLink size={14} />
-                          </Button>
-                        )}
+                          {/* Action button */}
+                          {card.actionButton && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(card.actionButton!.route);
+                              }}
+                              className="flex items-center gap-1.5"
+                            >
+                              {card.actionButton.label}
+                              <ExternalLink size={14} />
+                            </Button>
+                          )}
 
-                        {/* New Thread button for chat card */}
-                        {card.id === 'chat' && (
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNewThread?.();
-                            }}
-                            className="flex items-center gap-1.5"
-                          >
-                            <MessageSquarePlus size={14} />
-                            New Thread
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                          {/* New Thread button for chat card */}
+                          {card.id === 'chat' && (
+                            <Button
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNewThread?.();
+                              }}
+                              className="flex items-center gap-1.5"
+                            >
+                              <MessageSquarePlus size={14} />
+                              New Thread
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
 
-                {/* Flow question */}
-                {showFlowQuestion && !isDeploymentCard && (
-                  <div className="flex justify-center py-3">
-                    <span className="text-xs text-gray-400 italic">
-                      {flowQuestions[card.id]}
-                    </span>
-                  </div>
-                )}
+            {/* Regular user info section */}
+            {userRole === 'user' && (
+              <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <h3 className="font-medium text-gray-700 mb-2">How It Works</h3>
+                <p className="text-sm text-gray-600">
+                  Your administrator has set up knowledge categories with
+                  documents you can query. Select a category when starting a new
+                  thread to get focused answers from relevant documents.
+                </p>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Regular user info section */}
-        {userRole === 'user' && (
-          <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <h3 className="font-medium text-gray-700 mb-2">How It Works</h3>
-            <p className="text-sm text-gray-600">
-              Your administrator has set up knowledge categories with documents
-              you can query. Select a category when starting a new thread to get
-              focused answers from relevant documents.
-            </p>
+            )}
           </div>
         )}
       </div>

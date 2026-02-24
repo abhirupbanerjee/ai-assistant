@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAgentBotById } from '@/lib/db/agent-bots';
 import { getUsageStats, listJobsForAgentBot } from '@/lib/db/agent-bot-jobs';
+import { listApiKeys } from '@/lib/db/agent-bot-api-keys';
+import { getVersionById } from '@/lib/db/agent-bot-versions';
 import { requireElevated } from '@/lib/auth';
 
 // ============================================================================
@@ -34,17 +36,26 @@ export async function GET(
     const daysParam = url.searchParams.get('days');
     const days = daysParam ? parseInt(daysParam, 10) : 30;
 
-    // Get usage statistics
+    // Get usage statistics for current and previous periods
     const stats = getUsageStats(id, days);
+    const prevStats = getUsageStats(id, days * 2); // Get double period for comparison
+
+    // Calculate change percentages
+    const prevRequests = prevStats.totalRequests - stats.totalRequests;
+    const prevTokens = prevStats.totalTokens - stats.totalTokens;
+    const requestsChange = prevRequests > 0
+      ? ((stats.totalRequests - prevRequests) / prevRequests) * 100
+      : 0;
+    const tokensChange = prevTokens > 0
+      ? ((stats.totalTokens - prevTokens) / prevTokens) * 100
+      : 0;
 
     // Get recent jobs
     const recentJobs = listJobsForAgentBot(id, 20);
 
-    // Calculate success rate
-    const completedJobs = recentJobs.filter((j) => j.status === 'completed').length;
-    const failedJobs = recentJobs.filter((j) => j.status === 'failed').length;
-    const totalJobs = completedJobs + failedJobs;
-    const successRate = totalJobs > 0 ? (completedJobs / totalJobs) * 100 : 0;
+    // Calculate success/failure counts
+    const successfulRequests = recentJobs.filter((j) => j.status === 'completed').length;
+    const failedRequests = recentJobs.filter((j) => j.status === 'failed').length;
 
     // Calculate average processing time
     const jobsWithTime = recentJobs.filter((j) => j.processing_time_ms);
@@ -54,32 +65,66 @@ export async function GET(
           jobsWithTime.length
         : 0;
 
-    // Aggregate by output type
+    // Aggregate by output type with percentages
     const outputTypeCounts: Record<string, number> = {};
     for (const job of recentJobs) {
       const type = job.output_type || 'unknown';
       outputTypeCounts[type] = (outputTypeCounts[type] || 0) + 1;
     }
+    const totalOutputs = Object.values(outputTypeCounts).reduce((a, b) => a + b, 0);
+    const byOutputType = Object.entries(outputTypeCounts).map(([type, count]) => ({
+      type,
+      count,
+      percentage: totalOutputs > 0 ? (count / totalOutputs) * 100 : 0,
+    }));
 
-    // Aggregate by status
-    const statusCounts: Record<string, number> = {};
+    // Aggregate by API key with percentages
+    const apiKeys = listApiKeys(id);
+    const apiKeyUsage: Record<string, { name: string; prefix: string; count: number }> = {};
+    for (const key of apiKeys) {
+      apiKeyUsage[key.id] = { name: key.name, prefix: key.key_prefix, count: 0 };
+    }
     for (const job of recentJobs) {
-      statusCounts[job.status] = (statusCounts[job.status] || 0) + 1;
+      if (job.api_key_id && apiKeyUsage[job.api_key_id]) {
+        apiKeyUsage[job.api_key_id].count++;
+      }
+    }
+    const totalByKey = Object.values(apiKeyUsage).reduce((a, b) => a + b.count, 0);
+    const byApiKey = Object.values(apiKeyUsage)
+      .filter((k) => k.count > 0)
+      .map((k) => ({
+        key_name: k.name,
+        key_prefix: k.prefix,
+        requests: k.count,
+        percentage: totalByKey > 0 ? (k.count / totalByKey) * 100 : 0,
+      }));
+
+    // Build version number lookup map
+    const versionIds = [...new Set(recentJobs.map((j) => j.version_id))];
+    const versionNumberMap: Record<string, number> = {};
+    for (const versionId of versionIds) {
+      const version = getVersionById(versionId);
+      if (version) {
+        versionNumberMap[versionId] = version.version_number;
+      }
     }
 
     return NextResponse.json({
       summary: {
-        totalRequests: stats.totalRequests,
-        totalTokens: stats.totalTokens,
-        totalErrors: stats.totalErrors,
-        successRate: Math.round(successRate * 10) / 10,
-        avgProcessingTimeMs: Math.round(avgProcessingTime),
+        totalRequests: stats.totalRequests || 0,
+        successfulRequests,
+        failedRequests,
+        totalTokens: stats.totalTokens || 0,
+        avgProcessingTimeMs: Math.round(avgProcessingTime) || 0,
+        requestsChange: Math.round(requestsChange * 10) / 10 || 0,
+        tokensChange: Math.round(tokensChange * 10) / 10 || 0,
       },
-      dailyStats: stats.dailyStats,
-      byOutputType: outputTypeCounts,
-      byStatus: statusCounts,
+      dailyStats: stats.dailyStats || [],
+      byOutputType,
+      byApiKey,
       recentJobs: recentJobs.map((job) => ({
         id: job.id,
+        version_number: versionNumberMap[job.version_id] || 1,
         status: job.status,
         output_type: job.output_type,
         processing_time_ms: job.processing_time_ms,
