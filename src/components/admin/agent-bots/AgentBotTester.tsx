@@ -6,8 +6,8 @@
  * Interactive test panel for trying out an agent bot with sample inputs.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { PlayCircle, AlertCircle, Download, Clock } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { PlayCircle, AlertCircle, Download, Clock, Upload, X, FileText } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -32,6 +32,10 @@ interface Version {
     }>;
     files?: {
       enabled: boolean;
+      maxFiles?: number;
+      maxSizePerFileMB?: number;
+      allowedTypes?: string[];
+      required?: boolean;
     };
   };
   output_config: {
@@ -72,6 +76,12 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [outputType, setOutputType] = useState('');
   const [isAsync, setIsAsync] = useState(false);
+
+  // File upload state
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [uploadedFileIds, setUploadedFileIds] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Test state
   const [isTesting, setIsTesting] = useState(false);
@@ -127,7 +137,98 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
         initialValues[param.name] = param.default?.toString() || '';
       });
       setInputValues(initialValues);
+
+      // Reset files
+      setUploadedFiles([]);
+      setUploadedFileIds([]);
     }
+  };
+
+  // Handle file selection
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileConfig = selectedVersion?.input_schema.files;
+    const maxFiles = fileConfig?.maxFiles || 5;
+    const maxSizeMB = fileConfig?.maxSizePerFileMB || 10;
+    const allowedTypes = fileConfig?.allowedTypes;
+
+    // Validate and add files
+    const newFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      // Check max files
+      if (uploadedFiles.length + newFiles.length >= maxFiles) {
+        setError(`Maximum ${maxFiles} files allowed`);
+        break;
+      }
+
+      // Check file size
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        setError(`File "${file.name}" exceeds ${maxSizeMB}MB limit`);
+        continue;
+      }
+
+      // Check file type
+      if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(file.type)) {
+        setError(`File type "${file.type}" not allowed`);
+        continue;
+      }
+
+      newFiles.push(file);
+    }
+
+    if (newFiles.length > 0) {
+      setUploadedFiles((prev) => [...prev, ...newFiles]);
+      setError(null);
+
+      // Upload files to get file IDs
+      await uploadFiles(newFiles);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Upload files to server
+  const uploadFiles = async (files: File[]) => {
+    setIsUploading(true);
+    try {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`/api/agent-bots/${agentBot.slug}/upload`, {
+          method: 'POST',
+          headers: {
+            'X-Admin-Test': 'true',
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to upload file');
+        }
+
+        const data = await response.json();
+        setUploadedFileIds((prev) => [...prev, data.fileId]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload files');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Remove file
+  const handleRemoveFile = (index: number) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+    setUploadedFileIds((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Run test
@@ -155,6 +256,19 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
         }
       });
 
+      // Build request body
+      const requestBody: Record<string, unknown> = {
+        input,
+        version: selectedVersion.version_number,
+        outputType,
+        async: isAsync,
+      };
+
+      // Include file IDs if any files were uploaded
+      if (uploadedFileIds.length > 0) {
+        requestBody.files = uploadedFileIds;
+      }
+
       // Make test request (using internal test endpoint)
       const response = await fetch(`/api/agent-bots/${agentBot.slug}/invoke`, {
         method: 'POST',
@@ -163,12 +277,7 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
           // Use a test header to bypass API key requirement for admin testing
           'X-Admin-Test': 'true',
         },
-        body: JSON.stringify({
-          input,
-          version: selectedVersion.version_number,
-          outputType,
-          async: isAsync,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -340,6 +449,90 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
             ))}
           </div>
 
+          {/* File Upload */}
+          {selectedVersion?.input_schema.files?.enabled && (
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Files
+                {selectedVersion.input_schema.files.required && (
+                  <span className="text-red-500"> *</span>
+                )}
+                <span className="ml-2 text-xs text-gray-400 font-normal">
+                  Max {selectedVersion.input_schema.files.maxFiles || 5} files,{' '}
+                  {selectedVersion.input_schema.files.maxSizePerFileMB || 10}MB each
+                </span>
+              </label>
+
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                accept={selectedVersion.input_schema.files.allowedTypes?.join(',')}
+                className="hidden"
+              />
+
+              {/* Upload button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
+              >
+                <div className="flex flex-col items-center gap-2 text-gray-500 dark:text-gray-400">
+                  {isUploading ? (
+                    <>
+                      <Spinner size="sm" />
+                      <span className="text-sm">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-6 h-6" />
+                      <span className="text-sm">Click to upload files</span>
+                      {selectedVersion.input_schema.files.allowedTypes && (
+                        <span className="text-xs">
+                          {selectedVersion.input_schema.files.allowedTypes
+                            .map((t) => t.split('/')[1]?.toUpperCase() || t)
+                            .join(', ')}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              </button>
+
+              {/* Uploaded files list */}
+              {uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  {uploadedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                          {file.name}
+                        </span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">
+                          ({(file.size / 1024).toFixed(1)} KB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(index)}
+                        className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                      >
+                        <X className="w-4 h-4 text-gray-500" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Async Mode */}
           <label className="flex items-center gap-2">
             <input
@@ -410,32 +603,50 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
               )}
 
               {/* Outputs */}
-              {testResult.outputs?.map((output, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 uppercase">
-                      {output.type}
-                    </span>
-                    {output.downloadUrl && (
-                      <a
-                        href={output.downloadUrl}
-                        download={output.filename}
-                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                      >
-                        <Download className="w-3 h-3" />
-                        Download
-                      </a>
+              {testResult.outputs?.map((output, index) => {
+                const isFileType = ['pdf', 'docx', 'xlsx', 'pptx', 'image', 'podcast'].includes(output.type);
+
+                return (
+                  <div key={index} className="space-y-2">
+                    {isFileType ? (
+                      // File output: show filename + download button
+                      <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-900 rounded">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">
+                            {output.filename || `output.${output.type}`}
+                          </span>
+                          <span className="text-xs text-gray-400 uppercase">
+                            {output.type}
+                          </span>
+                        </div>
+                        {output.downloadUrl && (
+                          <a
+                            href={output.downloadUrl}
+                            download={output.filename}
+                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      // Text output: show content
+                      <>
+                        <span className="text-xs text-gray-500 uppercase">
+                          {output.type}
+                        </span>
+                        <pre className="p-3 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-auto max-h-64 whitespace-pre-wrap">
+                          {typeof output.content === 'string'
+                            ? output.content
+                            : JSON.stringify(output.content, null, 2)}
+                        </pre>
+                      </>
                     )}
                   </div>
-                  {output.content !== undefined && (
-                    <pre className="p-3 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-auto max-h-64 whitespace-pre-wrap">
-                      {typeof output.content === 'string'
-                        ? output.content
-                        : JSON.stringify(output.content, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               {/* Job ID */}
               {testResult.jobId && (

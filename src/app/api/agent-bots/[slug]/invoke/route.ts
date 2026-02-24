@@ -31,7 +31,46 @@ import {
   formatOutputsForWebhook,
 } from '@/lib/agent-bot/webhook';
 import { getJobWithOutputs } from '@/lib/db/agent-bot-jobs';
-import type { InvokeRequest, InvokeResponse, AsyncJobResponse, AgentBotError } from '@/types/agent-bot';
+import { getActiveAgentBotBySlug } from '@/lib/db/agent-bots';
+import { getCurrentUser } from '@/lib/auth';
+import type { InvokeRequest, InvokeResponse, AsyncJobResponse, AgentBotError, RateLimitInfo } from '@/types/agent-bot';
+
+// ============================================================================
+// Admin Test Mode
+// ============================================================================
+
+/**
+ * Check if admin test mode is enabled
+ */
+async function isAdminTest(request: NextRequest): Promise<boolean> {
+  const adminTestHeader = request.headers.get('X-Admin-Test');
+  if (adminTestHeader !== 'true') {
+    return false;
+  }
+
+  // Verify user is authenticated as admin
+  try {
+    const user = await getCurrentUser();
+    return user?.role === 'admin' || user?.role === 'superuser';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create mock rate limit info for admin testing
+ */
+function createMockRateLimitInfo(): RateLimitInfo {
+  const now = new Date();
+  return {
+    limitMinute: 9999,
+    remainingMinute: 9999,
+    resetMinute: new Date(now.getTime() + 60000),
+    limitDay: 99999,
+    remainingDay: 99999,
+    resetDay: new Date(now.getTime() + 86400000),
+  };
+}
 
 // ============================================================================
 // Route Handler
@@ -43,13 +82,51 @@ export async function POST(
 ): Promise<NextResponse<InvokeResponse | AsyncJobResponse | AgentBotError>> {
   const { slug } = await params;
 
-  // 1. Authenticate request
-  const authResult = authenticateRequest(request, slug);
-  if (isAuthError(authResult)) {
-    return authResult;
+  // Check for admin test mode
+  const adminTestMode = await isAdminTest(request);
+
+  let agentBot;
+  let apiKey;
+  let rateLimitInfo: RateLimitInfo;
+
+  if (adminTestMode) {
+    // Admin test mode - bypass API key authentication
+    const bot = getActiveAgentBotBySlug(slug);
+    if (!bot) {
+      return agentBotErrors.agentBotNotFound();
+    }
+    agentBot = bot;
+    // Create mock API key for admin testing
+    apiKey = {
+      id: 'admin-test',
+      agent_bot_id: bot.id,
+      name: 'Admin Test',
+      key_prefix: 'admin',
+      key_hash: '',
+      permissions: ['invoke'] as string[],
+      rate_limit_rpm: 9999,
+      rate_limit_rpd: 99999,
+      expires_at: null,
+      last_used_at: null,
+      is_active: true,
+      created_by: 'admin',
+      created_at: new Date().toISOString(),
+      revoked_at: null,
+    };
+    rateLimitInfo = createMockRateLimitInfo();
+  } else {
+    // 1. Authenticate request
+    const authResult = authenticateRequest(request, slug);
+    if (isAuthError(authResult)) {
+      return authResult;
+    }
+    agentBot = authResult.agentBot;
+    apiKey = authResult.apiKey;
+    rateLimitInfo = authResult.rateLimitInfo;
   }
 
-  const { agentBot, apiKey, rateLimitInfo } = authResult;
+  // Create authResult-like object for recordUsage
+  const authContext = { agentBot, apiKey, rateLimitInfo };
 
   try {
     // 2. Parse request body
@@ -98,7 +175,7 @@ export async function POST(
       const job = createAsyncJob(agentBot, apiKey, body, version);
 
       // Record usage (will be updated with actual tokens later)
-      recordUsage(authResult, 0, false);
+      recordUsage(authContext, 0, false);
 
       // Process in background (fire and forget)
       processAsyncJob(
@@ -124,7 +201,7 @@ export async function POST(
     const result = await executeInvocation(agentBot, apiKey, body);
 
     // Record usage
-    recordUsage(authResult, result.tokenUsage?.totalTokens || 0, !result.success);
+    recordUsage(authContext, result.tokenUsage?.totalTokens || 0, !result.success);
 
     if (!result.success) {
       const response = agentBotErrors.processingError(result.error?.message);
@@ -146,7 +223,7 @@ export async function POST(
     console.error('[AgentBot] Invoke error:', error);
 
     // Record error
-    recordUsage(authResult, 0, true);
+    recordUsage(authContext, 0, true);
 
     const errorMessage = error instanceof Error ? error.message : 'Internal error';
     return agentBotErrors.processingError(errorMessage);

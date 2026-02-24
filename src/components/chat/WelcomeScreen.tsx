@@ -7,7 +7,6 @@ import {
   Zap,
   Globe,
   Bot,
-  FileText,
   Users,
   Wrench,
   ChevronDown,
@@ -22,7 +21,6 @@ import {
   FileSpreadsheet,
   Languages,
   Image,
-  AlertTriangle,
   Map,
   MessageCircle,
   BookOpen,
@@ -31,6 +29,9 @@ import {
   Landmark,
   Settings,
   Sparkles,
+  Database,
+  DollarSign,
+  PieChart,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -102,7 +103,7 @@ export default function WelcomeScreen({
     {
       id: 'chat',
       icon: <MessageSquarePlus size={24} />,
-      title: 'Start a Chat',
+      title: 'Chat',
       shortDescription: 'Ask questions about your documents',
       expandedContent: {
         description: 'Begin a conversation with the AI assistant.',
@@ -121,7 +122,7 @@ export default function WelcomeScreen({
     {
       id: 'category',
       icon: <FolderOpen size={24} />,
-      title: 'Setup Categories',
+      title: 'Categories',
       shortDescription: 'Organize knowledge into domains',
       expandedContent: {
         description:
@@ -130,6 +131,28 @@ export default function WelcomeScreen({
           'Create domains like HR Policies, Legal, Finance',
           'Control user access per category',
           'Add category-specific AI behaviors',
+        ],
+      },
+      actionButton: {
+        label: 'Manage Categories',
+        route: '/manage',
+      },
+      minRole: 'superuser',
+      colorClass: 'border-purple-200 hover:border-purple-300',
+      iconBgClass: 'bg-purple-100 text-purple-600',
+    },
+    {
+      id: 'knowledge',
+      icon: <Database size={24} />,
+      title: 'Knowledge',
+      shortDescription: 'Add documents to train the AI',
+      expandedContent: {
+        description:
+          'Upload various document types to build your knowledge base. The AI uses this content to answer questions.',
+        bullets: [
+          'Multiple upload methods supported',
+          'Automatic text extraction and indexing',
+          'Supports PDFs, DOCX, TXT and more',
         ],
         subItems: [
           {
@@ -155,17 +178,17 @@ export default function WelcomeScreen({
         ],
       },
       actionButton: {
-        label: 'Manage Categories',
+        label: 'Add Documents',
         route: '/manage',
       },
       minRole: 'superuser',
-      colorClass: 'border-purple-200 hover:border-purple-300',
-      iconBgClass: 'bg-purple-100 text-purple-600',
+      colorClass: 'border-indigo-200 hover:border-indigo-300',
+      iconBgClass: 'bg-indigo-100 text-indigo-600',
     },
     {
       id: 'users',
       icon: <Users size={24} />,
-      title: 'Manage Users',
+      title: 'Users',
       shortDescription: 'Control access and permissions',
       expandedContent: {
         description:
@@ -186,9 +209,34 @@ export default function WelcomeScreen({
       iconBgClass: 'bg-emerald-100 text-emerald-600',
     },
     {
+      id: 'tools',
+      icon: <Wrench size={24} />,
+      title: 'Tools',
+      shortDescription: 'Enable AI capabilities',
+      expandedContent: {
+        description:
+          'Configure tools that the AI can use to enhance responses and generate content.',
+        bullets: [
+          'Web search for real-time information',
+          'Chart and graph generation',
+          'Document creation (PDF, DOCX)',
+          'Image generation',
+          'Podcast creation',
+          'Translation services',
+        ],
+      },
+      actionButton: {
+        label: 'Manage Tools',
+        route: '/admin?tab=tools',
+      },
+      minRole: 'admin',
+      colorClass: 'border-slate-200 hover:border-slate-300',
+      iconBgClass: 'bg-slate-100 text-slate-600',
+    },
+    {
       id: 'skills',
       icon: <Zap size={24} />,
-      title: 'Create Skills',
+      title: 'Skills',
       shortDescription: 'Define custom AI behaviors',
       expandedContent: {
         description: 'Configure how the AI responds to different queries.',
@@ -196,13 +244,6 @@ export default function WelcomeScreen({
           'Always-on skills (apply to every prompt)',
           'Category-specific skills',
           'Keyword-triggered behaviors',
-        ],
-        subItems: [
-          {
-            icon: <Wrench size={16} className="text-slate-600" />,
-            label: 'Tools',
-            description: 'Web search, charts, docs, image gen, podcasts...',
-          },
         ],
       },
       actionButton: {
@@ -216,7 +257,7 @@ export default function WelcomeScreen({
     {
       id: 'chatbot',
       icon: <Globe size={24} />,
-      title: 'Create Chatbot',
+      title: 'Workspaces',
       shortDescription: 'Embed on external websites',
       expandedContent: {
         description: 'Deploy a branded chat widget on any website.',
@@ -238,7 +279,7 @@ export default function WelcomeScreen({
     {
       id: 'agent',
       icon: <Bot size={24} />,
-      title: 'Create Agent',
+      title: 'Agents',
       shortDescription: 'API for external systems',
       expandedContent: {
         description: 'Build API-accessible bots for system integrations.',
@@ -273,7 +314,7 @@ export default function WelcomeScreen({
     {
       id: 'podcasts',
       icon: <Mic size={24} />,
-      title: 'Generate Podcasts',
+      title: 'Podcasts',
       description: 'Create audio content from your documents',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
@@ -281,15 +322,15 @@ export default function WelcomeScreen({
     {
       id: 'infographics',
       icon: <Image size={24} />,
-      title: 'Create Infographics',
+      title: 'Infographics',
       description: 'Generate visual summaries and diagrams',
       colorClass: 'border-pink-200 hover:border-pink-300 hover:shadow-md',
       iconBgClass: 'bg-pink-100 text-pink-600',
     },
     {
-      id: 'charts',
+      id: 'graphs',
       icon: <BarChart3 size={24} />,
-      title: 'Generate Charts',
+      title: 'Graphs',
       description: 'Create data visualizations from your content',
       colorClass: 'border-indigo-200 hover:border-indigo-300 hover:shadow-md',
       iconBgClass: 'bg-indigo-100 text-indigo-600',
@@ -303,18 +344,10 @@ export default function WelcomeScreen({
       iconBgClass: 'bg-orange-100 text-orange-600',
     },
     {
-      id: 'roadmaps',
-      icon: <Map size={24} />,
-      title: 'Create Roadmaps',
-      description: 'Plan and visualize project milestones',
-      colorClass: 'border-teal-200 hover:border-teal-300 hover:shadow-md',
-      iconBgClass: 'bg-teal-100 text-teal-600',
-    },
-    {
-      id: 'govt-initiatives',
+      id: 'roadmap',
       icon: <Landmark size={24} />,
-      title: 'Government Initiatives',
-      description: 'Roadmaps for policy implementation',
+      title: 'Roadmap',
+      description: 'Plan government initiatives and policy implementation',
       colorClass: 'border-slate-200 hover:border-slate-300 hover:shadow-md',
       iconBgClass: 'bg-slate-100 text-slate-600',
     },
@@ -327,9 +360,17 @@ export default function WelcomeScreen({
       iconBgClass: 'bg-red-100 text-red-600',
     },
     {
-      id: 'translate',
+      id: 'compensation',
+      icon: <DollarSign size={24} />,
+      title: 'Compensation Analyser',
+      description: 'Analyze and compare compensation structures',
+      colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
+      iconBgClass: 'bg-emerald-100 text-emerald-600',
+    },
+    {
+      id: 'translator',
       icon: <Languages size={24} />,
-      title: 'Translate Documents',
+      title: 'Translator',
       description: 'Multi-language translation support',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
@@ -337,7 +378,7 @@ export default function WelcomeScreen({
     {
       id: 'feedback',
       icon: <MessageCircle size={24} />,
-      title: 'Service Feedback',
+      title: 'Feedback Analyser',
       description: 'Analyze and summarize feedback data',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
@@ -345,15 +386,15 @@ export default function WelcomeScreen({
     {
       id: 'external-systems',
       icon: <Bot size={24} />,
-      title: 'External Integrations',
+      title: 'Integrations',
       description: 'Connect to APIs and external systems',
-      colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
-      iconBgClass: 'bg-emerald-100 text-emerald-600',
+      colorClass: 'border-teal-200 hover:border-teal-300 hover:shadow-md',
+      iconBgClass: 'bg-teal-100 text-teal-600',
     },
     {
-      id: 'spreadsheets',
-      icon: <FileSpreadsheet size={24} />,
-      title: 'Analyze Spreadsheets',
+      id: 'data-analyser',
+      icon: <PieChart size={24} />,
+      title: 'Data Analyser',
       description: 'Extract insights from Excel and CSV data',
       colorClass: 'border-green-200 hover:border-green-300 hover:shadow-md',
       iconBgClass: 'bg-green-100 text-green-600',
@@ -432,9 +473,7 @@ export default function WelcomeScreen({
                   className={`bg-white rounded-xl border-2 ${card.colorClass} p-4 cursor-pointer transition-all duration-200`}
                 >
                   <div className="flex flex-col items-center text-center gap-2">
-                    <div
-                      className={`p-2.5 rounded-xl ${card.iconBgClass}`}
-                    >
+                    <div className={`p-2.5 rounded-xl ${card.iconBgClass}`}>
                       {card.icon}
                     </div>
                     <h3 className="font-medium text-gray-900 text-sm">
@@ -452,15 +491,15 @@ export default function WelcomeScreen({
 
         {activeTab === 'setup' && (
           <div className="space-y-4">
-            {/* Setup Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Setup Cards - Using flex wrap to prevent grid stretching */}
+            <div className="flex flex-wrap gap-4">
               {visibleSetupCards.map((card) => {
                 const isExpanded = expandedCard === card.id;
 
                 return (
                   <div
                     key={card.id}
-                    className={`bg-white rounded-xl border-2 ${card.colorClass} transition-all duration-200 cursor-pointer`}
+                    className={`bg-white rounded-xl border-2 ${card.colorClass} transition-all duration-200 cursor-pointer w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.67rem)]`}
                     onClick={() => toggleCard(card.id)}
                   >
                     <div className="p-4">
@@ -517,7 +556,9 @@ export default function WelcomeScreen({
                                     key={idx}
                                     className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"
                                   >
-                                    <div className="shrink-0">{subItem.icon}</div>
+                                    <div className="shrink-0">
+                                      {subItem.icon}
+                                    </div>
                                     <div className="min-w-0">
                                       <div className="text-xs font-medium text-gray-700">
                                         {subItem.label}
