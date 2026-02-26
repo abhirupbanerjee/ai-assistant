@@ -11,13 +11,65 @@ import { toolsLogger as logger } from './logger';
 import {
   MAX_TOOL_CALL_ITERATIONS,
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
+  getEmbeddingModelById,
 } from './constants';
 import {
   isLocalEmbeddingModel,
   createLocalEmbedding,
   createLocalEmbeddings,
+  resetLocalEmbedder,
   type LocalEmbeddingModel,
 } from './local-embeddings';
+
+// ============ Fallback Tracking ============
+interface FallbackEvent {
+  primaryModel: string;
+  fallbackModel: string;
+  error: string;
+  timestamp: Date;
+}
+
+// Track recent fallback events (keep last 10)
+const recentFallbackEvents: FallbackEvent[] = [];
+const MAX_FALLBACK_EVENTS = 10;
+
+/**
+ * Record a fallback event
+ */
+function recordFallbackEvent(primaryModel: string, fallbackModel: string, error: Error | string): void {
+  const event: FallbackEvent = {
+    primaryModel,
+    fallbackModel,
+    error: error instanceof Error ? error.message : String(error),
+    timestamp: new Date(),
+  };
+  recentFallbackEvents.unshift(event);
+  if (recentFallbackEvents.length > MAX_FALLBACK_EVENTS) {
+    recentFallbackEvents.pop();
+  }
+}
+
+/**
+ * Get recent fallback events
+ */
+export function getRecentFallbackEvents(): FallbackEvent[] {
+  return [...recentFallbackEvents];
+}
+
+/**
+ * Check if fallback was used recently (within last N minutes)
+ */
+export function wasFallbackUsedRecently(minutesAgo: number = 60): FallbackEvent | null {
+  const cutoff = new Date(Date.now() - minutesAgo * 60 * 1000);
+  return recentFallbackEvents.find(e => e.timestamp > cutoff) || null;
+}
+
+/**
+ * Clear fallback events (e.g., after user acknowledges)
+ */
+export function clearFallbackEvents(): void {
+  recentFallbackEvents.length = 0;
+}
 import {
   buildConversationContext,
   formatUserMessage,
@@ -69,19 +121,50 @@ export async function createEmbedding(text: string): Promise<number[]> {
   const embeddingSettings = getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
   const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+  const fallbackModel = embeddingSettings.fallbackModel || 'text-embedding-3-large';
 
-  // Route to local embeddings if local model
-  if (isLocalEmbeddingModel(model)) {
-    return createLocalEmbedding(text, model as LocalEmbeddingModel);
+  try {
+    // Route to local embeddings if local model
+    if (isLocalEmbeddingModel(model)) {
+      return await createLocalEmbedding(text, model as LocalEmbeddingModel);
+    }
+
+    // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
+    const openai = getOpenAI();
+    const response = await openai.embeddings.create({
+      model,
+      input: text,
+    });
+    return response.data[0].embedding;
+  } catch (error) {
+    // If primary model fails and fallback is different, try fallback
+    if (fallbackModel && fallbackModel !== model) {
+      console.warn(`[Embedding] Primary model ${model} failed, falling back to ${fallbackModel}:`, error);
+
+      // Record the fallback event for UI notification
+      recordFallbackEvent(model, fallbackModel, error instanceof Error ? error : String(error));
+
+      // Reset local embedder if switching from local to different model
+      if (isLocalEmbeddingModel(model)) {
+        resetLocalEmbedder();
+      }
+
+      // Try fallback model
+      if (isLocalEmbeddingModel(fallbackModel)) {
+        return await createLocalEmbedding(text, fallbackModel as LocalEmbeddingModel);
+      }
+
+      const openai = getOpenAI();
+      const response = await openai.embeddings.create({
+        model: fallbackModel,
+        input: text,
+      });
+      return response.data[0].embedding;
+    }
+
+    // No fallback or fallback is same as primary - rethrow
+    throw error;
   }
-
-  // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
-  const openai = getOpenAI();
-  const response = await openai.embeddings.create({
-    model,
-    input: text,
-  });
-  return response.data[0].embedding;
 }
 
 export async function createEmbeddings(texts: string[]): Promise<number[][]> {
@@ -90,19 +173,50 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   const embeddingSettings = getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
   const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+  const fallbackModel = embeddingSettings.fallbackModel || 'text-embedding-3-large';
 
-  // Route to local embeddings if local model
-  if (isLocalEmbeddingModel(model)) {
-    return createLocalEmbeddings(texts, model as LocalEmbeddingModel);
+  try {
+    // Route to local embeddings if local model
+    if (isLocalEmbeddingModel(model)) {
+      return await createLocalEmbeddings(texts, model as LocalEmbeddingModel);
+    }
+
+    // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
+    const openai = getOpenAI();
+    const response = await openai.embeddings.create({
+      model,
+      input: texts,
+    });
+    return response.data.map(d => d.embedding);
+  } catch (error) {
+    // If primary model fails and fallback is different, try fallback
+    if (fallbackModel && fallbackModel !== model) {
+      console.warn(`[Embedding] Primary model ${model} failed for batch, falling back to ${fallbackModel}:`, error);
+
+      // Record the fallback event for UI notification
+      recordFallbackEvent(model, fallbackModel, error instanceof Error ? error : String(error));
+
+      // Reset local embedder if switching from local to different model
+      if (isLocalEmbeddingModel(model)) {
+        resetLocalEmbedder();
+      }
+
+      // Try fallback model
+      if (isLocalEmbeddingModel(fallbackModel)) {
+        return await createLocalEmbeddings(texts, fallbackModel as LocalEmbeddingModel);
+      }
+
+      const openai = getOpenAI();
+      const response = await openai.embeddings.create({
+        model: fallbackModel,
+        input: texts,
+      });
+      return response.data.map(d => d.embedding);
+    }
+
+    // No fallback or fallback is same as primary - rethrow
+    throw error;
   }
-
-  // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
-  const openai = getOpenAI();
-  const response = await openai.embeddings.create({
-    model,
-    input: texts,
-  });
-  return response.data.map(d => d.embedding);
 }
 
 export async function generateResponse(

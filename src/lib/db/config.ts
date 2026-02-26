@@ -103,8 +103,9 @@ export const DEFAULT_PWA_SETTINGS: PWASettings = {
 };
 
 export interface EmbeddingSettings {
-  model: string;        // e.g., 'text-embedding-3-large'
-  dimensions: number;   // e.g., 3072
+  model: string;           // e.g., 'text-embedding-3-large'
+  dimensions: number;      // e.g., 3072
+  fallbackModel?: string;  // Fallback model if primary fails (default: 'text-embedding-3-large')
 }
 
 export type RerankerProvider = 'bge-large' | 'cohere' | 'bge-base' | 'local';
@@ -576,17 +577,29 @@ export function getBrandingSettings(): BrandingSettings {
   return config.branding;
 }
 
+/** Default fallback embedding model (OpenAI Large - most reliable) */
+export const DEFAULT_FALLBACK_EMBEDDING_MODEL = 'text-embedding-3-large';
+
 /**
  * Get embedding settings
  * Priority: SQLite > JSON config > hardcoded defaults
  */
 export function getEmbeddingSettings(): EmbeddingSettings {
   const dbSettings = getSetting<EmbeddingSettings>('embedding-settings');
-  if (dbSettings) return dbSettings;
+  if (dbSettings) {
+    // Ensure fallbackModel has a default
+    return {
+      ...dbSettings,
+      fallbackModel: dbSettings.fallbackModel || DEFAULT_FALLBACK_EMBEDDING_MODEL,
+    };
+  }
 
   // Fall back to JSON config
   const config = loadConfig();
-  return config.embedding;
+  return {
+    ...config.embedding,
+    fallbackModel: config.embedding?.fallbackModel || DEFAULT_FALLBACK_EMBEDDING_MODEL,
+  };
 }
 
 /**

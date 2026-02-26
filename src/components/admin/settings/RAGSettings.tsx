@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Save, Cpu, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Save, Cpu, AlertTriangle, RefreshCw, AlertCircle, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -20,11 +20,20 @@ interface RAGSettings {
   updatedBy: string;
 }
 
+interface FallbackEvent {
+  primaryModel: string;
+  fallbackModel: string;
+  error: string;
+  timestamp: string;
+}
+
 interface EmbeddingSettings {
   model: string;
   dimensions: number;
+  fallbackModel?: string;
   updatedAt?: string;
   updatedBy?: string;
+  recentFallback?: FallbackEvent | null;
 }
 
 interface AvailableEmbeddingModel {
@@ -55,6 +64,8 @@ export default function RAGSettingsTab() {
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
   const [availableEmbeddingModels, setAvailableEmbeddingModels] = useState<AvailableEmbeddingModel[]>([]);
   const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>('');
+  const [selectedFallbackModel, setSelectedFallbackModel] = useState<string>('');
+  const [isSavingFallback, setIsSavingFallback] = useState(false);
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -66,6 +77,7 @@ export default function RAGSettingsTab() {
   const [reindexProgress, setReindexProgress] = useState(0);
   const [reindexJobId, setReindexJobId] = useState<string | null>(null);
   const [reindexError, setReindexError] = useState<string | null>(null);
+  const [fallbackDismissed, setFallbackDismissed] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const formatDate = (date: Date | string) => {
@@ -113,6 +125,7 @@ export default function RAGSettingsTab() {
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
         setSelectedEmbeddingModel(data.embedding.model);
+        setSelectedFallbackModel(data.embedding.fallbackModel || 'text-embedding-3-large');
       }
 
       if (data.availableEmbeddingModels) {
@@ -243,6 +256,44 @@ export default function RAGSettingsTab() {
     }
   };
 
+  // Check if fallback model has changed
+  const isFallbackModelChanged = selectedFallbackModel && embeddingSettings?.fallbackModel !== selectedFallbackModel;
+
+  // Save fallback model (no reindexing required)
+  const handleSaveFallback = async () => {
+    if (!isFallbackModelChanged) return;
+
+    try {
+      setIsSavingFallback(true);
+      setError(null);
+
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'embedding',
+          model: embeddingSettings?.model || 'text-embedding-3-large',
+          dimensions: embeddingSettings?.dimensions || 3072,
+          fallbackModel: selectedFallbackModel,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to save fallback model');
+      }
+
+      // Update local state
+      setEmbeddingSettings(prev => prev ? { ...prev, fallbackModel: selectedFallbackModel } : prev);
+      setSuccess('Fallback model saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save fallback model');
+    } finally {
+      setIsSavingFallback(false);
+    }
+  };
+
   const handleChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
     key: K,
     value: Omit<RAGSettings, 'updatedAt' | 'updatedBy'>[K]
@@ -324,6 +375,38 @@ export default function RAGSettingsTab() {
           </div>
         </div>
 
+        {/* Fallback Warning Banner */}
+        {embeddingSettings?.recentFallback && !fallbackDismissed && (
+          <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={16} className="text-orange-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-orange-800">Fallback Model Active</p>
+                  <p className="text-xs text-orange-700 mt-1">
+                    Primary model <strong>{embeddingSettings.recentFallback.primaryModel}</strong> failed.
+                    Using fallback: <strong>{embeddingSettings.recentFallback.fallbackModel}</strong>
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Error: {embeddingSettings.recentFallback.error.slice(0, 100)}
+                    {embeddingSettings.recentFallback.error.length > 100 && '...'}
+                  </p>
+                  <p className="text-xs text-orange-500 mt-1">
+                    {new Date(embeddingSettings.recentFallback.timestamp).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setFallbackDismissed(true)}
+                className="text-orange-500 hover:text-orange-700 p-1"
+                title="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Model Dropdown */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">Select Model</label>
@@ -360,6 +443,52 @@ export default function RAGSettingsTab() {
           </select>
           <p className="mt-1 text-xs text-gray-500">
             Local models run on-device, no API key required
+          </p>
+        </div>
+
+        {/* Fallback Model Dropdown */}
+        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Fallback Model
+            <span className="ml-2 text-xs font-normal text-gray-500">(Used when primary fails)</span>
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={selectedFallbackModel}
+              onChange={(e) => setSelectedFallbackModel(e.target.value)}
+              disabled={isReindexing || isSavingFallback}
+              className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+            >
+              {/* Only show cloud providers as fallback (more reliable) */}
+              {availableEmbeddingModels.filter(m => !m.local && m.available).map(model => (
+                <option key={model.id} value={model.id}>
+                  {model.name} ({model.dimensions} dims)
+                  {model.id === embeddingSettings?.fallbackModel && ' (Current)'}
+                </option>
+              ))}
+              {/* Also allow local models as fallback */}
+              <optgroup label="Local Models">
+                {availableEmbeddingModels.filter(m => m.local).map(model => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.dimensions} dims)
+                    {model.id === embeddingSettings?.fallbackModel && ' (Current)'}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <Button
+              onClick={handleSaveFallback}
+              disabled={!isFallbackModelChanged || isSavingFallback}
+              loading={isSavingFallback}
+              size="sm"
+            >
+              <Save size={14} className="mr-1" />
+              Save
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            If the primary model fails to load, the system will automatically use this fallback.
+            Changing fallback does not require reindexing.
           </p>
         </div>
 

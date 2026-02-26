@@ -73,6 +73,7 @@ export interface RagConfig {
 export interface EmbeddingConfig {
   model: string;
   dimensions: number;
+  fallbackModel?: string;
 }
 
 export interface RerankerConfig {

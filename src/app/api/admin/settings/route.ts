@@ -43,6 +43,7 @@ import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import { isProviderConfigured } from '@/lib/provider-helpers';
 import { EMBEDDING_MODELS, type EmbeddingModelDefinition } from '@/lib/constants';
 import { isLocalEmbeddingModel } from '@/lib/local-embeddings';
+import { wasFallbackUsedRecently, clearFallbackEvents } from '@/lib/openai';
 import type { ApiError } from '@/types';
 
 // Extended embedding model info with availability status
@@ -148,6 +149,8 @@ export async function GET() {
         ...embeddingSettings,
         updatedAt: embeddingMeta?.updatedAt || new Date().toISOString(),
         updatedBy: embeddingMeta?.updatedBy || 'system',
+        // Include recent fallback event if any (last 60 minutes)
+        recentFallback: wasFallbackUsedRecently(60),
       },
       availableEmbeddingModels: getAvailableEmbeddingModels(),
       reranker: {
@@ -713,7 +716,7 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'embedding': {
-        const { model, dimensions } = settings;
+        const { model, dimensions, fallbackModel } = settings;
 
         // Validate model name
         if (typeof model !== 'string' || model.trim().length === 0) {
@@ -741,6 +744,27 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate fallback model if provided
+        let validatedFallbackModel: string | undefined;
+        if (fallbackModel && typeof fallbackModel === 'string') {
+          const fallbackModelDef = EMBEDDING_MODELS.find(m => m.id === fallbackModel);
+          if (!fallbackModelDef) {
+            return NextResponse.json<ApiError>(
+              { error: 'Invalid fallback embedding model selected', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          // Check if fallback model is available
+          const fallbackAvailable = fallbackModelDef.local || isProviderConfigured(fallbackModelDef.provider);
+          if (!fallbackAvailable) {
+            return NextResponse.json<ApiError>(
+              { error: `Provider ${fallbackModelDef.provider} is not configured for fallback model ${fallbackModel}`, code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          validatedFallbackModel = fallbackModel.trim();
+        }
+
         // Validate dimensions matches the model (use the model's dimensions, not user input)
         const expectedDimensions = modelDef.dimensions;
         if (typeof dimensions !== 'number' || dimensions !== expectedDimensions) {
@@ -751,6 +775,7 @@ export async function PUT(request: NextRequest) {
         result = setEmbeddingSettings({
           model: model.trim(),
           dimensions: expectedDimensions, // Use the model's defined dimensions
+          fallbackModel: validatedFallbackModel,
         }, user.email);
 
         // Return with metadata
