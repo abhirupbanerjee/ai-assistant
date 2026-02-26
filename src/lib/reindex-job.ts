@@ -271,18 +271,72 @@ export async function runReindexJob(jobId: string): Promise<void> {
   try {
     console.log(`[Reindex] Starting job ${jobId}: ${job.previousModel} -> ${job.targetModel}`);
 
-    // Step 1: Update embedding settings first
+    // Step 1: Delete ALL vector store collections FIRST (before changing settings)
+    // Different embedding models produce incompatible vectors, even with same dimensions
+    // We must clear all collections to avoid dimension/embedding mismatches
+    console.log(`[Reindex] Deleting all vector store collections...`);
+    const vectorStore = await getVectorStore();
+    const collections = await vectorStore.listCollections();
+
+    console.log(`[Reindex] Found ${collections.length} collections to delete: ${collections.join(', ') || '(none)'}`);
+
+    // Delete collections with retry logic
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const collectionsToDelete = await vectorStore.listCollections();
+
+      if (collectionsToDelete.length === 0) {
+        console.log(`[Reindex] All collections deleted successfully`);
+        break;
+      }
+
+      console.log(`[Reindex] Attempt ${attempt}/${MAX_RETRIES}: Deleting ${collectionsToDelete.length} collections...`);
+
+      for (const collection of collectionsToDelete) {
+        try {
+          await vectorStore.deleteCollection(collection);
+          console.log(`[Reindex] Deleted collection: ${collection}`);
+        } catch (error) {
+          console.error(`[Reindex] Failed to delete collection ${collection}:`, error);
+        }
+      }
+
+      // Verify deletion
+      const remainingCollections = await vectorStore.listCollections();
+
+      if (remainingCollections.length === 0) {
+        console.log(`[Reindex] All collections deleted successfully on attempt ${attempt}`);
+        break;
+      }
+
+      if (attempt === MAX_RETRIES) {
+        throw new Error(
+          `Failed to delete all vector store collections after ${MAX_RETRIES} attempts. ` +
+          `Remaining: ${remainingCollections.join(', ')}. ` +
+          `Please check vector store connectivity and try again.`
+        );
+      }
+
+      // Wait before retry with exponential backoff
+      const delay = RETRY_DELAY_MS * attempt;
+      console.log(`[Reindex] ${remainingCollections.length} collections remain, retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    // Step 2: Now update embedding settings (safe because collections are empty)
     setEmbeddingSettings({
       model: job.targetModel,
       dimensions: job.targetDimensions,
     }, job.createdBy);
     console.log(`[Reindex] Updated embedding settings to ${job.targetModel} (${job.targetDimensions} dimensions)`);
 
-    // Step 2: Clear Redis cache
+    // Step 3: Clear Redis cache
     await clearAllCache();
     console.log('[Reindex] Cleared Redis cache');
 
-    // Step 3: Get all documents to reindex
+    // Step 4: Get all documents to reindex
     const documents = await listGlobalDocuments();
     const totalDocuments = documents.length;
 
@@ -302,23 +356,7 @@ export async function runReindexJob(jobId: string): Promise<void> {
       return;
     }
 
-    // Step 4: Delete all existing vector store collections if dimensions changed
-    if (job.previousDimensions !== job.targetDimensions) {
-      console.log(`[Reindex] Dimensions changed (${job.previousDimensions} -> ${job.targetDimensions}), recreating collections`);
-      const vectorStore = await getVectorStore();
-      const collections = await vectorStore.listCollections();
-
-      for (const collection of collections) {
-        try {
-          await vectorStore.deleteCollection(collection);
-          console.log(`[Reindex] Deleted collection: ${collection}`);
-        } catch (error) {
-          console.warn(`[Reindex] Failed to delete collection ${collection}:`, error);
-        }
-      }
-    }
-
-    // Step 5: Reindex all documents
+    // Step 5: Reindex all documents (collections will be auto-created with correct dimensions)
     let processedDocuments = 0;
     let failedDocuments = 0;
     const errors: string[] = [];
