@@ -1259,6 +1259,33 @@ function runMigrations(database: Database.Database): void {
     }
   }
 
+  // Create reindex_jobs table if it doesn't exist (for embedding model change reindexing)
+  const reindexJobsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='reindex_jobs'"
+  ).get();
+
+  if (!reindexJobsTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS reindex_jobs (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'pending',
+        target_model TEXT NOT NULL,
+        target_dimensions INTEGER NOT NULL,
+        previous_model TEXT NOT NULL,
+        previous_dimensions INTEGER NOT NULL,
+        total_documents INTEGER DEFAULT 0,
+        processed_documents INTEGER DEFAULT 0,
+        failed_documents INTEGER DEFAULT 0,
+        errors TEXT DEFAULT '[]',
+        started_at DATETIME,
+        completed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT NOT NULL
+      )
+    `);
+    console.log('[DB Migration] Created reindex_jobs table');
+  }
+
   console.log('[DB Migration] Migrations completed successfully');
 }
 
