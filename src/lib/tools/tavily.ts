@@ -100,9 +100,11 @@ export async function extractWebContent(urls: string[]): Promise<ExtractResult[]
   try {
     const response = await fetch('https://api.tavily.com/extract', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        api_key: apiKey,
         urls: validUrls,
         extract_depth: 'advanced',
       }),
@@ -209,7 +211,6 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
 
   // Build request payload
   const payload: Record<string, unknown> = {
-    api_key: apiKey,
     url: url,
     limit: options?.limit ?? 50,
     max_depth: options?.maxDepth ?? 2,
@@ -237,7 +238,10 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
 
     const response = await fetch('https://api.tavily.com/crawl', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
       body: JSON.stringify(payload),
     });
 
@@ -359,7 +363,6 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
 
   // Build request payload
   const payload: Record<string, unknown> = {
-    api_key: apiKey,
     url: url,
     limit: options?.limit ?? 100,
     max_depth: options?.maxDepth ?? 3,
@@ -379,7 +382,10 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
 
     const response = await fetch('https://api.tavily.com/map', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
       body: JSON.stringify(payload),
     });
 
