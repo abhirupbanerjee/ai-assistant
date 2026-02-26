@@ -72,7 +72,6 @@ export async function POST(request: NextRequest) {
       restoreUserMemories: formData.get('restoreUserMemories') !== 'false',
       restoreToolRouting: formData.get('restoreToolRouting') !== 'false',
       restoreThreadShares: formData.get('restoreThreadShares') === 'true',
-      restoreTaskPlans: formData.get('restoreTaskPlans') === 'true',
       restoreAgentBots: formData.get('restoreAgentBots') !== 'false',
     };
 

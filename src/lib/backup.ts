@@ -146,7 +146,6 @@ export interface BackupOptions {
   includeUserMemories: boolean;
   includeToolRouting: boolean;
   includeThreadShares: boolean;
-  includeTaskPlans: boolean;
   includeAgentBots: boolean;
   // Category filter
   categoryFilter?: CategoryFilter;
@@ -171,7 +170,6 @@ export interface RestoreOptions {
   restoreUserMemories: boolean;
   restoreToolRouting: boolean;
   restoreThreadShares: boolean;
-  restoreTaskPlans: boolean;
   restoreAgentBots: boolean;
 }
 
@@ -427,11 +425,8 @@ export async function createBackup(
       threadShares = await exportThreadSharesForThreads(threadIds);
     }
 
-    // Task plans - only for included threads
-    if (options.includeTaskPlans && threads.length > 0) {
-      const threadIds = threads.map(t => t.id);
-      taskPlans = await exportTaskPlansForThreads(threadIds);
-    }
+    // Task plans - excluded from backup (transient workflow data)
+    // taskPlans stays empty
 
     // Agent bots - only those with versions linked to selected categories
     if (options.includeAgentBots) {
@@ -506,8 +501,8 @@ export async function createBackup(
     // Thread shares
     threadShares = options.includeThreadShares ? await exportThreadShares() : [];
 
-    // Task plans
-    taskPlans = options.includeTaskPlans ? await exportTaskPlans() : [];
+    // Task plans - excluded from backup (transient workflow data)
+    // taskPlans stays empty
 
     // Agent bots
     agentBots = options.includeAgentBots ? await exportAgentBots() : [];
@@ -553,7 +548,7 @@ export async function createBackup(
       userMemories: isFiltered ? false : options.includeUserMemories, // Excluded from filtered backup
       toolRouting: options.includeToolRouting,
       threadShares: options.includeThreadShares,
-      taskPlans: options.includeTaskPlans,
+      taskPlans: false, // Excluded from backup (transient workflow data)
       agentBots: options.includeAgentBots,
       workspaceCount: workspaces.length,
       functionApiCount: functionApiConfigs.length,
@@ -659,10 +654,7 @@ export async function createBackup(
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: threadShares.length, records: threadShares }, null, 2), { name: 'data/thread_shares.json' });
   }
 
-  // NEW: Add task plans data
-  if (options.includeTaskPlans) {
-    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: taskPlans.length, records: taskPlans }, null, 2), { name: 'data/task_plans.json' });
-  }
+  // Task plans excluded from backup (transient workflow data)
 
   // NEW: Add agent bots data
   if (options.includeAgentBots) {
@@ -1027,14 +1019,7 @@ export async function restoreBackup(
       }
     }
 
-    // NEW: Restore task plans
-    if (options.restoreTaskPlans && manifest.contents.taskPlans) {
-      const taskPlans = readJsonFromZip<Awaited<ReturnType<typeof exportTaskPlans>>>('data/task_plans.json');
-      if (taskPlans && taskPlans.length > 0) {
-        await importTaskPlans(taskPlans);
-        result.details.taskPlansRestored = taskPlans.length;
-      }
-    }
+    // Task plans excluded from restore (transient workflow data)
 
     // NEW: Restore agent bots
     if (options.restoreAgentBots && manifest.contents.agentBots) {

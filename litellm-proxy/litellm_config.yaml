@@ -311,6 +311,21 @@ model_list:
       model: text-embedding-3-large
       api_key: os.environ/OPENAI_API_KEY
 
+  - model_name: text-embedding-3-small
+    litellm_params:
+      model: text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: mistral-embed
+    litellm_params:
+      model: mistral/mistral-embed
+      api_key: os.environ/MISTRAL_API_KEY
+
+  - model_name: text-embedding-004
+    litellm_params:
+      model: gemini/text-embedding-004
+      api_key: os.environ/GEMINI_API_KEY
+
   - model_name: ollama-mxbai-embed
     litellm_params:
       model: ollama/mxbai-embed-large

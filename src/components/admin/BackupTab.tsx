@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, ListTodo, CheckSquare, Square, Bot, Filter } from 'lucide-react';
+import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, CheckSquare, Square, Bot, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -39,7 +39,6 @@ interface BackupManifest {
     categoryPromptCount: number;
     dataSourceCount: number;
     totalFileSize: number;
-    // NEW content flags
     workspaces?: boolean;
     functionApis?: boolean;
     userMemories?: boolean;
@@ -54,7 +53,6 @@ interface BackupManifest {
     threadShareCount?: number;
     taskPlanCount?: number;
     agentBotCount?: number;
-    // Category filter metadata
     categoryFilter?: {
       mode: 'all' | 'selected';
       categoryIds?: number[];
@@ -78,7 +76,6 @@ interface RestoreResult {
     skillsRestored: number;
     categoryPromptsRestored: number;
     dataSourcesRestored: number;
-    // NEW restore counts
     workspacesRestored?: number;
     functionApisRestored?: number;
     userMemoriesRestored?: number;
@@ -88,6 +85,101 @@ interface RestoreResult {
     agentBotsRestored?: number;
   };
   warnings: string[];
+}
+
+// Expandable group checkbox component
+function GroupCheckbox({
+  label,
+  icon: Icon,
+  checked,
+  onChange,
+  hint,
+  disabled,
+  children,
+  defaultExpanded = false,
+}: {
+  label: string;
+  icon: React.ElementType;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  hint?: string;
+  disabled?: boolean;
+  children?: React.ReactNode;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const hasChildren = !!children;
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      <div
+        className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors ${disabled ? 'opacity-50' : ''}`}
+        onClick={() => !disabled && onChange(!checked)}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => {
+            e.stopPropagation();
+            onChange(e.target.checked);
+          }}
+          disabled={disabled}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <Icon size={18} className="text-gray-500" />
+        <div className="flex-1">
+          <span className="text-sm font-medium">{label}</span>
+          {hint && <p className="text-xs text-gray-500">{hint}</p>}
+        </div>
+        {hasChildren && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(!expanded);
+            }}
+            className="p-1 hover:bg-gray-200 rounded"
+          >
+            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+        )}
+      </div>
+      {hasChildren && expanded && (
+        <div className="border-t bg-gray-50 p-3 pl-10 space-y-2">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sub-option checkbox
+function SubCheckbox({
+  label,
+  checked,
+  onChange,
+  hint,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  hint?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className={`flex items-center gap-2 cursor-pointer ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <span className="text-sm">{label}</span>
+      {hint && <span className="text-xs text-gray-500">({hint})</span>}
+    </label>
+  );
 }
 
 export default function BackupTab() {
@@ -100,24 +192,23 @@ export default function BackupTab() {
   const [categoryFilterMode, setCategoryFilterMode] = useState<'all' | 'selected'>('all');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [backupOptions, setBackupOptions] = useState({
+    // Main group options
+    includeCategories: true,
     includeDocuments: true,
     includeDocumentFiles: true,
-    includeCategories: true,
-    includeSettings: true,
     includeUsers: true,
-    includeThreads: false,
-    includeTools: true,
-    includeSkills: true,
-    includeCategoryPrompts: true,
-    includeDataSources: true,
-    // NEW backup options
-    includeWorkspaces: true,
-    includeFunctionApis: true,
     includeUserMemories: true,
-    includeToolRouting: true,
-    includeThreadShares: false,
-    includeTaskPlans: false,
+    includeCategoryPrompts: true,
     includeAgentBots: true,
+    includeSkills: true,
+    includeTools: true,
+    includeDataSources: true,
+    includeFunctionApis: true,
+    includeToolRouting: true,
+    includeWorkspaces: true,
+    includeSettings: true,
+    includeThreads: false,
+    includeThreadShares: false,
   });
 
   // Restore state
@@ -127,25 +218,23 @@ export default function BackupTab() {
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
   const [restoreOptions, setRestoreOptions] = useState({
     clearExisting: false,
+    restoreCategories: true,
     restoreDocuments: true,
     restoreDocumentFiles: true,
-    restoreCategories: true,
-    restoreSettings: true,
     restoreUsers: true,
-    restoreThreads: false,
-    restoreTools: true,
-    restoreSkills: true,
-    restoreCategoryPrompts: true,
-    restoreDataSources: true,
-    refreshVectorDb: true,
-    // NEW restore options
-    restoreWorkspaces: true,
-    restoreFunctionApis: true,
     restoreUserMemories: true,
-    restoreToolRouting: true,
-    restoreThreadShares: false,
-    restoreTaskPlans: false,
+    restoreCategoryPrompts: true,
     restoreAgentBots: true,
+    restoreSkills: true,
+    restoreTools: true,
+    restoreDataSources: true,
+    restoreFunctionApis: true,
+    restoreToolRouting: true,
+    restoreWorkspaces: true,
+    restoreSettings: true,
+    restoreThreads: false,
+    restoreThreadShares: false,
+    refreshVectorDb: true,
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -170,48 +259,56 @@ export default function BackupTab() {
     fetchCategories();
   }, []);
 
+  // Handle category filter mode change
+  const handleCategoryFilterModeChange = useCallback((mode: 'all' | 'selected') => {
+    setCategoryFilterMode(mode);
+    // Auto-deselect user memories when switching to filtered backup
+    if (mode === 'selected') {
+      setBackupOptions(prev => ({ ...prev, includeUserMemories: false }));
+    }
+  }, []);
+
   // Select all / clear all handlers for backup options
   const handleSelectAllBackup = useCallback(() => {
+    const isFiltered = categoryFilterMode === 'selected';
     setBackupOptions({
+      includeCategories: true,
       includeDocuments: true,
       includeDocumentFiles: true,
-      includeCategories: true,
-      includeSettings: true,
       includeUsers: true,
-      includeThreads: true,
-      includeTools: true,
-      includeSkills: true,
+      includeUserMemories: !isFiltered, // Don't select if filtered
       includeCategoryPrompts: true,
-      includeDataSources: true,
-      includeWorkspaces: true,
-      includeFunctionApis: true,
-      includeUserMemories: true,
-      includeToolRouting: true,
-      includeThreadShares: true,
-      includeTaskPlans: true,
       includeAgentBots: true,
+      includeSkills: true,
+      includeTools: true,
+      includeDataSources: true,
+      includeFunctionApis: true,
+      includeToolRouting: true,
+      includeWorkspaces: true,
+      includeSettings: true,
+      includeThreads: true,
+      includeThreadShares: true,
     });
-  }, []);
+  }, [categoryFilterMode]);
 
   const handleClearAllBackup = useCallback(() => {
     setBackupOptions({
+      includeCategories: false,
       includeDocuments: false,
       includeDocumentFiles: false,
-      includeCategories: false,
-      includeSettings: false,
       includeUsers: false,
-      includeThreads: false,
-      includeTools: false,
-      includeSkills: false,
-      includeCategoryPrompts: false,
-      includeDataSources: false,
-      includeWorkspaces: false,
-      includeFunctionApis: false,
       includeUserMemories: false,
-      includeToolRouting: false,
-      includeThreadShares: false,
-      includeTaskPlans: false,
+      includeCategoryPrompts: false,
       includeAgentBots: false,
+      includeSkills: false,
+      includeTools: false,
+      includeDataSources: false,
+      includeFunctionApis: false,
+      includeToolRouting: false,
+      includeWorkspaces: false,
+      includeSettings: false,
+      includeThreads: false,
+      includeThreadShares: false,
     });
   }, []);
 
@@ -220,46 +317,44 @@ export default function BackupTab() {
     if (!restoreManifest?.contents) return;
     setRestoreOptions(prev => ({
       ...prev,
+      restoreCategories: restoreManifest.contents.categories,
       restoreDocuments: restoreManifest.contents.documents,
       restoreDocumentFiles: restoreManifest.contents.documentFiles,
-      restoreCategories: restoreManifest.contents.categories,
-      restoreSettings: restoreManifest.contents.settings,
       restoreUsers: restoreManifest.contents.users,
-      restoreThreads: restoreManifest.contents.threads,
-      restoreTools: restoreManifest.contents.tools ?? false,
-      restoreSkills: restoreManifest.contents.skills ?? false,
-      restoreCategoryPrompts: restoreManifest.contents.categoryPrompts ?? false,
-      restoreDataSources: restoreManifest.contents.dataSources ?? false,
-      restoreWorkspaces: restoreManifest.contents.workspaces ?? false,
-      restoreFunctionApis: restoreManifest.contents.functionApis ?? false,
       restoreUserMemories: restoreManifest.contents.userMemories ?? false,
-      restoreToolRouting: restoreManifest.contents.toolRouting ?? false,
-      restoreThreadShares: restoreManifest.contents.threadShares ?? false,
-      restoreTaskPlans: restoreManifest.contents.taskPlans ?? false,
+      restoreCategoryPrompts: restoreManifest.contents.categoryPrompts ?? false,
       restoreAgentBots: restoreManifest.contents.agentBots ?? false,
+      restoreSkills: restoreManifest.contents.skills ?? false,
+      restoreTools: restoreManifest.contents.tools ?? false,
+      restoreDataSources: restoreManifest.contents.dataSources ?? false,
+      restoreFunctionApis: restoreManifest.contents.functionApis ?? false,
+      restoreToolRouting: restoreManifest.contents.toolRouting ?? false,
+      restoreWorkspaces: restoreManifest.contents.workspaces ?? false,
+      restoreSettings: restoreManifest.contents.settings,
+      restoreThreads: restoreManifest.contents.threads,
+      restoreThreadShares: restoreManifest.contents.threadShares ?? false,
     }));
   }, [restoreManifest]);
 
   const handleClearAllRestore = useCallback(() => {
     setRestoreOptions(prev => ({
       ...prev,
+      restoreCategories: false,
       restoreDocuments: false,
       restoreDocumentFiles: false,
-      restoreCategories: false,
-      restoreSettings: false,
       restoreUsers: false,
-      restoreThreads: false,
-      restoreTools: false,
-      restoreSkills: false,
-      restoreCategoryPrompts: false,
-      restoreDataSources: false,
-      restoreWorkspaces: false,
-      restoreFunctionApis: false,
       restoreUserMemories: false,
-      restoreToolRouting: false,
-      restoreThreadShares: false,
-      restoreTaskPlans: false,
+      restoreCategoryPrompts: false,
       restoreAgentBots: false,
+      restoreSkills: false,
+      restoreTools: false,
+      restoreDataSources: false,
+      restoreFunctionApis: false,
+      restoreToolRouting: false,
+      restoreWorkspaces: false,
+      restoreSettings: false,
+      restoreThreads: false,
+      restoreThreadShares: false,
     }));
   }, []);
 
@@ -347,24 +442,22 @@ export default function BackupTab() {
       if (data.manifest?.contents) {
         setRestoreOptions(prev => ({
           ...prev,
+          restoreCategories: data.manifest.contents.categories,
           restoreDocuments: data.manifest.contents.documents,
           restoreDocumentFiles: data.manifest.contents.documentFiles,
-          restoreCategories: data.manifest.contents.categories,
-          restoreSettings: data.manifest.contents.settings,
           restoreUsers: data.manifest.contents.users,
-          restoreThreads: data.manifest.contents.threads,
-          restoreTools: data.manifest.contents.tools ?? false,
-          restoreSkills: data.manifest.contents.skills ?? false,
-          restoreCategoryPrompts: data.manifest.contents.categoryPrompts ?? false,
-          restoreDataSources: data.manifest.contents.dataSources ?? false,
-          // NEW restore options
-          restoreWorkspaces: data.manifest.contents.workspaces ?? false,
-          restoreFunctionApis: data.manifest.contents.functionApis ?? false,
           restoreUserMemories: data.manifest.contents.userMemories ?? false,
-          restoreToolRouting: data.manifest.contents.toolRouting ?? false,
-          restoreThreadShares: data.manifest.contents.threadShares ?? false,
-          restoreTaskPlans: data.manifest.contents.taskPlans ?? false,
+          restoreCategoryPrompts: data.manifest.contents.categoryPrompts ?? false,
           restoreAgentBots: data.manifest.contents.agentBots ?? false,
+          restoreSkills: data.manifest.contents.skills ?? false,
+          restoreTools: data.manifest.contents.tools ?? false,
+          restoreDataSources: data.manifest.contents.dataSources ?? false,
+          restoreFunctionApis: data.manifest.contents.functionApis ?? false,
+          restoreToolRouting: data.manifest.contents.toolRouting ?? false,
+          restoreWorkspaces: data.manifest.contents.workspaces ?? false,
+          restoreSettings: data.manifest.contents.settings,
+          restoreThreads: data.manifest.contents.threads,
+          restoreThreadShares: data.manifest.contents.threadShares ?? false,
         }));
       }
     } catch (err) {
@@ -427,6 +520,8 @@ export default function BackupTab() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const isFiltered = categoryFilterMode === 'selected';
+
   return (
     <div className="space-y-6">
       {/* Error Display */}
@@ -472,194 +567,164 @@ export default function BackupTab() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeDocuments}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeDocuments: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <FileText size={18} className="text-gray-500" />
-                <span className="text-sm">Documents</span>
-              </label>
+            {/* Grouped Backup Options */}
+            <div className="space-y-3">
+              {/* 1. Categories */}
+              <GroupCheckbox
+                label="Categories"
+                icon={FolderOpen}
+                checked={backupOptions.includeCategories}
+                onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeCategories: checked }))}
+                hint="Category definitions"
+              />
 
-              <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${!backupOptions.includeDocuments ? 'opacity-50' : ''}`}>
-                <input
-                  type="checkbox"
+              {/* 2. Documents with Include Files sub-option */}
+              <GroupCheckbox
+                label="Documents"
+                icon={FileText}
+                checked={backupOptions.includeDocuments}
+                onChange={(checked) => setBackupOptions(prev => ({
+                  ...prev,
+                  includeDocuments: checked,
+                  includeDocumentFiles: checked ? prev.includeDocumentFiles : false
+                }))}
+                hint="Document metadata records"
+                defaultExpanded
+              >
+                <SubCheckbox
+                  label="Include Files"
                   checked={backupOptions.includeDocumentFiles}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeDocumentFiles: e.target.checked }))}
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeDocumentFiles: checked }))}
+                  hint="PDF/DOCX binaries - increases size"
                   disabled={!backupOptions.includeDocuments}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <FileCode size={18} className="text-gray-500" />
-                <span className="text-sm">Include Files</span>
-              </label>
+              </GroupCheckbox>
 
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeCategories}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeCategories: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <FolderOpen size={18} className="text-gray-500" />
-                <span className="text-sm">Categories</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeSettings}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeSettings: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Settings size={18} className="text-gray-500" />
-                <span className="text-sm">Settings</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeUsers}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeUsers: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Users size={18} className="text-gray-500" />
-                <span className="text-sm">Users</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeThreads}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeThreads: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <MessageSquare size={18} className="text-gray-500" />
-                <span className="text-sm">Threads</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeTools}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeTools: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Wrench size={18} className="text-gray-500" />
-                <span className="text-sm">Tools</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeSkills}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeSkills: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Sparkles size={18} className="text-gray-500" />
-                <span className="text-sm">Skills</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeCategoryPrompts}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeCategoryPrompts: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <MessageCircle size={18} className="text-gray-500" />
-                <span className="text-sm">Prompts & Starters</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeDataSources}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeDataSources: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Database size={18} className="text-gray-500" />
-                <span className="text-sm">Data Sources</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeWorkspaces}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeWorkspaces: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <LayoutGrid size={18} className="text-gray-500" />
-                <span className="text-sm">Workspaces</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeFunctionApis}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeFunctionApis: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Zap size={18} className="text-gray-500" />
-                <span className="text-sm">Function APIs</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
+              {/* 3. Users with User Memories sub-option */}
+              <GroupCheckbox
+                label="Users"
+                icon={Users}
+                checked={backupOptions.includeUsers}
+                onChange={(checked) => setBackupOptions(prev => ({
+                  ...prev,
+                  includeUsers: checked,
+                  includeUserMemories: checked && !isFiltered ? prev.includeUserMemories : false
+                }))}
+                hint="User accounts and subscriptions"
+                defaultExpanded
+              >
+                <SubCheckbox
+                  label="User Memories"
                   checked={backupOptions.includeUserMemories}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeUserMemories: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeUserMemories: checked }))}
+                  hint={isFiltered ? "Excluded from filtered backup" : "AI memory storage"}
+                  disabled={!backupOptions.includeUsers || isFiltered}
                 />
-                <Brain size={18} className="text-gray-500" />
-                <span className="text-sm">User Memories</span>
-              </label>
+              </GroupCheckbox>
 
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
+              {/* 4. Prompts */}
+              <GroupCheckbox
+                label="Prompts"
+                icon={MessageCircle}
+                checked={backupOptions.includeCategoryPrompts}
+                onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeCategoryPrompts: checked }))}
+                hint="Category prompts and starters"
+              />
+
+              {/* 5. Agents */}
+              <GroupCheckbox
+                label="Agents"
+                icon={Bot}
+                checked={backupOptions.includeAgentBots}
+                onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeAgentBots: checked }))}
+                hint="Autonomous bots and API bots"
+              />
+
+              {/* 6. Skills with Tools sub-options */}
+              <GroupCheckbox
+                label="Skills"
+                icon={Sparkles}
+                checked={backupOptions.includeSkills}
+                onChange={(checked) => setBackupOptions(prev => ({
+                  ...prev,
+                  includeSkills: checked,
+                  includeTools: checked ? prev.includeTools : false,
+                  includeDataSources: checked ? prev.includeDataSources : false,
+                  includeFunctionApis: checked ? prev.includeFunctionApis : false,
+                  includeToolRouting: checked ? prev.includeToolRouting : false,
+                }))}
+                hint="AI behaviors and capabilities"
+                defaultExpanded
+              >
+                <SubCheckbox
+                  label="Tools"
+                  checked={backupOptions.includeTools}
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeTools: checked }))}
+                  hint="Global tool configs"
+                  disabled={!backupOptions.includeSkills}
+                />
+                <SubCheckbox
+                  label="Data Sources"
+                  checked={backupOptions.includeDataSources}
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeDataSources: checked }))}
+                  hint="APIs & CSVs"
+                  disabled={!backupOptions.includeSkills}
+                />
+                <SubCheckbox
+                  label="Function APIs"
+                  checked={backupOptions.includeFunctionApis}
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeFunctionApis: checked }))}
+                  hint="Function calling endpoints"
+                  disabled={!backupOptions.includeSkills}
+                />
+                <SubCheckbox
+                  label="Tool Routing"
                   checked={backupOptions.includeToolRouting}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeToolRouting: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeToolRouting: checked }))}
+                  hint="Routing rules"
+                  disabled={!backupOptions.includeSkills}
                 />
-                <GitBranch size={18} className="text-gray-500" />
-                <span className="text-sm">Tool Routing</span>
-              </label>
+              </GroupCheckbox>
 
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
+              {/* 7. Workspaces */}
+              <GroupCheckbox
+                label="Workspaces"
+                icon={LayoutGrid}
+                checked={backupOptions.includeWorkspaces}
+                onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeWorkspaces: checked }))}
+                hint="Workspace configurations"
+              />
+
+              {/* 8. Settings */}
+              <GroupCheckbox
+                label="Settings"
+                icon={Settings}
+                checked={backupOptions.includeSettings}
+                onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeSettings: checked }))}
+                hint="Global configuration and tokens"
+              />
+
+              {/* 9. Threads with Thread Shares sub-option */}
+              <GroupCheckbox
+                label="Threads"
+                icon={MessageSquare}
+                checked={backupOptions.includeThreads}
+                onChange={(checked) => setBackupOptions(prev => ({
+                  ...prev,
+                  includeThreads: checked,
+                  includeThreadShares: checked ? prev.includeThreadShares : false
+                }))}
+                hint="Conversation history (can be large)"
+                defaultExpanded={backupOptions.includeThreads}
+              >
+                <SubCheckbox
+                  label="Thread Shares"
                   checked={backupOptions.includeThreadShares}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeThreadShares: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  onChange={(checked) => setBackupOptions(prev => ({ ...prev, includeThreadShares: checked }))}
+                  hint="Share links"
+                  disabled={!backupOptions.includeThreads}
                 />
-                <Share2 size={18} className="text-gray-500" />
-                <span className="text-sm">Thread Shares</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeTaskPlans}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeTaskPlans: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <ListTodo size={18} className="text-gray-500" />
-                <span className="text-sm">Task Plans</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={backupOptions.includeAgentBots}
-                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeAgentBots: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <Bot size={18} className="text-gray-500" />
-                <span className="text-sm">Agent Bots</span>
-              </label>
+              </GroupCheckbox>
             </div>
 
             {/* Category Filter Section */}
@@ -675,7 +740,7 @@ export default function BackupTab() {
                       type="radio"
                       name="categoryFilter"
                       checked={categoryFilterMode === 'all'}
-                      onChange={() => setCategoryFilterMode('all')}
+                      onChange={() => handleCategoryFilterModeChange('all')}
                       className="text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm">All Categories</span>
@@ -685,7 +750,7 @@ export default function BackupTab() {
                       type="radio"
                       name="categoryFilter"
                       checked={categoryFilterMode === 'selected'}
-                      onChange={() => setCategoryFilterMode('selected')}
+                      onChange={() => handleCategoryFilterModeChange('selected')}
                       className="text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm">Select Categories</span>
@@ -835,16 +900,16 @@ export default function BackupTab() {
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <div className="text-sm font-medium text-blue-900 mb-2">Backup Contents</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    {restoreManifest.contents.documents && (
-                      <div className="flex items-center gap-2">
-                        <FileText size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.documentCount} Documents</span>
-                      </div>
-                    )}
                     {restoreManifest.contents.categories && (
                       <div className="flex items-center gap-2">
                         <FolderOpen size={14} className="text-blue-600" />
                         <span>{restoreManifest.contents.categoryCount} Categories</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.documents && (
+                      <div className="flex items-center gap-2">
+                        <FileText size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.documentCount} Documents</span>
                       </div>
                     )}
                     {restoreManifest.contents.users && (
@@ -853,16 +918,16 @@ export default function BackupTab() {
                         <span>{restoreManifest.contents.userCount} Users</span>
                       </div>
                     )}
-                    {restoreManifest.contents.threads && (
+                    {restoreManifest.contents.categoryPrompts && (
                       <div className="flex items-center gap-2">
-                        <MessageSquare size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.threadCount} Threads</span>
+                        <MessageCircle size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.categoryPromptCount} Prompts</span>
                       </div>
                     )}
-                    {restoreManifest.contents.tools && (
+                    {restoreManifest.contents.agentBots && (
                       <div className="flex items-center gap-2">
-                        <Wrench size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.toolCount} Tools</span>
+                        <Bot size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.agentBotCount} Agents</span>
                       </div>
                     )}
                     {restoreManifest.contents.skills && (
@@ -871,10 +936,10 @@ export default function BackupTab() {
                         <span>{restoreManifest.contents.skillCount} Skills</span>
                       </div>
                     )}
-                    {restoreManifest.contents.categoryPrompts && (
+                    {restoreManifest.contents.tools && (
                       <div className="flex items-center gap-2">
-                        <MessageCircle size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.categoryPromptCount} Prompts</span>
+                        <Wrench size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.toolCount} Tools</span>
                       </div>
                     )}
                     {restoreManifest.contents.dataSources && (
@@ -883,46 +948,40 @@ export default function BackupTab() {
                         <span>{restoreManifest.contents.dataSourceCount} Data Sources</span>
                       </div>
                     )}
-                    {restoreManifest.contents.workspaces && (
-                      <div className="flex items-center gap-2">
-                        <LayoutGrid size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.workspaceCount} Workspaces</span>
-                      </div>
-                    )}
                     {restoreManifest.contents.functionApis && (
                       <div className="flex items-center gap-2">
                         <Zap size={14} className="text-blue-600" />
                         <span>{restoreManifest.contents.functionApiCount} Function APIs</span>
                       </div>
                     )}
+                    {restoreManifest.contents.workspaces && (
+                      <div className="flex items-center gap-2">
+                        <LayoutGrid size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.workspaceCount} Workspaces</span>
+                      </div>
+                    )}
                     {restoreManifest.contents.userMemories && (
                       <div className="flex items-center gap-2">
                         <Brain size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.userMemoryCount} User Memories</span>
+                        <span>{restoreManifest.contents.userMemoryCount} Memories</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.threads && (
+                      <div className="flex items-center gap-2">
+                        <MessageSquare size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.threadCount} Threads</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.threadShares && (
+                      <div className="flex items-center gap-2">
+                        <Share2 size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.threadShareCount} Shares</span>
                       </div>
                     )}
                     {restoreManifest.contents.toolRouting && (
                       <div className="flex items-center gap-2">
                         <GitBranch size={14} className="text-blue-600" />
                         <span>{restoreManifest.contents.toolRoutingRuleCount} Routing Rules</span>
-                      </div>
-                    )}
-                    {restoreManifest.contents.threadShares && (
-                      <div className="flex items-center gap-2">
-                        <Share2 size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.threadShareCount} Thread Shares</span>
-                      </div>
-                    )}
-                    {restoreManifest.contents.taskPlans && (
-                      <div className="flex items-center gap-2">
-                        <ListTodo size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.taskPlanCount} Task Plans</span>
-                      </div>
-                    )}
-                    {restoreManifest.contents.agentBots && (
-                      <div className="flex items-center gap-2">
-                        <Bot size={14} className="text-blue-600" />
-                        <span>{restoreManifest.contents.agentBotCount} Agent Bots</span>
                       </div>
                     )}
                   </div>
@@ -944,7 +1003,7 @@ export default function BackupTab() {
                 </div>
               )}
 
-              {/* Restore Options */}
+              {/* Restore Options - Grouped Layout */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-gray-700">Restore Options</div>
@@ -965,193 +1024,157 @@ export default function BackupTab() {
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.documents ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreDocuments}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreDocuments: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.documents}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Documents</span>
-                  </label>
 
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.documentFiles || !restoreOptions.restoreDocuments ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
+                <div className="space-y-2">
+                  {/* Categories */}
+                  <GroupCheckbox
+                    label="Categories"
+                    icon={FolderOpen}
+                    checked={restoreOptions.restoreCategories}
+                    onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreCategories: checked }))}
+                    disabled={!restoreManifest?.contents.categories}
+                  />
+
+                  {/* Documents */}
+                  <GroupCheckbox
+                    label="Documents"
+                    icon={FileText}
+                    checked={restoreOptions.restoreDocuments}
+                    onChange={(checked) => setRestoreOptions(prev => ({
+                      ...prev,
+                      restoreDocuments: checked,
+                      restoreDocumentFiles: checked ? prev.restoreDocumentFiles : false
+                    }))}
+                    disabled={!restoreManifest?.contents.documents}
+                    defaultExpanded
+                  >
+                    <SubCheckbox
+                      label="Include Files"
                       checked={restoreOptions.restoreDocumentFiles}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreDocumentFiles: e.target.checked }))}
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreDocumentFiles: checked }))}
                       disabled={!restoreManifest?.contents.documentFiles || !restoreOptions.restoreDocuments}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm">Include Files</span>
-                  </label>
+                  </GroupCheckbox>
 
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.categories ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreCategories}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreCategories: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.categories}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Categories</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.settings ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreSettings}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreSettings: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.settings}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Settings</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.users ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreUsers}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreUsers: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.users}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Users</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.threads ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreThreads}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreThreads: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.threads}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Threads</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.tools ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreTools}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreTools: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.tools}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Tools</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.skills ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreSkills}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreSkills: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.skills}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Skills</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.categoryPrompts ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreCategoryPrompts}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreCategoryPrompts: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.categoryPrompts}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Prompts & Starters</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.dataSources ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreDataSources}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreDataSources: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.dataSources}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Data Sources</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.workspaces ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreWorkspaces}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreWorkspaces: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.workspaces}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Workspaces</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.functionApis ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreFunctionApis}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreFunctionApis: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.functionApis}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Function APIs</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.userMemories ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
+                  {/* Users */}
+                  <GroupCheckbox
+                    label="Users"
+                    icon={Users}
+                    checked={restoreOptions.restoreUsers}
+                    onChange={(checked) => setRestoreOptions(prev => ({
+                      ...prev,
+                      restoreUsers: checked,
+                      restoreUserMemories: checked ? prev.restoreUserMemories : false
+                    }))}
+                    disabled={!restoreManifest?.contents.users}
+                    defaultExpanded
+                  >
+                    <SubCheckbox
+                      label="User Memories"
                       checked={restoreOptions.restoreUserMemories}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreUserMemories: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.userMemories}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreUserMemories: checked }))}
+                      disabled={!restoreManifest?.contents.userMemories || !restoreOptions.restoreUsers}
                     />
-                    <span className="text-sm">User Memories</span>
-                  </label>
+                  </GroupCheckbox>
 
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.toolRouting ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
+                  {/* Prompts */}
+                  <GroupCheckbox
+                    label="Prompts"
+                    icon={MessageCircle}
+                    checked={restoreOptions.restoreCategoryPrompts}
+                    onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreCategoryPrompts: checked }))}
+                    disabled={!restoreManifest?.contents.categoryPrompts}
+                  />
+
+                  {/* Agents */}
+                  <GroupCheckbox
+                    label="Agents"
+                    icon={Bot}
+                    checked={restoreOptions.restoreAgentBots}
+                    onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreAgentBots: checked }))}
+                    disabled={!restoreManifest?.contents.agentBots}
+                  />
+
+                  {/* Skills */}
+                  <GroupCheckbox
+                    label="Skills"
+                    icon={Sparkles}
+                    checked={restoreOptions.restoreSkills}
+                    onChange={(checked) => setRestoreOptions(prev => ({
+                      ...prev,
+                      restoreSkills: checked,
+                      restoreTools: checked ? prev.restoreTools : false,
+                      restoreDataSources: checked ? prev.restoreDataSources : false,
+                      restoreFunctionApis: checked ? prev.restoreFunctionApis : false,
+                      restoreToolRouting: checked ? prev.restoreToolRouting : false,
+                    }))}
+                    disabled={!restoreManifest?.contents.skills}
+                    defaultExpanded
+                  >
+                    <SubCheckbox
+                      label="Tools"
+                      checked={restoreOptions.restoreTools}
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreTools: checked }))}
+                      disabled={!restoreManifest?.contents.tools || !restoreOptions.restoreSkills}
+                    />
+                    <SubCheckbox
+                      label="Data Sources"
+                      checked={restoreOptions.restoreDataSources}
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreDataSources: checked }))}
+                      disabled={!restoreManifest?.contents.dataSources || !restoreOptions.restoreSkills}
+                    />
+                    <SubCheckbox
+                      label="Function APIs"
+                      checked={restoreOptions.restoreFunctionApis}
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreFunctionApis: checked }))}
+                      disabled={!restoreManifest?.contents.functionApis || !restoreOptions.restoreSkills}
+                    />
+                    <SubCheckbox
+                      label="Tool Routing"
                       checked={restoreOptions.restoreToolRouting}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreToolRouting: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.toolRouting}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreToolRouting: checked }))}
+                      disabled={!restoreManifest?.contents.toolRouting || !restoreOptions.restoreSkills}
                     />
-                    <span className="text-sm">Tool Routing</span>
-                  </label>
+                  </GroupCheckbox>
 
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.threadShares ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
+                  {/* Workspaces */}
+                  <GroupCheckbox
+                    label="Workspaces"
+                    icon={LayoutGrid}
+                    checked={restoreOptions.restoreWorkspaces}
+                    onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreWorkspaces: checked }))}
+                    disabled={!restoreManifest?.contents.workspaces}
+                  />
+
+                  {/* Settings */}
+                  <GroupCheckbox
+                    label="Settings"
+                    icon={Settings}
+                    checked={restoreOptions.restoreSettings}
+                    onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreSettings: checked }))}
+                    disabled={!restoreManifest?.contents.settings}
+                  />
+
+                  {/* Threads */}
+                  <GroupCheckbox
+                    label="Threads"
+                    icon={MessageSquare}
+                    checked={restoreOptions.restoreThreads}
+                    onChange={(checked) => setRestoreOptions(prev => ({
+                      ...prev,
+                      restoreThreads: checked,
+                      restoreThreadShares: checked ? prev.restoreThreadShares : false
+                    }))}
+                    disabled={!restoreManifest?.contents.threads}
+                    defaultExpanded={restoreOptions.restoreThreads}
+                  >
+                    <SubCheckbox
+                      label="Thread Shares"
                       checked={restoreOptions.restoreThreadShares}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreThreadShares: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.threadShares}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      onChange={(checked) => setRestoreOptions(prev => ({ ...prev, restoreThreadShares: checked }))}
+                      disabled={!restoreManifest?.contents.threadShares || !restoreOptions.restoreThreads}
                     />
-                    <span className="text-sm">Thread Shares</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.taskPlans ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreTaskPlans}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreTaskPlans: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.taskPlans}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Task Plans</span>
-                  </label>
-
-                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.agentBots ? 'opacity-50' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={restoreOptions.restoreAgentBots}
-                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreAgentBots: e.target.checked }))}
-                      disabled={!restoreManifest?.contents.agentBots}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">Agent Bots</span>
-                  </label>
+                  </GroupCheckbox>
                 </div>
 
                 {/* Advanced Options */}
@@ -1224,56 +1247,53 @@ export default function BackupTab() {
               </div>
               {restoreResult.success && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm mt-3">
-                  {restoreResult.details.documentsRestored > 0 && (
-                    <div>Documents: {restoreResult.details.documentsRestored}</div>
-                  )}
                   {restoreResult.details.categoriesRestored > 0 && (
                     <div>Categories: {restoreResult.details.categoriesRestored}</div>
                   )}
-                  {restoreResult.details.usersRestored > 0 && (
-                    <div>Users: {restoreResult.details.usersRestored}</div>
-                  )}
-                  {restoreResult.details.threadsRestored > 0 && (
-                    <div>Threads: {restoreResult.details.threadsRestored}</div>
+                  {restoreResult.details.documentsRestored > 0 && (
+                    <div>Documents: {restoreResult.details.documentsRestored}</div>
                   )}
                   {restoreResult.details.filesRestored > 0 && (
                     <div>Files: {restoreResult.details.filesRestored}</div>
                   )}
-                  {restoreResult.details.settingsRestored > 0 && (
-                    <div>Settings: {restoreResult.details.settingsRestored}</div>
+                  {restoreResult.details.usersRestored > 0 && (
+                    <div>Users: {restoreResult.details.usersRestored}</div>
                   )}
-                  {restoreResult.details.toolsRestored > 0 && (
-                    <div>Tools: {restoreResult.details.toolsRestored}</div>
-                  )}
-                  {restoreResult.details.skillsRestored > 0 && (
-                    <div>Skills: {restoreResult.details.skillsRestored}</div>
+                  {(restoreResult.details.userMemoriesRestored ?? 0) > 0 && (
+                    <div>Memories: {restoreResult.details.userMemoriesRestored}</div>
                   )}
                   {restoreResult.details.categoryPromptsRestored > 0 && (
                     <div>Prompts: {restoreResult.details.categoryPromptsRestored}</div>
                   )}
+                  {(restoreResult.details.agentBotsRestored ?? 0) > 0 && (
+                    <div>Agents: {restoreResult.details.agentBotsRestored}</div>
+                  )}
+                  {restoreResult.details.skillsRestored > 0 && (
+                    <div>Skills: {restoreResult.details.skillsRestored}</div>
+                  )}
+                  {restoreResult.details.toolsRestored > 0 && (
+                    <div>Tools: {restoreResult.details.toolsRestored}</div>
+                  )}
                   {restoreResult.details.dataSourcesRestored > 0 && (
                     <div>Data Sources: {restoreResult.details.dataSourcesRestored}</div>
-                  )}
-                  {(restoreResult.details.workspacesRestored ?? 0) > 0 && (
-                    <div>Workspaces: {restoreResult.details.workspacesRestored}</div>
                   )}
                   {(restoreResult.details.functionApisRestored ?? 0) > 0 && (
                     <div>Function APIs: {restoreResult.details.functionApisRestored}</div>
                   )}
-                  {(restoreResult.details.userMemoriesRestored ?? 0) > 0 && (
-                    <div>User Memories: {restoreResult.details.userMemoriesRestored}</div>
-                  )}
                   {(restoreResult.details.toolRoutingRulesRestored ?? 0) > 0 && (
-                    <div>Tool Routing: {restoreResult.details.toolRoutingRulesRestored}</div>
+                    <div>Routing Rules: {restoreResult.details.toolRoutingRulesRestored}</div>
+                  )}
+                  {(restoreResult.details.workspacesRestored ?? 0) > 0 && (
+                    <div>Workspaces: {restoreResult.details.workspacesRestored}</div>
+                  )}
+                  {restoreResult.details.settingsRestored > 0 && (
+                    <div>Settings: {restoreResult.details.settingsRestored}</div>
+                  )}
+                  {restoreResult.details.threadsRestored > 0 && (
+                    <div>Threads: {restoreResult.details.threadsRestored}</div>
                   )}
                   {(restoreResult.details.threadSharesRestored ?? 0) > 0 && (
-                    <div>Thread Shares: {restoreResult.details.threadSharesRestored}</div>
-                  )}
-                  {(restoreResult.details.taskPlansRestored ?? 0) > 0 && (
-                    <div>Task Plans: {restoreResult.details.taskPlansRestored}</div>
-                  )}
-                  {(restoreResult.details.agentBotsRestored ?? 0) > 0 && (
-                    <div>Agent Bots: {restoreResult.details.agentBotsRestored}</div>
+                    <div>Shares: {restoreResult.details.threadSharesRestored}</div>
                   )}
                 </div>
               )}
