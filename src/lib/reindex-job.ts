@@ -11,6 +11,7 @@ import { listGlobalDocuments, reindexDocument } from './ingest';
 import { getVectorStore } from './vector-store';
 import { clearAllCache } from './redis';
 import { getEmbeddingModelDimensions } from './constants';
+import { isLocalEmbeddingModel, resetLocalEmbedder } from './local-embeddings';
 
 // Job status types
 export type ReindexJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -325,18 +326,25 @@ export async function runReindexJob(jobId: string): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    // Step 2: Now update embedding settings (safe because collections are empty)
+    // Step 2: Reset local embedder if switching to a local model
+    // This clears any previous load failure state
+    if (isLocalEmbeddingModel(job.targetModel)) {
+      resetLocalEmbedder();
+      console.log(`[Reindex] Reset local embedder for ${job.targetModel}`);
+    }
+
+    // Step 3: Update embedding settings (safe because collections are empty)
     setEmbeddingSettings({
       model: job.targetModel,
       dimensions: job.targetDimensions,
     }, job.createdBy);
     console.log(`[Reindex] Updated embedding settings to ${job.targetModel} (${job.targetDimensions} dimensions)`);
 
-    // Step 3: Clear Redis cache
+    // Step 4: Clear Redis cache
     await clearAllCache();
     console.log('[Reindex] Cleared Redis cache');
 
-    // Step 4: Get all documents to reindex
+    // Step 5: Get all documents to reindex
     const documents = await listGlobalDocuments();
     const totalDocuments = documents.length;
 
@@ -356,7 +364,7 @@ export async function runReindexJob(jobId: string): Promise<void> {
       return;
     }
 
-    // Step 5: Reindex all documents (collections will be auto-created with correct dimensions)
+    // Step 6: Reindex all documents (collections will be auto-created with correct dimensions)
     let processedDocuments = 0;
     let failedDocuments = 0;
     const errors: string[] = [];
