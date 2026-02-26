@@ -139,7 +139,7 @@ async function executeFunction(
 
   // Get category IDs from request context
   const context = getRequestContext();
-  const categoryIds = context.categoryId ? [context.categoryId] : [];
+  const categoryIds = context.categoryIds && context.categoryIds.length > 0 ? context.categoryIds : [];
 
   // Find the config that contains this function
   const match = findConfigForFunction(functionName, categoryIds);

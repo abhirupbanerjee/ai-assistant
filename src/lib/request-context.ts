@@ -16,8 +16,8 @@ export interface RequestContext {
   threadId?: string;
   /** Message ID being processed */
   messageId?: string;
-  /** Category ID for branding/config resolution */
-  categoryId?: number;
+  /** Category IDs for branding/config resolution and tool access */
+  categoryIds?: number[];
   /** User ID making the request */
   userId?: string;
   /** User message for context-aware tool decisions */
@@ -47,7 +47,7 @@ export function getRequestContext(): RequestContext {
  * @example
  * ```ts
  * const result = await runWithContext(
- *   { threadId: '123', categoryId: 1 },
+ *   { threadId: '123', categoryIds: [1, 2] },
  *   () => ragQuery(message, history)
  * );
  * ```

@@ -231,7 +231,7 @@ export async function POST(
           {
             threadId: currentThreadId || sessionId,
             messageId: assistantMessageId,
-            categoryId: categoryIds[0],
+            categoryIds: categoryIds,
             userId: session.user_id ? String(session.user_id) : undefined,
           },
           async () => {

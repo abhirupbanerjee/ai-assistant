@@ -635,8 +635,8 @@ IMPORTANT FOR LARGE DATASETS:
     if (!categoryIds || !Array.isArray(categoryIds) || categoryIds.length === 0) {
       // Try to get from request context (set by chat API route)
       const context = getRequestContext();
-      if (context.categoryId) {
-        categoryIds = [context.categoryId];
+      if (context.categoryIds && context.categoryIds.length > 0) {
+        categoryIds = context.categoryIds;
       }
     }
 

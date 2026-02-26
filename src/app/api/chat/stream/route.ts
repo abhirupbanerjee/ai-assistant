@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
             {
               threadId,
               messageId: assistantMessageId,
-              categoryId: categoryIds[0],
+              categoryIds: categoryIds,
               userId: user.id,
               userMessage: message,
             },
@@ -325,7 +325,7 @@ export async function POST(request: NextRequest) {
           {
             threadId,
             messageId: assistantMessageId,
-            categoryId: categoryIds[0],
+            categoryIds: categoryIds,
             userId: user.id,
             userMessage: message,
           },

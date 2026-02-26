@@ -259,7 +259,8 @@ export const documentGenerationTool: ToolDefinition = {
     try {
       // Get context from AsyncLocalStorage (set by chat API route)
       const context = getRequestContext();
-      const { threadId, categoryId } = context;
+      const { threadId, categoryIds } = context;
+      const categoryId = categoryIds?.[0]; // Use first category for branding/config
 
       // Validate we have required context
       if (!threadId) {
