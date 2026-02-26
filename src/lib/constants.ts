@@ -27,6 +27,41 @@ export const DEFAULT_CONVERSATION_HISTORY_LIMIT = 5;
 /** Batch size for creating embeddings */
 export const EMBEDDING_BATCH_SIZE = 100;
 
+/** Embedding model definition */
+export interface EmbeddingModelDefinition {
+  id: string;
+  name: string;
+  provider: 'openai' | 'mistral' | 'gemini' | 'local';
+  dimensions: number;
+  local: boolean;
+}
+
+/**
+ * Available embedding models
+ * Cloud providers require API keys; local models use @xenova/transformers
+ */
+export const EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
+  // Cloud providers
+  { id: 'text-embedding-3-large', name: 'OpenAI Large', provider: 'openai', dimensions: 3072, local: false },
+  { id: 'text-embedding-3-small', name: 'OpenAI Small', provider: 'openai', dimensions: 1536, local: false },
+  { id: 'mistral-embed', name: 'Mistral Embed', provider: 'mistral', dimensions: 1024, local: false },
+  { id: 'text-embedding-004', name: 'Gemini Embed', provider: 'gemini', dimensions: 768, local: false },
+  // Local models (via @xenova/transformers - no API key required)
+  { id: 'mxbai-embed-large', name: 'MixedBread Large (Local)', provider: 'local', dimensions: 1024, local: true },
+  { id: 'bge-m3', name: 'BGE-M3 (Local)', provider: 'local', dimensions: 1024, local: true },
+];
+
+/** Get embedding model by ID */
+export function getEmbeddingModelById(modelId: string): EmbeddingModelDefinition | undefined {
+  return EMBEDDING_MODELS.find(m => m.id === modelId);
+}
+
+/** Get dimensions for an embedding model */
+export function getEmbeddingModelDimensions(modelId: string): number {
+  const model = getEmbeddingModelById(modelId);
+  return model?.dimensions ?? 3072; // Default to OpenAI Large dimensions
+}
+
 // ============ Reranker Constants ============
 
 /** Maximum tokens for local reranker model input */

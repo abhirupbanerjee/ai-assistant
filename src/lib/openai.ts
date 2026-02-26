@@ -13,6 +13,12 @@ import {
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
 } from './constants';
 import {
+  isLocalEmbeddingModel,
+  createLocalEmbedding,
+  createLocalEmbeddings,
+  type LocalEmbeddingModel,
+} from './local-embeddings';
+import {
   buildConversationContext,
   formatUserMessage,
   getHistoryForAPI,
@@ -60,11 +66,17 @@ function getOpenAI(): OpenAI {
 }
 
 export async function createEmbedding(text: string): Promise<number[]> {
-  const openai = getOpenAI();
   const embeddingSettings = getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
   const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
 
+  // Route to local embeddings if local model
+  if (isLocalEmbeddingModel(model)) {
+    return createLocalEmbedding(text, model as LocalEmbeddingModel);
+  }
+
+  // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
+  const openai = getOpenAI();
   const response = await openai.embeddings.create({
     model,
     input: text,
@@ -75,11 +87,17 @@ export async function createEmbedding(text: string): Promise<number[]> {
 export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const openai = getOpenAI();
   const embeddingSettings = getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
   const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
 
+  // Route to local embeddings if local model
+  if (isLocalEmbeddingModel(model)) {
+    return createLocalEmbeddings(texts, model as LocalEmbeddingModel);
+  }
+
+  // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
+  const openai = getOpenAI();
   const response = await openai.embeddings.create({
     model,
     input: texts,

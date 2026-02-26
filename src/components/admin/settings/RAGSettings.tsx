@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Save, Cpu } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Save, Cpu, AlertTriangle, RefreshCw } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -27,20 +27,54 @@ interface EmbeddingSettings {
   updatedBy?: string;
 }
 
+interface AvailableEmbeddingModel {
+  id: string;
+  name: string;
+  provider: string;
+  dimensions: number;
+  local: boolean;
+  available: boolean;
+}
+
+interface ReindexJob {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  targetModel: string;
+  targetDimensions: number;
+  previousModel: string;
+  previousDimensions: number;
+  totalDocuments: number;
+  processedDocuments: number;
+  failedDocuments: number;
+  errors: string[];
+}
+
 export default function RAGSettingsTab() {
   const [settings, setSettings] = useState<RAGSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<RAGSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
+  const [availableEmbeddingModels, setAvailableEmbeddingModels] = useState<AvailableEmbeddingModel[]>([]);
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>('');
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Reindex state
+  const [isReindexing, setIsReindexing] = useState(false);
+  const [reindexProgress, setReindexProgress] = useState(0);
+  const [reindexJobId, setReindexJobId] = useState<string | null>(null);
+  const [reindexError, setReindexError] = useState<string | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleString();
   };
+
+  // Check if embedding model has changed from current
+  const isEmbeddingModelChanged = selectedEmbeddingModel && embeddingSettings?.model !== selectedEmbeddingModel;
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -78,6 +112,11 @@ export default function RAGSettingsTab() {
 
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
+        setSelectedEmbeddingModel(data.embedding.model);
+      }
+
+      if (data.availableEmbeddingModels) {
+        setAvailableEmbeddingModels(data.availableEmbeddingModels);
       }
 
       setError(null);
@@ -91,6 +130,118 @@ export default function RAGSettingsTab() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Poll for reindex job progress
+  const pollReindexProgress = useCallback(async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/admin/reindex/${jobId}`);
+      if (!res.ok) throw new Error('Failed to fetch job status');
+
+      const data = await res.json();
+      const job = data.job as ReindexJob;
+
+      setReindexProgress(data.progress || 0);
+
+      if (job.status === 'completed') {
+        setIsReindexing(false);
+        setReindexJobId(null);
+        setSuccess(`Reindexing completed! ${job.processedDocuments} documents processed.`);
+        setTimeout(() => setSuccess(null), 5000);
+
+        // Clear polling
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+
+        // Refresh settings to get updated embedding info
+        fetchSettings();
+      } else if (job.status === 'failed' || job.status === 'cancelled') {
+        setIsReindexing(false);
+        setReindexJobId(null);
+        setReindexError(
+          job.status === 'cancelled'
+            ? 'Reindexing was cancelled'
+            : `Reindexing failed: ${job.errors.join(', ')}`
+        );
+
+        // Clear polling
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      }
+    } catch (err) {
+      console.error('Error polling reindex progress:', err);
+    }
+  }, [fetchSettings]);
+
+  // Handle embedding model change and reindex
+  const handleChangeEmbedding = async () => {
+    if (!isEmbeddingModelChanged) return;
+
+    try {
+      setIsReindexing(true);
+      setReindexError(null);
+      setReindexProgress(0);
+
+      const res = await fetch('/api/admin/reindex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embeddingModel: selectedEmbeddingModel }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to start reindexing');
+      }
+
+      const data = await res.json();
+      setReindexJobId(data.job.id);
+
+      // Start polling for progress
+      pollIntervalRef.current = setInterval(() => {
+        pollReindexProgress(data.job.id);
+      }, 2000);
+    } catch (err) {
+      setIsReindexing(false);
+      setReindexError(err instanceof Error ? err.message : 'Failed to start reindexing');
+    }
+  };
+
+  // Cancel reindex job
+  const handleCancelReindex = async () => {
+    if (!reindexJobId) return;
+
+    try {
+      const res = await fetch(`/api/admin/reindex/${reindexJobId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) throw new Error('Failed to cancel reindex');
+
+      // Clear polling
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+
+      setIsReindexing(false);
+      setReindexJobId(null);
+      setReindexError('Reindexing cancelled');
+    } catch (err) {
+      setReindexError(err instanceof Error ? err.message : 'Failed to cancel');
+    }
+  };
 
   const handleChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
     key: K,
@@ -159,29 +310,134 @@ export default function RAGSettingsTab() {
         </div>
       )}
 
-      {/* Embedding Model Info Card */}
+      {/* Embedding Model Configuration */}
       <div className="bg-white rounded-lg border shadow-sm p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-purple-100 rounded-lg">
               <Cpu size={20} className="text-purple-600" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-900">Active Embedding Model</h3>
-              <p className="text-sm text-gray-600">
-                {embeddingSettings?.model || 'Not configured'}
-                {embeddingSettings?.dimensions && (
-                  <span className="text-gray-400 ml-2">({embeddingSettings.dimensions} dimensions)</span>
-                )}
-              </p>
+              <h3 className="text-sm font-medium text-gray-900">Embedding Model</h3>
+              <p className="text-xs text-gray-500">Used for document and query vectorization</p>
             </div>
           </div>
-          <div className="text-xs text-gray-500">
-            {embeddingSettings?.updatedAt && (
-              <span>Updated: {formatDate(embeddingSettings.updatedAt)}</span>
-            )}
-          </div>
         </div>
+
+        {/* Model Dropdown */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Model</label>
+          <select
+            value={selectedEmbeddingModel}
+            onChange={(e) => setSelectedEmbeddingModel(e.target.value)}
+            disabled={isReindexing}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+          >
+            {/* Cloud Providers Group */}
+            <optgroup label="Cloud Providers">
+              {availableEmbeddingModels.filter(m => !m.local).map(model => (
+                <option
+                  key={model.id}
+                  value={model.id}
+                  disabled={!model.available}
+                >
+                  {model.name} ({model.dimensions} dims)
+                  {!model.available && ' - Not configured'}
+                  {model.id === embeddingSettings?.model && ' (Current)'}
+                </option>
+              ))}
+            </optgroup>
+
+            {/* Local Models Group */}
+            <optgroup label="Local Models (Free)">
+              {availableEmbeddingModels.filter(m => m.local).map(model => (
+                <option key={model.id} value={model.id}>
+                  {model.name} ({model.dimensions} dims)
+                  {model.id === embeddingSettings?.model && ' (Current)'}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            Local models run on-device, no API key required
+          </p>
+        </div>
+
+        {/* Show warning only when model changed */}
+        {isEmbeddingModelChanged && !isReindexing && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">Reindexing Required</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  Changing the embedding model requires reindexing all documents.
+                  This runs in the background and may take several minutes depending
+                  on document count. Existing embeddings will be replaced.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reindex Error */}
+        {reindexError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+            <p className="text-sm text-red-700">{reindexError}</p>
+            <button onClick={() => setReindexError(null)} className="text-red-500 hover:text-red-700">×</button>
+          </div>
+        )}
+
+        {/* Apply & Reindex Button */}
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={handleChangeEmbedding}
+            disabled={!isEmbeddingModelChanged || isReindexing}
+            loading={isReindexing}
+          >
+            <RefreshCw size={16} className="mr-2" />
+            {isReindexing ? 'Reindexing...' : 'Apply & Start Reindexing'}
+          </Button>
+
+          {isEmbeddingModelChanged && !isReindexing && (
+            <Button
+              variant="secondary"
+              onClick={() => setSelectedEmbeddingModel(embeddingSettings?.model || '')}
+            >
+              Cancel
+            </Button>
+          )}
+
+          {isReindexing && (
+            <Button variant="secondary" onClick={handleCancelReindex}>
+              Cancel Reindex
+            </Button>
+          )}
+        </div>
+
+        {/* Progress Bar (shown during reindexing) */}
+        {isReindexing && (
+          <div className="mt-4">
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>Reindexing documents...</span>
+              <span>{reindexProgress}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${reindexProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Last updated info */}
+        {embeddingSettings?.updatedAt && !isReindexing && (
+          <p className="mt-4 text-xs text-gray-500 border-t pt-3">
+            Last updated: {formatDate(embeddingSettings.updatedAt)}
+            {embeddingSettings.updatedBy && ` by ${embeddingSettings.updatedBy}`}
+          </p>
+        )}
       </div>
 
       {/* RAG Configuration Card */}

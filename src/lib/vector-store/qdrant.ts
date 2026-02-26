@@ -8,14 +8,29 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import * as crypto from 'crypto';
 import type { VectorStoreClient, VectorQueryResult, CollectionNameHelpers } from './types';
 import type { ChunkMetadata } from '@/types';
+import { getEmbeddingSettings } from '../db/config';
 
 // Collection naming conventions (matching ChromaDB pattern)
 const CATEGORY_PREFIX = 'category_';
 const GLOBAL_COLLECTION = 'global_documents';
 const LEGACY_COLLECTION = process.env.CHROMA_COLLECTION_NAME || 'organizational_documents';
 
-// OpenAI text-embedding-3-large produces 3072 dimensions
-const VECTOR_SIZE = 3072;
+// Default vector size (used as fallback)
+const DEFAULT_VECTOR_SIZE = 3072;
+
+/**
+ * Get the current vector size from embedding settings
+ * Dynamically returns the dimensions of the configured embedding model
+ */
+function getVectorSize(): number {
+  try {
+    const settings = getEmbeddingSettings();
+    return settings.dimensions || DEFAULT_VECTOR_SIZE;
+  } catch {
+    // If settings can't be loaded (e.g., during initialization), use default
+    return DEFAULT_VECTOR_SIZE;
+  }
+}
 
 /**
  * Collection name helpers for Qdrant
@@ -114,9 +129,12 @@ export class QdrantVectorStore implements VectorStoreClient {
       return;
     }
 
+    // Get dynamic vector size from embedding settings
+    const vectorSize = getVectorSize();
+
     await qdrant.createCollection(name, {
       vectors: {
-        size: VECTOR_SIZE,
+        size: vectorSize,
         distance: 'Cosine',
       },
       optimizers_config: {
@@ -142,7 +160,7 @@ export class QdrantVectorStore implements VectorStoreClient {
       field_schema: 'keyword',
     });
 
-    console.log(`[Qdrant] Created collection: ${name}`);
+    console.log(`[Qdrant] Created collection: ${name} (${vectorSize} dimensions)`);
   }
 
   async deleteCollection(name: string): Promise<void> {

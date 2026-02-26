@@ -41,7 +41,28 @@ import {
 import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import { isProviderConfigured } from '@/lib/provider-helpers';
+import { EMBEDDING_MODELS, type EmbeddingModelDefinition } from '@/lib/constants';
+import { isLocalEmbeddingModel } from '@/lib/local-embeddings';
 import type { ApiError } from '@/types';
+
+// Extended embedding model info with availability status
+interface AvailableEmbeddingModel extends EmbeddingModelDefinition {
+  available: boolean;
+}
+
+/**
+ * Get available embedding models with their availability status
+ * Cloud models require the provider to be configured (env vars set)
+ * Local models are always available
+ */
+function getAvailableEmbeddingModels(): AvailableEmbeddingModel[] {
+  return EMBEDDING_MODELS.map(model => ({
+    ...model,
+    available: model.local
+      ? true // Local models are always available
+      : isProviderConfigured(model.provider), // Cloud models need provider configured
+  }));
+}
 
 // Available models are now loaded from getAvailableModels() in db/config
 
@@ -128,6 +149,7 @@ export async function GET() {
         updatedAt: embeddingMeta?.updatedAt || new Date().toISOString(),
         updatedBy: embeddingMeta?.updatedBy || 'system',
       },
+      availableEmbeddingModels: getAvailableEmbeddingModels(),
       reranker: {
         ...rerankerSettings,
         // Mask key if exists in DB or env, empty string otherwise
@@ -701,19 +723,46 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate dimensions
-        if (typeof dimensions !== 'number' || dimensions < 256 || dimensions > 8192) {
+        // Validate model is in the allowed list
+        const modelDef = EMBEDDING_MODELS.find(m => m.id === model);
+        if (!modelDef) {
           return NextResponse.json<ApiError>(
-            { error: 'Dimensions must be between 256 and 8192', code: 'VALIDATION_ERROR' },
+            { error: 'Invalid embedding model selected', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
+        // Check if model is available (provider configured or local)
+        const modelAvailable = modelDef.local || isProviderConfigured(modelDef.provider);
+        if (!modelAvailable) {
+          return NextResponse.json<ApiError>(
+            { error: `Provider ${modelDef.provider} is not configured for ${model}`, code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate dimensions matches the model (use the model's dimensions, not user input)
+        const expectedDimensions = modelDef.dimensions;
+        if (typeof dimensions !== 'number' || dimensions !== expectedDimensions) {
+          // Auto-correct dimensions to match the model
+          console.log(`[Settings] Auto-correcting embedding dimensions from ${dimensions} to ${expectedDimensions} for model ${model}`);
+        }
+
         result = setEmbeddingSettings({
           model: model.trim(),
-          dimensions,
+          dimensions: expectedDimensions, // Use the model's defined dimensions
         }, user.email);
-        break;
+
+        // Return with metadata
+        const embeddingMeta = getSettingMetadata('embedding-settings');
+        return NextResponse.json({
+          success: true,
+          settings: {
+            ...result,
+            updatedAt: embeddingMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: embeddingMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'reranker': {
