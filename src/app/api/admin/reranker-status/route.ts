@@ -67,21 +67,21 @@ async function testCohere(): Promise<{ available: boolean; configured: boolean; 
 }
 
 /**
- * Test Jina Reranker v2 availability (cross-encoder model)
+ * Test BGE Reranker availability (cross-encoder models)
+ * Both bge-large and bge-base use the same text-classification pipeline
  */
-async function testJina(): Promise<{ available: boolean; configured: boolean; error?: string; latency?: number }> {
+async function testBGE(): Promise<{ available: boolean; configured: boolean; error?: string; latency?: number }> {
   const startTime = Date.now();
 
   try {
     // Try to dynamically import @xenova/transformers
-    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import('@xenova/transformers');
+    const { pipeline, env } = await import('@xenova/transformers');
 
     // Disable local models to avoid file system issues during test
     env.allowLocalModels = false;
 
-    // Verify the required classes exist for cross-encoder models
-    if (typeof AutoTokenizer?.from_pretrained === 'function' &&
-        typeof AutoModelForSequenceClassification?.from_pretrained === 'function') {
+    // Verify the pipeline function exists (BGE uses text-classification pipeline)
+    if (typeof pipeline === 'function') {
       const latency = Date.now() - startTime;
       return {
         available: true,
@@ -90,7 +90,7 @@ async function testJina(): Promise<{ available: boolean; configured: boolean; er
       };
     }
 
-    return { available: false, configured: false, error: 'Required model classes not available' };
+    return { available: false, configured: false, error: 'Pipeline not available' };
   } catch (error) {
     if (error instanceof Error) {
       // Check for common errors
@@ -181,26 +181,32 @@ export async function GET() {
     }
 
     // Test all reranker providers in parallel
-    const [cohereResult, jinaResult, localResult] = await Promise.all([
+    // BGE large and base share the same availability (both use @xenova/transformers pipeline)
+    const [cohereResult, bgeResult, localResult] = await Promise.all([
       testCohere(),
-      testJina(),
+      testBGE(),
       testLocal(),
     ]);
 
     const providers: RerankerProviderStatus[] = [
+      {
+        provider: 'bge-large',
+        name: 'BGE Reranker Large (Cross-encoder)',
+        ...bgeResult,
+      },
       {
         provider: 'cohere',
         name: 'Cohere API',
         ...cohereResult,
       },
       {
-        provider: 'jina',
-        name: 'Jina Reranker v2 (Cross-encoder)',
-        ...jinaResult,
+        provider: 'bge-base',
+        name: 'BGE Reranker Base (Smaller)',
+        ...bgeResult,  // Same availability as bge-large
       },
       {
         provider: 'local',
-        name: 'Legacy Local (Bi-encoder)',
+        name: 'Local Bi-encoder (Legacy)',
         ...localResult,
       },
     ];

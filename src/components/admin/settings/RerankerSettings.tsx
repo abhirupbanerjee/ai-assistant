@@ -1,13 +1,21 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Save } from 'lucide-react';
+import { Save, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
+// Provider types matching db/config.ts
+type RerankerProvider = 'bge-large' | 'cohere' | 'bge-base' | 'local';
+
+interface RerankerProviderConfig {
+  provider: RerankerProvider;
+  enabled: boolean;
+}
+
 interface RerankerSettings {
   enabled: boolean;
-  provider: 'cohere' | 'jina' | 'local';
+  providers: RerankerProviderConfig[];
   cohereApiKey?: string;
   hasCohereApiKey?: boolean;
   topKForReranking: number;
@@ -25,6 +33,34 @@ interface RerankerProviderStatus {
   error?: string;
   latency?: number;
 }
+
+// Provider display info
+const RERANKER_PROVIDER_INFO: Record<RerankerProvider, { label: string; description: string }> = {
+  'bge-large': {
+    label: 'BGE Reranker Large',
+    description: 'Best accuracy cross-encoder (~670MB)',
+  },
+  'cohere': {
+    label: 'Cohere API',
+    description: 'Fast API-based reranking (requires API key)',
+  },
+  'bge-base': {
+    label: 'BGE Reranker Base',
+    description: 'Smaller cross-encoder (~220MB)',
+  },
+  'local': {
+    label: 'Local Bi-encoder',
+    description: 'Legacy model, less accurate (~90MB)',
+  },
+};
+
+// Default providers order
+const DEFAULT_PROVIDERS: RerankerProviderConfig[] = [
+  { provider: 'bge-large', enabled: true },
+  { provider: 'cohere', enabled: true },
+  { provider: 'bge-base', enabled: true },
+  { provider: 'local', enabled: true },
+];
 
 export default function RerankerSettingsTab() {
   const [settings, setSettings] = useState<RerankerSettings | null>(null);
@@ -57,16 +93,21 @@ export default function RerankerSettingsTab() {
 
       const rerankerData = settingsData.reranker || {
         enabled: false,
-        provider: 'cohere',
+        providers: DEFAULT_PROVIDERS,
         topKForReranking: 50,
         minRerankerScore: 0.3,
         cacheTTLSeconds: 3600,
       };
 
+      // Ensure providers array exists (backward compatibility)
+      if (!rerankerData.providers) {
+        rerankerData.providers = DEFAULT_PROVIDERS;
+      }
+
       setSettings(rerankerData);
       setEditedSettings({
         enabled: rerankerData.enabled,
-        provider: rerankerData.provider,
+        providers: rerankerData.providers,
         topKForReranking: rerankerData.topKForReranking,
         minRerankerScore: rerankerData.minRerankerScore,
         cacheTTLSeconds: rerankerData.cacheTTLSeconds,
@@ -130,7 +171,7 @@ export default function RerankerSettingsTab() {
     if (settings) {
       setEditedSettings({
         enabled: settings.enabled,
-        provider: settings.provider,
+        providers: settings.providers,
         topKForReranking: settings.topKForReranking,
         minRerankerScore: settings.minRerankerScore,
         cacheTTLSeconds: settings.cacheTTLSeconds,
@@ -150,6 +191,39 @@ export default function RerankerSettingsTab() {
     }
   };
 
+  // Move provider up in priority
+  const moveProviderUp = (index: number) => {
+    if (!editedSettings || index === 0) return;
+    const newProviders = [...editedSettings.providers];
+    [newProviders[index - 1], newProviders[index]] = [newProviders[index], newProviders[index - 1]];
+    updateSetting('providers', newProviders);
+  };
+
+  // Move provider down in priority
+  const moveProviderDown = (index: number) => {
+    if (!editedSettings || index === editedSettings.providers.length - 1) return;
+    const newProviders = [...editedSettings.providers];
+    [newProviders[index], newProviders[index + 1]] = [newProviders[index + 1], newProviders[index]];
+    updateSetting('providers', newProviders);
+  };
+
+  // Toggle provider enabled/disabled
+  const toggleProviderEnabled = (index: number) => {
+    if (!editedSettings) return;
+    const newProviders = [...editedSettings.providers];
+    newProviders[index] = { ...newProviders[index], enabled: !newProviders[index].enabled };
+    updateSetting('providers', newProviders);
+  };
+
+  // Check if a provider is available
+  const isProviderAvailable = (provider: RerankerProvider): boolean => {
+    const status = rerankerStatus.find(s => s?.provider === provider);
+    return status?.available ?? true;
+  };
+
+  // Check if Cohere is enabled in the providers list
+  const isCohereEnabled = editedSettings?.providers.some(p => p.provider === 'cohere' && p.enabled);
+
   return (
     <div className="space-y-4">
       {error && (
@@ -167,7 +241,7 @@ export default function RerankerSettingsTab() {
 
       {/* Reranker Status Dashboard */}
       <div className="bg-white rounded-lg border shadow-sm p-4">
-        <h3 className="text-sm font-medium text-gray-900 mb-3">Reranker Status</h3>
+        <h3 className="text-sm font-medium text-gray-900 mb-3">Provider Availability</h3>
         <div className="grid grid-cols-2 gap-4">
           {rerankerStatus.map((status) => (
             <div key={status.provider} className={`p-3 rounded-lg border ${
@@ -178,9 +252,6 @@ export default function RerankerSettingsTab() {
                   <div className={`w-2 h-2 rounded-full ${status.available ? 'bg-green-500' : 'bg-gray-400'}`} />
                   <span className="font-medium text-gray-900">{status.name}</span>
                 </div>
-                {editedSettings?.provider === status.provider && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Active</span>
-                )}
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {status.available ? 'Available' : (status.error || 'Unavailable')}
@@ -191,10 +262,6 @@ export default function RerankerSettingsTab() {
           {rerankerStatus.length === 0 && (
             <p className="text-sm text-gray-500 col-span-2">No reranker providers found</p>
           )}
-        </div>
-        <div className="mt-3 pt-3 border-t text-xs text-gray-500">
-          <span className="font-medium">Default:</span> {editedSettings?.provider === 'cohere' ? 'Cohere API' : 'Local'} •
-          <span className="font-medium ml-2">Fallback:</span> {editedSettings?.provider === 'cohere' ? 'Local' : 'None'}
         </div>
       </div>
 
@@ -237,47 +304,92 @@ export default function RerankerSettingsTab() {
               />
             </div>
 
-            {/* Provider Selection */}
+            {/* Provider Priority List */}
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Reranker Provider</label>
-              <select
-                value={editedSettings.provider}
-                onChange={(e) => updateSetting('provider', e.target.value as 'cohere' | 'jina' | 'local')}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {(() => {
-                  const cohereStatus = rerankerStatus.find(s => s?.provider === 'cohere');
-                  const jinaStatus = rerankerStatus.find(s => s?.provider === 'jina');
-                  const localStatus = rerankerStatus.find(s => s?.provider === 'local');
-                  const cohereAvailable = cohereStatus?.available ?? true;
-                  const jinaAvailable = jinaStatus?.available ?? true;
-                  const localAvailable = localStatus?.available ?? true;
-                  return (
-                    <>
-                      <option value="cohere" disabled={!cohereAvailable}>
-                        Cohere API (Fast, requires API key){!cohereAvailable ? ' (unavailable)' : ''}
-                      </option>
-                      <option value="jina" disabled={!jinaAvailable}>
-                        Jina Reranker v2 (Best accuracy, free){!jinaAvailable ? ' (unavailable)' : ''}
-                      </option>
-                      <option value="local" disabled={!localAvailable}>
-                        Legacy Local (Bi-encoder, less accurate){!localAvailable ? ' (unavailable)' : ''}
-                      </option>
-                    </>
-                  );
-                })()}
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                {editedSettings.provider === 'cohere'
-                  ? 'Uses Cohere rerank-english-v3.0 model.'
-                  : editedSettings.provider === 'jina'
-                  ? 'Uses Jina Reranker v2 cross-encoder model. Best accuracy, ~500MB download on first use.'
-                  : 'Legacy bi-encoder using all-MiniLM-L6-v2. Less accurate than cross-encoder rerankers.'}
+              <label className="block text-sm font-medium text-gray-900 mb-2">Provider Priority</label>
+              <p className="text-xs text-gray-500 mb-3">
+                Providers are tried in order from top to bottom. If one fails, the next enabled provider is used.
               </p>
+              <div className="space-y-2">
+                {editedSettings.providers.map((config, index) => {
+                  const info = RERANKER_PROVIDER_INFO[config.provider];
+                  const available = isProviderAvailable(config.provider);
+                  return (
+                    <div
+                      key={config.provider}
+                      className={`flex items-center gap-3 p-3 rounded-lg border ${
+                        config.enabled && available
+                          ? 'bg-white border-gray-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      {/* Priority indicator */}
+                      <div className="flex items-center gap-1 text-gray-400">
+                        <GripVertical size={16} />
+                        <span className="text-xs font-mono w-4">{index + 1}</span>
+                      </div>
+
+                      {/* Up/Down buttons */}
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          onClick={() => moveProviderUp(index)}
+                          disabled={index === 0}
+                          className={`p-0.5 rounded ${
+                            index === 0
+                              ? 'text-gray-300 cursor-not-allowed'
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveProviderDown(index)}
+                          disabled={index === editedSettings.providers.length - 1}
+                          className={`p-0.5 rounded ${
+                            index === editedSettings.providers.length - 1
+                              ? 'text-gray-300 cursor-not-allowed'
+                              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+
+                      {/* Provider info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-medium ${config.enabled ? 'text-gray-900' : 'text-gray-500'}`}>
+                            {info.label}
+                          </span>
+                          {!available && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">
+                              Unavailable
+                            </span>
+                          )}
+                          {index === 0 && config.enabled && available && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 truncate">{info.description}</p>
+                      </div>
+
+                      {/* Enable toggle */}
+                      <input
+                        type="checkbox"
+                        checked={config.enabled}
+                        onChange={() => toggleProviderEnabled(index)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Cohere API Key - show only when Cohere provider is selected */}
-            {editedSettings.provider === 'cohere' && (
+            {/* Cohere API Key - show only when Cohere provider is enabled */}
+            {isCohereEnabled && (
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-1">Cohere API Key</label>
                 <input

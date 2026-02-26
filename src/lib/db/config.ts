@@ -107,14 +107,34 @@ export interface EmbeddingSettings {
   dimensions: number;   // e.g., 3072
 }
 
+export type RerankerProvider = 'bge-large' | 'cohere' | 'bge-base' | 'local';
+
+export interface RerankerProviderConfig {
+  provider: RerankerProvider;
+  enabled: boolean;
+}
+
 export interface RerankerSettings {
   enabled: boolean;
-  provider: 'cohere' | 'jina' | 'local';   // Cohere API, Jina Reranker v2 (cross-encoder), or legacy local (bi-encoder)
+  providers: RerankerProviderConfig[];  // Ordered by priority (index 0 = primary)
   cohereApiKey?: string;          // Cohere API key (stored, falls back to COHERE_API_KEY env var)
   topKForReranking: number;       // How many chunks to rerank (default: 50)
   minRerankerScore: number;       // Threshold 0-1 (default: 0.3)
   cacheTTLSeconds: number;        // Cache duration (default: 3600)
 }
+
+export const DEFAULT_RERANKER_SETTINGS: RerankerSettings = {
+  enabled: true,
+  providers: [
+    { provider: 'bge-large', enabled: true },
+    { provider: 'cohere', enabled: true },
+    { provider: 'bge-base', enabled: true },
+    { provider: 'local', enabled: true },
+  ],
+  topKForReranking: 50,
+  minRerankerScore: 0.3,
+  cacheTTLSeconds: 3600,
+};
 
 export interface MemorySettings {
   enabled: boolean;               // Enable/disable memory system
@@ -572,14 +592,37 @@ export function getEmbeddingSettings(): EmbeddingSettings {
 /**
  * Get reranker settings
  * Priority: SQLite > JSON config > hardcoded defaults
+ * Handles backward compatibility for old 'provider' field
  */
 export function getRerankerSettings(): RerankerSettings {
-  const dbSettings = getSetting<RerankerSettings>('reranker-settings');
-  if (dbSettings) return dbSettings;
+  const dbSettings = getSetting<RerankerSettings & { provider?: string }>('reranker-settings');
+  if (dbSettings) {
+    // Handle backward compatibility: migrate old 'provider' field to 'providers' array
+    if (!dbSettings.providers && (dbSettings as { provider?: string }).provider) {
+      const oldProvider = (dbSettings as { provider?: string }).provider;
+      // Map old provider names to new ones
+      const providerMap: Record<string, RerankerProvider> = {
+        'jina': 'bge-large',  // Jina is replaced by BGE
+        'cohere': 'cohere',
+        'local': 'local',
+      };
+      const mappedProvider = providerMap[oldProvider!] || 'bge-large';
 
-  // Fall back to JSON config
-  const config = loadConfig();
-  return config.reranker;
+      // Return with migrated providers array
+      return {
+        ...DEFAULT_RERANKER_SETTINGS,
+        ...dbSettings,
+        providers: [
+          { provider: mappedProvider, enabled: true },
+          ...DEFAULT_RERANKER_SETTINGS.providers.filter(p => p.provider !== mappedProvider),
+        ],
+      };
+    }
+    return dbSettings;
+  }
+
+  // Fall back to hardcoded defaults (config.reranker may have old format)
+  return DEFAULT_RERANKER_SETTINGS;
 }
 
 /**

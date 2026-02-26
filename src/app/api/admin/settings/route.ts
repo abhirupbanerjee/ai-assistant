@@ -719,7 +719,7 @@ export async function PUT(request: NextRequest) {
       case 'reranker': {
         const {
           enabled,
-          provider,
+          providers,
           cohereApiKey,
           topKForReranking,
           minRerankerScore,
@@ -734,12 +734,21 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate provider
-        if (!['cohere', 'jina', 'local'].includes(provider)) {
+        // Validate providers array
+        const validProviders = ['bge-large', 'cohere', 'bge-base', 'local'];
+        if (!Array.isArray(providers) || providers.length !== 4) {
           return NextResponse.json<ApiError>(
-            { error: 'Provider must be "cohere", "jina", or "local"', code: 'VALIDATION_ERROR' },
+            { error: 'Providers must be an array with all 4 providers', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
+        }
+        for (const p of providers) {
+          if (!validProviders.includes(p.provider) || typeof p.enabled !== 'boolean') {
+            return NextResponse.json<ApiError>(
+              { error: 'Each provider must have a valid provider name and enabled boolean', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
         }
 
         // Validate Cohere API key (optional - can use env var as fallback)
@@ -782,7 +791,7 @@ export async function PUT(request: NextRequest) {
 
         result = setRerankerSettings({
           enabled,
-          provider,
+          providers,
           ...(cohereApiKey !== undefined ? { cohereApiKey: cohereApiKey || undefined } : {}),
           topKForReranking,
           minRerankerScore,

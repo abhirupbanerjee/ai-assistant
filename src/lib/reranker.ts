@@ -1,15 +1,16 @@
 /**
  * Reranker Module
  *
- * Supports multiple providers:
+ * Supports multiple providers with priority-based fallback:
+ * - BGE Reranker Large (cross-encoder, best accuracy, free)
  * - Cohere API (fast, requires API key)
- * - Jina Reranker v2 (cross-encoder, best accuracy, free)
+ * - BGE Reranker Base (cross-encoder, smaller, free)
  * - Local bi-encoder (legacy, less accurate, free)
  *
  * Includes Redis caching for performance.
  */
 
-import { getRerankerSettings } from './db/config';
+import { getRerankerSettings, type RerankerProvider } from './db/config';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import type { RetrievedChunk } from '@/types';
 
@@ -185,132 +186,93 @@ async function rerankWithLocal(
   }
 }
 
-// Lazy-loaded Jina reranker model
-let jinaReranker: {
-  tokenizer: Awaited<ReturnType<typeof import('@xenova/transformers').AutoTokenizer.from_pretrained>>;
-  model: Awaited<ReturnType<typeof import('@xenova/transformers').AutoModelForSequenceClassification.from_pretrained>>;
-} | null = null;
-
-// Track if Jina model loading has failed to avoid repeated attempts
-let jinaLoadFailed = false;
+// Lazy-loaded BGE reranker pipelines
+let bgeRerankerLarge: Awaited<ReturnType<typeof import('@xenova/transformers').pipeline>> | null = null;
+let bgeRerankerBase: Awaited<ReturnType<typeof import('@xenova/transformers').pipeline>> | null = null;
 
 /**
- * Reset the Jina reranker state (call to retry loading after fixing issues)
+ * Reset the BGE reranker state (call to retry loading after fixing issues)
  */
-export function resetJinaReranker(): void {
-  jinaReranker = null;
-  jinaLoadFailed = false;
+export function resetBGEReranker(): void {
+  bgeRerankerLarge = null;
+  bgeRerankerBase = null;
 }
 
 /**
- * Sigmoid function to convert logits to probability
- */
-function sigmoid(x: number): number {
-  return 1 / (1 + Math.exp(-x));
-}
-
-/**
- * Rerank chunks using Jina Reranker v2 (cross-encoder)
+ * Rerank chunks using BGE cross-encoder
  *
- * This is a true reranker that jointly processes query+document pairs,
- * providing more accurate relevance scoring than bi-encoder approaches.
+ * BGE rerankers are true cross-encoders that jointly process query+document pairs,
+ * providing accurate relevance scoring.
  *
- * Model: jinaai/jina-reranker-v2-base-multilingual
- * - 278M parameters (half the size of BGE-Reranker)
- * - 15x faster than BGE-Reranker
- * - Supports 100+ languages
- * - Max context: 1024 tokens
+ * Models:
+ * - Xenova/bge-reranker-large (335M params, ~670MB, best accuracy)
+ * - Xenova/bge-reranker-base (110M params, ~220MB, good accuracy)
+ *
+ * Max context: 512 tokens
  */
-async function rerankWithJina(
+async function rerankWithBGE(
   query: string,
   chunks: RetrievedChunk[],
-  minScore: number
+  minScore: number,
+  variant: 'large' | 'base' = 'large'
 ): Promise<RetrievedChunk[]> {
-  try {
-    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import('@xenova/transformers');
+  const { pipeline, env } = await import('@xenova/transformers');
 
-    // Configure cache directory from environment variable (set in docker-compose.yml)
-    // This prevents EACCES errors when running as non-root in Docker
-    env.cacheDir = process.env.TRANSFORMERS_CACHE || '/tmp/transformers_cache';
-    env.allowLocalModels = false;
+  // Configure cache directory
+  env.cacheDir = process.env.TRANSFORMERS_CACHE || '/tmp/transformers_cache';
+  env.allowLocalModels = false;
 
-    // Lazy-load the Jina Reranker v2 model
-    if (!jinaReranker) {
-      // Skip loading if previous attempt failed (avoid repeated failures)
-      if (jinaLoadFailed) {
-        console.log('[Reranker] Skipping Jina model load (previous attempt failed)');
-        return chunks;
-      }
+  const modelId = variant === 'large'
+    ? 'Xenova/bge-reranker-large'
+    : 'Xenova/bge-reranker-base';
 
-      console.log('[Reranker] Loading Jina Reranker v2 model (first time may take a moment)...');
-      const modelId = 'jinaai/jina-reranker-v2-base-multilingual';
-
-      try {
-        const [tokenizer, model] = await Promise.all([
-          AutoTokenizer.from_pretrained(modelId),
-          AutoModelForSequenceClassification.from_pretrained(modelId, {
-            quantized: false, // Use full-precision (fp32) model for better accuracy
-          }),
-        ]);
-
-        // Validate model loaded correctly
-        if (!tokenizer || !model) {
-          throw new Error('Model or tokenizer failed to initialize (null/undefined)');
-        }
-
-        jinaReranker = { tokenizer, model };
-        console.log('[Reranker] Jina Reranker v2 model loaded successfully');
-      } catch (loadError) {
-        jinaLoadFailed = true;
-        console.error('[Reranker] Failed to load Jina model - will use original chunks:', loadError);
-        return chunks;
-      }
-    }
-
-    const scoredChunks: RetrievedChunk[] = [];
-
-    for (const chunk of chunks) {
-      try {
-        // Cross-encoder: tokenize query + document together
-        // Truncate to 1024 tokens max (model limit)
-        const truncatedText = chunk.text.slice(0, 4000); // ~1000 tokens approximate
-
-        const inputs = await jinaReranker.tokenizer(query, truncatedText, {
-          padding: true,
-          truncation: true,
-          max_length: 1024,
-        });
-
-        // Get relevance score from model
-        const outputs = await jinaReranker.model(inputs);
-
-        // Convert logits to probability score (0-1)
-        // The model outputs a single logit for relevance
-        const logits = outputs.logits.data as Float32Array;
-        const score = sigmoid(logits[0]);
-
-        if (score >= minScore) {
-          scoredChunks.push({
-            ...chunk,
-            score,
-          });
-        }
-      } catch (chunkError) {
-        console.warn('[Reranker] Error scoring chunk with Jina:', chunkError);
-        // Keep chunk with original score if reranking fails
-        if (chunk.score >= minScore) {
-          scoredChunks.push(chunk);
-        }
-      }
-    }
-
-    console.log(`[Reranker] Jina scoring complete: ${scoredChunks.length} chunks passed threshold`);
-    return scoredChunks.sort((a, b) => b.score - a.score);
-  } catch (error) {
-    console.error('[Reranker] Jina reranker error:', error);
-    // Fallback to original chunks on error
-    return chunks;
+  // Load model if needed
+  if (variant === 'large' && !bgeRerankerLarge) {
+    console.log('[Reranker] Loading BGE Reranker Large (first time may take ~670MB download)...');
+    bgeRerankerLarge = await pipeline('text-classification', modelId, { quantized: true });
+    console.log('[Reranker] BGE Reranker Large loaded successfully');
+  } else if (variant === 'base' && !bgeRerankerBase) {
+    console.log('[Reranker] Loading BGE Reranker Base (first time may take ~220MB download)...');
+    bgeRerankerBase = await pipeline('text-classification', modelId, { quantized: true });
+    console.log('[Reranker] BGE Reranker Base loaded successfully');
   }
+
+  const reranker = variant === 'large' ? bgeRerankerLarge : bgeRerankerBase;
+  const scoredChunks: RetrievedChunk[] = [];
+
+  // Type for text-classification pipeline results
+  type ClassificationResult = { label: string; score: number }[];
+
+  for (const chunk of chunks) {
+    try {
+      // BGE reranker expects query and passage combined
+      const truncatedText = chunk.text.slice(0, 512);
+      const input = `${query} [SEP] ${truncatedText}`;
+
+      // Cast to proper function type for text-classification pipeline
+      const classify = reranker as unknown as (text: string) => Promise<ClassificationResult>;
+      const result = await classify(input);
+
+      // BGE outputs [{ label: 'LABEL_0', score: 0.xxx }]
+      const score = Array.isArray(result) ? result[0]?.score ?? 0 : 0;
+
+      if (score >= minScore) {
+        scoredChunks.push({
+          ...chunk,
+          score,
+        });
+      }
+    } catch (chunkError) {
+      console.warn('[Reranker] Error scoring chunk with BGE:', chunkError);
+      // Keep chunk with original score if reranking fails
+      if (chunk.score >= minScore) {
+        scoredChunks.push(chunk);
+      }
+    }
+  }
+
+  console.log(`[Reranker] BGE ${variant} scoring complete: ${scoredChunks.length} chunks passed threshold`);
+  return scoredChunks.sort((a, b) => b.score - a.score);
 }
 
 /**
@@ -388,29 +350,48 @@ export async function rerankChunks(
   const chunksToRerank = chunks.slice(0, settings.topKForReranking);
   const remainingChunks = chunks.slice(settings.topKForReranking);
 
-  console.log(`[Reranker] Reranking ${chunksToRerank.length} chunks with ${settings.provider}`);
+  const enabledProviders = settings.providers.filter(p => p.enabled);
+  console.log(`[Reranker] Reranking ${chunksToRerank.length} chunks (${enabledProviders.length} providers available)`);
 
-  let rerankedChunks: RetrievedChunk[];
+  let rerankedChunks: RetrievedChunk[] | null = null;
 
-  if (settings.provider === 'cohere') {
-    rerankedChunks = await rerankWithCohere(
-      query,
-      chunksToRerank,
-      minScore
-    );
-  } else if (settings.provider === 'jina') {
-    rerankedChunks = await rerankWithJina(
-      query,
-      chunksToRerank,
-      minScore
-    );
-  } else {
-    // Legacy 'local' bi-encoder fallback
-    rerankedChunks = await rerankWithLocal(
-      query,
-      chunksToRerank,
-      minScore
-    );
+  // Try providers in priority order
+  for (const providerConfig of settings.providers) {
+    if (!providerConfig.enabled) continue;
+
+    try {
+      console.log(`[Reranker] Trying ${providerConfig.provider}...`);
+
+      switch (providerConfig.provider) {
+        case 'bge-large':
+          rerankedChunks = await rerankWithBGE(query, chunksToRerank, minScore, 'large');
+          break;
+        case 'bge-base':
+          rerankedChunks = await rerankWithBGE(query, chunksToRerank, minScore, 'base');
+          break;
+        case 'cohere':
+          rerankedChunks = await rerankWithCohere(query, chunksToRerank, minScore);
+          break;
+        case 'local':
+          rerankedChunks = await rerankWithLocal(query, chunksToRerank, minScore);
+          break;
+      }
+
+      // If we got results, break out of the loop
+      if (rerankedChunks !== null) {
+        console.log(`[Reranker] ${providerConfig.provider} succeeded`);
+        break;
+      }
+    } catch (error) {
+      console.error(`[Reranker] ${providerConfig.provider} failed:`, error);
+      // Continue to next provider
+    }
+  }
+
+  // Fallback to original chunks if all providers failed
+  if (rerankedChunks === null) {
+    console.warn('[Reranker] All providers failed, returning original chunks filtered by threshold');
+    rerankedChunks = chunksToRerank.filter(c => c.score >= minScore);
   }
 
   // Cache the scores for future use
