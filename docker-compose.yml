@@ -89,6 +89,7 @@ services:
     volumes:
       - ./data/app:/app/data
       - ./config:/app/config:ro
+      - ./data/transformers_cache:/tmp/transformers_cache  # Persist BGE reranker models
     # Note: Vector store (chroma/qdrant) dependencies are handled via profiles.
     # PostgreSQL: waits for healthy status when the postgres profile is active.
     depends_on:
