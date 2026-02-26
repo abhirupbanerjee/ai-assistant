@@ -35,6 +35,7 @@ function getProviderInfo(provider?: string): { icon: React.ReactNode; label: str
 export default function ImageDisplay({ image }: ImageDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [modalImageError, setModalImageError] = useState(false);
 
   const providerInfo = getProviderInfo(image.provider);
 
@@ -48,6 +49,7 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
   };
 
   const handleExpand = () => {
+    setModalImageError(false); // Reset modal error state when opening
     setIsExpanded(true);
   };
 
@@ -159,14 +161,32 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
             </button>
 
             {/* Full size image */}
-            <Image
-              src={fullUrl}
-              alt={image.alt}
-              width={image.width}
-              height={image.height}
-              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
-              unoptimized
-            />
+            {modalImageError ? (
+              <div
+                className="flex items-center justify-center bg-gray-800 rounded-lg"
+                style={{
+                  width: Math.min(image.width, window.innerWidth * 0.9),
+                  height: Math.min(image.height, window.innerHeight * 0.85),
+                  maxWidth: '90vw',
+                  maxHeight: '85vh',
+                }}
+              >
+                <div className="text-center text-gray-400">
+                  <ImageIcon size={48} className="mx-auto mb-3" />
+                  <p>Image no longer available</p>
+                </div>
+              </div>
+            ) : (
+              <Image
+                src={fullUrl}
+                alt={image.alt}
+                width={image.width}
+                height={image.height}
+                className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                unoptimized
+                onError={() => setModalImageError(true)}
+              />
+            )}
 
             {/* Caption */}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 rounded-b-lg">

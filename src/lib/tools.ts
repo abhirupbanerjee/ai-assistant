@@ -288,7 +288,39 @@ export async function executeTool(
     }
 
     try {
-      const parsedArgs = JSON.parse(args);
+      let parsedArgs;
+      try {
+        parsedArgs = JSON.parse(args);
+      } catch (parseError) {
+        // JSON parsing failed - provide detailed error to help LLM fix it
+        const syntaxError = parseError as SyntaxError;
+        const positionMatch = syntaxError.message.match(/position (\d+)/i);
+        const position = positionMatch ? parseInt(positionMatch[1], 10) : undefined;
+
+        let errorContext = '';
+        if (position !== undefined) {
+          const contextStart = Math.max(0, position - 50);
+          const contextEnd = Math.min(args.length, position + 50);
+          errorContext = args.substring(contextStart, contextEnd);
+        }
+
+        logger.error(`Function API JSON parse error [${name}]`, {
+          error: syntaxError.message,
+          position,
+          context: errorContext || args.substring(0, 100),
+        });
+
+        return JSON.stringify({
+          success: false,
+          error: `Invalid JSON in function arguments: ${syntaxError.message}`,
+          errorCode: 'INVALID_JSON_ARGUMENTS',
+          details: {
+            position: position ?? 'unknown',
+            context: errorContext || args.substring(0, 100),
+            hint: 'Check for unescaped quotes, missing commas, or special characters in string values.',
+          },
+        });
+      }
       // Pass the function name to the function_api tool
       return await tool.execute(parsedArgs, { functionName: name, configOverride });
     } catch (error) {
@@ -319,7 +351,41 @@ export async function executeTool(
   }
 
   try {
-    const parsedArgs = JSON.parse(args);
+    let parsedArgs;
+    try {
+      parsedArgs = JSON.parse(args);
+    } catch (parseError) {
+      // JSON parsing failed - provide detailed error to help LLM fix it
+      const syntaxError = parseError as SyntaxError;
+      // Node.js doesn't expose position directly, extract from message if possible
+      const positionMatch = syntaxError.message.match(/position (\d+)/i);
+      const position = positionMatch ? parseInt(positionMatch[1], 10) : undefined;
+
+      // Extract context around the error position
+      let errorContext = '';
+      if (position !== undefined) {
+        const contextStart = Math.max(0, position - 50);
+        const contextEnd = Math.min(args.length, position + 50);
+        errorContext = args.substring(contextStart, contextEnd);
+      }
+
+      logger.error(`Tool JSON parse error [${name}]`, {
+        error: syntaxError.message,
+        position,
+        context: errorContext || args.substring(0, 100),
+      });
+
+      return JSON.stringify({
+        success: false,
+        error: `Invalid JSON in tool arguments: ${syntaxError.message}`,
+        errorCode: 'INVALID_JSON_ARGUMENTS',
+        details: {
+          position: position ?? 'unknown',
+          context: errorContext || args.substring(0, 100),
+          hint: 'Check for unescaped quotes, missing commas, or special characters in string values. Ensure all strings are properly JSON-escaped.',
+        },
+      });
+    }
     return await tool.execute(parsedArgs, { configOverride });
   } catch (error) {
     logger.error(`Tool execution error [${name}]`, error);
