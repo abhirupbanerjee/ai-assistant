@@ -44,6 +44,12 @@ export async function POST(request: NextRequest) {
       includeToolRouting: body.includeToolRouting !== false, // Default true
       includeThreadShares: body.includeThreadShares === true, // Default false
       includeTaskPlans: body.includeTaskPlans === true, // Default false
+      includeAgentBots: body.includeAgentBots !== false, // Default true
+      // Category filter
+      categoryFilter: body.categoryFilter ? {
+        mode: body.categoryFilter.mode || 'all',
+        categoryIds: body.categoryFilter.categoryIds,
+      } : undefined,
     };
 
     // Create backup

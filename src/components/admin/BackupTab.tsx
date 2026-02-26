@@ -1,9 +1,15 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, ListTodo, CheckSquare, Square } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, ListTodo, CheckSquare, Square, Bot, Filter } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
+
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+}
 
 interface BackupManifest {
   version: string;
@@ -40,12 +46,20 @@ interface BackupManifest {
     toolRouting?: boolean;
     threadShares?: boolean;
     taskPlans?: boolean;
+    agentBots?: boolean;
     workspaceCount?: number;
     functionApiCount?: number;
     userMemoryCount?: number;
     toolRoutingRuleCount?: number;
     threadShareCount?: number;
     taskPlanCount?: number;
+    agentBotCount?: number;
+    // Category filter metadata
+    categoryFilter?: {
+      mode: 'all' | 'selected';
+      categoryIds?: number[];
+      categoryNames?: string[];
+    };
   };
   warnings: string[];
 }
@@ -71,13 +85,20 @@ interface RestoreResult {
     toolRoutingRulesRestored?: number;
     threadSharesRestored?: number;
     taskPlansRestored?: number;
+    agentBotsRestored?: number;
   };
   warnings: string[];
 }
 
 export default function BackupTab() {
+  // Categories for filter
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
   // Backup state
   const [backupInProgress, setBackupInProgress] = useState(false);
+  const [categoryFilterMode, setCategoryFilterMode] = useState<'all' | 'selected'>('all');
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [backupOptions, setBackupOptions] = useState({
     includeDocuments: true,
     includeDocumentFiles: true,
@@ -96,6 +117,7 @@ export default function BackupTab() {
     includeToolRouting: true,
     includeThreadShares: false,
     includeTaskPlans: false,
+    includeAgentBots: true,
   });
 
   // Restore state
@@ -123,10 +145,30 @@ export default function BackupTab() {
     restoreToolRouting: true,
     restoreThreadShares: false,
     restoreTaskPlans: false,
+    restoreAgentBots: true,
   });
 
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setLoadingCategories(true);
+      try {
+        const response = await fetch('/api/admin/categories');
+        if (response.ok) {
+          const data = await response.json();
+          setCategories(data.categories || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch categories:', err);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   // Select all / clear all handlers for backup options
   const handleSelectAllBackup = useCallback(() => {
@@ -147,6 +189,7 @@ export default function BackupTab() {
       includeToolRouting: true,
       includeThreadShares: true,
       includeTaskPlans: true,
+      includeAgentBots: true,
     });
   }, []);
 
@@ -168,6 +211,7 @@ export default function BackupTab() {
       includeToolRouting: false,
       includeThreadShares: false,
       includeTaskPlans: false,
+      includeAgentBots: false,
     });
   }, []);
 
@@ -192,6 +236,7 @@ export default function BackupTab() {
       restoreToolRouting: restoreManifest.contents.toolRouting ?? false,
       restoreThreadShares: restoreManifest.contents.threadShares ?? false,
       restoreTaskPlans: restoreManifest.contents.taskPlans ?? false,
+      restoreAgentBots: restoreManifest.contents.agentBots ?? false,
     }));
   }, [restoreManifest]);
 
@@ -214,19 +259,34 @@ export default function BackupTab() {
       restoreToolRouting: false,
       restoreThreadShares: false,
       restoreTaskPlans: false,
+      restoreAgentBots: false,
     }));
   }, []);
 
   // Handle backup creation
   const handleCreateBackup = async () => {
+    // Validate category filter
+    if (categoryFilterMode === 'selected' && selectedCategoryIds.length === 0) {
+      setError('Please select at least one category for filtered backup');
+      return;
+    }
+
     setBackupInProgress(true);
     setError(null);
 
     try {
+      const requestBody = {
+        ...backupOptions,
+        categoryFilter: categoryFilterMode === 'selected' ? {
+          mode: 'selected',
+          categoryIds: selectedCategoryIds,
+        } : undefined,
+      };
+
       const response = await fetch('/api/admin/backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(backupOptions),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -304,6 +364,7 @@ export default function BackupTab() {
           restoreToolRouting: data.manifest.contents.toolRouting ?? false,
           restoreThreadShares: data.manifest.contents.threadShares ?? false,
           restoreTaskPlans: data.manifest.contents.taskPlans ?? false,
+          restoreAgentBots: data.manifest.contents.agentBots ?? false,
         }));
       }
     } catch (err) {
@@ -588,6 +649,111 @@ export default function BackupTab() {
                 <ListTodo size={18} className="text-gray-500" />
                 <span className="text-sm">Task Plans</span>
               </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeAgentBots}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeAgentBots: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Bot size={18} className="text-gray-500" />
+                <span className="text-sm">Agent Bots</span>
+              </label>
+            </div>
+
+            {/* Category Filter Section */}
+            <div className="mt-4 p-4 border rounded-lg bg-gray-50">
+              <div className="flex items-center gap-2 mb-3">
+                <Filter size={18} className="text-gray-500" />
+                <span className="font-medium text-gray-700">Category Filter</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="categoryFilter"
+                      checked={categoryFilterMode === 'all'}
+                      onChange={() => setCategoryFilterMode('all')}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">All Categories</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="categoryFilter"
+                      checked={categoryFilterMode === 'selected'}
+                      onChange={() => setCategoryFilterMode('selected')}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Select Categories</span>
+                  </label>
+                </div>
+
+                {categoryFilterMode === 'selected' && (
+                  <div className="space-y-2">
+                    {loadingCategories ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <Spinner size="sm" />
+                        Loading categories...
+                      </div>
+                    ) : categories.length === 0 ? (
+                      <div className="text-sm text-gray-500">No categories available</div>
+                    ) : (
+                      <>
+                        <div className="flex gap-2 mb-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCategoryIds(categories.map(c => c.id))}
+                            className="text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            Select all
+                          </button>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCategoryIds([])}
+                            className="text-xs text-gray-600 hover:text-gray-800"
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded bg-white p-2 space-y-1">
+                          {categories.map(cat => (
+                            <label
+                              key={cat.id}
+                              className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedCategoryIds.includes(cat.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedCategoryIds(prev => [...prev, cat.id]);
+                                  } else {
+                                    setSelectedCategoryIds(prev => prev.filter(id => id !== cat.id));
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-sm">{cat.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {selectedCategoryIds.length} of {categories.length} selected
+                        </div>
+                      </>
+                    )}
+                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                      <AlertTriangle size={12} className="inline mr-1" />
+                      Filtered backup excludes user memories. Threads with categories outside selection are excluded using strict filtering.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end pt-4 border-t mt-4">
@@ -753,10 +919,28 @@ export default function BackupTab() {
                         <span>{restoreManifest.contents.taskPlanCount} Task Plans</span>
                       </div>
                     )}
+                    {restoreManifest.contents.agentBots && (
+                      <div className="flex items-center gap-2">
+                        <Bot size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.agentBotCount} Agent Bots</span>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-blue-600">
                     Created: {new Date(restoreManifest.createdAt).toLocaleString()} by {restoreManifest.createdBy}
                   </div>
+                  {restoreManifest.contents.categoryFilter && (
+                    <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded text-xs text-amber-700">
+                      <Filter size={12} className="inline mr-1" />
+                      {restoreManifest.contents.categoryFilter.mode === 'selected' ? (
+                        <>
+                          Filtered backup containing only: {restoreManifest.contents.categoryFilter.categoryNames?.join(', ') || `${restoreManifest.contents.categoryFilter.categoryIds?.length} categories`}
+                        </>
+                      ) : (
+                        'Full backup (all categories)'
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -957,6 +1141,17 @@ export default function BackupTab() {
                     />
                     <span className="text-sm">Task Plans</span>
                   </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.agentBots ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreAgentBots}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreAgentBots: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.agentBots}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Agent Bots</span>
+                  </label>
                 </div>
 
                 {/* Advanced Options */}
@@ -1076,6 +1271,9 @@ export default function BackupTab() {
                   )}
                   {(restoreResult.details.taskPlansRestored ?? 0) > 0 && (
                     <div>Task Plans: {restoreResult.details.taskPlansRestored}</div>
+                  )}
+                  {(restoreResult.details.agentBotsRestored ?? 0) > 0 && (
+                    <div>Agent Bots: {restoreResult.details.agentBotsRestored}</div>
                   )}
                 </div>
               )}

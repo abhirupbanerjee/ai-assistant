@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 import {
+  // Full export functions
   exportDocuments,
   exportCategories,
   exportDocumentCategories,
@@ -40,6 +41,44 @@ import {
   exportToolRoutingRules,
   exportThreadShares,
   exportTaskPlans,
+  // Agent bot exports
+  exportAgentBots,
+  exportAgentBotVersions,
+  exportAgentBotVersionCategories,
+  exportAgentBotVersionSkills,
+  exportAgentBotVersionTools,
+  exportAgentBotApiKeys,
+  // Category-filtered export functions
+  exportDocumentsForCategories,
+  exportThreadsForCategoriesStrict,
+  exportSkillsForCategories,
+  exportWorkspacesForCategories,
+  exportDataApiConfigsForCategories,
+  exportDataCsvConfigsForCategories,
+  exportFunctionApiConfigsForCategories,
+  exportAgentBotsForCategories,
+  exportAgentBotVersionsForBots,
+  exportAgentBotApiKeysForBots,
+  exportCategoryPromptsForCategories,
+  exportCategoryToolConfigsForCategories,
+  exportMessagesForThreads,
+  exportThreadCategoriesFiltered,
+  exportThreadUploadsForThreads,
+  exportThreadOutputsForThreads,
+  exportThreadSharesForThreads,
+  exportTaskPlansForThreads,
+  exportDocumentCategoriesFiltered,
+  exportCategorySkillsFiltered,
+  exportWorkspaceCategoriesFiltered,
+  exportWorkspaceUsersForWorkspaces,
+  exportDataApiCategoriesFiltered,
+  exportDataCsvCategoriesFiltered,
+  exportFunctionApiCategoriesFiltered,
+  exportAgentBotVersionCategoriesFiltered,
+  exportAgentBotVersionSkillsForVersions,
+  exportAgentBotVersionToolsForVersions,
+  exportCategoriesById,
+  // Import functions
   importDocuments,
   importCategories,
   importDocumentCategories,
@@ -70,11 +109,25 @@ import {
   importToolRoutingRules,
   importThreadShares,
   importTaskPlans,
+  // Agent bot imports
+  importAgentBots,
+  importAgentBotVersions,
+  importAgentBotVersionCategories,
+  importAgentBotVersionSkills,
+  importAgentBotVersionTools,
+  importAgentBotApiKeys,
   clearAllData,
 } from './db/compat/backup';
 import { getGlobalDocsDir, getThreadsDir, ensureDir } from './storage';
 
 // ============ Types ============
+
+export type CategoryFilterMode = 'all' | 'selected';
+
+export interface CategoryFilter {
+  mode: CategoryFilterMode;
+  categoryIds?: number[];  // Required when mode is 'selected'
+}
 
 export interface BackupOptions {
   includeDocuments: boolean;
@@ -94,6 +147,9 @@ export interface BackupOptions {
   includeToolRouting: boolean;
   includeThreadShares: boolean;
   includeTaskPlans: boolean;
+  includeAgentBots: boolean;
+  // Category filter
+  categoryFilter?: CategoryFilter;
 }
 
 export interface RestoreOptions {
@@ -116,6 +172,7 @@ export interface RestoreOptions {
   restoreToolRouting: boolean;
   restoreThreadShares: boolean;
   restoreTaskPlans: boolean;
+  restoreAgentBots: boolean;
 }
 
 export interface BackupManifest {
@@ -153,12 +210,20 @@ export interface BackupManifest {
     toolRouting: boolean;
     threadShares: boolean;
     taskPlans: boolean;
+    agentBots: boolean;
     workspaceCount: number;
     functionApiCount: number;
     userMemoryCount: number;
     toolRoutingRuleCount: number;
     threadShareCount: number;
     taskPlanCount: number;
+    agentBotCount: number;
+    // Category filter metadata
+    categoryFilter?: {
+      mode: CategoryFilterMode;
+      categoryIds?: number[];
+      categoryNames?: string[];
+    };
   };
   warnings: string[];
 }
@@ -184,6 +249,7 @@ export interface RestoreResult {
     toolRoutingRulesRestored: number;
     threadSharesRestored: number;
     taskPlansRestored: number;
+    agentBotsRestored: number;
   };
   warnings: string[];
 }
@@ -216,65 +282,241 @@ export async function createBackup(
   const warnings: string[] = [];
   let totalFileSize = 0;
 
-  // Export database data (async for PostgreSQL support)
-  const documents = options.includeDocuments ? await exportDocuments() : [];
-  const categories = options.includeCategories ? await exportCategories() : [];
-  const documentCategories = options.includeDocuments || options.includeCategories
-    ? await exportDocumentCategories()
-    : [];
-  const users = options.includeUsers ? await exportUsers() : [];
-  const userSubscriptions = options.includeUsers ? await exportUserSubscriptions() : [];
-  const superUserCategories = options.includeUsers ? await exportSuperUserCategories() : [];
-  const settings = options.includeSettings ? await exportSettings() : [];
+  // Check if category filtering is enabled
+  const isFiltered = options.categoryFilter?.mode === 'selected' &&
+    options.categoryFilter.categoryIds &&
+    options.categoryFilter.categoryIds.length > 0;
+  const categoryIds = isFiltered ? options.categoryFilter!.categoryIds! : [];
 
-  // Thread data
+  // Variables to hold exported data
+  let documents: Awaited<ReturnType<typeof exportDocuments>> = [];
+  let categories: Awaited<ReturnType<typeof exportCategories>> = [];
+  let documentCategories: Awaited<ReturnType<typeof exportDocumentCategories>> = [];
+  let users: Awaited<ReturnType<typeof exportUsers>> = [];
+  let userSubscriptions: Awaited<ReturnType<typeof exportUserSubscriptions>> = [];
+  let superUserCategories: Awaited<ReturnType<typeof exportSuperUserCategories>> = [];
+  let settings: Awaited<ReturnType<typeof exportSettings>> = [];
   let threads: Awaited<ReturnType<typeof exportThreads>> = [];
   let messages: Awaited<ReturnType<typeof exportMessages>> = [];
   let threadCategories: Awaited<ReturnType<typeof exportThreadCategories>> = [];
   let threadUploads: Awaited<ReturnType<typeof exportThreadUploads>> = [];
   let threadOutputs: Awaited<ReturnType<typeof exportThreadOutputs>> = [];
+  let toolConfigs: Awaited<ReturnType<typeof exportToolConfigs>> = [];
+  let categoryToolConfigs: Awaited<ReturnType<typeof exportCategoryToolConfigs>> = [];
+  let skills: Awaited<ReturnType<typeof exportSkills>> = [];
+  let categorySkills: Awaited<ReturnType<typeof exportCategorySkills>> = [];
+  let categoryPrompts: Awaited<ReturnType<typeof exportCategoryPrompts>> = [];
+  let dataApiConfigs: Awaited<ReturnType<typeof exportDataApiConfigs>> = [];
+  let dataApiCategories: Awaited<ReturnType<typeof exportDataApiCategories>> = [];
+  let dataCsvConfigs: Awaited<ReturnType<typeof exportDataCsvConfigs>> = [];
+  let dataCsvCategories: Awaited<ReturnType<typeof exportDataCsvCategories>> = [];
+  let workspaces: Awaited<ReturnType<typeof exportWorkspaces>> = [];
+  let workspaceCategories: Awaited<ReturnType<typeof exportWorkspaceCategories>> = [];
+  let workspaceUsers: Awaited<ReturnType<typeof exportWorkspaceUsers>> = [];
+  let functionApiConfigs: Awaited<ReturnType<typeof exportFunctionApiConfigs>> = [];
+  let functionApiCategories: Awaited<ReturnType<typeof exportFunctionApiCategories>> = [];
+  let userMemories: Awaited<ReturnType<typeof exportUserMemories>> = [];
+  let toolRoutingRules: Awaited<ReturnType<typeof exportToolRoutingRules>> = [];
+  let threadShares: Awaited<ReturnType<typeof exportThreadShares>> = [];
+  let taskPlans: Awaited<ReturnType<typeof exportTaskPlans>> = [];
+  let agentBots: Awaited<ReturnType<typeof exportAgentBots>> = [];
+  let agentBotVersions: Awaited<ReturnType<typeof exportAgentBotVersions>> = [];
+  let agentBotVersionCategories: Awaited<ReturnType<typeof exportAgentBotVersionCategories>> = [];
+  let agentBotVersionSkills: Awaited<ReturnType<typeof exportAgentBotVersionSkills>> = [];
+  let agentBotVersionTools: Awaited<ReturnType<typeof exportAgentBotVersionTools>> = [];
+  let agentBotApiKeys: Awaited<ReturnType<typeof exportAgentBotApiKeys>> = [];
 
-  if (options.includeThreads) {
-    threads = await exportThreads();
-    messages = await exportMessages();
-    threadCategories = await exportThreadCategories();
-    threadUploads = await exportThreadUploads();
-    threadOutputs = await exportThreadOutputs();
+  if (isFiltered) {
+    // ==== CATEGORY-FILTERED BACKUP ====
+    // Note: User memories are EXCLUDED from filtered backups
+
+    // Categories - only selected ones
+    if (options.includeCategories) {
+      categories = await exportCategoriesById(categoryIds);
+    }
+
+    // Documents - include those linked to selected categories OR global
+    if (options.includeDocuments) {
+      documents = await exportDocumentsForCategories(categoryIds);
+      if (options.includeCategories) {
+        const docIds = documents.map(d => d.id);
+        documentCategories = await exportDocumentCategoriesFiltered(docIds, categoryIds);
+      }
+    }
+
+    // Users - always include all users (not filtered)
+    if (options.includeUsers) {
+      users = await exportUsers();
+      userSubscriptions = await exportUserSubscriptions();
+      superUserCategories = await exportSuperUserCategories();
+    }
+
+    // Settings - always include (global)
+    if (options.includeSettings) {
+      settings = await exportSettings();
+    }
+
+    // Threads - STRICT filtering: only threads where ALL categories are in selected set
+    if (options.includeThreads) {
+      threads = await exportThreadsForCategoriesStrict(categoryIds);
+      const threadIds = threads.map(t => t.id);
+
+      if (threadIds.length > 0) {
+        messages = await exportMessagesForThreads(threadIds);
+        threadCategories = await exportThreadCategoriesFiltered(threadIds, categoryIds);
+        threadUploads = await exportThreadUploadsForThreads(threadIds);
+        threadOutputs = await exportThreadOutputsForThreads(threadIds);
+      }
+    }
+
+    // Tools - always include all (not category-linked)
+    if (options.includeTools) {
+      toolConfigs = await exportToolConfigs();
+      categoryToolConfigs = await exportCategoryToolConfigsForCategories(categoryIds);
+    }
+
+    // Skills - include non-restricted + category-linked
+    if (options.includeSkills) {
+      skills = await exportSkillsForCategories(categoryIds);
+      const skillIds = skills.map(s => s.id);
+      categorySkills = await exportCategorySkillsFiltered(skillIds, categoryIds);
+    }
+
+    // Category prompts - only for selected categories
+    if (options.includeCategoryPrompts) {
+      categoryPrompts = await exportCategoryPromptsForCategories(categoryIds);
+    }
+
+    // Data sources - only those linked to selected categories
+    if (options.includeDataSources) {
+      dataApiConfigs = await exportDataApiConfigsForCategories(categoryIds);
+      const apiIds = dataApiConfigs.map(d => d.id);
+      dataApiCategories = await exportDataApiCategoriesFiltered(apiIds, categoryIds);
+
+      dataCsvConfigs = await exportDataCsvConfigsForCategories(categoryIds);
+      const csvIds = dataCsvConfigs.map(d => d.id);
+      dataCsvCategories = await exportDataCsvCategoriesFiltered(csvIds, categoryIds);
+    }
+
+    // Workspaces - only those linked to selected categories
+    if (options.includeWorkspaces) {
+      workspaces = await exportWorkspacesForCategories(categoryIds);
+      const workspaceIds = workspaces.map(w => w.id);
+      workspaceCategories = await exportWorkspaceCategoriesFiltered(workspaceIds, categoryIds);
+      workspaceUsers = await exportWorkspaceUsersForWorkspaces(workspaceIds);
+    }
+
+    // Function APIs - only those linked to selected categories
+    if (options.includeFunctionApis) {
+      functionApiConfigs = await exportFunctionApiConfigsForCategories(categoryIds);
+      const apiIds = functionApiConfigs.map(f => f.id);
+      functionApiCategories = await exportFunctionApiCategoriesFiltered(apiIds, categoryIds);
+    }
+
+    // User memories - EXCLUDED from filtered backup
+    // userMemories stays empty
+
+    // Tool routing rules - always include (global)
+    if (options.includeToolRouting) {
+      toolRoutingRules = await exportToolRoutingRules();
+    }
+
+    // Thread shares - only for included threads
+    if (options.includeThreadShares && threads.length > 0) {
+      const threadIds = threads.map(t => t.id);
+      threadShares = await exportThreadSharesForThreads(threadIds);
+    }
+
+    // Task plans - only for included threads
+    if (options.includeTaskPlans && threads.length > 0) {
+      const threadIds = threads.map(t => t.id);
+      taskPlans = await exportTaskPlansForThreads(threadIds);
+    }
+
+    // Agent bots - only those with versions linked to selected categories
+    if (options.includeAgentBots) {
+      agentBots = await exportAgentBotsForCategories(categoryIds);
+      const botIds = agentBots.map(b => b.id);
+
+      if (botIds.length > 0) {
+        agentBotVersions = await exportAgentBotVersionsForBots(botIds);
+        const versionIds = agentBotVersions.map(v => v.id);
+
+        agentBotVersionCategories = await exportAgentBotVersionCategoriesFiltered(versionIds, categoryIds);
+        agentBotVersionSkills = await exportAgentBotVersionSkillsForVersions(versionIds);
+        agentBotVersionTools = await exportAgentBotVersionToolsForVersions(versionIds);
+        agentBotApiKeys = await exportAgentBotApiKeysForBots(botIds);
+      }
+    }
+
+    // Add warning about filtered backup
+    warnings.push(`This is a category-filtered backup containing only data linked to ${categoryIds.length} selected categories. User memories are excluded from filtered backups.`);
+
+  } else {
+    // ==== FULL BACKUP (existing logic) ====
+
+    // Export database data (async for PostgreSQL support)
+    documents = options.includeDocuments ? await exportDocuments() : [];
+    categories = options.includeCategories ? await exportCategories() : [];
+    documentCategories = options.includeDocuments || options.includeCategories
+      ? await exportDocumentCategories()
+      : [];
+    users = options.includeUsers ? await exportUsers() : [];
+    userSubscriptions = options.includeUsers ? await exportUserSubscriptions() : [];
+    superUserCategories = options.includeUsers ? await exportSuperUserCategories() : [];
+    settings = options.includeSettings ? await exportSettings() : [];
+
+    // Thread data
+    if (options.includeThreads) {
+      threads = await exportThreads();
+      messages = await exportMessages();
+      threadCategories = await exportThreadCategories();
+      threadUploads = await exportThreadUploads();
+      threadOutputs = await exportThreadOutputs();
+    }
+
+    // Tools, skills, and category prompts data
+    toolConfigs = options.includeTools ? await exportToolConfigs() : [];
+    categoryToolConfigs = options.includeTools ? await exportCategoryToolConfigs() : [];
+    skills = options.includeSkills ? await exportSkills() : [];
+    categorySkills = options.includeSkills ? await exportCategorySkills() : [];
+    categoryPrompts = options.includeCategoryPrompts ? await exportCategoryPrompts() : [];
+
+    // Data sources
+    dataApiConfigs = options.includeDataSources ? await exportDataApiConfigs() : [];
+    dataApiCategories = options.includeDataSources ? await exportDataApiCategories() : [];
+    dataCsvConfigs = options.includeDataSources ? await exportDataCsvConfigs() : [];
+    dataCsvCategories = options.includeDataSources ? await exportDataCsvCategories() : [];
+
+    // Workspaces
+    workspaces = options.includeWorkspaces ? await exportWorkspaces() : [];
+    workspaceCategories = options.includeWorkspaces ? await exportWorkspaceCategories() : [];
+    workspaceUsers = options.includeWorkspaces ? await exportWorkspaceUsers() : [];
+
+    // Function APIs
+    functionApiConfigs = options.includeFunctionApis ? await exportFunctionApiConfigs() : [];
+    functionApiCategories = options.includeFunctionApis ? await exportFunctionApiCategories() : [];
+
+    // User memories (only in full backup)
+    userMemories = options.includeUserMemories ? await exportUserMemories() : [];
+
+    // Tool routing rules
+    toolRoutingRules = options.includeToolRouting ? await exportToolRoutingRules() : [];
+
+    // Thread shares
+    threadShares = options.includeThreadShares ? await exportThreadShares() : [];
+
+    // Task plans
+    taskPlans = options.includeTaskPlans ? await exportTaskPlans() : [];
+
+    // Agent bots
+    agentBots = options.includeAgentBots ? await exportAgentBots() : [];
+    agentBotVersions = options.includeAgentBots ? await exportAgentBotVersions() : [];
+    agentBotVersionCategories = options.includeAgentBots ? await exportAgentBotVersionCategories() : [];
+    agentBotVersionSkills = options.includeAgentBots ? await exportAgentBotVersionSkills() : [];
+    agentBotVersionTools = options.includeAgentBots ? await exportAgentBotVersionTools() : [];
+    agentBotApiKeys = options.includeAgentBots ? await exportAgentBotApiKeys() : [];
   }
-
-  // Tools, skills, and category prompts data
-  const toolConfigs = options.includeTools ? await exportToolConfigs() : [];
-  const categoryToolConfigs = options.includeTools ? await exportCategoryToolConfigs() : [];
-  const skills = options.includeSkills ? await exportSkills() : [];
-  const categorySkills = options.includeSkills ? await exportCategorySkills() : [];
-  const categoryPrompts = options.includeCategoryPrompts ? await exportCategoryPrompts() : [];
-
-  // Data sources
-  const dataApiConfigs = options.includeDataSources ? await exportDataApiConfigs() : [];
-  const dataApiCategories = options.includeDataSources ? await exportDataApiCategories() : [];
-  const dataCsvConfigs = options.includeDataSources ? await exportDataCsvConfigs() : [];
-  const dataCsvCategories = options.includeDataSources ? await exportDataCsvCategories() : [];
-
-  // NEW: Workspaces
-  const workspaces = options.includeWorkspaces ? await exportWorkspaces() : [];
-  const workspaceCategories = options.includeWorkspaces ? await exportWorkspaceCategories() : [];
-  const workspaceUsers = options.includeWorkspaces ? await exportWorkspaceUsers() : [];
-
-  // NEW: Function APIs
-  const functionApiConfigs = options.includeFunctionApis ? await exportFunctionApiConfigs() : [];
-  const functionApiCategories = options.includeFunctionApis ? await exportFunctionApiCategories() : [];
-
-  // NEW: User memories
-  const userMemories = options.includeUserMemories ? await exportUserMemories() : [];
-
-  // NEW: Tool routing rules
-  const toolRoutingRules = options.includeToolRouting ? await exportToolRoutingRules() : [];
-
-  // NEW: Thread shares
-  const threadShares = options.includeThreadShares ? await exportThreadShares() : [];
-
-  // NEW: Task plans
-  const taskPlans = options.includeTaskPlans ? await exportTaskPlans() : [];
 
   // Create manifest
   const manifest: BackupManifest = {
@@ -308,16 +550,24 @@ export async function createBackup(
       // NEW content flags
       workspaces: options.includeWorkspaces,
       functionApis: options.includeFunctionApis,
-      userMemories: options.includeUserMemories,
+      userMemories: isFiltered ? false : options.includeUserMemories, // Excluded from filtered backup
       toolRouting: options.includeToolRouting,
       threadShares: options.includeThreadShares,
       taskPlans: options.includeTaskPlans,
+      agentBots: options.includeAgentBots,
       workspaceCount: workspaces.length,
       functionApiCount: functionApiConfigs.length,
       userMemoryCount: userMemories.length,
       toolRoutingRuleCount: toolRoutingRules.length,
       threadShareCount: threadShares.length,
       taskPlanCount: taskPlans.length,
+      agentBotCount: agentBots.length,
+      // Category filter metadata
+      categoryFilter: isFiltered ? {
+        mode: 'selected',
+        categoryIds: categoryIds,
+        categoryNames: categories.map(c => c.name),
+      } : undefined,
     },
     warnings,
   };
@@ -412,6 +662,16 @@ export async function createBackup(
   // NEW: Add task plans data
   if (options.includeTaskPlans) {
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: taskPlans.length, records: taskPlans }, null, 2), { name: 'data/task_plans.json' });
+  }
+
+  // NEW: Add agent bots data
+  if (options.includeAgentBots) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: agentBots.length, records: agentBots }, null, 2), { name: 'data/agent_bots.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: agentBotVersions.length, records: agentBotVersions }, null, 2), { name: 'data/agent_bot_versions.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: agentBotVersionCategories.length, records: agentBotVersionCategories }, null, 2), { name: 'data/agent_bot_version_categories.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: agentBotVersionSkills.length, records: agentBotVersionSkills }, null, 2), { name: 'data/agent_bot_version_skills.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: agentBotVersionTools.length, records: agentBotVersionTools }, null, 2), { name: 'data/agent_bot_version_tools.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: agentBotApiKeys.length, records: agentBotApiKeys }, null, 2), { name: 'data/agent_bot_api_keys.json' });
   }
 
   // Add document files
@@ -527,6 +787,7 @@ export async function restoreBackup(
       toolRoutingRulesRestored: 0,
       threadSharesRestored: 0,
       taskPlansRestored: 0,
+      agentBotsRestored: 0,
     },
     warnings: [],
   };
@@ -772,6 +1033,44 @@ export async function restoreBackup(
       if (taskPlans && taskPlans.length > 0) {
         await importTaskPlans(taskPlans);
         result.details.taskPlansRestored = taskPlans.length;
+      }
+    }
+
+    // NEW: Restore agent bots
+    if (options.restoreAgentBots && manifest.contents.agentBots) {
+      // Import bots first
+      const agentBots = readJsonFromZip<Awaited<ReturnType<typeof exportAgentBots>>>('data/agent_bots.json');
+      if (agentBots && agentBots.length > 0) {
+        await importAgentBots(agentBots);
+        result.details.agentBotsRestored = agentBots.length;
+      }
+
+      // Then versions (depend on bots)
+      const agentBotVersions = readJsonFromZip<Awaited<ReturnType<typeof exportAgentBotVersions>>>('data/agent_bot_versions.json');
+      if (agentBotVersions && agentBotVersions.length > 0) {
+        await importAgentBotVersions(agentBotVersions);
+      }
+
+      // Then version relationships
+      const agentBotVersionCategories = readJsonFromZip<Awaited<ReturnType<typeof exportAgentBotVersionCategories>>>('data/agent_bot_version_categories.json');
+      if (agentBotVersionCategories && agentBotVersionCategories.length > 0) {
+        await importAgentBotVersionCategories(agentBotVersionCategories);
+      }
+
+      const agentBotVersionSkills = readJsonFromZip<Awaited<ReturnType<typeof exportAgentBotVersionSkills>>>('data/agent_bot_version_skills.json');
+      if (agentBotVersionSkills && agentBotVersionSkills.length > 0) {
+        await importAgentBotVersionSkills(agentBotVersionSkills);
+      }
+
+      const agentBotVersionTools = readJsonFromZip<Awaited<ReturnType<typeof exportAgentBotVersionTools>>>('data/agent_bot_version_tools.json');
+      if (agentBotVersionTools && agentBotVersionTools.length > 0) {
+        await importAgentBotVersionTools(agentBotVersionTools);
+      }
+
+      // Finally API keys
+      const agentBotApiKeys = readJsonFromZip<Awaited<ReturnType<typeof exportAgentBotApiKeys>>>('data/agent_bot_api_keys.json');
+      if (agentBotApiKeys && agentBotApiKeys.length > 0) {
+        await importAgentBotApiKeys(agentBotApiKeys);
       }
     }
 

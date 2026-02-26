@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
       restoreToolRouting: formData.get('restoreToolRouting') !== 'false',
       restoreThreadShares: formData.get('restoreThreadShares') === 'true',
       restoreTaskPlans: formData.get('restoreTaskPlans') === 'true',
+      restoreAgentBots: formData.get('restoreAgentBots') !== 'false',
     };
 
     // Read file to buffer

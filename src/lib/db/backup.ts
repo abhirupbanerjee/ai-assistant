@@ -315,6 +315,73 @@ export interface ThreadShareRecord {
   revoked_at: string | null;
 }
 
+// ============ NEW: Agent Bot Records ============
+
+export interface AgentBotRecord {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  is_active: number;
+  created_by: string;
+  created_by_role: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentBotVersionRecord {
+  id: string;
+  agent_bot_id: string;
+  version_number: number;
+  version_label: string | null;
+  is_default: number;
+  input_schema: string;
+  output_config: string;
+  system_prompt: string | null;
+  llm_model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  is_active: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentBotVersionCategoryRecord {
+  version_id: string;
+  category_id: number;
+}
+
+export interface AgentBotVersionSkillRecord {
+  version_id: string;
+  skill_id: number;
+}
+
+export interface AgentBotVersionToolRecord {
+  id: string;
+  version_id: string;
+  tool_name: string;
+  is_enabled: number;
+  config_override: string | null;
+}
+
+export interface AgentBotApiKeyRecord {
+  id: string;
+  agent_bot_id: string;
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  permissions: string;
+  rate_limit_rpm: number;
+  rate_limit_rpd: number;
+  expires_at: string | null;
+  last_used_at: string | null;
+  is_active: number;
+  created_by: string;
+  created_at: string;
+  revoked_at: string | null;
+}
+
 // ============ NEW: Task Plan Records ============
 
 export interface TaskPlanRecord {
@@ -712,6 +779,564 @@ export function exportTaskPlans(): TaskPlanRecord[] {
     FROM task_plans
     ORDER BY created_at
   `);
+}
+
+// ============ NEW: Agent Bot Export Functions ============
+
+/**
+ * Export all agent bots
+ */
+export function exportAgentBots(): AgentBotRecord[] {
+  return queryAll<AgentBotRecord>(`
+    SELECT id, name, slug, description, is_active, created_by, created_by_role,
+           created_at, updated_at
+    FROM agent_bots
+    ORDER BY name
+  `);
+}
+
+/**
+ * Export all agent bot versions
+ */
+export function exportAgentBotVersions(): AgentBotVersionRecord[] {
+  return queryAll<AgentBotVersionRecord>(`
+    SELECT id, agent_bot_id, version_number, version_label, is_default,
+           input_schema, output_config, system_prompt, llm_model, temperature,
+           max_tokens, is_active, created_by, created_at, updated_at
+    FROM agent_bot_versions
+    ORDER BY agent_bot_id, version_number
+  `);
+}
+
+/**
+ * Export agent bot version to category mappings
+ */
+export function exportAgentBotVersionCategories(): AgentBotVersionCategoryRecord[] {
+  return queryAll<AgentBotVersionCategoryRecord>(`
+    SELECT version_id, category_id
+    FROM agent_bot_version_categories
+    ORDER BY version_id, category_id
+  `);
+}
+
+/**
+ * Export agent bot version to skill mappings
+ */
+export function exportAgentBotVersionSkills(): AgentBotVersionSkillRecord[] {
+  return queryAll<AgentBotVersionSkillRecord>(`
+    SELECT version_id, skill_id
+    FROM agent_bot_version_skills
+    ORDER BY version_id, skill_id
+  `);
+}
+
+/**
+ * Export agent bot version tool configurations
+ */
+export function exportAgentBotVersionTools(): AgentBotVersionToolRecord[] {
+  return queryAll<AgentBotVersionToolRecord>(`
+    SELECT id, version_id, tool_name, is_enabled, config_override
+    FROM agent_bot_version_tools
+    ORDER BY version_id, tool_name
+  `);
+}
+
+/**
+ * Export agent bot API keys (config only, no jobs/usage)
+ */
+export function exportAgentBotApiKeys(): AgentBotApiKeyRecord[] {
+  return queryAll<AgentBotApiKeyRecord>(`
+    SELECT id, agent_bot_id, name, key_prefix, key_hash, permissions,
+           rate_limit_rpm, rate_limit_rpd, expires_at, last_used_at,
+           is_active, created_by, created_at, revoked_at
+    FROM agent_bot_api_keys
+    ORDER BY agent_bot_id, name
+  `);
+}
+
+// ============ Category-Filtered Export Functions ============
+
+/**
+ * Export documents for specific categories (includes global documents)
+ */
+export function exportDocumentsForCategories(categoryIds: number[]): DbDocument[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DbDocument>(`
+    SELECT DISTINCT d.id, d.filename, d.filepath, d.file_size, d.is_global,
+           d.chunk_count, d.status, d.error_message, d.uploaded_by, d.created_at
+    FROM documents d
+    LEFT JOIN document_categories dc ON d.id = dc.document_id
+    WHERE dc.category_id IN (${placeholders}) OR d.is_global = 1
+    ORDER BY d.id
+  `, categoryIds);
+}
+
+/**
+ * Export threads for categories using STRICT filtering
+ * Only includes threads where ALL linked categories are in the selected set
+ */
+export function exportThreadsForCategoriesStrict(categoryIds: number[]): ThreadRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  // Thread must have at least one category AND all its categories must be in selected set
+  return queryAll<ThreadRecord>(`
+    SELECT t.id, t.user_id, t.title, t.created_at, t.updated_at
+    FROM threads t
+    WHERE EXISTS (
+      SELECT 1 FROM thread_categories tc WHERE tc.thread_id = t.id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM thread_categories tc
+      WHERE tc.thread_id = t.id
+      AND tc.category_id NOT IN (${placeholders})
+    )
+    ORDER BY t.id
+  `, categoryIds);
+}
+
+/**
+ * Export skills for specific categories
+ * Includes: all non-category-restricted skills (category_restricted=0) + skills linked to selected categories
+ */
+export function exportSkillsForCategories(categoryIds: number[]): SkillRecord[] {
+  if (categoryIds.length === 0) {
+    // If no categories, just return non-restricted skills
+    return queryAll<SkillRecord>(`
+      SELECT id, name, description, prompt_content, trigger_type, trigger_value,
+             category_restricted, is_index, priority, is_active, is_core,
+             created_by_role, token_estimate, created_at, updated_at, created_by, updated_by,
+             match_type, tool_name, force_mode, tool_config_override, data_source_filter
+      FROM skills
+      WHERE category_restricted = 0
+      ORDER BY id
+    `);
+  }
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<SkillRecord>(`
+    SELECT DISTINCT s.id, s.name, s.description, s.prompt_content, s.trigger_type, s.trigger_value,
+           s.category_restricted, s.is_index, s.priority, s.is_active, s.is_core,
+           s.created_by_role, s.token_estimate, s.created_at, s.updated_at, s.created_by, s.updated_by,
+           s.match_type, s.tool_name, s.force_mode, s.tool_config_override, s.data_source_filter
+    FROM skills s
+    LEFT JOIN category_skills cs ON s.id = cs.skill_id
+    WHERE s.category_restricted = 0 OR cs.category_id IN (${placeholders})
+    ORDER BY s.id
+  `, categoryIds);
+}
+
+/**
+ * Export workspaces for specific categories
+ */
+export function exportWorkspacesForCategories(categoryIds: number[]): WorkspaceRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<WorkspaceRecord>(`
+    SELECT DISTINCT w.id, w.slug, w.name, w.type, w.is_enabled, w.access_mode,
+           w.primary_color, w.logo_url, w.chat_title, w.greeting_message, w.suggested_prompts, w.footer_text,
+           w.llm_provider, w.llm_model, w.temperature, w.system_prompt,
+           w.allowed_domains, w.daily_limit, w.session_limit,
+           w.voice_enabled, w.file_upload_enabled, w.max_file_size_mb,
+           w.created_by, w.created_by_role, w.created_at, w.updated_at
+    FROM workspaces w
+    JOIN workspace_categories wc ON w.id = wc.workspace_id
+    WHERE wc.category_id IN (${placeholders})
+    ORDER BY w.name
+  `, categoryIds);
+}
+
+/**
+ * Export data API configurations for specific categories
+ */
+export function exportDataApiConfigsForCategories(categoryIds: number[]): DataApiConfigRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DataApiConfigRecord>(`
+    SELECT DISTINCT d.id, d.name, d.description, d.endpoint, d.method, d.response_format,
+           d.authentication, d.headers, d.parameters, d.response_structure,
+           d.sample_response, d.openapi_spec, d.config_method, d.status,
+           d.created_by, d.created_at, d.updated_at
+    FROM data_api_configs d
+    JOIN data_api_categories dac ON d.id = dac.api_id
+    WHERE dac.category_id IN (${placeholders})
+    ORDER BY d.name
+  `, categoryIds);
+}
+
+/**
+ * Export data CSV configurations for specific categories
+ */
+export function exportDataCsvConfigsForCategories(categoryIds: number[]): DataCsvConfigRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DataCsvConfigRecord>(`
+    SELECT DISTINCT d.id, d.name, d.description, d.file_path, d.original_filename,
+           d.columns, d.sample_data, d.row_count, d.file_size,
+           d.created_by, d.created_at, d.updated_at
+    FROM data_csv_configs d
+    JOIN data_csv_categories dcc ON d.id = dcc.csv_id
+    WHERE dcc.category_id IN (${placeholders})
+    ORDER BY d.name
+  `, categoryIds);
+}
+
+/**
+ * Export function API configurations for specific categories
+ */
+export function exportFunctionApiConfigsForCategories(categoryIds: number[]): FunctionApiConfigRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<FunctionApiConfigRecord>(`
+    SELECT DISTINCT f.id, f.name, f.description, f.base_url, f.auth_type, f.auth_header, f.auth_credentials,
+           f.default_headers, f.tools_schema, f.endpoint_mappings, f.timeout_seconds,
+           f.cache_ttl_seconds, f.is_enabled, f.status, f.created_by, f.created_at, f.updated_at,
+           f.last_tested, f.last_error
+    FROM function_api_configs f
+    JOIN function_api_categories fac ON f.id = fac.api_id
+    WHERE fac.category_id IN (${placeholders})
+    ORDER BY f.name
+  `, categoryIds);
+}
+
+/**
+ * Export agent bots for specific categories (via version categories)
+ */
+export function exportAgentBotsForCategories(categoryIds: number[]): AgentBotRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<AgentBotRecord>(`
+    SELECT DISTINCT ab.id, ab.name, ab.slug, ab.description, ab.is_active,
+           ab.created_by, ab.created_by_role, ab.created_at, ab.updated_at
+    FROM agent_bots ab
+    JOIN agent_bot_versions abv ON ab.id = abv.agent_bot_id
+    JOIN agent_bot_version_categories abvc ON abv.id = abvc.version_id
+    WHERE abvc.category_id IN (${placeholders})
+    ORDER BY ab.name
+  `, categoryIds);
+}
+
+/**
+ * Export agent bot versions for specific bot IDs
+ */
+export function exportAgentBotVersionsForBots(botIds: string[]): AgentBotVersionRecord[] {
+  if (botIds.length === 0) return [];
+  const placeholders = botIds.map(() => '?').join(',');
+  return queryAll<AgentBotVersionRecord>(`
+    SELECT id, agent_bot_id, version_number, version_label, is_default,
+           input_schema, output_config, system_prompt, llm_model, temperature,
+           max_tokens, is_active, created_by, created_at, updated_at
+    FROM agent_bot_versions
+    WHERE agent_bot_id IN (${placeholders})
+    ORDER BY agent_bot_id, version_number
+  `, botIds);
+}
+
+/**
+ * Export agent bot API keys for specific bot IDs
+ */
+export function exportAgentBotApiKeysForBots(botIds: string[]): AgentBotApiKeyRecord[] {
+  if (botIds.length === 0) return [];
+  const placeholders = botIds.map(() => '?').join(',');
+  return queryAll<AgentBotApiKeyRecord>(`
+    SELECT id, agent_bot_id, name, key_prefix, key_hash, permissions,
+           rate_limit_rpm, rate_limit_rpd, expires_at, last_used_at,
+           is_active, created_by, created_at, revoked_at
+    FROM agent_bot_api_keys
+    WHERE agent_bot_id IN (${placeholders})
+    ORDER BY agent_bot_id, name
+  `, botIds);
+}
+
+/**
+ * Export category prompts for specific categories
+ */
+export function exportCategoryPromptsForCategories(categoryIds: number[]): CategoryPromptRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<CategoryPromptRecord>(`
+    SELECT category_id, prompt_addendum, starter_prompts,
+           welcome_title, welcome_message,
+           updated_at, updated_by
+    FROM category_prompts
+    WHERE category_id IN (${placeholders})
+    ORDER BY category_id
+  `, categoryIds);
+}
+
+/**
+ * Export category tool configurations for specific categories
+ */
+export function exportCategoryToolConfigsForCategories(categoryIds: number[]): CategoryToolConfigRecord[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<CategoryToolConfigRecord>(`
+    SELECT id, category_id, tool_name, is_enabled, branding_json, config_json,
+           created_at, updated_at, updated_by
+    FROM category_tool_configs
+    WHERE category_id IN (${placeholders})
+    ORDER BY category_id, tool_name
+  `, categoryIds);
+}
+
+/**
+ * Export messages for specific thread IDs
+ */
+export function exportMessagesForThreads(threadIds: string[]): MessageRecord[] {
+  if (threadIds.length === 0) return [];
+  const placeholders = threadIds.map(() => '?').join(',');
+  return queryAll<MessageRecord>(`
+    SELECT id, thread_id, role, content, sources_json, attachments_json,
+           tool_calls_json, tool_call_id, tool_name,
+           generated_documents_json, visualizations_json, generated_images_json,
+           created_at
+    FROM messages
+    WHERE thread_id IN (${placeholders})
+    ORDER BY thread_id, created_at
+  `, threadIds);
+}
+
+/**
+ * Export thread categories filtered by both thread IDs and category IDs
+ */
+export function exportThreadCategoriesFiltered(threadIds: string[], categoryIds: number[]): ThreadCategoryRecord[] {
+  if (threadIds.length === 0 || categoryIds.length === 0) return [];
+  const threadPlaceholders = threadIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<ThreadCategoryRecord>(`
+    SELECT thread_id, category_id
+    FROM thread_categories
+    WHERE thread_id IN (${threadPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY thread_id, category_id
+  `, [...threadIds, ...categoryIds]);
+}
+
+/**
+ * Export thread uploads for specific thread IDs
+ */
+export function exportThreadUploadsForThreads(threadIds: string[]): ThreadUploadRecord[] {
+  if (threadIds.length === 0) return [];
+  const placeholders = threadIds.map(() => '?').join(',');
+  return queryAll<ThreadUploadRecord>(`
+    SELECT id, thread_id, filename, filepath, file_size, uploaded_at
+    FROM thread_uploads
+    WHERE thread_id IN (${placeholders})
+    ORDER BY id
+  `, threadIds);
+}
+
+/**
+ * Export thread outputs for specific thread IDs
+ */
+export function exportThreadOutputsForThreads(threadIds: string[]): ThreadOutputRecord[] {
+  if (threadIds.length === 0) return [];
+  const placeholders = threadIds.map(() => '?').join(',');
+  return queryAll<ThreadOutputRecord>(`
+    SELECT id, thread_id, message_id, filename, filepath, file_type, file_size, created_at
+    FROM thread_outputs
+    WHERE thread_id IN (${placeholders})
+    ORDER BY id
+  `, threadIds);
+}
+
+/**
+ * Export thread shares for specific thread IDs
+ */
+export function exportThreadSharesForThreads(threadIds: string[]): ThreadShareRecord[] {
+  if (threadIds.length === 0) return [];
+  const placeholders = threadIds.map(() => '?').join(',');
+  return queryAll<ThreadShareRecord>(`
+    SELECT id, thread_id, share_token, created_by, allow_download,
+           expires_at, view_count, created_at, last_viewed_at, revoked_at
+    FROM thread_shares
+    WHERE thread_id IN (${placeholders})
+    ORDER BY created_at
+  `, threadIds);
+}
+
+/**
+ * Export task plans for specific thread IDs
+ */
+export function exportTaskPlansForThreads(threadIds: string[]): TaskPlanRecord[] {
+  if (threadIds.length === 0) return [];
+  const placeholders = threadIds.map(() => '?').join(',');
+  return queryAll<TaskPlanRecord>(`
+    SELECT id, thread_id, user_id, category_slug, title, tasks_json, status,
+           total_tasks, completed_tasks, failed_tasks, mode, budget_json,
+           budget_used_json, model_config_json, paused_at, pause_reason,
+           resumed_at, stopped_at, stop_reason, created_at, updated_at, completed_at
+    FROM task_plans
+    WHERE thread_id IN (${placeholders})
+    ORDER BY created_at
+  `, threadIds);
+}
+
+/**
+ * Export document categories filtered by both document IDs and category IDs
+ */
+export function exportDocumentCategoriesFiltered(docIds: number[], categoryIds: number[]): DocumentCategoryRecord[] {
+  if (docIds.length === 0 || categoryIds.length === 0) return [];
+  const docPlaceholders = docIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DocumentCategoryRecord>(`
+    SELECT document_id, category_id
+    FROM document_categories
+    WHERE document_id IN (${docPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY document_id, category_id
+  `, [...docIds, ...categoryIds]);
+}
+
+/**
+ * Export category skills filtered by both skill IDs and category IDs
+ */
+export function exportCategorySkillsFiltered(skillIds: number[], categoryIds: number[]): CategorySkillRecord[] {
+  if (skillIds.length === 0 || categoryIds.length === 0) return [];
+  const skillPlaceholders = skillIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<CategorySkillRecord>(`
+    SELECT category_id, skill_id
+    FROM category_skills
+    WHERE skill_id IN (${skillPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY category_id, skill_id
+  `, [...skillIds, ...categoryIds]);
+}
+
+/**
+ * Export workspace categories filtered by both workspace IDs and category IDs
+ */
+export function exportWorkspaceCategoriesFiltered(workspaceIds: string[], categoryIds: number[]): WorkspaceCategoryRecord[] {
+  if (workspaceIds.length === 0 || categoryIds.length === 0) return [];
+  const workspacePlaceholders = workspaceIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<WorkspaceCategoryRecord>(`
+    SELECT workspace_id, category_id
+    FROM workspace_categories
+    WHERE workspace_id IN (${workspacePlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY workspace_id, category_id
+  `, [...workspaceIds, ...categoryIds]);
+}
+
+/**
+ * Export workspace users for specific workspace IDs
+ */
+export function exportWorkspaceUsersForWorkspaces(workspaceIds: string[]): WorkspaceUserRecord[] {
+  if (workspaceIds.length === 0) return [];
+  const placeholders = workspaceIds.map(() => '?').join(',');
+  return queryAll<WorkspaceUserRecord>(`
+    SELECT workspace_id, user_id, added_by, added_at
+    FROM workspace_users
+    WHERE workspace_id IN (${placeholders})
+    ORDER BY workspace_id, user_id
+  `, workspaceIds);
+}
+
+/**
+ * Export data API categories filtered by both API IDs and category IDs
+ */
+export function exportDataApiCategoriesFiltered(apiIds: string[], categoryIds: number[]): DataApiCategoryRecord[] {
+  if (apiIds.length === 0 || categoryIds.length === 0) return [];
+  const apiPlaceholders = apiIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DataApiCategoryRecord>(`
+    SELECT api_id, category_id, created_at
+    FROM data_api_categories
+    WHERE api_id IN (${apiPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY api_id, category_id
+  `, [...apiIds, ...categoryIds]);
+}
+
+/**
+ * Export data CSV categories filtered by both CSV IDs and category IDs
+ */
+export function exportDataCsvCategoriesFiltered(csvIds: string[], categoryIds: number[]): DataCsvCategoryRecord[] {
+  if (csvIds.length === 0 || categoryIds.length === 0) return [];
+  const csvPlaceholders = csvIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DataCsvCategoryRecord>(`
+    SELECT csv_id, category_id, created_at
+    FROM data_csv_categories
+    WHERE csv_id IN (${csvPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY csv_id, category_id
+  `, [...csvIds, ...categoryIds]);
+}
+
+/**
+ * Export function API categories filtered by both API IDs and category IDs
+ */
+export function exportFunctionApiCategoriesFiltered(apiIds: string[], categoryIds: number[]): FunctionApiCategoryRecord[] {
+  if (apiIds.length === 0 || categoryIds.length === 0) return [];
+  const apiPlaceholders = apiIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<FunctionApiCategoryRecord>(`
+    SELECT api_id, category_id, created_at
+    FROM function_api_categories
+    WHERE api_id IN (${apiPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY api_id, category_id
+  `, [...apiIds, ...categoryIds]);
+}
+
+/**
+ * Export agent bot version categories filtered by both version IDs and category IDs
+ */
+export function exportAgentBotVersionCategoriesFiltered(versionIds: string[], categoryIds: number[]): AgentBotVersionCategoryRecord[] {
+  if (versionIds.length === 0 || categoryIds.length === 0) return [];
+  const versionPlaceholders = versionIds.map(() => '?').join(',');
+  const categoryPlaceholders = categoryIds.map(() => '?').join(',');
+  return queryAll<AgentBotVersionCategoryRecord>(`
+    SELECT version_id, category_id
+    FROM agent_bot_version_categories
+    WHERE version_id IN (${versionPlaceholders})
+    AND category_id IN (${categoryPlaceholders})
+    ORDER BY version_id, category_id
+  `, [...versionIds, ...categoryIds]);
+}
+
+/**
+ * Export agent bot version skills for specific version IDs
+ */
+export function exportAgentBotVersionSkillsForVersions(versionIds: string[]): AgentBotVersionSkillRecord[] {
+  if (versionIds.length === 0) return [];
+  const placeholders = versionIds.map(() => '?').join(',');
+  return queryAll<AgentBotVersionSkillRecord>(`
+    SELECT version_id, skill_id
+    FROM agent_bot_version_skills
+    WHERE version_id IN (${placeholders})
+    ORDER BY version_id, skill_id
+  `, versionIds);
+}
+
+/**
+ * Export agent bot version tools for specific version IDs
+ */
+export function exportAgentBotVersionToolsForVersions(versionIds: string[]): AgentBotVersionToolRecord[] {
+  if (versionIds.length === 0) return [];
+  const placeholders = versionIds.map(() => '?').join(',');
+  return queryAll<AgentBotVersionToolRecord>(`
+    SELECT id, version_id, tool_name, is_enabled, config_override
+    FROM agent_bot_version_tools
+    WHERE version_id IN (${placeholders})
+    ORDER BY version_id, tool_name
+  `, versionIds);
+}
+
+/**
+ * Export specific categories by IDs
+ */
+export function exportCategoriesById(categoryIds: number[]): DbCategory[] {
+  if (categoryIds.length === 0) return [];
+  const placeholders = categoryIds.map(() => '?').join(',');
+  return queryAll<DbCategory>(`
+    SELECT id, name, slug, description, created_by, created_at
+    FROM categories
+    WHERE id IN (${placeholders})
+    ORDER BY id
+  `, categoryIds);
 }
 
 // ============ Import Functions ============
@@ -1402,6 +2027,121 @@ export function importTaskPlans(records: TaskPlanRecord[]): void {
   }
 }
 
+// ============ NEW: Agent Bot Import Functions ============
+
+/**
+ * Import agent bots
+ */
+export function importAgentBots(records: AgentBotRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO agent_bots (
+      id, name, slug, description, is_active, created_by, created_by_role,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.name, rec.slug, rec.description, rec.is_active,
+      rec.created_by, rec.created_by_role, rec.created_at, rec.updated_at
+    );
+  }
+}
+
+/**
+ * Import agent bot versions
+ */
+export function importAgentBotVersions(records: AgentBotVersionRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO agent_bot_versions (
+      id, agent_bot_id, version_number, version_label, is_default,
+      input_schema, output_config, system_prompt, llm_model, temperature,
+      max_tokens, is_active, created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.agent_bot_id, rec.version_number, rec.version_label,
+      rec.is_default, rec.input_schema, rec.output_config, rec.system_prompt,
+      rec.llm_model, rec.temperature, rec.max_tokens, rec.is_active,
+      rec.created_by, rec.created_at, rec.updated_at
+    );
+  }
+}
+
+/**
+ * Import agent bot version to category mappings
+ */
+export function importAgentBotVersionCategories(records: AgentBotVersionCategoryRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO agent_bot_version_categories (version_id, category_id)
+    VALUES (?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.version_id, rec.category_id);
+  }
+}
+
+/**
+ * Import agent bot version to skill mappings
+ */
+export function importAgentBotVersionSkills(records: AgentBotVersionSkillRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO agent_bot_version_skills (version_id, skill_id)
+    VALUES (?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.version_id, rec.skill_id);
+  }
+}
+
+/**
+ * Import agent bot version tool configurations
+ */
+export function importAgentBotVersionTools(records: AgentBotVersionToolRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO agent_bot_version_tools (
+      id, version_id, tool_name, is_enabled, config_override
+    ) VALUES (?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.version_id, rec.tool_name, rec.is_enabled, rec.config_override
+    );
+  }
+}
+
+/**
+ * Import agent bot API keys
+ */
+export function importAgentBotApiKeys(records: AgentBotApiKeyRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO agent_bot_api_keys (
+      id, agent_bot_id, name, key_prefix, key_hash, permissions,
+      rate_limit_rpm, rate_limit_rpd, expires_at, last_used_at,
+      is_active, created_by, created_at, revoked_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id, rec.agent_bot_id, rec.name, rec.key_prefix, rec.key_hash,
+      rec.permissions, rec.rate_limit_rpm, rec.rate_limit_rpd, rec.expires_at,
+      rec.last_used_at, rec.is_active, rec.created_by, rec.created_at, rec.revoked_at
+    );
+  }
+}
+
 // ============ Clear Functions ============
 
 /**
@@ -1439,6 +2179,14 @@ export function clearAllData(): void {
     execute('DELETE FROM workspace_users');
     execute('DELETE FROM workspace_categories');
     execute('DELETE FROM workspaces');
+
+    // Clear agent bot tables (depend on agent_bots, categories, skills)
+    execute('DELETE FROM agent_bot_api_keys');
+    execute('DELETE FROM agent_bot_version_tools');
+    execute('DELETE FROM agent_bot_version_skills');
+    execute('DELETE FROM agent_bot_version_categories');
+    execute('DELETE FROM agent_bot_versions');
+    execute('DELETE FROM agent_bots');
 
     // Clear tools, skills, and category prompts (depend on categories)
     execute('DELETE FROM category_tool_configs');

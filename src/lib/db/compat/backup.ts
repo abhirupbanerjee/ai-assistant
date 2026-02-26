@@ -38,6 +38,13 @@ export type {
   ToolRoutingRuleRecord,
   ThreadShareRecord,
   TaskPlanRecord,
+  // Agent bot types
+  AgentBotRecord,
+  AgentBotVersionRecord,
+  AgentBotVersionCategoryRecord,
+  AgentBotVersionSkillRecord,
+  AgentBotVersionToolRecord,
+  AgentBotApiKeyRecord,
 } from '../backup';
 
 import type { DbDocument } from '../documents';
@@ -71,6 +78,13 @@ import type {
   ToolRoutingRuleRecord,
   ThreadShareRecord,
   TaskPlanRecord,
+  // Agent bot types
+  AgentBotRecord,
+  AgentBotVersionRecord,
+  AgentBotVersionCategoryRecord,
+  AgentBotVersionSkillRecord,
+  AgentBotVersionToolRecord,
+  AgentBotApiKeyRecord,
 } from '../backup';
 
 // ============ Export Functions ============
@@ -313,6 +327,153 @@ export async function exportTaskPlans(): Promise<TaskPlanRecord[]> {
   }
   const db = await getDb();
   return db.selectFrom('task_plans').selectAll().orderBy('created_at').execute() as Promise<TaskPlanRecord[]>;
+}
+
+// ============ Agent Bot Export Functions ============
+// Note: Agent bot tables use sync functions only as they're not yet in the Kysely DB schema
+
+export async function exportAgentBots(): Promise<AgentBotRecord[]> {
+  // Always use sync - agent bot tables not in Kysely schema
+  return sync.exportAgentBots();
+}
+
+export async function exportAgentBotVersions(): Promise<AgentBotVersionRecord[]> {
+  return sync.exportAgentBotVersions();
+}
+
+export async function exportAgentBotVersionCategories(): Promise<AgentBotVersionCategoryRecord[]> {
+  return sync.exportAgentBotVersionCategories();
+}
+
+export async function exportAgentBotVersionSkills(): Promise<AgentBotVersionSkillRecord[]> {
+  return sync.exportAgentBotVersionSkills();
+}
+
+export async function exportAgentBotVersionTools(): Promise<AgentBotVersionToolRecord[]> {
+  return sync.exportAgentBotVersionTools();
+}
+
+export async function exportAgentBotApiKeys(): Promise<AgentBotApiKeyRecord[]> {
+  return sync.exportAgentBotApiKeys();
+}
+
+// ============ Category-Filtered Export Functions ============
+// These functions use sync implementations for all providers due to complex SQL with parameters
+
+export async function exportDocumentsForCategories(categoryIds: number[]): Promise<DbDocument[]> {
+  return sync.exportDocumentsForCategories(categoryIds);
+}
+
+export async function exportThreadsForCategoriesStrict(categoryIds: number[]): Promise<ThreadRecord[]> {
+  return sync.exportThreadsForCategoriesStrict(categoryIds);
+}
+
+export async function exportSkillsForCategories(categoryIds: number[]): Promise<SkillRecord[]> {
+  return sync.exportSkillsForCategories(categoryIds);
+}
+
+export async function exportWorkspacesForCategories(categoryIds: number[]): Promise<WorkspaceRecord[]> {
+  return sync.exportWorkspacesForCategories(categoryIds);
+}
+
+export async function exportDataApiConfigsForCategories(categoryIds: number[]): Promise<DataApiConfigRecord[]> {
+  return sync.exportDataApiConfigsForCategories(categoryIds);
+}
+
+export async function exportDataCsvConfigsForCategories(categoryIds: number[]): Promise<DataCsvConfigRecord[]> {
+  return sync.exportDataCsvConfigsForCategories(categoryIds);
+}
+
+export async function exportFunctionApiConfigsForCategories(categoryIds: number[]): Promise<FunctionApiConfigRecord[]> {
+  return sync.exportFunctionApiConfigsForCategories(categoryIds);
+}
+
+export async function exportAgentBotsForCategories(categoryIds: number[]): Promise<AgentBotRecord[]> {
+  return sync.exportAgentBotsForCategories(categoryIds);
+}
+
+export async function exportAgentBotVersionsForBots(botIds: string[]): Promise<AgentBotVersionRecord[]> {
+  return sync.exportAgentBotVersionsForBots(botIds);
+}
+
+export async function exportAgentBotApiKeysForBots(botIds: string[]): Promise<AgentBotApiKeyRecord[]> {
+  return sync.exportAgentBotApiKeysForBots(botIds);
+}
+
+export async function exportCategoryPromptsForCategories(categoryIds: number[]): Promise<CategoryPromptRecord[]> {
+  return sync.exportCategoryPromptsForCategories(categoryIds);
+}
+
+export async function exportCategoryToolConfigsForCategories(categoryIds: number[]): Promise<CategoryToolConfigRecord[]> {
+  return sync.exportCategoryToolConfigsForCategories(categoryIds);
+}
+
+export async function exportMessagesForThreads(threadIds: string[]): Promise<MessageRecord[]> {
+  return sync.exportMessagesForThreads(threadIds);
+}
+
+export async function exportThreadCategoriesFiltered(threadIds: string[], categoryIds: number[]): Promise<ThreadCategoryRecord[]> {
+  return sync.exportThreadCategoriesFiltered(threadIds, categoryIds);
+}
+
+export async function exportThreadUploadsForThreads(threadIds: string[]): Promise<ThreadUploadRecord[]> {
+  return sync.exportThreadUploadsForThreads(threadIds);
+}
+
+export async function exportThreadOutputsForThreads(threadIds: string[]): Promise<ThreadOutputRecord[]> {
+  return sync.exportThreadOutputsForThreads(threadIds);
+}
+
+export async function exportThreadSharesForThreads(threadIds: string[]): Promise<ThreadShareRecord[]> {
+  return sync.exportThreadSharesForThreads(threadIds);
+}
+
+export async function exportTaskPlansForThreads(threadIds: string[]): Promise<TaskPlanRecord[]> {
+  return sync.exportTaskPlansForThreads(threadIds);
+}
+
+export async function exportDocumentCategoriesFiltered(docIds: number[], categoryIds: number[]): Promise<DocumentCategoryRecord[]> {
+  return sync.exportDocumentCategoriesFiltered(docIds, categoryIds);
+}
+
+export async function exportCategorySkillsFiltered(skillIds: number[], categoryIds: number[]): Promise<CategorySkillRecord[]> {
+  return sync.exportCategorySkillsFiltered(skillIds, categoryIds);
+}
+
+export async function exportWorkspaceCategoriesFiltered(workspaceIds: string[], categoryIds: number[]): Promise<WorkspaceCategoryRecord[]> {
+  return sync.exportWorkspaceCategoriesFiltered(workspaceIds, categoryIds);
+}
+
+export async function exportWorkspaceUsersForWorkspaces(workspaceIds: string[]): Promise<WorkspaceUserRecord[]> {
+  return sync.exportWorkspaceUsersForWorkspaces(workspaceIds);
+}
+
+export async function exportDataApiCategoriesFiltered(apiIds: string[], categoryIds: number[]): Promise<DataApiCategoryRecord[]> {
+  return sync.exportDataApiCategoriesFiltered(apiIds, categoryIds);
+}
+
+export async function exportDataCsvCategoriesFiltered(csvIds: string[], categoryIds: number[]): Promise<DataCsvCategoryRecord[]> {
+  return sync.exportDataCsvCategoriesFiltered(csvIds, categoryIds);
+}
+
+export async function exportFunctionApiCategoriesFiltered(apiIds: string[], categoryIds: number[]): Promise<FunctionApiCategoryRecord[]> {
+  return sync.exportFunctionApiCategoriesFiltered(apiIds, categoryIds);
+}
+
+export async function exportAgentBotVersionCategoriesFiltered(versionIds: string[], categoryIds: number[]): Promise<AgentBotVersionCategoryRecord[]> {
+  return sync.exportAgentBotVersionCategoriesFiltered(versionIds, categoryIds);
+}
+
+export async function exportAgentBotVersionSkillsForVersions(versionIds: string[]): Promise<AgentBotVersionSkillRecord[]> {
+  return sync.exportAgentBotVersionSkillsForVersions(versionIds);
+}
+
+export async function exportAgentBotVersionToolsForVersions(versionIds: string[]): Promise<AgentBotVersionToolRecord[]> {
+  return sync.exportAgentBotVersionToolsForVersions(versionIds);
+}
+
+export async function exportCategoriesById(categoryIds: number[]): Promise<DbCategory[]> {
+  return sync.exportCategoriesById(categoryIds);
 }
 
 // ============ Import Functions ============
@@ -573,46 +734,38 @@ export async function importTaskPlans(records: TaskPlanRecord[]): Promise<void> 
   await importBatch('task_plans', records, db);
 }
 
+// ============ Agent Bot Import Functions ============
+// Note: Agent bot tables use sync functions only as they're not yet in the Kysely DB schema
+
+export async function importAgentBots(records: AgentBotRecord[]): Promise<void> {
+  return sync.importAgentBots(records);
+}
+
+export async function importAgentBotVersions(records: AgentBotVersionRecord[]): Promise<void> {
+  return sync.importAgentBotVersions(records);
+}
+
+export async function importAgentBotVersionCategories(records: AgentBotVersionCategoryRecord[]): Promise<void> {
+  return sync.importAgentBotVersionCategories(records);
+}
+
+export async function importAgentBotVersionSkills(records: AgentBotVersionSkillRecord[]): Promise<void> {
+  return sync.importAgentBotVersionSkills(records);
+}
+
+export async function importAgentBotVersionTools(records: AgentBotVersionToolRecord[]): Promise<void> {
+  return sync.importAgentBotVersionTools(records);
+}
+
+export async function importAgentBotApiKeys(records: AgentBotApiKeyRecord[]): Promise<void> {
+  return sync.importAgentBotApiKeys(records);
+}
+
 // ============ Clear Functions ============
 
 export async function clearAllData(): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.clearAllData();
-  }
-
-  await transaction(async (trx) => {
-    // Clear in reverse dependency order
-    await trx.deleteFrom('task_plans').execute();
-    await trx.deleteFrom('thread_shares').execute();
-    await trx.deleteFrom('thread_outputs').execute();
-    await trx.deleteFrom('thread_uploads').execute();
-    await trx.deleteFrom('thread_categories').execute();
-    await trx.deleteFrom('messages').execute();
-    await trx.deleteFrom('threads').execute();
-    await trx.deleteFrom('document_categories').execute();
-    await trx.deleteFrom('documents').execute();
-    await trx.deleteFrom('user_memories').execute();
-    await trx.deleteFrom('user_subscriptions').execute();
-    await trx.deleteFrom('super_user_categories').execute();
-    await trx.deleteFrom('users').execute();
-    await trx.deleteFrom('workspace_users').execute();
-    await trx.deleteFrom('workspace_categories').execute();
-    await trx.deleteFrom('workspaces').execute();
-    await trx.deleteFrom('category_tool_configs').execute();
-    await trx.deleteFrom('tool_configs').execute();
-    await trx.deleteFrom('tool_routing_rules').execute();
-    await trx.deleteFrom('category_skills').execute();
-    await trx.deleteFrom('skills').execute();
-    await trx.deleteFrom('category_prompts').execute();
-    await trx.deleteFrom('function_api_categories').execute();
-    await trx.deleteFrom('function_api_configs').execute();
-    await trx.deleteFrom('data_api_categories').execute();
-    await trx.deleteFrom('data_api_configs').execute();
-    await trx.deleteFrom('data_csv_categories').execute();
-    await trx.deleteFrom('data_csv_configs').execute();
-    await trx.deleteFrom('categories').execute();
-    await trx.deleteFrom('settings').execute();
-  });
+  // Always use sync - includes agent bot tables not in Kysely schema
+  return sync.clearAllData();
 }
 
 export async function clearDocumentData(): Promise<void> {
