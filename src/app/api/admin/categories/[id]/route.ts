@@ -11,12 +11,16 @@ import { requireAdmin } from '@/lib/auth';
 import {
   getCategoryById,
   updateCategory,
-  deleteCategory,
   getSuperUsersForCategory,
   getSubscribersForCategory,
   getCategoryDocumentCount,
+  getDocumentIdsForCategory,
+  deleteCategoryWithRelatedData,
 } from '@/lib/db/categories';
+import { getDocumentCategories } from '@/lib/db/documents';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
+import { deleteDocument } from '@/lib/ingest';
+import { invalidateCategoryCache } from '@/lib/redis';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -139,10 +143,22 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    // Get document count before deletion (they will become unassigned)
-    const documentCount = getCategoryDocumentCount(categoryId);
+    // 1. Get documents and check their other categories BEFORE deletion
+    const categoryDocIds = getDocumentIdsForCategory(categoryId);
+    const docsToDelete: number[] = [];
 
-    const deleted = deleteCategory(categoryId);
+    for (const docId of categoryDocIds) {
+      const docCategoryIds = getDocumentCategories(docId);
+      const otherCategories = docCategoryIds.filter(catId => catId !== categoryId);
+
+      if (otherCategories.length === 0) {
+        // Document has no other categories - mark for deletion
+        docsToDelete.push(docId);
+      }
+    }
+
+    // 2. Delete category and all associations
+    const { deleted } = deleteCategoryWithRelatedData(categoryId);
 
     if (!deleted) {
       return NextResponse.json(
@@ -151,17 +167,33 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Clean up vector store collection for this category
+    // 3. Delete documents that had no other categories
+    const deleteErrors: string[] = [];
+    for (const docId of docsToDelete) {
+      try {
+        await deleteDocument(docId.toString());
+      } catch (error) {
+        console.error(`Failed to delete document ${docId}:`, error);
+        deleteErrors.push(`Document ${docId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    // 4. Delete ChromaDB collection for this category
     const store = await getVectorStore();
     const collNames = getCollectionNames();
     await store.deleteCollection(collNames.forCategory(existing.slug));
+
+    // 5. Invalidate Redis cache
+    await invalidateCategoryCache(existing.slug);
 
     return NextResponse.json({
       success: true,
       deleted: {
         id: categoryId,
         name: existing.name,
-        documentsUnassigned: documentCount,
+        documentsDeleted: docsToDelete.length,
+        documentsKept: categoryDocIds.length - docsToDelete.length,
+        deleteErrors: deleteErrors.length > 0 ? deleteErrors : undefined,
       },
     });
   } catch (error) {

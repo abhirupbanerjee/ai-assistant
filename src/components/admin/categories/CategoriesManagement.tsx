@@ -237,9 +237,8 @@ export default function CategoriesManagement() {
                         </button>
                         <button
                           onClick={() => setDeleteCategory(cat)}
-                          disabled={cat.documentCount > 0}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={cat.documentCount > 0 ? 'Remove documents first' : 'Delete'}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Delete"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -300,13 +299,24 @@ export default function CategoriesManagement() {
         onClose={() => setDeleteCategory(null)}
         title="Delete Category?"
       >
-        <p className="text-gray-600 mb-4">
-          Are you sure you want to delete <strong>{deleteCategory?.name}</strong>?
-        </p>
-        <p className="text-sm text-gray-500 mb-6">
-          This action cannot be undone.
-        </p>
-        <div className="flex justify-end gap-3">
+        <div className="space-y-4">
+          <p className="text-gray-600">
+            Are you sure you want to delete <strong>{deleteCategory?.name}</strong>?
+          </p>
+          {deleteCategory && deleteCategory.documentCount > 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">
+                <strong>Warning:</strong> This category contains {deleteCategory.documentCount} document(s).
+                Documents exclusively in this category will be permanently deleted.
+                Documents also tagged to other categories will be kept.
+              </p>
+            </div>
+          )}
+          <p className="text-sm text-gray-500">
+            This action cannot be undone.
+          </p>
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
           <Button variant="secondary" onClick={() => setDeleteCategory(null)}>
             Cancel
           </Button>

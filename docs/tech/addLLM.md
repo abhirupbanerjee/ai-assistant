@@ -1213,7 +1213,7 @@ Besides chat models, the system uses specialized models for various features. AP
 | **Image Generation** | DALL-E 3, Gemini Imagen | tool_config | `src/lib/image-gen/` |
 | **Translation** | gpt-4.1-mini, gemini-2.5-flash | tool_config | `src/lib/translation/` |
 | **Document OCR** | Mistral OCR, Azure DI | Settings → Doc Processing | `src/lib/document-extractor.ts` |
-| **Reranker** | Cohere, Jina, Local | Settings → Reranker | `src/lib/reranker.ts` |
+| **Reranker** | BGE Large/Base, Cohere, Local | Settings → Reranker | `src/lib/reranker.ts` |
 
 ### Using Centralized API Keys
 

@@ -2154,7 +2154,17 @@ paths:
                     properties:
                       enabled:
                         type: boolean
-                      provider:
+                      providers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                              enum: [bge-large, cohere, bge-base, local]
+                            enabled:
+                              type: boolean
+                      cohereApiKey:
                         type: string
                       topKForReranking:
                         type: integer
@@ -2455,7 +2465,7 @@ paths:
       tags:
         - Admin - System
       summary: Check reranker status
-      description: Check reranker availability (Cohere API and local transformers.js)
+      description: Check reranker availability (BGE cross-encoder, Cohere API, and local bi-encoder)
       operationId: getRerankerStatus
       responses:
         '200':

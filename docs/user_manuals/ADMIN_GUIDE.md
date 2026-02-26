@@ -145,7 +145,7 @@ Widgets showing recent system activity:
 | **LLM** | Model selection, temperature, max tokens |
 | **RAG** | Retrieval settings, chunk size, similarity threshold |
 | **RAG Tuning** | Interactive RAG parameter testing |
-| **Reranker** | Enable/configure Cohere or local reranking |
+| **Reranker** | Enable/configure BGE, Cohere, or local reranking with priority fallback |
 | **Memory** | User memory extraction settings |
 | **Summarization** | Thread summarization settings |
 | **Limits** | Conversation history, upload limits |
@@ -1350,7 +1350,7 @@ The system automatically determines image handling based on model and OCR config
 | **Top K Results** | Documents to retrieve |
 | **Similarity Threshold** | Minimum relevance score |
 | **Reranker** | Enable/disable reranking |
-| **Reranker Model** | Model for reranking |
+| **Reranker Providers** | Priority-ordered list (BGE Large, Cohere, BGE Base, Local) |
 
 ### Security Settings
 

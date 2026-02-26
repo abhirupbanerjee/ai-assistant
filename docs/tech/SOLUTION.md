@@ -71,8 +71,8 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 │  │ 3-large (3072d) │  │  (Web Search)   │  │  (Transcribe)   │          │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
 │  ┌─────────────────┐  ┌─────────────────┐                               │
-│  │   Cohere API    │  │ Local Reranker  │                               │
-│  │   (Reranking)   │  │ (Transformers.js│                               │
+│  │  BGE Reranker   │  │   Cohere API    │                               │
+│  │ (Transformers.js│  │   (Reranking)   │                               │
 │  └─────────────────┘  └─────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -195,11 +195,13 @@ User Query
 
 **Web Search Integration**: If Tavily is enabled in admin settings, the LLM can automatically trigger web searches using OpenAI function calling. Results are cached separately in Redis with configurable TTL (60 seconds to 1 month).
 
-**Reranker Integration**: When enabled, retrieved chunks are re-scored using either:
+**Reranker Integration**: When enabled, retrieved chunks are re-scored using priority-based fallback:
+- **BGE Reranker Large** (`Xenova/bge-reranker-large`): Best accuracy cross-encoder (~670MB)
 - **Cohere API** (`rerank-english-v3.0`): Fast, API-based reranking
-- **Local Transformers.js** (`Xenova/all-MiniLM-L6-v2`): No API cost, slower first load
+- **BGE Reranker Base** (`Xenova/bge-reranker-base`): Smaller cross-encoder (~220MB)
+- **Local Bi-encoder** (`Xenova/all-MiniLM-L6-v2`): Legacy, less accurate (~90MB)
 
-Reranking improves result quality by using a cross-encoder model to score each chunk against the query, then filtering by minimum score threshold.
+Reranking improves result quality by using cross-encoder models to jointly score query+document pairs, then filtering by minimum score threshold. Providers are tried in priority order with automatic fallback.
 
 ### 2.1 Multimodal/Vision Support
 
@@ -1413,7 +1415,7 @@ The `thread_outputs.thread_id` FK is intentionally not enforced in PostgreSQL �
    a. Embed query using text-embedding-3-large
    b. Search ChromaDB collections for subscribed categories
    c. Include global documents from all category searches
-   d. If reranker enabled, re-score chunks with Cohere/local model
+   d. If reranker enabled, re-score chunks with BGE/Cohere (priority fallback)
    e. If user doc exists, extract and include relevant text
    f. Build context with conversation history
    g. Generate response with LLM via LiteLLM (function calling enabled)

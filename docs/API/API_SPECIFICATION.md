@@ -2057,7 +2057,8 @@ curl -X GET https://policybot.abhirup.app/api/admin/settings \
   };
   reranker: {
     enabled: boolean;
-    provider: string;
+    providers: Array<{ provider: string; enabled: boolean }>;  // Priority-ordered
+    cohereApiKey?: string;
     topKForReranking: number;
     minRerankerScore: number;
     cacheTTLSeconds: number;
@@ -2392,7 +2393,7 @@ curl -X GET https://policybot.abhirup.app/api/admin/providers \
 
 #### `GET /api/admin/reranker-status`
 
-Check reranker availability (Cohere API and local transformers.js).
+Check reranker availability (BGE cross-encoder, Cohere API, and local bi-encoder).
 
 **Authentication**: Required
 **Role**: Admin only

@@ -1073,12 +1073,20 @@ export interface EmbeddingSettings {
   dimensions: number;  // Vector dimensions (default: 3072)
 }
 
+export type RerankerProvider = 'bge-large' | 'cohere' | 'bge-base' | 'local';
+
+export interface RerankerProviderConfig {
+  provider: RerankerProvider;
+  enabled: boolean;
+}
+
 export interface RerankerSettings {
-  enabled: boolean;        // Enable reranking (default: false)
-  provider: string;        // Provider: 'cohere' or 'local'
-  topKForReranking: number;  // Chunks to rerank (default: 50)
-  minRerankerScore: number;  // Minimum rerank score (default: 0.3)
-  cacheTTLSeconds: number;   // Cache TTL (default: 3600)
+  enabled: boolean;            // Enable reranking (default: true)
+  providers: RerankerProviderConfig[];  // Ordered by priority (index 0 = primary)
+  cohereApiKey?: string;       // Optional Cohere API key
+  topKForReranking: number;    // Chunks to rerank (default: 50)
+  minRerankerScore: number;    // Minimum rerank score (default: 0.3)
+  cacheTTLSeconds: number;     // Cache TTL (default: 3600)
 }
 
 export interface SkillsSettings {

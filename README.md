@@ -77,7 +77,7 @@ Built with enterprise-grade, open-source technologies:
 - **Tool Routing** - Pattern-based forced tool invocation for reliable behavior
 - **User Memory** - Recall user-specific facts across conversations
 - **Thread Summarization** - Compress long conversations
-- **Reranking** - Cohere, Jina, or local Transformers.js
+- **Reranking** - BGE cross-encoder (large/base), Cohere API, or local bi-encoder via Transformers.js
 - **Autonomous Agent** - Multi-step task planning with budget controls and quality checks
 
 ### Collaboration
@@ -295,14 +295,21 @@ Policy Bot integrates with several external services. All are optional except LL
 
 | Service | Get Key | Purpose | Local Alternative |
 |---------|---------|---------|-------------------|
-| **Cohere** | [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) | Chunk reranking for better search relevance | Local ONNX reranker (included) |
-| **Jina AI** | [jina.ai](https://jina.ai/) | Reranking and embeddings | Local ONNX reranker (included) |
+| **Cohere** | [dashboard.cohere.com](https://dashboard.cohere.com/api-keys) | API-based reranking for search relevance | BGE reranker (included) |
+
+**Reranker Providers (Priority-based fallback):**
+| Provider | Model | Type | Size | API Key |
+|----------|-------|------|------|---------|
+| **BGE Large** | `Xenova/bge-reranker-large` | Cross-encoder | ~670MB | None (local) |
+| **Cohere** | `rerank-english-v3.0` | API | N/A | Required |
+| **BGE Base** | `Xenova/bge-reranker-base` | Cross-encoder | ~220MB | None (local) |
+| **Local** | `Xenova/all-MiniLM-L6-v2` | Bi-encoder | ~90MB | None (local) |
 
 **Chunking Strategies:**
 - **Recursive** - Default chunking with configurable size and overlap
 - **Semantic** - Context-aware chunking based on content boundaries
 
-> **Local Reranker:** Policy Bot includes a local reranker using `onnxruntime-node` and Transformers.js. Enable via Admin > Settings > Reranker. No API key required.
+> **Local Reranker:** Policy Bot includes BGE cross-encoder rerankers using `onnxruntime-node` and Transformers.js. Models download automatically on first use (~670MB for large, ~220MB for base). Configure priority order via Admin > Settings > Reranker.
 
 ### Tools (Optional)
 
@@ -333,7 +340,7 @@ AZURE_AD_CLIENT_ID=...
 GOOGLE_CLIENT_ID=...
 
 # Optional Enhancements
-COHERE_API_KEY=...             # Or use local reranker / JIna
+COHERE_API_KEY=...             # Or use local BGE reranker
 TAVILY_API_KEY=...             # For web search
 AZURE_DI_ENDPOINT=...          # For Office docs
 
