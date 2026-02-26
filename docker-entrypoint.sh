@@ -16,4 +16,5 @@ if [ -d "/app/data" ]; then
 fi
 
 # Drop privileges and run the app as nextjs user
-exec su-exec nextjs "$@"
+# Using gosu for proper signal handling in containers
+exec gosu nextjs "$@"
