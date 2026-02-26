@@ -30,6 +30,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Install su-exec for dropping privileges in entrypoint
+RUN apt-get update && apt-get install -y --no-install-recommends su-exec && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 --gid nodejs nextjs
@@ -51,11 +54,15 @@ RUN mkdir -p /tmp/transformers_cache /tmp/cache && \
     chown -R nextjs:nodejs /tmp/transformers_cache /tmp/cache && \
     chmod 755 /tmp/transformers_cache /tmp/cache
 
-USER nextjs
+# Copy entrypoint script (handles volume permissions and drops privileges)
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# Entrypoint fixes permissions on mounted volumes, then runs as nextjs user
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server.js"]

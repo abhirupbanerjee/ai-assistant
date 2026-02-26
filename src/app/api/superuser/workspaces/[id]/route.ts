@@ -160,7 +160,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     if (name !== undefined) updates.name = name;
     if (isEnabled !== undefined) updates.is_enabled = isEnabled;
-    if (categoryIds !== undefined) updates.categoryIds = categoryIds;
+    if (categoryIds !== undefined) updates.category_ids = categoryIds;
     if (primaryColor !== undefined) updates.primary_color = primaryColor;
     if (logoUrl !== undefined) updates.logo_url = logoUrl;
     if (chatTitle !== undefined) updates.chat_title = chatTitle;

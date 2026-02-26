@@ -2,6 +2,9 @@
 # Policy Bot - Docker Compose Configuration
 # =============================================================================
 #
+# SETUP: Volume permissions are handled automatically by the entrypoint.
+#   For non-Docker development, run ./setup.sh first.
+#
 # PROFILES: Use profiles to select which services to run:
 #
 #   Vector Store (choose one):
@@ -89,7 +92,7 @@ services:
     volumes:
       - ./data/app:/app/data
       - ./config:/app/config:ro
-      - ./data/transformers_cache:/tmp/transformers_cache  # Persist BGE reranker models
+      - ./data/transformers_cache:/tmp/transformers_cache  # Persist BGE reranker models (~670MB)
     # Note: Vector store (chroma/qdrant) dependencies are handled via profiles.
     # PostgreSQL: waits for healthy status when the postgres profile is active.
     depends_on:
