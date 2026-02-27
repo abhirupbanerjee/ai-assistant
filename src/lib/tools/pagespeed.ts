@@ -366,8 +366,8 @@ export const websiteAnalysisTool: ToolDefinition = {
       });
     }
 
-    // Get API key (config > env var)
-    const apiKey = settings.apiKey || process.env.PAGESPEED_API_KEY;
+    // Get API key (config > specific env var > general Google env var)
+    const apiKey = settings.apiKey || process.env.PAGESPEED_API_KEY || process.env.GOOGLE_API_KEY;
 
     // Resolve strategy
     const strategy = args.strategy ?? settings.defaultStrategy ?? 'mobile';
