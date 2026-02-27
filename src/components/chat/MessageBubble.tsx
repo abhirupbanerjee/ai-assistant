@@ -83,7 +83,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 group`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className={`max-w-full sm:max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
             ? 'user-message text-white'
             : 'bg-gray-100 text-gray-900'

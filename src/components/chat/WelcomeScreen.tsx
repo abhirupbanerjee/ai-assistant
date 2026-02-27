@@ -39,6 +39,8 @@ import {
   Headphones,
   Plug,
   X,
+  Activity,
+  Code2,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -80,7 +82,7 @@ interface ServiceCard {
   title: string;
   code: string;
   description: string;
-  tier: 1 | 2 | 3 | 4;
+  tier: 1 | 2 | 3 | 4 | 5;
   isSubService?: boolean;
   minRole: 'user' | 'superuser' | 'admin';
   colorClass: string;
@@ -101,6 +103,7 @@ const TIER_COLORS = {
   2: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' },
   3: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
   4: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
+  5: { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
 };
 
 const TIER_NAMES = {
@@ -108,6 +111,7 @@ const TIER_NAMES = {
   2: 'Planning',
   3: 'Domain Specific',
   4: 'Integration & Automation',
+  5: 'Developer Tools',
 };
 
 function RoleTag({ role }: { role: 'user' | 'superuser' | 'admin' }) {
@@ -593,6 +597,29 @@ export default function WelcomeScreen({
       colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
       iconBgClass: 'bg-emerald-100 text-emerald-600',
     },
+    // Tier 5 — Developer Tools
+    {
+      id: 'website-analyser',
+      icon: <Activity size={24} />,
+      title: 'Website Analyser as a Service',
+      code: 'WAaaS',
+      description: 'Analyse website performance, accessibility, SEO, and best practices using Lighthouse. Get Core Web Vitals metrics and actionable optimization recommendations.',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
+    },
+    {
+      id: 'code-analyser',
+      icon: <Code2 size={24} />,
+      title: 'Code Analyser as a Service',
+      code: 'CAaaS',
+      description: 'Analyse code quality using SonarCloud. Identify bugs, vulnerabilities, code smells, and security hotspots with actionable insights and quality ratings.',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
+    },
   ];
 
   const visibleSetupCards = setupCards.filter((card) =>
@@ -659,7 +686,7 @@ export default function WelcomeScreen({
         {activeTab === 'services' && (
           <div className="space-y-6">
             {/* Services organized by Tier */}
-            {([1, 2, 3, 4] as const).map((tier) => {
+            {([1, 2, 3, 4, 5] as const).map((tier) => {
               const tierServices = serviceCards.filter(
                 (s) => s.tier === tier && canAccess(userRole, s.minRole)
               );

@@ -116,6 +116,18 @@ body {
   border-radius: 0.25em;
 }
 
+/* Links inside user messages - use light color for visibility */
+.user-message a,
+.user-message .markdown-content a {
+  color: #bfdbfe;
+}
+
+.user-message a:hover,
+.user-message .markdown-content a:hover {
+  color: #dbeafe;
+  text-decoration: underline;
+}
+
 /* Context-aware inline code for assistant messages (gray background) */
 .bg-gray-100 .markdown-content code {
   background-color: #e5e7eb;
