@@ -591,6 +591,27 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       expirationDays: 30,
     },
   },
+  website_analysis: {
+    enabled: false, // Disabled by default - works without API key but recommended
+    config: {
+      apiKey: '',
+      defaultStrategy: 'mobile',
+      cacheTTLSeconds: 3600,
+      includeOpportunities: true,
+      includeDiagnostics: true,
+    },
+  },
+  code_analysis: {
+    enabled: false, // Disabled by default - requires SonarCloud token
+    config: {
+      apiToken: '',
+      organization: '',
+      enableDynamicLookup: true,
+      preConfiguredRepos: [],
+      cacheTTLSeconds: 1800,
+      maxIssuesPerCategory: 25,
+    },
+  },
 };
 
 /**

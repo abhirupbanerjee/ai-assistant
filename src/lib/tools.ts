@@ -15,6 +15,8 @@ import { complianceCheckerTool } from './tools/compliance-checker';
 import { xlsxGenTool } from './tools/xlsx-gen';
 import { pptxGenTool } from './tools/pptx-gen';
 import { podcastGenTool } from './tools/podcast-gen';
+import { websiteAnalysisTool } from './tools/pagespeed';
+import { codeAnalysisTool } from './tools/sonarcloud';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -111,6 +113,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   xlsx_gen: xlsxGenTool,
   pptx_gen: pptxGenTool,
   podcast_gen: podcastGenTool,
+  website_analysis: websiteAnalysisTool,
+  code_analysis: codeAnalysisTool,
 };
 
 // ============ Initialization ============

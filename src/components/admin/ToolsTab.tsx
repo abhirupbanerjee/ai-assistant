@@ -24,6 +24,8 @@ import {
   Wrench,
   ImageIcon,
   Languages,
+  Activity,
+  Code,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -34,6 +36,8 @@ import FunctionAPITab from './FunctionAPITab';
 import ImageGenConfig from './ImageGenConfig';
 import TranslationConfig from './TranslationConfig';
 import PodcastGenConfig from './PodcastGenConfig';
+import WebsiteAnalysisConfig from './WebsiteAnalysisConfig';
+import CodeAnalysisConfig from './CodeAnalysisConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
 
@@ -152,6 +156,10 @@ function getToolIcon(toolName: string) {
       return ImageIcon;
     case 'translation':
       return Languages;
+    case 'website_analysis':
+      return Activity;
+    case 'code_analysis':
+      return Code;
     default:
       return Settings;
   }
@@ -1356,6 +1364,22 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'podcast_gen':
         return (
           <PodcastGenConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'website_analysis':
+        return (
+          <WebsiteAnalysisConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'code_analysis':
+        return (
+          <CodeAnalysisConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}
