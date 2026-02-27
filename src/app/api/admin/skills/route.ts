@@ -15,13 +15,48 @@ import {
 import { getSkillsSettings } from '@/lib/db/config';
 import { seedCoreSkills } from '@/lib/skills/seed';
 import { clearConfigCache } from '@/lib/config-loader';
-import type { CreateSkillInput, TriggerType } from '@/lib/skills/types';
+import type { CreateSkillInput, TriggerType, SkillWithCategories } from '@/lib/skills/types';
 
-export async function GET() {
+/**
+ * Get skills filtered by category IDs (includes global skills)
+ * Returns skills where:
+ * - category_restricted = false (global, available to all)
+ * - OR linked to one of the given categories via category_skills
+ */
+function getSkillsForCategories(categoryIds: number[]): SkillWithCategories[] {
+  if (categoryIds.length === 0) return [];
+
+  const categoryIdSet = new Set(categoryIds);
+  const allSkills = getAllSkillsWithCategories();
+
+  return allSkills.filter(skill => {
+    // Include global skills (not category-restricted)
+    if (!skill.category_restricted) return true;
+
+    // Include skills linked to any of the selected categories
+    return skill.categories.some(cat => categoryIdSet.has(cat.id));
+  });
+}
+
+export async function GET(request: NextRequest) {
   try {
     await requireElevated();
 
-    const skills = getAllSkillsWithCategories();
+    // Check for categoryIds query parameter
+    const { searchParams } = new URL(request.url);
+    const categoryIdsParam = searchParams.get('categoryIds');
+
+    let skills: SkillWithCategories[];
+
+    if (categoryIdsParam) {
+      // Filter by categories - returns global skills + skills linked to given categories
+      const categoryIds = categoryIdsParam.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+      skills = getSkillsForCategories(categoryIds);
+    } else {
+      // Return all skills
+      skills = getAllSkillsWithCategories();
+    }
+
     const settings = getSkillsSettings();
 
     return NextResponse.json({ skills, settings });

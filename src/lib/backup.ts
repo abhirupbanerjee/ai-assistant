@@ -129,6 +129,16 @@ export interface CategoryFilter {
   categoryIds?: number[];  // Required when mode is 'selected'
 }
 
+export interface SkillFilter {
+  mode: 'all' | 'selected';
+  skillIds?: number[];  // Required when mode is 'selected'
+}
+
+export interface ToolFilter {
+  mode: 'all' | 'selected';
+  toolNames?: string[];  // Required when mode is 'selected'
+}
+
 export interface BackupOptions {
   includeDocuments: boolean;
   includeDocumentFiles: boolean;
@@ -147,8 +157,10 @@ export interface BackupOptions {
   includeToolRouting: boolean;
   includeThreadShares: boolean;
   includeAgentBots: boolean;
-  // Category filter
+  // Filters
   categoryFilter?: CategoryFilter;
+  skillFilter?: SkillFilter;
+  toolFilter?: ToolFilter;
 }
 
 export interface RestoreOptions {
@@ -216,11 +228,20 @@ export interface BackupManifest {
     threadShareCount: number;
     taskPlanCount: number;
     agentBotCount: number;
-    // Category filter metadata
+    // Filter metadata
     categoryFilter?: {
       mode: CategoryFilterMode;
       categoryIds?: number[];
       categoryNames?: string[];
+    };
+    skillFilter?: {
+      mode: 'all' | 'selected';
+      skillIds?: number[];
+      skillNames?: string[];
+    };
+    toolFilter?: {
+      mode: 'all' | 'selected';
+      toolNames?: string[];
     };
   };
   warnings: string[];
@@ -367,15 +388,32 @@ export async function createBackup(
       }
     }
 
-    // Tools - always include all (not category-linked)
+    // Tools - apply tool filter if enabled
     if (options.includeTools) {
-      toolConfigs = await exportToolConfigs();
+      let allToolConfigs = await exportToolConfigs();
+      // Apply tool filter if enabled
+      if (options.toolFilter?.mode === 'selected' && options.toolFilter.toolNames?.length) {
+        const toolNameSet = new Set(options.toolFilter.toolNames);
+        allToolConfigs = allToolConfigs.filter(t => toolNameSet.has(t.tool_name));
+      }
+      toolConfigs = allToolConfigs;
       categoryToolConfigs = await exportCategoryToolConfigsForCategories(categoryIds);
+      // Also filter category tool configs by selected tools
+      if (options.toolFilter?.mode === 'selected' && options.toolFilter.toolNames?.length) {
+        const toolNameSet = new Set(options.toolFilter.toolNames);
+        categoryToolConfigs = categoryToolConfigs.filter(t => toolNameSet.has(t.tool_name));
+      }
     }
 
-    // Skills - include non-restricted + category-linked
+    // Skills - include non-restricted + category-linked, apply skill filter if enabled
     if (options.includeSkills) {
-      skills = await exportSkillsForCategories(categoryIds);
+      let allSkills = await exportSkillsForCategories(categoryIds);
+      // Apply skill filter if enabled
+      if (options.skillFilter?.mode === 'selected' && options.skillFilter.skillIds?.length) {
+        const skillIdSet = new Set(options.skillFilter.skillIds);
+        allSkills = allSkills.filter(s => skillIdSet.has(s.id));
+      }
+      skills = allSkills;
       const skillIds = skills.map(s => s.id);
       categorySkills = await exportCategorySkillsFiltered(skillIds, categoryIds);
     }
@@ -557,11 +595,20 @@ export async function createBackup(
       threadShareCount: threadShares.length,
       taskPlanCount: taskPlans.length,
       agentBotCount: agentBots.length,
-      // Category filter metadata
+      // Filter metadata
       categoryFilter: isFiltered ? {
         mode: 'selected',
         categoryIds: categoryIds,
         categoryNames: categories.map(c => c.name),
+      } : undefined,
+      skillFilter: options.skillFilter?.mode === 'selected' ? {
+        mode: 'selected',
+        skillIds: options.skillFilter.skillIds,
+        skillNames: skills.map(s => s.name),
+      } : undefined,
+      toolFilter: options.toolFilter?.mode === 'selected' ? {
+        mode: 'selected',
+        toolNames: options.toolFilter.toolNames,
       } : undefined,
     },
     warnings,

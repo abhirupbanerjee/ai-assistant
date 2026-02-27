@@ -49,6 +49,16 @@ export async function POST(request: NextRequest) {
         mode: body.categoryFilter.mode || 'all',
         categoryIds: body.categoryFilter.categoryIds,
       } : undefined,
+      // Skill filter (Level 2)
+      skillFilter: body.skillFilter ? {
+        mode: body.skillFilter.mode || 'all',
+        skillIds: body.skillFilter.skillIds,
+      } : undefined,
+      // Tool filter (Level 3)
+      toolFilter: body.toolFilter ? {
+        mode: body.toolFilter.mode || 'all',
+        toolNames: body.toolFilter.toolNames,
+      } : undefined,
     };
 
     // Create backup

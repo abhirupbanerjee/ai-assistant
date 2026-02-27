@@ -11,6 +11,23 @@ interface Category {
   slug: string;
 }
 
+interface Skill {
+  id: number;
+  name: string;
+  description?: string;
+  category_restricted: boolean;
+  is_active: boolean;
+  tool_routing_tools?: string[];
+  categories: { id: number; name: string }[];
+}
+
+interface Tool {
+  name: string;
+  displayName: string;
+  description: string;
+  enabled: boolean;
+}
+
 interface BackupManifest {
   version: string;
   createdAt: string;
@@ -183,14 +200,26 @@ function SubCheckbox({
 }
 
 export default function BackupTab() {
-  // Categories for filter
+  // Categories for filter (Level 1)
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categoryFilterMode, setCategoryFilterMode] = useState<'all' | 'selected'>('all');
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
+
+  // Skills for filter (Level 2) - appears when categories are filtered
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [loadingSkills, setLoadingSkills] = useState(false);
+  const [skillFilterMode, setSkillFilterMode] = useState<'all' | 'selected'>('all');
+  const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>([]);
+
+  // Tools for filter (Level 3) - appears when skills are filtered
+  const [availableTools, setAvailableTools] = useState<Tool[]>([]);
+  const [loadingTools, setLoadingTools] = useState(false);
+  const [toolFilterMode, setToolFilterMode] = useState<'all' | 'selected'>('all');
+  const [selectedToolNames, setSelectedToolNames] = useState<string[]>([]);
 
   // Backup state
   const [backupInProgress, setBackupInProgress] = useState(false);
-  const [categoryFilterMode, setCategoryFilterMode] = useState<'all' | 'selected'>('all');
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [backupOptions, setBackupOptions] = useState({
     // Main group options
     includeCategories: true,
@@ -259,13 +288,100 @@ export default function BackupTab() {
     fetchCategories();
   }, []);
 
+  // Fetch skills when categories are selected (Level 2)
+  useEffect(() => {
+    if (categoryFilterMode !== 'selected' || selectedCategoryIds.length === 0) {
+      setAvailableSkills([]);
+      setSelectedSkillIds([]);
+      setSkillFilterMode('all');
+      return;
+    }
+
+    const fetchSkills = async () => {
+      setLoadingSkills(true);
+      try {
+        const response = await fetch(`/api/admin/skills?categoryIds=${selectedCategoryIds.join(',')}`);
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableSkills(data.skills || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch skills:', err);
+      } finally {
+        setLoadingSkills(false);
+      }
+    };
+    fetchSkills();
+  }, [categoryFilterMode, selectedCategoryIds]);
+
+  // Fetch tools on mount (Level 3)
+  useEffect(() => {
+    const fetchTools = async () => {
+      setLoadingTools(true);
+      try {
+        const response = await fetch('/api/admin/tools');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableTools(data.tools || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch tools:', err);
+      } finally {
+        setLoadingTools(false);
+      }
+    };
+    fetchTools();
+  }, []);
+
+  // Auto-select tools when skills are selected
+  useEffect(() => {
+    if (skillFilterMode !== 'selected' || selectedSkillIds.length === 0) {
+      return;
+    }
+
+    // Get tool names from selected skills' tool_routing_tools
+    const selectedSkillsData = availableSkills.filter(s => selectedSkillIds.includes(s.id));
+    const toolNamesFromSkills = new Set<string>();
+    selectedSkillsData.forEach(skill => {
+      if (skill.tool_routing_tools) {
+        skill.tool_routing_tools.forEach(toolName => toolNamesFromSkills.add(toolName));
+      }
+    });
+
+    // Auto-add these tools to selection (preserving existing selections)
+    setSelectedToolNames(prev => {
+      const combined = new Set([...prev, ...toolNamesFromSkills]);
+      return Array.from(combined);
+    });
+  }, [selectedSkillIds, availableSkills, skillFilterMode]);
+
   // Handle category filter mode change
   const handleCategoryFilterModeChange = useCallback((mode: 'all' | 'selected') => {
     setCategoryFilterMode(mode);
+    // Reset skill and tool filters when changing category mode
+    setSkillFilterMode('all');
+    setSelectedSkillIds([]);
+    setToolFilterMode('all');
+    setSelectedToolNames([]);
     // Auto-deselect user memories when switching to filtered backup
     if (mode === 'selected') {
       setBackupOptions(prev => ({ ...prev, includeUserMemories: false }));
     }
+  }, []);
+
+  // Handle skill filter mode change
+  const handleSkillFilterModeChange = useCallback((mode: 'all' | 'selected') => {
+    setSkillFilterMode(mode);
+    // Reset tool filter when changing skill mode
+    if (mode === 'all') {
+      setToolFilterMode('all');
+      setSelectedToolNames([]);
+    }
+  }, []);
+
+  // Handle tool filter mode change
+  const handleToolFilterModeChange = useCallback((mode: 'all' | 'selected') => {
+    setToolFilterMode(mode);
   }, []);
 
   // Select all / clear all handlers for backup options
@@ -366,6 +482,18 @@ export default function BackupTab() {
       return;
     }
 
+    // Validate skill filter if enabled
+    if (skillFilterMode === 'selected' && selectedSkillIds.length === 0) {
+      setError('Please select at least one skill for filtered backup');
+      return;
+    }
+
+    // Validate tool filter if enabled
+    if (toolFilterMode === 'selected' && selectedToolNames.length === 0) {
+      setError('Please select at least one tool for filtered backup');
+      return;
+    }
+
     setBackupInProgress(true);
     setError(null);
 
@@ -375,6 +503,14 @@ export default function BackupTab() {
         categoryFilter: categoryFilterMode === 'selected' ? {
           mode: 'selected',
           categoryIds: selectedCategoryIds,
+        } : undefined,
+        skillFilter: skillFilterMode === 'selected' ? {
+          mode: 'selected',
+          skillIds: selectedSkillIds,
+        } : undefined,
+        toolFilter: toolFilterMode === 'selected' ? {
+          mode: 'selected',
+          toolNames: selectedToolNames,
         } : undefined,
       };
 
@@ -820,6 +956,214 @@ export default function BackupTab() {
                 )}
               </div>
             </div>
+
+            {/* Skill Filter Section (Level 2) - appears when categories are filtered */}
+            {categoryFilterMode === 'selected' && selectedCategoryIds.length > 0 && (
+              <div className="mt-4 p-4 border rounded-lg bg-purple-50 border-purple-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={18} className="text-purple-500" />
+                  <span className="font-medium text-purple-700">Skill Filter (Level 2)</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="skillFilter"
+                        checked={skillFilterMode === 'all'}
+                        onChange={() => handleSkillFilterModeChange('all')}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm">All Skills</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="skillFilter"
+                        checked={skillFilterMode === 'selected'}
+                        onChange={() => handleSkillFilterModeChange('selected')}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm">Select Skills</span>
+                    </label>
+                  </div>
+
+                  {skillFilterMode === 'selected' && (
+                    <div className="space-y-2">
+                      {loadingSkills ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Spinner size="sm" />
+                          Loading skills...
+                        </div>
+                      ) : availableSkills.length === 0 ? (
+                        <div className="text-sm text-gray-500">No skills available for selected categories</div>
+                      ) : (
+                        <>
+                          <div className="flex gap-2 mb-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSkillIds(availableSkills.map(s => s.id))}
+                              className="text-xs text-purple-600 hover:text-purple-800"
+                            >
+                              Select all
+                            </button>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSkillIds([])}
+                              className="text-xs text-gray-600 hover:text-gray-800"
+                            >
+                              Clear all
+                            </button>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto border rounded bg-white p-2 space-y-1">
+                            {availableSkills.map(skill => (
+                              <label
+                                key={skill.id}
+                                className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSkillIds.includes(skill.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedSkillIds(prev => [...prev, skill.id]);
+                                    } else {
+                                      setSelectedSkillIds(prev => prev.filter(id => id !== skill.id));
+                                    }
+                                  }}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-sm flex-1">{skill.name}</span>
+                                {!skill.category_restricted && (
+                                  <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">global</span>
+                                )}
+                                {skill.tool_routing_tools && skill.tool_routing_tools.length > 0 && (
+                                  <span className="text-xs text-gray-400">
+                                    {skill.tool_routing_tools.length} tool{skill.tool_routing_tools.length > 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {selectedSkillIds.length} of {availableSkills.length} selected
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tool Filter Section (Level 3) - appears when skills are filtered */}
+            {skillFilterMode === 'selected' && selectedSkillIds.length > 0 && (
+              <div className="mt-4 p-4 border rounded-lg bg-orange-50 border-orange-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wrench size={18} className="text-orange-500" />
+                  <span className="font-medium text-orange-700">Tool Filter (Level 3)</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="toolFilter"
+                        checked={toolFilterMode === 'all'}
+                        onChange={() => handleToolFilterModeChange('all')}
+                        className="text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="text-sm">All Tools</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="toolFilter"
+                        checked={toolFilterMode === 'selected'}
+                        onChange={() => handleToolFilterModeChange('selected')}
+                        className="text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="text-sm">Select Tools</span>
+                    </label>
+                  </div>
+
+                  {toolFilterMode === 'selected' && (
+                    <div className="space-y-2">
+                      {loadingTools ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Spinner size="sm" />
+                          Loading tools...
+                        </div>
+                      ) : availableTools.length === 0 ? (
+                        <div className="text-sm text-gray-500">No tools available</div>
+                      ) : (
+                        <>
+                          <div className="flex gap-2 mb-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedToolNames(availableTools.map(t => t.name))}
+                              className="text-xs text-orange-600 hover:text-orange-800"
+                            >
+                              Select all
+                            </button>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedToolNames([])}
+                              className="text-xs text-gray-600 hover:text-gray-800"
+                            >
+                              Clear all
+                            </button>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto border rounded bg-white p-2 space-y-1">
+                            {availableTools.map(tool => {
+                              // Check if this tool is referenced by any selected skill
+                              const isFromSkill = availableSkills
+                                .filter(s => selectedSkillIds.includes(s.id))
+                                .some(s => s.tool_routing_tools?.includes(tool.name));
+                              return (
+                                <label
+                                  key={tool.name}
+                                  className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedToolNames.includes(tool.name)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedToolNames(prev => [...prev, tool.name]);
+                                      } else {
+                                        setSelectedToolNames(prev => prev.filter(name => name !== tool.name));
+                                      }
+                                    }}
+                                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                  />
+                                  <span className="text-sm flex-1">{tool.displayName || tool.name}</span>
+                                  {isFromSkill && (
+                                    <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">from skill</span>
+                                  )}
+                                  {!tool.enabled && (
+                                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">disabled</span>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {selectedToolNames.length} of {availableTools.length} selected
+                          </div>
+                          <div className="mt-2 p-2 bg-purple-50 border border-purple-200 rounded text-xs text-purple-700">
+                            <Sparkles size={12} className="inline mr-1" />
+                            Tools marked &quot;from skill&quot; are automatically selected based on your skill selections.
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end pt-4 border-t mt-4">
               <Button
