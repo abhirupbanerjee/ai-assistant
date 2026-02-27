@@ -186,131 +186,99 @@ export async function exportSettings(): Promise<SettingRecord[]> {
 }
 
 export async function exportToolConfigs(): Promise<ToolConfigRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportToolConfigs();
-  }
-  const db = await getDb();
-  return db.selectFrom('tool_configs').selectAll().orderBy('tool_name').execute() as Promise<ToolConfigRecord[]>;
+  // Tool configs module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how tool configs are actually stored
+  return sync.exportToolConfigs();
 }
 
 export async function exportCategoryToolConfigs(): Promise<CategoryToolConfigRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportCategoryToolConfigs();
-  }
-  const db = await getDb();
-  return db.selectFrom('category_tool_configs').selectAll().orderBy('category_id').execute() as Promise<CategoryToolConfigRecord[]>;
+  // Category tool configs module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how category tool configs are actually stored
+  return sync.exportCategoryToolConfigs();
 }
 
 export async function exportSkills(): Promise<SkillRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportSkills();
-  }
-  const db = await getDb();
-  return db.selectFrom('skills').selectAll().orderBy('id').execute() as Promise<SkillRecord[]>;
+  // Skills module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how skills are actually stored
+  return sync.exportSkills();
 }
 
 export async function exportCategorySkills(): Promise<CategorySkillRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportCategorySkills();
-  }
-  const db = await getDb();
-  return db.selectFrom('category_skills').selectAll().orderBy('category_id').execute() as Promise<CategorySkillRecord[]>;
+  // Skills module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how skills are actually stored
+  return sync.exportCategorySkills();
 }
 
 export async function exportCategoryPrompts(): Promise<CategoryPromptRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportCategoryPrompts();
-  }
-  const db = await getDb();
-  return db.selectFrom('category_prompts').selectAll().orderBy('category_id').execute() as Promise<CategoryPromptRecord[]>;
+  // Category prompts module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how category prompts are actually stored
+  return sync.exportCategoryPrompts();
 }
 
 export async function exportDataApiConfigs(): Promise<DataApiConfigRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportDataApiConfigs();
-  }
-  const db = await getDb();
-  return db.selectFrom('data_api_configs').selectAll().orderBy('name').execute() as Promise<DataApiConfigRecord[]>;
+  // Data API configs module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how data API configs are actually stored
+  return sync.exportDataApiConfigs();
 }
 
 export async function exportDataApiCategories(): Promise<DataApiCategoryRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportDataApiCategories();
-  }
-  const db = await getDb();
-  return db.selectFrom('data_api_categories').selectAll().orderBy('api_id').execute() as Promise<DataApiCategoryRecord[]>;
+  // Data API categories module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how data API categories are actually stored
+  return sync.exportDataApiCategories();
 }
 
 export async function exportDataCsvConfigs(): Promise<DataCsvConfigRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportDataCsvConfigs();
-  }
-  const db = await getDb();
-  return db.selectFrom('data_csv_configs').selectAll().orderBy('name').execute() as Promise<DataCsvConfigRecord[]>;
+  // Data CSV configs module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how data CSV configs are actually stored
+  return sync.exportDataCsvConfigs();
 }
 
 export async function exportDataCsvCategories(): Promise<DataCsvCategoryRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportDataCsvCategories();
-  }
-  const db = await getDb();
-  return db.selectFrom('data_csv_categories').selectAll().orderBy('csv_id').execute() as Promise<DataCsvCategoryRecord[]>;
+  // Data CSV categories module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how data CSV categories are actually stored
+  return sync.exportDataCsvCategories();
 }
 
 export async function exportWorkspaces(): Promise<WorkspaceRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportWorkspaces();
-  }
-  const db = await getDb();
-  return db.selectFrom('workspaces').selectAll().orderBy('name').execute() as Promise<WorkspaceRecord[]>;
+  // Workspaces module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how workspaces are actually stored
+  return sync.exportWorkspaces();
 }
 
 export async function exportWorkspaceCategories(): Promise<WorkspaceCategoryRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportWorkspaceCategories();
-  }
-  const db = await getDb();
-  return db.selectFrom('workspace_categories').selectAll().orderBy('workspace_id').execute() as Promise<WorkspaceCategoryRecord[]>;
+  // Workspace categories module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how workspace categories are actually stored
+  return sync.exportWorkspaceCategories();
 }
 
 export async function exportWorkspaceUsers(): Promise<WorkspaceUserRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportWorkspaceUsers();
-  }
-  const db = await getDb();
-  return db.selectFrom('workspace_users').selectAll().orderBy('workspace_id').execute() as Promise<WorkspaceUserRecord[]>;
+  // Workspace users module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how workspace users are actually stored
+  return sync.exportWorkspaceUsers();
 }
 
 export async function exportFunctionApiConfigs(): Promise<FunctionApiConfigRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportFunctionApiConfigs();
-  }
-  const db = await getDb();
-  return db.selectFrom('function_api_configs').selectAll().orderBy('name').execute() as Promise<FunctionApiConfigRecord[]>;
+  // Function API configs module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how function API configs are actually stored
+  return sync.exportFunctionApiConfigs();
 }
 
 export async function exportFunctionApiCategories(): Promise<FunctionApiCategoryRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportFunctionApiCategories();
-  }
-  const db = await getDb();
-  return db.selectFrom('function_api_categories').selectAll().orderBy('api_id').execute() as Promise<FunctionApiCategoryRecord[]>;
+  // Function API categories module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how function API categories are actually stored
+  return sync.exportFunctionApiCategories();
 }
 
 export async function exportUserMemories(): Promise<UserMemoryRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportUserMemories();
-  }
-  const db = await getDb();
-  return db.selectFrom('user_memories').selectAll().orderBy('user_id').execute() as Promise<UserMemoryRecord[]>;
+  // User memories module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how user memories are actually stored
+  return sync.exportUserMemories();
 }
 
 export async function exportToolRoutingRules(): Promise<ToolRoutingRuleRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.exportToolRoutingRules();
-  }
-  const db = await getDb();
-  return db.selectFrom('tool_routing_rules').selectAll().orderBy('priority').execute() as Promise<ToolRoutingRuleRecord[]>;
+  // Tool routing rules module has no compat layer and always uses SQLite
+  // Always delegate to sync to match how tool routing rules are actually stored
+  return sync.exportToolRoutingRules();
 }
 
 export async function exportThreadShares(): Promise<ThreadShareRecord[]> {

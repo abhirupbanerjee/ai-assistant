@@ -318,3 +318,42 @@ export {
   getDocumentCountByStatus,
   getTotalStorageSize,
 } from './documents';
+
+// ============ Skills ============
+export {
+  // Types
+  type Skill,
+  type SkillWithCategories,
+  type CreateSkillInput,
+  type TriggerType,
+  type MatchType,
+  type ForceMode,
+  type DataSourceFilter,
+  type SkillComplianceConfig,
+  type ResolvedSkills,
+  // Read Operations
+  getSkillById,
+  getAllSkills,
+  getSkillsByTrigger,
+  getIndexSkillsForCategories,
+  getKeywordSkills,
+  getCategoriesForSkill,
+  wouldToolSkillMatch,
+  getSkillsByTool,
+  getAllSkillsWithCategories,
+  getSkillsWithToolRouting,
+  getSkillsForTool,
+  isToolRoutingMigrated,
+  // Write Operations
+  createSkill,
+  updateSkill,
+  deleteSkill,
+  toggleSkillActive,
+  // Restore Operations
+  resetCoreSkillsToDefaults,
+  removeCoreFlag,
+  // Seed Operations
+  seedCoreSkill,
+  // Migration Operations
+  migrateToolRoutingToSkills,
+} from './skills';
