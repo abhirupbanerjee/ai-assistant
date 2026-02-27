@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
-  Share2, Download
+  Share2, Download, Home
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -205,17 +205,27 @@ export default function MobileThreadsMenu({
         title="Threads"
         side="left"
         headerRight={
-          <button
-            onClick={() => {
-              setNewThreadTitle('');
-              setNewThreadCategories([]);
-              setShowNewThreadModal(true);
-            }}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            style={{ color: 'var(--accent-color)' }}
-          >
-            <Plus size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            <Link
+              href="/"
+              onClick={closeThreadsMenu}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              style={{ color: 'var(--accent-color)' }}
+            >
+              <Home size={20} />
+            </Link>
+            <button
+              onClick={() => {
+                setNewThreadTitle('');
+                setNewThreadCategories([]);
+                setShowNewThreadModal(true);
+              }}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              style={{ color: 'var(--accent-color)' }}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
         }
       >
         {/* Category Filter */}

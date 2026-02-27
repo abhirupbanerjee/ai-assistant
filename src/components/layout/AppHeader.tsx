@@ -12,6 +12,7 @@ interface AppHeaderProps {
   activeThread?: Thread | null;
   onOpenThreadsMenu?: () => void;
   onNewThread?: () => void;
+  onHomeClick?: () => void;
 }
 
 export default function AppHeader({
@@ -20,6 +21,7 @@ export default function AppHeader({
   activeThread,
   onOpenThreadsMenu,
   onNewThread,
+  onHomeClick,
 }: AppHeaderProps) {
   // On mobile with an active thread, show the contextual MobileHeader
   if (isMobile && activeThread && onOpenThreadsMenu && onNewThread) {
@@ -39,6 +41,7 @@ export default function AppHeader({
       <div className="flex items-center justify-center">
         <Link
           href="/"
+          onClick={onHomeClick}
           className="inline-flex items-center gap-2 text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
         >
           <Bot size={24} className="text-blue-600" />

@@ -230,6 +230,7 @@ function HomeContent() {
         activeThread={activeThread}
         onOpenThreadsMenu={mobileMenu?.openThreadsMenu}
         onNewThread={handleNewThreadFromHeader}
+        onHomeClick={() => setActiveThread(null)}
       />
 
       {/* Content area */}
