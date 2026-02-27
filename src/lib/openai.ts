@@ -284,7 +284,7 @@ async function streamOneCompletion(
   openai: OpenAI,
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
   onChunk?: (text: string) => void,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageToolCall[] | undefined }> {
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined }> {
   const stream = await openai.chat.completions.create({ ...params, stream: true });
 
   let content = '';
@@ -315,7 +315,7 @@ async function streamOneCompletion(
     }
   }
 
-  const tool_calls: OpenAI.Chat.ChatCompletionMessageToolCall[] | undefined =
+  const tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined =
     toolCallMap.size > 0
       ? [...toolCallMap.values()].map(tc => ({
           id: tc.id,

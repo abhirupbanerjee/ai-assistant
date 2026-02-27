@@ -60,8 +60,8 @@ export interface FunctionAPIConfig {
   defaultHeaders?: Record<string, string>;
 
   // Function Definitions (OpenAI format)
-  /** Array of OpenAI tool definitions */
-  toolsSchema: OpenAI.Chat.ChatCompletionTool[];
+  /** Array of OpenAI function tool definitions */
+  toolsSchema: OpenAI.Chat.ChatCompletionFunctionTool[];
 
   // Endpoint Mappings
   /** Maps function names to HTTP endpoints */
@@ -143,7 +143,7 @@ export interface CreateFunctionAPIRequest {
   authHeader?: string;
   authCredentials?: string;
   defaultHeaders?: Record<string, string>;
-  toolsSchema: OpenAI.Chat.ChatCompletionTool[];
+  toolsSchema: OpenAI.Chat.ChatCompletionFunctionTool[];
   endpointMappings: Record<string, EndpointMapping>;
   timeoutSeconds?: number;
   cacheTTLSeconds?: number;
@@ -162,7 +162,7 @@ export interface UpdateFunctionAPIRequest {
   authHeader?: string;
   authCredentials?: string;
   defaultHeaders?: Record<string, string>;
-  toolsSchema?: OpenAI.Chat.ChatCompletionTool[];
+  toolsSchema?: OpenAI.Chat.ChatCompletionFunctionTool[];
   endpointMappings?: Record<string, EndpointMapping>;
   timeoutSeconds?: number;
   cacheTTLSeconds?: number;

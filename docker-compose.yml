@@ -76,6 +76,8 @@ services:
       # Fix transformers cache permission (reranker model caching)
       - TRANSFORMERS_CACHE=/tmp/transformers_cache
       - XDG_CACHE_HOME=/tmp/cache
+      # Hugging Face token for downloading gated models (local embeddings)
+      - HF_TOKEN=${HF_TOKEN}
     env_file:
       - .env
     labels:

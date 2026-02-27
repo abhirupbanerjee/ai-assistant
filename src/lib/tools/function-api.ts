@@ -311,7 +311,7 @@ export const functionApiTool: ToolDefinition = {
  */
 export function getDynamicFunctionDefinitions(
   categoryIds: number[]
-): OpenAI.Chat.ChatCompletionTool[] {
+): OpenAI.Chat.ChatCompletionFunctionTool[] {
   return getToolDefinitionsForCategories(categoryIds);
 }
 

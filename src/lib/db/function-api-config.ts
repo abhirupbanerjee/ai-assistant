@@ -368,7 +368,7 @@ export function getAllFunctionNamesForCategories(categoryIds: number[]): string[
  */
 export function getToolDefinitionsForCategories(
   categoryIds: number[]
-): OpenAI.Chat.ChatCompletionTool[] {
+): OpenAI.Chat.ChatCompletionFunctionTool[] {
   const configs = getFunctionAPIConfigsForCategories(categoryIds);
   return configs.flatMap(config => config.toolsSchema);
 }
@@ -422,7 +422,7 @@ export function validateToolsSchema(
  * Validate that endpoint mappings cover all functions in the schema
  */
 export function validateEndpointMappings(
-  schema: OpenAI.Chat.ChatCompletionTool[],
+  schema: OpenAI.Chat.ChatCompletionFunctionTool[],
   mappings: Record<string, EndpointMapping>
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];

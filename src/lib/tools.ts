@@ -59,7 +59,7 @@ export interface ToolDefinition {
   /** Tool category - how it's invoked */
   category: ToolCategory;
   /** OpenAI function definition (only for autonomous tools with static definitions) */
-  definition?: OpenAI.Chat.ChatCompletionTool;
+  definition?: OpenAI.Chat.ChatCompletionFunctionTool;
   /** Execute the tool with arguments. Options include functionName for dynamic tools and configOverride for skill-level config. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   execute: (args: any, options?: ToolExecutionOptions) => Promise<string>;
@@ -76,7 +76,7 @@ export interface ToolDefinition {
  * @deprecated Use ToolDefinition instead
  */
 export interface LegacyToolDefinition {
-  definition: OpenAI.Chat.ChatCompletionTool;
+  definition: OpenAI.Chat.ChatCompletionFunctionTool;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   execute: (args: any) => Promise<string>;
 }
@@ -156,10 +156,10 @@ export function isToolEnabled(name: string): boolean {
  * Applies admin-configured description overrides when available
  * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
-export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatCompletionTool[] {
+export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatCompletionFunctionTool[] {
   initializeTools();
 
-  const tools: OpenAI.Chat.ChatCompletionTool[] = [];
+  const tools: OpenAI.Chat.ChatCompletionFunctionTool[] = [];
 
   // Add static tool definitions
   for (const tool of Object.values(AVAILABLE_TOOLS)) {
@@ -174,7 +174,7 @@ export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatComp
 
       if (descriptionOverride) {
         // Create a copy with the overridden description
-        const overriddenTool: OpenAI.Chat.ChatCompletionTool = {
+        const overriddenTool: OpenAI.Chat.ChatCompletionFunctionTool = {
           ...tool.definition,
           function: {
             ...tool.definition.function,
@@ -202,7 +202,7 @@ export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatComp
  * Get all enabled autonomous tool definitions (alias for getToolDefinitions)
  * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
-export function getEnabledAutonomousTools(categoryIds?: number[]): OpenAI.Chat.ChatCompletionTool[] {
+export function getEnabledAutonomousTools(categoryIds?: number[]): OpenAI.Chat.ChatCompletionFunctionTool[] {
   return getToolDefinitions(categoryIds);
 }
 

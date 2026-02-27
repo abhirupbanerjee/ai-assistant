@@ -656,7 +656,7 @@ export default function FunctionAPITab({
 
   // Save (create or update)
   const handleSave = async (formData: FunctionAPIFormData) => {
-    const toolsSchema = JSON.parse(formData.toolsSchemaJson) as OpenAI.Chat.ChatCompletionTool[];
+    const toolsSchema = JSON.parse(formData.toolsSchemaJson) as OpenAI.Chat.ChatCompletionFunctionTool[];
     const endpointMappings = JSON.parse(formData.endpointMappingsJson) as Record<string, EndpointMapping>;
 
     const body = {
