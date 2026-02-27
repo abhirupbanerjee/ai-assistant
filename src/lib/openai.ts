@@ -6,7 +6,7 @@ import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMa
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
 import { resolveToolRouting } from './tool-routing';
-import { resolveSkills } from './skills/resolver';
+import { resolveSkills, determineToolChoice } from './skills/resolver';
 import { toolsLogger as logger } from './logger';
 import {
   MAX_TOOL_CALL_ITERATIONS,
@@ -495,37 +495,70 @@ export async function generateResponseWithTools(
     // First, check skills-based tool routing (new unified system)
     const skillsResult = resolveSkills(categoryIds || [], userMessage);
     if (skillsResult.toolRouting && skillsResult.toolRouting.matches.length > 0) {
-      toolChoice = skillsResult.toolRouting.toolChoice;
-      toolChoiceAppliedByRouting = true;
+      // Filter out matches for excluded tools (e.g., web_search disabled via chat preferences)
+      const validMatches = skillsResult.toolRouting.matches.filter(
+        match => !excludeTools?.includes(match.toolName)
+      );
 
-      // Collect config overrides from matched skills
-      for (const match of skillsResult.toolRouting.matches) {
-        if (match.configOverride) {
-          toolConfigOverrides.set(match.toolName, match.configOverride);
+      if (validMatches.length > 0) {
+        // Recalculate tool choice based on valid matches only
+        toolChoice = determineToolChoice(validMatches);
+        toolChoiceAppliedByRouting = true;
+
+        // Collect config overrides from valid matches only
+        for (const match of validMatches) {
+          if (match.configOverride) {
+            toolConfigOverrides.set(match.toolName, match.configOverride);
+          }
         }
-      }
 
-      logger.info('Skills-based tool routing applied', {
-        matches: skillsResult.toolRouting.matches.map(
-          (m) => `${m.toolName}:${m.forceMode}`
-        ),
-        toolChoice:
-          typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
-        hasConfigOverrides: toolConfigOverrides.size > 0,
-      });
+        logger.info('Skills-based tool routing applied', {
+          matches: validMatches.map((m) => `${m.toolName}:${m.forceMode}`),
+          toolChoice:
+            typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
+          hasConfigOverrides: toolConfigOverrides.size > 0,
+          excludedMatches: skillsResult.toolRouting.matches.length - validMatches.length,
+        });
+      } else if (skillsResult.toolRouting.matches.length > 0) {
+        // All matches were excluded - log for debugging
+        logger.info('Skills-based tool routing skipped - all matched tools excluded', {
+          originalMatches: skillsResult.toolRouting.matches.map((m) => `${m.toolName}:${m.forceMode}`),
+          excludeTools,
+        });
+      }
     }
 
     // Fall back to legacy tool-routing rules if no skills-based routing matched
     if (!toolChoiceAppliedByRouting) {
       const routing = resolveToolRouting(userMessage, categoryIds || []);
 
-      if (routing.matches.length > 0) {
-        toolChoice = routing.toolChoice;
+      // Filter out matches for excluded tools
+      const validMatches = routing.matches.filter(
+        match => !excludeTools?.includes(match.toolName)
+      );
+
+      if (validMatches.length > 0) {
+        // Recalculate tool choice based on valid matches
+        // Use same logic as skills-based routing for consistency
+        const toolMatchesForChoice = validMatches.map(m => ({
+          skillId: 0, // Legacy routing doesn't have skill IDs
+          skillName: m.matchedPattern,
+          toolName: m.toolName,
+          forceMode: m.forceMode,
+        }));
+        toolChoice = determineToolChoice(toolMatchesForChoice);
         toolChoiceAppliedByRouting = true;
         logger.info('Legacy tool routing applied', {
-          matches: routing.matches.map((m) => `${m.toolName}:${m.matchedPattern}`),
+          matches: validMatches.map((m) => `${m.toolName}:${m.matchedPattern}`),
           toolChoice:
             typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
+          excludedMatches: routing.matches.length - validMatches.length,
+        });
+      } else if (routing.matches.length > 0) {
+        // All matches were excluded - log for debugging
+        logger.info('Legacy tool routing skipped - all matched tools excluded', {
+          originalMatches: routing.matches.map((m) => `${m.toolName}:${m.matchedPattern}`),
+          excludeTools,
         });
       }
     }

@@ -59,8 +59,9 @@ function escapeRegex(str: string): string {
 
 /**
  * Determine tool_choice based on matched skills with tool routing
+ * Exported for reuse in openai.ts when filtering excluded tools
  */
-function determineToolChoice(
+export function determineToolChoice(
   toolMatches: Array<{
     skillId: number;
     skillName: string;

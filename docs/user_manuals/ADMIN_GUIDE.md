@@ -1747,6 +1747,22 @@ User
   └── Subscribed category access
 ```
 
+### Multi-Category Thread Selection
+
+All roles (Admin, Superuser, User) can select **multiple categories** when creating a new chat thread:
+
+| Role | Available Categories for Selection |
+|------|-----------------------------------|
+| **Admin** | All categories in the system |
+| **Superuser** | Managed categories + subscribed categories |
+| **User** | Subscribed categories only |
+
+When creating a thread:
+1. Click **+ New Thread**
+2. Select one or more categories from the dropdown
+3. The AI will query documents across all selected categories
+4. The chat header displays which categories are active
+
 ### Tool Availability
 
 | Tool | Admin | Superuser | User |

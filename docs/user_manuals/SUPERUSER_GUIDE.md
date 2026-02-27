@@ -181,11 +181,15 @@ If you reach your quota limit, contact your Admin to:
 
 ### Categories in Chat
 
-When starting a new chat conversation, you can select from:
+When starting a new chat conversation, you can select **one or more categories** from your available categories:
 - All your **managed categories** (orange)
 - All your **subscribed categories** (blue)
 
-This allows you to query documents from categories you manage as well as reference documents from other categories you're subscribed to.
+**Multi-Category Selection:**
+- **Single category** - Query documents from one specific category
+- **Multiple categories** - Query across multiple categories simultaneously
+
+This allows you to query documents from categories you manage as well as reference documents from other categories you're subscribed to. The chat header shows which categories are active for the current thread.
 
 ---
 
