@@ -197,6 +197,16 @@ export interface AgentBotsSettings {
   jobRetentionDays: number;            // How long to keep job records
 }
 
+/**
+ * LLM Fallback Settings
+ * Controls automatic fallback when selected LLM fails or lacks required capabilities
+ */
+export interface LlmFallbackSettings {
+  universalFallback: string | null;    // Fallback model (must have vision + tools capability)
+  maxRetryAttempts: number;            // 1-3, default: 2 (selected + fallback)
+  healthCacheDuration: 'hourly' | 'daily' | 'disabled';  // How long to remember failed models
+}
+
 export interface LimitsSettings {
   conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
 }
@@ -371,7 +381,9 @@ export type SettingKey =
   | 'streaming_max_duration'
   | 'streaming_tool_timeout'
   // Agent Bots
-  | 'agent-bots-settings';
+  | 'agent-bots-settings'
+  // LLM Fallback
+  | 'llm-fallback-settings';
 
 // ============ Generic Operations ============
 
@@ -833,6 +845,47 @@ export function updateAgentBotsSettings(
   const current = getAgentBotsSettings();
   const updated = { ...current, ...settings };
   setSetting('agent-bots-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Get LLM fallback settings
+ * Priority: SQLite > auto-detect first capable model > hardcoded defaults
+ */
+export function getLlmFallbackSettings(): LlmFallbackSettings {
+  const dbSettings = getSetting<LlmFallbackSettings>('llm-fallback-settings');
+  if (dbSettings) return dbSettings;
+
+  // Default: find first model with both vision + tools capability
+  try {
+    const activeModels = getActiveModels();
+    const universalModel = activeModels.find(m => m.visionCapable && m.toolCapable);
+
+    return {
+      universalFallback: universalModel?.id || null,
+      maxRetryAttempts: 2,
+      healthCacheDuration: 'hourly',
+    };
+  } catch {
+    // Fallback if getActiveModels fails
+    return {
+      universalFallback: null,
+      maxRetryAttempts: 2,
+      healthCacheDuration: 'hourly',
+    };
+  }
+}
+
+/**
+ * Update LLM fallback settings
+ */
+export function setLlmFallbackSettings(
+  settings: Partial<LlmFallbackSettings>,
+  updatedBy?: string
+): LlmFallbackSettings {
+  const current = getLlmFallbackSettings();
+  const updated = { ...current, ...settings };
+  setSetting('llm-fallback-settings', updated, updatedBy);
   return updated;
 }
 

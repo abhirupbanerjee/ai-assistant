@@ -396,7 +396,8 @@ export async function ragQuery(
   userDocPaths: string[] = [],
   categorySlugs?: string[],
   memoryContext?: string,
-  summaryContext?: string
+  summaryContext?: string,
+  modelOverride?: string  // Optional model ID to override the default
 ): Promise<RAGResponse> {
   // Input validation
   if (!userMessage?.trim()) {
@@ -515,7 +516,10 @@ export async function ragQuery(
     undefined, // images (not used in non-streaming)
     summaryContext, // Summary context for dynamic positioning
     memoryContext, // Memory context for cache key
-    categorySlugs // Category slugs for cache key
+    categorySlugs, // Category slugs for cache key
+    undefined, // excludeTools
+    undefined, // imageCapabilities
+    modelOverride // Optional model override for fallback
   );
 
   // Extract sources from RAG (use reranked chunks for accurate scores)

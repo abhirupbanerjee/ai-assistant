@@ -29,11 +29,17 @@ import {
 } from '@/lib/streaming';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings } from '@/lib/db/config';
+import {
+  buildModelsToTry,
+  withModelFallback,
+  LlmFallbackError,
+  type ModelSwitchEvent,
+} from '@/lib/llm-fallback';
 
 // Route segment config for long-running autonomous tasks
 // 300 seconds = 5 minutes (Vercel Pro max, or adjust based on hosting provider)
@@ -348,6 +354,37 @@ export async function POST(request: NextRequest) {
             // Send sources from RAG
             send({ type: 'sources', data: ragResult.sources });
 
+            // ============ Build Model Fallback Chain ============
+            // Determine models to try based on capabilities and health status
+            const hasImages = imageContents.length > 0;
+            const { models: modelsToTry, capabilitySwitch } = buildModelsToTry(
+              effectiveModel,
+              hasImages,  // requiresVision
+              true        // requiresTools (generally enabled)
+            );
+
+            // Notify if capability-based switch occurred (e.g., non-vision model with images)
+            if (capabilitySwitch) {
+              send({
+                type: 'model_switch',
+                originalModel: capabilitySwitch.originalModel,
+                newModel: capabilitySwitch.newModel,
+                reason: capabilitySwitch.reason,
+                message: `Switched to ${capabilitySwitch.newModel} (${capabilitySwitch.reason.replace('_', ' ')})`,
+              });
+            }
+
+            // Handle edge case: no models available
+            if (modelsToTry.length === 0) {
+              send({
+                type: 'error',
+                code: 'NO_MODELS_AVAILABLE',
+                message: 'No LLM models available. Please contact your administrator to configure a fallback model.',
+                recoverable: false,
+              });
+              return;
+            }
+
             // ============ Phase 3: Tool Execution ============
             send({ type: 'status', phase: 'tools', content: getPhaseMessage('tools') });
 
@@ -355,6 +392,7 @@ export async function POST(request: NextRequest) {
             const visualizations: MessageVisualization[] = [];
             const documents: GeneratedDocumentInfo[] = [];
             const images: GeneratedImageInfo[] = [];
+            const diagrams: DiagramHint[] = [];
             const podcasts: PodcastHint[] = [];
             const webSources: Source[] = [];
 
@@ -371,59 +409,101 @@ export async function POST(request: NextRequest) {
               excludeTools.push('web_search');
             }
 
-            // Execute tools with streaming callbacks
+            // Execute tools with streaming callbacks and automatic fallback
             // Pass images for multimodal visual analysis (in addition to OCR text in context)
             // Uses conversation context manager for smart history (anchors + recent),
             // follow-up detection, and context-aware cache keys
             const llmStart = Date.now();
-            const toolResult = await generateResponseWithTools(
-              effectiveSystemPrompt,
-              conversationHistory.slice(0, -1), // Full history, context manager optimizes
-              ragResult.context,
-              message,
-              true, // Enable tools
-              ragResult.categoryIds,
-              {
-                // For English responses: forward content tokens directly to the client as they
-                // are generated (true streaming). For non-English: omit so tokens accumulate
-                // internally and can be translated before delivery.
-                onChunk: (targetLanguage && targetLanguage !== 'en')
-                  ? undefined
-                  : (text: string) => send({ type: 'chunk', content: text }),
-                onToolStart: (name, displayName) => {
-                  send({ type: 'tool_start', name, displayName });
-                },
-                onToolEnd: (name, success, duration, error) => {
-                  send({ type: 'tool_end', name, success, duration, error });
-                },
-                onArtifact: (type, data) => {
-                  if (type === 'visualization') {
-                    const viz = data as MessageVisualization;
-                    visualizations.push(viz);
-                    send({ type: 'artifact', subtype: 'visualization', data: viz });
-                  } else if (type === 'document') {
-                    const doc = data as GeneratedDocumentInfo;
-                    documents.push(doc);
-                    send({ type: 'artifact', subtype: 'document', data: doc });
-                  } else if (type === 'image') {
-                    const img = data as GeneratedImageInfo;
-                    images.push(img);
-                    send({ type: 'artifact', subtype: 'image', data: img });
-                  } else if (type === 'podcast') {
-                    const podcast = data as PodcastHint;
-                    podcasts.push(podcast);
-                    send({ type: 'artifact', subtype: 'podcast', data: podcast });
-                  }
-                },
+
+            // Define streaming callbacks
+            const callbacks = {
+              // For English responses: forward content tokens directly to the client as they
+              // are generated (true streaming). For non-English: omit so tokens accumulate
+              // internally and can be translated before delivery.
+              onChunk: (targetLanguage && targetLanguage !== 'en')
+                ? undefined
+                : (text: string) => send({ type: 'chunk', content: text }),
+              onToolStart: (name: string, displayName: string) => {
+                send({ type: 'tool_start', name, displayName });
               },
-              imageContents.length > 0 ? imageContents : undefined,
-              summaryContext, // Summary context for dynamic positioning
-              memoryContext, // Memory context for cache key
-              categorySlugs, // Category slugs for cache key
-              excludeTools,
-              imageCapabilities, // Image processing strategy
-              effectiveModel || undefined // Per-thread model override
-            );
+              onToolEnd: (name: string, success: boolean, duration: number, error?: string) => {
+                send({ type: 'tool_end', name, success, duration, error });
+              },
+              onArtifact: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint) => {
+                if (type === 'visualization') {
+                  const viz = data as MessageVisualization;
+                  visualizations.push(viz);
+                  send({ type: 'artifact', subtype: 'visualization', data: viz });
+                } else if (type === 'document') {
+                  const doc = data as GeneratedDocumentInfo;
+                  documents.push(doc);
+                  send({ type: 'artifact', subtype: 'document', data: doc });
+                } else if (type === 'image') {
+                  const img = data as GeneratedImageInfo;
+                  images.push(img);
+                  send({ type: 'artifact', subtype: 'image', data: img });
+                } else if (type === 'diagram') {
+                  const diagram = data as DiagramHint;
+                  diagrams.push(diagram);
+                  send({ type: 'artifact', subtype: 'diagram', data: diagram });
+                } else if (type === 'podcast') {
+                  const podcast = data as PodcastHint;
+                  podcasts.push(podcast);
+                  send({ type: 'artifact', subtype: 'podcast', data: podcast });
+                }
+              },
+            };
+
+            // Track which model was actually used
+            let usedModel: string = modelsToTry[0];
+            let toolResult: Awaited<ReturnType<typeof generateResponseWithTools>>;
+
+            try {
+              const fallbackResult = await withModelFallback({
+                modelsToTry,
+                execute: (model) => generateResponseWithTools(
+                  effectiveSystemPrompt,
+                  conversationHistory.slice(0, -1), // Full history, context manager optimizes
+                  ragResult.context,
+                  message,
+                  true, // Enable tools
+                  ragResult.categoryIds,
+                  callbacks,
+                  imageContents.length > 0 ? imageContents : undefined,
+                  summaryContext, // Summary context for dynamic positioning
+                  memoryContext, // Memory context for cache key
+                  categorySlugs, // Category slugs for cache key
+                  excludeTools,
+                  imageCapabilities, // Image processing strategy
+                  model // Model to use (may change on fallback)
+                ),
+                onSwitch: (event: ModelSwitchEvent) => {
+                  send({
+                    type: 'model_switch',
+                    originalModel: event.originalModel,
+                    newModel: event.newModel,
+                    reason: event.reason,
+                    message: `${event.originalModel} unavailable, switching to ${event.newModel}`,
+                  });
+                },
+                context: { threadId, userId: user.id },
+              });
+
+              toolResult = fallbackResult.result;
+              usedModel = fallbackResult.usedModel;
+            } catch (error) {
+              if (error instanceof LlmFallbackError) {
+                send({
+                  type: 'error',
+                  code: error.code as 'NO_MODELS_AVAILABLE' | 'ALL_MODELS_FAILED',
+                  message: error.message,
+                  recoverable: error.recoverable,
+                });
+                return;
+              }
+              throw error; // Re-throw non-fallback errors
+            }
+
             const llmMs = Date.now() - llmStart;
 
             // Extract web sources from tool history
@@ -529,6 +609,7 @@ export async function POST(request: NextRequest) {
               sources: allSources,
               generatedDocuments: documents.length > 0 ? documents : undefined,
               generatedImages: images.length > 0 ? images : undefined,
+              generatedDiagrams: diagrams.length > 0 ? diagrams : undefined,
               generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
               visualizations: visualizations.length > 0 ? visualizations : undefined,
               timestamp: new Date(),
@@ -537,9 +618,9 @@ export async function POST(request: NextRequest) {
             await addMessage(user.id, threadId, assistantMessage);
             updateThreadTokenCount(threadId, countTokens(fullContent));
 
-            // Link any generated outputs (documents, images, podcasts) to this message
+            // Link any generated outputs (documents, images, diagrams, podcasts) to this message
             // This must happen after addMessage since message_id is a foreign key
-            if (documents.length > 0 || images.length > 0 || podcasts.length > 0) {
+            if (documents.length > 0 || images.length > 0 || diagrams.length > 0 || podcasts.length > 0) {
               try {
                 linkOutputsToMessage(threadId, assistantMessageId);
               } catch (linkError) {
@@ -566,7 +647,7 @@ export async function POST(request: NextRequest) {
               type: 'done',
               messageId: assistantMessageId,
               threadId,
-              model: effectiveModel || undefined,
+              model: usedModel,
               totalMs: Date.now() - requestStart,
               llmMs,
               ragMs,

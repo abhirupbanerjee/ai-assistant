@@ -22,6 +22,7 @@ import RAGSettingsTab from '@/components/admin/settings/RAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
 import LLMConfigSettings from '@/components/admin/settings/LLMConfigSettings';
+import LLMFallbackSettingsTab from '@/components/admin/settings/LLMFallbackSettings';
 import DashboardOverview from '@/components/admin/dashboard/DashboardOverview';
 import UserStatistics from '@/components/admin/dashboard/UserStatistics';
 import DocumentStatistics from '@/components/admin/dashboard/DocumentStatistics';
@@ -133,7 +134,7 @@ type UsersSection = 'management' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type SkillsSection = 'tools' | 'skill-library';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'llm' | 'llm-fallback' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -1177,6 +1178,9 @@ export default function AdminPage() {
           <>
               {/* LLM Settings Section */}
               {settingsSection === 'llm' && <LLMSettingsTab />}
+
+              {/* LLM Fallback Section */}
+              {settingsSection === 'llm-fallback' && <LLMFallbackSettingsTab />}
 
               {/* LLM Configuration Section */}
               {settingsSection === 'llm-config' && <LLMConfigSettings />}

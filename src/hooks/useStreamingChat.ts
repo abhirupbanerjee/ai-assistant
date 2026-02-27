@@ -103,6 +103,8 @@ export interface UseStreamingChatOptions {
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
   onPhaseChange?: (phase: StreamPhase) => void;
+  /** Callback when LLM model is switched (fallback or capability requirement) */
+  onModelSwitch?: (originalModel: string, newModel: string, reason: string, message: string) => void;
 }
 
 export interface UseStreamingChatReturn {
@@ -162,7 +164,7 @@ const initialState: StreamingState = {
 // ============ Hook ============
 
 export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStreamingChatReturn {
-  const { onComplete, onError, onPhaseChange } = options;
+  const { onComplete, onError, onPhaseChange, onModelSwitch } = options;
 
   const [state, setState] = useState<StreamingState>(initialState);
 
@@ -475,6 +477,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         });
         break;
 
+      case 'model_switch':
+        // Handle LLM model switch (fallback or capability requirement)
+        onModelSwitch?.(event.originalModel, event.newModel, event.reason, event.message);
+        break;
+
       case 'chunk':
         // Use RAF batching for smooth updates
         contentBufferRef.current += event.content;
@@ -528,7 +535,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         onError?.(event.code, event.message, event.recoverable);
         break;
     }
-  }, [onComplete, onError, onPhaseChange]);
+  }, [onComplete, onError, onPhaseChange, onModelSwitch]);
 
   /**
    * Send message and start streaming

@@ -241,6 +241,7 @@ export interface UpdateThreadRequest {
 export interface ChatResponse {
   message: Message;
   threadId: string;
+  model?: string;  // Actual model used (may differ from selected if fallback occurred)
 }
 
 export interface TranscribeResponse {
@@ -329,7 +330,11 @@ export type ErrorCode =
   | 'SERVICE_ERROR'
   | 'RATE_LIMITED'
   | 'NOT_CONFIGURED'
-  | 'INVALID_STATE';
+  | 'INVALID_STATE'
+  // LLM fallback error codes
+  | 'NO_MODELS_AVAILABLE'
+  | 'ALL_MODELS_FAILED'
+  | 'CAPABILITY_UNAVAILABLE';
 
 // ============ Storage Types ============
 

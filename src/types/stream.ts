@@ -7,6 +7,7 @@
 
 import type { Source, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization, DiagramHint, PodcastHint } from './index';
 import type { ComplianceDecision, HitlClarificationEvent } from './compliance';
+import type { FallbackReason, ModelSwitchEvent } from '@/lib/llm-fallback';
 
 
 // ============ Stream Phases ============
@@ -132,7 +133,10 @@ export type StreamEvent =
 
   // Compliance events
   | { type: 'compliance'; data: ComplianceDecision }
-  | { type: 'hitl_clarification'; data: HitlClarificationEvent };
+  | { type: 'hitl_clarification'; data: HitlClarificationEvent }
+
+  // LLM fallback events
+  | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string };
 
 /**
  * Stream error codes
@@ -153,7 +157,11 @@ export type StreamErrorCode =
   | 'ACCESS_DENIED'
   | 'SESSION_EXPIRED'
   | 'SESSION_INVALID'
-  | 'RATE_LIMITED';
+  | 'RATE_LIMITED'
+  // LLM fallback error codes
+  | 'NO_MODELS_AVAILABLE'
+  | 'ALL_MODELS_FAILED'
+  | 'CAPABILITY_UNAVAILABLE';
 
 // ============ Chat Preferences ============
 

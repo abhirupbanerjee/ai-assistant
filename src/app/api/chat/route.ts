@@ -18,6 +18,11 @@ import {
 } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
 import { runWithContextAsync } from '@/lib/request-context';
+import {
+  buildModelsToTry,
+  withModelFallback,
+  LlmFallbackError,
+} from '@/lib/llm-fallback';
 import type { Message, ChatRequest, ChatResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -106,25 +111,73 @@ export async function POST(request: NextRequest) {
     // Create message ID for context (used by autonomous tools)
     const assistantMessageId = uuidv4();
 
-    // Run RAG query with context for autonomous tools
-    // Context allows tools like doc_gen to know the threadId/categoryId
-    const { answer, sources, generatedDocuments, generatedImages, visualizations } = await runWithContextAsync(
-      {
-        threadId,
-        messageId: assistantMessageId,
-        categoryIds: categoryIds,
-        userId: user.id,
-      },
-      () =>
-        ragQuery(
-          message,
-          conversationHistory.slice(0, -1), // Exclude the message we just added
-          uploadPaths,
-          categorySlugs.length > 0 ? categorySlugs : undefined,
-          memoryContext,
-          summaryContext
-        )
+    // Build models to try based on capabilities
+    // Non-streaming route doesn't handle images, so no vision requirement
+    const { models: modelsToTry } = buildModelsToTry(
+      null,   // No per-thread model selection in non-streaming route
+      false,  // No vision requirement (images handled by streaming route)
+      true    // Tools are enabled
     );
+
+    // Handle edge case: no models available
+    if (modelsToTry.length === 0) {
+      return NextResponse.json<ApiError>(
+        {
+          error: 'No LLM models available. Please contact your administrator.',
+          code: 'NO_MODELS_AVAILABLE',
+        },
+        { status: 503 }
+      );
+    }
+
+    // Track which model was used
+    let usedModel: string = modelsToTry[0];
+
+    // Run RAG query with context for autonomous tools and automatic fallback
+    // Context allows tools like doc_gen to know the threadId/categoryId
+    let ragResult: Awaited<ReturnType<typeof ragQuery>>;
+
+    try {
+      const fallbackResult = await withModelFallback({
+        modelsToTry,
+        execute: (model) =>
+          runWithContextAsync(
+            {
+              threadId,
+              messageId: assistantMessageId,
+              categoryIds: categoryIds,
+              userId: user.id,
+            },
+            () =>
+              ragQuery(
+                message,
+                conversationHistory.slice(0, -1), // Exclude the message we just added
+                uploadPaths,
+                categorySlugs.length > 0 ? categorySlugs : undefined,
+                memoryContext,
+                summaryContext,
+                model // Pass model for fallback support
+              )
+          ),
+        context: { threadId, userId: user.id },
+      });
+
+      ragResult = fallbackResult.result;
+      usedModel = fallbackResult.usedModel;
+    } catch (error) {
+      if (error instanceof LlmFallbackError) {
+        return NextResponse.json<ApiError>(
+          {
+            error: error.message,
+            code: error.code,
+          },
+          { status: error.recoverable ? 503 : 500 }
+        );
+      }
+      throw error;
+    }
+
+    const { answer, sources, generatedDocuments, generatedImages, visualizations } = ragResult;
 
     // Create assistant message
     const assistantMessage: Message = {
@@ -168,6 +221,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json<ChatResponse>({
       message: assistantMessage,
       threadId,
+      model: usedModel,
     });
   } catch (error) {
     console.error('Chat error:', error);
