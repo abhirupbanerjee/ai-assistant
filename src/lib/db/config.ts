@@ -198,6 +198,20 @@ export interface AgentBotsSettings {
 }
 
 /**
+ * Credentials Authentication Settings
+ * Controls optional username/password login (default: enabled)
+ */
+export interface CredentialsAuthSettings {
+  enabled: boolean;           // Whether credentials login is enabled (default: true)
+  minPasswordLength: number;  // Minimum password length (default: 8)
+}
+
+export const DEFAULT_CREDENTIALS_AUTH_SETTINGS: CredentialsAuthSettings = {
+  enabled: true,
+  minPasswordLength: 8,
+};
+
+/**
  * LLM Fallback Settings
  * Controls automatic fallback when selected LLM fails or lacks required capabilities
  */
@@ -383,7 +397,9 @@ export type SettingKey =
   // Agent Bots
   | 'agent-bots-settings'
   // LLM Fallback
-  | 'llm-fallback-settings';
+  | 'llm-fallback-settings'
+  // Credentials Authentication
+  | 'credentials-auth-settings';
 
 // ============ Generic Operations ============
 
@@ -1111,6 +1127,30 @@ export function setSuperuserSettings(settings: Partial<SuperuserSettings>, updat
   const current = getSuperuserSettings();
   const updated = { ...current, ...settings };
   setSetting('superuser-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Get credentials auth settings
+ */
+export function getCredentialsAuthSettings(): CredentialsAuthSettings {
+  const dbSettings = getSetting<Partial<CredentialsAuthSettings>>('credentials-auth-settings');
+  return {
+    ...DEFAULT_CREDENTIALS_AUTH_SETTINGS,
+    ...dbSettings,
+  };
+}
+
+/**
+ * Update credentials auth settings
+ */
+export function setCredentialsAuthSettings(
+  settings: Partial<CredentialsAuthSettings>,
+  updatedBy?: string
+): CredentialsAuthSettings {
+  const current = getCredentialsAuthSettings();
+  const updated = { ...current, ...settings };
+  setSetting('credentials-auth-settings', updated, updatedBy);
   return updated;
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins } from 'lucide-react';
+import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins, Key } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -17,6 +17,7 @@ import { AgentBotsManagement, AgentBotDetail } from '@/components/admin/agent-bo
 import MemorySettingsTab from '@/components/admin/settings/MemorySettings';
 import SummarizationSettingsTab from '@/components/admin/settings/SummarizationSettings';
 import SuperuserSettingsTab from '@/components/admin/settings/SuperuserSettings';
+import CredentialsAuthSettingsTab from '@/components/admin/settings/CredentialsAuthSettings';
 import LLMSettingsTab from '@/components/admin/settings/LLMSettings';
 import RAGSettingsTab from '@/components/admin/settings/RAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
@@ -130,7 +131,7 @@ interface AvailableModel {
 type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'agent-bots' | 'skills' | 'settings';
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
-type UsersSection = 'management' | 'superuser';
+type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type SkillsSection = 'tools' | 'skill-library';
 type TokensSection = 'memory' | 'summarization' | 'limits';
@@ -1167,6 +1168,28 @@ export default function AdminPage() {
               {expandedUsersSections.has('superuser') && (
                 <div className="border-t">
                   <SuperuserSettingsTab />
+                </div>
+              )}
+            </div>
+
+            {/* Credentials Authentication Accordion */}
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <button
+                onClick={() => toggleUsersSection('credentials-auth')}
+                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Key size={20} className="text-gray-600" />
+                  <div className="text-left">
+                    <h2 className="font-semibold text-gray-900">Credentials Authentication</h2>
+                    <p className="text-sm text-gray-500">Configure email/password login for dev and offline scenarios</p>
+                  </div>
+                </div>
+                {expandedUsersSections.has('credentials-auth') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+              </button>
+              {expandedUsersSections.has('credentials-auth') && (
+                <div className="border-t">
+                  <CredentialsAuthSettingsTab />
                 </div>
               )}
             </div>

@@ -32,7 +32,7 @@ type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' |
 // Section types for expandable menus
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
-type UsersSection = 'management' | 'superuser';
+type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type SkillsSection = 'tools' | 'skill-library';
 type TokensSection = 'memory' | 'summarization' | 'limits';

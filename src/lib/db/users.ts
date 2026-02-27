@@ -17,6 +17,8 @@ export interface DbUser {
   name: string | null;
   role: UserRole;
   added_by: string | null;
+  password_hash: string | null;
+  credentials_enabled: number;
   created_at: string;
   updated_at: string;
 }
@@ -58,7 +60,7 @@ export interface UserWithAssignments extends DbUser {
  */
 export function getAllUsers(): DbUser[] {
   return queryAll<DbUser>(`
-    SELECT id, email, name, role, added_by, created_at, updated_at
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
     FROM users
     ORDER BY created_at DESC
   `);
@@ -69,7 +71,7 @@ export function getAllUsers(): DbUser[] {
  */
 export function getUserById(id: number): DbUser | undefined {
   return queryOne<DbUser>(`
-    SELECT id, email, name, role, added_by, created_at, updated_at
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
     FROM users
     WHERE id = ?
   `, [id]);
@@ -80,7 +82,7 @@ export function getUserById(id: number): DbUser | undefined {
  */
 export function getUserByEmail(email: string): DbUser | undefined {
   return queryOne<DbUser>(`
-    SELECT id, email, name, role, added_by, created_at, updated_at
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
     FROM users
     WHERE email = ?
   `, [email.toLowerCase()]);
@@ -179,7 +181,7 @@ export function isSuperUser(email: string): boolean {
  */
 export function getAdmins(): DbUser[] {
   return queryAll<DbUser>(`
-    SELECT id, email, name, role, added_by, created_at, updated_at
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
     FROM users
     WHERE role = 'admin'
     ORDER BY created_at DESC
@@ -191,7 +193,7 @@ export function getAdmins(): DbUser[] {
  */
 export function getSuperUsers(): DbUser[] {
   return queryAll<DbUser>(`
-    SELECT id, email, name, role, added_by, created_at, updated_at
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
     FROM users
     WHERE role = 'superuser'
     ORDER BY created_at DESC
@@ -203,7 +205,7 @@ export function getSuperUsers(): DbUser[] {
  */
 export function getRegularUsers(): DbUser[] {
   return queryAll<DbUser>(`
-    SELECT id, email, name, role, added_by, created_at, updated_at
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
     FROM users
     WHERE role = 'user'
     ORDER BY created_at DESC
@@ -467,6 +469,61 @@ export function createSuperUserWithAssignments(
   });
 }
 
+// ============ Credentials Management ============
+
+/**
+ * Set password hash for a user
+ */
+export function setUserPassword(userId: number, passwordHash: string): boolean {
+  const result = execute(
+    'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [passwordHash, userId]
+  );
+  return result.changes > 0;
+}
+
+/**
+ * Enable or disable credentials login for a user
+ */
+export function setCredentialsEnabled(userId: number, enabled: boolean): boolean {
+  const result = execute(
+    'UPDATE users SET credentials_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [enabled ? 1 : 0, userId]
+  );
+  return result.changes > 0;
+}
+
+/**
+ * Clear password for a user (removes credentials login)
+ */
+export function clearUserPassword(userId: number): boolean {
+  const result = execute(
+    'UPDATE users SET password_hash = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [userId]
+  );
+  return result.changes > 0;
+}
+
+/**
+ * Get users that have credentials set up
+ */
+export function getCredentialUsers(): DbUser[] {
+  return queryAll<DbUser>(`
+    SELECT id, email, name, role, added_by, password_hash, credentials_enabled, created_at, updated_at
+    FROM users
+    WHERE password_hash IS NOT NULL
+    ORDER BY created_at DESC
+  `);
+}
+
+/**
+ * Check if user can login with credentials
+ */
+export function canLoginWithCredentials(email: string): boolean {
+  const user = getUserByEmail(email);
+  return !!(user && user.password_hash && user.credentials_enabled === 1);
+}
+
 // ============ Initialize from Environment ============
 
 /**
@@ -484,5 +541,28 @@ export function initializeAdminsFromEnv(): void {
         addedBy: 'system',
       });
     }
+  }
+}
+
+/**
+ * Initialize admin credentials from CREDENTIALS_ADMIN_PASSWORD environment variable
+ * Sets password for the first admin in ADMIN_EMAILS list (only if no password exists)
+ * Called during first run
+ */
+export async function initializeAdminCredentialsFromEnv(): Promise<void> {
+  const adminPassword = process.env.CREDENTIALS_ADMIN_PASSWORD;
+  if (!adminPassword) return;
+
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()).filter(Boolean) || [];
+  const firstAdmin = adminEmails[0];
+  if (!firstAdmin) return;
+
+  const user = getUserByEmail(firstAdmin);
+  if (user && !user.password_hash) {
+    // Only set if no password exists (don't overwrite)
+    const { hashPassword } = await import('../password');
+    const hash = await hashPassword(adminPassword);
+    setUserPassword(user.id, hash);
+    console.log(`[Auth] Credentials set for admin: ${firstAdmin}`);
   }
 }

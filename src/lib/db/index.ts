@@ -1286,6 +1286,20 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Created reindex_jobs table');
   }
 
+  // Migration: Add credentials authentication columns to users table
+  const usersColumns = database.pragma('table_info(users)') as { name: string }[];
+  const usersColumnNames = usersColumns.map((c) => c.name);
+
+  if (!usersColumnNames.includes('password_hash')) {
+    database.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+    console.log('[DB Migration] Added password_hash column to users');
+  }
+
+  if (!usersColumnNames.includes('credentials_enabled')) {
+    database.exec('ALTER TABLE users ADD COLUMN credentials_enabled INTEGER DEFAULT 1');
+    console.log('[DB Migration] Added credentials_enabled column to users');
+  }
+
   console.log('[DB Migration] Migrations completed successfully');
 }
 
@@ -1301,6 +1315,8 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT,
   role TEXT NOT NULL CHECK (role IN ('admin', 'superuser', 'user')),
   added_by TEXT,
+  password_hash TEXT,
+  credentials_enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

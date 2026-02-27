@@ -12,6 +12,7 @@ import {
   deleteUserByEmail as dbDeleteUserByEmail,
   updateUser as dbUpdateUser,
   initializeAdminsFromEnv,
+  initializeAdminCredentialsFromEnv,
   type DbUser,
   type UserRole,
 } from './db/users';
@@ -30,12 +31,21 @@ export interface AllowedUser {
 
 // Initialize database on first access
 let initialized = false;
+let credentialsInitialized = false;
 
 function ensureInitialized(): void {
   if (!initialized) {
     getDatabase(); // This triggers schema creation and default settings
     initializeAdminsFromEnv();
     initialized = true;
+
+    // Initialize admin credentials async (fire-and-forget, non-blocking)
+    if (!credentialsInitialized) {
+      credentialsInitialized = true;
+      initializeAdminCredentialsFromEnv().catch((err) => {
+        console.error('[Auth] Failed to initialize admin credentials:', err);
+      });
+    }
   }
 }
 
