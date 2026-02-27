@@ -178,7 +178,12 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   try {
     // Route to local embeddings if local model
     if (isLocalEmbeddingModel(model)) {
-      return await createLocalEmbeddings(texts, model as LocalEmbeddingModel);
+      console.log(`[Embedding] Using LOCAL model: ${model}`);
+      const embeddings = await createLocalEmbeddings(texts, model as LocalEmbeddingModel);
+      if (embeddings.length > 0) {
+        console.log(`[Embedding] Local model dimensions: ${embeddings[0].length}`);
+      }
+      return embeddings;
     }
 
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
@@ -187,7 +192,12 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       model,
       input: texts,
     });
-    return response.data.map(d => d.embedding);
+    const embeddings = response.data.map(d => d.embedding);
+    // Debug: Log embedding dimensions
+    if (embeddings.length > 0) {
+      console.log(`[Embedding] Model: ${model}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
+    }
+    return embeddings;
   } catch (error) {
     // If primary model fails and fallback is different, try fallback
     if (fallbackModel && fallbackModel !== model) {
