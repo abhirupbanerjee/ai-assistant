@@ -85,12 +85,11 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
       <div
         className={`max-w-full sm:max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
-            ? 'user-message text-white'
+            ? 'bg-white text-gray-900 border border-gray-200'
             : 'bg-gray-100 text-gray-900'
         }`}
-        style={isUser ? { backgroundColor: 'var(--accent-color)' } : undefined}
       >
-        <div className={`markdown-content ${isUser ? 'text-white' : ''}`}>
+        <div className="markdown-content">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={MarkdownComponents}

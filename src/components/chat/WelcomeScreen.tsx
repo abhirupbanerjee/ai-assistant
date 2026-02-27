@@ -41,6 +41,9 @@ import {
   X,
   Activity,
   Code2,
+  Table2,
+  LayoutTemplate,
+  Flag,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -89,6 +92,13 @@ interface ServiceCard {
   iconBgClass: string;
 }
 
+interface MagicWord {
+  id: string;
+  icon: React.ReactNode;
+  description: string;
+  keywords: string[];
+}
+
 const ROLE_HIERARCHY = { user: 0, superuser: 1, admin: 2 };
 
 function canAccess(
@@ -135,7 +145,7 @@ export default function WelcomeScreen({
 }: WelcomeScreenProps) {
   const router = useRouter();
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'setup' | 'services'>('services');
+  const [activeTab, setActiveTab] = useState<'setup' | 'services' | 'magicwords'>('services');
   const [selectedService, setSelectedService] = useState<ServiceCard | null>(null);
 
   const toggleCard = (id: string) => {
@@ -626,6 +636,88 @@ export default function WelcomeScreen({
     canAccess(userRole, card.minRole)
   );
 
+  // Magic Words data
+  const magicWords: MagicWord[] = [
+    {
+      id: 'charts',
+      icon: <BarChart3 size={20} />,
+      description: 'Create a pie chart, bar graph, or data visualization',
+      keywords: ['pie', 'bar', 'radar', 'stacked bar', 'chart', 'graph'],
+    },
+    {
+      id: 'flowchart',
+      icon: <GitBranch size={20} />,
+      description: 'Create a flowchart or process diagram',
+      keywords: ['flowchart', 'workflow'],
+    },
+    {
+      id: 'architecture',
+      icon: <Landmark size={20} />,
+      description: 'Create an architecture or system diagram',
+      keywords: ['architecture', 'conceptual', 'logical', 'technical', 'system architecture', 'solution architecture', 'component diagram'],
+    },
+    {
+      id: 'timeline',
+      icon: <GanttChart size={20} />,
+      description: 'Create a project timeline or Gantt chart',
+      keywords: ['implementation plan', 'gantt chart', 'project plan', 'project schedule', 'timeline', 'milestones', 'project phases', 'delivery plan'],
+    },
+    {
+      id: 'table',
+      icon: <Table2 size={20} />,
+      description: 'Compare items in a table',
+      keywords: ['table', 'compare', 'comparison', 'matrix', 'versus', 'vs', 'side by side', 'differences between'],
+    },
+    {
+      id: 'websearch',
+      icon: <Globe size={20} />,
+      description: 'Search the web for current information',
+      keywords: ['web search', 'online', 'search', 'latest', 'current', 'recent', 'news', 'update', '2024', '2025', 'today', 'this week', 'this month'],
+    },
+    {
+      id: 'wireframe',
+      icon: <LayoutTemplate size={20} />,
+      description: 'Create a UI wireframe or mockup',
+      keywords: ['wireframe', 'screen layout', 'ui design', 'user interface', 'mockup', 'prototype', 'screen design', 'page layout'],
+    },
+    {
+      id: 'raci',
+      icon: <Users size={20} />,
+      description: 'Create a RACI responsibility matrix',
+      keywords: ['raci', 'raci matrix', 'responsibility matrix', 'responsibility assignment', 'roles and responsibilities'],
+    },
+    {
+      id: 'raid',
+      icon: <ClipboardList size={20} />,
+      description: 'Create a RAID log (Risks, Assumptions, Issues, Dependencies)',
+      keywords: ['raid log', 'raid plan', 'risks assumptions issues dependencies', 'project raid', 'raid register', 'raid analysis'],
+    },
+    {
+      id: 'risk',
+      icon: <ShieldAlert size={20} />,
+      description: 'Create a risk register or risk assessment',
+      keywords: ['risk register', 'risk assessment', 'risk matrix', 'risk management', 'risk analysis', 'risk log', 'risk evaluation', 'risk scoring'],
+    },
+    {
+      id: 'grenada',
+      icon: <Flag size={20} />,
+      description: 'Apply Grenada government branding',
+      keywords: ['Grenada', 'GoG'],
+    },
+    {
+      id: 'trinidad',
+      icon: <Flag size={20} />,
+      description: 'Apply Trinidad & Tobago government branding',
+      keywords: ['Trinidad', 'Trinidad and Tobago', 'TT', 'GoRTT'],
+    },
+    {
+      id: 'ey',
+      icon: <Sparkles size={20} />,
+      description: 'Apply EY brand standards',
+      keywords: ['EY'],
+    },
+  ];
+
   return (
     <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 overflow-y-auto">
       <div className="max-w-4xl w-full">
@@ -677,6 +769,19 @@ export default function WelcomeScreen({
               <span className="flex items-center gap-2">
                 <Settings size={16} />
                 Setup
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('magicwords')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'magicwords'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Zap size={16} />
+                Magic Words
               </span>
             </button>
           </div>
@@ -935,6 +1040,70 @@ export default function WelcomeScreen({
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'magicwords' && (
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="text-center mb-4">
+              <p className="text-sm text-gray-600">
+                Use these keywords in your prompts to trigger special features
+              </p>
+            </div>
+
+            {/* Magic Words Table */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-12"></th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      What do you want to do?
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Try these magic words
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {magicWords.map((item) => (
+                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="p-1.5 rounded-lg bg-gray-100 text-gray-600 inline-flex">
+                          {item.icon}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {item.description}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.keywords.map((keyword, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full"
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer Note */}
+            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Last updated:</span> 27 Feb 2026
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                This guide gives you a headstart to working with the system.
+              </p>
+            </div>
           </div>
         )}
       </div>
