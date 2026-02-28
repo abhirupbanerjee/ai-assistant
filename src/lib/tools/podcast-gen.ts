@@ -16,6 +16,7 @@ import OpenAI from 'openai';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/compat';
 import { getRequestContext } from '@/lib/request-context';
+import { getDisclaimerConfigIfEnabled } from '../disclaimer';
 import { getApiKey } from '@/lib/provider-helpers';
 import { getLlmSettings } from '@/lib/db/config';
 import { pcmToWav, GEMINI_TTS_PCM_OPTIONS, estimateDurationFromPCM } from '@/lib/audio/pcm-to-wav';
@@ -754,6 +755,15 @@ export async function generatePodcast(
         };
       }
 
+      // Append AI disclaimer to script if enabled
+      const disclaimerConfig = await getDisclaimerConfigIfEnabled();
+      if (disclaimerConfig) {
+        const disclaimerLine = geminiConfig.multiSpeaker
+          ? `\n\nHost: ${disclaimerConfig.fullText}.`
+          : `\n\n${disclaimerConfig.fullText}.`;
+        formatterResult.script += disclaimerLine;
+      }
+
       // Step 2: Generate audio with Gemini TTS
       const geminiResult = await generateAudioWithGemini(formatterResult.script, config);
       buffer = geminiResult.buffer;
@@ -775,6 +785,12 @@ export async function generatePodcast(
             message: 'Failed to format content for audio',
           },
         };
+      }
+
+      // Append AI disclaimer to script if enabled
+      const disclaimerConfig = await getDisclaimerConfigIfEnabled();
+      if (disclaimerConfig) {
+        formatterResult.script += `\n\n${disclaimerConfig.fullText}.`;
       }
 
       // Step 2: Generate audio with OpenAI TTS

@@ -12,6 +12,7 @@ import type {
   ImageMetadata,
   OutputFormat,
 } from '@/types/image-gen';
+import { type DisclaimerConfig, getDisclaimerText } from '../disclaimer';
 
 // ===== Default Processing Options =====
 
@@ -30,14 +31,17 @@ const DEFAULT_OPTIONS: Required<ProcessingOptions> = {
  * - Resize if larger than maxDimension
  * - Convert to optimized format (WebP by default)
  * - Generate thumbnail for chat preview
+ * - Optionally add AI disclaimer watermark
  *
  * @param buffer - Raw image buffer from provider
  * @param options - Processing options
+ * @param disclaimerConfig - Optional disclaimer configuration for watermarking
  * @returns Processed image with main buffer, optional thumbnail, and metadata
  */
 export async function processImage(
   buffer: Buffer,
-  options: ProcessingOptions = {}
+  options: ProcessingOptions = {},
+  disclaimerConfig?: DisclaimerConfig | null
 ): Promise<ProcessedImage> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
@@ -61,7 +65,12 @@ export async function processImage(
   }
 
   // Convert to optimized format
-  const mainBuffer = await convertToFormat(image, opts.format, opts.quality);
+  let mainBuffer = await convertToFormat(image, opts.format, opts.quality);
+
+  // Add AI disclaimer watermark if enabled
+  if (disclaimerConfig?.enabled && disclaimerConfig.imageWatermark.enabled) {
+    mainBuffer = await addDisclaimerWatermark(mainBuffer, disclaimerConfig);
+  }
 
   // Get final dimensions
   const finalMeta = await sharp(mainBuffer).metadata();
@@ -214,4 +223,81 @@ export function calculateSizeReduction(
 ): number {
   if (originalSize === 0) return 0;
   return Math.round(((originalSize - processedSize) / originalSize) * 100);
+}
+
+/**
+ * Add AI disclaimer watermark to image
+ *
+ * @param buffer - Image buffer to watermark
+ * @param config - Disclaimer configuration
+ * @returns Buffer with watermark added
+ */
+export async function addDisclaimerWatermark(
+  buffer: Buffer,
+  config: DisclaimerConfig
+): Promise<Buffer> {
+  if (!config.imageWatermark.enabled) {
+    return buffer;
+  }
+
+  const meta = await sharp(buffer).metadata();
+  const width = meta.width || 0;
+  const height = meta.height || 0;
+
+  if (width === 0 || height === 0) {
+    return buffer;
+  }
+
+  // Get appropriate disclaimer text based on image size
+  const text = getDisclaimerText(config, width, height);
+  const isSmall = Math.min(width, height) < config.smallImageThreshold;
+
+  // Adjust font size based on image size
+  const fontSize = isSmall ? Math.max(8, Math.floor(Math.min(width, height) / 20)) : config.fontSize;
+
+  // Calculate position based on config
+  const padding = 10;
+  const textX =
+    config.imageWatermark.position.includes('Right')
+      ? width - padding
+      : padding;
+  const textY =
+    config.imageWatermark.position.includes('bottom') ||
+    config.imageWatermark.position.includes('Bottom')
+      ? height - padding
+      : padding + fontSize;
+  const textAnchor = config.imageWatermark.position.includes('Right') ? 'end' : 'start';
+
+  // Create SVG text overlay
+  const opacity = config.imageWatermark.opacity;
+  const hexColor = config.color.replace('#', '');
+
+  const svgText = `
+    <svg width="${width}" height="${height}">
+      <style>
+        .disclaimer {
+          fill: #${hexColor};
+          font-size: ${fontSize}px;
+          font-family: Arial, sans-serif;
+          opacity: ${opacity};
+        }
+      </style>
+      <text
+        x="${textX}"
+        y="${textY}"
+        text-anchor="${textAnchor}"
+        class="disclaimer"
+      >${text}</text>
+    </svg>
+  `;
+
+  return sharp(buffer)
+    .composite([
+      {
+        input: Buffer.from(svgText),
+        top: 0,
+        left: 0,
+      },
+    ])
+    .toBuffer();
 }

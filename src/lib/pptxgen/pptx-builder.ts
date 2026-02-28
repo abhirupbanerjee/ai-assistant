@@ -19,6 +19,7 @@ import type {
 import type { ImageGenToolArgs } from '@/types/image-gen';
 import { getTheme, buildCustomTheme } from './themes';
 import { generateImage, isImageGenEnabled } from '../image-gen/provider-factory';
+import { type DisclaimerConfig } from '../disclaimer';
 
 // ============ Builder Options ============
 
@@ -28,6 +29,7 @@ export interface PptxOptions {
   theme?: ThemeName;
   colorScheme?: ColorScheme;
   organizationName?: string;
+  disclaimerConfig?: DisclaimerConfig | null;
 }
 
 // ============ Text Props Type ============
@@ -110,6 +112,21 @@ export class PptxBuilder {
         break;
       default:
         this.buildContentSlide(pptxSlide, slide);
+    }
+
+    // Add AI disclaimer footer if enabled
+    if (this.options.disclaimerConfig?.enabled) {
+      pptxSlide.addText(this.options.disclaimerConfig.fullText, {
+        x: 0.5,
+        y: 5.1, // Near bottom of 16:9 slide (5.625" height)
+        w: '90%',
+        h: 0.3,
+        fontSize: this.options.disclaimerConfig.fontSize,
+        fontFace: this.theme.bodyFont,
+        color: this.options.disclaimerConfig.color.replace('#', ''),
+        align: 'center',
+        italic: true,
+      });
     }
 
     if (slide.speakerNotes) {

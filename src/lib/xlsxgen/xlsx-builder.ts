@@ -10,6 +10,7 @@ import type {
   XlsxResult,
   FormulaDefinition,
 } from '@/types/xlsx-gen';
+import { type DisclaimerConfig } from '../disclaimer';
 
 // ============ Color Scheme ============
 
@@ -26,6 +27,7 @@ export interface XlsxOptions {
   filename: string;
   sheets: SheetDefinition[];
   organizationName?: string;
+  disclaimerConfig?: DisclaimerConfig | null;
 }
 
 // ============ XLSX Builder Class ============
@@ -67,6 +69,22 @@ export class XlsxBuilder {
 
     // Set column widths
     this.setColumnWidths(worksheet, sheet);
+
+    // Add AI disclaimer row if enabled
+    if (this.options.disclaimerConfig?.enabled) {
+      const disclaimerRow = worksheet.addRow([this.options.disclaimerConfig.fullText]);
+      disclaimerRow.getCell(1).font = {
+        italic: true,
+        color: { argb: this.options.disclaimerConfig.color.replace('#', '') },
+        size: this.options.disclaimerConfig.fontSize,
+      };
+      // Merge cells across the header width
+      if (sheet.headers.length > 1) {
+        worksheet.mergeCells(1, 1, 1, sheet.headers.length);
+      }
+      // Add empty row as separator
+      worksheet.addRow([]);
+    }
 
     // Add headers
     this.addHeaders(worksheet, sheet);

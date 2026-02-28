@@ -612,6 +612,21 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       maxIssuesPerCategory: 25,
     },
   },
+  ai_disclaimer: {
+    enabled: false, // Disabled by default - admin must explicitly enable
+    config: {
+      fullText: 'This is AI generated content',
+      abbreviatedText: 'AI',
+      fontSize: 9,
+      color: '#666666',
+      smallImageThreshold: 400, // Images smaller than this use abbreviated text
+      imageWatermark: {
+        enabled: true,
+        opacity: 0.7,
+        position: 'bottomRight',
+      },
+    },
+  },
 };
 
 /**

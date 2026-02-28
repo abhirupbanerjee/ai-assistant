@@ -11,6 +11,7 @@
  */
 
 import { type BrandingConfig } from './branding';
+import { type DisclaimerConfig } from '../disclaimer';
 
 // ============ Types ============
 
@@ -18,6 +19,7 @@ export interface MdOptions {
   title: string;
   content: string;
   branding: BrandingConfig;
+  disclaimerConfig?: DisclaimerConfig | null;
   metadata?: {
     author?: string;
     date?: string;
@@ -35,7 +37,7 @@ export interface MdResult {
  * Generate a Markdown document with metadata at the end
  */
 export async function generateMd(options: MdOptions): Promise<MdResult> {
-  const { title, content, branding, metadata } = options;
+  const { title, content, branding, disclaimerConfig, metadata } = options;
   const lines: string[] = [];
 
   // Add title as H1
@@ -78,6 +80,14 @@ export async function generateMd(options: MdOptions): Promise<MdResult> {
         lines.push(line);
       }
     }
+  }
+
+  // Add AI disclaimer if enabled
+  if (disclaimerConfig?.enabled) {
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(`*${disclaimerConfig.fullText}*`);
   }
 
   // Ensure file ends with newline

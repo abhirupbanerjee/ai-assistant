@@ -129,6 +129,31 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [scale, setScale] = useState(1);
+  const [disclaimerConfig, setDisclaimerConfig] = useState<{
+    enabled: boolean;
+    fullText: string;
+    fontSize: number;
+    color: string;
+  } | null>(null);
+
+  // Fetch disclaimer config for export watermarking
+  useEffect(() => {
+    fetch('/api/config/disclaimer')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.enabled && data.config) {
+          setDisclaimerConfig({
+            enabled: true,
+            fullText: data.config.fullText,
+            fontSize: data.config.fontSize,
+            color: data.config.color,
+          });
+        }
+      })
+      .catch(() => {
+        // Silently fail - disclaimer is optional
+      });
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -180,7 +205,20 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
   const handleDownloadSvg = () => {
     if (!svgContent) return;
 
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    let finalSvg = svgContent;
+
+    // Add AI disclaimer to SVG if enabled
+    if (disclaimerConfig?.enabled) {
+      const disclaimerElement = `
+        <text x="50%" y="98%" text-anchor="middle"
+              style="font-size:${disclaimerConfig.fontSize}px;fill:${disclaimerConfig.color};font-style:italic;font-family:Arial,sans-serif;">
+          ${disclaimerConfig.fullText}
+        </text>
+      `;
+      finalSvg = svgContent.replace('</svg>', `${disclaimerElement}</svg>`);
+    }
+
+    const blob = new Blob([finalSvg], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -245,6 +283,19 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Add AI disclaimer if enabled
+        if (disclaimerConfig?.enabled) {
+          const fontSize = disclaimerConfig.fontSize * scaleFactor;
+          ctx.font = `italic ${fontSize}px Arial, sans-serif`;
+          ctx.fillStyle = disclaimerConfig.color;
+          ctx.textAlign = 'center';
+          ctx.fillText(
+            disclaimerConfig.fullText,
+            canvas.width / 2,
+            canvas.height - fontSize
+          );
+        }
 
         // Download PNG
         const pngUrl = canvas.toDataURL('image/png');

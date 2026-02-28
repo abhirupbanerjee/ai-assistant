@@ -713,11 +713,36 @@ export default function DataVisualization({
   const [isMounted, setIsMounted] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [disclaimerConfig, setDisclaimerConfig] = useState<{
+    enabled: boolean;
+    fullText: string;
+    fontSize: number;
+    color: string;
+  } | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Delay chart rendering until after hydration to avoid SSR mismatch
   useEffect(() => {
     setIsMounted(true);
+  }, []);
+
+  // Fetch disclaimer config for export watermarking
+  useEffect(() => {
+    fetch('/api/config/disclaimer')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.enabled && data.config) {
+          setDisclaimerConfig({
+            enabled: true,
+            fullText: data.config.fullText,
+            fontSize: data.config.fontSize,
+            color: data.config.color,
+          });
+        }
+      })
+      .catch(() => {
+        // Silently fail - disclaimer is optional
+      });
   }, []);
 
   // Derive available fields from data
@@ -832,6 +857,22 @@ export default function DataVisualization({
         scale: 2, // Higher resolution
         logging: false,
       });
+
+      // Add AI disclaimer if enabled
+      if (disclaimerConfig?.enabled) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const fontSize = disclaimerConfig.fontSize * 2; // Scale for higher resolution
+          ctx.font = `italic ${fontSize}px Arial, sans-serif`;
+          ctx.fillStyle = disclaimerConfig.color;
+          ctx.textAlign = 'center';
+          ctx.fillText(
+            disclaimerConfig.fullText,
+            canvas.width / 2,
+            canvas.height - fontSize
+          );
+        }
+      }
 
       // Convert to PNG and download
       const url = canvas.toDataURL('image/png');

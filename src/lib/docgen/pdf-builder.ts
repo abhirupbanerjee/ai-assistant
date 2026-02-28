@@ -17,6 +17,7 @@ import {
   hexToRgb,
   processTemplateContent,
 } from './branding';
+import { type DisclaimerConfig } from '../disclaimer';
 
 // ============ Types ============
 
@@ -24,6 +25,7 @@ export interface PdfOptions {
   title: string;
   content: string;
   branding: BrandingConfig;
+  disclaimerConfig?: DisclaimerConfig | null;
   metadata?: {
     author?: string;
     subject?: string;
@@ -101,9 +103,11 @@ export class PdfBuilder {
   private pageCount: number = 0;
   private fontFamily: string;
   private primaryColor: { r: number; g: number; b: number };
+  private disclaimerConfig: DisclaimerConfig | null = null;
 
   constructor(options: PdfOptions) {
     this.branding = options.branding;
+    this.disclaimerConfig = options.disclaimerConfig ?? null;
     this.fontFamily = mapFontFamily(options.branding.fontFamily);
     this.primaryColor = hexToRgb(options.branding.primaryColor || '#003366');
 
@@ -836,6 +840,20 @@ export class PdfBuilder {
       const textWidth = doc.widthOfString(pageText);
       const xPos = PAGE.width - PAGE.margin.right - textWidth;
       doc.text(pageText, xPos, footerY + 15, { lineBreak: false });
+    }
+
+    // Draw AI disclaimer if enabled
+    if (this.disclaimerConfig?.enabled) {
+      const disclaimerText = this.disclaimerConfig.fullText;
+      const disclaimerY = footerY + 25;
+      doc
+        .font(FONTS.italic)
+        .fontSize(this.disclaimerConfig.fontSize)
+        .fillColor(this.disclaimerConfig.color);
+
+      const disclaimerWidth = doc.widthOfString(disclaimerText);
+      const disclaimerX = (PAGE.width - disclaimerWidth) / 2;
+      doc.text(disclaimerText, disclaimerX, disclaimerY, { lineBreak: false });
     }
   }
 

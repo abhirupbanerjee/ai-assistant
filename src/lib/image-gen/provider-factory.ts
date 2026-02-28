@@ -21,6 +21,7 @@ import { getRequestContext } from '@/lib/request-context';
 import { generateWithDalle } from './providers/openai-dalle';
 import { generateWithGemini } from './providers/gemini-imagen';
 import { processImage, getFileExtension } from './image-processor';
+import { getDisclaimerConfigIfEnabled } from '../disclaimer';
 import type {
   ImageGenConfig,
   ImageGenToolArgs,
@@ -437,7 +438,10 @@ export async function generateImage(
       thumbnailSize: config.imageProcessing.thumbnailSize,
     };
 
-    const processed = await processImage(rawBuffer, processingOptions);
+    // Get disclaimer config for watermarking
+    const disclaimerConfig = await getDisclaimerConfigIfEnabled();
+
+    const processed = await processImage(rawBuffer, processingOptions, disclaimerConfig);
 
     console.log(
       `[ImageGen] Processed: ${processed.metadata.originalWidth}x${processed.metadata.originalHeight} → ${processed.metadata.width}x${processed.metadata.height}, ${processed.metadata.sizeBytes} bytes`

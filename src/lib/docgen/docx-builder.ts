@@ -33,6 +33,7 @@ import {
   getDocxFontFamily,
   processTemplateContent,
 } from './branding';
+import { type DisclaimerConfig } from '../disclaimer';
 
 // ============ Types ============
 
@@ -40,6 +41,7 @@ export interface DocxOptions {
   title: string;
   content: string;
   branding: BrandingConfig;
+  disclaimerConfig?: DisclaimerConfig | null;
   metadata?: {
     author?: string;
     subject?: string;
@@ -89,11 +91,13 @@ export class DocxBuilder {
   private logo: ProcessedLogo | null = null;
   private fontFamily: string;
   private primaryColorHex: string;
+  private disclaimerConfig: DisclaimerConfig | null = null;
 
   constructor(private options: DocxOptions) {
     this.branding = options.branding;
     this.fontFamily = getDocxFontFamily(options.branding.fontFamily);
     this.primaryColorHex = options.branding.primaryColor?.replace('#', '') || '003366';
+    this.disclaimerConfig = options.disclaimerConfig ?? null;
   }
 
   /**
@@ -354,6 +358,24 @@ export class DocxBuilder {
             }),
           ],
           alignment: AlignmentType.RIGHT,
+        })
+      );
+    }
+
+    // Add AI disclaimer if enabled
+    if (this.disclaimerConfig?.enabled) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: this.disclaimerConfig.fullText,
+              size: this.disclaimerConfig.fontSize * 2, // docx uses half-points
+              color: this.disclaimerConfig.color.replace('#', ''),
+              italics: true,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 100 },
         })
       );
     }
