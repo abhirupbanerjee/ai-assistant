@@ -751,9 +751,57 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     return lines.join('\n');
   };
 
-  // Download markdown file
-  const downloadMarkdown = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: 'text/markdown' });
+  // Export skills to JSON
+  const exportSkillsToJson = (skillsToExport: Skill[]) => {
+    return JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      totalSkills: skillsToExport.length,
+      skills: skillsToExport.map(skill => ({
+        name: skill.name,
+        description: skill.description,
+        priority: skill.priority,
+        priorityTier: getPriorityTier(skill.priority).label,
+        isActive: skill.is_active,
+        isCore: skill.is_core,
+        tokenEstimate: skill.token_estimate,
+        trigger: {
+          type: skill.trigger_type,
+          value: skill.trigger_value,
+          matchType: skill.match_type,
+          categoryRestricted: skill.category_restricted,
+          isIndex: skill.is_index,
+        },
+        categories: skill.categories.map(cat => ({
+          name: cat.name,
+          slug: cat.slug,
+        })),
+        tool: skill.tool_name ? {
+          name: skill.tool_name,
+          forceMode: skill.force_mode,
+          configOverride: skill.tool_config_override,
+          dataSourceFilter: skill.data_source_filter,
+        } : null,
+        compliance: skill.compliance_config?.enabled ? {
+          enabled: true,
+          sections: skill.compliance_config.sections,
+          passThreshold: skill.compliance_config.passThreshold,
+          warnThreshold: skill.compliance_config.warnThreshold,
+          clarificationInstructions: skill.compliance_config.clarificationInstructions,
+        } : null,
+        promptContent: skill.prompt_content,
+        metadata: {
+          createdBy: skill.created_by,
+          createdAt: skill.created_at,
+          updatedBy: skill.updated_by,
+          updatedAt: skill.updated_at,
+        },
+      })),
+    }, null, 2);
+  };
+
+  // Download file helper
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -764,27 +812,30 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     URL.revokeObjectURL(url);
   };
 
-  // Export handlers
-  const handleExportSelected = () => {
-    const skillsToExport = skills.filter(s => selectedSkillIds.has(s.id));
+  // Unified export handler
+  const handleExport = (scope: 'selected' | 'all', format: 'md' | 'json') => {
+    const skillsToExport = scope === 'selected'
+      ? skills.filter(s => selectedSkillIds.has(s.id))
+      : filteredSkills;
+
     if (skillsToExport.length === 0) return;
 
-    const markdown = exportSkillsToMarkdown(skillsToExport);
-    const filename = skillsToExport.length === 1
-      ? `skill-${skillsToExport[0].name.toLowerCase().replace(/\s+/g, '-')}.md`
-      : `skills-export-${new Date().toISOString().split('T')[0]}.md`;
-    downloadMarkdown(markdown, filename);
-    setSuccess(`Exported ${skillsToExport.length} skill(s)`);
-    setTimeout(() => setSuccess(null), 3000);
-  };
+    const dateStr = new Date().toISOString().split('T')[0];
+    const baseName = scope === 'selected' && skillsToExport.length === 1
+      ? `skill-${skillsToExport[0].name.toLowerCase().replace(/\s+/g, '-')}`
+      : scope === 'selected'
+        ? `skills-export-${dateStr}`
+        : `skills-export-all-${dateStr}`;
 
-  const handleExportAll = () => {
-    if (filteredSkills.length === 0) return;
+    if (format === 'md') {
+      const content = exportSkillsToMarkdown(skillsToExport);
+      downloadFile(content, `${baseName}.md`, 'text/markdown');
+    } else {
+      const content = exportSkillsToJson(skillsToExport);
+      downloadFile(content, `${baseName}.json`, 'application/json');
+    }
 
-    const markdown = exportSkillsToMarkdown(filteredSkills);
-    const filename = `skills-export-all-${new Date().toISOString().split('T')[0]}.md`;
-    downloadMarkdown(markdown, filename);
-    setSuccess(`Exported ${filteredSkills.length} skill(s)`);
+    setSuccess(`Exported ${skillsToExport.length} skill(s) as ${format.toUpperCase()}`);
     setTimeout(() => setSuccess(null), 3000);
   };
 
@@ -1015,24 +1066,44 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             {/* Export dropdown */}
             {!isSuperuser && (
               <div className="relative group">
-                <Button variant="secondary" title="Export skills to markdown">
+                <Button variant="secondary" title="Export skills">
                   <Download size={16} className="mr-2" />
                   Export
                 </Button>
-                <div className="absolute right-0 mt-1 w-48 bg-white border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                <div className="absolute right-0 mt-1 w-56 bg-white border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                  <div className="px-3 py-1.5 text-xs text-gray-500 font-medium border-b bg-gray-50 rounded-t-lg">
+                    Selected ({selectedSkillIds.size})
+                  </div>
                   <button
-                    onClick={handleExportSelected}
+                    onClick={() => handleExport('selected', 'md')}
                     disabled={selectedSkillIds.size === 0}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-t-lg"
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Export Selected ({selectedSkillIds.size})
+                    Export as Markdown
                   </button>
                   <button
-                    onClick={handleExportAll}
-                    disabled={filteredSkills.length === 0}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg border-t"
+                    onClick={() => handleExport('selected', 'json')}
+                    disabled={selectedSkillIds.size === 0}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed border-b"
                   >
-                    Export All ({filteredSkills.length})
+                    Export as JSON
+                  </button>
+                  <div className="px-3 py-1.5 text-xs text-gray-500 font-medium bg-gray-50">
+                    All ({filteredSkills.length})
+                  </div>
+                  <button
+                    onClick={() => handleExport('all', 'md')}
+                    disabled={filteredSkills.length === 0}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Export as Markdown
+                  </button>
+                  <button
+                    onClick={() => handleExport('all', 'json')}
+                    disabled={filteredSkills.length === 0}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg"
+                  >
+                    Export as JSON
                   </button>
                 </div>
               </div>
