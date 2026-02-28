@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { FolderOpen, Plus, Edit2, Trash2 } from 'lucide-react';
+import { FolderOpen, Plus, Edit2, Trash2, Search, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -39,6 +39,12 @@ export default function CategoriesManagement() {
   const [editCategoryName, setEditCategoryName] = useState('');
   const [editCategoryDescription, setEditCategoryDescription] = useState('');
   const [updatingCategory, setUpdatingCategory] = useState(false);
+
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Selection state for export
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set());
 
   // Load categories
   const loadCategories = useCallback(async () => {
@@ -156,6 +162,114 @@ export default function CategoriesManagement() {
     }
   };
 
+  // Fuzzy match - checks if search chars appear in order
+  const fuzzyMatch = (text: string, search: string): boolean => {
+    const searchLower = search.toLowerCase();
+    const textLower = text.toLowerCase();
+    let searchIdx = 0;
+    for (let i = 0; i < textLower.length && searchIdx < searchLower.length; i++) {
+      if (textLower[i] === searchLower[searchIdx]) {
+        searchIdx++;
+      }
+    }
+    return searchIdx === searchLower.length;
+  };
+
+  // Filter categories based on search
+  const filteredCategories = categories.filter(cat => {
+    if (!searchTerm.trim()) return true;
+    return (
+      fuzzyMatch(cat.name, searchTerm) ||
+      fuzzyMatch(cat.slug, searchTerm) ||
+      (cat.description && fuzzyMatch(cat.description, searchTerm))
+    );
+  });
+
+  // Selection handlers
+  const toggleCategorySelection = (id: number) => {
+    setSelectedCategoryIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAllCategorySelection = () => {
+    if (selectedCategoryIds.size === filteredCategories.length) {
+      setSelectedCategoryIds(new Set());
+    } else {
+      setSelectedCategoryIds(new Set(filteredCategories.map(c => c.id)));
+    }
+  };
+
+  // Export functions
+  const exportCategoriesToMarkdown = (categoriesToExport: Category[]) => {
+    const lines: string[] = [
+      '# Categories Export',
+      '',
+      `**Exported:** ${new Date().toLocaleString()}`,
+      `**Total Categories:** ${categoriesToExport.length}`,
+      '',
+      '| Name | Slug | Description | Documents | Super Users | Subscribers |',
+      '|------|------|-------------|-----------|-------------|-------------|',
+    ];
+    categoriesToExport.forEach(cat => {
+      const desc = cat.description?.replace(/\|/g, '\\|') || '-';
+      lines.push(`| ${cat.name} | \`${cat.slug}\` | ${desc} | ${cat.documentCount} | ${cat.superUserCount} | ${cat.subscriberCount} |`);
+    });
+    return lines.join('\n');
+  };
+
+  const exportCategoriesToJson = (categoriesToExport: Category[]) => {
+    return JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      totalCategories: categoriesToExport.length,
+      categories: categoriesToExport.map(cat => ({
+        name: cat.name,
+        slug: cat.slug,
+        description: cat.description,
+        documentCount: cat.documentCount,
+        superUserCount: cat.superUserCount,
+        subscriberCount: cat.subscriberCount,
+        createdBy: cat.created_by,
+        createdAt: cat.created_at,
+      }))
+    }, null, 2);
+  };
+
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = (scope: 'selected' | 'all', format: 'md' | 'json') => {
+    const categoriesToExport = scope === 'selected'
+      ? categories.filter(c => selectedCategoryIds.has(c.id))
+      : filteredCategories;
+
+    if (categoriesToExport.length === 0) return;
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    if (format === 'md') {
+      const content = exportCategoriesToMarkdown(categoriesToExport);
+      downloadFile(content, `categories-export-${dateStr}.md`, 'text/markdown');
+    } else {
+      const content = exportCategoriesToJson(categoriesToExport);
+      downloadFile(content, `categories-export-${dateStr}.json`, 'application/json');
+    }
+  };
+
   return (
     <>
       <div className="bg-white rounded-lg border shadow-sm">
@@ -171,6 +285,63 @@ export default function CategoriesManagement() {
               <Plus size={18} className="mr-2" />
               Add Category
             </Button>
+          </div>
+        </div>
+
+        {/* Search and Export row */}
+        <div className="px-6 py-3 border-b bg-gray-50 flex items-center gap-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search categories..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          {/* Export dropdown */}
+          <div className="relative group">
+            <Button variant="secondary" title="Export categories">
+              <Download size={16} className="mr-2" />
+              Export
+            </Button>
+            <div className="absolute right-0 mt-1 w-52 bg-white border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <div className="px-3 py-2 text-xs text-gray-500 font-medium border-b">
+                Selected ({selectedCategoryIds.size})
+              </div>
+              <button
+                onClick={() => handleExport('selected', 'md')}
+                disabled={selectedCategoryIds.size === 0}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Export as Markdown
+              </button>
+              <button
+                onClick={() => handleExport('selected', 'json')}
+                disabled={selectedCategoryIds.size === 0}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed border-b"
+              >
+                Export as JSON
+              </button>
+              <div className="px-3 py-2 text-xs text-gray-500 font-medium border-b">
+                All ({filteredCategories.length})
+              </div>
+              <button
+                onClick={() => handleExport('all', 'md')}
+                disabled={filteredCategories.length === 0}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Export as Markdown
+              </button>
+              <button
+                onClick={() => handleExport('all', 'json')}
+                disabled={filteredCategories.length === 0}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg"
+              >
+                Export as JSON
+              </button>
+            </div>
           </div>
         </div>
 
@@ -193,11 +364,28 @@ export default function CategoriesManagement() {
               Create categories to organize documents and control user access
             </p>
           </div>
+        ) : filteredCategories.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No matching categories</h3>
+            <p className="text-gray-500 mb-4">
+              Try adjusting your search term
+            </p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 text-left text-sm text-gray-600">
                 <tr>
+                  <th className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredCategories.length > 0 && selectedCategoryIds.size === filteredCategories.length}
+                      onChange={toggleAllCategorySelection}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      title="Select all"
+                    />
+                  </th>
                   <th className="px-6 py-3 font-medium">Category</th>
                   <th className="px-6 py-3 font-medium">Slug</th>
                   <th className="px-6 py-3 font-medium">Documents</th>
@@ -207,8 +395,17 @@ export default function CategoriesManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {categories.map((cat) => (
+                {filteredCategories.map((cat) => (
                   <tr key={cat.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedCategoryIds.has(cat.id)}
+                        onChange={() => toggleCategorySelection(cat.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <FolderOpen className="w-5 h-5 text-blue-600" />
