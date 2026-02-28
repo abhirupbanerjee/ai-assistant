@@ -180,6 +180,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       visualizations: visualizations.length > 0 ? visualizations : undefined,
       generatedDocuments: documents.length > 0 ? documents : undefined,
       generatedImages: images.length > 0 ? images : undefined,
+      generatedDiagrams: _diagrams.length > 0 ? _diagrams : undefined,
       generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
       timestamp: new Date(),
       metadata,
