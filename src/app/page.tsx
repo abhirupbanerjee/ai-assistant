@@ -267,6 +267,7 @@ function HomeContent() {
             <WelcomeScreen
               userRole={userRole || 'user'}
               brandingName={brandingName}
+              onNewThread={handleNewThreadFromHeader}
             />
           )}
         </main>

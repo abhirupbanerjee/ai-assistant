@@ -19,12 +19,14 @@ interface CodeAnalysisConfigProps {
   config: Record<string, unknown>;
   onChange: (config: Record<string, unknown>) => void;
   disabled: boolean;
+  hideSensitive?: boolean;
 }
 
 export default function CodeAnalysisConfig({
   config,
   onChange,
   disabled,
+  hideSensitive,
 }: CodeAnalysisConfigProps) {
   const [expandedRepo, setExpandedRepo] = useState<number | null>(null);
 
@@ -64,31 +66,33 @@ export default function CodeAnalysisConfig({
 
   return (
     <div className="space-y-4">
-      {/* API Token */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          SonarCloud API Token
-        </label>
-        <input
-          type="password"
-          value={(config.apiToken as string) || ''}
-          onChange={(e) => handleChange('apiToken', e.target.value)}
-          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          placeholder="squ_..."
-          disabled={disabled}
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Default token for SonarCloud API access.{' '}
-          <a
-            href="https://sonarcloud.io/account/security"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
-          >
-            Generate token
-          </a>
-        </p>
-      </div>
+      {/* API Token - hidden for superusers */}
+      {!hideSensitive && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            SonarCloud API Token
+          </label>
+          <input
+            type="password"
+            value={(config.apiToken as string) || ''}
+            onChange={(e) => handleChange('apiToken', e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="squ_..."
+            disabled={disabled}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Default token for SonarCloud API access.{' '}
+            <a
+              href="https://sonarcloud.io/account/security"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Generate token
+            </a>
+          </p>
+        </div>
+      )}
 
       {/* Organization */}
       <div>
@@ -233,39 +237,42 @@ export default function CodeAnalysisConfig({
                       />
                     </div>
 
-                    <div className="border-t pt-3 mt-3">
-                      <p className="text-xs text-gray-500 mb-2">
-                        Override credentials (leave empty to use defaults above)
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            API Token Override
-                          </label>
-                          <input
-                            type="password"
-                            value={repo.apiToken || ''}
-                            onChange={(e) => handleRepoChange(index, 'apiToken', e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
-                            placeholder="squ_..."
-                            disabled={disabled}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Organization Override
-                          </label>
-                          <input
-                            type="text"
-                            value={repo.organization || ''}
-                            onChange={(e) => handleRepoChange(index, 'organization', e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
-                            placeholder="other-org"
-                            disabled={disabled}
-                          />
+                    {/* Credential overrides - hidden for superusers */}
+                    {!hideSensitive && (
+                      <div className="border-t pt-3 mt-3">
+                        <p className="text-xs text-gray-500 mb-2">
+                          Override credentials (leave empty to use defaults above)
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              API Token Override
+                            </label>
+                            <input
+                              type="password"
+                              value={repo.apiToken || ''}
+                              onChange={(e) => handleRepoChange(index, 'apiToken', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="squ_..."
+                              disabled={disabled}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Organization Override
+                            </label>
+                            <input
+                              type="text"
+                              value={repo.organization || ''}
+                              onChange={(e) => handleRepoChange(index, 'organization', e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="other-org"
+                              disabled={disabled}
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>

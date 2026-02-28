@@ -69,7 +69,8 @@ Built with enterprise-grade, open-source technologies:
 ### Access Control
 - **Three-Tier Roles** - Admin > SuperUser > User hierarchy
 - **Category Subscriptions** - Users access only subscribed categories
-- **Multi-Provider Auth** - Azure AD and Google OAuth
+- **Multi-Provider Auth** - Azure AD, Google OAuth, and email/password credentials
+- **Flexible Authentication** - Credentials login enabled by default for fresh deployments, can be disabled after OAuth setup
 
 ### AI Enhancements
 - **Prompts System** - Global and category-specific AI instructions

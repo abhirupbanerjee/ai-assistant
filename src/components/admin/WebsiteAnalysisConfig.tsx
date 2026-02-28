@@ -8,12 +8,14 @@ interface WebsiteAnalysisConfigProps {
   config: Record<string, unknown>;
   onChange: (config: Record<string, unknown>) => void;
   disabled: boolean;
+  hideSensitive?: boolean;
 }
 
 export default function WebsiteAnalysisConfig({
   config,
   onChange,
   disabled,
+  hideSensitive,
 }: WebsiteAnalysisConfigProps) {
   const handleChange = (key: string, value: unknown) => {
     onChange({ ...config, [key]: value });
@@ -21,31 +23,33 @@ export default function WebsiteAnalysisConfig({
 
   return (
     <div className="space-y-4">
-      {/* API Key */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Google API Key
-        </label>
-        <input
-          type="password"
-          value={(config.apiKey as string) || ''}
-          onChange={(e) => handleChange('apiKey', e.target.value)}
-          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          placeholder="AIza..."
-          disabled={disabled}
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Optional but recommended for higher rate limits.{' '}
-          <a
-            href="https://console.cloud.google.com/apis/credentials"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
-          >
-            Get API key
-          </a>
-        </p>
-      </div>
+      {/* API Key - hidden for superusers */}
+      {!hideSensitive && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Google API Key
+          </label>
+          <input
+            type="password"
+            value={(config.apiKey as string) || ''}
+            onChange={(e) => handleChange('apiKey', e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="AIza..."
+            disabled={disabled}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Optional but recommended for higher rate limits.{' '}
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Get API key
+            </a>
+          </p>
+        </div>
+      )}
 
       {/* Default Strategy */}
       <div>

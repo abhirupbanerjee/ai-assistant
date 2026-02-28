@@ -189,7 +189,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Categories',
-        route: '/manage',
+        route: '/superuser',
       },
       minRole: 'superuser',
       colorClass: 'border-purple-200 hover:border-purple-300',
@@ -233,7 +233,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Add Documents',
-        route: '/manage',
+        route: '/superuser',
       },
       minRole: 'superuser',
       colorClass: 'border-indigo-200 hover:border-indigo-300',

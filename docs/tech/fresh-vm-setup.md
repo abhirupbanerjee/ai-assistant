@@ -250,15 +250,19 @@ CHROMA_PORT=8000
 # QDRANT_PORT=6333
 
 # =============================================================================
-# AUTHENTICATION (At least one required for production)
+# AUTHENTICATION
 # =============================================================================
 
-# Azure AD (Microsoft Entra ID)
+# Credentials login is ENABLED by default for fresh deployments
+# Set initial admin password (used on first run if admin has no password)
+CREDENTIALS_ADMIN_PASSWORD=your-secure-initial-password
+
+# Azure AD (Microsoft Entra ID) - Optional, configure after first login
 # AZURE_AD_CLIENT_ID=
 # AZURE_AD_CLIENT_SECRET=
 # AZURE_AD_TENANT_ID=
 
-# Google OAuth
+# Google OAuth - Optional, configure after first login
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
 
@@ -420,13 +424,24 @@ curl -I https://policybot.example.com
 
 ## Post-Installation Configuration
 
-### 1. Access Admin Dashboard
+### 1. First Login (Before OAuth Setup)
 
-1. Navigate to `https://policybot.example.com`
-2. Sign in with an account matching `ADMIN_EMAILS`
-3. Go to **Admin** in the navigation
+Policy Bot supports email/password login by default, allowing initial access without OAuth:
 
-### 2. Initial Admin Tasks
+1. Navigate to `https://policybot.example.com/auth/signin`
+2. Enter the admin email from `ADMIN_EMAILS` (e.g., `admin@example.com`)
+3. Enter the password from `CREDENTIALS_ADMIN_PASSWORD`
+4. You're now logged in as admin
+
+> **Tip:** After configuring OAuth providers, you can disable credentials login via Admin → Users → Credentials Authentication.
+
+### 2. Access Admin Dashboard
+
+1. Click your profile or the menu icon
+2. Select **Admin** from the navigation
+3. Or navigate directly to `/admin`
+
+### 3. Initial Admin Tasks
 
 #### Create Categories
 1. Admin → Categories → Add Category
@@ -453,7 +468,7 @@ curl -I https://policybot.example.com
 2. Customize the global system prompt
 3. Add category-specific prompts if needed
 
-### 3. Configure Reranker (Optional)
+### 4. Configure Reranker (Optional)
 
 The reranker improves search result quality:
 
@@ -464,6 +479,41 @@ The reranker improves search result quality:
    - **Cohere** - Fast API-based (requires API key)
    - **BGE Base** - Smaller model, ~220MB
    - **Local** - Legacy bi-encoder
+
+### 5. Configure OAuth & Disable Credentials (Optional)
+
+After initial setup, you may want to switch to OAuth-only authentication:
+
+#### Add OAuth Provider
+
+1. Get credentials from Azure Portal or Google Cloud Console (see [Authentication Guide](auth.md))
+2. Add to `.env`:
+   ```bash
+   # Azure AD
+   AZURE_AD_CLIENT_ID=your-client-id
+   AZURE_AD_CLIENT_SECRET=your-client-secret
+   AZURE_AD_TENANT_ID=your-tenant-id
+
+   # Or Google
+   GOOGLE_CLIENT_ID=your-client-id
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   ```
+3. Restart the application:
+   ```bash
+   docker compose restart app
+   ```
+4. Verify OAuth login works
+
+#### Disable Credentials Login (Optional)
+
+Once OAuth is working, you can disable email/password login:
+
+1. Admin → Users → expand **Credentials Authentication**
+2. Toggle **Enable Credentials Login** to OFF
+3. Click **Save Changes**
+4. Restart the application
+
+> **Warning:** Ensure OAuth is working before disabling credentials, or you may lock yourself out.
 
 ---
 

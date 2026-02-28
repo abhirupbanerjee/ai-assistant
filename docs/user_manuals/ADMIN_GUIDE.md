@@ -138,6 +138,14 @@ Widgets showing recent system activity:
 | **Dependencies** | Manage tool dependencies and execution order |
 | **Tool Routing** | Keyword/regex patterns to force specific tools |
 
+### Users Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **User Management** | Create, edit, delete users and manage roles |
+| **Superuser Settings** | Configure superuser category limits |
+| **Credentials Authentication** | Enable/disable email/password login, password policy |
+
 ### Settings Submenu
 
 | Section | Purpose |
@@ -304,6 +312,53 @@ This allows a superuser to:
 |--------|--------|
 | **Deactivate** | User cannot log in, data preserved |
 | **Delete** | Account and associated data removed |
+
+### Credentials Authentication
+
+Policy Bot supports email/password login alongside OAuth providers (Microsoft/Google). This is useful for:
+- Fresh VM deployments before OAuth is configured
+- Development and testing environments
+- Offline or air-gapped deployments
+- Backup authentication when OAuth services are unavailable
+
+#### Configuring Credentials System-Wide
+
+1. In the **Users** section, expand **Credentials Authentication**
+2. Configure settings:
+   - **Enable Credentials Login** - Toggle system-wide email/password login
+   - **Minimum Password Length** - Password policy (4-128 characters, default: 8)
+3. Click **Save Changes**
+4. **Restart the server** for changes to take effect
+
+> **Note:** Disabling credentials removes the email/password form from the login page. Make sure OAuth is configured before disabling.
+
+#### Setting User Passwords
+
+1. Navigate to **Users** → select a user → **Edit**
+2. In the user form, use **Set Password** or **Manage Credentials**
+3. Enter and confirm the new password
+4. Click **Save**
+
+Alternatively, use the API:
+```
+PUT /api/admin/users/{userId}/credentials
+Body: { "password": "new-password" }
+```
+
+#### First Admin Setup (Fresh Deployment)
+
+For initial deployment without OAuth:
+
+1. Set in `.env`:
+   ```
+   ADMIN_EMAILS=admin@example.com
+   CREDENTIALS_ADMIN_PASSWORD=secure-initial-password
+   ```
+2. Start the application
+3. Login with email/password at `/auth/signin`
+4. (Optional) Configure OAuth, then disable credentials via Admin UI
+
+See [Authentication Documentation](../../tech/auth.md) for complete details.
 
 ### Bulk Operations
 

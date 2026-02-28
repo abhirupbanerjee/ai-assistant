@@ -22,6 +22,7 @@ Technical architecture and system design documentation.
 | [tech/SOLUTION.md](tech/SOLUTION.md) | Complete system architecture, RAG pipeline, design decisions | System overview, RAG pipeline, category system, authentication, tool routing, PWA architecture |
 | [tech/DATABASE.md](tech/DATABASE.md) | SQLite/PostgreSQL schema, ChromaDB/Qdrant collections, Redis patterns, Kysely abstraction layer | Database tables, relationships, vector storage, provider selection, caching strategy |
 | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) | Docker deployment, profile-based provider selection, scalability guide, backup/restore, PWA deployment | Container orchestration, environment configuration, infrastructure selection, operations, health checks |
+| [tech/auth.md](tech/auth.md) | Authentication system setup and configuration | Microsoft OAuth, Google OAuth, credentials login, access control, user management, Auth.js migration |
 | [tech/Bot-Config-architecture.md](tech/Bot-Config-architecture.md) | Configuration architecture and settings management | Configuration layers, settings hierarchy |
 | [tech/UI_WIREFRAMES.md](tech/UI_WIREFRAMES.md) | Interface designs and user flow diagrams | UI components, user workflows |
 
@@ -132,6 +133,7 @@ Guides for different user roles and workflows.
 
 ### Authentication & Access Control
 
+- [tech/auth.md](tech/auth.md) - **Complete authentication guide** (OAuth setup, credentials login, admin management)
 - [tech/SOLUTION.md § Authentication Flow](tech/SOLUTION.md#12-authentication-flow) - Authentication architecture
 - [tech/SOLUTION.md § User Roles & Permissions](tech/SOLUTION.md#user-roles--permissions) - Role hierarchy
 - [user_manuals/ADMIN_GUIDE.md § Users](user_manuals/ADMIN_GUIDE.md#4-users) - User management
@@ -255,8 +257,8 @@ Documentation for third-party API integrations.
 | **Mistral** | Alternative LLM provider | [tech/SOLUTION.md](tech/SOLUTION.md) |
 | **Google Gemini** | Alternative LLM provider | [tech/SOLUTION.md](tech/SOLUTION.md) |
 | **Ollama** | Local LLM inference | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Azure AD** | Enterprise authentication | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
-| **Google OAuth** | Google sign-in | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
+| **Azure AD** | Enterprise authentication | [tech/auth.md § Microsoft Azure AD](tech/auth.md#microsoft-azure-ad) |
+| **Google OAuth** | Google sign-in | [tech/auth.md § Google OAuth](tech/auth.md#google-oauth) |
 | **Tavily** | Web search | [features/Tools.md § Web Search](features/Tools.md#web-search-tool) |
 | **Supadata** | YouTube transcript extraction | [features/Tools.md § YouTube](features/Tools.md#youtube-tool) |
 | **Cohere** | Search result reranking | [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |

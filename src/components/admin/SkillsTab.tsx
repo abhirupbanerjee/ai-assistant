@@ -22,6 +22,7 @@ import {
   ArrowUp,
   ArrowDown,
   Shield,
+  Download,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -229,9 +230,9 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   const [filterHasTool, setFilterHasTool] = useState<'all' | 'with-tool' | 'no-tool'>('all');
 
   // Sort state
-  type SortField = 'id' | 'name' | 'trigger' | 'priority' | 'tokens' | 'status';
+  type SortField = 'name' | 'trigger' | 'priority' | 'tokens' | 'status';
   type SortOrder = 'asc' | 'desc';
-  const [sortBy, setSortBy] = useState<SortField>('id');
+  const [sortBy, setSortBy] = useState<SortField>('priority');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   // Data sources and function APIs for tool config
@@ -240,6 +241,9 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
 
   // Domain validation for web search
   const [domainError, setDomainError] = useState<string | null>(null);
+
+  // Selection state for export
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<number>>(new Set());
 
   // Fetch data
   useEffect(() => {
@@ -569,9 +573,6 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     .sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
-        case 'id':
-          comparison = a.id - b.id;
-          break;
         case 'name':
           comparison = a.name.localeCompare(b.name);
           break;
@@ -600,6 +601,191 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       setSortBy(field);
       setSortOrder('asc');
     }
+  };
+
+  // Selection handlers for export
+  const toggleSkillSelection = (skillId: number) => {
+    setSelectedSkillIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(skillId)) {
+        newSet.delete(skillId);
+      } else {
+        newSet.add(skillId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAllSkillsSelection = () => {
+    if (selectedSkillIds.size === filteredSkills.length) {
+      setSelectedSkillIds(new Set());
+    } else {
+      setSelectedSkillIds(new Set(filteredSkills.map(s => s.id)));
+    }
+  };
+
+  // Export skills to markdown
+  const exportSkillsToMarkdown = (skillsToExport: Skill[]) => {
+    const formatDate = (dateStr: string) => new Date(dateStr).toLocaleString();
+
+    const lines: string[] = [
+      '# Skills Export',
+      '',
+      `**Exported:** ${new Date().toLocaleString()}`,
+      `**Total Skills:** ${skillsToExport.length}`,
+      '',
+      '---',
+      '',
+    ];
+
+    skillsToExport.forEach((skill, index) => {
+      lines.push(`## ${index + 1}. ${skill.name}`);
+      lines.push('');
+
+      // Basic info
+      if (skill.description) {
+        lines.push(`> ${skill.description}`);
+        lines.push('');
+      }
+
+      lines.push('### Basic Information');
+      lines.push('');
+      lines.push(`| Property | Value |`);
+      lines.push(`|----------|-------|`);
+      lines.push(`| **Priority** | ${skill.priority} (${getPriorityTier(skill.priority).label}) |`);
+      lines.push(`| **Status** | ${skill.is_active ? 'Active' : 'Inactive'} |`);
+      lines.push(`| **Core Skill** | ${skill.is_core ? 'Yes' : 'No'} |`);
+      lines.push(`| **Token Estimate** | ${skill.token_estimate || 'N/A'} |`);
+      lines.push('');
+
+      // Trigger configuration
+      lines.push('### Trigger Configuration');
+      lines.push('');
+      lines.push(`| Property | Value |`);
+      lines.push(`|----------|-------|`);
+      lines.push(`| **Trigger Type** | ${skill.trigger_type} |`);
+      if (skill.trigger_value) {
+        lines.push(`| **Trigger Value** | ${skill.trigger_value} |`);
+      }
+      if (skill.match_type) {
+        lines.push(`| **Match Type** | ${skill.match_type} |`);
+      }
+      lines.push(`| **Category Restricted** | ${skill.category_restricted ? 'Yes' : 'No'} |`);
+      if (skill.trigger_type === 'category') {
+        lines.push(`| **Is Index Skill** | ${skill.is_index ? 'Yes' : 'No'} |`);
+      }
+      lines.push('');
+
+      // Categories
+      if (skill.categories.length > 0) {
+        lines.push('### Categories');
+        lines.push('');
+        skill.categories.forEach(cat => {
+          lines.push(`- ${cat.name} (\`${cat.slug}\`)`);
+        });
+        lines.push('');
+      }
+
+      // Tool Linkage
+      if (skill.tool_name) {
+        lines.push('### Tool Linkage');
+        lines.push('');
+        lines.push(`| Property | Value |`);
+        lines.push(`|----------|-------|`);
+        lines.push(`| **Tool Name** | ${skill.tool_name} |`);
+        lines.push(`| **Force Mode** | ${skill.force_mode || 'N/A'} |`);
+        if (skill.tool_config_override && Object.keys(skill.tool_config_override).length > 0) {
+          lines.push(`| **Config Override** | \`${JSON.stringify(skill.tool_config_override)}\` |`);
+        }
+        if (skill.data_source_filter) {
+          lines.push(`| **Data Source Filter** | ${skill.data_source_filter.type}: ${skill.data_source_filter.source_ids.join(', ')} |`);
+        }
+        lines.push('');
+      }
+
+      // Compliance Configuration
+      if (skill.compliance_config?.enabled) {
+        lines.push('### Compliance Configuration');
+        lines.push('');
+        lines.push(`| Property | Value |`);
+        lines.push(`|----------|-------|`);
+        lines.push(`| **Enabled** | Yes |`);
+        if (skill.compliance_config.sections && skill.compliance_config.sections.length > 0) {
+          lines.push(`| **Required Sections** | ${skill.compliance_config.sections.join(', ')} |`);
+        }
+        if (skill.compliance_config.passThreshold !== undefined) {
+          lines.push(`| **Pass Threshold** | ${skill.compliance_config.passThreshold}% |`);
+        }
+        if (skill.compliance_config.warnThreshold !== undefined) {
+          lines.push(`| **Warn Threshold** | ${skill.compliance_config.warnThreshold}% |`);
+        }
+        if (skill.compliance_config.clarificationInstructions) {
+          lines.push(`| **Clarification Instructions** | ${skill.compliance_config.clarificationInstructions} |`);
+        }
+        lines.push('');
+      }
+
+      // Prompt Content
+      lines.push('### Prompt Content');
+      lines.push('');
+      lines.push('```');
+      lines.push(skill.prompt_content);
+      lines.push('```');
+      lines.push('');
+
+      // Metadata
+      lines.push('### Metadata');
+      lines.push('');
+      lines.push(`| Property | Value |`);
+      lines.push(`|----------|-------|`);
+      lines.push(`| **Created By** | ${skill.created_by} |`);
+      lines.push(`| **Created At** | ${formatDate(skill.created_at)} |`);
+      lines.push(`| **Updated By** | ${skill.updated_by} |`);
+      lines.push(`| **Updated At** | ${formatDate(skill.updated_at)} |`);
+      lines.push('');
+
+      lines.push('---');
+      lines.push('');
+    });
+
+    return lines.join('\n');
+  };
+
+  // Download markdown file
+  const downloadMarkdown = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export handlers
+  const handleExportSelected = () => {
+    const skillsToExport = skills.filter(s => selectedSkillIds.has(s.id));
+    if (skillsToExport.length === 0) return;
+
+    const markdown = exportSkillsToMarkdown(skillsToExport);
+    const filename = skillsToExport.length === 1
+      ? `skill-${skillsToExport[0].name.toLowerCase().replace(/\s+/g, '-')}.md`
+      : `skills-export-${new Date().toISOString().split('T')[0]}.md`;
+    downloadMarkdown(markdown, filename);
+    setSuccess(`Exported ${skillsToExport.length} skill(s)`);
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleExportAll = () => {
+    if (filteredSkills.length === 0) return;
+
+    const markdown = exportSkillsToMarkdown(filteredSkills);
+    const filename = `skills-export-all-${new Date().toISOString().split('T')[0]}.md`;
+    downloadMarkdown(markdown, filename);
+    setSuccess(`Exported ${filteredSkills.length} skill(s)`);
+    setTimeout(() => setSuccess(null), 3000);
   };
 
   // Get trigger type badge
@@ -826,6 +1012,31 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                 Restore Defaults
               </Button>
             )}
+            {/* Export dropdown */}
+            {!isSuperuser && (
+              <div className="relative group">
+                <Button variant="secondary" title="Export skills to markdown">
+                  <Download size={16} className="mr-2" />
+                  Export
+                </Button>
+                <div className="absolute right-0 mt-1 w-48 bg-white border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                  <button
+                    onClick={handleExportSelected}
+                    disabled={selectedSkillIds.size === 0}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-t-lg"
+                  >
+                    Export Selected ({selectedSkillIds.size})
+                  </button>
+                  <button
+                    onClick={handleExportAll}
+                    disabled={filteredSkills.length === 0}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg border-t"
+                  >
+                    Export All ({filteredSkills.length})
+                  </button>
+                </div>
+              </div>
+            )}
             <Button variant="secondary" onClick={() => setShowPreviewModal(true)}>
               <Eye size={16} className="mr-2" />
               Preview
@@ -891,13 +1102,25 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                {/* Selection checkbox column - admin only */}
+                {!isSuperuser && (
+                  <th className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredSkills.length > 0 && selectedSkillIds.size === filteredSkills.length}
+                      onChange={toggleAllSkillsSelection}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      title="Select all"
+                    />
+                  </th>
+                )}
                 <th
-                  className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-16 cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('id')}
+                  className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('priority')}
                 >
                   <div className="flex items-center gap-1">
-                    ID
-                    {sortBy === 'id' ? (
+                    Priority
+                    {sortBy === 'priority' ? (
                       sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
                     ) : (
                       <ArrowUpDown size={12} className="text-gray-300" />
@@ -933,19 +1156,6 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categories</th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('priority')}
-                >
-                  <div className="flex items-center gap-1">
-                    Priority
-                    {sortBy === 'priority' ? (
-                      sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                    ) : (
-                      <ArrowUpDown size={12} className="text-gray-300" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('tokens')}
                 >
                   <div className="flex items-center gap-1">
@@ -976,14 +1186,26 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             <tbody className="divide-y divide-gray-200">
               {filteredSkills.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={isSuperuser ? 7 : 8} className="px-6 py-8 text-center text-gray-500">
                     No skills found. Create your first skill to get started.
                   </td>
                 </tr>
               ) : (
                 filteredSkills.map((skill) => (
                   <tr key={skill.id} className={`hover:bg-gray-50 ${!skill.is_active ? 'opacity-60' : ''}`}>
-                    <td className="px-3 py-4 text-sm text-gray-500 font-mono">{skill.id}</td>
+                    {/* Selection checkbox - admin only */}
+                    {!isSuperuser && (
+                      <td className="px-3 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedSkillIds.has(skill.id)}
+                          onChange={() => toggleSkillSelection(skill.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                    )}
+                    <td className="px-3 py-4"><PriorityBadge priority={skill.priority} /></td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {skill.is_core && <span title="Core skill"><Lock size={14} className="text-amber-500" /></span>}
@@ -1031,7 +1253,6 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4"><PriorityBadge priority={skill.priority} /></td>
                     <td className="px-6 py-4 text-sm text-gray-500">{skill.token_estimate || '~'}</td>
                     <td className="px-6 py-4">
                       {skill.is_active ? (
