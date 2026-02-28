@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins, Key } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
@@ -273,7 +273,9 @@ interface SystemStats {
 
 export default function AdminPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') as TabType | null;
+  const [activeTab, setActiveTab] = useState<TabType>(tabParam || 'dashboard');
   const [userRole, setUserRole] = useState<'admin' | 'superuser' | 'user'>('admin');
 
   // RAG/LLM settings state
@@ -564,6 +566,14 @@ export default function AdminPage() {
     loadSettings();
     loadStats();
   }, [loadSettings, loadStats]);
+
+  // Sync URL tab parameter to state
+  useEffect(() => {
+    const tab = searchParams.get('tab') as TabType | null;
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams, activeTab]);
 
   // RAG settings handlers
   const handleRagChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(

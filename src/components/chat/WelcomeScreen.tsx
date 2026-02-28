@@ -44,6 +44,8 @@ import {
   Table2,
   LayoutTemplate,
   Flag,
+  Palette,
+  Crosshair,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -90,6 +92,16 @@ interface ServiceCard {
   minRole: 'user' | 'superuser' | 'admin';
   colorClass: string;
   iconBgClass: string;
+  // Action type determines what happens when service is clicked
+  actionType: 'modal' | 'category' | 'route' | 'message' | 'choice';
+  categorySlug?: string;      // For 'category' type - creates thread with this category
+  route?: string;             // For 'route' type - navigates to this page
+  message?: string;           // For 'message' type - shows this info message
+  choiceOptions?: {           // For 'choice' type - shows modal with options
+    label: string;
+    description: string;
+    route: string;
+  }[];
 }
 
 interface MagicWord {
@@ -147,9 +159,83 @@ export default function WelcomeScreen({
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'setup' | 'services' | 'magicwords'>('services');
   const [selectedService, setSelectedService] = useState<ServiceCard | null>(null);
+  const [showMessageModal, setShowMessageModal] = useState<string | null>(null);
+  const [showChoiceModal, setShowChoiceModal] = useState<ServiceCard | null>(null);
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
 
   const toggleCard = (id: string) => {
     setExpandedCard(expandedCard === id ? null : id);
+  };
+
+  // Handle service action based on actionType
+  const handleServiceAction = async (service: ServiceCard) => {
+    setSelectedService(null);
+
+    switch (service.actionType) {
+      case 'modal':
+        // Open new thread modal (existing behavior)
+        onNewThread?.();
+        break;
+
+      case 'category':
+        // Create thread with pre-selected category
+        if (service.categorySlug) {
+          setIsCreatingThread(true);
+          try {
+            // First get the category ID from the slug
+            const catResponse = await fetch('/api/user/categories');
+            if (catResponse.ok) {
+              const categories = await catResponse.json();
+              const category = categories.find((c: { slug: string }) => c.slug === service.categorySlug);
+              if (category) {
+                // Create thread with this category
+                const response = await fetch('/api/threads', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    title: `${service.title} Thread`,
+                    categoryIds: [category.id]
+                  }),
+                });
+                if (response.ok) {
+                  // Refresh to show the new thread
+                  window.location.reload();
+                }
+              } else {
+                // Category not found, fall back to regular thread
+                onNewThread?.();
+              }
+            }
+          } catch (error) {
+            console.error('Failed to create thread with category:', error);
+            onNewThread?.();
+          } finally {
+            setIsCreatingThread(false);
+          }
+        } else {
+          onNewThread?.();
+        }
+        break;
+
+      case 'route':
+        if (service.route) {
+          router.push(service.route);
+        }
+        break;
+
+      case 'message':
+        if (service.message) {
+          setShowMessageModal(service.message);
+        }
+        break;
+
+      case 'choice':
+        setShowChoiceModal(service);
+        break;
+
+      default:
+        onNewThread?.();
+    }
   };
 
   // Setup the Platform cards
@@ -302,9 +388,9 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Skills',
-        route: '/admin?tab=skills',
+        route: '/superuser',
       },
-      minRole: 'admin',
+      minRole: 'superuser',
       colorClass: 'border-amber-200 hover:border-amber-300',
       iconBgClass: 'bg-amber-100 text-amber-600',
     },
@@ -324,7 +410,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Create Workspace',
-        route: '/admin?tab=workspaces',
+        route: '/superuser',
       },
       minRole: 'superuser',
       colorClass: 'border-green-200 hover:border-green-300',
@@ -347,7 +433,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Create Agent',
-        route: '/admin?tab=agents',
+        route: '/superuser',
       },
       minRole: 'superuser',
       colorClass: 'border-cyan-200 hover:border-cyan-300',
@@ -368,6 +454,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-blue-200 hover:border-blue-300 hover:shadow-md',
       iconBgClass: 'bg-blue-100 text-blue-600',
+      actionType: 'modal',
     },
     {
       id: 'diagram',
@@ -379,6 +466,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-blue-200 hover:border-blue-300 hover:shadow-md',
       iconBgClass: 'bg-blue-100 text-blue-600',
+      actionType: 'modal',
     },
     {
       id: 'graph',
@@ -390,6 +478,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-blue-200 hover:border-blue-300 hover:shadow-md',
       iconBgClass: 'bg-blue-100 text-blue-600',
+      actionType: 'modal',
     },
     {
       id: 'infographic',
@@ -401,6 +490,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-blue-200 hover:border-blue-300 hover:shadow-md',
       iconBgClass: 'bg-blue-100 text-blue-600',
+      actionType: 'modal',
     },
     // Tier 2 — Planning Services
     {
@@ -413,6 +503,8 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
+      actionType: 'category',
+      categorySlug: 'grenada-digital-strategy',
     },
     {
       id: 'strategy',
@@ -424,6 +516,8 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
+      actionType: 'category',
+      categorySlug: 'grenada-digital-strategy',
     },
     {
       id: 'project-management',
@@ -435,6 +529,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
+      actionType: 'modal',
     },
     {
       id: 'gantt',
@@ -447,6 +542,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
+      actionType: 'modal',
     },
     {
       id: 'raid',
@@ -459,6 +555,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
+      actionType: 'modal',
     },
     {
       id: 'raci',
@@ -471,18 +568,7 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
-    },
-    {
-      id: 'budget-planning',
-      icon: <Calculator size={24} />,
-      title: 'Budget Planning',
-      code: 'BPaaS',
-      description: 'Structured budget planning and scenario modelling from financial inputs',
-      tier: 2,
-      isSubService: true,
-      minRole: 'user',
-      colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
-      iconBgClass: 'bg-purple-100 text-purple-600',
+      actionType: 'modal',
     },
     // Tier 3 — Domain Specific Services
     {
@@ -495,17 +581,21 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'category',
+      categorySlug: 'grenada-service-feedback',
     },
     {
       id: 'survey',
       icon: <ClipboardList size={24} />,
-      title: 'Survey Analyser as a Service',
+      title: 'Citizen Survey Analyser',
       code: 'SVaaS',
       description: 'Process and summarise structured and unstructured survey responses with insight extraction',
       tier: 3,
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'category',
+      categorySlug: 'citizen-survey',
     },
     {
       id: 'compensation',
@@ -517,28 +607,34 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'category',
+      categorySlug: 'compensation-review',
     },
     {
-      id: 'budget-assistant',
-      icon: <Wallet size={24} />,
-      title: 'Budget Assistant as a Service',
-      code: 'BAaaS',
-      description: 'Intelligent assistant for budget queries, variance analysis and fiscal document review',
+      id: 'service-simplification',
+      icon: <LayoutTemplate size={24} />,
+      title: 'Service Simplification as a Service',
+      code: 'SSaaS',
+      description: 'AI-assisted service redesign and simplification for improved citizen experience',
       tier: 3,
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'category',
+      categorySlug: 'gea',
     },
     {
-      id: 'gov-info',
-      icon: <Landmark size={24} />,
-      title: 'Government Information as a Service',
-      code: 'GIaaS',
-      description: 'Convert policy and government content into accessible public-facing formats — podcasts and infographic brochures',
+      id: 'branding',
+      icon: <Palette size={24} />,
+      title: 'Branding as a Service',
+      code: 'BaaS',
+      description: 'AI-powered brand consistency analysis and guideline generation for government communications',
       tier: 3,
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'category',
+      categorySlug: 'branding-guidelines',
     },
     {
       id: 'training',
@@ -550,6 +646,8 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'category',
+      categorySlug: 'gog-change',
     },
     {
       id: 'customer-support',
@@ -561,6 +659,9 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'route',
+      route: '/superuser',
+      message: 'Create a new workspace to embed as a chatbot',
     },
     {
       id: 'translation',
@@ -572,6 +673,8 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
+      actionType: 'message',
+      message: 'Access Translation via chat input: Click the + button and select Translate',
     },
     // Tier 4 — Integration & Automation Services
     {
@@ -584,6 +687,8 @@ export default function WelcomeScreen({
       minRole: 'superuser',
       colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
       iconBgClass: 'bg-emerald-100 text-emerald-600',
+      actionType: 'route',
+      route: '/superuser',
     },
     {
       id: 'agent-bot',
@@ -595,6 +700,8 @@ export default function WelcomeScreen({
       minRole: 'superuser',
       colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
       iconBgClass: 'bg-emerald-100 text-emerald-600',
+      actionType: 'route',
+      route: '/superuser',
     },
     {
       id: 'data-integration',
@@ -606,6 +713,11 @@ export default function WelcomeScreen({
       minRole: 'superuser',
       colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
       iconBgClass: 'bg-emerald-100 text-emerald-600',
+      actionType: 'choice',
+      choiceOptions: [
+        { label: 'Data Source Query', description: 'Connect to REST APIs or upload CSV/Excel files', route: '/superuser' },
+        { label: 'Function Calling API', description: 'Create custom function APIs for AI tool use', route: '/superuser' },
+      ],
     },
     // Tier 5 — Developer Tools
     {
@@ -618,6 +730,8 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
+      actionType: 'category',
+      categorySlug: 'cyber',
     },
     {
       id: 'code-analyser',
@@ -629,6 +743,21 @@ export default function WelcomeScreen({
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
+      actionType: 'category',
+      categorySlug: 'cyber',
+    },
+    {
+      id: 'gap-spotter',
+      icon: <Crosshair size={24} />,
+      title: 'Gap Spotter as a Service',
+      code: 'GSaaS',
+      description: 'AI-powered gap analysis to identify missing elements, inconsistencies, and improvement opportunities in policies, processes, and systems.',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
+      actionType: 'category',
+      categorySlug: 'cyber',
     },
   ];
 
@@ -890,15 +1019,105 @@ export default function WelcomeScreen({
               {/* Modal Footer */}
               <div className="p-4 border-t border-gray-100">
                 <Button
-                  onClick={() => {
-                    setSelectedService(null);
-                    onNewThread?.();
-                  }}
+                  onClick={() => handleServiceAction(selectedService)}
+                  disabled={isCreatingThread}
                   className="w-full flex items-center justify-center gap-2"
                 >
-                  <MessageSquarePlus size={18} />
-                  Start Thread
+                  {isCreatingThread ? (
+                    <>Creating...</>
+                  ) : selectedService.actionType === 'route' ? (
+                    <>
+                      <ExternalLink size={18} />
+                      Go to {selectedService.route === '/superuser' ? 'Dashboard' : 'Settings'}
+                    </>
+                  ) : selectedService.actionType === 'message' ? (
+                    <>
+                      <MessageCircle size={18} />
+                      View Info
+                    </>
+                  ) : selectedService.actionType === 'choice' ? (
+                    <>
+                      <Settings size={18} />
+                      Choose Option
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquarePlus size={18} />
+                      Start Thread
+                    </>
+                  )}
                 </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Message Modal */}
+        {showMessageModal && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowMessageModal(null)}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-auto p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-blue-100">
+                  <MessageCircle size={24} className="text-blue-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900">Information</h3>
+              </div>
+              <p className="text-gray-700 mb-4">{showMessageModal}</p>
+              <Button
+                onClick={() => setShowMessageModal(null)}
+                className="w-full"
+              >
+                Got it
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Choice Modal */}
+        {showChoiceModal && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowChoiceModal(null)}
+          >
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-md mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${showChoiceModal.iconBgClass}`}>
+                    {showChoiceModal.icon}
+                  </div>
+                  <h3 className="font-semibold text-gray-900">{showChoiceModal.title}</h3>
+                </div>
+                <button
+                  onClick={() => setShowChoiceModal(null)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-sm text-gray-600 mb-4">Choose how you want to proceed:</p>
+                {showChoiceModal.choiceOptions?.map((option, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      setShowChoiceModal(null);
+                      router.push(option.route);
+                    }}
+                    className="w-full p-4 text-left border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all"
+                  >
+                    <div className="font-medium text-gray-900">{option.label}</div>
+                    <div className="text-sm text-gray-600">{option.description}</div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
