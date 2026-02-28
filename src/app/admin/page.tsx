@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins, Key } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -271,7 +271,7 @@ interface SystemStats {
   };
 }
 
-export default function AdminPage() {
+function AdminPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab') as TabType | null;
@@ -1455,5 +1455,14 @@ export default function AdminPage() {
       </Modal>
 
     </div>
+  );
+}
+
+// Wrap with Suspense for useSearchParams
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="text-gray-500">Loading...</div></div>}>
+      <AdminPageContent />
+    </Suspense>
   );
 }
