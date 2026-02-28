@@ -299,6 +299,12 @@ function AdminPageContent() {
   const [expandedPromptsSections, setExpandedPromptsSections] = useState<Set<PromptsSection>>(new Set(['system-prompt']));
   const [expandedTokensSections, setExpandedTokensSections] = useState<Set<TokensSection>>(new Set(['memory']));
 
+  // Handle tab change - updates both state and URL
+  const handleTabChange = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+    router.push(`/admin?tab=${tab}`, { scroll: false });
+  }, [router]);
+
   const toggleUsersSection = (section: UsersSection) => {
     setExpandedUsersSections(prev => {
       const newSet = new Set(prev);
@@ -570,10 +576,10 @@ function AdminPageContent() {
   // Sync URL tab parameter to state
   useEffect(() => {
     const tab = searchParams.get('tab') as TabType | null;
-    if (tab && tab !== activeTab) {
+    if (tab) {
       setActiveTab(tab);
     }
-  }, [searchParams, activeTab]);
+  }, [searchParams]); // Only depend on searchParams, not activeTab
 
   // RAG settings handlers
   const handleRagChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
@@ -1088,7 +1094,7 @@ function AdminPageContent() {
           tokensSection={tokensSection}
           settingsSection={settingsSection}
           userRole={userRole}
-          onTabChange={setActiveTab}
+          onTabChange={handleTabChange}
           onDashboardChange={setDashboardSection}
           onDocumentsChange={setDocumentsSection}
           onUsersChange={setUsersSection}

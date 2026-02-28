@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Trash2, Edit2, Save, RefreshCw, CheckCircle, Wand2, ChevronUp, ChevronDown, MessageSquare } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
@@ -105,8 +105,13 @@ interface SubscribedCategory {
   slug: string;
 }
 
-export default function SuperUserPage() {
+// Valid tab types for URL parameter validation
+type SuperuserTabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'agent-bots' | 'settings';
+const VALID_TABS: SuperuserTabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'workspaces', 'skills', 'agent-bots', 'settings'];
+
+function SuperUserPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assignedCategories, setAssignedCategories] = useState<AssignedCategory[]>([]);
@@ -138,8 +143,18 @@ export default function SuperUserPage() {
   // Documents state (data loaded from API)
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
 
-  // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'agent-bots' | 'settings'>('dashboard');
+  // Active tab state - initialize from URL parameter
+  const tabParam = searchParams.get('tab');
+  const initialTab = tabParam && VALID_TABS.includes(tabParam as SuperuserTabType) ? tabParam as SuperuserTabType : 'dashboard';
+  const [activeTab, setActiveTab] = useState<SuperuserTabType>(initialTab);
+
+  // Sync URL tab parameter to state
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && VALID_TABS.includes(tab as SuperuserTabType)) {
+      setActiveTab(tab as SuperuserTabType);
+    }
+  }, [searchParams]);
 
   // Prompts sidebar section state
   type PromptsSection = 'global-prompt' | 'category-prompts';
@@ -1480,5 +1495,18 @@ export default function SuperUserPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams support
+export default function SuperUserPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    }>
+      <SuperUserPageContent />
+    </Suspense>
   );
 }

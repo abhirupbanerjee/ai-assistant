@@ -185,7 +185,7 @@ export default function WelcomeScreen({
             // First get the category ID from the slug
             const catResponse = await fetch('/api/user/categories');
             if (catResponse.ok) {
-              const categories = await catResponse.json();
+              const { categories } = await catResponse.json();
               const category = categories.find((c: { slug: string }) => c.slug === service.categorySlug);
               if (category) {
                 // Create thread with this category
@@ -275,7 +275,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Categories',
-        route: '/superuser',
+        route: '/superuser?tab=categories',
       },
       minRole: 'superuser',
       colorClass: 'border-purple-200 hover:border-purple-300',
@@ -319,7 +319,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Add Documents',
-        route: '/superuser',
+        route: '/superuser?tab=documents',
       },
       minRole: 'superuser',
       colorClass: 'border-indigo-200 hover:border-indigo-300',
@@ -388,7 +388,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Skills',
-        route: '/superuser',
+        route: '/superuser?tab=skills',
       },
       minRole: 'superuser',
       colorClass: 'border-amber-200 hover:border-amber-300',
@@ -410,7 +410,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Create Workspace',
-        route: '/superuser',
+        route: '/superuser?tab=workspaces',
       },
       minRole: 'superuser',
       colorClass: 'border-green-200 hover:border-green-300',
@@ -433,7 +433,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Create Agent',
-        route: '/superuser',
+        route: '/superuser?tab=agent-bots',
       },
       minRole: 'superuser',
       colorClass: 'border-cyan-200 hover:border-cyan-300',
