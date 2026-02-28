@@ -106,8 +106,8 @@ interface SubscribedCategory {
 }
 
 // Valid tab types for URL parameter validation
-type SuperuserTabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'workspaces' | 'skills' | 'agent-bots' | 'settings';
-const VALID_TABS: SuperuserTabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'workspaces', 'skills', 'agent-bots', 'settings'];
+type SuperuserTabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agent-bots' | 'settings';
+const VALID_TABS: SuperuserTabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'agent-bots', 'settings'];
 
 function SuperUserPageContent() {
   const router = useRouter();
@@ -156,9 +156,8 @@ function SuperUserPageContent() {
     }
   }, [searchParams]);
 
-  // Prompts sidebar section state
+  // Prompts accordion section type
   type PromptsSection = 'global-prompt' | 'category-prompts';
-  const [promptsSection, setPromptsSection] = useState<PromptsSection>('category-prompts');
 
   // Accordion state for Prompts sections
   const [expandedPromptsSections, setExpandedPromptsSections] = useState<Set<PromptsSection>>(new Set(['category-prompts']));
@@ -170,10 +169,6 @@ function SuperUserPageContent() {
       return newSet;
     });
   };
-
-  // Skills sidebar section state
-  type SkillsSection = 'tools' | 'skills';
-  const [skillsSection, setSkillsSection] = useState<SkillsSection>('tools');
 
   // Settings sidebar section state
   type SettingsSection = 'rag-tuning' | 'backup';
@@ -634,12 +629,8 @@ function SuperUserPageContent() {
         {/* Sidebar Navigation */}
         <SuperuserSidebarMenu
           activeTab={activeTab}
-          promptsSection={promptsSection}
-          skillsSection={skillsSection}
           settingsSection={settingsSection}
           onTabChange={setActiveTab}
-          onPromptsChange={setPromptsSection}
-          onSkillsChange={setSkillsSection}
           onSettingsChange={setSettingsSection}
         />
 
@@ -980,15 +971,14 @@ function SuperUserPageContent() {
         )}
 
         {/* Skills Tab (Skill Library) */}
+        {/* Tools Tab (level 1 menu item) */}
+        {activeTab === 'tools' && (
+          <ToolsTab isSuperuser />
+        )}
+
+        {/* Skills Tab (level 1 menu item) */}
         {activeTab === 'skills' && (
-          <>
-            {skillsSection === 'tools' && (
-              <ToolsTab isSuperuser />
-            )}
-            {skillsSection === 'skills' && (
-              <SkillsTab isSuperuser />
-            )}
-          </>
+          <SkillsTab isSuperuser />
         )}
 
         {/* Workspaces Section */}

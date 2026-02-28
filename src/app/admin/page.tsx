@@ -128,12 +128,12 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'agent-bots' | 'skills' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'workspaces' | 'settings';
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type SkillsSection = 'tools' | 'skill-library';
+type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
 type SettingsSection = 'llm' | 'llm-fallback' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
@@ -284,7 +284,7 @@ function AdminPageContent() {
   const [documentsSection, setDocumentsSection] = useState<DocumentsSection>('documents');
   const [usersSection, setUsersSection] = useState<UsersSection>('management');
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('system-prompt');
-  const [skillsSection, setSkillsSection] = useState<SkillsSection>('tools');
+  const [agentsSection, setAgentsSection] = useState<AgentsSection>('config');
   const [tokensSection, setTokensSection] = useState<TokensSection>('memory');
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
 
@@ -573,13 +573,24 @@ function AdminPageContent() {
     loadStats();
   }, [loadSettings, loadStats]);
 
-  // Sync URL tab parameter to state
+  // Sync URL tab parameter to state (with backward compatibility for legacy URLs)
   useEffect(() => {
-    const tab = searchParams.get('tab') as TabType | null;
+    const tab = searchParams.get('tab');
     if (tab) {
-      setActiveTab(tab);
+      // Handle legacy agent URLs
+      if (tab === 'agent') {
+        setActiveTab('agents');
+        setAgentsSection('config');
+        router.replace('/admin?tab=agents', { scroll: false });
+      } else if (tab === 'agent-bots') {
+        setActiveTab('agents');
+        setAgentsSection('bots');
+        router.replace('/admin?tab=agents', { scroll: false });
+      } else {
+        setActiveTab(tab as TabType);
+      }
     }
-  }, [searchParams]); // Only depend on searchParams, not activeTab
+  }, [searchParams, router]); // Only depend on searchParams and router
 
   // RAG settings handlers
   const handleRagChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
@@ -1090,7 +1101,7 @@ function AdminPageContent() {
           documentsSection={documentsSection}
           usersSection={usersSection}
           promptsSection={promptsSection}
-          skillsSection={skillsSection}
+          agentsSection={agentsSection}
           tokensSection={tokensSection}
           settingsSection={settingsSection}
           userRole={userRole}
@@ -1099,7 +1110,7 @@ function AdminPageContent() {
           onDocumentsChange={setDocumentsSection}
           onUsersChange={setUsersSection}
           onPromptsChange={setPromptsSection}
-          onSkillsChange={setSkillsSection}
+          onAgentsChange={setAgentsSection}
           onTokensChange={setTokensSection}
           onSettingsChange={setSettingsSection}
         />
@@ -1300,16 +1311,14 @@ function AdminPageContent() {
           </div>
         )}
 
-        {/* Skills Tab (renamed from Tools) */}
+        {/* Tools Tab (level 1 menu item) */}
+        {activeTab === 'tools' && (
+          <ToolsTab activeSubTab={toolsSection} />
+        )}
+
+        {/* Skills Tab (level 1 menu item) */}
         {activeTab === 'skills' && (
-          <>
-            {skillsSection === 'tools' && (
-              <ToolsTab activeSubTab={toolsSection} />
-            )}
-            {skillsSection === 'skill-library' && (
-              <SkillsTab />
-            )}
-          </>
+          <SkillsTab />
         )}
 
         {/* Workspaces Tab */}
@@ -1317,18 +1326,25 @@ function AdminPageContent() {
           <WorkspacesTab isAdmin={true} />
         )}
 
-        {/* Agent Bots Tab */}
-        {activeTab === 'agent-bots' && (
-          selectedAgentBotId ? (
-            <AgentBotDetail
-              botId={selectedAgentBotId}
-              onBack={() => setSelectedAgentBotId(null)}
-            />
-          ) : (
-            <AgentBotsManagement
-              onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
-            />
-          )
+        {/* Agents Tab - expandable with config/bots sections */}
+        {activeTab === 'agents' && (
+          <>
+            {agentsSection === 'config' && (
+              <AgentSettingsTab />
+            )}
+            {agentsSection === 'bots' && (
+              selectedAgentBotId ? (
+                <AgentBotDetail
+                  botId={selectedAgentBotId}
+                  onBack={() => setSelectedAgentBotId(null)}
+                />
+              ) : (
+                <AgentBotsManagement
+                  onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
+                />
+              )
+            )}
+          </>
         )}
 
         {/* Backup Tab (now under Settings) */}
@@ -1339,11 +1355,6 @@ function AdminPageContent() {
         {/* Branding Tab (promoted from Settings) */}
         {activeTab === 'branding' && (
           <BrandingSettingsTab />
-        )}
-
-        {/* Agent Tab (promoted from Settings) */}
-        {activeTab === 'agent' && (
-          <AgentSettingsTab />
         )}
 
         {/* Tokens Tab - Memory, Summarization, Limits */}

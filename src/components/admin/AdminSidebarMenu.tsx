@@ -16,6 +16,7 @@ import {
   Database,
   Settings,
   Palette,
+  Wrench,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -27,14 +28,14 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'agent' | 'tokens' | 'workspaces' | 'agent-bots' | 'skills' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'workspaces' | 'settings';
 
 // Section types for expandable menus
 type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type SkillsSection = 'tools' | 'skill-library';
+type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
 type SettingsSection = 'llm' | 'llm-fallback' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
@@ -77,20 +78,20 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
   { id: 'users', label: 'Users', icon: Users, expandable: false },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare, expandable: false },
-  { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
-  { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },
-  { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
-  { id: 'agent-bots', label: 'Agent Bots', icon: Bot, expandable: false },
+  { id: 'tools', label: 'Tools', icon: Wrench, expandable: false },
+  { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   {
-    id: 'skills',
-    label: 'Skill Library',
-    icon: Sparkles,
+    id: 'agents',
+    label: 'Agents',
+    icon: Bot,
     expandable: true,
     submenu: [
-      { id: 'tools', label: 'Tools' },
-      { id: 'skill-library', label: 'Skills' },
+      { id: 'config', label: 'Agent Config' },
+      { id: 'bots', label: 'Agent Bots' },
     ]
   },
+  { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },
+  { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
@@ -143,8 +144,8 @@ export const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
   { id: 'category-prompts', label: 'Category Prompts' },
 ];
 
-export const SKILLS_SUBMENU: { id: SkillsSection; label: string }[] =
-  getMenuConfig('skills')?.submenu as { id: SkillsSection; label: string }[] || [];
+export const AGENTS_SUBMENU: { id: AgentsSection; label: string }[] =
+  getMenuConfig('agents')?.submenu as { id: AgentsSection; label: string }[] || [];
 
 export const TOKENS_SUBMENU: { id: TokensSection; label: string }[] = [
   { id: 'memory', label: 'Memory' },
@@ -180,7 +181,7 @@ interface AdminSidebarMenuProps {
   documentsSection: DocumentsSection;
   usersSection: UsersSection;
   promptsSection: PromptsSection;
-  skillsSection: SkillsSection;
+  agentsSection: AgentsSection;
   tokensSection: TokensSection;
   settingsSection: SettingsSection;
   userRole?: 'admin' | 'superuser' | 'user';
@@ -189,7 +190,7 @@ interface AdminSidebarMenuProps {
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
-  onSkillsChange: (section: SkillsSection) => void;
+  onAgentsChange: (section: AgentsSection) => void;
   onTokensChange: (section: TokensSection) => void;
   onSettingsChange: (section: SettingsSection) => void;
 }
@@ -204,7 +205,7 @@ export default function AdminSidebarMenu({
   documentsSection,
   usersSection,
   promptsSection,
-  skillsSection,
+  agentsSection,
   tokensSection,
   settingsSection,
   userRole = 'admin',
@@ -213,7 +214,7 @@ export default function AdminSidebarMenu({
   onDocumentsChange,
   onUsersChange,
   onPromptsChange,
-  onSkillsChange,
+  onAgentsChange,
   onTokensChange,
   onSettingsChange,
 }: AdminSidebarMenuProps) {
@@ -233,7 +234,7 @@ export default function AdminSidebarMenu({
       case 'documents': return documentsSection;
       case 'users': return usersSection;
       case 'prompts': return promptsSection;
-      case 'skills': return skillsSection;
+      case 'agents': return agentsSection;
       case 'tokens': return tokensSection;
       case 'settings': return settingsSection;
       default: return '';
@@ -258,8 +259,8 @@ export default function AdminSidebarMenu({
       case 'prompts':
         onPromptsChange(sectionId as PromptsSection);
         break;
-      case 'skills':
-        onSkillsChange(sectionId as SkillsSection);
+      case 'agents':
+        onAgentsChange(sectionId as AgentsSection);
         break;
       case 'tokens':
         onTokensChange(sectionId as TokensSection);
@@ -484,4 +485,4 @@ export default function AdminSidebarMenu({
 }
 
 // Export types for use in admin/page.tsx
-export type { TabType, DashboardSection, DocumentsSection, UsersSection, PromptsSection, SkillsSection, TokensSection, SettingsSection };
+export type { TabType, DashboardSection, DocumentsSection, UsersSection, PromptsSection, AgentsSection, TokensSection, SettingsSection };
