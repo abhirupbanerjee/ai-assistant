@@ -74,7 +74,8 @@ interface ActionCard {
   };
   actionButton?: {
     label: string;
-    route: string;
+    route?: string;     // Explicit route (admin-only cards)
+    routeTab?: string;  // Tab ID for role-aware routing
   };
   minRole: 'user' | 'superuser' | 'admin';
   colorClass: string;
@@ -95,12 +96,14 @@ interface ServiceCard {
   // Action type determines what happens when service is clicked
   actionType: 'modal' | 'category' | 'route' | 'message' | 'choice';
   categorySlug?: string;      // For 'category' type - creates thread with this category
-  route?: string;             // For 'route' type - navigates to this page
+  route?: string;             // For 'route' type - explicit route (admin-only)
+  routeTab?: string;          // For 'route' type - tab ID for role-aware routing
   message?: string;           // For 'message' type - shows this info message
   choiceOptions?: {           // For 'choice' type - shows modal with options
     label: string;
     description: string;
-    route: string;
+    route?: string;
+    routeTab?: string;
   }[];
 }
 
@@ -167,6 +170,18 @@ export default function WelcomeScreen({
     setExpandedCard(expandedCard === id ? null : id);
   };
 
+  // Get role-aware route: admins go to /admin, superusers go to /superuser
+  const getSmartRoute = (tabId: string) => {
+    return userRole === 'admin' ? `/admin?tab=${tabId}` : `/superuser?tab=${tabId}`;
+  };
+
+  // Resolve the actual route from an action button
+  const resolveRoute = (actionButton: { route?: string; routeTab?: string }) => {
+    if (actionButton.route) return actionButton.route;
+    if (actionButton.routeTab) return getSmartRoute(actionButton.routeTab);
+    return '/';
+  };
+
   // Handle service action based on actionType
   const handleServiceAction = async (service: ServiceCard) => {
     setSelectedService(null);
@@ -218,8 +233,8 @@ export default function WelcomeScreen({
         break;
 
       case 'route':
-        if (service.route) {
-          router.push(service.route);
+        if (service.route || service.routeTab) {
+          router.push(resolveRoute({ route: service.route, routeTab: service.routeTab }));
         }
         break;
 
@@ -275,7 +290,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Categories',
-        route: '/superuser?tab=categories',
+        routeTab: 'categories',
       },
       minRole: 'superuser',
       colorClass: 'border-purple-200 hover:border-purple-300',
@@ -319,7 +334,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Add Documents',
-        route: '/superuser?tab=documents',
+        routeTab: 'documents',
       },
       minRole: 'superuser',
       colorClass: 'border-indigo-200 hover:border-indigo-300',
@@ -367,7 +382,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Tools',
-        route: '/superuser?tab=tools',
+        routeTab: 'tools',
       },
       minRole: 'superuser',
       colorClass: 'border-slate-200 hover:border-slate-300',
@@ -388,7 +403,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Manage Skills',
-        route: '/superuser?tab=skills',
+        routeTab: 'skills',
       },
       minRole: 'superuser',
       colorClass: 'border-amber-200 hover:border-amber-300',
@@ -410,7 +425,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Create Workspace',
-        route: '/superuser?tab=workspaces',
+        routeTab: 'workspaces',
       },
       minRole: 'superuser',
       colorClass: 'border-green-200 hover:border-green-300',
@@ -433,7 +448,7 @@ export default function WelcomeScreen({
       },
       actionButton: {
         label: 'Create Agent',
-        route: '/superuser?tab=agent-bots',
+        routeTab: 'agent-bots',
       },
       minRole: 'superuser',
       colorClass: 'border-cyan-200 hover:border-cyan-300',
@@ -656,11 +671,11 @@ export default function WelcomeScreen({
       code: 'CCSaaS',
       description: 'Embeddable AI chatbots scoped to an entity\'s documents, services and policies for always-on public support',
       tier: 3,
-      minRole: 'user',
+      minRole: 'superuser',
       colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
       iconBgClass: 'bg-amber-100 text-amber-600',
       actionType: 'route',
-      route: '/superuser',
+      routeTab: 'workspaces',
       message: 'Create a new workspace to embed as a chatbot',
     },
     {
@@ -688,7 +703,7 @@ export default function WelcomeScreen({
       colorClass: 'border-emerald-200 hover:border-emerald-300 hover:shadow-md',
       iconBgClass: 'bg-emerald-100 text-emerald-600',
       actionType: 'route',
-      route: '/superuser?tab=workspaces',
+      routeTab: 'workspaces',
     },
     {
       id: 'agent-bot',
@@ -715,8 +730,8 @@ export default function WelcomeScreen({
       iconBgClass: 'bg-emerald-100 text-emerald-600',
       actionType: 'choice',
       choiceOptions: [
-        { label: 'Data Source Query', description: 'Connect to REST APIs or upload CSV/Excel files', route: '/superuser' },
-        { label: 'Function Calling API', description: 'Create custom function APIs for AI tool use', route: '/superuser' },
+        { label: 'Data Source Query', description: 'Connect to REST APIs or upload CSV/Excel files', routeTab: 'tools' },
+        { label: 'Function Calling API', description: 'Create custom function APIs for AI tool use', routeTab: 'tools' },
       ],
     },
     // Tier 5 — Developer Tools
@@ -1110,7 +1125,7 @@ export default function WelcomeScreen({
                     key={index}
                     onClick={() => {
                       setShowChoiceModal(null);
-                      router.push(option.route);
+                      router.push(resolveRoute({ route: option.route, routeTab: option.routeTab }));
                     }}
                     className="w-full p-4 text-left border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all"
                   >
@@ -1217,7 +1232,7 @@ export default function WelcomeScreen({
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(card.actionButton!.route);
+                                router.push(resolveRoute(card.actionButton!));
                               }}
                               className="flex items-center gap-1.5"
                             >
