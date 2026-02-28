@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT,
   role TEXT NOT NULL CHECK (role IN ('admin', 'superuser', 'user')),
   added_by TEXT,
+  password_hash TEXT,
+  credentials_enabled INTEGER DEFAULT 1,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );

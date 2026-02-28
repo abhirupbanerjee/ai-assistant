@@ -18,6 +18,8 @@ export interface UsersTable {
   name: string | null;
   role: 'admin' | 'superuser' | 'user';
   added_by: string | null;
+  password_hash: string | null;
+  credentials_enabled: Generated<number>;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

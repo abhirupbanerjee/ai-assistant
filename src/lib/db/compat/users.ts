@@ -37,7 +37,7 @@ export async function getAllUsers(): Promise<DbUser[]> {
   const db = await getDb();
   return db
     .selectFrom('users')
-    .select(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .orderBy('created_at', 'desc')
     .execute() as Promise<DbUser[]>;
 }
@@ -49,7 +49,7 @@ export async function getUserById(id: number): Promise<DbUser | undefined> {
   const db = await getDb();
   return db
     .selectFrom('users')
-    .select(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .where('id', '=', id)
     .executeTakeFirst() as Promise<DbUser | undefined>;
 }
@@ -61,7 +61,7 @@ export async function getUserByEmail(email: string): Promise<DbUser | undefined>
   const db = await getDb();
   return db
     .selectFrom('users')
-    .select(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .where('email', '=', email.toLowerCase())
     .executeTakeFirst() as Promise<DbUser | undefined>;
 }
@@ -79,7 +79,7 @@ export async function createUser(input: CreateUserInput): Promise<DbUser> {
       role: input.role,
       added_by: input.addedBy || null,
     })
-    .returning(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .returning(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .executeTakeFirstOrThrow();
   return result as DbUser;
 }
@@ -152,7 +152,7 @@ export async function getAdmins(): Promise<DbUser[]> {
   const db = await getDb();
   return db
     .selectFrom('users')
-    .select(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .where('role', '=', 'admin')
     .orderBy('created_at', 'desc')
     .execute() as Promise<DbUser[]>;
@@ -165,7 +165,7 @@ export async function getSuperUsers(): Promise<DbUser[]> {
   const db = await getDb();
   return db
     .selectFrom('users')
-    .select(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .where('role', '=', 'superuser')
     .orderBy('created_at', 'desc')
     .execute() as Promise<DbUser[]>;
@@ -178,7 +178,7 @@ export async function getRegularUsers(): Promise<DbUser[]> {
   const db = await getDb();
   return db
     .selectFrom('users')
-    .select(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
     .where('role', '=', 'user')
     .orderBy('created_at', 'desc')
     .execute() as Promise<DbUser[]>;
@@ -435,7 +435,7 @@ export async function createUserWithSubscriptions(
         role: input.role,
         added_by: input.addedBy || null,
       })
-      .returning(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+      .returning(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
       .executeTakeFirstOrThrow();
 
     const user = result as DbUser;
@@ -469,7 +469,7 @@ export async function createSuperUserWithAssignments(
         role: 'superuser' as UserRole,
         added_by: input.addedBy || null,
       })
-      .returning(['id', 'email', 'name', 'role', 'added_by', 'created_at', 'updated_at'])
+      .returning(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
       .executeTakeFirstOrThrow();
 
     const user = result as DbUser;
@@ -505,5 +505,91 @@ export async function initializeAdminsFromEnv(): Promise<void> {
         addedBy: 'system',
       });
     }
+  }
+}
+
+// ============ Credentials Management ============
+
+export async function setUserPassword(userId: number, passwordHash: string): Promise<boolean> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.setUserPassword(userId, passwordHash);
+  }
+  const db = await getDb();
+  const result = await db
+    .updateTable('users')
+    .set({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+    .where('id', '=', userId)
+    .executeTakeFirst();
+  return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
+}
+
+export async function setCredentialsEnabled(userId: number, enabled: boolean): Promise<boolean> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.setCredentialsEnabled(userId, enabled);
+  }
+  const db = await getDb();
+  const result = await db
+    .updateTable('users')
+    .set({ credentials_enabled: enabled ? 1 : 0, updated_at: new Date().toISOString() })
+    .where('id', '=', userId)
+    .executeTakeFirst();
+  return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
+}
+
+export async function clearUserPassword(userId: number): Promise<boolean> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.clearUserPassword(userId);
+  }
+  const db = await getDb();
+  const result = await db
+    .updateTable('users')
+    .set({ password_hash: null, updated_at: new Date().toISOString() })
+    .where('id', '=', userId)
+    .executeTakeFirst();
+  return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
+}
+
+export async function getCredentialUsers(): Promise<DbUser[]> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.getCredentialUsers();
+  }
+  const db = await getDb();
+  return db
+    .selectFrom('users')
+    .select(['id', 'email', 'name', 'role', 'added_by', 'password_hash', 'credentials_enabled', 'created_at', 'updated_at'])
+    .where('password_hash', 'is not', null)
+    .orderBy('created_at', 'desc')
+    .execute() as Promise<DbUser[]>;
+}
+
+export async function canLoginWithCredentials(email: string): Promise<boolean> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.canLoginWithCredentials(email);
+  }
+  const user = await getUserByEmail(email);
+  return !!(user && user.password_hash && user.credentials_enabled === 1);
+}
+
+export async function initializeAdminCredentialsFromEnv(): Promise<void> {
+  if (getDatabaseProvider() === 'sqlite') {
+    return sync.initializeAdminCredentialsFromEnv();
+  }
+
+  const adminPassword = process.env.CREDENTIALS_ADMIN_PASSWORD;
+  if (!adminPassword) return;
+
+  const adminEmails =
+    process.env.ADMIN_EMAILS?.split(',')
+      .map((e) => e.trim())
+      .filter(Boolean) || [];
+  const firstAdmin = adminEmails[0];
+  if (!firstAdmin) return;
+
+  const user = await getUserByEmail(firstAdmin);
+  if (user && !user.password_hash) {
+    const { hashPassword } = await import('../../password');
+    const hash = await hashPassword(adminPassword);
+    await setUserPassword(user.id, hash);
+    console.log(`[Auth] Credentials set for admin: ${firstAdmin}`);
   }
 }

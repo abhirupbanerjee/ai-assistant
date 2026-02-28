@@ -124,6 +124,19 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Updated thread_outputs file_type constraint for audio formats');
 
+  // Migration: Add credentials authentication columns to users table
+  // password_hash stores bcrypt-hashed passwords
+  // credentials_enabled controls whether user can login with email/password (default: 1 = enabled)
+  await sql`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS password_hash TEXT
+  `.execute(database);
+  await sql`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS credentials_enabled INTEGER DEFAULT 1
+  `.execute(database);
+  console.log('[Kysely] Added credentials authentication columns to users table');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 }
 
