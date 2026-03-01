@@ -7,6 +7,7 @@ import rehypeHighlight from 'rehype-highlight';
 import hljs from 'highlight.js';
 import type { ViewableArtifact } from '@/types';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
+import MermaidDiagram from '@/components/markdown/MermaidDiagram';
 
 // Import highlight.js github theme
 import 'highlight.js/styles/github.css';
@@ -118,6 +119,15 @@ export default function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
             {artifact.content}
           </code>
         </pre>
+      </div>
+    );
+  }
+
+  // Diagram rendering with MermaidDiagram
+  if (artifact.type === 'diagram') {
+    return (
+      <div className="bg-white rounded-lg">
+        <MermaidDiagram code={artifact.content} />
       </div>
     );
   }

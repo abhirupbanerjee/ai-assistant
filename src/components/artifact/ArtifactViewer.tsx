@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, FileCode, File, X, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { FileText, FileCode, File, X, PanelRightClose, PanelRightOpen, GitBranch } from 'lucide-react';
 import type { ViewableArtifact } from '@/types';
 import { useResizableSidebar } from '@/hooks/useResizableSidebar';
 import ResizeHandle from '@/components/ui/ResizeHandle';
@@ -22,6 +22,8 @@ function getArtifactIcon(type: ViewableArtifact['type']) {
       return <FileText size={18} className="text-blue-500" />;
     case 'code':
       return <FileCode size={18} className="text-purple-500" />;
+    case 'diagram':
+      return <GitBranch size={18} className="text-purple-500" />;
     case 'text':
       return <File size={18} className="text-gray-500" />;
     default:

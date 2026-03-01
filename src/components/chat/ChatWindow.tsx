@@ -37,6 +37,7 @@ interface ChatWindowProps {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }) => void;
   // Callbacks for input focus (mobile sidebar hiding)
@@ -215,16 +216,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
 
-  // Compute generated docs, images, and podcasts from all messages + streaming state
-  const { generatedDocs, generatedImages, generatedPodcasts } = useMemo(() => {
+  // Compute generated docs, images, podcasts, and diagrams from all messages + streaming state
+  const { generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams } = useMemo(() => {
     const docs: GeneratedDocumentInfo[] = [];
     const images: GeneratedImageInfo[] = [];
     const podcasts: PodcastHint[] = [];
+    const diagrams: DiagramHint[] = [];
     // Include artifacts from saved messages
     for (const msg of messages) {
       if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
       if (msg.generatedImages) images.push(...msg.generatedImages);
       if (msg.generatedPodcasts) podcasts.push(...msg.generatedPodcasts);
+      if (msg.generatedDiagrams) diagrams.push(...msg.generatedDiagrams);
     }
     // Include real-time streaming artifacts (for sidebar updates during generation)
     if (streamingState.documents) {
@@ -249,8 +252,16 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         }
       }
     }
-    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts };
-  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts]);
+    if (streamingState.diagrams) {
+      for (const diagram of streamingState.diagrams) {
+        // Avoid duplicates by checking code (diagrams don't have id)
+        if (!diagrams.some(d => d.code === diagram.code)) {
+          diagrams.push(diagram);
+        }
+      }
+    }
+    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts, generatedDiagrams: diagrams };
+  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts, streamingState.diagrams]);
 
   // Notify parent of artifacts changes
   useEffect(() => {
@@ -260,9 +271,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       generatedDocs,
       generatedImages,
       generatedPodcasts,
+      generatedDiagrams,
       urlSources,
     });
-  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, urlSources, onArtifactsChange]);
+  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams, urlSources, onArtifactsChange]);
 
   // Load thread messages when active thread changes
   useEffect(() => {

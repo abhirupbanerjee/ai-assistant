@@ -15,7 +15,7 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ViewableArtifact } from '@/types';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ViewableArtifact, DiagramHint } from '@/types';
 import { ArtifactViewer, ArtifactViewerModal } from '@/components/artifact';
 
 // Inner component that uses the mobile menu context
@@ -40,6 +40,7 @@ function HomeContent() {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }>({
     threadId: null,
@@ -47,6 +48,7 @@ function HomeContent() {
     generatedDocs: [],
     generatedImages: [],
     generatedPodcasts: [],
+    generatedDiagrams: [],
     urlSources: [],
   });
 
@@ -102,6 +104,7 @@ function HomeContent() {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
+    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }) => {
     setArtifactsData(data);
@@ -110,6 +113,20 @@ function HomeContent() {
   // Handle artifact selection for viewer panel
   const handleArtifactSelect = useCallback((artifact: ViewableArtifact) => {
     setSelectedArtifact(artifact);
+  }, []);
+
+  // Handle diagram selection - convert DiagramHint to ViewableArtifact
+  const handleDiagramSelect = useCallback((diagram: DiagramHint) => {
+    const viewableArtifact: ViewableArtifact = {
+      id: `diagram-${Date.now()}`,
+      title: diagram.title || `Diagram (${diagram.type})`,
+      filename: `diagram-${diagram.type}.mermaid`,
+      content: diagram.code,
+      type: 'diagram',
+      fileSize: diagram.code.length,
+      diagramType: diagram.type,
+    };
+    setSelectedArtifact(viewableArtifact);
   }, []);
 
   // Close artifact viewer
@@ -300,10 +317,12 @@ function HomeContent() {
               generatedDocs={artifactsData.generatedDocs}
               generatedImages={artifactsData.generatedImages}
               generatedPodcasts={artifactsData.generatedPodcasts}
+              generatedDiagrams={artifactsData.generatedDiagrams}
               urlSources={artifactsData.urlSources}
               onRemoveUpload={handleRemoveUpload}
               onRemoveUrlSource={handleRemoveUrlSource}
               onArtifactSelect={handleArtifactSelect}
+              onDiagramSelect={handleDiagramSelect}
             />
           )
         )}

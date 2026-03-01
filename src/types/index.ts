@@ -136,10 +136,11 @@ export interface ViewableArtifact {
   title: string;
   filename: string;
   content: string;
-  type: 'markdown' | 'code' | 'text';
+  type: 'markdown' | 'code' | 'text' | 'diagram';
   language?: string; // For code files (e.g., 'typescript', 'python')
   fileSize: number;
   downloadUrl?: string;
+  diagramType?: string; // For diagram artifacts (e.g., 'gantt', 'flowchart')
 }
 
 // Maximum file size for in-app viewing (500KB)
