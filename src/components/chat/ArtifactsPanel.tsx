@@ -12,12 +12,9 @@ import {
   Sparkles,
   X,
   PanelRightClose,
-  PanelRightOpen,
-  Eye,
-  GitBranch
+  PanelRightOpen
 } from 'lucide-react';
-import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ViewableArtifact, DiagramHint } from '@/types';
-import { MAX_VIEWABLE_SIZE } from '@/types';
+import type { GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
 import { useResizableSidebar } from '@/hooks/useResizableSidebar';
 import ResizeHandle from '@/components/ui/ResizeHandle';
 import PodcastPlayer from './PodcastPlayer';
@@ -28,34 +25,10 @@ interface ArtifactsPanelProps {
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
   generatedPodcasts: PodcastHint[];
-  generatedDiagrams: DiagramHint[];
   urlSources: UrlSource[];
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
-  onArtifactSelect?: (artifact: ViewableArtifact) => void;
-  onDiagramSelect?: (diagram: DiagramHint) => void;
   hidden?: boolean; // For mobile: hide when input is focused
-}
-
-// Helper to check if a document can be viewed in the artifact viewer
-function isViewableDocument(doc: GeneratedDocumentInfo): boolean {
-  if (doc.fileType !== 'md') return false;
-  if (!doc.content) return false;
-  if (doc.fileSize > MAX_VIEWABLE_SIZE) return false;
-  return true;
-}
-
-// Helper to convert a GeneratedDocumentInfo to ViewableArtifact
-function toViewableArtifact(doc: GeneratedDocumentInfo): ViewableArtifact {
-  return {
-    id: doc.id,
-    title: doc.filename,
-    filename: doc.filename,
-    content: doc.content || '',
-    type: 'markdown',
-    fileSize: doc.fileSize,
-    downloadUrl: doc.downloadUrl,
-  };
 }
 
 interface SectionState {
@@ -80,12 +53,9 @@ export default function ArtifactsPanel({
   generatedDocs,
   generatedImages,
   generatedPodcasts,
-  generatedDiagrams,
   urlSources,
   onRemoveUpload,
   onRemoveUrlSource,
-  onArtifactSelect,
-  onDiagramSelect,
   hidden = false,
 }: ArtifactsPanelProps) {
   // Resizable sidebar hook - handles width and collapsed state
@@ -123,7 +93,7 @@ export default function ArtifactsPanel({
   const fileUploads = uploads.filter(filename => !urlSourceFilenames.has(filename));
 
   // Count totals (use filtered fileUploads to avoid double-counting)
-  const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length + generatedDiagrams.length;
+  const aiGeneratedCount = generatedDocs.length + generatedImages.length + generatedPodcasts.length;
   const totalCount = aiGeneratedCount + fileUploads.length + webSources.length + youtubeSources.length;
 
   const toggleSection = (section: keyof SectionState) => {
@@ -222,41 +192,20 @@ export default function ArtifactsPanel({
                 </button>
                 {expandedSections.aiGenerated && (
                   <div className="px-3 py-2 space-y-1.5 bg-white">
-                    {generatedDocs.map((doc) => {
-                      const viewable = isViewableDocument(doc);
-
-                      if (viewable && onArtifactSelect) {
-                        return (
-                          <button
-                            key={doc.id}
-                            onClick={() => onArtifactSelect(toViewableArtifact(doc))}
-                            className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group text-left"
-                          >
-                            <FileText size={14} className="text-purple-500 flex-shrink-0" />
-                            <span className="text-xs text-gray-700 truncate flex-1" title={doc.filename}>
-                              {doc.filename}
-                            </span>
-                            <Eye size={12} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        );
-                      }
-
-                      // Non-viewable: download link
-                      return (
-                        <a
-                          key={doc.id}
-                          href={doc.downloadUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group"
-                        >
-                          <FileText size={14} className="text-purple-500 flex-shrink-0" />
-                          <span className="text-xs text-gray-700 truncate flex-1" title={doc.filename}>
-                            {doc.filename}
-                          </span>
-                        </a>
-                      );
-                    })}
+                    {generatedDocs.map((doc) => (
+                      <a
+                        key={doc.id}
+                        href={doc.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group"
+                      >
+                        <FileText size={14} className="text-purple-500 flex-shrink-0" />
+                        <span className="text-xs text-gray-700 truncate flex-1" title={doc.filename}>
+                          {doc.filename}
+                        </span>
+                      </a>
+                    ))}
                     {generatedImages.map((img) => (
                       <a
                         key={img.id}
@@ -273,19 +222,6 @@ export default function ArtifactsPanel({
                     ))}
                     {generatedPodcasts.map((podcast) => (
                       <PodcastPlayer key={podcast.id} podcast={podcast} compact />
-                    ))}
-                    {generatedDiagrams.map((diagram, index) => (
-                      <div
-                        key={`diagram-${index}`}
-                        onClick={() => onDiagramSelect?.(diagram)}
-                        className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group cursor-pointer"
-                        title={diagram.title || 'Generated diagram'}
-                      >
-                        <GitBranch size={14} className="text-purple-500 flex-shrink-0" />
-                        <span className="text-xs text-gray-700 truncate flex-1">
-                          {diagram.title || `Diagram (${diagram.type})`}
-                        </span>
-                      </div>
                     ))}
                   </div>
                 )}

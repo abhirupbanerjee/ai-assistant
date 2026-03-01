@@ -58,9 +58,3 @@ coverage/
 *.log
 *.pid
 *.seed
-
-# SQLite database files
-data/*.db
-data/*.db-shm
-data/*.db-wal
-data/*.db.backup-*

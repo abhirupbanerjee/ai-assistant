@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, ViewableArtifact } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -37,14 +37,11 @@ interface ChatWindowProps {
     generatedDocs: GeneratedDocumentInfo[];
     generatedImages: GeneratedImageInfo[];
     generatedPodcasts: PodcastHint[];
-    generatedDiagrams: DiagramHint[];
     urlSources: UrlSource[];
   }) => void;
   // Callbacks for input focus (mobile sidebar hiding)
   onInputFocus?: () => void;
   onInputBlur?: () => void;
-  // Callback for artifact selection (opens artifact viewer)
-  onArtifactSelect?: (artifact: ViewableArtifact) => void;
 }
 
 // Ref interface for external control
@@ -72,7 +69,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   onArtifactsChange,
   onInputFocus,
   onInputBlur,
-  onArtifactSelect,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -216,18 +212,16 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
 
-  // Compute generated docs, images, podcasts, and diagrams from all messages + streaming state
-  const { generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams } = useMemo(() => {
+  // Compute generated docs, images, and podcasts from all messages + streaming state
+  const { generatedDocs, generatedImages, generatedPodcasts } = useMemo(() => {
     const docs: GeneratedDocumentInfo[] = [];
     const images: GeneratedImageInfo[] = [];
     const podcasts: PodcastHint[] = [];
-    const diagrams: DiagramHint[] = [];
     // Include artifacts from saved messages
     for (const msg of messages) {
       if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
       if (msg.generatedImages) images.push(...msg.generatedImages);
       if (msg.generatedPodcasts) podcasts.push(...msg.generatedPodcasts);
-      if (msg.generatedDiagrams) diagrams.push(...msg.generatedDiagrams);
     }
     // Include real-time streaming artifacts (for sidebar updates during generation)
     if (streamingState.documents) {
@@ -252,16 +246,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         }
       }
     }
-    if (streamingState.diagrams) {
-      for (const diagram of streamingState.diagrams) {
-        // Avoid duplicates by checking code (diagrams don't have id)
-        if (!diagrams.some(d => d.code === diagram.code)) {
-          diagrams.push(diagram);
-        }
-      }
-    }
-    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts, generatedDiagrams: diagrams };
-  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts, streamingState.diagrams]);
+    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts };
+  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts]);
 
   // Notify parent of artifacts changes
   useEffect(() => {
@@ -271,10 +257,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       generatedDocs,
       generatedImages,
       generatedPodcasts,
-      generatedDiagrams,
       urlSources,
     });
-  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, generatedDiagrams, urlSources, onArtifactsChange]);
+  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, urlSources, onArtifactsChange]);
 
   // Load thread messages when active thread changes
   useEffect(() => {
@@ -616,7 +601,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           <MessageBubble
             key={message.id}
             message={message}
-            onArtifactSelect={onArtifactSelect}
             onRegenerate={
               message.role === 'assistant' && !streamingState.isStreaming
                 ? () => {
@@ -688,7 +672,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               timestamp: new Date(),
             }}
             isStreaming={true}
-            onArtifactSelect={onArtifactSelect}
           />
         )}
 
