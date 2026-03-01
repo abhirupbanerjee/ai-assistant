@@ -37,6 +37,40 @@ export function getDatabaseProvider(): DatabaseProvider {
 }
 
 /**
+ * Run SQLite migrations for the Kysely path
+ * Mirrors critical migrations from index.ts for threads table
+ */
+function runSqliteMigrations(database: Database.Database): void {
+  // Safety check: ensure threads table exists before migrating
+  const tableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='threads'"
+  ).get();
+  if (!tableExists) {
+    // Schema not initialized yet - skip migrations
+    return;
+  }
+
+  const threadsColumns = database.pragma('table_info(threads)') as { name: string }[];
+  const columnNames = threadsColumns.map((c) => c.name);
+
+  if (!columnNames.includes('is_summarized')) {
+    database.exec('ALTER TABLE threads ADD COLUMN is_summarized INTEGER DEFAULT 0');
+  }
+  if (!columnNames.includes('total_tokens')) {
+    database.exec('ALTER TABLE threads ADD COLUMN total_tokens INTEGER DEFAULT 0');
+  }
+  if (!columnNames.includes('is_pinned')) {
+    database.exec('ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC)');
+  }
+  if (!columnNames.includes('selected_model')) {
+    database.exec('ALTER TABLE threads ADD COLUMN selected_model TEXT');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model)');
+  }
+  console.log('[Kysely SQLite] Thread migrations completed');
+}
+
+/**
  * Get or create the Kysely database instance
  */
 export async function getDb(): Promise<Kysely<DB>> {
@@ -90,6 +124,9 @@ export async function getDb(): Promise<Kysely<DB>> {
     sqliteDb.pragma('foreign_keys = ON');
     sqliteDb.pragma('journal_mode = WAL');
 
+    // Run SQLite migrations for thread columns
+    runSqliteMigrations(sqliteDb);
+
     db = new Kysely<DB>({
       dialect: new SqliteDialect({
         database: sqliteDb,
@@ -136,6 +173,15 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     ADD COLUMN IF NOT EXISTS credentials_enabled INTEGER DEFAULT 1
   `.execute(database);
   console.log('[Kysely] Added credentials authentication columns to users table');
+
+  // Migration: Add thread columns if missing (mirrors index.ts migrations)
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS is_summarized INTEGER DEFAULT 0`.execute(database);
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS total_tokens INTEGER DEFAULT 0`.execute(database);
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS is_pinned INTEGER DEFAULT 0`.execute(database);
+  await sql`ALTER TABLE threads ADD COLUMN IF NOT EXISTS selected_model TEXT`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model)`.execute(database);
+  console.log('[Kysely] Ensured thread columns exist');
 
   console.log('[Kysely] PostgreSQL migrations completed');
 }

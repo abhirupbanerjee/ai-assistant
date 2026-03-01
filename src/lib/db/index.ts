@@ -593,10 +593,37 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
-  // Migration: Update file_type CHECK constraint to include 'md' format
-  // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
-  try {
-    // Test if 'md' is allowed by the current constraint
+  // Migration: Ensure thread_outputs table exists and clean up any interrupted migrations
+  const threadOutputsExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_outputs'"
+  ).get();
+  const threadOutputsNewExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_outputs_new'"
+  ).get();
+
+  if (!threadOutputsExists && threadOutputsNewExists) {
+    // Previous migration was interrupted - rename the new table to recover data
+    database.exec('ALTER TABLE thread_outputs_new RENAME TO thread_outputs');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at)');
+    console.log('[DB Migration] Recovered thread_outputs table from interrupted migration');
+  } else if (threadOutputsNewExists) {
+    // thread_outputs exists and thread_outputs_new is leftover - clean it up
+    database.exec('DROP TABLE IF EXISTS thread_outputs_new');
+    console.log('[DB Migration] Cleaned up leftover thread_outputs_new table');
+  }
+
+  // Re-check if thread_outputs exists after potential recovery
+  const threadOutputsReady = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_outputs'"
+  ).get();
+
+  // Only run thread_outputs migrations if table exists
+  if (threadOutputsReady) {
+    // Migration: Update file_type CHECK constraint to include 'md' format
+    // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
+    try {
+      // Test if 'md' is allowed by the current constraint
     database.exec(`
       INSERT INTO thread_outputs (thread_id, filename, filepath, file_type, file_size)
       VALUES ('__migration_test__', '__test__', '__test__', 'md', 0)
@@ -605,7 +632,11 @@ function runMigrations(database: Database.Database): void {
     database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test__'`);
   } catch {
     // 'md' is not allowed, need to recreate the table with updated constraint
+    // Use transaction to prevent race conditions during concurrent builds
     database.exec(`
+      BEGIN IMMEDIATE;
+      -- Drop any leftover temp table from interrupted migration
+      DROP TABLE IF EXISTS thread_outputs_new;
       -- Create new table with updated constraint
       CREATE TABLE thread_outputs_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -635,6 +666,7 @@ function runMigrations(database: Database.Database): void {
       -- Recreate indexes
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+      COMMIT;
     `);
   }
 
@@ -649,7 +681,11 @@ function runMigrations(database: Database.Database): void {
     database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test_mp3__'`);
   } catch {
     // 'mp3' is not allowed, need to recreate the table with updated constraint
+    // Use transaction to prevent race conditions during concurrent builds
     database.exec(`
+      BEGIN IMMEDIATE;
+      -- Drop any leftover temp table from interrupted migration
+      DROP TABLE IF EXISTS thread_outputs_new;
       -- Create new table with updated constraint (includes mp3 for podcast generation)
       CREATE TABLE thread_outputs_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -679,6 +715,7 @@ function runMigrations(database: Database.Database): void {
       -- Recreate indexes
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+      COMMIT;
     `);
     console.log('[DB Migration] Added mp3 file type to thread_outputs');
   }
@@ -694,7 +731,11 @@ function runMigrations(database: Database.Database): void {
     database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test_wav__'`);
   } catch {
     // 'wav' is not allowed, need to recreate the table with updated constraint
+    // Use transaction to prevent race conditions during concurrent builds
     database.exec(`
+      BEGIN IMMEDIATE;
+      -- Drop any leftover temp table from interrupted migration
+      DROP TABLE IF EXISTS thread_outputs_new;
       -- Create new table with updated constraint (includes wav for Gemini TTS)
       CREATE TABLE thread_outputs_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -724,9 +765,11 @@ function runMigrations(database: Database.Database): void {
       -- Recreate indexes
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+      COMMIT;
     `);
     console.log('[DB Migration] Added wav file type to thread_outputs');
   }
+  } // End of threadOutputsReady check
 
   // Migration: Create thread_shares table for thread sharing feature
   const threadSharesTableExists = database.prepare(
@@ -1399,8 +1442,6 @@ CREATE TABLE IF NOT EXISTS threads (
 );
 CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);
 
 -- Thread category selection
 CREATE TABLE IF NOT EXISTS thread_categories (

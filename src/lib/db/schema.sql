@@ -171,8 +171,8 @@ CREATE TABLE IF NOT EXISTS threads (
 
 CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_threads_pinned ON threads(is_pinned, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);
+-- Note: idx_threads_pinned and idx_threads_selected_model are created by migrations
+-- to handle existing databases that don't have these columns yet
 
 -- Thread category selection (many-to-many)
 CREATE TABLE IF NOT EXISTS thread_categories (
