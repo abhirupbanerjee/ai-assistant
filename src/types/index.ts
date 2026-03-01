@@ -127,7 +127,23 @@ export interface GeneratedDocumentInfo {
   fileSizeFormatted: string;
   downloadUrl: string;
   expiresAt: string | null;
+  content?: string; // Raw content for viewable artifacts (md files)
 }
+
+// Viewable artifact for artifact viewer panel
+export interface ViewableArtifact {
+  id: string;
+  title: string;
+  filename: string;
+  content: string;
+  type: 'markdown' | 'code' | 'text';
+  language?: string; // For code files (e.g., 'typescript', 'python')
+  fileSize: number;
+  downloadUrl?: string;
+}
+
+// Maximum file size for in-app viewing (500KB)
+export const MAX_VIEWABLE_SIZE = 500 * 1024;
 
 // Generated image info returned by image_gen tool
 export interface GeneratedImageInfo {

@@ -15,7 +15,8 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ViewableArtifact } from '@/types';
+import { ArtifactViewer, ArtifactViewerModal } from '@/components/artifact';
 
 // Inner component that uses the mobile menu context
 function HomeContent() {
@@ -28,6 +29,7 @@ function HomeContent() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareThread, setShareThread] = useState<Thread | null>(null);
   const [threadCount, setThreadCount] = useState(0);
+  const [selectedArtifact, setSelectedArtifact] = useState<ViewableArtifact | null>(null);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
 
@@ -103,6 +105,16 @@ function HomeContent() {
     urlSources: UrlSource[];
   }) => {
     setArtifactsData(data);
+  }, []);
+
+  // Handle artifact selection for viewer panel
+  const handleArtifactSelect = useCallback((artifact: ViewableArtifact) => {
+    setSelectedArtifact(artifact);
+  }, []);
+
+  // Close artifact viewer
+  const handleCloseArtifactViewer = useCallback(() => {
+    setSelectedArtifact(null);
   }, []);
 
   const handleRemoveUpload = useCallback(async (filename: string) => {
@@ -261,6 +273,7 @@ function HomeContent() {
                 onArtifactsChange={handleArtifactsChange}
                 onInputFocus={handleInputFocus}
                 onInputBlur={handleInputBlur}
+                onArtifactSelect={handleArtifactSelect}
               />
             </ErrorBoundary>
           ) : (
@@ -273,17 +286,25 @@ function HomeContent() {
         </main>
 
         {/* Right sidebar - Desktop only */}
+        {/* Show ArtifactViewer when artifact is selected, otherwise show ArtifactsPanel */}
         {!isMobile && (
-          <ArtifactsPanel
-            threadId={artifactsData.threadId}
-            uploads={artifactsData.uploads}
-            generatedDocs={artifactsData.generatedDocs}
-            generatedImages={artifactsData.generatedImages}
-            generatedPodcasts={artifactsData.generatedPodcasts}
-            urlSources={artifactsData.urlSources}
-            onRemoveUpload={handleRemoveUpload}
-            onRemoveUrlSource={handleRemoveUrlSource}
-          />
+          selectedArtifact ? (
+            <ArtifactViewer
+              artifact={selectedArtifact}
+              onClose={handleCloseArtifactViewer}
+            />
+          ) : (
+            <ArtifactsPanel
+              threadId={artifactsData.threadId}
+              uploads={artifactsData.uploads}
+              generatedDocs={artifactsData.generatedDocs}
+              generatedImages={artifactsData.generatedImages}
+              generatedPodcasts={artifactsData.generatedPodcasts}
+              urlSources={artifactsData.urlSources}
+              onRemoveUpload={handleRemoveUpload}
+              onRemoveUrlSource={handleRemoveUrlSource}
+            />
+          )
         )}
       </div>
 
@@ -311,6 +332,13 @@ function HomeContent() {
             onRemoveUpload={handleRemoveUpload}
             onRemoveUrlSource={handleRemoveUrlSource}
           />
+          {/* Mobile full-screen artifact viewer */}
+          {selectedArtifact && (
+            <ArtifactViewerModal
+              artifact={selectedArtifact}
+              onClose={handleCloseArtifactViewer}
+            />
+          )}
         </>
       )}
 

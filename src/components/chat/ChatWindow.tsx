@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, ViewableArtifact } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -42,6 +42,8 @@ interface ChatWindowProps {
   // Callbacks for input focus (mobile sidebar hiding)
   onInputFocus?: () => void;
   onInputBlur?: () => void;
+  // Callback for artifact selection (opens artifact viewer)
+  onArtifactSelect?: (artifact: ViewableArtifact) => void;
 }
 
 // Ref interface for external control
@@ -69,6 +71,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   onArtifactsChange,
   onInputFocus,
   onInputBlur,
+  onArtifactSelect,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -601,6 +604,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           <MessageBubble
             key={message.id}
             message={message}
+            onArtifactSelect={onArtifactSelect}
             onRegenerate={
               message.role === 'assistant' && !streamingState.isStreaming
                 ? () => {
@@ -672,6 +676,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               timestamp: new Date(),
             }}
             isStreaming={true}
+            onArtifactSelect={onArtifactSelect}
           />
         )}
 

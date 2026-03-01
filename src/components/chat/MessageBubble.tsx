@@ -4,9 +4,11 @@ import { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { Message, MessageMetadata } from '@/types';
+import type { Message, MessageMetadata, ViewableArtifact, GeneratedDocumentInfo } from '@/types';
+import { MAX_VIEWABLE_SIZE } from '@/types';
 import SourceCard from './SourceCard';
 import DocumentResultCard from './DocumentResultCard';
+import { ArtifactCard } from '@/components/artifact';
 import ImageDisplay from './ImageDisplay';
 import PodcastPlayer from './PodcastPlayer';
 import DataVisualization from './DataVisualization';
@@ -53,9 +55,40 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   /** Callback to regenerate the assistant response (assistant messages only) */
   onRegenerate?: () => void;
+  /** Callback when user clicks to view a viewable artifact */
+  onArtifactSelect?: (artifact: ViewableArtifact) => void;
 }
 
-export default function MessageBubble({ message, isStreaming = false, onRegenerate }: MessageBubbleProps) {
+/**
+ * Check if a generated document is viewable in the artifact viewer.
+ * Viewable documents are markdown files with content under the size limit.
+ */
+function isViewableDocument(doc: GeneratedDocumentInfo): boolean {
+  // Only markdown files are viewable for now
+  if (doc.fileType !== 'md') return false;
+  // Must have content available
+  if (!doc.content) return false;
+  // Must be under size limit
+  if (doc.fileSize > MAX_VIEWABLE_SIZE) return false;
+  return true;
+}
+
+/**
+ * Convert a GeneratedDocumentInfo to a ViewableArtifact.
+ */
+function toViewableArtifact(doc: GeneratedDocumentInfo): ViewableArtifact {
+  return {
+    id: doc.id,
+    title: doc.filename.replace(/\.md$/, ''),
+    filename: doc.filename,
+    content: doc.content || '',
+    type: 'markdown',
+    fileSize: doc.fileSize,
+    downloadUrl: doc.downloadUrl,
+  };
+}
+
+export default function MessageBubble({ message, isStreaming = false, onRegenerate, onArtifactSelect }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const isUser = message.role === 'user';
@@ -104,9 +137,20 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
         {/* Generated Documents */}
         {message.generatedDocuments && message.generatedDocuments.length > 0 && (
           <div className="mt-2">
-            {message.generatedDocuments.map((doc) => (
-              <DocumentResultCard key={doc.id} document={doc} />
-            ))}
+            {message.generatedDocuments.map((doc) => {
+              // Use ArtifactCard for viewable documents (md files with content)
+              if (isViewableDocument(doc) && onArtifactSelect) {
+                return (
+                  <ArtifactCard
+                    key={doc.id}
+                    artifact={toViewableArtifact(doc)}
+                    onOpen={onArtifactSelect}
+                  />
+                );
+              }
+              // Fall back to DocumentResultCard for non-viewable documents
+              return <DocumentResultCard key={doc.id} document={doc} />;
+            })}
           </div>
         )}
 
