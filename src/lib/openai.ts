@@ -671,6 +671,7 @@ export async function generateResponseWithTools(
                     fileSizeFormatted: parsed.document.fileSizeFormatted || '',
                     downloadUrl: parsed.document.downloadUrl,
                     expiresAt: parsed.document.expiresAt || null,
+                    content: parsed.document.content, // For md files, raw content for viewer
                   };
                   callbacks.onArtifact('document', doc);
                 }

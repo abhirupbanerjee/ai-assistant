@@ -303,6 +303,7 @@ function HomeContent() {
               urlSources={artifactsData.urlSources}
               onRemoveUpload={handleRemoveUpload}
               onRemoveUrlSource={handleRemoveUrlSource}
+              onArtifactSelect={handleArtifactSelect}
             />
           )
         )}

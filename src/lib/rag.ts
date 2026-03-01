@@ -609,6 +609,7 @@ function extractGeneratedDocumentsFromHistory(
             fileSizeFormatted: doc.fileSizeFormatted,
             downloadUrl: doc.downloadUrl,
             expiresAt: doc.expiresAt,
+            content: doc.content, // For md files, raw content for viewer
           });
         }
       } catch {

@@ -346,18 +346,26 @@ export const documentGenerationTool: ToolDefinition = {
 
       console.log(`[DocGen] Document generated: ${result.filename} (${formatFileSize(result.fileSize)})`);
 
+      // Include content for markdown files (for artifact viewer)
+      const documentInfo: Record<string, unknown> = {
+        id: result.id,
+        filename: result.filename,
+        fileType: result.fileType,
+        fileSize: result.fileSize,
+        fileSizeFormatted: formatFileSize(result.fileSize),
+        downloadUrl: result.downloadUrl,
+        expiresAt: result.expiresAt,
+      };
+
+      // For markdown files, include the raw content for viewing
+      if (format === 'md') {
+        documentInfo.content = args.content;
+      }
+
       return JSON.stringify({
         success: true,
         message: 'Document generated successfully. Do NOT call doc_gen again unless the user explicitly requests another document.',
-        document: {
-          id: result.id,
-          filename: result.filename,
-          fileType: result.fileType,
-          fileSize: result.fileSize,
-          fileSizeFormatted: formatFileSize(result.fileSize),
-          downloadUrl: result.downloadUrl,
-          expiresAt: result.expiresAt,
-        },
+        document: documentInfo,
       });
     } catch (error) {
       console.error('[DocGen] Generation error:', error);
