@@ -46,6 +46,8 @@ import {
   Flag,
   Palette,
   Crosshair,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
@@ -147,6 +149,39 @@ const TIER_NAMES = {
   5: 'Developer Tools',
 };
 
+// Platform introduction content (from README.md)
+const PLATFORM_INTRO = {
+  title: 'AI Assistant Platform Guide',
+  tagline: 'An open-source, interoperable AI platform for governments, ministries, and enterprises.',
+  whyPolicyBot: `Governments and organizations face a critical challenge: how to adopt AI responsibly while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
+
+Policy Bot solves this by providing:
+- **Data Sovereignty** — All data remains on your infrastructure
+- **Open Source** — Fully auditable code with no proprietary dependencies
+- **Interoperability** — Switch AI providers freely
+- **No Lock-In** — Standard databases, portable vector stores, exportable configurations
+- **Zero ML Complexity** — Admin dashboard handles all AI configuration
+- **Enterprise Security** — Role-based access, department isolation, audit trails`,
+  supportedLLMs: [
+    { provider: 'OpenAI', models: 'GPT-4.1, GPT-5.x, embeddings' },
+    { provider: 'Anthropic', models: 'Claude Sonnet/Haiku/Opus 4.5, 1M context' },
+    { provider: 'DeepSeek', models: 'Reasoner, Chat' },
+    { provider: 'Mistral', models: 'Large 3, Small 3.2, vision, OCR' },
+    { provider: 'Google Gemini', models: '2.5 Pro/Flash, 1M context' },
+    { provider: 'Ollama', models: 'Local models (Llama, Qwen, Mistral, Phi)' },
+  ],
+  aiCapabilities: [
+    { capability: 'Embeddings', details: 'OpenAI text-embedding-3-small/large, Gemini, local Transformers.js' },
+    { capability: 'Reranking', details: 'BGE cross-encoder (large/base), Cohere API, local bi-encoder' },
+    { capability: 'Chunking', details: 'Recursive (configurable size/overlap), Semantic (context-aware)' },
+    { capability: 'Transcription', details: 'Whisper (OpenAI), Gemini, local Whisper' },
+    { capability: 'Speech-to-Text', details: 'Whisper transcription for audio questions' },
+    { capability: 'Text-to-Speech', details: 'OpenAI TTS, Gemini for podcast generation' },
+    { capability: 'Vision/Multimodal', details: 'GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral' },
+    { capability: 'Image Generation', details: 'DALL-E 3, Gemini Imagen' },
+  ],
+};
+
 function RoleTag({ role }: { role: 'user' | 'superuser' | 'admin' }) {
   const config = {
     user: { label: 'All Users', className: 'bg-gray-100 text-gray-600' },
@@ -173,6 +208,8 @@ export default function WelcomeScreen({
   const [showMessageModal, setShowMessageModal] = useState<string | null>(null);
   const [showChoiceModal, setShowChoiceModal] = useState<ServiceCard | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const toggleCard = (id: string) => {
     setExpandedCard(expandedCard === id ? null : id);
@@ -258,6 +295,207 @@ export default function WelcomeScreen({
 
       default:
         onNewThread?.();
+    }
+  };
+
+  // Export helper functions
+  const buildExportContent = () => {
+    return {
+      title: PLATFORM_INTRO.title,
+      generatedAt: new Date().toISOString(),
+      introduction: {
+        tagline: PLATFORM_INTRO.tagline,
+        whyPolicyBot: PLATFORM_INTRO.whyPolicyBot,
+        supportedLLMs: PLATFORM_INTRO.supportedLLMs,
+        aiCapabilities: PLATFORM_INTRO.aiCapabilities,
+      },
+      services: ([1, 2, 3, 4, 5] as const).map((tier) => ({
+        tier,
+        tierName: TIER_NAMES[tier],
+        items: serviceCards
+          .filter((s) => s.tier === tier)
+          .map((s) => ({
+            name: s.title,
+            code: s.code,
+            description: s.description,
+            category: s.category,
+            samplePrompt: s.samplePrompt,
+            magicWords: s.magicWords,
+            defaultLLM: s.defaultLLM,
+            fallbackLLM: s.fallbackLLM,
+            minRole: s.minRole,
+          })),
+      })),
+      setup: setupCards.map((card) => ({
+        id: card.id,
+        title: card.title,
+        description: card.expandedContent.description,
+        bullets: card.expandedContent.bullets,
+        minRole: card.minRole,
+      })),
+      magicWords: magicWords.map((mw) => ({
+        description: mw.description,
+        keywords: mw.keywords,
+        linkedService: mw.linkedServiceName,
+        linkedServiceCode: mw.linkedServiceCode,
+      })),
+    };
+  };
+
+  const buildMarkdown = (content: ReturnType<typeof buildExportContent>) => {
+    const lines: string[] = [];
+
+    // Title
+    lines.push(`# ${content.title}`);
+    lines.push('');
+    lines.push(`*Generated: ${new Date().toLocaleDateString()}*`);
+    lines.push('');
+    lines.push(`> ${content.introduction.tagline}`);
+    lines.push('');
+
+    // Why Policy Bot
+    lines.push('## Why Policy Bot?');
+    lines.push('');
+    lines.push(content.introduction.whyPolicyBot);
+    lines.push('');
+
+    // Supported LLMs
+    lines.push('## Supported LLMs');
+    lines.push('');
+    lines.push('| Provider | Models |');
+    lines.push('|----------|--------|');
+    content.introduction.supportedLLMs.forEach((llm) => {
+      lines.push(`| ${llm.provider} | ${llm.models} |`);
+    });
+    lines.push('');
+
+    // AI Capabilities
+    lines.push('## AI Capabilities');
+    lines.push('');
+    lines.push('| Capability | Details |');
+    lines.push('|------------|---------|');
+    content.introduction.aiCapabilities.forEach((cap) => {
+      lines.push(`| ${cap.capability} | ${cap.details} |`);
+    });
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+
+    // Services
+    lines.push('## Services');
+    lines.push('');
+    content.services.forEach((tier) => {
+      if (tier.items.length === 0) return;
+      lines.push(`### Tier ${tier.tier} — ${tier.tierName}`);
+      lines.push('');
+      tier.items.forEach((service) => {
+        lines.push(`#### ${service.name} (${service.code})`);
+        lines.push('');
+        const categoryText = service.category === '—'
+          ? '*This service works across all categories using magic words*'
+          : service.category;
+        lines.push(`- **Category:** ${categoryText}`);
+        lines.push(`- **Description:** ${service.description}`);
+        lines.push(`- **Sample Prompt:** ${service.samplePrompt.replace(/\*\*/g, '**')}`);
+        const magicWordsText = service.magicWords.length > 0
+          ? service.magicWords.join(', ')
+          : '—';
+        lines.push(`- **Magic Words:** ${magicWordsText}`);
+        lines.push(`- **Default LLM:** ${service.defaultLLM} | **Fallback:** ${service.fallbackLLM}`);
+        lines.push(`- **Access Level:** ${service.minRole === 'user' ? 'All Users' : service.minRole}`);
+        lines.push('');
+      });
+    });
+    lines.push('---');
+    lines.push('');
+
+    // Setup Guide
+    lines.push('## Setup Guide');
+    lines.push('');
+    content.setup.forEach((card) => {
+      lines.push(`### ${card.title}`);
+      lines.push('');
+      lines.push(card.description);
+      lines.push('');
+      card.bullets.forEach((bullet) => {
+        lines.push(`- ${bullet}`);
+      });
+      lines.push(`- **Access Level:** ${card.minRole === 'user' ? 'All Users' : card.minRole}`);
+      lines.push('');
+    });
+    lines.push('---');
+    lines.push('');
+
+    // Magic Words Reference
+    lines.push('## Magic Words Reference');
+    lines.push('');
+    lines.push('| What to do | Keywords | Linked Service |');
+    lines.push('|------------|----------|----------------|');
+    content.magicWords.forEach((mw) => {
+      const keywords = mw.keywords.join(', ');
+      lines.push(`| ${mw.description} | ${keywords} | ${mw.linkedService} (${mw.linkedServiceCode}) |`);
+    });
+    lines.push('');
+
+    return lines.join('\n');
+  };
+
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async (format: 'md' | 'docx' | 'json') => {
+    setIsExporting(true);
+    setShowExportMenu(false);
+
+    try {
+      const content = buildExportContent();
+
+      if (format === 'json') {
+        downloadFile(JSON.stringify(content, null, 2), 'platform-guide.json', 'application/json');
+      } else if (format === 'md') {
+        downloadFile(buildMarkdown(content), 'platform-guide.md', 'text/markdown');
+      } else {
+        // DOCX requires server-side generation
+        const markdownContent = buildMarkdown(content);
+        const response = await fetch('/api/welcome/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            markdownContent,
+            title: 'AI Assistant Platform Guide',
+          }),
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          downloadBlob(blob, 'platform-guide.docx');
+        } else {
+          console.error('DOCX export failed:', await response.text());
+        }
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1083,6 +1321,50 @@ export default function WelcomeScreen({
           <p className="text-gray-600">
             Your AI assistant for policy documents and compliance
           </p>
+
+          {/* Export Button */}
+          <div className="flex justify-center mt-4">
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={isExporting}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isExporting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Download size={16} />
+                )}
+                Export Guide
+                <ChevronDown size={14} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[180px] z-10">
+                  <button
+                    onClick={() => handleExport('md')}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <FileText size={16} className="text-gray-500" />
+                    Markdown (.md)
+                  </button>
+                  <button
+                    onClick={() => handleExport('docx')}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <FileText size={16} className="text-blue-500" />
+                    Word (.docx)
+                  </button>
+                  <button
+                    onClick={() => handleExport('json')}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <Code2 size={16} className="text-green-500" />
+                    JSON (.json)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
