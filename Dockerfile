@@ -33,7 +33,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Install gosu for dropping privileges and k6 CLI for load testing
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gosu gnupg2 curl && \
+    apt-get install -y --no-install-recommends gosu gnupg2 curl ca-certificates && \
     mkdir -p /root/.gnupg && chmod 700 /root/.gnupg && \
     curl -fsSL https://dl.k6.io/key.gpg | gpg --batch --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
