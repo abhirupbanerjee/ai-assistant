@@ -6,8 +6,8 @@ import {
   assignCategoryToSuperUser,
   getUserWithSubscriptions,
   getSuperUserWithAssignments,
-} from '@/lib/db/users';
-import { getCategoryById } from '@/lib/db/categories';
+  getCategoryById,
+} from '@/lib/db/compat';
 import type { UserRole } from '@/lib/users';
 
 const VALID_ROLES: UserRole[] = ['admin', 'superuser', 'user'];
@@ -28,20 +28,20 @@ export async function GET() {
         if (userId) {
           if (u.role === 'superuser') {
             // Get category assignments (for management access)
-            const withAssignments = getSuperUserWithAssignments(userId);
+            const withAssignments = await getSuperUserWithAssignments(userId);
             assignedCategories = withAssignments?.assignedCategories.map(c => ({
               categoryId: c.categoryId,
               categoryName: c.categoryName,
             })) || [];
             // Also get subscriptions (for read access to other categories)
-            const withSubs = getUserWithSubscriptions(userId);
+            const withSubs = await getUserWithSubscriptions(userId);
             subscriptions = withSubs?.subscriptions.map(s => ({
               categoryId: s.categoryId,
               categoryName: s.categoryName,
               isActive: s.isActive,
             })) || [];
           } else if (u.role === 'user') {
-            const withSubs = getUserWithSubscriptions(userId);
+            const withSubs = await getUserWithSubscriptions(userId);
             subscriptions = withSubs?.subscriptions.map(s => ({
               categoryId: s.categoryId,
               categoryName: s.categoryName,
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     const categoryIdsToAssign: number[] = assignedCategories || [];
 
     for (const catId of [...categoryIdsToSubscribe, ...categoryIdsToAssign]) {
-      const cat = getCategoryById(catId);
+      const cat = await getCategoryById(catId);
       if (!cat) {
         return NextResponse.json(
           { error: `Category with ID ${catId} not found` },
@@ -116,14 +116,14 @@ export async function POST(request: NextRequest) {
       // Add subscriptions for regular users
       if (role === 'user' && categoryIdsToSubscribe.length > 0) {
         for (const catId of categoryIdsToSubscribe) {
-          addSubscription(userId, catId, admin.email);
+          await addSubscription(userId, catId, admin.email);
         }
       }
 
       // Add category assignments for super users
       if (role === 'superuser' && categoryIdsToAssign.length > 0) {
         for (const catId of categoryIdsToAssign) {
-          assignCategoryToSuperUser(userId, catId, admin.email);
+          await assignCategoryToSuperUser(userId, catId, admin.email);
         }
       }
     }

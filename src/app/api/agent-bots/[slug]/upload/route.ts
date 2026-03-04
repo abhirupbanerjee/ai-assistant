@@ -11,8 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { promises as fs } from 'fs';
-import { getActiveAgentBotBySlug } from '@/lib/db/agent-bots';
-import { getDefaultVersion } from '@/lib/db/agent-bot-versions';
+import { getActiveAgentBotBySlug, getDefaultVersion } from '@/lib/db/compat';
 import {
   authenticateRequest,
   isAuthError,
@@ -99,7 +98,7 @@ export async function POST(
     const { slug } = await params;
 
     // Get agent bot
-    const agentBot = getActiveAgentBotBySlug(slug);
+    const agentBot = await getActiveAgentBotBySlug(slug);
     if (!agentBot) {
       return agentBotErrors.agentBotNotFound();
     }
@@ -107,14 +106,14 @@ export async function POST(
     // Check authentication (API key or admin test)
     const isAdmin = await isAdminTest(request);
     if (!isAdmin) {
-      const authResult = authenticateRequest(request, slug);
+      const authResult = await authenticateRequest(request, slug);
       if (isAuthError(authResult)) {
         return authResult;
       }
     }
 
     // Get default version for file config
-    const version = getDefaultVersion(agentBot.id);
+    const version = await getDefaultVersion(agentBot.id);
     if (!version) {
       return agentBotErrors.versionNotFound();
     }

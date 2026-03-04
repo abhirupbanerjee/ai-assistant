@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getProvider } from '@/lib/db/llm-providers';
+import { getProvider } from '@/lib/db/compat/llm-providers';
 import { testProviderConnection } from '@/lib/services/model-discovery';
 import type { ApiError } from '@/types';
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const provider = getProvider(id);
+    const provider = await getProvider(id);
 
     if (!provider) {
       return NextResponse.json<ApiError>(

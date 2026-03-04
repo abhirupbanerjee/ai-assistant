@@ -7,12 +7,12 @@
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getWorkspaceById } from '@/lib/db/workspaces';
 import {
+  getWorkspaceById,
   getWorkspaceUsers,
   addUserToWorkspace,
   bulkAddUsersToWorkspace,
-} from '@/lib/db/workspace-users';
+} from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
 interface RouteParams {
@@ -25,14 +25,14 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -48,7 +48,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       );
     }
 
-    const users = getWorkspaceUsers(id);
+    const users = await getWorkspaceUsers(id);
 
     return NextResponse.json({
       users,
@@ -76,14 +76,14 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -103,15 +103,15 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     // Single user add
     if (userId) {
-      addUserToWorkspace(id, userId, admin.email);
-      const users = getWorkspaceUsers(id);
+      await addUserToWorkspace(id, userId, admin.email);
+      const users = await getWorkspaceUsers(id);
       return NextResponse.json({ users }, { status: 201 });
     }
 
     // Bulk user add
     if (userIds && Array.isArray(userIds) && userIds.length > 0) {
-      bulkAddUsersToWorkspace(id, userIds, admin.email);
-      const users = getWorkspaceUsers(id);
+      await bulkAddUsersToWorkspace(id, userIds, admin.email);
+      const users = await getWorkspaceUsers(id);
       return NextResponse.json({ users }, { status: 201 });
     }
 

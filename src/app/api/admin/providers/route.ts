@@ -4,7 +4,7 @@ import {
   getToolCapableModels,
   loadConfig,
 } from '@/lib/config-loader';
-import { getAvailableModels } from '@/lib/db/config';
+import { getAvailableModels } from '@/lib/db/compat';
 import type { ApiError } from '@/types';
 
 interface ProviderStatus {
@@ -55,8 +55,8 @@ interface ModelConfig {
  * LLM models come from getAvailableModels() which respects admin configuration
  * Other categories use sensible defaults from config
  */
-function getModelConfig(): ModelConfig {
-  const availableModels = getAvailableModels();
+async function getModelConfig(): Promise<ModelConfig> {
+  const availableModels = await getAvailableModels();
   const config = loadConfig();
   const toolCapable = getToolCapableModels();
 
@@ -135,7 +135,7 @@ async function getAllServicesStatus(
   providerStatus: Record<string, ProviderStatus>
 ): Promise<ServiceStatus[]> {
   const services: ServiceStatus[] = [];
-  const MODEL_CONFIG = getModelConfig();
+  const MODEL_CONFIG = await getModelConfig();
 
   // Azure DI special handling
   const azureDIConfigured = Boolean(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY);

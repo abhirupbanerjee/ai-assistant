@@ -6,8 +6,8 @@
  * 2. Availability fallback: When selected model fails, try fallback
  */
 
-import { getEnabledModel, getActiveModels } from './db/enabled-models';
-import { getLlmFallbackSettings } from './db/config';
+import { getEnabledModel, getActiveModels } from './db/compat/enabled-models';
+import { getLlmFallbackSettings } from './db/compat/config';
 
 // ============ Types ============
 
@@ -65,8 +65,8 @@ const unhealthyModels = new Map<string, number>(); // modelId -> unhealthyUntil 
 /**
  * Mark a model as unhealthy for the configured duration
  */
-export function markModelUnhealthy(modelId: string): void {
-  const settings = getLlmFallbackSettings();
+export async function markModelUnhealthy(modelId: string): Promise<void> {
+  const settings = await getLlmFallbackSettings();
   const duration =
     settings.healthCacheDuration === 'hourly' ? 3600000 :
     settings.healthCacheDuration === 'daily' ? 86400000 : 0;
@@ -172,13 +172,13 @@ export function isRecoverableApiError(error: Error): FallbackReason | null {
  * @param requiresTools - Whether tools are enabled
  * @returns Models to try and any capability-based switch that occurred
  */
-export function buildModelsToTry(
+export async function buildModelsToTry(
   selectedModel: string | null,
   requiresVision: boolean,
   requiresTools: boolean
-): ModelResolution {
-  const settings = getLlmFallbackSettings();
-  const selected = selectedModel ? getEnabledModel(selectedModel) : null;
+): Promise<ModelResolution> {
+  const settings = await getLlmFallbackSettings();
+  const selected = selectedModel ? await getEnabledModel(selectedModel) : null;
 
   // Check if selected model meets requirements
   const selectedMeetsVision = !requiresVision || selected?.visionCapable;
@@ -303,7 +303,7 @@ export async function withModelFallback<T>(options: {
 
       if (reason) {
         // Mark model as unhealthy
-        markModelUnhealthy(model);
+        await markModelUnhealthy(model);
 
         // If there's another model to try, switch to it
         if (i < modelsToTry.length - 1) {
@@ -339,9 +339,9 @@ export async function withModelFallback<T>(options: {
 /**
  * Get all models that are eligible as universal fallback (have both vision + tools)
  */
-export function getEligibleFallbackModels() {
+export async function getEligibleFallbackModels() {
   try {
-    const activeModels = getActiveModels();
+    const activeModels = await getActiveModels();
     return activeModels.filter(m => m.visionCapable && m.toolCapable);
   } catch {
     return [];
@@ -351,7 +351,7 @@ export function getEligibleFallbackModels() {
 /**
  * Check if a model is eligible as universal fallback
  */
-export function isEligibleFallbackModel(modelId: string): boolean {
-  const model = getEnabledModel(modelId);
+export async function isEligibleFallbackModel(modelId: string): Promise<boolean> {
+  const model = await getEnabledModel(modelId);
   return Boolean(model?.visionCapable && model?.toolCapable && model?.enabled);
 }

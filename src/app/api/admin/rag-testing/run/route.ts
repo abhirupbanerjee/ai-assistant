@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole } from '@/lib/users';
-import { saveTestResult, type TopChunk } from '@/lib/db/rag-testing';
-import { getRagSettings } from '@/lib/db/config';
+import { saveTestResult, type TopChunk } from '@/lib/db/compat';
+import { getRagSettings, getCategoryById } from '@/lib/db/compat';
 import { createEmbedding } from '@/lib/openai';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
-import { getCategoryById } from '@/lib/db/categories';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get base RAG settings and apply overrides
-    const baseSettings = getRagSettings();
+    const baseSettings = await getRagSettings();
     const testSettings = {
       ...baseSettings,
       ...overrideSettings,
@@ -41,7 +40,7 @@ export async function POST(request: NextRequest) {
     // Convert category IDs to slugs
     const categorySlugs: string[] = [];
     for (const catId of categoryIds) {
-      const category = getCategoryById(catId);
+      const category = await getCategoryById(catId);
       if (category) {
         categorySlugs.push(category.slug);
       }
@@ -96,7 +95,7 @@ export async function POST(request: NextRequest) {
 
     // Save result if requested
     if (saveResult) {
-      saveTestResult(
+      await saveTestResult(
         null, // queryId - not using saved queries for now
         query.trim(),
         testSettings,

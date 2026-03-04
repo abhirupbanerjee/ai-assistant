@@ -7,14 +7,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentBotById } from '@/lib/db/agent-bots';
 import {
+  getAgentBotById,
   getVersionById,
   getVersionWithRelations,
   updateVersion,
   deleteVersion,
   setDefaultVersion,
-} from '@/lib/db/agent-bot-versions';
+} from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 import type { InputSchema, OutputConfig } from '@/types/agent-bot';
 
@@ -30,7 +30,7 @@ export async function GET(
     await requireElevated();
     const { id, versionId } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -38,7 +38,7 @@ export async function GET(
       );
     }
 
-    const version = getVersionWithRelations(versionId);
+    const version = await getVersionWithRelations(versionId);
     if (!version || version.agent_bot_id !== id) {
       return NextResponse.json(
         { error: 'Version not found' },
@@ -90,7 +90,7 @@ export async function PATCH(
     await requireElevated();
     const { id, versionId } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -98,7 +98,7 @@ export async function PATCH(
       );
     }
 
-    const version = getVersionById(versionId);
+    const version = await getVersionById(versionId);
     if (!version || version.agent_bot_id !== id) {
       return NextResponse.json(
         { error: 'Version not found' },
@@ -126,11 +126,11 @@ export async function PATCH(
 
     // Handle setting as default
     if (body.is_default === true) {
-      setDefaultVersion(versionId);
+      await setDefaultVersion(versionId);
     }
 
     // Update the version
-    const updated = updateVersion(versionId, {
+    const updated = await updateVersion(versionId, {
       version_label: body.version_label,
       is_active: body.is_active,
       input_schema: body.input_schema,
@@ -152,7 +152,7 @@ export async function PATCH(
     }
 
     // Get full version with relations
-    const fullVersion = getVersionWithRelations(versionId);
+    const fullVersion = await getVersionWithRelations(versionId);
 
     return NextResponse.json({ version: fullVersion });
   } catch (error) {
@@ -179,7 +179,7 @@ export async function DELETE(
     await requireElevated();
     const { id, versionId } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -187,7 +187,7 @@ export async function DELETE(
       );
     }
 
-    const version = getVersionById(versionId);
+    const version = await getVersionById(versionId);
     if (!version || version.agent_bot_id !== id) {
       return NextResponse.json(
         { error: 'Version not found' },
@@ -203,7 +203,7 @@ export async function DELETE(
       );
     }
 
-    const deleted = deleteVersion(versionId);
+    const deleted = await deleteVersion(versionId);
     if (!deleted) {
       return NextResponse.json(
         { error: 'Failed to delete version' },

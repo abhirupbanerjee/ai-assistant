@@ -11,8 +11,8 @@ import {
   getAllSkillsWithCategories,
   createSkill,
   resetCoreSkillsToDefaults,
-} from '@/lib/db/skills';
-import { getSkillsSettings } from '@/lib/db/config';
+} from '@/lib/db/compat/skills';
+import { getSkillsSettings } from '@/lib/db/compat';
 import { seedCoreSkills } from '@/lib/skills/seed';
 import { clearConfigCache } from '@/lib/config-loader';
 import type { CreateSkillInput, TriggerType, SkillWithCategories } from '@/lib/skills/types';
@@ -23,11 +23,11 @@ import type { CreateSkillInput, TriggerType, SkillWithCategories } from '@/lib/s
  * - category_restricted = false (global, available to all)
  * - OR linked to one of the given categories via category_skills
  */
-function getSkillsForCategories(categoryIds: number[]): SkillWithCategories[] {
+async function getSkillsForCategories(categoryIds: number[]): Promise<SkillWithCategories[]> {
   if (categoryIds.length === 0) return [];
 
   const categoryIdSet = new Set(categoryIds);
-  const allSkills = getAllSkillsWithCategories();
+  const allSkills = await getAllSkillsWithCategories();
 
   return allSkills.filter(skill => {
     // Include global skills (not category-restricted)
@@ -51,13 +51,13 @@ export async function GET(request: NextRequest) {
     if (categoryIdsParam) {
       // Filter by categories - returns global skills + skills linked to given categories
       const categoryIds = categoryIdsParam.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-      skills = getSkillsForCategories(categoryIds);
+      skills = await getSkillsForCategories(categoryIds);
     } else {
       // Return all skills
-      skills = getAllSkillsWithCategories();
+      skills = await getAllSkillsWithCategories();
     }
 
-    const settings = getSkillsSettings();
+    const settings = await getSkillsSettings();
 
     return NextResponse.json({ skills, settings });
   } catch (error) {
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
       compliance_config: compliance_config || undefined,
     };
 
-    const skillId = createSkill(input, user.email, user.role);
+    const skillId = await createSkill(input, user.email, user.role);
 
     return NextResponse.json({ id: skillId, message: 'Skill created' }, { status: 201 });
   } catch (error) {
@@ -199,13 +199,13 @@ export async function DELETE() {
     clearConfigCache();
 
     // Delete existing core skills
-    const deleted = resetCoreSkillsToDefaults();
+    const deleted = await resetCoreSkillsToDefaults();
 
     // Re-seed from config files
-    seedCoreSkills();
+    await seedCoreSkills();
 
     // Get updated skills list
-    const skills = getAllSkillsWithCategories();
+    const skills = await getAllSkillsWithCategories();
     const coreSkillsCount = skills.filter(s => s.is_core).length;
 
     return NextResponse.json({

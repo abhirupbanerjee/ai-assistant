@@ -20,7 +20,7 @@ import { toolsLogger as logger } from '../logger';
  * Translate text using the configured provider
  */
 export async function translate(request: TranslationRequest): Promise<TranslationResponse> {
-  const config = getTranslationConfig();
+  const config = await getTranslationConfig();
 
   // Select best available provider
   let provider: TranslationProvider;

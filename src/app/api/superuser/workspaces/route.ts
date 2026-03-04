@@ -8,12 +8,12 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserCategories } from '@/lib/db/users';
+import { getSuperUserCategories } from '@/lib/db/compat';
 import {
   listWorkspacesByCreator,
   createWorkspace,
   getWorkspaceBySlug,
-} from '@/lib/db/workspaces';
+} from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 import type { WorkspaceType } from '@/types/workspace';
 
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     }
 
     // Check if feature is enabled
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json({
         workspaces: [],
         featureEnabled: false,
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     const type = searchParams.get('type') as WorkspaceType | null;
 
     // Only show workspaces created by this superuser
-    const allWorkspaces = listWorkspacesByCreator(user.email);
+    const allWorkspaces = await listWorkspacesByCreator(user.email);
     const workspaces = type ? allWorkspaces.filter(w => w.type === type) : allWorkspaces;
 
     return NextResponse.json({
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     }
 
     // Check if feature is enabled
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     }
 
     // Get superuser's assigned categories
-    const assignedCategoryIds = getSuperUserCategories(userId);
+    const assignedCategoryIds = await getSuperUserCategories(userId);
 
     const body = await request.json();
     const {
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
     }
 
     // Create workspace
-    const workspace = createWorkspace(
+    const workspace = await createWorkspace(
       {
         name: name.trim(),
         type,
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
     );
 
     // Get full workspace with relations for response
-    const fullWorkspace = getWorkspaceBySlug(workspace.slug);
+    const fullWorkspace = await getWorkspaceBySlug(workspace.slug);
 
     return NextResponse.json({ workspace: fullWorkspace }, { status: 201 });
   } catch (error) {

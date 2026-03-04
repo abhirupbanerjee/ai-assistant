@@ -15,12 +15,11 @@ import {
   updateFolderSyncFile,
   createFolderSyncFile,
   findFolderSyncFileByPath,
-} from '@/lib/db/folder-syncs';
+} from '@/lib/db/compat/folder-syncs';
 import { ingestDocument } from '@/lib/ingest';
 import { isSupportedMimeType } from '@/lib/document-extractor';
-import { execute } from '@/lib/db';
+import { updateDocumentFolderSync, deleteDocument as dbDeleteDocument } from '@/lib/db/compat';
 import { calculateFileHash, needsResync, MAX_FILE_SIZE_BYTES } from '@/lib/folder-sync-utils';
-import { deleteDocument as dbDeleteDocument } from '@/lib/db/documents';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const { syncId } = await params;
-    const folderSync = getFolderSyncById(syncId);
+    const folderSync = await getFolderSyncById(syncId);
 
     if (!folderSync) {
       return NextResponse.json<ApiError>(
@@ -57,7 +56,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const files = getFolderSyncFiles(syncId);
+    const files = await getFolderSyncFiles(syncId);
 
     return NextResponse.json({
       ...folderSync,
@@ -93,7 +92,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const { syncId } = await params;
-    const folderSync = getFolderSyncById(syncId);
+    const folderSync = await getFolderSyncById(syncId);
 
     if (!folderSync) {
       return NextResponse.json<ApiError>(
@@ -103,7 +102,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get existing files for comparison
-    const existingFiles = getFolderSyncFiles(syncId);
+    const existingFiles = await getFolderSyncFiles(syncId);
     const existingByPath = new Map(existingFiles.map(f => [f.relativePath, f]));
 
     const formData = await request.formData();
@@ -125,7 +124,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Mark as syncing
-    updateFolderSync(syncId, { status: 'syncing' });
+    await updateFolderSync(syncId, { status: 'syncing' });
 
     const results: Array<{
       path: string;
@@ -175,7 +174,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
         if (!existing) {
           // NEW file - add it
-          const syncFile = createFolderSyncFile({
+          const syncFile = await createFolderSyncFile({
             folderSyncId: syncId,
             relativePath,
             filename: file.name,
@@ -191,13 +190,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           });
 
           // Update document with folder sync metadata
-          execute(`
-            UPDATE documents
-            SET folder_sync_id = ?, original_relative_path = ?
-            WHERE id = ?
-          `, [syncId, relativePath, doc.id]);
+          await updateDocumentFolderSync(doc.id, syncId, relativePath);
 
-          updateFolderSyncFile(syncFile.id, {
+          await updateFolderSyncFile(syncFile.id, {
             documentId: parseInt(doc.id),
             status: 'synced',
             syncedAt: new Date().toISOString(),
@@ -226,14 +221,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           });
 
           // Update document with folder sync metadata
-          execute(`
-            UPDATE documents
-            SET folder_sync_id = ?, original_relative_path = ?
-            WHERE id = ?
-          `, [syncId, relativePath, doc.id]);
+          await updateDocumentFolderSync(doc.id, syncId, relativePath);
 
           // Update sync file record
-          updateFolderSyncFile(existing.id, {
+          await updateFolderSyncFile(existing.id, {
             documentId: parseInt(doc.id),
             fileHash,
             status: 'synced',
@@ -257,9 +248,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         }
       } catch (error) {
         // Try to find or create the sync file record
-        let syncFile = findFolderSyncFileByPath(syncId, relativePath);
+        let syncFile = await findFolderSyncFileByPath(syncId, relativePath);
         if (syncFile) {
-          updateFolderSyncFile(syncFile.id, {
+          await updateFolderSyncFile(syncFile.id, {
             status: 'error',
             errorMessage: error instanceof Error ? error.message : 'Unknown error',
           });
@@ -275,7 +266,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Update folder sync record
-    updateFolderSync(syncId, {
+    await updateFolderSync(syncId, {
       totalFiles: folderSync.totalFiles + added,
       syncedFiles: folderSync.syncedFiles + added + updated,
       failedFiles: folderSync.failedFiles + failed,
@@ -327,7 +318,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { syncId } = await params;
-    const folderSync = getFolderSyncById(syncId);
+    const folderSync = await getFolderSyncById(syncId);
 
     if (!folderSync) {
       return NextResponse.json<ApiError>(
@@ -340,7 +331,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const url = new URL(request.url);
     const deleteDocuments = url.searchParams.get('deleteDocuments') === 'true';
 
-    const deleted = deleteFolderSync(syncId, deleteDocuments);
+    const deleted = await deleteFolderSync(syncId, deleteDocuments);
 
     if (!deleted) {
       return NextResponse.json<ApiError>(

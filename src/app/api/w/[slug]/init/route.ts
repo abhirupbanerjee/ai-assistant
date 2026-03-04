@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail } from '@/lib/db/compat';
 import {
   validateWorkspaceRequest,
   extractOrigin,
@@ -21,8 +21,8 @@ import {
   createSession,
   getOrCreateUserSession,
   updateSessionActivity,
-} from '@/lib/db/workspace-sessions';
-import { getLatestThread } from '@/lib/db/workspace-threads';
+  getLatestThread,
+} from '@/lib/db/compat';
 import { checkRateLimit, getRateLimitHeaders } from '@/lib/workspace/rate-limiter';
 import type { WorkspaceInitResponse } from '@/types/workspace';
 
@@ -68,7 +68,7 @@ export async function POST(
 
     // Try to get authenticated user (optional for standalone)
     const authUser = await getCurrentUser();
-    const dbUser = authUser ? getUserByEmail(authUser.email) : null;
+    const dbUser = authUser ? await getUserByEmail(authUser.email) : null;
 
     // Validate workspace request
     const validation = await validateWorkspaceRequest(slug, {
@@ -99,7 +99,7 @@ export async function POST(
     // Handle based on workspace type
     if (workspace.type === 'embed') {
       // Check rate limit for embed mode
-      const rateLimit = checkRateLimit(workspace.id, ipHash);
+      const rateLimit = await checkRateLimit(workspace.id, ipHash);
 
       if (!rateLimit.allowed) {
         return NextResponse.json(
@@ -118,7 +118,7 @@ export async function POST(
       }
 
       // Create ephemeral session
-      const session = createSession(workspace.id, {
+      const session = await createSession(workspace.id, {
         visitorId,
         referrerUrl,
         ipHash,
@@ -130,7 +130,7 @@ export async function POST(
         workspaceId: workspace.id,
         type: 'embed',
         config: getWorkspaceClientConfig(workspace),
-        llmConfig: getWorkspaceLLMConfig(workspace),
+        llmConfig: await getWorkspaceLLMConfig(workspace),
         rateLimit: {
           remaining: rateLimit.remaining,
           daily_used: rateLimit.daily_used,
@@ -150,15 +150,15 @@ export async function POST(
 
       if (dbUser) {
         // Authenticated user - get or create their session
-        const session = getOrCreateUserSession(dbUser.id, workspace.id);
-        const latestThread = getLatestThread(session.id);
+        const session = await getOrCreateUserSession(dbUser.id, workspace.id);
+        const latestThread = await getLatestThread(session.id);
 
         const response: WorkspaceInitResponse = {
           sessionId: session.id,
           workspaceId: workspace.id,
           type: 'standalone',
           config: getWorkspaceClientConfig(workspace),
-          llmConfig: getWorkspaceLLMConfig(workspace),
+          llmConfig: await getWorkspaceLLMConfig(workspace),
           user: {
             id: dbUser.id,
             email: dbUser.email,
@@ -170,7 +170,7 @@ export async function POST(
         return NextResponse.json(response);
       } else {
         // Anonymous user for standalone - create anonymous session
-        const session = createSession(workspace.id, {
+        const session = await createSession(workspace.id, {
           visitorId,
           referrerUrl,
           ipHash,
@@ -182,7 +182,7 @@ export async function POST(
           workspaceId: workspace.id,
           type: 'standalone',
           config: getWorkspaceClientConfig(workspace),
-          llmConfig: getWorkspaceLLMConfig(workspace),
+          llmConfig: await getWorkspaceLLMConfig(workspace),
           activeThreadId: null,
         };
 

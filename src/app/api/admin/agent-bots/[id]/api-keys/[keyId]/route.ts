@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentBotById } from '@/lib/db/agent-bots';
-import { getApiKeyById, revokeApiKey } from '@/lib/db/agent-bot-api-keys';
+import { getAgentBotById, getApiKeyById, revokeApiKey } from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 
 // ============================================================================
@@ -21,7 +20,7 @@ export async function DELETE(
     await requireElevated();
     const { id, keyId } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -29,7 +28,7 @@ export async function DELETE(
       );
     }
 
-    const apiKey = getApiKeyById(keyId);
+    const apiKey = await getApiKeyById(keyId);
     if (!apiKey || apiKey.agent_bot_id !== id) {
       return NextResponse.json(
         { error: 'API key not found' },
@@ -44,7 +43,7 @@ export async function DELETE(
       );
     }
 
-    const revoked = revokeApiKey(keyId);
+    const revoked = await revokeApiKey(keyId);
     if (!revoked) {
       return NextResponse.json(
         { error: 'Failed to revoke API key' },

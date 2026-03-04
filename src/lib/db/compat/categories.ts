@@ -1,13 +1,10 @@
 /**
  * Category Database Operations - Async Compatibility Layer
  *
- * Provides async wrappers that work with both SQLite and PostgreSQL.
- * - SQLite: Delegates to existing sync functions
- * - PostgreSQL: Uses Kysely query builder
+ * Uses Kysely query builder for PostgreSQL.
  */
 
-import { getDb, getDatabaseProvider, transaction } from '../kysely';
-import * as sync from '../categories';
+import { getDb, transaction } from '../kysely';
 import { sql } from 'kysely';
 
 // Re-export types
@@ -27,13 +24,11 @@ import type {
 
 // Re-export helper (doesn't need DB access)
 export { generateSlug } from '../categories';
+import { generateSlug } from '../categories';
 
 // ============ Category CRUD ============
 
 export async function getAllCategories(): Promise<DbCategory[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllCategories();
-  }
   const db = await getDb();
   return db
     .selectFrom('categories')
@@ -43,9 +38,6 @@ export async function getAllCategories(): Promise<DbCategory[]> {
 }
 
 export async function getAllCategoriesWithStats(): Promise<CategoryWithStats[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllCategoriesWithStats();
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('categories as c')
@@ -75,9 +67,6 @@ export async function getAllCategoriesWithStats(): Promise<CategoryWithStats[]> 
 }
 
 export async function getCategoryById(id: number): Promise<DbCategory | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoryById(id);
-  }
   const db = await getDb();
   return db
     .selectFrom('categories')
@@ -87,9 +76,6 @@ export async function getCategoryById(id: number): Promise<DbCategory | undefine
 }
 
 export async function getCategoryBySlug(slug: string): Promise<DbCategory | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoryBySlug(slug);
-  }
   const db = await getDb();
   return db
     .selectFrom('categories')
@@ -99,9 +85,6 @@ export async function getCategoryBySlug(slug: string): Promise<DbCategory | unde
 }
 
 export async function getCategoryByName(name: string): Promise<DbCategory | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoryByName(name);
-  }
   const db = await getDb();
   return db
     .selectFrom('categories')
@@ -111,11 +94,7 @@ export async function getCategoryByName(name: string): Promise<DbCategory | unde
 }
 
 export async function createCategory(input: CreateCategoryInput): Promise<DbCategory> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createCategory(input);
-  }
-
-  const slug = sync.generateSlug(input.name);
+  const slug = generateSlug(input.name);
 
   // Check for unique name and slug
   const existingName = await getCategoryByName(input.name);
@@ -147,10 +126,6 @@ export async function updateCategory(
   id: number,
   input: UpdateCategoryInput
 ): Promise<DbCategory | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateCategory(id, input);
-  }
-
   const current = await getCategoryById(id);
   if (!current) return undefined;
 
@@ -166,7 +141,7 @@ export async function updateCategory(
     updates.name = input.name;
 
     // Update slug too
-    const newSlug = sync.generateSlug(input.name);
+    const newSlug = generateSlug(input.name);
     const existingSlug = await getCategoryBySlug(newSlug);
     if (existingSlug && existingSlug.id !== id) {
       throw new Error(`Category with slug "${newSlug}" already exists`);
@@ -189,18 +164,12 @@ export async function updateCategory(
 }
 
 export async function deleteCategory(id: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteCategory(id);
-  }
   const db = await getDb();
   const result = await db.deleteFrom('categories').where('id', '=', id).executeTakeFirst();
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
 }
 
 export async function categoryExists(id: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.categoryExists(id);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('categories')
@@ -213,9 +182,6 @@ export async function categoryExists(id: number): Promise<boolean> {
 // ============ Category Queries ============
 
 export async function getCategoriesForSuperUser(userId: number): Promise<DbCategory[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoriesForSuperUser(userId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('categories as c')
@@ -240,9 +206,6 @@ export async function getCategoriesForSuperUser(userId: number): Promise<DbCateg
 }
 
 export async function getCategoriesForUser(userId: number): Promise<DbCategory[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoriesForUser(userId);
-  }
   const db = await getDb();
   return db
     .selectFrom('categories as c')
@@ -257,9 +220,6 @@ export async function getCategoriesForUser(userId: number): Promise<DbCategory[]
 export async function getAllSubscriptionsForUser(
   userId: number
 ): Promise<(DbCategory & { isActive: boolean })[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllSubscriptionsForUser(userId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('categories as c')
@@ -291,9 +251,6 @@ export async function getAllSubscriptionsForUser(
 export async function getSuperUsersForCategory(
   categoryId: number
 ): Promise<{ userId: number; email: string; name: string | null }[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getSuperUsersForCategory(categoryId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('users as u')
@@ -314,9 +271,6 @@ export async function getSubscribersForCategory(
   categoryId: number,
   activeOnly: boolean = true
 ): Promise<{ userId: number; email: string; name: string | null; isActive: boolean }[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getSubscribersForCategory(categoryId, activeOnly);
-  }
   const db = await getDb();
   let query = db
     .selectFrom('users as u')
@@ -341,9 +295,6 @@ export async function getSubscribersForCategory(
 // ============ Category Statistics ============
 
 export async function getCategoryDocumentCount(categoryId: number): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoryDocumentCount(categoryId);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('document_categories')
@@ -354,9 +305,6 @@ export async function getCategoryDocumentCount(categoryId: number): Promise<numb
 }
 
 export async function getUnassignedDocumentCount(): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUnassignedDocumentCount();
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('documents as d')
@@ -374,10 +322,6 @@ export async function bulkSubscribeUsers(
   userIds: number[],
   subscribedBy: string
 ): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.bulkSubscribeUsers(categoryId, userIds, subscribedBy);
-  }
-
   return transaction(async (trx) => {
     let count = 0;
     for (const userId of userIds) {
@@ -402,9 +346,6 @@ export async function bulkSubscribeUsers(
 export async function getCategoryIdsBySlugs(slugs: string[]): Promise<number[]> {
   if (slugs.length === 0) return [];
 
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoryIdsBySlugs(slugs);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('categories')
@@ -417,9 +358,6 @@ export async function getCategoryIdsBySlugs(slugs: string[]): Promise<number[]> 
 export async function getCategorySlugsByIds(ids: number[]): Promise<string[]> {
   if (ids.length === 0) return [];
 
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategorySlugsByIds(ids);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('categories')
@@ -432,9 +370,6 @@ export async function getCategorySlugsByIds(ids: number[]): Promise<string[]> {
 // ============ Superuser Category Management ============
 
 export async function getCreatedCategoriesCount(createdByEmail: string): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCreatedCategoriesCount(createdByEmail);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('categories')
@@ -445,9 +380,6 @@ export async function getCreatedCategoriesCount(createdByEmail: string): Promise
 }
 
 export async function getCategoriesCreatedBy(createdByEmail: string): Promise<DbCategory[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCategoriesCreatedBy(createdByEmail);
-  }
   const db = await getDb();
   return db
     .selectFrom('categories')
@@ -458,9 +390,6 @@ export async function getCategoriesCreatedBy(createdByEmail: string): Promise<Db
 }
 
 export async function isCategoryCreatedBy(categoryId: number, email: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.isCategoryCreatedBy(categoryId, email);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('categories')
@@ -472,9 +401,6 @@ export async function isCategoryCreatedBy(categoryId: number, email: string): Pr
 }
 
 export async function getDocumentIdsForCategory(categoryId: number): Promise<number[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentIdsForCategory(categoryId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('document_categories')
@@ -487,10 +413,6 @@ export async function getDocumentIdsForCategory(categoryId: number): Promise<num
 export async function deleteCategoryWithRelatedData(
   categoryId: number
 ): Promise<{ documentIds: number[]; deleted: boolean }> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteCategoryWithRelatedData(categoryId);
-  }
-
   return transaction(async (trx) => {
     // Get document IDs before deletion (for external cleanup)
     const docResults = await trx
@@ -524,4 +446,23 @@ export async function deleteCategoryWithRelatedData(
       deleted: (result.numDeletedRows ?? BigInt(0)) > BigInt(0),
     };
   });
+}
+
+// ============ Bulk Category Lookup ============
+
+export interface CategoryInfo {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export async function getCategoriesByIds(categoryIds: number[]): Promise<CategoryInfo[]> {
+  if (categoryIds.length === 0) return [];
+
+  const db = await getDb();
+  return db
+    .selectFrom('categories')
+    .select(['id', 'name', 'slug'])
+    .where('id', 'in', categoryIds)
+    .execute() as Promise<CategoryInfo[]>;
 }

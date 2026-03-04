@@ -64,9 +64,9 @@ export async function requireAdmin(): Promise<User> {
 
 export async function requireElevated(): Promise<User & { role: 'admin' | 'superuser' }> {
   const user = await requireAuth();
-  const role = await getUserRole(user.email);
-  if (role !== 'admin' && role !== 'superuser') {
+  // Use the role already computed in getCurrentUser instead of doing another lookup
+  if (user.role !== 'admin' && user.role !== 'superuser') {
     throw new Error('Elevated access required');
   }
-  return { ...user, role };
+  return { ...user, role: user.role as 'admin' | 'superuser' };
 }

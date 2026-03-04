@@ -1,13 +1,10 @@
 /**
- * User Database Operations - Async Compatibility Layer
+ * User Database Operations
  *
- * Provides async wrappers that work with both SQLite and PostgreSQL.
- * - SQLite: Delegates to existing sync functions
- * - PostgreSQL: Uses Kysely query builder
+ * Uses Kysely query builder for PostgreSQL.
  */
 
-import { getDb, getDatabaseProvider, transaction } from '../kysely';
-import * as sync from '../users';
+import { getDb, transaction } from '../kysely';
 
 // Re-export types
 export type {
@@ -31,9 +28,6 @@ import type {
 // ============ User CRUD ============
 
 export async function getAllUsers(): Promise<DbUser[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllUsers();
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -43,9 +37,6 @@ export async function getAllUsers(): Promise<DbUser[]> {
 }
 
 export async function getUserById(id: number): Promise<DbUser | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUserById(id);
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -55,9 +46,6 @@ export async function getUserById(id: number): Promise<DbUser | undefined> {
 }
 
 export async function getUserByEmail(email: string): Promise<DbUser | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUserByEmail(email);
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -67,9 +55,6 @@ export async function getUserByEmail(email: string): Promise<DbUser | undefined>
 }
 
 export async function createUser(input: CreateUserInput): Promise<DbUser> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createUser(input);
-  }
   const db = await getDb();
   const result = await db
     .insertInto('users')
@@ -85,10 +70,6 @@ export async function createUser(input: CreateUserInput): Promise<DbUser> {
 }
 
 export async function updateUser(id: number, input: UpdateUserInput): Promise<DbUser | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateUser(id, input);
-  }
-
   const updates: Record<string, unknown> = {};
   if (input.name !== undefined) updates.name = input.name;
   if (input.role !== undefined) updates.role = input.role;
@@ -103,27 +84,18 @@ export async function updateUser(id: number, input: UpdateUserInput): Promise<Db
 }
 
 export async function deleteUser(id: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteUser(id);
-  }
   const db = await getDb();
   const result = await db.deleteFrom('users').where('id', '=', id).executeTakeFirst();
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
 }
 
 export async function deleteUserByEmail(email: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteUserByEmail(email);
-  }
   const db = await getDb();
   const result = await db.deleteFrom('users').where('email', '=', email.toLowerCase()).executeTakeFirst();
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
 }
 
 export async function userExists(email: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.userExists(email);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('users')
@@ -146,9 +118,6 @@ export async function isSuperUser(email: string): Promise<boolean> {
 // ============ Users by Role ============
 
 export async function getAdmins(): Promise<DbUser[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAdmins();
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -159,9 +128,6 @@ export async function getAdmins(): Promise<DbUser[]> {
 }
 
 export async function getSuperUsers(): Promise<DbUser[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getSuperUsers();
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -172,9 +138,6 @@ export async function getSuperUsers(): Promise<DbUser[]> {
 }
 
 export async function getRegularUsers(): Promise<DbUser[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getRegularUsers();
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -187,10 +150,6 @@ export async function getRegularUsers(): Promise<DbUser[]> {
 // ============ Super User Category Assignments ============
 
 export async function getSuperUserWithAssignments(userId: number): Promise<UserWithAssignments | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getSuperUserWithAssignments(userId);
-  }
-
   const user = await getUserById(userId);
   if (!user || user.role !== 'superuser') return undefined;
 
@@ -219,9 +178,6 @@ export async function assignCategoryToSuperUser(
   categoryId: number,
   assignedBy: string
 ): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.assignCategoryToSuperUser(userId, categoryId, assignedBy);
-  }
   try {
     const db = await getDb();
     await db
@@ -235,9 +191,6 @@ export async function assignCategoryToSuperUser(
 }
 
 export async function removeCategoryFromSuperUser(userId: number, categoryId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.removeCategoryFromSuperUser(userId, categoryId);
-  }
   const db = await getDb();
   const result = await db
     .deleteFrom('super_user_categories')
@@ -248,9 +201,6 @@ export async function removeCategoryFromSuperUser(userId: number, categoryId: nu
 }
 
 export async function getSuperUserCategories(userId: number): Promise<number[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getSuperUserCategories(userId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('super_user_categories')
@@ -261,9 +211,6 @@ export async function getSuperUserCategories(userId: number): Promise<number[]> 
 }
 
 export async function superUserHasCategory(userId: number, categoryId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.superUserHasCategory(userId, categoryId);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('super_user_categories')
@@ -277,10 +224,6 @@ export async function superUserHasCategory(userId: number, categoryId: number): 
 // ============ User Subscriptions ============
 
 export async function getUserWithSubscriptions(userId: number): Promise<UserWithSubscriptions | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUserWithSubscriptions(userId);
-  }
-
   const user = await getUserById(userId);
   if (!user) return undefined;
 
@@ -314,9 +257,6 @@ export async function addSubscription(
   categoryId: number,
   subscribedBy: string
 ): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.addSubscription(userId, categoryId, subscribedBy);
-  }
   try {
     const db = await getDb();
     await db
@@ -330,9 +270,6 @@ export async function addSubscription(
 }
 
 export async function removeSubscription(userId: number, categoryId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.removeSubscription(userId, categoryId);
-  }
   const db = await getDb();
   const result = await db
     .deleteFrom('user_subscriptions')
@@ -347,9 +284,6 @@ export async function toggleSubscriptionActive(
   categoryId: number,
   isActive: boolean
 ): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.toggleSubscriptionActive(userId, categoryId, isActive);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('user_subscriptions')
@@ -361,9 +295,6 @@ export async function toggleSubscriptionActive(
 }
 
 export async function getActiveSubscriptions(userId: number): Promise<number[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getActiveSubscriptions(userId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('user_subscriptions')
@@ -375,9 +306,6 @@ export async function getActiveSubscriptions(userId: number): Promise<number[]> 
 }
 
 export async function userHasSubscription(userId: number, categoryId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.userHasSubscription(userId, categoryId);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('user_subscriptions')
@@ -397,9 +325,6 @@ export async function getUsersSubscribedToCategory(categoryId: number): Promise<
     subscribedAt: string;
   }>
 > {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUsersSubscribedToCategory(categoryId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('user_subscriptions')
@@ -422,10 +347,6 @@ export async function createUserWithSubscriptions(
   categoryIds: number[],
   subscribedBy: string
 ): Promise<DbUser> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createUserWithSubscriptions(input, categoryIds, subscribedBy);
-  }
-
   return transaction(async (trx) => {
     const result = await trx
       .insertInto('users')
@@ -456,10 +377,6 @@ export async function createSuperUserWithAssignments(
   categoryIds: number[],
   assignedBy: string
 ): Promise<DbUser> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createSuperUserWithAssignments(input, categoryIds, assignedBy);
-  }
-
   return transaction(async (trx) => {
     const result = await trx
       .insertInto('users')
@@ -488,10 +405,6 @@ export async function createSuperUserWithAssignments(
 // ============ Initialize from Environment ============
 
 export async function initializeAdminsFromEnv(): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.initializeAdminsFromEnv();
-  }
-
   const adminEmails =
     process.env.ADMIN_EMAILS?.split(',')
       .map((e) => e.trim())
@@ -511,9 +424,6 @@ export async function initializeAdminsFromEnv(): Promise<void> {
 // ============ Credentials Management ============
 
 export async function setUserPassword(userId: number, passwordHash: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.setUserPassword(userId, passwordHash);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('users')
@@ -524,9 +434,6 @@ export async function setUserPassword(userId: number, passwordHash: string): Pro
 }
 
 export async function setCredentialsEnabled(userId: number, enabled: boolean): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.setCredentialsEnabled(userId, enabled);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('users')
@@ -537,9 +444,6 @@ export async function setCredentialsEnabled(userId: number, enabled: boolean): P
 }
 
 export async function clearUserPassword(userId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.clearUserPassword(userId);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('users')
@@ -550,9 +454,6 @@ export async function clearUserPassword(userId: number): Promise<boolean> {
 }
 
 export async function getCredentialUsers(): Promise<DbUser[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getCredentialUsers();
-  }
   const db = await getDb();
   return db
     .selectFrom('users')
@@ -563,18 +464,11 @@ export async function getCredentialUsers(): Promise<DbUser[]> {
 }
 
 export async function canLoginWithCredentials(email: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.canLoginWithCredentials(email);
-  }
   const user = await getUserByEmail(email);
   return !!(user && user.password_hash && user.credentials_enabled === 1);
 }
 
 export async function initializeAdminCredentialsFromEnv(): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.initializeAdminCredentialsFromEnv();
-  }
-
   const adminPassword = process.env.CREDENTIALS_ADMIN_PASSWORD;
   if (!adminPassword) return;
 
@@ -590,6 +484,7 @@ export async function initializeAdminCredentialsFromEnv(): Promise<void> {
     const { hashPassword } = await import('../../password');
     const hash = await hashPassword(adminPassword);
     await setUserPassword(user.id, hash);
+    await setCredentialsEnabled(user.id, true);
     console.log(`[Auth] Credentials set for admin: ${firstAdmin}`);
   }
 }

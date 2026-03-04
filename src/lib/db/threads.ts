@@ -127,6 +127,15 @@ export function getThreadById(threadId: string): DbThread | undefined {
 }
 
 /**
+ * Get thread owner (user_id only) for ownership checks
+ */
+export function getThreadOwner(threadId: string): { user_id: number } | undefined {
+  return queryOne<{ user_id: number }>(`
+    SELECT user_id FROM threads WHERE id = ?
+  `, [threadId]);
+}
+
+/**
  * Get thread with details (message count, upload count, categories)
  */
 export function getThreadWithDetails(threadId: string): ThreadWithDetails | undefined {

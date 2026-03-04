@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/tool-config';
+import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/compat/tool-config';
 import { getTool, initializeTools } from '@/lib/tools';
 import { testImageGen as testImageGenProvider } from '@/lib/tools/image-gen';
 
@@ -215,7 +215,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { toolName } = await params;
 
     // Initialize tools system
-    initializeTools();
+    await initializeTools();
 
     // Get tool definition
     const tool = getTool(toolName);
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get tool configuration
-    const config = getToolConfig(toolName);
+    const config = await getToolConfig(toolName);
     const defaults = TOOL_DEFAULTS[toolName];
     const toolConfig = config?.config || defaults?.config || {};
 

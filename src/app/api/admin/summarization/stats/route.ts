@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getSummarizationStats } from '@/lib/summarization';
-import { getSummarizationSettings } from '@/lib/db/config';
+import { getSummarizationSettings } from '@/lib/db/compat';
 import type { ApiError } from '@/types';
 
 /**
@@ -25,8 +25,8 @@ export async function GET() {
       );
     }
 
-    const settings = getSummarizationSettings();
-    const stats = getSummarizationStats();
+    const settings = await getSummarizationSettings();
+    const stats = await getSummarizationStats();
 
     return NextResponse.json({
       enabled: settings.enabled,

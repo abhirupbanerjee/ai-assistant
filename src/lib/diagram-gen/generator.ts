@@ -6,9 +6,9 @@
  */
 
 import OpenAI from 'openai';
-import { getLlmSettings } from '@/lib/db/config';
+import { getLlmSettings } from '@/lib/db/compat/config';
 import { getApiKey } from '@/lib/provider-helpers';
-import { getToolConfig } from '@/lib/db/tool-config';
+import { getToolConfig } from '@/lib/db/compat/tool-config';
 import { buildGenerationPrompt, DIAGRAM_TEMPLATES } from './templates';
 import { validateMermaidSyntax, sanitizeMermaidCode } from './validator';
 import type {
@@ -31,8 +31,8 @@ export const DIAGRAM_GEN_DEFAULTS: DiagramGenConfig = {
 /**
  * Get diagram generation configuration
  */
-export function getDiagramGenConfig(): DiagramGenConfig {
-  const config = getToolConfig('diagram_gen');
+export async function getDiagramGenConfig(): Promise<DiagramGenConfig> {
+  const config = await getToolConfig('diagram_gen');
 
   if (config?.config) {
     const stored = config.config as Partial<DiagramGenConfig>;
@@ -49,13 +49,13 @@ export function getDiagramGenConfig(): DiagramGenConfig {
 
 let openaiClient: OpenAI | null = null;
 
-function getOpenAIClient(): OpenAI {
+async function getOpenAIClient(): Promise<OpenAI> {
   if (!openaiClient) {
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
-      : getApiKey('openai');
+      ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
+      : await getApiKey('openai');
 
     if (!apiKey && !process.env.OPENAI_BASE_URL) {
       throw new Error('OpenAI API key or LiteLLM proxy required for diagram generation');
@@ -80,13 +80,13 @@ export async function generateMermaidDiagram(
   direction?: FlowDirection,
   title?: string
 ): Promise<DiagramGenerationResult> {
-  const config = getDiagramGenConfig();
+  const config = await getDiagramGenConfig();
 
   // Get the default model from system LLM settings
-  const llmSettings = getLlmSettings();
+  const llmSettings = await getLlmSettings();
   const model = llmSettings.model;
 
-  const client = getOpenAIClient();
+  const client = await getOpenAIClient();
 
   // Build specialized prompt for this diagram type
   const { system, user } = buildGenerationPrompt(diagramType, description, direction, title);

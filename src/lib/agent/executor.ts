@@ -14,13 +14,13 @@ import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { generateWithModel, getModelForRole } from './llm-router';
 import { checkTaskQuality } from './checker';
-import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/task-plans';
+import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/compat/task-plans';
 import { documentGenerationTool } from '../tools/docgen';
 import { imageGenTool } from '../tools/image-gen';
 import { tavilyWebSearch } from '../tools/tavily';
 import { runWithContextAsync } from '../request-context';
 import { resolveSkills } from '../skills/resolver';
-import { getCategoryBySlug } from '../db/categories';
+import { getCategoryBySlug } from '../db/compat/categories';
 
 // ============ Skills Resolution ============
 
@@ -28,7 +28,7 @@ import { getCategoryBySlug } from '../db/categories';
  * Resolve skills for the plan's category context
  * Returns the combined skill prompt content to inject into executor prompts
  */
-function resolveSkillsForPlan(plan: AgentPlan, taskDescription: string): string {
+async function resolveSkillsForPlan(plan: AgentPlan, taskDescription: string): Promise<string> {
   // Get category slug from plan (handle both naming conventions)
   const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
 
@@ -37,14 +37,14 @@ function resolveSkillsForPlan(plan: AgentPlan, taskDescription: string): string 
   }
 
   // Look up category ID from slug
-  const category = getCategoryBySlug(categorySlug);
+  const category = await getCategoryBySlug(categorySlug);
   if (!category) {
     console.log(`[Executor] No category found for slug: ${categorySlug}`);
     return '';
   }
 
   // Resolve skills for this category
-  const resolved = resolveSkills([category.id], taskDescription);
+  const resolved = await resolveSkills([category.id], taskDescription);
 
   if (resolved.skills.length > 0) {
     console.log(`[Executor] Loaded ${resolved.skills.length} skills for category "${categorySlug}":`,
@@ -127,7 +127,7 @@ export async function executeTask(
 ): Promise<ExecutionResult> {
   // Bug fix: Query fresh task status from database for accurate idempotency check
   const planId = (plan as any).id || (plan as any).planId;
-  const freshPlan = getTaskPlan(planId);
+  const freshPlan = await getTaskPlan(planId);
   const freshTask = freshPlan?.tasks?.find((t) => t.id === task.id);
   const currentStatus = freshTask?.status || task.status;
 
@@ -141,7 +141,7 @@ export async function executeTask(
 
   // Mark as running and save state history
   try {
-    transitionTaskState(planId, task.id, 'running');
+    await transitionTaskState(planId, task.id, 'running');
   } catch (error) {
     return {
       success: false,
@@ -165,7 +165,7 @@ export async function executeTask(
 
     // Track LLM usage
     if (result.tokens_used) {
-      incrementBudgetUsage(plan.id, {
+      await incrementBudgetUsage(plan.id, {
         llm_calls: result.llm_calls || 1,
         tokens_used: result.tokens_used,
       });
@@ -177,7 +177,7 @@ export async function executeTask(
 
     // Track checker LLM usage
     if (checkResult.tokens_used) {
-      incrementBudgetUsage(plan.id, {
+      await incrementBudgetUsage(plan.id, {
         llm_calls: 1,
         tokens_used: checkResult.tokens_used,
       });
@@ -186,7 +186,7 @@ export async function executeTask(
     // Handle check result
     if (checkResult.status === 'approved') {
       // Auto-approved
-      transitionTaskState(plan.id, task.id, 'done', {
+      await transitionTaskState(plan.id, task.id, 'done', {
         result: result.content,
         confidence_score: checkResult.confidence_score,
         tokens_used: result.tokens_used,
@@ -202,7 +202,7 @@ export async function executeTask(
       };
     } else {
       // Low confidence - mark as needs_review
-      transitionTaskState(plan.id, task.id, 'needs_review', {
+      await transitionTaskState(plan.id, task.id, 'needs_review', {
         result: result.content,
         confidence_score: checkResult.confidence_score,
         review_notes: checkResult.notes,
@@ -223,7 +223,7 @@ export async function executeTask(
     // FAIL-FAST: No retries, skip on first failure
     const errorMsg = error instanceof Error ? error.message : String(error);
 
-    transitionTaskState(plan.id, task.id, 'skipped', {
+    await transitionTaskState(plan.id, task.id, 'skipped', {
       error: errorMsg,
     });
 
@@ -255,7 +255,7 @@ async function performTaskExecution(
   const prompt = buildExecutionPrompt(task, plan);
 
   // Resolve skills for this plan's category context
-  const skillPrompt = resolveSkillsForPlan(plan, task.description);
+  const skillPrompt = await resolveSkillsForPlan(plan, task.description);
 
   // Build system prompt with skills injected
   let systemPrompt = EXECUTOR_SYSTEM_PROMPT;
@@ -344,7 +344,7 @@ async function executeDocGenTool(
   callbacks?: ExecutorCallbacks
 ): Promise<string> {
   // Resolve skills for this plan's category context
-  const skillPrompt = resolveSkillsForPlan(plan, task.description);
+  const skillPrompt = await resolveSkillsForPlan(plan, task.description);
 
   // Build system prompt with skills injected
   // Skills are CRITICAL for document generation - they define the output structure

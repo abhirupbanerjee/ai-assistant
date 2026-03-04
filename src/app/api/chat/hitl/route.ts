@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { updateHitlResponse, getComplianceResult } from '@/lib/db/compliance';
+import { updateHitlResponse, getComplianceResult } from '@/lib/db/compat';
 import { applyUserClarifications } from '@/lib/compliance/hitl';
 import type { HitlUserResponse, HitlAction, ComplianceContext } from '@/types/compliance';
 import type { ApiError } from '@/types';
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the compliance result for this message
-    const complianceResult = getComplianceResult(messageId);
+    const complianceResult = await getComplianceResult(messageId);
     if (!complianceResult) {
       return NextResponse.json<ApiError>(
         { error: 'Compliance result not found', code: 'NOT_FOUND' },
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       : result.action;
 
     // Update the compliance result in the database
-    updateHitlResponse(messageId, userResponse, action);
+    await updateHitlResponse(messageId, userResponse, action);
 
     // Build response
     const response: HitlSubmitResponse = {

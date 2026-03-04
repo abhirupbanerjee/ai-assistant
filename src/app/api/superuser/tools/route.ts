@@ -9,13 +9,13 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getAllToolConfigs, TOOL_DEFAULTS } from '@/lib/db/tool-config';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
+import { getAllToolConfigs, TOOL_DEFAULTS } from '@/lib/db/compat/tool-config';
 import {
   getCategoryToolConfigs,
   getEffectiveToolConfig,
   type CategoryToolConfig,
-} from '@/lib/db/category-tool-config';
+} from '@/lib/db/compat/category-tool-config';
 import { getAllTools, initializeTools, HYBRID_TOOLS } from '@/lib/tools';
 import { TERMINAL_TOOLS } from '@/lib/openai';
 
@@ -61,7 +61,7 @@ export async function GET() {
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -69,25 +69,25 @@ export async function GET() {
     const assignedCategories = superUserData.assignedCategories;
 
     // Initialize tools system if needed
-    initializeTools();
+    await initializeTools();
 
     // Get all tool definitions from registry
     const toolDefinitions = getAllTools();
 
     // Get all global tool configurations
-    const globalConfigs = getAllToolConfigs();
+    const globalConfigs = await getAllToolConfigs();
     const globalConfigMap = new Map(globalConfigs.map(tc => [tc.toolName, tc]));
 
     // Build response with category-level configs
-    const tools: ToolWithCategories[] = toolDefinitions.map(tool => {
+    const tools: ToolWithCategories[] = await Promise.all(toolDefinitions.map(async tool => {
       const globalConfig = globalConfigMap.get(tool.name);
       const defaults = TOOL_DEFAULTS[tool.name];
       const globalEnabled = globalConfig?.isEnabled ?? defaults?.enabled ?? false;
 
       // Get category-level status for each assigned category
-      const categories: CategoryToolStatus[] = assignedCategories.map(cat => {
-        const effective = getEffectiveToolConfig(tool.name, cat.categoryId);
-        const categoryConfigs = getCategoryToolConfigs(cat.categoryId);
+      const categories: CategoryToolStatus[] = await Promise.all(assignedCategories.map(async cat => {
+        const effective = await getEffectiveToolConfig(tool.name, cat.categoryId);
+        const categoryConfigs = await getCategoryToolConfigs(cat.categoryId);
         const categoryConfig = categoryConfigs.find(c => c.toolName === tool.name);
 
         return {
@@ -98,7 +98,7 @@ export async function GET() {
           effectiveEnabled: effective.enabled,
           branding: categoryConfig?.branding ?? null,
         };
-      });
+      }));
 
       return {
         name: tool.name,
@@ -110,7 +110,7 @@ export async function GET() {
         isHybrid: HYBRID_TOOLS.has(tool.name),
         categories,
       };
-    });
+    }));
 
     return NextResponse.json({
       tools,

@@ -8,9 +8,8 @@
 
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, getDatabaseProvider, transaction } from '../kysely';
+import { getDb, transaction } from '../kysely';
 import { sql } from 'kysely';
-import * as sync from '../sharing';
 import type { ThreadShare, ShareAccessLog } from '@/types';
 
 // Re-export pure utility functions (no DB access)
@@ -91,10 +90,6 @@ export async function createThreadShare(
   createdBy: number,
   options: { allowDownload?: boolean; expiresInDays?: number | null } = {}
 ): Promise<ThreadShare> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createThreadShare(threadId, createdBy, options);
-  }
-
   const id = uuidv4();
   const shareToken = crypto.randomBytes(32).toString('base64url');
   const expiresAt = options.expiresInDays
@@ -123,9 +118,6 @@ export async function createThreadShare(
  * Get share by ID
  */
 export async function getShareById(shareId: string): Promise<ThreadShare | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getShareById(shareId);
-  }
   const db = await getDb();
   const row = await db
     .selectFrom('thread_shares as ts')
@@ -145,9 +137,6 @@ export async function getShareById(shareId: string): Promise<ThreadShare | undef
  * Get share by token
  */
 export async function getShareByToken(token: string): Promise<ThreadShare | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getShareByToken(token);
-  }
   const db = await getDb();
   const row = await db
     .selectFrom('thread_shares as ts')
@@ -167,9 +156,6 @@ export async function getShareByToken(token: string): Promise<ThreadShare | unde
  * Get all shares for a thread
  */
 export async function getThreadShares(threadId: string): Promise<ThreadShare[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadShares(threadId);
-  }
   const db = await getDb();
   const rows = await db
     .selectFrom('thread_shares as ts')
@@ -190,9 +176,6 @@ export async function getThreadShares(threadId: string): Promise<ThreadShare[]> 
  * Get all shares created by a user
  */
 export async function getUserShares(userId: number): Promise<ThreadShare[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUserShares(userId);
-  }
   const db = await getDb();
   const rows = await db
     .selectFrom('thread_shares as ts')
@@ -213,9 +196,6 @@ export async function getUserShares(userId: number): Promise<ThreadShare[]> {
  * Count active shares for a thread
  */
 export async function countActiveThreadShares(threadId: string): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.countActiveThreadShares(threadId);
-  }
   const db = await getDb();
   const now = new Date().toISOString();
   const result = await db
@@ -237,9 +217,6 @@ export async function countActiveThreadShares(threadId: string): Promise<number>
  * Count shares created by user in the last hour (rate limiting)
  */
 export async function countUserSharesInLastHour(userId: number): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.countUserSharesInLastHour(userId);
-  }
   const db = await getDb();
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
   const result = await db
@@ -258,9 +235,6 @@ export async function updateShare(
   shareId: string,
   updates: { allowDownload?: boolean; expiresInDays?: number | null }
 ): Promise<ThreadShare | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateShare(shareId, updates);
-  }
   const existing = await getShareById(shareId);
   if (!existing) return undefined;
 
@@ -291,9 +265,6 @@ export async function updateShare(
  * Revoke a share (soft delete)
  */
 export async function revokeShare(shareId: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.revokeShare(shareId);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('thread_shares')
@@ -308,9 +279,6 @@ export async function revokeShare(shareId: string): Promise<boolean> {
  * Delete a share permanently
  */
 export async function deleteShare(shareId: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteShare(shareId);
-  }
   const db = await getDb();
   const result = await db
     .deleteFrom('thread_shares')
@@ -323,9 +291,6 @@ export async function deleteShare(shareId: string): Promise<boolean> {
  * Record a view and increment view count
  */
 export async function recordShareView(shareId: string): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.recordShareView(shareId);
-  }
   const db = await getDb();
   await db
     .updateTable('thread_shares')
@@ -349,9 +314,6 @@ export async function logShareAccess(
   resourceType?: string,
   resourceId?: string
 ): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.logShareAccess(shareId, accessedBy, action, resourceType, resourceId);
-  }
   const db = await getDb();
   await db
     .insertInto('share_access_log')
@@ -369,9 +331,6 @@ export async function logShareAccess(
  * Get access log for a share
  */
 export async function getShareAccessLog(shareId: string, limit: number = 100): Promise<ShareAccessLog[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getShareAccessLog(shareId, limit);
-  }
   const db = await getDb();
   const rows = await db
     .selectFrom('share_access_log as sal')
@@ -399,9 +358,6 @@ export async function getSharingStats(): Promise<{
   totalViews: number;
   sharesThisWeek: number;
 }> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getSharingStats();
-  }
   const db = await getDb();
   const now = new Date().toISOString();
   const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

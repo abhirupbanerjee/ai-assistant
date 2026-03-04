@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { setPWASettings, getPWASettings } from '@/lib/db/config';
+import { setPWASettings, getPWASettings } from '@/lib/db/compat';
 import type { ApiError } from '@/types';
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -73,12 +73,12 @@ export async function POST(request: NextRequest) {
 
     // Update PWA settings with new icon path
     const iconPath = `/icons/${filename}`;
-    const currentSettings = getPWASettings();
+    const currentSettings = await getPWASettings();
 
     if (size === '192') {
-      setPWASettings({ ...currentSettings, icon192Path: iconPath }, user.email);
+      await setPWASettings({ ...currentSettings, icon192Path: iconPath }, user.email);
     } else {
-      setPWASettings({ ...currentSettings, icon512Path: iconPath }, user.email);
+      await setPWASettings({ ...currentSettings, icon512Path: iconPath }, user.email);
     }
 
     return NextResponse.json({
@@ -116,7 +116,7 @@ export async function GET() {
       );
     }
 
-    const settings = getPWASettings();
+    const settings = await getPWASettings();
     return NextResponse.json({
       icon192Path: settings.icon192Path,
       icon512Path: settings.icon512Path,

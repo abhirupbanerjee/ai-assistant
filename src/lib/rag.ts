@@ -18,9 +18,9 @@ import {
 } from './redis';
 import { extractTextFromDocument, chunkText } from './ingest';
 import { readFileBuffer } from './storage';
-import { getRagSettings, getAcronymMappings } from './db/config';
-import { getResolvedSystemPrompt } from './db/category-prompts';
-import { getCategoryIdsBySlugs } from './db/categories';
+import { getRagSettings, getAcronymMappings } from './db/compat/config';
+import { getResolvedSystemPrompt } from './db/compat/category-prompts';
+import { getCategoryIdsBySlugs } from './db/compat/categories';
 import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
 import { getAvailableDataSourcesDescription } from './tools/data-source';
@@ -48,7 +48,7 @@ async function expandQueries(originalQuery: string, enabled: boolean): Promise<s
   const lowerQuery = originalQuery.toLowerCase();
 
   // Get acronym mappings from SQLite config
-  const acronymExpansions = getAcronymMappings();
+  const acronymExpansions = await getAcronymMappings();
 
   for (const [acronym, expansions] of Object.entries(acronymExpansions)) {
     // expansions is now an array of possible expansions
@@ -130,7 +130,7 @@ export async function buildContext(
   userDocTruncations: UserDocTruncation[];
 }> {
   // Use provided settings or fetch from SQLite config
-  const ragSettings = settings || getRagSettings();
+  const ragSettings = settings || await getRagSettings();
   const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
 
   logger.debug('buildContext called', {
@@ -152,9 +152,11 @@ export async function buildContext(
   const allGlobalChunks: RetrievedChunk[] = [];
 
   for (const embedding of allEmbeddings) {
-    // Build list of collections to query
+    // Build list of collections to query.
+    // Always include the legacy collection so documents that predate
+    // proper categorization (or are intentionally uncategorized) are still found.
     const collectionsToQuery = categorySlugs && categorySlugs.length > 0
-      ? [...categorySlugs.map(collNames.forCategory), collNames.global]
+      ? [...categorySlugs.map(collNames.forCategory), collNames.global, collNames.legacy]
       : [collNames.global, collNames.legacy];
 
     logger.debug('Querying collections', { collectionsToQuery });
@@ -262,20 +264,19 @@ export async function buildContext(
       // Track chunks matched for this document
       let matchedChunks = 0;
 
-      // Calculate similarity with query
+      // Calculate similarity with query - user docs bypass the threshold since the user
+      // explicitly uploaded them for this conversation (reranker also uses bypassThreshold)
       for (const chunk of chunksWithEmbeddings) {
         const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
-        if (similarity >= similarityThreshold) {
-          matchedChunks++;
-          userChunks.push({
-            id: chunk.id,
-            text: chunk.text,
-            documentName: filename,
-            pageNumber: chunk.pageNumber,
-            score: similarity,
-            source: 'user',
-          });
-        }
+        matchedChunks++;
+        userChunks.push({
+          id: chunk.id,
+          text: chunk.text,
+          documentName: filename,
+          pageNumber: chunk.pageNumber,
+          score: similarity,
+          source: 'user',
+        });
       }
 
       // Track truncation stats for this document
@@ -408,7 +409,7 @@ export async function ragQuery(
   }
 
   // Get RAG settings from SQLite config
-  const ragSettings = getRagSettings();
+  const ragSettings = await getRagSettings();
   const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled } = ragSettings;
 
   // Include category info in cache key for category-specific results
@@ -475,13 +476,13 @@ export async function ragQuery(
   // If categories are specified, use the first category's prompt addendum (if any)
   let categoryIds: number[] = [];
   if (categorySlugs && categorySlugs.length > 0) {
-    categoryIds = getCategoryIdsBySlugs(categorySlugs);
+    categoryIds = await getCategoryIdsBySlugs(categorySlugs);
   }
   const categoryId = categoryIds[0]; // Use first category for prompt resolution
-  let systemPrompt = getResolvedSystemPrompt(categoryId);
+  let systemPrompt = await getResolvedSystemPrompt(categoryId);
 
   // Resolve and inject skills prompts (if skills feature is enabled)
-  const resolvedSkills = resolveSkills(categoryIds, userMessage);
+  const resolvedSkills = await resolveSkills(categoryIds, userMessage);
   if (resolvedSkills.combinedPrompt) {
     systemPrompt = `${systemPrompt}\n\n${resolvedSkills.combinedPrompt}`;
   }

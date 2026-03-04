@@ -6,8 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getCategoryById } from '@/lib/db/categories';
+import { getSuperUserWithAssignments, getCategoryById } from '@/lib/db/compat';
 import { ingestDocument } from '@/lib/ingest';
 import { isSupportedMimeType } from '@/lib/document-extractor';
 import {
@@ -16,8 +15,8 @@ import {
   updateFolderSync,
   updateFolderSyncFile,
   findFolderSyncFileByPath,
-} from '@/lib/db/folder-syncs';
-import { execute } from '@/lib/db';
+} from '@/lib/db/compat/folder-syncs';
+import { updateDocumentFolderSync } from '@/lib/db/compat';
 import { calculateFileHash, MAX_FILES_PER_FOLDER, MAX_FILE_SIZE_BYTES } from '@/lib/folder-sync-utils';
 
 interface FolderUploadResult {
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       return NextResponse.json(
         { error: 'No categories assigned to you' },
@@ -100,7 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify category exists
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
@@ -131,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create folder sync record (superuser: single category, no global)
-    const folderSync = createFolderSync({
+    const folderSync = await createFolderSync({
       folderName,
       originalPath: folderName,
       uploadedBy: user.email,
@@ -151,7 +150,7 @@ export async function POST(request: NextRequest) {
 
       // Skip unsupported file types
       if (!isSupportedMimeType(file.type)) {
-        createFolderSyncFile({
+        await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
           filename: file.name,
@@ -159,9 +158,9 @@ export async function POST(request: NextRequest) {
           lastModified: file.lastModified,
         });
 
-        const syncFile = findFolderSyncFileByPath(folderSync.id, relativePath);
+        const syncFile = await findFolderSyncFileByPath(folderSync.id, relativePath);
         if (syncFile) {
-          updateFolderSyncFile(syncFile.id, {
+          await updateFolderSyncFile(syncFile.id, {
             status: 'skipped',
             errorMessage: 'Unsupported file type',
           });
@@ -178,7 +177,7 @@ export async function POST(request: NextRequest) {
 
       // Skip files that are too large
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        createFolderSyncFile({
+        await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
           filename: file.name,
@@ -186,9 +185,9 @@ export async function POST(request: NextRequest) {
           lastModified: file.lastModified,
         });
 
-        const syncFile = findFolderSyncFileByPath(folderSync.id, relativePath);
+        const syncFile = await findFolderSyncFileByPath(folderSync.id, relativePath);
         if (syncFile) {
-          updateFolderSyncFile(syncFile.id, {
+          await updateFolderSyncFile(syncFile.id, {
             status: 'error',
             errorMessage: 'File too large (max 50MB)',
           });
@@ -212,7 +211,7 @@ export async function POST(request: NextRequest) {
         const fileHash = calculateFileHash(buffer);
 
         // Create folder sync file record
-        const syncFile = createFolderSyncFile({
+        const syncFile = await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
           filename: file.name,
@@ -229,14 +228,10 @@ export async function POST(request: NextRequest) {
         });
 
         // Update document with folder sync metadata
-        execute(`
-          UPDATE documents
-          SET folder_sync_id = ?, original_relative_path = ?
-          WHERE id = ?
-        `, [folderSync.id, relativePath, doc.id]);
+        await updateDocumentFolderSync(doc.id, folderSync.id, relativePath);
 
         // Update sync file record
-        updateFolderSyncFile(syncFile.id, {
+        await updateFolderSyncFile(syncFile.id, {
           documentId: parseInt(doc.id),
           status: 'synced',
           syncedAt: new Date().toISOString(),
@@ -251,9 +246,9 @@ export async function POST(request: NextRequest) {
         successful++;
       } catch (error) {
         // Get or create the sync file record
-        let syncFile = findFolderSyncFileByPath(folderSync.id, relativePath);
+        let syncFile = await findFolderSyncFileByPath(folderSync.id, relativePath);
         if (!syncFile) {
-          syncFile = createFolderSyncFile({
+          syncFile = await createFolderSyncFile({
             folderSyncId: folderSync.id,
             relativePath,
             filename: file.name,
@@ -262,7 +257,7 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        updateFolderSyncFile(syncFile.id, {
+        await updateFolderSyncFile(syncFile.id, {
           status: 'error',
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
@@ -277,7 +272,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update folder sync totals
-    updateFolderSync(folderSync.id, {
+    await updateFolderSync(folderSync.id, {
       totalFiles: files.length,
       syncedFiles: successful,
       failedFiles: failed,

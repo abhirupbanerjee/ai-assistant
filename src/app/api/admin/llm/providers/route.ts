@@ -12,7 +12,7 @@ import {
   createProvider,
   maskApiKey,
   type CreateProviderInput,
-} from '@/lib/db/llm-providers';
+} from '@/lib/db/compat/llm-providers';
 import type { ApiError } from '@/types';
 
 // GET /api/admin/llm/providers - List all providers
@@ -26,7 +26,7 @@ export async function GET() {
       );
     }
 
-    const providers = getAllProviders();
+    const providers = await getAllProviders();
 
     // Mask API keys for security
     const safeProviders = providers.map(p => ({
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const provider = createProvider(body);
+    const provider = await createProvider(body);
 
     return NextResponse.json({
       provider: {

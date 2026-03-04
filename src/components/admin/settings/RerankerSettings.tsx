@@ -73,7 +73,8 @@ export default function RerankerSettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const formatDate = (date: Date | string) => {
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'Never';
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleString();
   };

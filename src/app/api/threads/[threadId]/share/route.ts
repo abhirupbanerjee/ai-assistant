@@ -6,8 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
-import { getThreadById, userOwnsThread } from '@/lib/db/threads';
+import { getUserByEmail, getThreadById, userOwnsThread } from '@/lib/db/compat';
 import {
   createShare,
   getSharesForThread,
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { threadId } = await params;
 
     // Check if share_thread tool is enabled
-    if (!isToolEnabled('share_thread')) {
+    if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is disabled', code: 'NOT_CONFIGURED' },
         { status: 403 }
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -57,7 +56,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check thread exists
-    const thread = getThreadById(threadId);
+    const thread = await getThreadById(threadId);
     if (!thread) {
       return NextResponse.json<ApiError>(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -66,7 +65,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Only owner can view shares (admin can also view)
-    if (!userOwnsThread(dbUser.id, threadId) && dbUser.role !== 'admin') {
+    if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const shares = await getSharesForThread(threadId);
-    const { config } = getShareThreadConfig();
+    const { config } = await getShareThreadConfig();
 
     // Build share URLs
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -85,8 +84,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({
       shares: sharesWithUrls,
-      canShare: canRoleShare(dbUser.role),
-      sendEmailAvailable: isSendEmailAvailable(),
+      canShare: await canRoleShare(dbUser.role),
+      sendEmailAvailable: await isSendEmailAvailable(),
       config: {
         defaultExpiryDays: config.defaultExpiryDays,
         allowDownloadsByDefault: config.allowDownloadsByDefault,
@@ -119,7 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { threadId } = await params;
 
     // Check if share_thread tool is enabled
-    if (!isToolEnabled('share_thread')) {
+    if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is disabled', code: 'NOT_CONFIGURED' },
         { status: 403 }
@@ -127,7 +126,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -144,7 +143,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check thread exists
-    const thread = getThreadById(threadId);
+    const thread = await getThreadById(threadId);
     if (!thread) {
       return NextResponse.json<ApiError>(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -153,7 +152,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Only owner can share (admin can also share)
-    if (!userOwnsThread(dbUser.id, threadId) && dbUser.role !== 'admin') {
+    if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }
@@ -187,13 +186,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let emailSent = false;
     let emailError: string | undefined;
 
+    const sendEmailAvailable = await isSendEmailAvailable();
     console.log('[Share] Email notification request:', {
       sendEmail,
       recipientEmail,
-      sendEmailAvailable: isSendEmailAvailable(),
+      sendEmailAvailable,
     });
 
-    if (sendEmail && recipientEmail && isSendEmailAvailable()) {
+    if (sendEmail && recipientEmail && sendEmailAvailable) {
       console.log('[Share] Sending email notification to:', recipientEmail);
       const emailResult = await sendShareNotificationEmail({
         recipientEmail,
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       } else {
         console.log('[Share] Email notification sent successfully');
       }
-    } else if (sendEmail && recipientEmail && !isSendEmailAvailable()) {
+    } else if (sendEmail && recipientEmail && !sendEmailAvailable) {
       console.log('[Share] Email requested but send_email tool is not available');
       emailError = 'Email notifications are not configured';
     }

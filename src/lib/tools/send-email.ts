@@ -9,7 +9,7 @@
  */
 
 import sgMail from '@sendgrid/mail';
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type { SendEmailToolConfig } from '@/types';
 
@@ -18,8 +18,8 @@ import type { SendEmailToolConfig } from '@/types';
 /**
  * Get send_email tool configuration from database
  */
-export function getSendEmailConfig(): { enabled: boolean; config: SendEmailToolConfig } {
-  const toolConfig = getToolConfig('send_email');
+export async function getSendEmailConfig(): Promise<{ enabled: boolean; config: SendEmailToolConfig }> {
+  const toolConfig = await getToolConfig('send_email');
   if (toolConfig) {
     const config = toolConfig.config as Record<string, unknown>;
     return {
@@ -46,8 +46,8 @@ export function getSendEmailConfig(): { enabled: boolean; config: SendEmailToolC
 /**
  * Check if SendGrid is properly configured
  */
-export function isSendGridConfigured(): boolean {
-  const { config } = getSendEmailConfig();
+export async function isSendGridConfigured(): Promise<boolean> {
+  const { config } = await getSendEmailConfig();
   return !!(config.sendgridApiKey && config.senderEmail);
 }
 
@@ -60,8 +60,8 @@ const emailRateLimits: Map<string, { count: number; resetAt: number }> = new Map
 /**
  * Check rate limit for sending emails
  */
-export function checkEmailRateLimit(): { allowed: boolean; message?: string } {
-  const { config } = getSendEmailConfig();
+export async function checkEmailRateLimit(): Promise<{ allowed: boolean; message?: string }> {
+  const { config } = await getSendEmailConfig();
   const key = 'global'; // Could be per-user if needed
   const now = Date.now();
   const hourMs = 60 * 60 * 1000;
@@ -102,7 +102,7 @@ export interface SendEmailResult {
  * Send email via SendGrid using @sendgrid/mail package
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  const { enabled, config } = getSendEmailConfig();
+  const { enabled, config } = await getSendEmailConfig();
 
   console.log('[SendEmail] Attempting to send email:', {
     to: params.to,
@@ -117,13 +117,13 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { success: false, error: 'Email sending is disabled' };
   }
 
-  if (!isSendGridConfigured()) {
+  if (!(await isSendGridConfigured())) {
     console.log('[SendEmail] SendGrid not configured - missing API key or sender email');
     return { success: false, error: 'SendGrid is not configured. Please set API key and sender email.' };
   }
 
   // Check rate limit
-  const rateCheck = checkEmailRateLimit();
+  const rateCheck = await checkEmailRateLimit();
   if (!rateCheck.allowed) {
     console.log('[SendEmail] Rate limit exceeded');
     return { success: false, error: rateCheck.message };
@@ -196,7 +196,7 @@ export async function sendShareNotificationEmail(
   params: ShareNotificationParams
 ): Promise<SendEmailResult> {
   const { recipientEmail, sharedByName, threadTitle, shareUrl, expiresAt, allowDownload } = params;
-  const { config } = getSendEmailConfig();
+  const { config } = await getSendEmailConfig();
 
   const subject = `${sharedByName} shared a conversation with you`;
 

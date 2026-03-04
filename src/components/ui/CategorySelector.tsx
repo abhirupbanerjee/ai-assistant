@@ -108,10 +108,12 @@ export default function CategorySelector({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       {/* Selected categories / trigger button */}
-      <button
-        type="button"
+      <div
+        role="combobox"
+        aria-expanded={isOpen}
+        tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && setIsOpen(!isOpen)}
-        disabled={disabled}
+        onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setIsOpen(!isOpen); } }}
         className={`
           w-full min-h-[40px] px-3 py-2 text-left
           bg-white border rounded-lg
@@ -131,13 +133,15 @@ export default function CategorySelector({
               <Tag size={10} />
               {cat.name}
               {!disabled && (
-                <button
-                  type="button"
+                <span
+                  role="button"
+                  tabIndex={0}
                   onClick={(e) => removeCategory(cat.id, e)}
-                  className="hover:bg-blue-200 rounded-full p-0.5"
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeCategory(cat.id, e as unknown as React.MouseEvent); } }}
+                  className="hover:bg-blue-200 rounded-full p-0.5 cursor-pointer"
                 >
                   <X size={10} />
-                </button>
+                </span>
               )}
             </span>
           ))
@@ -146,7 +150,7 @@ export default function CategorySelector({
           size={16}
           className={`ml-auto text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
-      </button>
+      </div>
 
       {/* Dropdown */}
       {isOpen && (

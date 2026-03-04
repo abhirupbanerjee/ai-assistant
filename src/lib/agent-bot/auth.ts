@@ -14,8 +14,9 @@ import {
   checkRateLimit,
   updateLastUsed,
   incrementUsage,
-} from '@/lib/db/agent-bot-api-keys';
-import { getAgentBotById, getActiveAgentBotBySlug } from '@/lib/db/agent-bots';
+  getAgentBotById,
+  getActiveAgentBotBySlug,
+} from '@/lib/db/compat';
 import type {
   AgentBot,
   AgentBotApiKey,
@@ -184,10 +185,10 @@ export function extractApiKey(request: NextRequest): string | null {
  * Authenticate request by slug
  * Used for public API endpoints like /api/agent-bots/[slug]/invoke
  */
-export function authenticateBySlug(
+export async function authenticateBySlug(
   request: NextRequest,
   slug: string
-): AuthResult {
+): Promise<AuthResult> {
   // Extract API key
   const apiKeyString = extractApiKey(request);
   if (!apiKeyString) {
@@ -199,7 +200,7 @@ export function authenticateBySlug(
   }
 
   // Validate API key
-  const keyValidation = validateApiKey(apiKeyString);
+  const keyValidation = await validateApiKey(apiKeyString);
   if (!keyValidation.valid || !keyValidation.apiKey) {
     return {
       success: false,
@@ -214,10 +215,10 @@ export function authenticateBySlug(
   const apiKey = keyValidation.apiKey;
 
   // Get agent bot by slug
-  const agentBot = getActiveAgentBotBySlug(slug);
+  const agentBot = await getActiveAgentBotBySlug(slug);
   if (!agentBot) {
     // Check if it exists but is disabled
-    const inactive = getAgentBotById(apiKey.agent_bot_id);
+    const inactive = await getAgentBotById(apiKey.agent_bot_id);
     if (inactive && inactive.slug === slug && !inactive.is_active) {
       return {
         success: false,
@@ -242,7 +243,7 @@ export function authenticateBySlug(
   }
 
   // Check rate limits
-  const rateLimitResult = checkRateLimit(apiKey.id);
+  const rateLimitResult = await checkRateLimit(apiKey.id);
   if (!rateLimitResult.allowed) {
     return {
       success: false,
@@ -262,7 +263,7 @@ export function authenticateBySlug(
   }
 
   // Update last used timestamp
-  updateLastUsed(apiKey.id);
+  await updateLastUsed(apiKey.id);
 
   return {
     success: true,
@@ -278,11 +279,11 @@ export function authenticateBySlug(
  * Authenticate request and return response or context
  * Convenience wrapper for route handlers
  */
-export function authenticateRequest(
+export async function authenticateRequest(
   request: NextRequest,
   slug: string
-): NextResponse<AgentBotError> | AuthContext {
-  const result = authenticateBySlug(request, slug);
+): Promise<NextResponse<AgentBotError> | AuthContext> {
+  const result = await authenticateBySlug(request, slug);
 
   if (!result.success) {
     const response = agentBotError(
@@ -297,9 +298,9 @@ export function authenticateRequest(
       // Rate limit info would be available from the check
       const keyString = extractApiKey(request);
       if (keyString) {
-        const keyValidation = validateApiKey(keyString);
+        const keyValidation = await validateApiKey(keyString);
         if (keyValidation.valid && keyValidation.apiKey) {
-          const rateLimitResult = checkRateLimit(keyValidation.apiKey.id);
+          const rateLimitResult = await checkRateLimit(keyValidation.apiKey.id);
           return createRateLimitResponse(
             rateLimitResult.info,
             rateLimitResult.blockedReason === 'day'
@@ -330,12 +331,12 @@ export function isAuthError(
 /**
  * Record API usage after request completion
  */
-export function recordUsage(
+export async function recordUsage(
   context: AuthContext,
   tokenCount: number = 0,
   isError: boolean = false
-): void {
-  incrementUsage(
+): Promise<void> {
+  await incrementUsage(
     context.apiKey.id,
     context.agentBot.id,
     tokenCount,

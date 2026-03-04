@@ -9,27 +9,10 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { queryAll } from '@/lib/db';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
+import { getDb } from '@/lib/db/kysely';
+import { sql } from 'kysely';
 
-interface AgentBotRow {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  is_active: number;
-}
-
-interface VersionCategoryRow {
-  agent_bot_id: string;
-  category_id: number;
-  category_name: string;
-}
-
-interface DefaultVersionRow {
-  agent_bot_id: string;
-  version_number: number;
-}
 
 export async function GET() {
   try {
@@ -49,7 +32,7 @@ export async function GET() {
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     const userCategoryIds = (superUserData?.assignedCategories || []).map(
       (c) => c.categoryId
     );
@@ -58,47 +41,48 @@ export async function GET() {
       return NextResponse.json({ agentBots: [] });
     }
 
+    const db = await getDb();
+
     // Get all agent bots that have at least one version with a matching category
-    const placeholders = userCategoryIds.map(() => '?').join(',');
-    const agentBotIds = queryAll<{ agent_bot_id: string }>(
-      `SELECT DISTINCT v.agent_bot_id
-       FROM agent_bot_version_categories vc
-       JOIN agent_bot_versions v ON vc.version_id = v.id
-       WHERE vc.category_id IN (${placeholders})`,
-      userCategoryIds
-    ).map((r) => r.agent_bot_id);
+    const agentBotIdsResult = await db
+      .selectFrom('agent_bot_version_categories as vc')
+      .innerJoin('agent_bot_versions as v', 'vc.version_id', 'v.id')
+      .select('v.agent_bot_id')
+      .where('vc.category_id', 'in', userCategoryIds)
+      .distinct()
+      .execute();
+
+    const agentBotIds = agentBotIdsResult.map((r) => r.agent_bot_id);
 
     if (agentBotIds.length === 0) {
       return NextResponse.json({ agentBots: [] });
     }
 
     // Get agent bot details
-    const botPlaceholders = agentBotIds.map(() => '?').join(',');
-    const bots = queryAll<AgentBotRow>(
-      `SELECT id, name, slug, description, is_active
-       FROM agent_bots
-       WHERE id IN (${botPlaceholders})
-       ORDER BY name`,
-      agentBotIds
-    );
+    const bots = await db
+      .selectFrom('agent_bots')
+      .select(['id', 'name', 'slug', 'description', 'is_active'])
+      .where('id', 'in', agentBotIds)
+      .orderBy('name')
+      .execute();
 
     // Get category names for each agent bot
-    const versionCategories = queryAll<VersionCategoryRow>(
-      `SELECT DISTINCT v.agent_bot_id, vc.category_id, c.name as category_name
-       FROM agent_bot_version_categories vc
-       JOIN agent_bot_versions v ON vc.version_id = v.id
-       JOIN categories c ON vc.category_id = c.id
-       WHERE v.agent_bot_id IN (${botPlaceholders})`,
-      agentBotIds
-    );
+    const versionCategories = await db
+      .selectFrom('agent_bot_version_categories as vc')
+      .innerJoin('agent_bot_versions as v', 'vc.version_id', 'v.id')
+      .innerJoin('categories as c', 'vc.category_id', 'c.id')
+      .select(['v.agent_bot_id', 'vc.category_id', 'c.name as category_name'])
+      .where('v.agent_bot_id', 'in', agentBotIds)
+      .distinct()
+      .execute();
 
     // Get default version number for each bot
-    const defaultVersions = queryAll<DefaultVersionRow>(
-      `SELECT agent_bot_id, version_number
-       FROM agent_bot_versions
-       WHERE agent_bot_id IN (${botPlaceholders}) AND is_default = 1`,
-      agentBotIds
-    );
+    const defaultVersions = await db
+      .selectFrom('agent_bot_versions')
+      .select(['agent_bot_id', 'version_number'])
+      .where('agent_bot_id', 'in', agentBotIds)
+      .where('is_default', '=', 1)
+      .execute();
 
     // Build category map
     const categoryMap = new Map<string, string[]>();

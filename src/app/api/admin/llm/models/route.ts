@@ -12,7 +12,7 @@ import {
   getActiveModels,
   createEnabledModelsBatch,
   type CreateEnabledModelInput,
-} from '@/lib/db/enabled-models';
+} from '@/lib/db/compat/enabled-models';
 import type { ApiError } from '@/types';
 
 // GET /api/admin/llm/models
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('active') === 'true';
 
-    const models = activeOnly ? getActiveModels() : getAllEnabledModels();
+    const models = activeOnly ? await getActiveModels() : await getAllEnabledModels();
 
     return NextResponse.json({ models });
   } catch (error) {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const created = createEnabledModelsBatch(body.models);
+    const created = await createEnabledModelsBatch(body.models);
 
     return NextResponse.json({
       message: `Added ${created.length} models`,

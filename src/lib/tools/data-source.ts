@@ -5,9 +5,9 @@
  * with category-based access control and visualization support.
  */
 
-import { getToolConfig } from '../db/tool-config';
-import { getDataSourceByName, getAllDataSourcesForCategories } from '../db/data-sources';
-import { wouldToolSkillMatch } from '../db/skills';
+import { getToolConfig } from '../db/compat/tool-config';
+import { getDataSourceByName, getAllDataSourcesForCategories } from '../db/compat/data-sources';
+import { wouldToolSkillMatch } from '../db/compat/skills';
 import { callDataAPI } from '../data-sources/api-caller';
 import { queryCSVData, queryCSVDataWithAggregation } from '../data-sources/csv-handler';
 import { aggregateData } from '../data-sources/aggregation';
@@ -151,15 +151,15 @@ function validateDataSourceConfig(config: Record<string, unknown>): ValidationRe
 /**
  * Get data source tool configuration
  */
-function getDataSourceToolConfig(): {
+async function getDataSourceToolConfig(): Promise<{
   cacheTTLSeconds: number;
   timeout: number;
   defaultLimit: number;
   maxLimit: number;
   defaultChartType: ChartType;
   enabledChartTypes: ChartType[];
-} {
-  const config = getToolConfig('data_source');
+}> {
+  const config = await getToolConfig('data_source');
   if (config?.config) {
     const c = config.config as Record<string, unknown>;
     return {
@@ -220,15 +220,15 @@ function parseSort(sortArg?: { field: string; direction?: string }): DataSort | 
  * Check if visualization was requested via keywords or explicit param
  * Uses skills with tool_name='chart_gen' for keyword matching (database-driven)
  */
-function isVisualizationRequested(
+async function isVisualizationRequested(
   userMessage: string,
   explicitVizParam: boolean
-): boolean {
+): Promise<boolean> {
   if (explicitVizParam) return true;
 
   // Check if any chart_gen skill would match the message
   // This is database-driven via skills with tool_name='chart_gen'
-  return wouldToolSkillMatch('chart_gen', userMessage);
+  return await wouldToolSkillMatch('chart_gen', userMessage);
 }
 
 /**
@@ -617,7 +617,7 @@ IMPORTANT FOR LARGE DATASETS:
 
   execute: async (args: DataSourceToolArgs) => {
     console.log('[DataSource] Tool called with args:', JSON.stringify(args, null, 2));
-    const toolConfig = getDataSourceToolConfig();
+    const toolConfig = await getDataSourceToolConfig();
 
     // Validate required arguments
     if (!args.source_name) {
@@ -652,11 +652,11 @@ IMPORTANT FOR LARGE DATASETS:
 
     try {
       // Get the data source by name
-      const dataSource = getDataSourceByName(args.source_name);
+      const dataSource = await getDataSourceByName(args.source_name);
 
       if (!dataSource) {
         // List available sources for this category
-        const availableSources = getAllDataSourcesForCategories(categoryIds);
+        const availableSources = await getAllDataSourcesForCategories(categoryIds);
         const sourceNames = availableSources.map(s => s.type === 'api' ? s.config.name : s.config.name);
 
         return JSON.stringify({
@@ -779,7 +779,7 @@ IMPORTANT FOR LARGE DATASETS:
         const userMessage = context.userMessage || '';
 
         // Only generate viz hint if explicitly requested
-        const vizRequested = isVisualizationRequested(
+        const vizRequested = await isVisualizationRequested(
           userMessage,
           !!args.visualization
         );
@@ -924,12 +924,12 @@ function applyClientSideSort(
 /**
  * Get available data sources for categories (for system prompt injection)
  */
-export function getAvailableDataSourcesDescription(categoryIds: number[]): string {
+export async function getAvailableDataSourcesDescription(categoryIds: number[]): Promise<string> {
   if (!categoryIds || categoryIds.length === 0) {
     return '';
   }
 
-  const sources = getAllDataSourcesForCategories(categoryIds);
+  const sources = await getAllDataSourcesForCategories(categoryIds);
   if (sources.length === 0) {
     return '';
   }

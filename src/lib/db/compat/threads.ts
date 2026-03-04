@@ -1,13 +1,10 @@
 /**
- * Thread Database Operations - Async Compatibility Layer
+ * Thread Database Operations
  *
- * Provides async wrappers that work with both SQLite and PostgreSQL.
- * - SQLite: Delegates to existing sync functions
- * - PostgreSQL: Uses Kysely query builder
+ * Uses Kysely query builder for PostgreSQL.
  */
 
-import { getDb, getDatabaseProvider, transaction } from '../kysely';
-import * as sync from '../threads';
+import { getDb, transaction } from '../kysely';
 import { v4 as uuidv4 } from 'uuid';
 import { sql } from 'kysely';
 import type { Source, ToolCall, GeneratedDocumentInfo, MessageVisualization, GeneratedImageInfo, PodcastHint } from '@/types';
@@ -59,10 +56,6 @@ export async function createThread(
   title: string = 'New Conversation',
   categoryIds: number[] = []
 ): Promise<DbThread> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createThread(userId, title, categoryIds);
-  }
-
   const threadId = uuidv4();
 
   return transaction(async (trx) => {
@@ -93,9 +86,6 @@ export async function createThread(
 }
 
 export async function getThreadById(threadId: string): Promise<DbThread | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadById(threadId);
-  }
   const db = await getDb();
   return db
     .selectFrom('threads')
@@ -105,10 +95,6 @@ export async function getThreadById(threadId: string): Promise<DbThread | undefi
 }
 
 export async function getThreadWithDetails(threadId: string): Promise<ThreadWithDetails | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadWithDetails(threadId);
-  }
-
   const thread = await getThreadById(threadId);
   if (!thread) return undefined;
 
@@ -147,10 +133,6 @@ export async function getThreadsForUser(
   limit: number = 50,
   offset: number = 0
 ): Promise<ThreadWithDetails[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadsForUser(userId, limit, offset);
-  }
-
   const db = await getDb();
   const threads = await db
     .selectFrom('threads')
@@ -196,9 +178,6 @@ export async function getThreadsForUser(
 }
 
 export async function getThreadCountForUser(userId: number): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadCountForUser(userId);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('threads')
@@ -209,9 +188,6 @@ export async function getThreadCountForUser(userId: number): Promise<number> {
 }
 
 export async function updateThreadTitle(threadId: string, title: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateThreadTitle(threadId, title);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('threads')
@@ -222,10 +198,6 @@ export async function updateThreadTitle(threadId: string, title: string): Promis
 }
 
 export async function toggleThreadPin(threadId: string): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.toggleThreadPin(threadId);
-  }
-
   const thread = await getThreadById(threadId);
   if (!thread) return false;
 
@@ -241,9 +213,6 @@ export async function toggleThreadPin(threadId: string): Promise<boolean> {
 }
 
 export async function updateThreadModel(threadId: string, selectedModel: string | null): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateThreadModel(threadId, selectedModel);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('threads')
@@ -257,15 +226,25 @@ export async function updateThreadModel(threadId: string, selectedModel: string 
 }
 
 export async function getEffectiveModelForThread(threadId: string): Promise<string | null> {
-  // Delegate to sync - it handles the logic and dynamic import
-  return sync.getEffectiveModelForThread(threadId);
+  // Check thread for model override, then fall back to global default
+  const db = await getDb();
+  const thread = await db
+    .selectFrom('threads')
+    .select('selected_model')
+    .where('id', '=', threadId)
+    .executeTakeFirst();
+
+  if (thread?.selected_model) {
+    return thread.selected_model as string;
+  }
+
+  // No override — get default model from enabled_models
+  const { getDefaultModel } = await import('./enabled-models');
+  const defaultModel = await getDefaultModel();
+  return defaultModel?.id || null;
 }
 
 export async function deleteThread(threadId: string): Promise<{ messageCount: number; uploadCount: number }> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteThread(threadId);
-  }
-
   return transaction(async (trx) => {
     const [messageCountResult, uploadCountResult] = await Promise.all([
       trx
@@ -295,12 +274,18 @@ export async function userOwnsThread(userId: number, threadId: string): Promise<
   return thread?.user_id === userId;
 }
 
+export async function getThreadOwner(threadId: string): Promise<{ user_id: number } | undefined> {
+  const db = await getDb();
+  return db
+    .selectFrom('threads')
+    .select('user_id')
+    .where('id', '=', threadId)
+    .executeTakeFirst();
+}
+
 // ============ Thread Categories ============
 
 export async function getThreadCategories(threadId: string): Promise<number[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadCategories(threadId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('thread_categories')
@@ -311,9 +296,6 @@ export async function getThreadCategories(threadId: string): Promise<number[]> {
 }
 
 export async function getThreadCategorySlugs(threadId: string): Promise<string[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadCategorySlugs(threadId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('categories as c')
@@ -327,10 +309,6 @@ export async function getThreadCategorySlugs(threadId: string): Promise<string[]
 }
 
 export async function setThreadCategories(threadId: string, categoryIds: number[]): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.setThreadCategories(threadId, categoryIds);
-  }
-
   await transaction(async (trx) => {
     await trx.deleteFrom('thread_categories').where('thread_id', '=', threadId).execute();
 
@@ -362,10 +340,6 @@ export async function addMessage(
     generatedPodcasts?: PodcastHint[];
   }
 ): Promise<ParsedMessage> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.addMessage(threadId, role, content, options);
-  }
-
   const messageId = options?.messageId || uuidv4();
   const db = await getDb();
 
@@ -393,9 +367,6 @@ export async function addMessage(
 }
 
 export async function getMessageById(messageId: string): Promise<ParsedMessage | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getMessageById(messageId);
-  }
   const db = await getDb();
   const msg = await db
     .selectFrom('messages')
@@ -423,9 +394,6 @@ export async function getMessageById(messageId: string): Promise<ParsedMessage |
 }
 
 export async function getMessagesForThread(threadId: string): Promise<ParsedMessage[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getMessagesForThread(threadId);
-  }
   const db = await getDb();
   const messages = await db
     .selectFrom('messages')
@@ -460,9 +428,6 @@ export async function addThreadUpload(
   filepath: string,
   fileSize: number
 ): Promise<DbThreadUpload> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.addThreadUpload(threadId, filename, filepath, fileSize);
-  }
   const db = await getDb();
   const result = await db
     .insertInto('thread_uploads')
@@ -479,9 +444,6 @@ export async function addThreadUpload(
 }
 
 export async function getThreadUploadById(uploadId: number): Promise<DbThreadUpload | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadUploadById(uploadId);
-  }
   const db = await getDb();
   return db
     .selectFrom('thread_uploads')
@@ -491,9 +453,6 @@ export async function getThreadUploadById(uploadId: number): Promise<DbThreadUpl
 }
 
 export async function getThreadUploads(threadId: string): Promise<DbThreadUpload[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadUploads(threadId);
-  }
   const db = await getDb();
   return db
     .selectFrom('thread_uploads')
@@ -504,9 +463,6 @@ export async function getThreadUploads(threadId: string): Promise<DbThreadUpload
 }
 
 export async function getThreadUploadCount(threadId: string): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadUploadCount(threadId);
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('thread_uploads')
@@ -517,9 +473,6 @@ export async function getThreadUploadCount(threadId: string): Promise<number> {
 }
 
 export async function deleteThreadUpload(uploadId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteThreadUpload(uploadId);
-  }
   const db = await getDb();
   const result = await db.deleteFrom('thread_uploads').where('id', '=', uploadId).executeTakeFirst();
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
@@ -537,9 +490,6 @@ export async function addThreadOutput(
   generationConfig?: string,
   expiresAt?: string | null
 ): Promise<DbThreadOutput> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.addThreadOutput(threadId, messageId, filename, filepath, fileType, fileSize, generationConfig, expiresAt);
-  }
   const db = await getDb();
   const result = await db
     .insertInto('thread_outputs')
@@ -560,9 +510,6 @@ export async function addThreadOutput(
 }
 
 export async function getThreadOutputById(outputId: number): Promise<DbThreadOutput | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadOutputById(outputId);
-  }
   const db = await getDb();
   return db
     .selectFrom('thread_outputs')
@@ -572,9 +519,6 @@ export async function getThreadOutputById(outputId: number): Promise<DbThreadOut
 }
 
 export async function getThreadOutputs(threadId: string): Promise<DbThreadOutput[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadOutputs(threadId);
-  }
   const db = await getDb();
   return db
     .selectFrom('thread_outputs')
@@ -585,9 +529,6 @@ export async function getThreadOutputs(threadId: string): Promise<DbThreadOutput
 }
 
 export async function linkOutputsToMessage(threadId: string, messageId: string): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.linkOutputsToMessage(threadId, messageId);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('thread_outputs')
@@ -601,9 +542,6 @@ export async function linkOutputsToMessage(threadId: string, messageId: string):
 // ============ Cleanup ============
 
 export async function getThreadsOlderThan(days: number): Promise<DbThread[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadsOlderThan(days);
-  }
   const db = await getDb();
   // Compute cutoff date in JavaScript for PostgreSQL compatibility
   const cutoffDate = new Date();
@@ -617,10 +555,6 @@ export async function getThreadsOlderThan(days: number): Promise<DbThread[]> {
 }
 
 export async function deleteThreadsOlderThan(days: number): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteThreadsOlderThan(days);
-  }
-
   const threads = await getThreadsOlderThan(days);
   for (const thread of threads) {
     await deleteThread(thread.id);
@@ -629,9 +563,6 @@ export async function deleteThreadsOlderThan(days: number): Promise<number> {
 }
 
 export async function getThreadUploadsStorageSize(): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadUploadsStorageSize();
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('thread_uploads')
@@ -641,9 +572,6 @@ export async function getThreadUploadsStorageSize(): Promise<number> {
 }
 
 export async function getThreadOutputsStorageSize(): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadOutputsStorageSize();
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('thread_outputs')
@@ -713,16 +641,6 @@ export async function getThreadContext(threadId: string): Promise<ThreadContext>
     };
   }
 
-  // SQLite fallback: for PostgreSQL deployments with legacy threads (created before
-  // DATABASE_PROVIDER=postgres was set). The thread_outputs_thread_id_fkey constraint
-  // is dropped at startup, so we only need to confirm the thread exists somewhere.
-  if (getDatabaseProvider() === 'postgres') {
-    const sqliteThread = sync.getThreadById(threadId);
-    if (sqliteThread) {
-      return { exists: true, isWorkspace: false };
-    }
-  }
-
   return { exists: false, isWorkspace: false };
 }
 
@@ -766,15 +684,56 @@ export async function addWorkspaceOutput(
   return { id: result.id as number };
 }
 
+/**
+ * Workspace output interface for queries
+ */
+export interface WorkspaceOutput {
+  id: number;
+  workspace_id: string;
+  session_id: string;
+  thread_id: string | null;
+  filename: string;
+  filepath: string;
+  file_type: string;
+  file_size: number;
+  generation_config: string | null;
+  expires_at: string | null;
+  download_count: number;
+  created_at: string;
+}
+
+/**
+ * Get a workspace output by ID
+ */
+export async function getWorkspaceOutputById(outputId: number): Promise<WorkspaceOutput | undefined> {
+  const db = await getDb();
+  const result = await db
+    .selectFrom('workspace_outputs')
+    .selectAll()
+    .where('id', '=', outputId)
+    .executeTakeFirst();
+
+  return result as WorkspaceOutput | undefined;
+}
+
+/**
+ * Increment download count for a workspace output
+ */
+export async function incrementWorkspaceOutputDownloadCount(outputId: number): Promise<void> {
+  const db = await getDb();
+  await db
+    .updateTable('workspace_outputs')
+    .set({ download_count: sql`download_count + 1` })
+    .where('id', '=', outputId)
+    .execute();
+}
+
 // ============ Thread Output Helpers (for docgen) ============
 
 /**
  * Get expired thread outputs
  */
 export async function getExpiredThreadOutputs(): Promise<DbThreadOutput[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getExpiredThreadOutputs();
-  }
   const db = await getDb();
   const now = new Date().toISOString();
   return db
@@ -790,9 +749,6 @@ export async function getExpiredThreadOutputs(): Promise<DbThreadOutput[]> {
  * Delete a thread output by ID
  */
 export async function deleteThreadOutput(outputId: number): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteThreadOutput(outputId);
-  }
   const db = await getDb();
   await db.deleteFrom('thread_outputs').where('id', '=', outputId).execute();
 }
@@ -801,9 +757,6 @@ export async function deleteThreadOutput(outputId: number): Promise<void> {
  * Increment download count for a thread output
  */
 export async function incrementThreadOutputDownloadCount(outputId: number): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.incrementThreadOutputDownloadCount(outputId);
-  }
   const db = await getDb();
   await db
     .updateTable('thread_outputs')
@@ -816,9 +769,6 @@ export async function incrementThreadOutputDownloadCount(outputId: number): Prom
  * Get download count for a thread output
  */
 export async function getThreadOutputDownloadCount(outputId: number): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getThreadOutputDownloadCount(outputId);
-  }
   const db = await getDb();
   const row = await db
     .selectFrom('thread_outputs')

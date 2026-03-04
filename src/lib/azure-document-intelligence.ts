@@ -5,7 +5,7 @@
  */
 
 import { DocumentAnalysisClient, AzureKeyCredential } from '@azure/ai-form-recognizer';
-import { getOcrSettings } from '@/lib/db/config';
+import { getOcrSettings } from '@/lib/db/compat/config';
 
 // ============================================
 // Types
@@ -39,10 +39,10 @@ export function resetAzureDIClient(): void {
  * Get or create Azure DI client
  * Priority: OCR settings (DB) → env vars
  */
-function getAzureDIClient(): DocumentAnalysisClient {
+async function getAzureDIClient(): Promise<DocumentAnalysisClient> {
   if (!azureDIClient) {
     // Priority: OCR settings → env vars
-    const ocrSettings = getOcrSettings();
+    const ocrSettings = await getOcrSettings();
     const endpoint = ocrSettings.azureDiEndpoint || process.env.AZURE_DI_ENDPOINT;
     const key = ocrSettings.azureDiKey || process.env.AZURE_DI_KEY;
 
@@ -79,7 +79,7 @@ export async function extractTextWithAzureDI(
   buffer: Buffer,
   mimeType: string
 ): Promise<AzureDIResult> {
-  const client = getAzureDIClient();
+  const client = await getAzureDIClient();
 
   console.log(`Azure DI processing document (${mimeType}, ${buffer.length} bytes)`);
 

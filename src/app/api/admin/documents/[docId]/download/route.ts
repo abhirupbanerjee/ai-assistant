@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import path from 'path';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole } from '@/lib/users';
-import { getDocumentById } from '@/lib/db/documents';
+import { getDocumentById } from '@/lib/db/compat';
 import { getGlobalDocsDir } from '@/lib/storage';
 
 interface RouteParams {
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get document metadata
-    const doc = getDocumentById(docIdNum);
+    const doc = await getDocumentById(docIdNum);
     if (!doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }

@@ -5,9 +5,9 @@
  * to identify conflicts and suggest resolutions.
  */
 
-import { getAllSkills, getCategoriesForSkill } from '@/lib/db/skills';
-import { getAllRoutingRules } from '@/lib/db/tool-routing';
-import { getLlmSettings } from '@/lib/db/config';
+import { getAllSkills, getCategoriesForSkill } from '@/lib/db/compat/skills';
+import { getAllRoutingRules } from '@/lib/db/compat/tool-routing';
+import { getLlmSettings } from '@/lib/db/compat/config';
 import getOpenAI from '@/lib/openai';
 import type {
   KeywordSource,
@@ -22,25 +22,26 @@ const MAX_TOKENS = 4000;
 /**
  * Gather all keyword sources from database
  */
-export function consolidateKeywordSources(
+export async function consolidateKeywordSources(
   includeInactive = false,
   includePrompts = false
-): {
+): Promise<{
   skills: KeywordSource[];
   routingRules: KeywordSource[];
-} {
+}> {
   // Get skills with trigger_type = 'keyword'
-  const allSkills = getAllSkills({
+  const allSkills = await getAllSkills({
     trigger_type: 'keyword',
     is_active: includeInactive ? undefined : true,
   });
 
-  const skills: KeywordSource[] = allSkills.map((skill) => {
+  const skills: KeywordSource[] = [];
+  for (const skill of allSkills) {
     // Get category names for this skill
-    const categories = getCategoriesForSkill(skill.id);
+    const categories = await getCategoriesForSkill(skill.id);
     const categoryNames = categories.map((c) => c.name);
 
-    return {
+    skills.push({
       type: 'skill' as const,
       id: skill.id,
       name: skill.name,
@@ -54,11 +55,11 @@ export function consolidateKeywordSources(
         tokenEstimate: skill.token_estimate || undefined,
         promptContent: includePrompts ? skill.prompt_content : undefined,
       },
-    };
-  });
+    });
+  }
 
   // Get tool routing rules
-  const allRules = getAllRoutingRules();
+  const allRules = await getAllRoutingRules();
   const filteredRules = includeInactive
     ? allRules
     : allRules.filter((r) => r.isActive);
@@ -404,7 +405,7 @@ export async function analyzeKeywordConflicts(
   const includePrompts = analysisScope !== 'keywords';
 
   // 1. Consolidate sources
-  const { skills, routingRules } = consolidateKeywordSources(includeInactive, includePrompts);
+  const { skills, routingRules } = await consolidateKeywordSources(includeInactive, includePrompts);
 
   // 2. Pre-compute exact keyword overlaps
   const exactOverlaps = computeExactOverlaps(skills, routingRules);
@@ -413,11 +414,11 @@ export async function analyzeKeywordConflicts(
   const prompt = buildAnalysisPrompt(skills, routingRules, analysisScope, exactOverlaps);
 
   // 4. Get configured LLM settings (not hardcoded)
-  const llmSettings = getLlmSettings();
+  const llmSettings = await getLlmSettings();
   const model = llmSettings.model;
 
   // 5. Call LLM
-  const openai = getOpenAI();
+  const openai = await getOpenAI();
   const response = await openai.chat.completions.create({
     model,
     messages: [

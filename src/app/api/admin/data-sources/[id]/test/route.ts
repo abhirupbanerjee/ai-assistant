@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getDataAPI, updateDataAPI } from '@/lib/db/data-sources';
+import { getDataAPI, updateDataAPI } from '@/lib/db/compat/data-sources';
 import { testAPIConnection } from '@/lib/data-sources/api-caller';
 
 interface RouteContext {
@@ -33,7 +33,7 @@ export async function POST(
     const { id } = await context.params;
 
     // Get the API config
-    const api = getDataAPI(id);
+    const api = await getDataAPI(id);
     if (!api) {
       return NextResponse.json(
         { error: 'API data source not found' },
@@ -57,7 +57,7 @@ export async function POST(
           lastError: testResult.message,
         };
 
-    updateDataAPI(id, updateData, user.email);
+    await updateDataAPI(id, updateData, user.email);
 
     return NextResponse.json({
       success: testResult.success,

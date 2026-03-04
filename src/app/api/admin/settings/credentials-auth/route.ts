@@ -11,13 +11,13 @@ import {
   getCredentialsAuthSettings,
   setCredentialsAuthSettings,
   type CredentialsAuthSettings,
-} from '@/lib/db/config';
+} from '@/lib/db/compat';
 
 // GET - Get credentials auth settings
 export async function GET() {
   try {
     await requireAdmin();
-    const settings = getCredentialsAuthSettings();
+    const settings = await getCredentialsAuthSettings();
     return NextResponse.json(settings);
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'No valid settings to update' }, { status: 400 });
     }
 
-    const updatedSettings = setCredentialsAuthSettings(updates, admin.email);
+    const updatedSettings = await setCredentialsAuthSettings(updates, admin.email);
 
     return NextResponse.json({
       success: true,

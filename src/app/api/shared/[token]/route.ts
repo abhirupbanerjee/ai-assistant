@@ -5,14 +5,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
 import {
+  getUserByEmail,
   getShareByToken,
   validateShareAccess,
   recordShareView,
   logShareAccess,
+  getThreadWithDetails,
+  getMessagesForThread,
+  getThreadUploads,
+  getThreadOutputs,
 } from '@/lib/db/compat';
-import { getThreadWithDetails, getMessagesForThread, getThreadUploads, getThreadOutputs } from '@/lib/db/threads';
 import { isToolEnabled } from '@/lib/tools';
 import type { ApiError } from '@/types';
 
@@ -37,7 +40,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { token } = await params;
 
     // Check if share_thread tool is enabled
-    if (!isToolEnabled('share_thread')) {
+    if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is currently disabled', code: 'NOT_CONFIGURED' },
         { status: 403 }
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get thread details
-    const thread = getThreadWithDetails(share.threadId);
+    const thread = await getThreadWithDetails(share.threadId);
     if (!thread) {
       return NextResponse.json<ApiError>(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -81,7 +84,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get thread messages
-    const messages = getMessagesForThread(share.threadId);
+    const messages = await getMessagesForThread(share.threadId);
 
     // Record the view and log access
     await recordShareView(share.id);
@@ -131,8 +134,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Include uploads and outputs if downloads are allowed
     if (share.allowDownload) {
-      const uploads = getThreadUploads(share.threadId);
-      const outputs = getThreadOutputs(share.threadId);
+      const uploads = await getThreadUploads(share.threadId);
+      const outputs = await getThreadOutputs(share.threadId);
 
       return NextResponse.json({
         ...response,

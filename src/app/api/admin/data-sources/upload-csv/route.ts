@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCSVBuffer, storeCSVFile } from '@/lib/data-sources/csv-handler';
-import { createDataCSV } from '@/lib/db/data-sources';
+import { createDataCSV } from '@/lib/db/compat/data-sources';
 
 /**
  * POST /api/admin/data-sources/upload-csv
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       categoryIds,
     };
 
-    const created = createDataCSV(csvConfig, user.email);
+    const created = await createDataCSV(csvConfig, user.email);
 
     return NextResponse.json({
       success: true,

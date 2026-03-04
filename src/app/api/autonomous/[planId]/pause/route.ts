@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getTaskPlan, pausePlan } from '@/lib/db/task-plans';
+import { getTaskPlan, pausePlan } from '@/lib/db/compat/task-plans';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { planId } = await params;
 
     // Verify plan exists and belongs to user
-    const plan = getTaskPlan(planId);
+    const plan = await getTaskPlan(planId);
     if (!plan) {
       return NextResponse.json<ApiError>(
         { error: 'Plan not found', code: 'NOT_FOUND' },
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Pause the plan
-    const updatedPlan = pausePlan(planId, body.reason);
+    const updatedPlan = await pausePlan(planId, body.reason);
     if (!updatedPlan) {
       return NextResponse.json<ApiError>(
         { error: `Cannot pause plan with status '${plan.status}'`, code: 'INVALID_STATE' },

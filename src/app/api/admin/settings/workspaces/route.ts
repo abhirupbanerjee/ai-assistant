@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getSetting, setSetting } from '@/lib/db/config';
+import { getSetting, setSetting } from '@/lib/db/compat';
 
 interface WorkspacesSettings {
   enabled: boolean;
@@ -17,7 +17,7 @@ export async function GET() {
   try {
     await requireAdmin();
 
-    const settings = getSetting<WorkspacesSettings>('workspaces-settings');
+    const settings = await getSetting<WorkspacesSettings>('workspaces-settings');
 
     return NextResponse.json({
       enabled: settings?.enabled ?? false,
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       );
     }
 
-    setSetting<WorkspacesSettings>('workspaces-settings', { enabled }, admin.email);
+    await setSetting<WorkspacesSettings>('workspaces-settings', { enabled }, admin.email);
 
     return NextResponse.json({ enabled });
   } catch (error) {

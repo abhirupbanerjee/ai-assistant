@@ -10,7 +10,7 @@
  * Includes Redis caching for performance.
  */
 
-import { getRerankerSettings, type RerankerProvider } from './db/config';
+import { getRerankerSettings, type RerankerProvider } from './db/compat/config';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import type { RetrievedChunk } from '@/types';
 
@@ -59,7 +59,7 @@ export function resetCohereClient(): void {
 async function getCohereClient(): Promise<CohereClientInterface> {
   if (cohereClient) return cohereClient;
 
-  const settings = getRerankerSettings();
+  const settings = await getRerankerSettings();
   const apiKey = settings.cohereApiKey || process.env.COHERE_API_KEY;  // DB first
 
   if (!apiKey) {
@@ -294,7 +294,7 @@ export async function rerankChunks(
   chunks: RetrievedChunk[],
   options?: RerankOptions
 ): Promise<RetrievedChunk[]> {
-  const settings = getRerankerSettings();
+  const settings = await getRerankerSettings();
   // When bypassThreshold is true, use 0 as minScore to include all chunks
   const minScore = options?.bypassThreshold ? 0 : settings.minRerankerScore;
 

@@ -91,8 +91,8 @@ export async function translateWithOpenAI(
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
-      : getApiKey('openai');
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
 
     const openai = new OpenAI({
       baseURL,

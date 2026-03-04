@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getTaskPlan, resumePlan } from '@/lib/db/task-plans';
+import { getTaskPlan, resumePlan } from '@/lib/db/compat/task-plans';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { planId } = await params;
 
     // Verify plan exists and belongs to user
-    const plan = getTaskPlan(planId);
+    const plan = await getTaskPlan(planId);
     if (!plan) {
       return NextResponse.json<ApiError>(
         { error: 'Plan not found', code: 'NOT_FOUND' },
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Resume the plan
-    const updatedPlan = resumePlan(planId);
+    const updatedPlan = await resumePlan(planId);
     if (!updatedPlan) {
       return NextResponse.json<ApiError>(
         { error: `Cannot resume plan with status '${plan.status}'`, code: 'INVALID_STATE' },

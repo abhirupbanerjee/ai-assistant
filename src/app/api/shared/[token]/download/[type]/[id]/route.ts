@@ -6,13 +6,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
 import {
+  getUserByEmail,
   getShareByToken,
   validateShareAccess,
   logShareAccess,
+  getThreadUploadById,
+  getThreadOutputById,
 } from '@/lib/db/compat';
-import { getThreadUploadById, getThreadOutputById } from '@/lib/db/threads';
 import { isToolEnabled } from '@/lib/tools';
 import type { ApiError } from '@/types';
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if share_thread tool is enabled
-    if (!isToolEnabled('share_thread')) {
+    if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is currently disabled', code: 'NOT_CONFIGURED' },
         { status: 403 }
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     let fileType: string;
 
     if (type === 'upload') {
-      const upload = getThreadUploadById(fileId);
+      const upload = await getThreadUploadById(fileId);
       if (!upload) {
         return NextResponse.json<ApiError>(
           { error: 'File not found', code: 'NOT_FOUND' },
@@ -124,7 +125,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       fileSize = upload.file_size;
       fileType = getFileExtension(upload.filename);
     } else {
-      const output = getThreadOutputById(fileId);
+      const output = await getThreadOutputById(fileId);
       if (!output) {
         return NextResponse.json<ApiError>(
           { error: 'File not found', code: 'NOT_FOUND' },

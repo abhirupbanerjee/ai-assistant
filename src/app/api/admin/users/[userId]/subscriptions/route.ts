@@ -15,8 +15,8 @@ import {
   addSubscription,
   removeSubscription,
   toggleSubscriptionActive,
-} from '@/lib/db/users';
-import { getCategoryById } from '@/lib/db/categories';
+  getCategoryById,
+} from '@/lib/db/compat';
 
 interface RouteParams {
   params: Promise<{ userId: string }>;
@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const userWithSubs = getUserWithSubscriptions(userIdNum);
+    const userWithSubs = await getUserWithSubscriptions(userIdNum);
 
     if (!userWithSubs) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -75,7 +75,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const user = getUserById(userIdNum);
+    const user = await getUserById(userIdNum);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -90,12 +90,12 @@ export async function POST(request: Request, { params }: RouteParams) {
       );
     }
 
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    const added = addSubscription(userIdNum, categoryId, admin.email);
+    const added = await addSubscription(userIdNum, categoryId, admin.email);
 
     if (!added) {
       return NextResponse.json(
@@ -140,7 +140,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const user = getUserById(userIdNum);
+    const user = await getUserById(userIdNum);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -162,7 +162,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       );
     }
 
-    const updated = toggleSubscriptionActive(userIdNum, categoryId, isActive);
+    const updated = await toggleSubscriptionActive(userIdNum, categoryId, isActive);
 
     if (!updated) {
       return NextResponse.json(
@@ -206,7 +206,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const user = getUserById(userIdNum);
+    const user = await getUserById(userIdNum);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -221,7 +221,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
 
-    const removed = removeSubscription(userIdNum, categoryId);
+    const removed = await removeSubscription(userIdNum, categoryId);
 
     if (!removed) {
       return NextResponse.json(

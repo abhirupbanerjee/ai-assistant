@@ -6,7 +6,7 @@
  * and intelligent HITL with LLM-generated contextual clarifications.
  */
 
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type {
   ComplianceContext,
@@ -141,8 +141,8 @@ const complianceCheckerConfigSchema = {
 /**
  * Get tool configuration with defaults
  */
-function getComplianceConfig(): ComplianceGlobalConfig {
-  const config = getToolConfig('compliance_checker');
+async function getComplianceConfig(): Promise<ComplianceGlobalConfig> {
+  const config = await getToolConfig('compliance_checker');
   if (config?.config) {
     const c = config.config as Record<string, unknown>;
     return {
@@ -256,7 +256,7 @@ export const complianceCheckerTool: ToolDefinition = {
 
   execute: async (args: Record<string, unknown>): Promise<string> => {
     const typedArgs = args as unknown as ComplianceCheckerArgs;
-    const config = getComplianceConfig();
+    const config = await getComplianceConfig();
 
     // Check if compliance is enabled
     if (!config.enabled) {

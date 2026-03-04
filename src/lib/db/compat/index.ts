@@ -1,25 +1,18 @@
 /**
- * Database Compatibility Layer - Async Interface
+ * Database Layer - Async Interface
  *
  * This module provides a unified async interface for database operations
- * that works with both SQLite and PostgreSQL via Kysely.
+ * using Kysely with PostgreSQL.
  *
  * Usage:
  *   import { getUserById, createCategory, ... } from '@/lib/db/compat';
  *
- * For SQLite (DATABASE_PROVIDER=sqlite):
- *   - Delegates to existing sync modules (wrapped in promises)
- *   - Zero changes to existing functionality
- *
- * For PostgreSQL (DATABASE_PROVIDER=postgres):
- *   - Uses Kysely query builder for async operations
- *   - Full PostgreSQL feature support
- *
+ * All operations use the Kysely query builder for async PostgreSQL access.
  * API routes should import from this module and use `await` for all operations.
  */
 
-// Export database provider helper
-export { getDatabaseProvider } from '../kysely';
+// Export database helper
+export { getDb } from '../kysely';
 
 // ============ Users ============
 export {
@@ -64,6 +57,13 @@ export {
   createSuperUserWithAssignments,
   // Initialize from Environment
   initializeAdminsFromEnv,
+  // Credentials Management
+  setUserPassword,
+  setCredentialsEnabled,
+  clearUserPassword,
+  canLoginWithCredentials,
+  getCredentialUsers,
+  initializeAdminCredentialsFromEnv,
 } from './users';
 
 // ============ Config ============
@@ -93,11 +93,15 @@ export {
   type AvailableModel,
   type SettingKey,
   type ToolConfig,
+  type AgentBotsSettings,
+  type CredentialsAuthSettings,
+  type LlmFallbackSettings,
   // Constants
   DEFAULT_PWA_SETTINGS,
   DEFAULT_OCR_SETTINGS,
   BRANDING_ICONS,
   DEFAULT_MODEL_ID,
+  DEFAULT_CREDENTIALS_AUTH_SETTINGS,
   // Core Operations
   getSetting,
   setSetting,
@@ -149,6 +153,13 @@ export {
   setModelTokenLimits,
   setPWASettings,
   setSuperuserSettings,
+  // Agent Bots, Credentials Auth, LLM Fallback
+  getAgentBotsSettings,
+  updateAgentBotsSettings,
+  getCredentialsAuthSettings,
+  setCredentialsAuthSettings,
+  getLlmFallbackSettings,
+  setLlmFallbackSettings,
   // Bulk Operations
   getAllSettings,
   // Tool Config (async)
@@ -194,6 +205,9 @@ export {
   isCategoryCreatedBy,
   getDocumentIdsForCategory,
   deleteCategoryWithRelatedData,
+  // Bulk Category Lookup
+  type CategoryInfo,
+  getCategoriesByIds,
 } from './categories';
 
 // ============ Threads ============
@@ -207,6 +221,7 @@ export {
   type ParsedMessage,
   type ThreadContext,
   type WorkspaceOutputResult,
+  type WorkspaceOutput,
   // Thread CRUD
   createThread,
   getThreadById,
@@ -219,6 +234,7 @@ export {
   getEffectiveModelForThread,
   deleteThread,
   userOwnsThread,
+  getThreadOwner,
   // Thread Categories
   getThreadCategories,
   getThreadCategorySlugs,
@@ -242,6 +258,8 @@ export {
   getThreadContext,
   // Workspace Outputs
   addWorkspaceOutput,
+  getWorkspaceOutputById,
+  incrementWorkspaceOutputDownloadCount,
   // Thread Output Helpers (for docgen)
   getExpiredThreadOutputs,
   deleteThreadOutput,
@@ -317,6 +335,8 @@ export {
   getTotalChunkCount,
   getDocumentCountByStatus,
   getTotalStorageSize,
+  // Folder Sync Operations
+  updateDocumentFolderSync,
 } from './documents';
 
 // ============ Skills ============
@@ -357,3 +377,623 @@ export {
   // Migration Operations
   migrateToolRoutingToSkills,
 } from './skills';
+
+// ============ Tool Config ============
+export {
+  // Types
+  type ToolConfig as ToolConfigRecord,
+  type ToolConfigAuditEntry,
+  // Constants
+  TOOL_DEFAULTS,
+  getToolDefaultsForTool,
+  // CRUD Operations
+  getToolConfig,
+  getAllToolConfigs,
+  isToolEnabled,
+  createToolConfig,
+  updateToolConfig,
+  deleteToolConfig,
+  // Audit Operations
+  getToolConfigAuditHistory,
+  getAllToolConfigAuditHistory,
+  // Migration Helpers
+  migrateTavilySettingsIfNeeded,
+  getWebSearchConfig,
+  // Initialization
+  ensureToolConfigsExist,
+  resetToolToDefaults,
+  getDescriptionOverride,
+} from './tool-config';
+
+// ============ Workspace Sessions ============
+export {
+  // Types
+  type WorkspaceSession,
+  // Session CRUD
+  createSession,
+  getSession,
+  getSessionWithWorkspace,
+  isSessionValid,
+  updateSessionActivity,
+  incrementMessageCount,
+  getSessionMessageCount as getWorkspaceSessionMessageCount,
+  extendSessionExpiry,
+  // Session Queries
+  getWorkspaceSessions,
+  getUserSessions,
+  getUserWorkspaceSession,
+  getOrCreateUserSession,
+  // Cleanup
+  cleanupExpiredSessions,
+  cleanupInactiveSessions,
+  deleteSession,
+  deleteWorkspaceSessions,
+  // Statistics
+  getWorkspaceSessionCount,
+  getUniqueVisitorCount,
+  getDailySessionCounts,
+  getWorkspaceAnalytics,
+} from './workspace-sessions';
+
+// ============ Workspace Threads ============
+export {
+  // Types
+  type WorkspaceThread,
+  type WorkspaceThreadWithMessages,
+  type CreateWorkspaceThreadInput,
+  type UpdateWorkspaceThreadInput,
+  // Thread CRUD
+  createThread as createWorkspaceThread,
+  getThread as getWorkspaceThread,
+  getThreadWithMessages as getWorkspaceThreadWithMessages,
+  getThreadForSession,
+  updateThread as updateWorkspaceThread,
+  deleteThread as deleteWorkspaceThread,
+  archiveThread,
+  updateThreadTitle as updateWorkspaceThreadTitle,
+  touchThread,
+  // Thread Queries
+  getSessionThreads,
+  getWorkspaceThreads,
+  getLatestThread,
+  getOrCreateThread as getOrCreateWorkspaceThread,
+  searchThreads as searchWorkspaceThreads,
+  // Bulk Operations
+  archiveAllSessionThreads,
+  deleteSessionThreads,
+  deleteWorkspaceThreads,
+  // Statistics
+  getSessionThreadCount,
+  getWorkspaceThreadCount,
+  getThreadMessageCount as getWorkspaceThreadMessageCount,
+  autoTitleThread,
+} from './workspace-threads';
+
+// ============ Workspace Messages ============
+export {
+  // Types
+  type WorkspaceMessage,
+  type WorkspaceMessageSource,
+  // Helpers
+  parseSources,
+  // Message CRUD
+  addMessage as addWorkspaceMessage,
+  getMessage as getWorkspaceMessage,
+  updateMessageTokens,
+  updateMessageLatency,
+  deleteMessage as deleteWorkspaceMessage,
+  // Message Queries
+  getThreadMessages as getWorkspaceThreadMessages,
+  getSessionMessages,
+  getWorkspaceMessages,
+  getRecentThreadMessages,
+  getRecentSessionMessages,
+  // Bulk Operations
+  deleteThreadMessages as deleteWorkspaceThreadMessages,
+  deleteSessionMessages,
+  deleteWorkspaceMessages,
+  // Statistics
+  getThreadMessageCount as getWsThreadMessageCount,
+  getSessionMessageCount as getWsSessionMessageCount,
+  getWorkspaceMessageCount,
+  getWorkspaceTotalTokens,
+  getWorkspaceAverageLatency,
+  getDailyMessageCounts,
+  getMessageCountByRole,
+} from './workspace-messages';
+
+// ============ LLM Providers ============
+export {
+  // Types
+  type LLMProvider,
+  type CreateProviderInput,
+  type UpdateProviderInput,
+  // Constants
+  DEFAULT_PROVIDERS,
+  maskApiKey,
+  // CRUD Operations
+  getAllProviders,
+  getEnabledProviders,
+  getProvider,
+  createProvider,
+  updateProvider,
+  deleteProvider,
+  upsertProvider,
+  // Configuration Helpers
+  isProviderConfigured,
+  getProviderApiKey,
+  getProviderApiBase,
+  // Seeding
+  seedDefaultProviders,
+} from './llm-providers';
+
+// ============ Enabled Models ============
+export {
+  // Types
+  type EnabledModel,
+  type CreateEnabledModelInput,
+  type UpdateEnabledModelInput,
+  // CRUD Operations
+  getAllEnabledModels,
+  getActiveModels,
+  getModelsByProvider,
+  getEnabledModel,
+  getDefaultModel,
+  createEnabledModel,
+  createEnabledModelsBatch,
+  updateEnabledModel,
+  deleteEnabledModel,
+  deleteEnabledModelsBatch,
+  setDefaultModel,
+  disableModel,
+  enableModel,
+  // Capability Queries
+  isModelToolCapable,
+  isModelVisionCapable,
+  getToolCapableModelIds,
+  // Sort Order
+  updateModelSortOrder,
+  // Migration/Seeding
+  hasEnabledModels,
+  seedModelsFromConfig,
+  findDeprecatedModels,
+  refreshModelCapabilities,
+  refreshAllModelCapabilities,
+} from './enabled-models';
+
+// ============ Folder Syncs ============
+export {
+  // Types
+  type FolderSyncStatus,
+  type FolderSyncFileStatus,
+  type DbFolderSync,
+  type FolderSync,
+  type DbFolderSyncFile,
+  type FolderSyncFile,
+  type CreateFolderSyncInput,
+  type CreateFolderSyncFileInput,
+  type UpdateFolderSyncInput,
+  type UpdateFolderSyncFileInput,
+  // Folder Sync CRUD
+  createFolderSync,
+  getFolderSyncById,
+  getFolderSyncsByUser,
+  getAllFolderSyncs,
+  updateFolderSync,
+  deleteFolderSync,
+  // Folder Sync File CRUD
+  createFolderSyncFile,
+  createFolderSyncFiles,
+  getFolderSyncFileById,
+  getFolderSyncFiles,
+  findFolderSyncFileByPath,
+  findFolderSyncFileByHash,
+  updateFolderSyncFile,
+  deleteFolderSyncFile,
+  // Statistics
+  getFolderSyncFileCountsByStatus,
+  getPendingFolderSyncFiles,
+  getFailedFolderSyncFiles,
+  markAllPendingAsSkipped,
+  resetFileStatusToPending,
+} from './folder-syncs';
+
+// ============ Category Prompts ============
+export {
+  // Types
+  type StarterPrompt,
+  type CategoryPrompt,
+  type CategoryPromptRow,
+  // Constants
+  MAX_COMBINED_PROMPT_LENGTH,
+  MAX_STARTER_PROMPTS,
+  MAX_STARTER_LABEL_LENGTH,
+  MAX_STARTER_PROMPT_LENGTH,
+  // Dynamic Limit Getters
+  getMaxCombinedPromptLength,
+  getMaxStarterPrompts,
+  getMaxStarterLabelLength,
+  getMaxStarterPromptLength,
+  // Read Operations
+  getCategoryPrompt,
+  getAllCategoryPrompts,
+  getResolvedSystemPrompt,
+  getAvailableCharLimit,
+  getPromptCharacterInfo,
+  // Write Operations
+  setCategoryPrompt,
+  deleteCategoryPrompt,
+  setCategoryStarterPrompts,
+  setCategoryWelcome,
+  // Validation
+  validatePromptAddendum,
+  validateStarterPrompts,
+  // Bulk Operations
+  getCategoryPromptsForCategories,
+} from './category-prompts';
+
+// ============ Task Plans ============
+export {
+  // Types
+  type TaskStatus,
+  type PlanStatus,
+  type Task,
+  type TaskPlan,
+  type TaskPlanStats,
+  // Stats Calculation
+  calculateStats,
+  // CRUD Operations
+  createTaskPlan,
+  getTaskPlan,
+  getActiveTaskPlan,
+  getTaskPlansByThread,
+  getTaskPlansByUser,
+  updateTask,
+  completePlan,
+  cancelPlan,
+  updateTaskPlanStatus,
+  failPlan,
+  deleteTaskPlan,
+  cleanupOldPlans,
+  // Autonomous Mode Operations
+  createAutonomousPlan,
+  getBudgetUsage,
+  incrementBudgetUsage,
+  transitionTaskState,
+  recoverActivePlans,
+  // Execution Control Operations
+  pausePlan,
+  resumePlan,
+  stopPlan,
+  skipTask,
+  isPlanPaused,
+  isPlanStopped,
+  getPlanControlStatus,
+} from './task-plans';
+
+// ============ Data Sources ============
+export {
+  // Types
+  type DataAPIConfig,
+  type DataCSVConfig,
+  type DataSource,
+  type AuthConfig,
+  type DataSourceAuditEntry,
+  type DbDataAPIConfig,
+  type DbDataCSVConfig,
+  type DbDataAPICategory,
+  type DbDataCSVCategory,
+  type DbDataSourceAudit,
+  // API Operations
+  createDataAPI,
+  getDataAPI,
+  getDataAPIByName,
+  getAllDataAPIs,
+  getDataAPIsForCategories,
+  updateDataAPI,
+  updateAPIStatus,
+  deleteDataAPI,
+  setAPICategories,
+  // CSV Operations
+  createDataCSV,
+  getDataCSV,
+  getDataCSVByName,
+  getAllDataCSVs,
+  getDataCSVsForCategories,
+  updateDataCSV,
+  deleteDataCSV,
+  setCSVCategories,
+  // Unified Operations
+  getAllDataSourcesForCategories,
+  getDataSourceByName,
+  getAllDataSources,
+  // Audit Operations
+  logDataSourceChange,
+  getDataSourceAuditHistory,
+  getAllDataSourceAuditHistory,
+} from './data-sources';
+
+// ============ Workspaces ============
+export {
+  // Types
+  type Workspace,
+  type WorkspaceWithRelations,
+  type WorkspaceType,
+  type CreateWorkspaceInput,
+  type UpdateWorkspaceInput,
+  type CreatorRole,
+  // Read Operations
+  getWorkspaceBySlug,
+  getWorkspaceById,
+  getWorkspaceWithRelations,
+  listWorkspaces,
+  listWorkspacesByCreator,
+  listWorkspacesForUser,
+  // Write Operations
+  createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  toggleWorkspaceEnabled,
+  // Category Operations
+  getWorkspaceCategoryIds,
+  getWorkspaceCategorySlugs,
+  setWorkspaceCategories,
+  // Access Control
+  canUserAccessWorkspace,
+  isUserInWorkspaceAccessList,
+  validateDomain,
+  // Utility
+  slugExists,
+  getWorkspaceCountByType,
+  searchWorkspaces,
+} from './workspaces';
+
+// ============ Workspace Users ============
+export {
+  // Types
+  type WorkspaceUser,
+  // User Management
+  addUserToWorkspace,
+  removeUserFromWorkspace,
+  getWorkspaceUsers,
+  isUserInWorkspaceAccessList as isUserInWorkspaceList,
+  bulkAddUsersToWorkspace,
+  bulkRemoveUsersFromWorkspace,
+  getWorkspaceUserCount,
+  getUserWorkspaces,
+  clearWorkspaceUsers,
+  setWorkspaceUsers,
+  // Validation Helpers
+  getEligibleUsersForWorkspace,
+  canSuperuserManageWorkspaceUsers,
+} from './workspace-users';
+
+// ============ Agent Bots ============
+export {
+  // Types
+  type AgentBot,
+  type AgentBotWithRelations,
+  type AgentBotRow,
+  type AgentBotVersionSummary,
+  // CreatorRole already exported from workspaces
+  type CreateAgentBotInput,
+  type UpdateAgentBotInput,
+  // Helper
+  generateSlugFromName,
+  // Agent Bot CRUD
+  getAgentBotById,
+  getAgentBotBySlug,
+  getAgentBotWithRelations,
+  listAgentBots,
+  listAgentBotsByCreator,
+  createAgentBot,
+  updateAgentBot,
+  deleteAgentBot,
+  toggleAgentBotActive,
+  // Existence Checks
+  nameExists as agentBotNameExists,
+  slugExists as agentBotSlugExists,
+  // Statistics
+  getAgentBotCount,
+  // Active Bot Queries
+  getActiveAgentBotBySlug,
+  getAgentBotCategoryIds,
+  checkSuperuserAgentBotAccess,
+  searchAgentBots,
+} from './agent-bots';
+
+// ============ Agent Bot Versions ============
+export {
+  // Types
+  type AgentBotVersion,
+  type AgentBotVersionWithRelations,
+  type AgentBotVersionRow,
+  type AgentBotVersionTool,
+  type AgentBotVersionToolRow,
+  type InputSchema,
+  type OutputConfig,
+  type CreateAgentBotVersionInput,
+  type UpdateAgentBotVersionInput,
+  // Version CRUD
+  getVersionById,
+  getVersionWithRelations,
+  listVersions,
+  getDefaultVersion,
+  getVersionByNumber,
+  createVersion,
+  updateVersion,
+  deleteVersion,
+  setDefaultVersion,
+  // Category/Skill/Tool Operations
+  getVersionCategoryIds,
+  getVersionSkillIds,
+  getVersionTools,
+  getEnabledVersionTools,
+  // Utility
+  duplicateVersion,
+  getVersionCount,
+  getActiveVersionCount,
+} from './agent-bot-versions';
+
+// ============ Agent Bot Jobs ============
+export {
+  // Types
+  type AgentBotJob,
+  type AgentBotJobWithOutputs,
+  type AgentBotJobRow,
+  type AgentBotJobOutput,
+  type AgentBotJobOutputRow,
+  type AgentBotJobFile,
+  type AgentBotJobFileRow,
+  type JobStatus,
+  type OutputType,
+  type TokenUsage,
+  type FileExtractionStatus,
+  // Job CRUD
+  getJobById,
+  getJobWithOutputs,
+  createJob,
+  startJob,
+  completeJob,
+  failJob,
+  cancelJob,
+  listJobs,
+  listPendingJobs,
+  getJobCountsByStatus,
+  listJobsForAgentBot,
+  // Job Outputs
+  addJobOutput,
+  getJobOutputs,
+  getOutputById,
+  // Job Files
+  addJobFile,
+  getJobFiles,
+  updateFileExtractionStatus,
+  getFileById,
+  updateJobInputFiles,
+  // Analytics & Cleanup
+  getJobStats,
+  getUsageStats,
+  getOutputTypeDistribution,
+  cleanupExpiredJobs,
+  cleanupOldJobs,
+  getJobsNeedingWebhookDelivery,
+} from './agent-bot-jobs';
+
+// ============ Agent Bot API Keys ============
+export {
+  // Types
+  type AgentBotApiKey,
+  type AgentBotApiKeyWithStats,
+  type AgentBotApiKeyRow,
+  type CreateApiKeyResult,
+  type CreateApiKeyInput,
+  type RateLimitInfo,
+  type RateLimitCheckResult,
+  // API Key CRUD
+  getApiKeyById,
+  getApiKeyWithStats,
+  listApiKeys,
+  createApiKey,
+  revokeApiKey,
+  deleteApiKey,
+  updateLastUsed,
+  // Validation
+  validateApiKey,
+  getAgentBotIdFromApiKey,
+  // Rate Limiting
+  checkRateLimit,
+  incrementUsage,
+  getRateLimitInfo,
+  // Usage Analytics
+  getApiKeyUsageStats,
+  getAgentBotUsageStats,
+  // Utility
+  getActiveKeyCount,
+  keyNameExists,
+  cleanupOldUsageRecords,
+} from './agent-bot-api-keys';
+
+// ============ Tool Routing ============
+export {
+  // Types
+  type ToolRoutingRule,
+  type ToolRoutingRuleInput,
+  // Read Operations
+  getActiveRoutingRules,
+  getAllRoutingRules,
+  getRoutingRuleById,
+  getRoutingRulesByTool,
+  // Write Operations
+  createRoutingRule,
+  updateRoutingRule,
+  deleteRoutingRule,
+  // Utility
+  hasRoutingRules,
+  seedDefaultRoutingRules,
+} from './tool-routing';
+
+// ============ Agent Config ============
+export {
+  // Types
+  type AgentModelConfig,
+  type StoredAgentModelConfigs,
+  type StreamingConfig,
+  // Streaming Config
+  getStreamingConfig,
+  setStreamingConfig,
+  // Agent Model Config
+  getAgentModelConfigs,
+  setAgentModelConfigs,
+  validateAgentModelConfig,
+} from './agent-config';
+
+// ============ RAG Testing ============
+export {
+  // Types
+  type RagTestQuery,
+  type RagTestResult,
+  type TopChunk,
+  type RagTestMetrics,
+  // Test Queries
+  createTestQuery,
+  getAllTestQueries,
+  getTestQueryById,
+  deleteTestQuery,
+  // Test Results
+  saveTestResult,
+  getRecentResults,
+  getResultsForQuery,
+  cleanupOldResults,
+  getTestStats,
+} from './rag-testing';
+
+// ============ Function API Config ============
+export {
+  // Types
+  type FunctionAPIConfig,
+  type FunctionAPIAuthType,
+  type FunctionAPIStatus,
+  type EndpointMapping,
+  type DbFunctionAPIConfig,
+  type DbFunctionAPICategory,
+  type CreateFunctionAPIRequest,
+  type UpdateFunctionAPIRequest,
+  // CRUD Operations
+  createFunctionAPIConfig,
+  getFunctionAPIConfig,
+  getFunctionAPIConfigByName,
+  getAllFunctionAPIConfigs,
+  getEnabledFunctionAPIConfigs,
+  getFunctionAPIConfigsForCategories,
+  updateFunctionAPIConfig,
+  updateFunctionAPITestStatus,
+  deleteFunctionAPIConfig,
+  // Function Lookup Helpers
+  findConfigForFunction,
+  getAllFunctionNamesForCategories,
+  getToolDefinitionsForCategories,
+  // Validation
+  validateToolsSchema,
+  validateEndpointMappings,
+} from './function-api-config';

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateWorkspaceRequest, extractOrigin } from '@/lib/workspace/validator';
-import { getSession, isSessionValid } from '@/lib/db/workspace-sessions';
-import { getThreadForSession, getThreadWithMessages } from '@/lib/db/workspace-threads';
-import { parseSources } from '@/lib/db/workspace-messages';
+import {
+  getSession,
+  isSessionValid,
+  getThreadForSession,
+  getWorkspaceThreadWithMessages as getThreadWithMessages,
+  parseSources,
+} from '@/lib/db/compat';
 
 interface RouteContext {
   params: Promise<{ slug: string; threadId: string }>;
@@ -83,14 +87,14 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -98,7 +102,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    const thread = getThreadForSession(threadId, sessionId);
+    const thread = await getThreadForSession(threadId, sessionId);
     if (!thread) {
       return NextResponse.json(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -106,7 +110,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    const threadWithMessages = getThreadWithMessages(threadId);
+    const threadWithMessages = await getThreadWithMessages(threadId);
     if (!threadWithMessages) {
       return NextResponse.json(
         { error: 'Thread not found', code: 'NOT_FOUND' },

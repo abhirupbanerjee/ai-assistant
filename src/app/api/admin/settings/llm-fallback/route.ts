@@ -13,7 +13,7 @@ import {
   getLlmFallbackSettings,
   setLlmFallbackSettings,
   type LlmFallbackSettings,
-} from '@/lib/db/config';
+} from '@/lib/db/compat';
 import {
   getEligibleFallbackModels,
   isEligibleFallbackModel,
@@ -31,8 +31,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const settings = getLlmFallbackSettings();
-    const eligibleModels = getEligibleFallbackModels();
+    const settings = await getLlmFallbackSettings();
+    const eligibleModels = await getEligibleFallbackModels();
     const unhealthyModels = getUnhealthyModels();
 
     return NextResponse.json({
@@ -79,7 +79,7 @@ export async function PUT(request: NextRequest) {
       }
 
       // Check if the model is eligible (has vision + tools capability)
-      if (!isEligibleFallbackModel(universalFallback)) {
+      if (!(await isEligibleFallbackModel(universalFallback))) {
         return NextResponse.json(
           {
             error: 'Selected model must have both vision and tool capabilities',
@@ -118,7 +118,7 @@ export async function PUT(request: NextRequest) {
     if (healthCacheDuration !== undefined) updates.healthCacheDuration = healthCacheDuration;
 
     // Save settings
-    const updatedSettings = setLlmFallbackSettings(updates, user.email);
+    const updatedSettings = await setLlmFallbackSettings(updates, user.email);
 
     return NextResponse.json({
       success: true,

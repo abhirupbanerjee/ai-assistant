@@ -671,17 +671,19 @@ export function getRerankerSettings(): RerankerSettings {
  * Priority: SQLite > JSON config > hardcoded defaults
  */
 export function getMemorySettings(): MemorySettings {
-  const dbSettings = getSetting<MemorySettings>('memory-settings');
-  if (dbSettings) return dbSettings;
-
-  // Fall back to JSON config
-  const config = loadConfig();
-  return config.memory || {
+  const hardcoded: MemorySettings = {
     enabled: false,
     extractionThreshold: 5,
     maxFactsPerCategory: 20,
     autoExtractOnThreadEnd: true,
+    extractionMaxTokens: 1000,
   };
+  const config = loadConfig();
+  const base = config.memory ? { ...hardcoded, ...config.memory } : hardcoded;
+  const dbSettings = getSetting<Partial<MemorySettings>>('memory-settings');
+  if (!dbSettings) return base;
+  // Merge with base so that new fields (like extractionMaxTokens) always have a value
+  return { ...base, ...dbSettings };
 }
 
 /**

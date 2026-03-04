@@ -28,7 +28,7 @@
  * ```
  */
 
-import { getProviderApiKey, getProviderApiBase, getProvider } from './db/llm-providers';
+import { getProviderApiKey, getProviderApiBase } from './db/compat/llm-providers';
 
 // Re-export with cleaner names
 export const getApiKey = getProviderApiKey;
@@ -37,23 +37,23 @@ export const getApiBase = getProviderApiBase;
 /**
  * Check if a provider is properly configured (has API key or base URL)
  */
-export function isProviderConfigured(providerId: string): boolean {
+export async function isProviderConfigured(providerId: string): Promise<boolean> {
   if (providerId === 'ollama') {
-    return !!getApiBase('ollama');
+    return !!(await getApiBase('ollama'));
   }
-  return !!getApiKey(providerId);
+  return !!(await getApiKey(providerId));
 }
 
 /**
  * Get provider configuration with both key and base URL
  */
-export function getProviderConfig(providerId: string): {
+export async function getProviderConfig(providerId: string): Promise<{
   apiKey: string | null;
   apiBase: string | null;
   isConfigured: boolean;
-} {
-  const apiKey = getApiKey(providerId);
-  const apiBase = getApiBase(providerId);
+}> {
+  const apiKey = await getApiKey(providerId);
+  const apiBase = await getApiBase(providerId);
 
   return {
     apiKey,

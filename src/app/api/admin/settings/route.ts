@@ -37,7 +37,7 @@ import {
   BRANDING_ICONS,
   getDefaultSystemPrompt,
   setPWASettings,
-} from '@/lib/db/config';
+} from '@/lib/db/compat';
 import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import { isProviderConfigured } from '@/lib/provider-helpers';
@@ -56,13 +56,13 @@ interface AvailableEmbeddingModel extends EmbeddingModelDefinition {
  * Cloud models require the provider to be configured (env vars set)
  * Local models are always available
  */
-function getAvailableEmbeddingModels(): AvailableEmbeddingModel[] {
-  return EMBEDDING_MODELS.map(model => ({
+async function getAvailableEmbeddingModels(): Promise<AvailableEmbeddingModel[]> {
+  return Promise.all(EMBEDDING_MODELS.map(async model => ({
     ...model,
     available: model.local
       ? true // Local models are always available
-      : isProviderConfigured(model.provider), // Cloud models need provider configured
-  }));
+      : await isProviderConfigured(model.provider), // Cloud models need provider configured
+  })));
 }
 
 // Available models are now loaded from getAvailableModels() in db/config
@@ -86,35 +86,35 @@ export async function GET() {
     }
 
     // Get all settings from SQLite
-    const ragSettings = getRagSettings();
-    const llmSettings = getLlmSettings();
-    const acronymMappings = getAcronymMappings();
-    const tavilySettings = getTavilySettings();
-    const uploadLimits = getUploadLimits();
-    const retentionSettings = getRetentionSettings();
-    const brandingSettings = getBrandingSettings();
-    const embeddingSettings = getEmbeddingSettings();
-    const rerankerSettings = getRerankerSettings();
-    const memorySettings = getMemorySettings();
-    const summarizationSettings = getSummarizationSettings();
-    const limitsSettings = getLimitsSettings();
-    const tokenLimitsSettings = getTokenLimitsSettings();
-    const ocrSettings = getOcrSettings();
+    const ragSettings = await getRagSettings();
+    const llmSettings = await getLlmSettings();
+    const acronymMappings = await getAcronymMappings();
+    const tavilySettings = await getTavilySettings();
+    const uploadLimits = await getUploadLimits();
+    const retentionSettings = await getRetentionSettings();
+    const brandingSettings = await getBrandingSettings();
+    const embeddingSettings = await getEmbeddingSettings();
+    const rerankerSettings = await getRerankerSettings();
+    const memorySettings = await getMemorySettings();
+    const summarizationSettings = await getSummarizationSettings();
+    const limitsSettings = await getLimitsSettings();
+    const tokenLimitsSettings = await getTokenLimitsSettings();
+    const ocrSettings = await getOcrSettings();
 
     // Get metadata for last updated info
-    const ragMeta = getSettingMetadata('rag-settings');
-    const llmMeta = getSettingMetadata('llm-settings');
-    const acronymsMeta = getSettingMetadata('acronym-mappings');
-    const tavilyMeta = getSettingMetadata('tavily-settings');
-    const brandingMeta = getSettingMetadata('branding-settings');
-    const embeddingMeta = getSettingMetadata('embedding-settings');
-    const rerankerMeta = getSettingMetadata('reranker-settings');
-    const memoryMeta = getSettingMetadata('memory-settings');
-    const summarizationMeta = getSettingMetadata('summarization-settings');
-    const limitsMeta = getSettingMetadata('limits-settings');
-    const tokenLimitsMeta = getSettingMetadata('token-limits-settings');
-    const uploadMeta = getSettingMetadata('upload-limits');
-    const ocrMeta = getSettingMetadata('ocr-settings');
+    const ragMeta = await getSettingMetadata('rag-settings');
+    const llmMeta = await getSettingMetadata('llm-settings');
+    const acronymsMeta = await getSettingMetadata('acronym-mappings');
+    const tavilyMeta = await getSettingMetadata('tavily-settings');
+    const brandingMeta = await getSettingMetadata('branding-settings');
+    const embeddingMeta = await getSettingMetadata('embedding-settings');
+    const rerankerMeta = await getSettingMetadata('reranker-settings');
+    const memoryMeta = await getSettingMetadata('memory-settings');
+    const summarizationMeta = await getSettingMetadata('summarization-settings');
+    const limitsMeta = await getSettingMetadata('limits-settings');
+    const tokenLimitsMeta = await getSettingMetadata('token-limits-settings');
+    const uploadMeta = await getSettingMetadata('upload-limits');
+    const ocrMeta = await getSettingMetadata('ocr-settings');
 
     return NextResponse.json({
       rag: {
@@ -196,25 +196,25 @@ export async function GET() {
         hasMistralApiKey: !!(ocrSettings.mistralApiKey),
         hasAzureDiCredentials: !!(ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey),
         // Check if Mistral key is available from LLM provider config
-        mistralFromLlmProvider: !ocrSettings.mistralApiKey && isProviderConfigured('mistral'),
+        mistralFromLlmProvider: !ocrSettings.mistralApiKey && await isProviderConfigured('mistral'),
         updatedAt: ocrMeta?.updatedAt || new Date().toISOString(),
         updatedBy: ocrMeta?.updatedBy || 'system',
         providerAvailability: {
-          mistral: Boolean(ocrSettings.mistralApiKey) || isProviderConfigured('mistral'),
+          mistral: Boolean(ocrSettings.mistralApiKey) || await isProviderConfigured('mistral'),
           'azure-di': Boolean((ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey) || (process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY)),
           'pdf-parse': true,
         },
       },
-      availableModels: getAvailableModels(),
+      availableModels: await getAvailableModels(),
       brandingIcons: BRANDING_ICONS,
       models: {
         transcription: getConfigValue('models.transcription', 'whisper-1'),
       },
       defaults: {
-        systemPrompt: getDefaultSystemPrompt(),
+        systemPrompt: await getDefaultSystemPrompt(),
         acronyms: { mappings: {} },
-        tavily: getTavilySettings(),
-        branding: getBrandingSettings(),
+        tavily: await getTavilySettings(),
+        branding: await getBrandingSettings(),
         embedding: { model: 'text-embedding-3-large', dimensions: 3072 },
         reranker: { enabled: false, provider: 'cohere', topKForReranking: 50, minRerankerScore: 0.3, cacheTTLSeconds: 3600 },
         memory: { enabled: false, extractionThreshold: 5, maxFactsPerCategory: 20, autoExtractOnThreadEnd: true },
@@ -340,7 +340,7 @@ export async function PUT(request: NextRequest) {
           }
         }
 
-        result = setRagSettings({
+        result = await setRagSettings({
           topKChunks,
           maxContextChunks,
           similarityThreshold,
@@ -359,7 +359,7 @@ export async function PUT(request: NextRequest) {
         // Validate LLM settings
         const { model, temperature, maxTokens, promptOptimizationMaxTokens } = settings;
 
-        if (!model || !getAvailableModels().some(m => m.id === model)) {
+        if (!model || !(await getAvailableModels()).some(m => m.id === model)) {
           return NextResponse.json<ApiError>(
             { error: 'Invalid model selected', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -387,7 +387,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setLlmSettings({
+        result = await setLlmSettings({
           model,
           temperature,
           maxTokens,
@@ -395,7 +395,7 @@ export async function PUT(request: NextRequest) {
         }, user.email);
 
         // Return with metadata
-        const llmMeta = getSettingMetadata('llm-settings');
+        const llmMeta = await getSettingMetadata('llm-settings');
         return NextResponse.json({
           success: true,
           settings: {
@@ -439,7 +439,7 @@ export async function PUT(request: NextRequest) {
           }
         }
 
-        setAcronymMappings(normalizedMappings, user.email);
+        await setAcronymMappings(normalizedMappings, user.email);
         result = { mappings: normalizedMappings };
         break;
       }
@@ -519,7 +519,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setTavilySettings({
+        result = await setTavilySettings({
           ...(apiKey !== undefined && apiKey !== '' ? { apiKey } : {}),
           enabled,
           defaultTopic,
@@ -567,7 +567,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setUploadLimits({
+        result = await setUploadLimits({
           maxFilesPerInput,
           maxFilesPerThread,
           maxFileSizeMB,
@@ -593,7 +593,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setRetentionSettings({
+        result = await setRetentionSettings({
           threadRetentionDays,
           storageAlertThreshold,
         }, user.email);
@@ -685,7 +685,7 @@ export async function PUT(request: NextRequest) {
           }
         }
 
-        result = setBrandingSettings({
+        result = await setBrandingSettings({
           botName: botName.trim(),
           botIcon,
           subtitle: subtitle || undefined,
@@ -697,14 +697,14 @@ export async function PUT(request: NextRequest) {
         // Auto-update PWA icons based on selected bot icon
         const selectedIcon = BRANDING_ICONS.find(i => i.key === botIcon);
         if (selectedIcon) {
-          setPWASettings({
+          await setPWASettings({
             icon192Path: selectedIcon.png192,
             icon512Path: selectedIcon.png512,
           }, user.email);
         }
 
         // Return the updated branding with metadata
-        const brandingMeta = getSettingMetadata('branding-settings');
+        const brandingMeta = await getSettingMetadata('branding-settings');
         return NextResponse.json({
           success: true,
           branding: {
@@ -736,7 +736,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Check if model is available (provider configured or local)
-        const modelAvailable = modelDef.local || isProviderConfigured(modelDef.provider);
+        const modelAvailable = modelDef.local || await isProviderConfigured(modelDef.provider);
         if (!modelAvailable) {
           return NextResponse.json<ApiError>(
             { error: `Provider ${modelDef.provider} is not configured for ${model}`, code: 'VALIDATION_ERROR' },
@@ -755,7 +755,7 @@ export async function PUT(request: NextRequest) {
             );
           }
           // Check if fallback model is available
-          const fallbackAvailable = fallbackModelDef.local || isProviderConfigured(fallbackModelDef.provider);
+          const fallbackAvailable = fallbackModelDef.local || await isProviderConfigured(fallbackModelDef.provider);
           if (!fallbackAvailable) {
             return NextResponse.json<ApiError>(
               { error: `Provider ${fallbackModelDef.provider} is not configured for fallback model ${fallbackModel}`, code: 'VALIDATION_ERROR' },
@@ -772,14 +772,14 @@ export async function PUT(request: NextRequest) {
           console.log(`[Settings] Auto-correcting embedding dimensions from ${dimensions} to ${expectedDimensions} for model ${model}`);
         }
 
-        result = setEmbeddingSettings({
+        result = await setEmbeddingSettings({
           model: model.trim(),
           dimensions: expectedDimensions, // Use the model's defined dimensions
           fallbackModel: validatedFallbackModel,
         }, user.email);
 
         // Return with metadata
-        const embeddingMeta = getSettingMetadata('embedding-settings');
+        const embeddingMeta = await getSettingMetadata('embedding-settings');
         return NextResponse.json({
           success: true,
           settings: {
@@ -863,7 +863,7 @@ export async function PUT(request: NextRequest) {
           resetCohereClient();
         }
 
-        result = setRerankerSettings({
+        result = await setRerankerSettings({
           enabled,
           providers,
           ...(cohereApiKey !== undefined ? { cohereApiKey: cohereApiKey || undefined } : {}),
@@ -923,7 +923,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setMemorySettings({
+        result = await setMemorySettings({
           enabled,
           extractionThreshold,
           maxFactsPerCategory,
@@ -982,7 +982,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setSummarizationSettings({
+        result = await setSummarizationSettings({
           enabled,
           tokenThreshold,
           keepRecentMessages,
@@ -1023,7 +1023,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setSkillsSettings({
+        result = await setSkillsSettings({
           enabled,
           maxTotalTokens,
           debugMode,
@@ -1118,7 +1118,7 @@ export async function PUT(request: NextRequest) {
           resetAzureDIClient();
         }
 
-        result = setOcrSettings({
+        result = await setOcrSettings({
           providers: providers.map((p: { provider: string; enabled: boolean }) => ({
             provider: p.provider as 'mistral' | 'azure-di' | 'pdf-parse',
             enabled: p.enabled,
@@ -1141,7 +1141,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setLimitsSettings({
+        result = await setLimitsSettings({
           conversationHistoryMessages,
         }, user.email);
         break;
@@ -1232,7 +1232,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = setTokenLimitsSettings({
+        result = await setTokenLimitsSettings({
           promptOptimizationMaxTokens,
           skillsMaxTotalTokens,
           memoryExtractionMaxTokens,
@@ -1245,7 +1245,7 @@ export async function PUT(request: NextRequest) {
         }, user.email);
 
         // Return with metadata
-        const meta = getSettingMetadata('token-limits-settings');
+        const meta = await getSettingMetadata('token-limits-settings');
         return NextResponse.json({
           success: true,
           tokenLimits: {
@@ -1276,21 +1276,21 @@ export async function PUT(request: NextRequest) {
         ] as const;
 
         for (const key of settingKeys) {
-          deleteSetting(key);
+          await deleteSetting(key);
         }
 
         // Return the new values (which will be from JSON config)
         result = {
           message: 'All settings have been reset to JSON config defaults',
-          rag: getRagSettings(),
-          llm: getLlmSettings(),
-          tavily: getTavilySettings(),
-          branding: getBrandingSettings(),
-          embedding: getEmbeddingSettings(),
-          reranker: getRerankerSettings(),
-          memory: getMemorySettings(),
-          summarization: getSummarizationSettings(),
-          systemPrompt: getDefaultSystemPrompt(),
+          rag: await getRagSettings(),
+          llm: await getLlmSettings(),
+          tavily: await getTavilySettings(),
+          branding: await getBrandingSettings(),
+          embedding: await getEmbeddingSettings(),
+          reranker: await getRerankerSettings(),
+          memory: await getMemorySettings(),
+          summarization: await getSummarizationSettings(),
+          systemPrompt: await getDefaultSystemPrompt(),
         };
 
         // Also invalidate Tavily cache since settings changed

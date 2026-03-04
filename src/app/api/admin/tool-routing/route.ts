@@ -12,7 +12,7 @@ import {
   createRoutingRule,
   seedDefaultRoutingRules,
   hasRoutingRules,
-} from '@/lib/db/tool-routing';
+} from '@/lib/db/compat';
 import type { ToolRoutingRuleInput } from '@/types/tool-routing';
 
 /**
@@ -30,11 +30,11 @@ export async function GET() {
     }
 
     // Seed default rules if none exist
-    if (!hasRoutingRules()) {
-      seedDefaultRoutingRules(user.email);
+    if (!(await hasRoutingRules())) {
+      await seedDefaultRoutingRules(user.email);
     }
 
-    const rules = getAllRoutingRules();
+    const rules = await getAllRoutingRules();
 
     return NextResponse.json({
       rules,

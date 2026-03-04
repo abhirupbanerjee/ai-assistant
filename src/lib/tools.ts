@@ -17,7 +17,7 @@ import { pptxGenTool } from './tools/pptx-gen';
 import { podcastGenTool } from './tools/podcast-gen';
 import { websiteAnalysisTool } from './tools/pagespeed';
 import { codeAnalysisTool } from './tools/sonarcloud';
-import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/tool-config';
+import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 
 // ============ Types ============
@@ -126,15 +126,15 @@ let toolsInitialized = false;
  * - Migrates legacy Tavily settings to tool_configs table
  * - Ensures all registered tools have configurations
  */
-export function initializeTools(): void {
+export async function initializeTools(): Promise<void> {
   if (toolsInitialized) return;
 
   try {
     // Migrate existing Tavily settings if needed
-    migrateTavilySettingsIfNeeded();
+    await migrateTavilySettingsIfNeeded();
 
     // Ensure all registered tools have configs
-    ensureToolConfigsExist();
+    await ensureToolConfigsExist();
 
     toolsInitialized = true;
     logger.info('Tools system initialized');
@@ -149,9 +149,9 @@ export function initializeTools(): void {
  * Check if a tool is enabled
  * Uses database configuration
  */
-export function isToolEnabled(name: string): boolean {
-  initializeTools();
-  return isToolEnabledDb(name);
+export async function isToolEnabled(name: string): Promise<boolean> {
+  await initializeTools();
+  return await isToolEnabledDb(name);
 }
 
 /**
@@ -160,21 +160,21 @@ export function isToolEnabled(name: string): boolean {
  * Applies admin-configured description overrides when available
  * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
-export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatCompletionFunctionTool[] {
-  initializeTools();
+export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI.Chat.ChatCompletionFunctionTool[]> {
+  await initializeTools();
 
   const tools: OpenAI.Chat.ChatCompletionFunctionTool[] = [];
 
   // Add static tool definitions
   for (const tool of Object.values(AVAILABLE_TOOLS)) {
-    if (tool.category !== 'autonomous' || !isToolEnabled(tool.name)) continue;
+    if (tool.category !== 'autonomous' || !(await isToolEnabled(tool.name))) continue;
 
     // Skip function_api here - its definitions are added dynamically below
     if (tool.name === 'function_api') continue;
 
     if (tool.definition) {
       // Check for admin-configured description override
-      const descriptionOverride = getDescriptionOverride(tool.name);
+      const descriptionOverride = await getDescriptionOverride(tool.name);
 
       if (descriptionOverride) {
         // Create a copy with the overridden description
@@ -194,8 +194,8 @@ export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatComp
   }
 
   // Add dynamic function definitions from Function APIs
-  if (categoryIds && categoryIds.length > 0 && isToolEnabled('function_api')) {
-    const functionDefinitions = getDynamicFunctionDefinitions(categoryIds);
+  if (categoryIds && categoryIds.length > 0 && (await isToolEnabled('function_api'))) {
+    const functionDefinitions = await getDynamicFunctionDefinitions(categoryIds);
     tools.push(...functionDefinitions);
   }
 
@@ -206,17 +206,22 @@ export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatComp
  * Get all enabled autonomous tool definitions (alias for getToolDefinitions)
  * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
-export function getEnabledAutonomousTools(categoryIds?: number[]): OpenAI.Chat.ChatCompletionFunctionTool[] {
+export async function getEnabledAutonomousTools(categoryIds?: number[]): Promise<OpenAI.Chat.ChatCompletionFunctionTool[]> {
   return getToolDefinitions(categoryIds);
 }
 
 /**
  * Get all processor tools (for post-response processing)
  */
-export function getProcessorTools(): ToolDefinition[] {
-  initializeTools();
-  return Object.values(AVAILABLE_TOOLS)
-    .filter(tool => tool.category === 'processor' && isToolEnabled(tool.name));
+export async function getProcessorTools(): Promise<ToolDefinition[]> {
+  await initializeTools();
+  const results: ToolDefinition[] = [];
+  for (const tool of Object.values(AVAILABLE_TOOLS)) {
+    if (tool.category === 'processor' && (await isToolEnabled(tool.name))) {
+      results.push(tool);
+    }
+  }
+  return results;
 }
 
 /**
@@ -273,17 +278,17 @@ export async function executeTool(
   args: string,
   configOverride?: Record<string, unknown>
 ): Promise<string> {
-  initializeTools();
+  await initializeTools();
 
   // Check standard tools first
   let tool = AVAILABLE_TOOLS[name];
 
   // If not found, check if it's a dynamic function from function_api
-  if (!tool && isFunctionAPIFunction(name)) {
+  if (!tool && await isFunctionAPIFunction(name)) {
     tool = AVAILABLE_TOOLS['function_api'];
 
     // Check if function_api tool is enabled
-    if (!isToolEnabled('function_api')) {
+    if (!(await isToolEnabled('function_api'))) {
       return JSON.stringify({
         success: false,
         error: `Function APIs are currently disabled`,
@@ -346,7 +351,7 @@ export async function executeTool(
   }
 
   // Check if tool is enabled
-  if (!isToolEnabled(name)) {
+  if (!(await isToolEnabled(name))) {
     return JSON.stringify({
       success: false,
       error: `Tool '${name}' is currently disabled`,
@@ -406,13 +411,13 @@ export async function executeTool(
 /**
  * Get tool metadata for display
  */
-export function getToolMetadata(name: string): {
+export async function getToolMetadata(name: string): Promise<{
   name: string;
   displayName: string;
   description: string;
   category: ToolCategory;
   enabled: boolean;
-} | undefined {
+} | undefined> {
   const tool = AVAILABLE_TOOLS[name];
   if (!tool) return undefined;
 
@@ -421,7 +426,7 @@ export function getToolMetadata(name: string): {
     displayName: tool.displayName,
     description: tool.description,
     category: tool.category,
-    enabled: isToolEnabled(name),
+    enabled: await isToolEnabled(name),
   };
 }
 

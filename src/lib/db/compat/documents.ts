@@ -6,8 +6,7 @@
  * - PostgreSQL: Uses Kysely query builder
  */
 
-import { getDb, getDatabaseProvider, transaction } from '../kysely';
-import * as sync from '../documents';
+import { getDb, transaction } from '../kysely';
 import { sql } from 'kysely';
 
 // Re-export types
@@ -30,9 +29,6 @@ import type {
 // ============ Document CRUD ============
 
 export async function getAllDocuments(): Promise<DbDocument[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllDocuments();
-  }
   const db = await getDb();
   return db
     .selectFrom('documents')
@@ -53,10 +49,6 @@ export async function getAllDocuments(): Promise<DbDocument[]> {
 }
 
 export async function getAllDocumentsWithCategories(): Promise<DocumentWithCategories[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllDocumentsWithCategories();
-  }
-
   const documents = await getAllDocuments();
   const db = await getDb();
 
@@ -81,9 +73,6 @@ export async function getAllDocumentsWithCategories(): Promise<DocumentWithCateg
 }
 
 export async function getDocumentById(id: number): Promise<DbDocument | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentById(id);
-  }
   const db = await getDb();
   return db
     .selectFrom('documents')
@@ -104,10 +93,6 @@ export async function getDocumentById(id: number): Promise<DbDocument | undefine
 }
 
 export async function getDocumentWithCategories(id: number): Promise<DocumentWithCategories | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentWithCategories(id);
-  }
-
   const doc = await getDocumentById(id);
   if (!doc) return undefined;
 
@@ -128,10 +113,6 @@ export async function getDocumentWithCategories(id: number): Promise<DocumentWit
 }
 
 export async function createDocument(input: CreateDocumentInput): Promise<DbDocument> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.createDocument(input);
-  }
-
   return transaction(async (trx) => {
     const result = await trx
       .insertInto('documents')
@@ -177,10 +158,6 @@ export async function updateDocument(
   id: number,
   input: UpdateDocumentInput
 ): Promise<DbDocument | undefined> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateDocument(id, input);
-  }
-
   const updates: Record<string, unknown> = {};
 
   if (input.chunkCount !== undefined) {
@@ -206,9 +183,6 @@ export async function updateDocument(
 }
 
 export async function deleteDocument(id: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteDocument(id);
-  }
   const db = await getDb();
   const result = await db.deleteFrom('documents').where('id', '=', id).executeTakeFirst();
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
@@ -217,9 +191,6 @@ export async function deleteDocument(id: number): Promise<boolean> {
 // ============ Category Operations ============
 
 export async function getDocumentCategories(docId: number): Promise<number[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentCategories(docId);
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('document_categories')
@@ -231,9 +202,6 @@ export async function getDocumentCategories(docId: number): Promise<number[]> {
 }
 
 export async function addDocumentToCategory(docId: number, categoryId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.addDocumentToCategory(docId, categoryId);
-  }
   try {
     const db = await getDb();
     await db
@@ -247,9 +215,6 @@ export async function addDocumentToCategory(docId: number, categoryId: number): 
 }
 
 export async function removeDocumentFromCategory(docId: number, categoryId: number): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.removeDocumentFromCategory(docId, categoryId);
-  }
   const db = await getDb();
   const result = await db
     .deleteFrom('document_categories')
@@ -260,10 +225,6 @@ export async function removeDocumentFromCategory(docId: number, categoryId: numb
 }
 
 export async function setDocumentCategories(docId: number, categoryIds: number[]): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.setDocumentCategories(docId, categoryIds);
-  }
-
   await transaction(async (trx) => {
     // Remove existing categories
     await trx.deleteFrom('document_categories').where('document_id', '=', docId).execute();
@@ -279,9 +240,6 @@ export async function setDocumentCategories(docId: number, categoryIds: number[]
 }
 
 export async function setDocumentGlobal(docId: number, isGlobal: boolean): Promise<boolean> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.setDocumentGlobal(docId, isGlobal);
-  }
   const db = await getDb();
   const result = await db
     .updateTable('documents')
@@ -294,9 +252,6 @@ export async function setDocumentGlobal(docId: number, isGlobal: boolean): Promi
 // ============ Query Helpers ============
 
 export async function getDocumentsByCategory(categoryId: number): Promise<DbDocument[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentsByCategory(categoryId);
-  }
   const db = await getDb();
   return db
     .selectFrom('documents as d')
@@ -319,9 +274,6 @@ export async function getDocumentsByCategory(categoryId: number): Promise<DbDocu
 }
 
 export async function getGlobalDocuments(): Promise<DbDocument[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getGlobalDocuments();
-  }
   const db = await getDb();
   return db
     .selectFrom('documents')
@@ -343,9 +295,6 @@ export async function getGlobalDocuments(): Promise<DbDocument[]> {
 }
 
 export async function getUnassignedDocuments(): Promise<DbDocument[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getUnassignedDocuments();
-  }
   const db = await getDb();
   return db
     .selectFrom('documents as d')
@@ -368,9 +317,6 @@ export async function getUnassignedDocuments(): Promise<DbDocument[]> {
 }
 
 export async function getDocumentsByStatus(status: DocumentStatus): Promise<DbDocument[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentsByStatus(status);
-  }
   const db = await getDb();
   return db
     .selectFrom('documents')
@@ -394,9 +340,6 @@ export async function getDocumentsByStatus(status: DocumentStatus): Promise<DbDo
 // ============ Statistics ============
 
 export async function getTotalChunkCount(): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getTotalChunkCount();
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('documents')
@@ -411,9 +354,6 @@ export async function getDocumentCountByStatus(): Promise<{
   ready: number;
   error: number;
 }> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getDocumentCountByStatus();
-  }
   const db = await getDb();
   const results = await db
     .selectFrom('documents')
@@ -432,13 +372,32 @@ export async function getDocumentCountByStatus(): Promise<{
 }
 
 export async function getTotalStorageSize(): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getTotalStorageSize();
-  }
   const db = await getDb();
   const result = await db
     .selectFrom('documents')
     .select(sql<number>`COALESCE(SUM(file_size), 0)`.as('total'))
     .executeTakeFirst();
   return result?.total ?? 0;
+}
+
+// ============ Folder Sync Operations ============
+
+/**
+ * Update document with folder sync metadata
+ */
+export async function updateDocumentFolderSync(
+  docId: number | string,
+  folderSyncId: string,
+  relativePath: string
+): Promise<void> {
+  const db = await getDb();
+  const id = typeof docId === 'string' ? parseInt(docId, 10) : docId;
+  await db
+    .updateTable('documents')
+    .set({
+      folder_sync_id: folderSyncId,
+      original_relative_path: relativePath,
+    })
+    .where('id', '=', id)
+    .execute();
 }

@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole } from '@/lib/users';
-import { getFolderSyncsByUser } from '@/lib/db/folder-syncs';
+import { getFolderSyncsByUser } from '@/lib/db/compat/folder-syncs';
 
 export async function GET() {
   try {
@@ -21,7 +21,7 @@ export async function GET() {
     }
 
     // Only get folders uploaded by this user
-    const folderSyncs = getFolderSyncsByUser(user.email);
+    const folderSyncs = await getFolderSyncsByUser(user.email);
 
     return NextResponse.json({
       folders: folderSyncs,

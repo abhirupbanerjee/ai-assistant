@@ -65,8 +65,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Initialize tools and check if doc_gen is enabled
-    initializeTools();
-    if (!isToolEnabled('doc_gen')) {
+    await initializeTools();
+    if (!(await isToolEnabled('doc_gen'))) {
       return NextResponse.json(
         { error: 'Document generation is currently disabled' },
         { status: 503 }

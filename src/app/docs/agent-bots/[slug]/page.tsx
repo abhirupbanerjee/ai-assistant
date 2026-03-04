@@ -10,9 +10,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getAgentBotBySlug, checkSuperuserAgentBotAccess } from '@/lib/db/agent-bots';
-import { getDefaultVersion } from '@/lib/db/agent-bot-versions';
+import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
 import AgentBotDocsContent from './AgentBotDocsContent';
 
 interface PageProps {
@@ -46,7 +44,7 @@ export default async function AgentBotDocsPage({ params }: PageProps) {
   }
 
   // Get the agent bot
-  const agentBot = getAgentBotBySlug(slug);
+  const agentBot = await getAgentBotBySlug(slug);
   if (!agentBot) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -69,12 +67,12 @@ export default async function AgentBotDocsPage({ params }: PageProps) {
       redirect('/login');
     }
 
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     const userCategoryIds = (superUserData?.assignedCategories || []).map(
       (c) => c.categoryId
     );
 
-    const hasAccess = checkSuperuserAgentBotAccess(agentBot.id, userCategoryIds);
+    const hasAccess = await checkSuperuserAgentBotAccess(agentBot.id, userCategoryIds);
     if (!hasAccess) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -95,7 +93,7 @@ export default async function AgentBotDocsPage({ params }: PageProps) {
   }
 
   // Get the default version for displaying documentation
-  const defaultVersion = getDefaultVersion(agentBot.id);
+  const defaultVersion = await getDefaultVersion(agentBot.id);
 
   return (
     <AgentBotDocsContent

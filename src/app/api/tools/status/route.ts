@@ -25,10 +25,10 @@ export async function GET() {
     // Return status of user-facing tools
     return NextResponse.json({
       share_thread: {
-        enabled: isToolEnabled('share_thread'),
+        enabled: await isToolEnabled('share_thread'),
       },
       send_email: {
-        enabled: isToolEnabled('send_email'),
+        enabled: await isToolEnabled('send_email'),
       },
     });
   } catch (error) {

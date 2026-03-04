@@ -7,9 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
 import { parseCSVBuffer, storeCSVFile } from '@/lib/data-sources/csv-handler';
-import { createDataCSV } from '@/lib/db/data-sources';
+import { createDataCSV } from '@/lib/db/compat/data-sources';
 
 /**
  * POST /api/superuser/data-sources/upload-csv
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       categoryIds,
     };
 
-    const created = createDataCSV(csvConfig, user.email);
+    const created = await createDataCSV(csvConfig, user.email);
 
     return NextResponse.json({
       success: true,

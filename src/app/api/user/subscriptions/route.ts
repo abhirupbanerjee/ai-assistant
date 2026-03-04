@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { getUserByEmail, getUserWithSubscriptions } from '@/lib/db/users';
+import { getUserByEmail, getUserWithSubscriptions } from '@/lib/db/compat';
 
 export async function GET() {
   try {
@@ -21,7 +21,7 @@ export async function GET() {
       );
     }
 
-    const user = getUserByEmail(session.user.email);
+    const user = await getUserByEmail(session.user.email);
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -30,7 +30,7 @@ export async function GET() {
     }
 
     // Get subscriptions with full category details
-    const userWithSubs = getUserWithSubscriptions(user.id);
+    const userWithSubs = await getUserWithSubscriptions(user.id);
     const subscriptions = userWithSubs?.subscriptions || [];
 
     // Transform to API format matching UserSubscription type

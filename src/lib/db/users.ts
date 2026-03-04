@@ -563,6 +563,7 @@ export async function initializeAdminCredentialsFromEnv(): Promise<void> {
     const { hashPassword } = await import('../password');
     const hash = await hashPassword(adminPassword);
     setUserPassword(user.id, hash);
+    setCredentialsEnabled(user.id, true);
     console.log(`[Auth] Credentials set for admin: ${firstAdmin}`);
   }
 }

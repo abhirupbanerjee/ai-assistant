@@ -35,7 +35,7 @@ export async function GET(
     }
 
     const { jobId } = await params;
-    const job = getReindexJob(jobId);
+    const job = await getReindexJob(jobId);
 
     if (!job) {
       return NextResponse.json<ApiError>(
@@ -87,7 +87,7 @@ export async function DELETE(
     }
 
     const { jobId } = await params;
-    const job = getReindexJob(jobId);
+    const job = await getReindexJob(jobId);
 
     if (!job) {
       return NextResponse.json<ApiError>(
@@ -103,7 +103,7 @@ export async function DELETE(
       );
     }
 
-    const cancelled = cancelReindexJob(jobId);
+    const cancelled = await cancelReindexJob(jobId);
 
     if (!cancelled) {
       return NextResponse.json<ApiError>(

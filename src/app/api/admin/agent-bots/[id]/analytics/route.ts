@@ -5,10 +5,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentBotById } from '@/lib/db/agent-bots';
-import { getUsageStats, listJobsForAgentBot } from '@/lib/db/agent-bot-jobs';
-import { listApiKeys } from '@/lib/db/agent-bot-api-keys';
-import { getVersionById } from '@/lib/db/agent-bot-versions';
+import {
+  getAgentBotById,
+  getUsageStats,
+  listJobsForAgentBot,
+  listApiKeys,
+  getVersionById,
+} from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 
 // ============================================================================
@@ -23,7 +26,7 @@ export async function GET(
     await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -37,8 +40,8 @@ export async function GET(
     const days = daysParam ? parseInt(daysParam, 10) : 30;
 
     // Get usage statistics for current and previous periods
-    const stats = getUsageStats(id, days);
-    const prevStats = getUsageStats(id, days * 2); // Get double period for comparison
+    const stats = await getUsageStats(id, days);
+    const prevStats = await getUsageStats(id, days * 2); // Get double period for comparison
 
     // Calculate change percentages
     const prevRequests = prevStats.totalRequests - stats.totalRequests;
@@ -51,7 +54,7 @@ export async function GET(
       : 0;
 
     // Get recent jobs
-    const recentJobs = listJobsForAgentBot(id, 20);
+    const recentJobs = await listJobsForAgentBot(id, 20);
 
     // Calculate success/failure counts
     const successfulRequests = recentJobs.filter((j) => j.status === 'completed').length;
@@ -79,7 +82,7 @@ export async function GET(
     }));
 
     // Aggregate by API key with percentages
-    const apiKeys = listApiKeys(id);
+    const apiKeys = await listApiKeys(id);
     const apiKeyUsage: Record<string, { name: string; prefix: string; count: number }> = {};
     for (const key of apiKeys) {
       apiKeyUsage[key.id] = { name: key.name, prefix: key.key_prefix, count: 0 };
@@ -103,7 +106,7 @@ export async function GET(
     const versionIds = [...new Set(recentJobs.map((j) => j.version_id))];
     const versionNumberMap: Record<string, number> = {};
     for (const versionId of versionIds) {
-      const version = getVersionById(versionId);
+      const version = await getVersionById(versionId);
       if (version) {
         versionNumberMap[versionId] = version.version_number;
       }

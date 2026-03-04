@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail } from '@/lib/db/compat';
 import { ragQuery } from '@/lib/rag';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import {
@@ -16,7 +16,7 @@ import {
   getThreadSummary,
   formatSummaryForContext,
 } from '@/lib/summarization';
-import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
+import { getMemorySettings, getSummarizationSettings } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
 import {
   buildModelsToTry,
@@ -62,9 +62,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database for memory
-    const dbUser = getUserByEmail(user.email);
-    const memorySettings = getMemorySettings();
-    const summarizationSettings = getSummarizationSettings();
+    const dbUser = await getUserByEmail(user.email);
+    const memorySettings = await getMemorySettings();
+    const summarizationSettings = await getSummarizationSettings();
 
     // Create user message
     const userMessage: Message = {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Track user message tokens
     const userTokens = countTokens(message);
-    updateThreadTokenCount(threadId, userTokens);
+    await updateThreadTokenCount(threadId, userTokens);
 
     // Get conversation history (dynamic based on settings)
     // Get more messages than needed to allow for dynamic context management
@@ -95,12 +95,12 @@ export async function POST(request: NextRequest) {
     // Get memory context if enabled
     let memoryContext = '';
     if (memorySettings.enabled && dbUser) {
-      memoryContext = getMemoryContext(dbUser.id, categoryIds);
+      memoryContext = await getMemoryContext(dbUser.id, categoryIds);
     }
 
     // Get thread summary context if available
     let summaryContext = '';
-    const existingSummary = getThreadSummary(threadId);
+    const existingSummary = await getThreadSummary(threadId);
     if (existingSummary) {
       summaryContext = formatSummaryForContext(existingSummary.summary);
     }
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     // Build models to try based on capabilities
     // Non-streaming route doesn't handle images, so no vision requirement
-    const { models: modelsToTry } = buildModelsToTry(
+    const { models: modelsToTry } = await buildModelsToTry(
       null,   // No per-thread model selection in non-streaming route
       false,  // No vision requirement (images handled by streaming route)
       true    // Tools are enabled
@@ -196,10 +196,10 @@ export async function POST(request: NextRequest) {
 
     // Track assistant message tokens
     const assistantTokens = countTokens(answer);
-    updateThreadTokenCount(threadId, assistantTokens);
+    await updateThreadTokenCount(threadId, assistantTokens);
 
     // Check if summarization is needed (async, non-blocking)
-    if (summarizationSettings.enabled && shouldSummarize(threadId)) {
+    if (summarizationSettings.enabled && await shouldSummarize(threadId)) {
       // Trigger summarization in background
       summarizeThread(threadId).catch(err => {
         console.error('[Chat API] Background summarization failed:', err);

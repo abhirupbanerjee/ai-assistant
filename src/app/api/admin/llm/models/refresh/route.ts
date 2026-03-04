@@ -8,11 +8,11 @@
  */
 
 import { NextResponse } from 'next/server';
-import { refreshAllModelCapabilities } from '@/lib/db/enabled-models';
+import { refreshAllModelCapabilities } from '@/lib/db/compat/enabled-models';
 
 export async function POST() {
   try {
-    const result = refreshAllModelCapabilities();
+    const result = await refreshAllModelCapabilities();
 
     return NextResponse.json({
       success: true,

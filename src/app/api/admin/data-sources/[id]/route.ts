@@ -15,7 +15,7 @@ import {
   updateDataCSV,
   deleteDataAPI,
   deleteDataCSV,
-} from '@/lib/db/data-sources';
+} from '@/lib/db/compat/data-sources';
 import { maskSensitiveValue } from '@/lib/encryption';
 import type { DataAPIConfig } from '@/types/data-sources';
 
@@ -71,7 +71,7 @@ export async function GET(
     const { id } = await context.params;
 
     // Try to find as API first
-    const api = getDataAPI(id);
+    const api = await getDataAPI(id);
     if (api) {
       return NextResponse.json({
         type: 'api',
@@ -80,7 +80,7 @@ export async function GET(
     }
 
     // Try as CSV
-    const csv = getDataCSV(id);
+    const csv = await getDataCSV(id);
     if (csv) {
       return NextResponse.json({
         type: 'csv',
@@ -124,7 +124,7 @@ export async function PUT(
 
     if (sourceType === 'api') {
       // Check if exists
-      const existing = getDataAPI(id);
+      const existing = await getDataAPI(id);
       if (!existing) {
         return NextResponse.json(
           { error: 'API data source not found' },
@@ -167,7 +167,7 @@ export async function PUT(
         ...(body.status && { status: body.status }),
       };
 
-      const updated = updateDataAPI(id, updates, user.email);
+      const updated = await updateDataAPI(id, updates, user.email);
       if (!updated) {
         return NextResponse.json(
           { error: 'Failed to update data source' },
@@ -181,7 +181,7 @@ export async function PUT(
       });
     } else {
       // CSV update
-      const existing = getDataCSV(id);
+      const existing = await getDataCSV(id);
       if (!existing) {
         return NextResponse.json(
           { error: 'CSV data source not found' },
@@ -196,7 +196,7 @@ export async function PUT(
         ...(body.categoryIds && { categoryIds: body.categoryIds }),
       };
 
-      const updated = updateDataCSV(id, updates, user.email);
+      const updated = await updateDataCSV(id, updates, user.email);
       if (!updated) {
         return NextResponse.json(
           { error: 'Failed to update data source' },
@@ -251,9 +251,9 @@ export async function DELETE(
     let deleted = false;
 
     if (type === 'api') {
-      deleted = deleteDataAPI(id, user.email);
+      deleted = await deleteDataAPI(id, user.email);
     } else {
-      deleted = deleteDataCSV(id, user.email);
+      deleted = await deleteDataCSV(id, user.email);
     }
 
     if (!deleted) {

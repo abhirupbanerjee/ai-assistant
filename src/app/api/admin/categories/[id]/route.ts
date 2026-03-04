@@ -16,8 +16,8 @@ import {
   getCategoryDocumentCount,
   getDocumentIdsForCategory,
   deleteCategoryWithRelatedData,
-} from '@/lib/db/categories';
-import { getDocumentCategories } from '@/lib/db/documents';
+  getDocumentCategories,
+} from '@/lib/db/compat';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { deleteDocument } from '@/lib/ingest';
 import { invalidateCategoryCache } from '@/lib/redis';
@@ -37,16 +37,16 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
 
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     // Get additional details
-    const superUsers = getSuperUsersForCategory(categoryId);
-    const subscribers = getSubscribersForCategory(categoryId, false);
-    const documentCount = getCategoryDocumentCount(categoryId);
+    const superUsers = await getSuperUsersForCategory(categoryId);
+    const subscribers = await getSubscribersForCategory(categoryId, false);
+    const documentCount = await getCategoryDocumentCount(categoryId);
 
     return NextResponse.json({
       category,
@@ -81,7 +81,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const existing = getCategoryById(categoryId);
+    const existing = await getCategoryById(categoryId);
     if (!existing) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
@@ -105,7 +105,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       updates.description = description?.trim() || '';
     }
 
-    const category = updateCategory(categoryId, updates);
+    const category = await updateCategory(categoryId, updates);
 
     return NextResponse.json({ category });
   } catch (error) {
@@ -138,17 +138,17 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const existing = getCategoryById(categoryId);
+    const existing = await getCategoryById(categoryId);
     if (!existing) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     // 1. Get documents and check their other categories BEFORE deletion
-    const categoryDocIds = getDocumentIdsForCategory(categoryId);
+    const categoryDocIds = await getDocumentIdsForCategory(categoryId);
     const docsToDelete: number[] = [];
 
     for (const docId of categoryDocIds) {
-      const docCategoryIds = getDocumentCategories(docId);
+      const docCategoryIds = await getDocumentCategories(docId);
       const otherCategories = docCategoryIds.filter(catId => catId !== categoryId);
 
       if (otherCategories.length === 0) {
@@ -158,7 +158,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     }
 
     // 2. Delete category and all associations
-    const { deleted } = deleteCategoryWithRelatedData(categoryId);
+    const { deleted } = await deleteCategoryWithRelatedData(categoryId);
 
     if (!deleted) {
       return NextResponse.json(

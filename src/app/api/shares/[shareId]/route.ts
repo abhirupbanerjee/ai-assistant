@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail } from '@/lib/db/compat';
 import {
   getShareById,
   updateShareSettings,
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { shareId } = await params;
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -102,7 +102,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { shareId } = await params;
 
     // Check if share_thread tool is enabled
-    if (!isToolEnabled('share_thread')) {
+    if (!(await isToolEnabled('share_thread'))) {
       return NextResponse.json<ApiError>(
         { error: 'Thread sharing is disabled', code: 'NOT_CONFIGURED' },
         { status: 403 }
@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -188,7 +188,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { shareId } = await params;
 
     // Get user from database
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },

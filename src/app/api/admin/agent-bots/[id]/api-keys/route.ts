@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentBotById } from '@/lib/db/agent-bots';
-import { listApiKeys, createApiKey } from '@/lib/db/agent-bot-api-keys';
+import { getAgentBotById, listApiKeys, createApiKey } from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 
 // ============================================================================
@@ -22,7 +21,7 @@ export async function GET(
     await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -30,7 +29,7 @@ export async function GET(
       );
     }
 
-    const apiKeys = listApiKeys(id);
+    const apiKeys = await listApiKeys(id);
 
     // Don't expose key hashes
     const safeKeys = apiKeys.map((key) => ({
@@ -82,7 +81,7 @@ export async function POST(
     const user = await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -127,7 +126,7 @@ export async function POST(
     }
 
     // Create the API key
-    const result = createApiKey(
+    const result = await createApiKey(
       id,
       {
         name,

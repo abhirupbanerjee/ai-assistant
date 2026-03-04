@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPWASettings, getBrandingSettings } from '@/lib/db/config';
+import { getPWASettings, getBrandingSettings } from '@/lib/db/compat';
 
 // Force dynamic rendering - reads from database at runtime
 export const dynamic = 'force-dynamic';
@@ -12,8 +12,8 @@ export const dynamic = 'force-dynamic';
  * - Icon paths from PWA settings (auto-set when bot icon is selected)
  */
 export async function GET() {
-  const pwa = getPWASettings();
-  const branding = getBrandingSettings();
+  const pwa = await getPWASettings();
+  const branding = await getBrandingSettings();
 
   const manifest = {
     id: '/',

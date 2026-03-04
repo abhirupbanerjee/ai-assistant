@@ -5,8 +5,9 @@
  * and API costs while preserving conversation context.
  */
 
-import { execute, queryOne, queryAll, transaction } from './db';
-import { getSummarizationSettings, getLlmSettings } from './db/config';
+import { getDb, transaction } from './db/kysely';
+import { sql } from 'kysely';
+import { getSummarizationSettings, getLlmSettings } from './db/compat/config';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/provider-helpers';
 
@@ -22,16 +23,6 @@ export interface ThreadSummary {
   createdAt: string;
 }
 
-interface DbThreadSummary {
-  id: number;
-  thread_id: string;
-  summary: string;
-  messages_summarized: number;
-  tokens_before: number | null;
-  tokens_after: number | null;
-  created_at: string;
-}
-
 export interface ArchivedMessage {
   id: string;
   threadId: string;
@@ -41,17 +32,6 @@ export interface ArchivedMessage {
   createdAt: string;
   archivedAt: string;
   summaryId: number | null;
-}
-
-interface DbArchivedMessage {
-  id: string;
-  thread_id: string;
-  role: string;
-  content: string;
-  sources_json: string | null;
-  created_at: string;
-  archived_at: string;
-  summary_id: number | null;
 }
 
 export interface SummarizationStats {
@@ -123,11 +103,15 @@ export function countMessagesTokens(messages: Array<{ role: string; content: str
 /**
  * Get the latest summary for a thread
  */
-export function getThreadSummary(threadId: string): ThreadSummary | null {
-  const row = queryOne<DbThreadSummary>(
-    'SELECT * FROM thread_summaries WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1',
-    [threadId]
-  );
+export async function getThreadSummary(threadId: string): Promise<ThreadSummary | null> {
+  const db = await getDb();
+  const row = await db
+    .selectFrom('thread_summaries')
+    .selectAll()
+    .where('thread_id', '=', threadId)
+    .orderBy('created_at', 'desc')
+    .limit(1)
+    .executeTakeFirst();
 
   if (!row) return null;
 
@@ -145,11 +129,14 @@ export function getThreadSummary(threadId: string): ThreadSummary | null {
 /**
  * Get all summaries for a thread (history)
  */
-export function getThreadSummaryHistory(threadId: string): ThreadSummary[] {
-  const rows = queryAll<DbThreadSummary>(
-    'SELECT * FROM thread_summaries WHERE thread_id = ? ORDER BY created_at DESC',
-    [threadId]
-  );
+export async function getThreadSummaryHistory(threadId: string): Promise<ThreadSummary[]> {
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('thread_summaries')
+    .selectAll()
+    .where('thread_id', '=', threadId)
+    .orderBy('created_at', 'desc')
+    .execute();
 
   return rows.map((row) => ({
     id: row.id,
@@ -165,11 +152,14 @@ export function getThreadSummaryHistory(threadId: string): ThreadSummary[] {
 /**
  * Get archived messages for a thread
  */
-export function getArchivedMessages(threadId: string): ArchivedMessage[] {
-  const rows = queryAll<DbArchivedMessage>(
-    'SELECT * FROM archived_messages WHERE thread_id = ? ORDER BY created_at ASC',
-    [threadId]
-  );
+export async function getArchivedMessages(threadId: string): Promise<ArchivedMessage[]> {
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('archived_messages')
+    .selectAll()
+    .where('thread_id', '=', threadId)
+    .orderBy('created_at', 'asc')
+    .execute();
 
   return rows.map((row) => ({
     id: row.id,
@@ -186,46 +176,60 @@ export function getArchivedMessages(threadId: string): ArchivedMessage[] {
 /**
  * Create a summary and archive messages
  */
-function createSummaryAndArchive(
+async function createSummaryAndArchive(
   threadId: string,
   summary: string,
   messagesToArchive: Array<{ id: string; role: string; content: string; sources_json: string | null; created_at: string }>,
   tokensBefore: number,
   tokensAfter: number
-): number {
-  return transaction(() => {
+): Promise<number> {
+  return transaction(async (trx) => {
     // Create summary record
-    const result = execute(
-      `INSERT INTO thread_summaries (thread_id, summary, messages_summarized, tokens_before, tokens_after)
-       VALUES (?, ?, ?, ?, ?)`,
-      [threadId, summary, messagesToArchive.length, tokensBefore, tokensAfter]
-    );
+    const result = await trx
+      .insertInto('thread_summaries')
+      .values({
+        thread_id: threadId,
+        summary,
+        messages_summarized: messagesToArchive.length,
+        tokens_before: tokensBefore,
+        tokens_after: tokensAfter,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
 
-    const summaryId = Number(result.lastInsertRowid);
+    const summaryId = result.id;
 
     // Archive messages
     for (const msg of messagesToArchive) {
-      execute(
-        `INSERT INTO archived_messages (id, thread_id, role, content, sources_json, created_at, summary_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [msg.id, threadId, msg.role, msg.content, msg.sources_json || null, msg.created_at, summaryId]
-      );
+      await trx
+        .insertInto('archived_messages')
+        .values({
+          id: msg.id,
+          thread_id: threadId,
+          role: msg.role as 'user' | 'assistant' | 'tool',
+          content: msg.content,
+          sources_json: msg.sources_json || null,
+          created_at: msg.created_at,
+          summary_id: summaryId,
+        })
+        .execute();
     }
 
     // Delete archived messages from main messages table
     const messageIds = messagesToArchive.map((m) => m.id);
     if (messageIds.length > 0) {
-      execute(
-        `DELETE FROM messages WHERE id IN (${messageIds.map(() => '?').join(',')})`,
-        messageIds
-      );
+      await trx
+        .deleteFrom('messages')
+        .where('id', 'in', messageIds)
+        .execute();
     }
 
     // Update thread to mark as summarized
-    execute(
-      'UPDATE threads SET is_summarized = 1 WHERE id = ?',
-      [threadId]
-    );
+    await trx
+      .updateTable('threads')
+      .set({ is_summarized: 1 })
+      .where('id', '=', threadId)
+      .execute();
 
     return summaryId;
   });
@@ -234,24 +238,34 @@ function createSummaryAndArchive(
 /**
  * Get summarization statistics for admin dashboard
  */
-export function getSummarizationStats(): SummarizationStats {
-  const threadsSummarized = queryOne<{ count: number }>(
-    'SELECT COUNT(DISTINCT thread_id) as count FROM thread_summaries'
-  )?.count || 0;
+export async function getSummarizationStats(): Promise<SummarizationStats> {
+  const db = await getDb();
 
-  const tokenStats = queryOne<{ total_before: number; total_after: number }>(
-    'SELECT COALESCE(SUM(tokens_before), 0) as total_before, COALESCE(SUM(tokens_after), 0) as total_after FROM thread_summaries'
-  );
+  const threadsSummarizedResult = await db
+    .selectFrom('thread_summaries')
+    .select(sql<number>`COUNT(DISTINCT thread_id)`.as('count'))
+    .executeTakeFirst();
+  const threadsSummarized = Number(threadsSummarizedResult?.count ?? 0);
 
-  const totalTokensSaved = (tokenStats?.total_before || 0) - (tokenStats?.total_after || 0);
+  const tokenStats = await db
+    .selectFrom('thread_summaries')
+    .select([
+      sql<number>`COALESCE(SUM(tokens_before), 0)`.as('total_before'),
+      sql<number>`COALESCE(SUM(tokens_after), 0)`.as('total_after'),
+    ])
+    .executeTakeFirst();
 
-  const avgCompression = tokenStats?.total_before && tokenStats.total_before > 0
-    ? Math.round((1 - (tokenStats.total_after || 0) / tokenStats.total_before) * 100)
+  const totalTokensSaved = (Number(tokenStats?.total_before) || 0) - (Number(tokenStats?.total_after) || 0);
+
+  const avgCompression = tokenStats?.total_before && Number(tokenStats.total_before) > 0
+    ? Math.round((1 - (Number(tokenStats.total_after) || 0) / Number(tokenStats.total_before)) * 100)
     : 0;
 
-  const archivedMessages = queryOne<{ count: number }>(
-    'SELECT COUNT(*) as count FROM archived_messages'
-  )?.count || 0;
+  const archivedMessagesResult = await db
+    .selectFrom('archived_messages')
+    .select(db.fn.countAll().as('count'))
+    .executeTakeFirst();
+  const archivedMessages = Number(archivedMessagesResult?.count ?? 0);
 
   return {
     threadsSummarized,
@@ -266,15 +280,18 @@ export function getSummarizationStats(): SummarizationStats {
 /**
  * Check if a thread should be summarized
  */
-export function shouldSummarize(threadId: string): boolean {
-  const settings = getSummarizationSettings();
+export async function shouldSummarize(threadId: string): Promise<boolean> {
+  const settings = await getSummarizationSettings();
   if (!settings.enabled) return false;
 
-  // Get total tokens in thread
-  const totalTokens = queryOne<{ total_tokens: number }>(
-    'SELECT total_tokens FROM threads WHERE id = ?',
-    [threadId]
-  )?.total_tokens || 0;
+  const db = await getDb();
+  const result = await db
+    .selectFrom('threads')
+    .select('total_tokens')
+    .where('id', '=', threadId)
+    .executeTakeFirst();
+
+  const totalTokens = result?.total_tokens || 0;
 
   return totalTokens >= settings.tokenThreshold;
 }
@@ -282,50 +299,66 @@ export function shouldSummarize(threadId: string): boolean {
 /**
  * Update thread token count
  */
-export function updateThreadTokenCount(threadId: string, tokenCount: number): void {
-  execute(
-    'UPDATE threads SET total_tokens = total_tokens + ? WHERE id = ?',
-    [tokenCount, threadId]
-  );
+export async function updateThreadTokenCount(threadId: string, tokenCount: number): Promise<void> {
+  const db = await getDb();
+  await sql`UPDATE threads SET total_tokens = total_tokens + ${tokenCount} WHERE id = ${threadId}`.execute(db);
 }
 
 /**
  * Get messages for a thread that would be summarized
  */
-function getMessagesToSummarize(threadId: string, keepRecent: number): Array<{
+async function getMessagesToSummarize(threadId: string, keepRecent: number): Promise<Array<{
   id: string;
   role: string;
   content: string;
   sources_json: string | null;
   created_at: string;
-}> {
+}>> {
+  const db = await getDb();
+
+  // First count total non-tool messages
+  const countResult = await db
+    .selectFrom('messages')
+    .select(db.fn.countAll().as('count'))
+    .where('thread_id', '=', threadId)
+    .where('role', '!=', 'tool')
+    .executeTakeFirst();
+
+  const total = Number(countResult?.count ?? 0);
+  const limit = Math.max(0, total - keepRecent);
+
+  if (limit <= 0) return [];
+
   // Get all messages except the most recent ones
-  return queryAll<{
-    id: string;
-    role: string;
-    content: string;
-    sources_json: string | null;
-    created_at: string;
-  }>(
-    `SELECT id, role, content, sources_json, created_at FROM messages
-     WHERE thread_id = ? AND role != 'tool'
-     ORDER BY created_at ASC
-     LIMIT (SELECT COUNT(*) FROM messages WHERE thread_id = ? AND role != 'tool') - ?`,
-    [threadId, threadId, keepRecent]
-  );
+  const rows = await db
+    .selectFrom('messages')
+    .select(['id', 'role', 'content', 'sources_json', 'created_at'])
+    .where('thread_id', '=', threadId)
+    .where('role', '!=', 'tool')
+    .orderBy('created_at', 'asc')
+    .limit(limit)
+    .execute();
+
+  return rows.map(r => ({
+    id: r.id,
+    role: r.role,
+    content: r.content,
+    sources_json: r.sources_json,
+    created_at: r.created_at,
+  }));
 }
 
 /**
  * Summarize a thread
  */
 export async function summarizeThread(threadId: string): Promise<ThreadSummary | null> {
-  const settings = getSummarizationSettings();
+  const settings = await getSummarizationSettings();
   if (!settings.enabled) {
     return null;
   }
 
   // Get messages to summarize
-  const messagesToSummarize = getMessagesToSummarize(threadId, settings.keepRecentMessages);
+  const messagesToSummarize = await getMessagesToSummarize(threadId, settings.keepRecentMessages);
 
   if (messagesToSummarize.length < 2) {
     console.log(`[Summarization] Not enough messages to summarize for thread ${threadId}`);
@@ -345,13 +378,13 @@ export async function summarizeThread(threadId: string): Promise<ThreadSummary |
   const prompt = SUMMARIZATION_PROMPT.replace('{messages}', formattedMessages);
 
   try {
-    const llmSettings = getLlmSettings();
+    const llmSettings = await getLlmSettings();
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
-      : getApiKey('openai');
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
 
     const client = new OpenAI({
       baseURL,
@@ -386,7 +419,7 @@ export async function summarizeThread(threadId: string): Promise<ThreadSummary |
 
     // Archive messages if configured
     if (settings.archiveOriginalMessages) {
-      createSummaryAndArchive(
+      await createSummaryAndArchive(
         threadId,
         summary,
         messagesToSummarize,
@@ -396,29 +429,38 @@ export async function summarizeThread(threadId: string): Promise<ThreadSummary |
 
       console.log(`[Summarization] Thread ${threadId}: Summarized ${messagesToSummarize.length} messages, ${tokensBefore} -> ${tokensAfter} tokens`);
 
-      return getThreadSummary(threadId);
+      return await getThreadSummary(threadId);
     } else {
       // Just create summary without archiving (delete messages)
-      transaction(() => {
-        execute(
-          `INSERT INTO thread_summaries (thread_id, summary, messages_summarized, tokens_before, tokens_after)
-           VALUES (?, ?, ?, ?, ?)`,
-          [threadId, summary, messagesToSummarize.length, tokensBefore, tokensAfter]
-        );
+      await transaction(async (trx) => {
+        await trx
+          .insertInto('thread_summaries')
+          .values({
+            thread_id: threadId,
+            summary,
+            messages_summarized: messagesToSummarize.length,
+            tokens_before: tokensBefore,
+            tokens_after: tokensAfter,
+          })
+          .execute();
 
         // Delete old messages
         const messageIds = messagesToSummarize.map((m) => m.id);
         if (messageIds.length > 0) {
-          execute(
-            `DELETE FROM messages WHERE id IN (${messageIds.map(() => '?').join(',')})`,
-            messageIds
-          );
+          await trx
+            .deleteFrom('messages')
+            .where('id', 'in', messageIds)
+            .execute();
         }
 
-        execute('UPDATE threads SET is_summarized = 1 WHERE id = ?', [threadId]);
+        await trx
+          .updateTable('threads')
+          .set({ is_summarized: 1 })
+          .where('id', '=', threadId)
+          .execute();
       });
 
-      return getThreadSummary(threadId);
+      return await getThreadSummary(threadId);
     }
   } catch (error) {
     console.error('[Summarization] Failed to summarize thread:', error);
@@ -439,16 +481,18 @@ export async function getThreadContext(
   totalTokens: number;
 }> {
   // Get latest summary
-  const summaryRecord = getThreadSummary(threadId);
+  const summaryRecord = await getThreadSummary(threadId);
   const summary = summaryRecord?.summary || null;
 
   // Get messages (after summary, or all if no summary)
-  const messages = queryAll<{ role: string; content: string; created_at: string }>(
-    `SELECT role, content, created_at FROM messages
-     WHERE thread_id = ? AND role != 'tool'
-     ORDER BY created_at ASC`,
-    [threadId]
-  );
+  const db = await getDb();
+  const messages = await db
+    .selectFrom('messages')
+    .select(['role', 'content', 'created_at'])
+    .where('thread_id', '=', threadId)
+    .where('role', '!=', 'tool')
+    .orderBy('created_at', 'asc')
+    .execute();
 
   // Calculate token budget
   let tokenCount = summary ? countTokens(summary) : 0;

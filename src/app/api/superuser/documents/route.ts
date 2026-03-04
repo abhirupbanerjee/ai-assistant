@@ -8,9 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getDocumentsByCategory } from '@/lib/db/documents';
-import { getCategoryById } from '@/lib/db/categories';
+import { getSuperUserWithAssignments, getCategoryById, getDocumentsByCategory } from '@/lib/db/compat';
 import { ingestDocument } from '@/lib/ingest';
 import { isSupportedMimeType } from '@/lib/document-extractor';
 
@@ -45,7 +43,7 @@ export async function GET() {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       return NextResponse.json({
         assignedCategories: [],
@@ -57,7 +55,7 @@ export async function GET() {
     const documentsMap = new Map<number, DocumentResponse>();
 
     for (const category of superUserData.assignedCategories) {
-      const docs = getDocumentsByCategory(category.categoryId);
+      const docs = await getDocumentsByCategory(category.categoryId);
 
       for (const doc of docs) {
         if (!documentsMap.has(doc.id)) {
@@ -109,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       return NextResponse.json(
         { error: 'No categories assigned to you' },
@@ -144,7 +142,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify category exists
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }

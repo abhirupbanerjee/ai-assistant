@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getMemoryStats } from '@/lib/memory';
-import { getMemorySettings } from '@/lib/db/config';
+import { getMemorySettings } from '@/lib/db/compat';
 import type { ApiError } from '@/types';
 
 /**
@@ -25,8 +25,8 @@ export async function GET() {
       );
     }
 
-    const settings = getMemorySettings();
-    const stats = getMemoryStats();
+    const settings = await getMemorySettings();
+    const stats = await getMemoryStats();
 
     return NextResponse.json({
       enabled: settings.enabled,

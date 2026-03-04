@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentBotsSettings, updateAgentBotsSettings } from '@/lib/db/config';
+import { getAgentBotsSettings, updateAgentBotsSettings } from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 
 // ============================================================================
@@ -16,7 +16,7 @@ import { requireElevated } from '@/lib/auth';
 export async function GET(): Promise<NextResponse> {
   try {
     await requireElevated();
-    const settings = getAgentBotsSettings();
+    const settings = await getAgentBotsSettings();
     return NextResponse.json({ settings });
   } catch (error) {
     if (error instanceof Error && error.message.includes('access required')) {
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const settings = updateAgentBotsSettings(body);
+    const settings = await updateAgentBotsSettings(body);
     return NextResponse.json({ settings });
   } catch (error) {
     if (error instanceof Error && error.message.includes('access required')) {

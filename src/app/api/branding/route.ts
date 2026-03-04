@@ -5,11 +5,11 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getBrandingSettings, BRANDING_ICONS } from '@/lib/db/config';
+import { getBrandingSettings, BRANDING_ICONS } from '@/lib/db/compat';
 
 export async function GET() {
   try {
-    const branding = getBrandingSettings();
+    const branding = await getBrandingSettings();
 
     return NextResponse.json({
       botName: branding.botName,

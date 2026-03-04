@@ -11,14 +11,14 @@ import {
   getAllCategoriesWithStats,
   createCategory,
   getCategoryByName,
-} from '@/lib/db/categories';
+} from '@/lib/db/compat';
 
 export async function GET() {
   try {
     // Allow both admin and superuser to read categories (needed for skills management)
     await requireElevated();
 
-    const categories = getAllCategoriesWithStats();
+    const categories = await getAllCategoriesWithStats();
 
     return NextResponse.json({ categories });
   } catch (error) {
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     // Check for duplicate
-    const existing = getCategoryByName(name.trim());
+    const existing = await getCategoryByName(name.trim());
     if (existing) {
       return NextResponse.json(
         { error: `Category "${name}" already exists` },
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const category = createCategory({
+    const category = await createCategory({
       name: name.trim(),
       description: description?.trim() || undefined,
       createdBy: admin.email,

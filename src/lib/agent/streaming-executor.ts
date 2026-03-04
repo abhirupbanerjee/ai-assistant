@@ -9,7 +9,7 @@ import type { StreamEvent } from '@/types/stream';
 import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/types/agent';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
-import { getAgentModelConfigs } from '../db/agent-config';
+import { getAgentModelConfigs } from '../db/compat/agent-config';
 
 /**
  * Result of autonomous execution including collected artifacts
@@ -46,7 +46,7 @@ export async function executeAutonomousWithStreaming(
   sendEvent: (event: StreamEvent) => void
 ): Promise<AutonomousExecutionResult> {
   // Get model config from database (admin-configured)
-  const modelConfigs = getAgentModelConfigs();
+  const modelConfigs = await getAgentModelConfigs();
   const modelConfig: AgentModelConfig = {
     planner: modelConfigs.planner,
     executor: modelConfigs.executor,

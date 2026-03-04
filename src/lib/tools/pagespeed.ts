@@ -5,8 +5,8 @@
  * using Google's PageSpeed Insights API (Lighthouse).
  */
 
-import { getToolConfig } from '../db/tool-config';
-import { getEffectiveToolConfig } from '../db/category-tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
+import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 
@@ -195,13 +195,13 @@ function normalizeResponse(
 /**
  * Get website analysis configuration
  */
-export function getWebsiteAnalysisConfig(categoryId?: number): {
+export async function getWebsiteAnalysisConfig(categoryId?: number): Promise<{
   enabled: boolean;
   config: WebsiteAnalysisConfig;
-} {
+}> {
   // If category provided, get effective config (global + category merged)
   if (categoryId) {
-    const effective = getEffectiveToolConfig('website_analysis', categoryId);
+    const effective = await getEffectiveToolConfig('website_analysis', categoryId);
     return {
       enabled: effective.enabled,
       config: (effective.config as unknown as WebsiteAnalysisConfig) || defaultConfig,
@@ -209,7 +209,7 @@ export function getWebsiteAnalysisConfig(categoryId?: number): {
   }
 
   // Otherwise get global config
-  const toolConfig = getToolConfig('website_analysis');
+  const toolConfig = await getToolConfig('website_analysis');
   if (toolConfig) {
     return {
       enabled: toolConfig.isEnabled,
@@ -339,8 +339,8 @@ export const websiteAnalysisTool: ToolDefinition = {
     // Get config - check for category-level override
     const categoryIds = (options as { categoryIds?: number[] })?.categoryIds || [];
     const { enabled, config: globalSettings } = categoryIds.length > 0
-      ? getWebsiteAnalysisConfig(categoryIds[0])
-      : getWebsiteAnalysisConfig();
+      ? await getWebsiteAnalysisConfig(categoryIds[0])
+      : await getWebsiteAnalysisConfig();
 
     // Merge skill-level config override
     const configOverride = options?.configOverride || {};

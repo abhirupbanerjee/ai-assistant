@@ -13,9 +13,9 @@ import {
   setUserPassword,
   setCredentialsEnabled,
   clearUserPassword,
-} from '@/lib/db/users';
+} from '@/lib/db/compat';
 import { hashPassword, validatePassword } from '@/lib/password';
-import { getCredentialsAuthSettings } from '@/lib/db/config';
+import { getCredentialsAuthSettings } from '@/lib/db/compat';
 
 interface RouteParams {
   params: Promise<{ userId: string }>;
@@ -33,7 +33,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const user = getUserById(userIdNum);
+    const user = await getUserById(userIdNum);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -44,7 +44,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Validate password
-    const settings = getCredentialsAuthSettings();
+    const settings = await getCredentialsAuthSettings();
     const validation = validatePassword(password, settings.minPasswordLength);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
@@ -52,14 +52,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Hash and store password
     const passwordHash = await hashPassword(password);
-    const success = setUserPassword(userIdNum, passwordHash);
+    const success = await setUserPassword(userIdNum, passwordHash);
 
     if (!success) {
       return NextResponse.json({ error: 'Failed to set password' }, { status: 500 });
     }
 
     // Enable credentials for this user
-    setCredentialsEnabled(userIdNum, true);
+    await setCredentialsEnabled(userIdNum, true);
 
     return NextResponse.json({
       success: true,
@@ -89,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const user = getUserById(userIdNum);
+    const user = await getUserById(userIdNum);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -107,7 +107,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const success = setCredentialsEnabled(userIdNum, enabled);
+    const success = await setCredentialsEnabled(userIdNum, enabled);
 
     if (!success) {
       return NextResponse.json({ error: 'Failed to update credentials status' }, { status: 500 });
@@ -142,14 +142,14 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
-    const user = getUserById(userIdNum);
+    const user = await getUserById(userIdNum);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Clear password and disable credentials
-    clearUserPassword(userIdNum);
-    setCredentialsEnabled(userIdNum, false);
+    await clearUserPassword(userIdNum);
+    await setCredentialsEnabled(userIdNum, false);
 
     return NextResponse.json({
       success: true,

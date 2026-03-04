@@ -9,17 +9,18 @@ import {
   validateWorkspaceRequest,
   extractOrigin,
 } from '@/lib/workspace/validator';
-import { getSession, isSessionValid } from '@/lib/db/workspace-sessions';
 import {
-  getThread,
-  getThreadWithMessages,
+  getSession,
+  isSessionValid,
+  getWorkspaceThread as getThread,
+  getWorkspaceThreadWithMessages as getThreadWithMessages,
   getThreadForSession,
-  updateThread,
-  deleteThread,
+  updateWorkspaceThread as updateThread,
+  deleteWorkspaceThread as deleteThread,
   archiveThread,
   autoTitleThread,
-} from '@/lib/db/workspace-threads';
-import type { UpdateWorkspaceThreadInput } from '@/types/workspace';
+  type UpdateWorkspaceThreadInput,
+} from '@/lib/db/compat';
 
 interface RouteContext {
   params: Promise<{ slug: string; threadId: string }>;
@@ -80,14 +81,14 @@ export async function GET(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -96,7 +97,7 @@ export async function GET(
     }
 
     // Get thread (must belong to session)
-    const thread = getThreadForSession(threadId, sessionId);
+    const thread = await getThreadForSession(threadId, sessionId);
     if (!thread) {
       return NextResponse.json(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -105,7 +106,7 @@ export async function GET(
     }
 
     if (includeMessages) {
-      const threadWithMessages = getThreadWithMessages(threadId);
+      const threadWithMessages = await getThreadWithMessages(threadId);
       return NextResponse.json({ thread: threadWithMessages });
     }
 
@@ -168,14 +169,14 @@ export async function PATCH(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -184,7 +185,7 @@ export async function PATCH(
     }
 
     // Verify thread belongs to session
-    const existingThread = getThreadForSession(threadId, sessionId);
+    const existingThread = await getThreadForSession(threadId, sessionId);
     if (!existingThread) {
       return NextResponse.json(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -201,7 +202,7 @@ export async function PATCH(
       updates.is_archived = is_archived;
     }
 
-    const updatedThread = updateThread(threadId, updates);
+    const updatedThread = await updateThread(threadId, updates);
 
     return NextResponse.json({ thread: updatedThread });
   } catch (error) {
@@ -261,14 +262,14 @@ export async function DELETE(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -277,7 +278,7 @@ export async function DELETE(
     }
 
     // Verify thread belongs to session
-    const existingThread = getThreadForSession(threadId, sessionId);
+    const existingThread = await getThreadForSession(threadId, sessionId);
     if (!existingThread) {
       return NextResponse.json(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -286,7 +287,7 @@ export async function DELETE(
     }
 
     // Delete thread (cascade deletes messages)
-    const deleted = deleteThread(threadId);
+    const deleted = await deleteThread(threadId);
 
     if (!deleted) {
       return NextResponse.json(
@@ -355,14 +356,14 @@ export async function POST(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -371,7 +372,7 @@ export async function POST(
     }
 
     // Verify thread belongs to session
-    const existingThread = getThreadForSession(threadId, sessionId);
+    const existingThread = await getThreadForSession(threadId, sessionId);
     if (!existingThread) {
       return NextResponse.json(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -382,18 +383,18 @@ export async function POST(
     // Handle action
     switch (action) {
       case 'auto-title': {
-        const title = autoTitleThread(threadId);
-        const updatedThread = getThread(threadId);
+        const title = await autoTitleThread(threadId);
+        const updatedThread = await getThread(threadId);
         return NextResponse.json({ thread: updatedThread, generatedTitle: title });
       }
 
       case 'archive': {
-        const archivedThread = archiveThread(threadId, true);
+        const archivedThread = await archiveThread(threadId, true);
         return NextResponse.json({ thread: archivedThread });
       }
 
       case 'unarchive': {
-        const unarchivedThread = archiveThread(threadId, false);
+        const unarchivedThread = await archiveThread(threadId, false);
         return NextResponse.json({ thread: unarchivedThread });
       }
 

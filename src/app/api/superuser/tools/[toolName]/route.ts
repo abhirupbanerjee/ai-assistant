@@ -8,15 +8,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments, superUserHasCategory } from '@/lib/db/users';
-import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/tool-config';
+import { getSuperUserWithAssignments, superUserHasCategory } from '@/lib/db/compat';
+import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/compat/tool-config';
 import {
   getCategoryToolConfig,
   upsertCategoryToolConfig,
   deleteCategoryToolConfig,
   getEffectiveToolConfig,
   type BrandingConfig,
-} from '@/lib/db/category-tool-config';
+} from '@/lib/db/compat/category-tool-config';
 import { getTool, initializeTools } from '@/lib/tools';
 
 interface RouteParams {
@@ -47,27 +47,27 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Initialize tools and validate tool exists
-    initializeTools();
+    await initializeTools();
     const tool = getTool(toolName);
     if (!tool) {
       return NextResponse.json({ error: 'Tool not found' }, { status: 404 });
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
 
     // Get global config
-    const globalConfig = getToolConfig(toolName);
+    const globalConfig = await getToolConfig(toolName);
     const defaults = TOOL_DEFAULTS[toolName];
     const globalEnabled = globalConfig?.isEnabled ?? defaults?.enabled ?? false;
 
     // Get config for each assigned category
-    const categoryConfigs = superUserData.assignedCategories.map(cat => {
-      const categoryConfig = getCategoryToolConfig(cat.categoryId, toolName);
-      const effective = getEffectiveToolConfig(toolName, cat.categoryId);
+    const categoryConfigs = await Promise.all(superUserData.assignedCategories.map(async cat => {
+      const categoryConfig = await getCategoryToolConfig(cat.categoryId, toolName);
+      const effective = await getEffectiveToolConfig(toolName, cat.categoryId);
 
       return {
         categoryId: cat.categoryId,
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           config: effective.config,
         },
       };
-    });
+    }));
 
     return NextResponse.json({
       tool: {
@@ -140,7 +140,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Initialize tools and validate tool exists
-    initializeTools();
+    await initializeTools();
     const tool = getTool(toolName);
     if (!tool) {
       return NextResponse.json({ error: 'Tool not found' }, { status: 404 });
@@ -160,7 +160,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify superuser has access to this category
-    if (!superUserHasCategory(userId, categoryId)) {
+    if (!(await superUserHasCategory(userId, categoryId))) {
       return NextResponse.json(
         { error: 'Access denied to this category' },
         { status: 403 }
@@ -178,7 +178,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       body.hasOwnProperty('config');
 
     if (shouldDelete) {
-      const deleted = deleteCategoryToolConfig(categoryId, toolName);
+      const deleted = await deleteCategoryToolConfig(categoryId, toolName);
       if (deleted) {
         return NextResponse.json({
           success: true,
@@ -217,7 +217,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       updates.config = config;
     }
 
-    const updated = upsertCategoryToolConfig(
+    const updated = await upsertCategoryToolConfig(
       categoryId,
       toolName,
       updates,
@@ -225,7 +225,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     );
 
     // Get effective config after update
-    const effective = getEffectiveToolConfig(toolName, categoryId);
+    const effective = await getEffectiveToolConfig(toolName, categoryId);
 
     return NextResponse.json({
       success: true,

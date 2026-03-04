@@ -18,7 +18,7 @@ import {
 } from './storage';
 import { isSupportedExtension, getMimeTypeFromFilename, isImage } from './document-extractor';
 import { getUserId } from './users';
-import { getUploadLimits } from './db/config';
+import { getUploadLimits } from './db/compat/config';
 import { invalidateThreadEmbeddingCache } from './redis';
 import {
   createThread as dbCreateThread,
@@ -39,11 +39,46 @@ import {
   setThreadCategories as dbSetThreadCategories,
   getThreadCategorySlugs,
   type ParsedMessage,
-} from './db/threads';
+} from './db/compat/threads';
 
 // Get upload directory path (still file-based)
 function getThreadUploadPath(userEmail: string, threadId: string): string {
   return getThreadUploadsDir(userEmail, threadId);
+}
+
+// Resolve thread categories via the compat layer so they match admin settings.
+// In hybrid mode, categories may live in Postgres while threads are in SQLite.
+// When the thread-category mapping isn't in Postgres, falls back to SQLite category IDs
+// but still resolves names from the compat category map to stay consistent.
+// Accepts an optional pre-fetched categoryMap to avoid repeated DB queries in loops.
+async function resolveCategories(
+  threadId: string,
+  sqliteCategories?: ThreadCategory[],
+  categoryMap?: Map<number, ThreadCategory>
+): Promise<ThreadCategory[]> {
+  const categoryIds = await getThreadCategories(threadId);
+
+  // Build category map if not provided
+  if (!categoryMap) {
+    const { getAllCategories } = await import('./db/compat/categories');
+    const allCategories = await getAllCategories();
+    categoryMap = new Map(allCategories.map(c => [c.id, { id: c.id, name: c.name, slug: c.slug }]));
+  }
+
+  // If compat has the thread-category mapping, use those IDs
+  if (categoryIds.length > 0) {
+    return categoryIds.map(id => categoryMap!.get(id)).filter(Boolean) as ThreadCategory[];
+  }
+
+  // Fallback: use SQLite category IDs but resolve names from compat map
+  // so renamed categories show the correct (Postgres) name
+  if (sqliteCategories && sqliteCategories.length > 0) {
+    return sqliteCategories
+      .map(sc => categoryMap!.get(sc.id) || sc)
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 // Convert db thread format to API Thread format
@@ -104,7 +139,10 @@ export async function createThread(
     throw new Error('User not found');
   }
 
-  const dbThread = dbCreateThread(numericUserId, title || 'New Thread', categoryIds || []);
+  const dbThread = await dbCreateThread(numericUserId, title || 'New Thread', categoryIds || []);
+
+  // Sync categories to Postgres compat layer (already written by dbCreateThread in compat mode)
+  // No need for separate compat sync since we now import from compat directly
 
   // Create uploads directory on filesystem
   const uploadsDir = getThreadUploadPath(userId, dbThread.id);
@@ -112,7 +150,7 @@ export async function createThread(
 
   // Get categories for the response
   const categories = categoryIds && categoryIds.length > 0
-    ? getThreadWithDetails(dbThread.id)?.categories
+    ? (await getThreadWithDetails(dbThread.id))?.categories
     : undefined;
 
   return toThread(dbThread, userId, 0, categories);
@@ -131,23 +169,25 @@ export async function getThread(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return null;
   }
 
-  const threadDetails = getThreadWithDetails(threadId);
+  const threadDetails = await getThreadWithDetails(threadId);
   if (!threadDetails) {
     return null;
   }
 
   // Get messages
-  const dbMessages = dbGetMessagesForThread(threadId);
+  const dbMessages = await dbGetMessagesForThread(threadId);
   const messages = dbMessages.map(toMessage);
 
   // Get uploads from filesystem
   const uploadsDir = getThreadUploadPath(userId, threadId);
   const uploadFiles = await listFiles(uploadsDir);
   const uploads = uploadFiles.filter(f => isSupportedExtension(f));
+
+  const categories = await resolveCategories(threadId, threadDetails.categories);
 
   return {
     id: threadDetails.id,
@@ -156,7 +196,7 @@ export async function getThread(
     createdAt: new Date(threadDetails.created_at),
     updatedAt: new Date(threadDetails.updated_at),
     uploadCount: threadDetails.uploadCount,
-    categories: threadDetails.categories,
+    categories,
     messages,
     uploads,
   };
@@ -171,20 +211,25 @@ export async function listThreads(userId: string): Promise<Thread[]> {
     return [];
   }
 
-  const dbThreads = dbGetThreadsForUser(numericUserId);
+  const dbThreads = await dbGetThreadsForUser(numericUserId);
 
-  return dbThreads.map(t => ({
+  // Pre-fetch category map once to avoid N+1 queries
+  const { getAllCategories } = await import('./db/compat/categories');
+  const allCategories = await getAllCategories();
+  const categoryMap = new Map(allCategories.map(c => [c.id, { id: c.id, name: c.name, slug: c.slug }]));
+
+  return Promise.all(dbThreads.map(async t => ({
     id: t.id,
     userId: userId, // Keep email for API compatibility
     title: t.title,
     createdAt: new Date(t.created_at),
     updatedAt: new Date(t.updated_at),
     uploadCount: t.uploadCount,
-    categories: t.categories,
+    categories: await resolveCategories(t.id, t.categories, categoryMap),
     isSummarized: Boolean(t.is_summarized),
     totalTokens: t.total_tokens || 0,
     isPinned: Boolean(t.is_pinned),
-  }));
+  })));
 }
 
 /**
@@ -200,12 +245,12 @@ export async function deleteThread(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return null;
   }
 
   // Delete from database (cascades to messages, uploads metadata, etc.)
-  const result = dbDeleteThread(threadId);
+  const result = await dbDeleteThread(threadId);
 
   // Delete uploads directory from filesystem
   const uploadsDir = getThreadUploadPath(userId, threadId);
@@ -228,17 +273,17 @@ export async function updateThreadTitle(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return null;
   }
 
   const truncatedTitle = title.substring(0, 100); // Max 100 characters
-  const success = dbUpdateThreadTitle(threadId, truncatedTitle);
+  const success = await dbUpdateThreadTitle(threadId, truncatedTitle);
   if (!success) {
     return null;
   }
 
-  const threadDetails = getThreadWithDetails(threadId);
+  const threadDetails = await getThreadWithDetails(threadId);
   if (!threadDetails) {
     return null;
   }
@@ -267,16 +312,16 @@ export async function toggleThreadPin(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return null;
   }
 
-  const success = dbToggleThreadPin(threadId);
+  const success = await dbToggleThreadPin(threadId);
   if (!success) {
     return null;
   }
 
-  const threadDetails = getThreadWithDetails(threadId);
+  const threadDetails = await getThreadWithDetails(threadId);
   if (!threadDetails) {
     return null;
   }
@@ -307,16 +352,16 @@ export async function addMessage(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     throw new Error('Thread not found');
   }
 
   // Get current message count to check if this is the first message
-  const existingMessages = dbGetMessagesForThread(threadId);
+  const existingMessages = await dbGetMessagesForThread(threadId);
   const isFirstMessage = existingMessages.length === 0;
 
   // Add the message
-  dbAddMessage(threadId, message.role, message.content, {
+  await dbAddMessage(threadId, message.role, message.content, {
     messageId: message.id,
     sources: message.sources,
     attachments: message.attachments,
@@ -331,10 +376,10 @@ export async function addMessage(
 
   // Update title if this is the first user message and title is default
   if (isFirstMessage && message.role === 'user') {
-    const thread = dbGetThreadById(threadId);
+    const thread = await dbGetThreadById(threadId);
     if (thread && thread.title === 'New Thread') {
       const newTitle = message.content.substring(0, 50) + (message.content.length > 50 ? '...' : '');
-      dbUpdateThreadTitle(threadId, newTitle);
+      await dbUpdateThreadTitle(threadId, newTitle);
     }
   }
 }
@@ -353,11 +398,11 @@ export async function getMessages(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return [];
   }
 
-  const dbMessages = dbGetMessagesForThread(threadId);
+  const dbMessages = await dbGetMessagesForThread(threadId);
   const messages = dbMessages.map(toMessage);
 
   if (limit && limit > 0) {
@@ -382,12 +427,12 @@ export async function saveUpload(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     throw new Error('Thread not found');
   }
 
   // Get configurable limits
-  const limits = getUploadLimits();
+  const limits = await getUploadLimits();
   const maxFileSizeBytes = limits.maxFileSizeMB * 1024 * 1024;
 
   // Check file size
@@ -405,12 +450,12 @@ export async function saveUpload(
   await writeFileBuffer(filePath, buffer);
 
   // Record upload in database
-  dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
+  await dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
 
   // Invalidate embedding cache for this file (in case of re-upload with same name)
   await invalidateThreadEmbeddingCache(threadId, safeFilename);
 
-  const newCount = dbGetThreadUploadCount(threadId);
+  const newCount = await dbGetThreadUploadCount(threadId);
 
   return {
     filename: safeFilename,
@@ -432,12 +477,12 @@ export async function deleteUpload(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     throw new Error('Thread not found');
   }
 
   // Find the upload record
-  const uploads = dbGetThreadUploads(threadId);
+  const uploads = await dbGetThreadUploads(threadId);
   const upload = uploads.find(u => u.filename === filename);
   if (!upload) {
     throw new Error('Upload not found');
@@ -449,12 +494,12 @@ export async function deleteUpload(
   await deleteFile(filePath);
 
   // Delete from database
-  dbDeleteThreadUpload(upload.id);
+  await dbDeleteThreadUpload(upload.id);
 
   // Invalidate embedding cache for this file
   await invalidateThreadEmbeddingCache(threadId, filename);
 
-  return dbGetThreadUploadCount(threadId);
+  return await dbGetThreadUploadCount(threadId);
 }
 
 /**
@@ -470,11 +515,11 @@ export async function getUploadPaths(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return [];
   }
 
-  const uploads = dbGetThreadUploads(threadId);
+  const uploads = await dbGetThreadUploads(threadId);
   return uploads
     .filter(u => isSupportedExtension(u.filename))
     .map(u => u.filepath);
@@ -505,11 +550,11 @@ export async function getUploadDetails(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     return { images: [], documents: [] };
   }
 
-  const uploads = dbGetThreadUploads(threadId);
+  const uploads = await dbGetThreadUploads(threadId);
   const images: UploadDetail[] = [];
   const documents: UploadDetail[] = [];
 
@@ -540,8 +585,8 @@ export async function getUploadDetails(
 /**
  * Get the number of uploads in a thread
  */
-export function getThreadUploadCount(threadId: string): number {
-  return dbGetThreadUploadCount(threadId);
+export async function getThreadUploadCount(threadId: string): Promise<number> {
+  return await dbGetThreadUploadCount(threadId);
 }
 
 // ============ Category Operations ============
@@ -550,14 +595,14 @@ export function getThreadUploadCount(threadId: string): number {
  * Get categories for a thread
  */
 export async function getThreadCategoryIds(threadId: string): Promise<number[]> {
-  return getThreadCategories(threadId);
+  return await getThreadCategories(threadId);
 }
 
 /**
  * Get category slugs for a thread (for ChromaDB queries)
  */
 export async function getThreadCategorySlugsForQuery(threadId: string): Promise<string[]> {
-  return getThreadCategorySlugs(threadId);
+  return await getThreadCategorySlugs(threadId);
 }
 
 /**
@@ -574,9 +619,10 @@ export async function setThreadCategories(
   }
 
   // Verify ownership
-  if (!dbUserOwnsThread(numericUserId, threadId)) {
+  if (!(await dbUserOwnsThread(numericUserId, threadId))) {
     throw new Error('Thread not found');
   }
 
-  dbSetThreadCategories(threadId, categoryIds);
+  // Write to compat layer (routes to Postgres or SQLite based on provider)
+  await dbSetThreadCategories(threadId, categoryIds);
 }

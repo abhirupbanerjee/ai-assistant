@@ -9,9 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   listAgentBots,
   createAgentBot,
-  slugExists,
-  nameExists,
-} from '@/lib/db/agent-bots';
+  agentBotSlugExists as slugExists,
+  agentBotNameExists as nameExists,
+} from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 import type { AgentBot } from '@/types/agent-bot';
 
@@ -22,7 +22,7 @@ import type { AgentBot } from '@/types/agent-bot';
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     await requireElevated();
-    const agentBots = listAgentBots();
+    const agentBots = await listAgentBots();
     return NextResponse.json({ agentBots });
   } catch (error) {
     if (error instanceof Error && error.message.includes('access required')) {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Check if name already exists
-    if (nameExists(name)) {
+    if (await nameExists(name)) {
       return NextResponse.json(
         { error: 'An agent bot with this name already exists' },
         { status: 409 }
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Check if slug already exists
-    if (slugExists(slug)) {
+    if (await slugExists(slug)) {
       return NextResponse.json(
         { error: 'An agent bot with this slug already exists' },
         { status: 409 }
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Create the agent bot
-    const agentBot = createAgentBot(
+    const agentBot = await createAgentBot(
       {
         name,
         slug,

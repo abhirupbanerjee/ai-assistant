@@ -23,9 +23,9 @@ let openaiClient: OpenAI | null = null;
  * Uses centralized provider helper (DB-first, then env var fallback)
  * Direct to OpenAI, NOT via LiteLLM (which doesn't proxy image APIs)
  */
-function getOpenAIClient(): OpenAI {
+async function getOpenAIClient(): Promise<OpenAI> {
   if (!openaiClient) {
-    const apiKey = getApiKey('openai');
+    const apiKey = await getApiKey('openai');
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -76,7 +76,7 @@ export async function generateWithDalle(
   args: ImageGenToolArgs,
   config: OpenAIProviderConfig
 ): Promise<DalleGenerationResult> {
-  const client = getOpenAIClient();
+  const client = await getOpenAIClient();
 
   const size = mapAspectRatioToSize(args.aspectRatio, config);
 
@@ -136,7 +136,7 @@ export async function testDalleConnection(): Promise<ConnectionTestResult> {
   const startTime = Date.now();
 
   try {
-    const client = getOpenAIClient();
+    const client = await getOpenAIClient();
 
     // Simple test - verify API key works by listing models
     // This doesn't generate an image (which would cost money)
@@ -193,7 +193,7 @@ export async function testDalleConnection(): Promise<ConnectionTestResult> {
 /**
  * Check if DALL-E provider is configured (DB-first, then env var fallback)
  */
-export function isDalleConfigured(): boolean {
+export async function isDalleConfigured(): Promise<boolean> {
   return isProviderConfigured('openai');
 }
 

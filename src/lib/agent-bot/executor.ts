@@ -13,17 +13,15 @@ import {
   getDefaultVersion,
   getVersionByNumber,
   getVersionWithRelations,
-} from '@/lib/db/agent-bot-versions';
-import {
   createJob,
   startJob,
   completeJob,
   failJob,
   addJobOutput,
-} from '@/lib/db/agent-bot-jobs';
+} from '@/lib/db/compat';
 import { generateResponseWithTools } from '@/lib/openai';
 import { performRAGRetrieval } from '@/lib/streaming';
-import { getSkillById } from '@/lib/db/skills';
+import { getSkillById } from '@/lib/db/compat/skills';
 import { getToolDefinitions, AVAILABLE_TOOLS, isToolEnabled } from '@/lib/tools';
 import { generateOutput as generateOutputFile } from './output-generator';
 import type {
@@ -71,25 +69,25 @@ export interface ExecutionResult {
 /**
  * Resolve which version to use for execution
  */
-export function resolveVersion(
+export async function resolveVersion(
   agentBotId: string,
   versionSpec?: number | 'latest' | 'default'
-): AgentBotVersionWithRelations | null {
+): Promise<AgentBotVersionWithRelations | null> {
   // Default behavior: use default version
   if (!versionSpec || versionSpec === 'default') {
-    return getDefaultVersion(agentBotId);
+    return await getDefaultVersion(agentBotId);
   }
 
   // Latest: get the highest version number
   if (versionSpec === 'latest') {
-    const defaultVersion = getDefaultVersion(agentBotId);
+    const defaultVersion = await getDefaultVersion(agentBotId);
     // Default version lookup already falls back to highest version number
     return defaultVersion;
   }
 
   // Specific version number
   if (typeof versionSpec === 'number') {
-    return getVersionByNumber(agentBotId, versionSpec);
+    return await getVersionByNumber(agentBotId, versionSpec);
   }
 
   return null;
@@ -102,7 +100,7 @@ export function resolveVersion(
 /**
  * Build system prompt from version config and skills
  */
-export function buildSystemPrompt(version: AgentBotVersionWithRelations): string {
+export async function buildSystemPrompt(version: AgentBotVersionWithRelations): Promise<string> {
   const parts: string[] = [];
 
   // Add version's custom system prompt if set
@@ -112,7 +110,7 @@ export function buildSystemPrompt(version: AgentBotVersionWithRelations): string
 
   // Add prompts from linked skills
   for (const skillId of version.skill_ids) {
-    const skill = getSkillById(skillId);
+    const skill = await getSkillById(skillId);
     if (skill && skill.prompt_content) {
       parts.push(skill.prompt_content);
     }
@@ -164,12 +162,12 @@ export async function buildRagContext(
 /**
  * Get enabled tool names for the version
  */
-export function getEnabledTools(version: AgentBotVersionWithRelations): string[] {
+export async function getEnabledTools(version: AgentBotVersionWithRelations): Promise<string[]> {
   const enabledTools: string[] = [];
 
   for (const tool of version.tools) {
     // Check if tool is enabled in version config AND globally enabled
-    if (tool.is_enabled && isToolEnabled(tool.tool_name)) {
+    if (tool.is_enabled && (await isToolEnabled(tool.tool_name))) {
       enabledTools.push(tool.tool_name);
     }
   }
@@ -209,7 +207,7 @@ async function executeLlm(
   const conversationHistory: Message[] = [];
 
   // Get excluded tools (inverse of enabled tools)
-  const enabledTools = getEnabledTools(version);
+  const enabledTools = await getEnabledTools(version);
   const excludedTools = getExcludedTools(enabledTools);
 
   // Execute LLM with tools
@@ -287,7 +285,7 @@ export async function executeInvocation(
   const startTime = Date.now();
 
   // 1. Resolve version
-  const version = resolveVersion(agentBot.id, request.version);
+  const version = await resolveVersion(agentBot.id, request.version);
   if (!version) {
     return {
       success: false,
@@ -318,7 +316,7 @@ export async function executeInvocation(
   const outputType = request.outputType || version.output_config.defaultType;
 
   // 3. Create job record
-  const job = createJob({
+  const job = await createJob({
     agentBotId: agentBot.id,
     versionId: version.id,
     apiKeyId: apiKey.id,
@@ -329,7 +327,7 @@ export async function executeInvocation(
   });
 
   // 4. Start job
-  startJob(job.id);
+  await startJob(job.id);
 
   try {
     // 5. Build execution context
@@ -343,7 +341,7 @@ export async function executeInvocation(
     };
 
     // 6. Build system prompt
-    const systemPrompt = buildSystemPrompt(version);
+    const systemPrompt = await buildSystemPrompt(version);
 
     // 7. Build RAG context from categories
     const userQuery = formatUserInput(request.input);
@@ -362,7 +360,7 @@ export async function executeInvocation(
     });
 
     // 10. Save output to database
-    const savedOutput = addJobOutput({
+    const savedOutput = await addJobOutput({
       jobId: job.id,
       outputType: outputType,
       content: generatedOutput.content,
@@ -374,7 +372,7 @@ export async function executeInvocation(
 
     // 11. Complete job
     const processingTimeMs = Date.now() - startTime;
-    const completedJob = completeJob(job.id, llmResult.tokenUsage, processingTimeMs);
+    const completedJob = await completeJob(job.id, llmResult.tokenUsage, processingTimeMs);
 
     // 12. Format output for response
     const outputs: InvokeOutputItem[] = [
@@ -401,7 +399,7 @@ export async function executeInvocation(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Mark job as failed
-    failJob(job.id, errorMessage, 'PROCESSING_ERROR');
+    await failJob(job.id, errorMessage, 'PROCESSING_ERROR');
 
     return {
       success: false,
@@ -419,15 +417,15 @@ export async function executeInvocation(
 /**
  * Create async job for background processing
  */
-export function createAsyncJob(
+export async function createAsyncJob(
   agentBot: AgentBot,
   apiKey: AgentBotApiKey,
   request: InvokeRequest,
   version: AgentBotVersionWithRelations
-): AgentBotJob {
+): Promise<AgentBotJob> {
   const outputType = request.outputType || version.output_config.defaultType;
 
-  return createJob({
+  return await createJob({
     agentBotId: agentBot.id,
     versionId: version.id,
     apiKeyId: apiKey.id,

@@ -30,8 +30,7 @@ import {
   notifyJobFailed,
   formatOutputsForWebhook,
 } from '@/lib/agent-bot/webhook';
-import { getJobWithOutputs } from '@/lib/db/agent-bot-jobs';
-import { getActiveAgentBotBySlug } from '@/lib/db/agent-bots';
+import { getJobWithOutputs, getActiveAgentBotBySlug } from '@/lib/db/compat';
 import { getCurrentUser } from '@/lib/auth';
 import type { InvokeRequest, InvokeResponse, AsyncJobResponse, AgentBotError, RateLimitInfo } from '@/types/agent-bot';
 
@@ -91,7 +90,7 @@ export async function POST(
 
   if (adminTestMode) {
     // Admin test mode - bypass API key authentication
-    const bot = getActiveAgentBotBySlug(slug);
+    const bot = await getActiveAgentBotBySlug(slug);
     if (!bot) {
       return agentBotErrors.agentBotNotFound();
     }
@@ -116,7 +115,7 @@ export async function POST(
     rateLimitInfo = createMockRateLimitInfo();
   } else {
     // 1. Authenticate request
-    const authResult = authenticateRequest(request, slug);
+    const authResult = await authenticateRequest(request, slug);
     if (isAuthError(authResult)) {
       return authResult;
     }
@@ -138,7 +137,7 @@ export async function POST(
     }
 
     // 3. Resolve version
-    const version = resolveVersion(agentBot.id, body.version);
+    const version = await resolveVersion(agentBot.id, body.version);
     if (!version) {
       return agentBotErrors.versionNotFound();
     }
@@ -172,10 +171,10 @@ export async function POST(
     if (isAsync) {
       // ================== ASYNC EXECUTION ==================
       // Create job and return immediately
-      const job = createAsyncJob(agentBot, apiKey, body, version);
+      const job = await createAsyncJob(agentBot, apiKey, body, version);
 
       // Record usage (will be updated with actual tokens later)
-      recordUsage(authContext, 0, false);
+      await recordUsage(authContext, 0, false);
 
       // Process in background (fire and forget)
       processAsyncJob(
@@ -201,7 +200,7 @@ export async function POST(
     const result = await executeInvocation(agentBot, apiKey, body);
 
     // Record usage
-    recordUsage(authContext, result.tokenUsage?.totalTokens || 0, !result.success);
+    await recordUsage(authContext, result.tokenUsage?.totalTokens || 0, !result.success);
 
     if (!result.success) {
       const response = agentBotErrors.processingError(result.error?.message);
@@ -223,7 +222,7 @@ export async function POST(
     console.error('[AgentBot] Invoke error:', error);
 
     // Record error
-    recordUsage(authContext, 0, true);
+    await recordUsage(authContext, 0, true);
 
     const errorMessage = error instanceof Error ? error.message : 'Internal error';
     return agentBotErrors.processingError(errorMessage);
@@ -246,11 +245,10 @@ async function processAsyncJob(
 ): Promise<void> {
   try {
     // Get the full API key and bot objects
-    const { getAgentBotById } = await import('@/lib/db/agent-bots');
-    const { getApiKeyById } = await import('@/lib/db/agent-bot-api-keys');
+    const { getAgentBotById, getApiKeyById } = await import('@/lib/db/compat');
 
-    const fullApiKey = getApiKeyById(apiKey.id);
-    const fullAgentBot = getAgentBotById(agentBot.id);
+    const fullApiKey = await getApiKeyById(apiKey.id);
+    const fullAgentBot = await getAgentBotById(agentBot.id);
 
     if (!fullApiKey || !fullAgentBot) {
       throw new Error('Failed to load agent bot or API key');
@@ -265,7 +263,7 @@ async function processAsyncJob(
 
     // Send webhook notification if configured
     if (request.webhookUrl && request.webhookSecret) {
-      const job = getJobWithOutputs(jobId);
+      const job = await getJobWithOutputs(jobId);
 
       if (result.success && job) {
         // Format outputs for webhook
@@ -301,7 +299,7 @@ async function processAsyncJob(
     // Try to send failure webhook
     if (request.webhookUrl && request.webhookSecret) {
       try {
-        const job = getJobWithOutputs(jobId);
+        const job = await getJobWithOutputs(jobId);
         if (job) {
           await notifyJobFailed(
             request.webhookUrl,

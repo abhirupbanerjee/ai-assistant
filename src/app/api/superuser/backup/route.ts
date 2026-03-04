@@ -9,8 +9,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { queryAll } from '@/lib/db';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
+import { getDb } from '@/lib/db/kysely';
 import type { ApiError } from '@/types';
 
 interface ThreadExport {
@@ -70,7 +70,7 @@ export async function POST() {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       // Return empty backup if no categories assigned
       const emptyBackup: BackupData = {
@@ -89,62 +89,50 @@ export async function POST() {
     }
 
     const categoryIds = superUserData.assignedCategories.map(c => c.categoryId);
-    const placeholders = categoryIds.map(() => '?').join(', ');
+    const db = await getDb();
 
     // Get threads that have at least one category in the superuser's assigned categories
-    const threads = queryAll<{
-      id: string;
-      title: string;
-      created_at: string;
-      updated_at: string;
-    }>(`
-      SELECT DISTINCT t.id, t.title, t.created_at, t.updated_at
-      FROM threads t
-      JOIN thread_categories tc ON t.id = tc.thread_id
-      WHERE tc.category_id IN (${placeholders})
-      ORDER BY t.updated_at DESC
-    `, categoryIds);
+    const threads = await db
+      .selectFrom('threads as t')
+      .innerJoin('thread_categories as tc', 't.id', 'tc.thread_id')
+      .select(['t.id', 't.title', 't.created_at', 't.updated_at'])
+      .where('tc.category_id', 'in', categoryIds)
+      .distinct()
+      .orderBy('t.updated_at', 'desc')
+      .execute();
 
     // Build thread exports with messages
     const threadExports: ThreadExport[] = [];
 
     for (const thread of threads) {
       // Get categories for this thread (only the ones superuser has access to)
-      const threadCategories = queryAll<{
-        id: number;
-        name: string;
-        slug: string;
-      }>(`
-        SELECT c.id, c.name, c.slug
-        FROM categories c
-        JOIN thread_categories tc ON c.id = tc.category_id
-        WHERE tc.thread_id = ? AND c.id IN (${placeholders})
-      `, [thread.id, ...categoryIds]);
+      const threadCategories = await db
+        .selectFrom('categories as c')
+        .innerJoin('thread_categories as tc', 'c.id', 'tc.category_id')
+        .select(['c.id', 'c.name', 'c.slug'])
+        .where('tc.thread_id', '=', thread.id)
+        .where('c.id', 'in', categoryIds)
+        .execute();
 
       // Get messages for this thread
-      const messages = queryAll<{
-        id: string;
-        role: string;
-        content: string;
-        created_at: string;
-      }>(`
-        SELECT id, role, content, created_at
-        FROM messages
-        WHERE thread_id = ?
-        ORDER BY created_at ASC
-      `, [thread.id]);
+      const messages = await db
+        .selectFrom('messages')
+        .select(['id', 'role', 'content', 'created_at'])
+        .where('thread_id', '=', thread.id)
+        .orderBy('created_at', 'asc')
+        .execute();
 
       threadExports.push({
         id: thread.id,
-        title: thread.title,
-        createdAt: thread.created_at,
-        updatedAt: thread.updated_at,
+        title: thread.title as string,
+        createdAt: thread.created_at as string,
+        updatedAt: thread.updated_at as string,
         categories: threadCategories,
         messages: messages.map(m => ({
           id: m.id,
           role: m.role,
           content: m.content,
-          createdAt: m.created_at,
+          createdAt: m.created_at as string,
         })),
       });
     }

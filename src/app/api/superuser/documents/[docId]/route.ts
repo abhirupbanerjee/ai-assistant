@@ -7,8 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getDocumentWithCategories } from '@/lib/db/documents';
+import { getSuperUserWithAssignments, getDocumentWithCategories } from '@/lib/db/compat';
 import { deleteDocument } from '@/lib/ingest';
 
 // DELETE - Delete document (only if uploaded by this super user and in their assigned categories)
@@ -40,13 +39,13 @@ export async function DELETE(
     }
 
     // Get document with categories
-    const doc = getDocumentWithCategories(numericDocId);
+    const doc = await getDocumentWithCategories(numericDocId);
     if (!doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Super user data not found' }, { status: 404 });
     }

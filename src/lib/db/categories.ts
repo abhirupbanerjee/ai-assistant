@@ -468,3 +468,18 @@ export function deleteCategoryWithRelatedData(categoryId: number): { documentIds
     };
   });
 }
+
+// ============ Bulk Category Lookup ============
+
+/**
+ * Get multiple categories by their IDs
+ * Returns id, name, slug for each found category
+ */
+export function getCategoriesByIds(categoryIds: number[]): { id: number; name: string; slug: string }[] {
+  if (categoryIds.length === 0) return [];
+
+  const placeholders = categoryIds.map(() => '?').join(', ');
+  return queryAll<{ id: number; name: string; slug: string }>(`
+    SELECT id, name, slug FROM categories WHERE id IN (${placeholders})
+  `, categoryIds);
+}

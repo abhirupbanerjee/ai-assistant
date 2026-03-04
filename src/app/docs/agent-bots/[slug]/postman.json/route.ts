@@ -10,9 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getAgentBotBySlug, checkSuperuserAgentBotAccess } from '@/lib/db/agent-bots';
-import { getDefaultVersion } from '@/lib/db/agent-bot-versions';
+import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
 import type { AgentBotVersionWithRelations } from '@/types/agent-bot';
 
 interface RouteParams {
@@ -35,7 +33,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   // Get the agent bot
-  const agentBot = getAgentBotBySlug(slug);
+  const agentBot = await getAgentBotBySlug(slug);
   if (!agentBot) {
     return NextResponse.json({ error: 'Agent bot not found' }, { status: 404 });
   }
@@ -47,19 +45,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     const userCategoryIds = (superUserData?.assignedCategories || []).map(
       (c) => c.categoryId
     );
 
-    const hasAccess = checkSuperuserAgentBotAccess(agentBot.id, userCategoryIds);
+    const hasAccess = await checkSuperuserAgentBotAccess(agentBot.id, userCategoryIds);
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
   }
 
   // Get the default version
-  const defaultVersion = getDefaultVersion(agentBot.id);
+  const defaultVersion = await getDefaultVersion(agentBot.id);
   const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
 
   // Generate Postman collection

@@ -11,9 +11,10 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments, getUsersSubscribedToCategory } from '@/lib/db/users';
-import { queryAll } from '@/lib/db';
-import { getCategoryPrompt } from '@/lib/db/category-prompts';
+import { getSuperUserWithAssignments, getUsersSubscribedToCategory } from '@/lib/db/compat';
+import { getDb } from '@/lib/db/kysely';
+import { getCategoryPrompt } from '@/lib/db/compat/category-prompts';
+import { sql } from 'kysely';
 
 interface CategoryStats {
   categoryId: number;
@@ -69,7 +70,7 @@ export async function GET() {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       return NextResponse.json({
         timestamp: new Date().toISOString(),
@@ -83,29 +84,23 @@ export async function GET() {
     }
 
     const categoryIds = superUserData.assignedCategories.map(c => c.categoryId);
-    const placeholders = categoryIds.map(() => '?').join(', ');
+    const db = await getDb();
 
     // Get document stats per category
-    const categoryDocStats = queryAll<{
-      category_id: number;
-      documentCount: number;
-      readyCount: number;
-      processingCount: number;
-      errorCount: number;
-      totalChunks: number;
-    }>(`
-      SELECT
-        dc.category_id,
-        COUNT(DISTINCT dc.document_id) as documentCount,
-        SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END) as readyCount,
-        SUM(CASE WHEN d.status = 'processing' THEN 1 ELSE 0 END) as processingCount,
-        SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END) as errorCount,
-        SUM(d.chunk_count) as totalChunks
-      FROM document_categories dc
-      JOIN documents d ON dc.document_id = d.id
-      WHERE dc.category_id IN (${placeholders})
-      GROUP BY dc.category_id
-    `, categoryIds);
+    const categoryDocStats = await db
+      .selectFrom('document_categories as dc')
+      .innerJoin('documents as d', 'dc.document_id', 'd.id')
+      .select([
+        'dc.category_id',
+        sql<number>`COUNT(DISTINCT dc.document_id)`.as('documentCount'),
+        sql<number>`SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END)`.as('readyCount'),
+        sql<number>`SUM(CASE WHEN d.status = 'processing' THEN 1 ELSE 0 END)`.as('processingCount'),
+        sql<number>`SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END)`.as('errorCount'),
+        sql<number>`COALESCE(SUM(d.chunk_count), 0)`.as('totalChunks'),
+      ])
+      .where('dc.category_id', 'in', categoryIds)
+      .groupBy('dc.category_id')
+      .execute();
 
     // Build category stats
     const categories: CategoryStats[] = [];
@@ -114,9 +109,9 @@ export async function GET() {
 
     for (const cat of superUserData.assignedCategories) {
       const docStats = categoryDocStats.find(s => s.category_id === cat.categoryId);
-      const subscribers = getUsersSubscribedToCategory(cat.categoryId);
+      const subscribers = await getUsersSubscribedToCategory(cat.categoryId);
       const activeSubscribers = subscribers.filter(s => s.isActive).length;
-      const hasCustomPrompt = !!getCategoryPrompt(cat.categoryId);
+      const hasCustomPrompt = !!(await getCategoryPrompt(cat.categoryId));
 
       const catStats: CategoryStats = {
         categoryId: cat.categoryId,
@@ -138,48 +133,38 @@ export async function GET() {
     }
 
     // Get recent documents in super user's categories
-    const recentDocuments = queryAll<{
-      id: number;
-      filename: string;
-      categoryName: string;
-      status: string;
-      uploadedBy: string;
-      uploadedAt: string;
-    }>(`
-      SELECT
-        d.id,
-        d.filename,
-        c.name as categoryName,
-        d.status,
-        d.uploaded_by as uploadedBy,
-        d.created_at as uploadedAt
-      FROM documents d
-      JOIN document_categories dc ON d.id = dc.document_id
-      JOIN categories c ON dc.category_id = c.id
-      WHERE dc.category_id IN (${placeholders})
-      ORDER BY d.created_at DESC
-      LIMIT 10
-    `, categoryIds);
+    const recentDocuments = await db
+      .selectFrom('documents as d')
+      .innerJoin('document_categories as dc', 'd.id', 'dc.document_id')
+      .innerJoin('categories as c', 'dc.category_id', 'c.id')
+      .select([
+        'd.id',
+        'd.filename',
+        'c.name as categoryName',
+        'd.status',
+        'd.uploaded_by as uploadedBy',
+        'd.created_at as uploadedAt',
+      ])
+      .where('dc.category_id', 'in', categoryIds)
+      .orderBy('d.created_at', 'desc')
+      .limit(10)
+      .execute();
 
     // Get recent subscriptions in super user's categories
-    const recentSubscriptions = queryAll<{
-      userEmail: string;
-      categoryName: string;
-      subscribedAt: string;
-      isActive: number;
-    }>(`
-      SELECT
-        u.email as userEmail,
-        c.name as categoryName,
-        us.subscribed_at as subscribedAt,
-        us.is_active as isActive
-      FROM user_subscriptions us
-      JOIN users u ON us.user_id = u.id
-      JOIN categories c ON us.category_id = c.id
-      WHERE us.category_id IN (${placeholders})
-      ORDER BY us.subscribed_at DESC
-      LIMIT 10
-    `, categoryIds);
+    const recentSubscriptions = await db
+      .selectFrom('user_subscriptions as us')
+      .innerJoin('users as u', 'us.user_id', 'u.id')
+      .innerJoin('categories as c', 'us.category_id', 'c.id')
+      .select([
+        'u.email as userEmail',
+        'c.name as categoryName',
+        'us.subscribed_at as subscribedAt',
+        'us.is_active as isActive',
+      ])
+      .where('us.category_id', 'in', categoryIds)
+      .orderBy('us.subscribed_at', 'desc')
+      .limit(10)
+      .execute();
 
     const stats: SuperUserStats = {
       timestamp: new Date().toISOString(),

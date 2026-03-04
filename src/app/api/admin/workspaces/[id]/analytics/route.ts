@@ -6,8 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getWorkspaceById } from '@/lib/db/workspaces';
-import { getWorkspaceAnalytics } from '@/lib/db/workspace-sessions';
+import { getWorkspaceById, getWorkspaceAnalytics } from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
 interface RouteParams {
@@ -20,14 +19,14 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },

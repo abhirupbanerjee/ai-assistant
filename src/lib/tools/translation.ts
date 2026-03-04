@@ -256,7 +256,7 @@ export const translationTool: ToolDefinition = {
       }
 
       // Get config to check enabled languages and formal style
-      const config = getTranslationConfig();
+      const config = await getTranslationConfig();
       const enabledLanguages = getEnabledLanguages(config);
 
       // Validate target language is enabled

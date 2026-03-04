@@ -12,7 +12,7 @@ import {
   getRoutingRuleById,
   updateRoutingRule,
   deleteRoutingRule,
-} from '@/lib/db/tool-routing';
+} from '@/lib/db/compat';
 import type { ToolRoutingRuleInput } from '@/types/tool-routing';
 
 interface RouteParams {
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const rule = getRoutingRuleById(id);
+    const rule = await getRoutingRuleById(id);
 
     if (!rule) {
       return NextResponse.json(
@@ -73,7 +73,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
 
     // Check if rule exists
-    const existing = getRoutingRuleById(id);
+    const existing = await getRoutingRuleById(id);
     if (!existing) {
       return NextResponse.json(
         { error: 'Routing rule not found' },
@@ -122,7 +122,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    const updated = updateRoutingRule(
+    const updated = await updateRoutingRule(
       id,
       body as Partial<ToolRoutingRuleInput>,
       user.email
@@ -165,7 +165,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
 
     // Check if rule exists
-    const existing = getRoutingRuleById(id);
+    const existing = await getRoutingRuleById(id);
     if (!existing) {
       return NextResponse.json(
         { error: 'Routing rule not found' },
@@ -173,7 +173,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const deleted = deleteRoutingRule(id);
+    const deleted = await deleteRoutingRule(id);
 
     if (!deleted) {
       return NextResponse.json(

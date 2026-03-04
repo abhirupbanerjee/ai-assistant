@@ -1,4 +1,4 @@
-import { getWebSearchConfig } from '../db/tool-config';
+import { getWebSearchConfig } from '../db/compat/tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 
@@ -42,8 +42,8 @@ export interface CrawlResult {
 /**
  * Check if Tavily is configured (has API key)
  */
-export function isTavilyConfigured(): boolean {
-  const { config: settings } = getWebSearchConfig();
+export async function isTavilyConfigured(): Promise<boolean> {
+  const { config: settings } = await getWebSearchConfig();
   return !!(settings.apiKey || process.env.TAVILY_API_KEY);
 }
 
@@ -86,7 +86,7 @@ export async function extractWebContent(urls: string[]): Promise<ExtractResult[]
   }
 
   // Get API key
-  const { config: settings } = getWebSearchConfig();
+  const { config: settings } = await getWebSearchConfig();
   const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
@@ -196,7 +196,7 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
   }
 
   // Get API key
-  const { config: settings } = getWebSearchConfig();
+  const { config: settings } = await getWebSearchConfig();
   const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
@@ -346,7 +346,7 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
   }
 
   // Get API key
-  const { config: settings } = getWebSearchConfig();
+  const { config: settings } = await getWebSearchConfig();
   const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
@@ -752,7 +752,7 @@ export const tavilyWebSearch: ToolDefinition = {
     options?: ToolExecutionOptions
   ) => {
     // Get config from unified tool_configs table (with fallback to settings table)
-    const { enabled, config: globalSettings } = getWebSearchConfig();
+    const { enabled, config: globalSettings } = await getWebSearchConfig();
 
     // Merge skill-level config override with global settings (override wins)
     const configOverride = options?.configOverride || {};

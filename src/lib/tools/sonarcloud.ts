@@ -11,8 +11,8 @@
  * 4. Environment variables - Fallback
  */
 
-import { getToolConfig } from '../db/tool-config';
-import { getEffectiveToolConfig } from '../db/category-tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
+import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 
@@ -464,13 +464,13 @@ async function resolveRepository(
 /**
  * Get code analysis configuration with category-level override support
  */
-export function getCodeAnalysisConfig(categoryId?: number): {
+export async function getCodeAnalysisConfig(categoryId?: number): Promise<{
   enabled: boolean;
   config: CodeAnalysisConfig;
-} {
+}> {
   // If category provided, get effective config (global + category merged)
   if (categoryId) {
-    const effective = getEffectiveToolConfig('code_analysis', categoryId);
+    const effective = await getEffectiveToolConfig('code_analysis', categoryId);
     return {
       enabled: effective.enabled,
       config: (effective.config as unknown as CodeAnalysisConfig) || defaultConfig,
@@ -478,7 +478,7 @@ export function getCodeAnalysisConfig(categoryId?: number): {
   }
 
   // Otherwise get global config
-  const toolConfig = getToolConfig('code_analysis');
+  const toolConfig = await getToolConfig('code_analysis');
   if (toolConfig) {
     return {
       enabled: toolConfig.isEnabled,
@@ -634,8 +634,8 @@ export const codeAnalysisTool: ToolDefinition = {
     // Get config - check for category-level override
     const categoryIds = (options as { categoryIds?: number[] })?.categoryIds || [];
     const { enabled, config: globalSettings } = categoryIds.length > 0
-      ? getCodeAnalysisConfig(categoryIds[0])
-      : getCodeAnalysisConfig();
+      ? await getCodeAnalysisConfig(categoryIds[0])
+      : await getCodeAnalysisConfig();
 
     // Merge skill-level config override
     const configOverride = options?.configOverride || {};

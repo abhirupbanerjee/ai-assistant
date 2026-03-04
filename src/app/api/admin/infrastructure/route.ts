@@ -10,7 +10,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getDatabaseProvider, getDb } from '@/lib/db/kysely';
+import { getDb } from '@/lib/db/kysely';
 import {
   getVectorStoreProvider,
   checkVectorStoreHealth,
@@ -19,7 +19,7 @@ import {
 import type { ApiError } from '@/types';
 
 interface DatabaseInfo {
-  provider: 'sqlite' | 'postgres';
+  provider: 'postgres';
   connected: boolean;
   connectionString?: string; // Masked for security
   version?: string;
@@ -64,30 +64,21 @@ export async function GET() {
     }
 
     // Get database info
-    const dbProvider = getDatabaseProvider();
     let dbInfo: DatabaseInfo = {
-      provider: dbProvider,
+      provider: 'postgres',
       connected: false,
     };
 
     try {
       const db = await getDb();
       // Test connection with a simple query
-      if (dbProvider === 'postgres') {
-        const result = await db.selectFrom('users').select('id').limit(1).execute();
-        dbInfo.connected = true;
-        // Mask connection string for security
-        const dbUrl = process.env.DATABASE_URL || '';
-        if (dbUrl) {
-          // Show host/port only, mask credentials
-          const match = dbUrl.match(/@([^/]+)/);
-          dbInfo.connectionString = match ? `***@${match[1]}` : '***';
-        }
-      } else {
-        // SQLite
-        const result = await db.selectFrom('users').select('id').limit(1).execute();
-        dbInfo.connected = true;
-        dbInfo.connectionString = process.env.SQLITE_DB_PATH || 'data/policybot.db';
+      await db.selectFrom('users').select('id').limit(1).execute();
+      dbInfo.connected = true;
+      // Mask connection string for security
+      const dbUrl = process.env.DATABASE_URL || '';
+      if (dbUrl) {
+        const match = dbUrl.match(/@([^/]+)/);
+        dbInfo.connectionString = match ? `***@${match[1]}` : '***';
       }
     } catch (error) {
       dbInfo.error = error instanceof Error ? error.message : 'Connection failed';

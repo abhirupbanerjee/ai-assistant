@@ -19,6 +19,9 @@ import { seedDefaultProviders } from './llm-providers';
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const DB_PATH = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'policybot.db');
 
+// Provider guard: Track SQLite access when PostgreSQL is the configured provider
+let sqliteAccessWarningShown = false;
+
 // Singleton database instance
 let db: Database.Database | null = null;
 
@@ -27,6 +30,15 @@ let db: Database.Database | null = null;
  */
 export function getDatabase(): Database.Database {
   if (db) return db;
+
+  // Provider guard: Log warning when SQLite is accessed in PostgreSQL mode
+  // During Phase 1 (hybrid mode), SQLite is still used for settings
+  // This helps track what still needs migration to compat layer
+  const provider = process.env.DATABASE_PROVIDER || 'sqlite';
+  if (provider === 'postgres' && !sqliteAccessWarningShown) {
+    console.warn('[DB] SQLite accessed in PostgreSQL mode - settings/config only (Phase 1 hybrid mode)');
+    sqliteAccessWarningShown = true;
+  }
 
   // Ensure data directory exists
   const dbDir = path.dirname(DB_PATH);

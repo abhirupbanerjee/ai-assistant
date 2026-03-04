@@ -36,11 +36,11 @@ export async function GET() {
     }
 
     // Get current running job and recent jobs
-    const runningJob = getRunningReindexJob();
-    const recentJobs = getRecentReindexJobs(10);
+    const runningJob = await getRunningReindexJob();
+    const recentJobs = await getRecentReindexJobs(10);
 
     return NextResponse.json({
-      isRunning: isReindexRunning(),
+      isRunning: await isReindexRunning(),
       runningJob,
       recentJobs,
     });
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if model is available
-    const modelAvailable = modelDef.local || isProviderConfigured(modelDef.provider);
+    const modelAvailable = modelDef.local || await isProviderConfigured(modelDef.provider);
     if (!modelAvailable) {
       return NextResponse.json<ApiError>(
         { error: `Provider ${modelDef.provider} is not configured`, code: 'VALIDATION_ERROR' },
@@ -104,8 +104,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if a reindex is already running
-    if (isReindexRunning()) {
-      const runningJob = getRunningReindexJob();
+    if (await isReindexRunning()) {
+      const runningJob = await getRunningReindexJob();
       return NextResponse.json<ApiError>(
         {
           error: 'A reindex job is already running',
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the job
-    const job = createReindexJob(embeddingModel, user.email);
+    const job = await createReindexJob(embeddingModel, user.email);
 
     // Start the job in the background (don't await)
     // Use setImmediate to ensure the response is sent first

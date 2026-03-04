@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getThread } from '@/lib/threads';
-import { updateThreadModel, getEffectiveModelForThread, getThreadById } from '@/lib/db/threads';
-import { getActiveModels, getDefaultModel, getEnabledModel } from '@/lib/db/enabled-models';
+import { updateThreadModel, getEffectiveModelForThread, getThreadById } from '@/lib/db/compat';
+import { getActiveModels, getDefaultModel, getEnabledModel } from '@/lib/db/compat/enabled-models';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -37,17 +37,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get the raw thread data for selected_model field
-    const dbThread = getThreadById(threadId);
+    const dbThread = await getThreadById(threadId);
 
     // Get available models (only active/enabled ones)
-    const availableModels = getActiveModels();
+    const availableModels = await getActiveModels();
 
     // Get global default
-    const defaultModel = getDefaultModel();
+    const defaultModel = await getDefaultModel();
     const globalDefault = defaultModel?.id || null;
 
     // Get effective model (thread override or global)
-    const effectiveModel = getEffectiveModelForThread(threadId);
+    const effectiveModel = await getEffectiveModelForThread(threadId);
 
     return NextResponse.json({
       threadId,
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Validate model exists if not NULL
     if (modelId !== null && modelId !== undefined) {
-      const model = getEnabledModel(modelId);
+      const model = await getEnabledModel(modelId);
 
       if (!model) {
         return NextResponse.json<ApiError>(
@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Update thread model
-    const success = updateThreadModel(threadId, modelId || null);
+    const success = await updateThreadModel(threadId, modelId || null);
 
     if (!success) {
       return NextResponse.json<ApiError>(
@@ -133,7 +133,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get updated effective model
-    const effectiveModel = getEffectiveModelForThread(threadId);
+    const effectiveModel = await getEffectiveModelForThread(threadId);
 
     return NextResponse.json({
       success: true,

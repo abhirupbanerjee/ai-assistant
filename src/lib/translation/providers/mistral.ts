@@ -20,9 +20,9 @@ let mistralClient: Mistral | null = null;
 /**
  * Get or create Mistral client using centralized provider helper (DB-first, then env var fallback)
  */
-function getMistralClient(): Mistral {
+async function getMistralClient(): Promise<Mistral> {
   if (!mistralClient) {
-    const apiKey = getApiKey('mistral');
+    const apiKey = await getApiKey('mistral');
     if (!apiKey) {
       throw new Error('Mistral API key not configured');
     }
@@ -86,7 +86,7 @@ export async function translateWithMistral(
       };
     }
 
-    const client = getMistralClient();
+    const client = await getMistralClient();
     const sourceLangDesc = sourceLanguage
       ? SUPPORTED_LANGUAGES[sourceLanguage]
       : 'the source language (auto-detect)';
@@ -157,6 +157,6 @@ export async function translateWithMistral(
 /**
  * Check if Mistral provider is configured (DB-first, then env var fallback)
  */
-export function isMistralConfigured(): boolean {
+export async function isMistralConfigured(): Promise<boolean> {
   return isProviderConfigured('mistral');
 }

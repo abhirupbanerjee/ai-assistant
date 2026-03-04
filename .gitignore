@@ -36,7 +36,10 @@ data/app/
 data/chroma/
 data/redis/
 data/threads/
-data/global-docs/*.pdf
+data/postgres/
+data/qdrant/
+data/transformers_cache/
+data/global-docs/*
 
 # Keep data directory structure
 !data/.gitkeep
@@ -45,6 +48,8 @@ data/global-docs/*.pdf
 !data/redis/.gitkeep
 !data/threads/.gitkeep
 !data/global-docs/.gitkeep
+!data/postgres/.gitkeep
+!data/qdrant/.gitkeep
 
 # TypeScript
 *.tsbuildinfo
@@ -64,3 +69,6 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/*.db.backup-*
+
+# SQLite export CSVs (migration data)
+sqlite_export/

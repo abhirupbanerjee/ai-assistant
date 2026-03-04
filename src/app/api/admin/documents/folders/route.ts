@@ -5,7 +5,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getAllFolderSyncs } from '@/lib/db/folder-syncs';
+import { getAllFolderSyncs } from '@/lib/db/compat/folder-syncs';
 import type { ApiError } from '@/types';
 
 export async function GET() {
@@ -25,7 +25,7 @@ export async function GET() {
       );
     }
 
-    const folderSyncs = getAllFolderSyncs();
+    const folderSyncs = await getAllFolderSyncs();
 
     return NextResponse.json({
       folders: folderSyncs,

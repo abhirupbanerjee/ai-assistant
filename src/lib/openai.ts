@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
-import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/config';
+import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
 import { resolveToolRouting } from './tool-routing';
@@ -100,13 +100,13 @@ function getTerminalToolSummaryPrompt(toolName: string): string {
 
 let openaiClient: OpenAI | null = null;
 
-function getOpenAI(): OpenAI {
+async function getOpenAI(): Promise<OpenAI> {
   if (!openaiClient) {
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
-      : getApiKey('openai');
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
 
     openaiClient = new OpenAI({
       apiKey: apiKey || undefined,
@@ -118,7 +118,7 @@ function getOpenAI(): OpenAI {
 }
 
 export async function createEmbedding(text: string): Promise<number[]> {
-  const embeddingSettings = getEmbeddingSettings();
+  const embeddingSettings = await getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
   const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
   const fallbackModel = embeddingSettings.fallbackModel || 'text-embedding-3-large';
@@ -130,7 +130,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
     }
 
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
-    const openai = getOpenAI();
+    const openai = await getOpenAI();
     const response = await openai.embeddings.create({
       model,
       input: text,
@@ -154,7 +154,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
         return await createLocalEmbedding(text, fallbackModel as LocalEmbeddingModel);
       }
 
-      const openai = getOpenAI();
+      const openai = await getOpenAI();
       const response = await openai.embeddings.create({
         model: fallbackModel,
         input: text,
@@ -170,7 +170,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
 export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const embeddingSettings = getEmbeddingSettings();
+  const embeddingSettings = await getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
   const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
   const fallbackModel = embeddingSettings.fallbackModel || 'text-embedding-3-large';
@@ -187,7 +187,7 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
     }
 
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
-    const openai = getOpenAI();
+    const openai = await getOpenAI();
     const response = await openai.embeddings.create({
       model,
       input: texts,
@@ -216,7 +216,7 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
         return await createLocalEmbeddings(texts, fallbackModel as LocalEmbeddingModel);
       }
 
-      const openai = getOpenAI();
+      const openai = await getOpenAI();
       const response = await openai.embeddings.create({
         model: fallbackModel,
         input: texts,
@@ -236,7 +236,7 @@ export async function generateResponse(
   userMessage: string
 ): Promise<string> {
   // Get LLM settings from database config
-  const llmSettings = getLlmSettings();
+  const llmSettings = await getLlmSettings();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
@@ -260,10 +260,10 @@ export async function generateResponse(
     content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
   });
 
-  const openai = getOpenAI();
+  const openai = await getOpenAI();
 
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
-  const effectiveMaxTokens = getEffectiveMaxTokens(llmSettings.model);
+  const effectiveMaxTokens = await getEffectiveMaxTokens(llmSettings.model);
 
   const response = await openai.chat.completions.create({
     model: llmSettings.model,
@@ -350,15 +350,15 @@ export async function generateResponseWithTools(
   cacheable: boolean;
   toolExecutionResults: ToolExecutionRecord[];
 }> {
-  const llmSettings = getLlmSettings();
-  const openai = getOpenAI();
+  const llmSettings = await getLlmSettings();
+  const openai = await getOpenAI();
 
   // Use model override if provided, otherwise use default from settings
   const effectiveModel = modelOverride || llmSettings.model;
 
   // Check if model supports tools, disable gracefully if not
   // Use DB-aware check so models added via admin UI (enabled_models) are recognized
-  const modelSupportsTools = isToolCapableModelFromDb(effectiveModel);
+  const modelSupportsTools = await isToolCapableModelFromDb(effectiveModel);
   const effectiveEnableTools = enableTools && modelSupportsTools;
 
   if (enableTools && !modelSupportsTools) {
@@ -366,7 +366,7 @@ export async function generateResponseWithTools(
   }
 
   // Build unified conversation context with anchors, follow-up detection, and cache keys
-  const limitsSettings = getLimitsSettings();
+  const limitsSettings = await getLimitsSettings();
   const ctx = buildConversationContext(conversationHistory, userMessage, {
     maxMessages: limitsSettings.conversationHistoryMessages,
     maxTokens: 6000,
@@ -474,7 +474,7 @@ export async function generateResponseWithTools(
   }
 
   // Prepare completion params - pass categoryIds for dynamic Function API tools
-  let tools = effectiveEnableTools ? getToolDefinitions(categoryIds) : undefined;
+  let tools = effectiveEnableTools ? await getToolDefinitions(categoryIds) : undefined;
 
   // Filter out excluded tools if specified
   if (tools && excludeTools && excludeTools.length > 0) {
@@ -493,7 +493,7 @@ export async function generateResponseWithTools(
 
   if (effectiveEnableTools && tools && tools.length > 0) {
     // First, check skills-based tool routing (new unified system)
-    const skillsResult = resolveSkills(categoryIds || [], userMessage);
+    const skillsResult = await resolveSkills(categoryIds || [], userMessage);
     if (skillsResult.toolRouting && skillsResult.toolRouting.matches.length > 0) {
       // Filter out matches for excluded tools (e.g., web_search disabled via chat preferences)
       const validMatches = skillsResult.toolRouting.matches.filter(
@@ -530,7 +530,7 @@ export async function generateResponseWithTools(
 
     // Fall back to legacy tool-routing rules if no skills-based routing matched
     if (!toolChoiceAppliedByRouting) {
-      const routing = resolveToolRouting(userMessage, categoryIds || []);
+      const routing = await resolveToolRouting(userMessage, categoryIds || []);
 
       // Filter out matches for excluded tools
       const validMatches = routing.matches.filter(
@@ -565,7 +565,7 @@ export async function generateResponseWithTools(
   }
 
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
-  const effectiveMaxTokens = getEffectiveMaxTokens(effectiveModel);
+  const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
     model: effectiveModel,
@@ -859,7 +859,7 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string): Pr
   const blob = new Blob([new Uint8Array(audioBuffer)], { type: 'audio/webm' });
   const file = new File([blob], filename, { type: 'audio/webm' });
 
-  const openai = getOpenAI();
+  const openai = await getOpenAI();
   const response = await openai.audio.transcriptions.create({
     model: 'whisper-1',
     file,

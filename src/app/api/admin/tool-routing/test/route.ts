@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = testToolRouting(message, categoryIds);
+    const result = await testToolRouting(message, categoryIds);
 
     return NextResponse.json(result);
   } catch (error) {

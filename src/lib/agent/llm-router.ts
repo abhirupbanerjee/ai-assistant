@@ -58,8 +58,8 @@ async function generateOpenAI(
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
-      : getApiKey('openai');
+      ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
+      : await getApiKey('openai');
 
     openaiClient = new OpenAI({
       apiKey: apiKey || undefined,
@@ -100,7 +100,7 @@ async function generateGemini(
 ): Promise<LLMResponse> {
   const { GoogleGenAI } = await import('@google/genai');
 
-  const apiKey = getApiKey('gemini');
+  const apiKey = await getApiKey('gemini');
   if (!apiKey) {
     throw new Error('Gemini API key not configured');
   }
@@ -143,7 +143,7 @@ async function generateMistral(
 ): Promise<LLMResponse> {
   const { Mistral } = await import('@mistralai/mistralai');
 
-  const apiKey = getApiKey('mistral');
+  const apiKey = await getApiKey('mistral');
   if (!apiKey) {
     throw new Error('Mistral API key not configured');
   }

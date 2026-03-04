@@ -14,7 +14,7 @@ import { createEmbeddings } from './openai';
 import { SemanticChunker } from './chunking/semantic-chunker';
 import { getVectorStore, getCollectionNames } from './vector-store';
 import { readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, writeFileBuffer } from './storage';
-import { getRagSettings } from './db/config';
+import { getRagSettings } from './db/compat/config';
 import {
   createDocument,
   getDocumentWithCategories,
@@ -24,8 +24,8 @@ import {
   setDocumentCategories,
   setDocumentGlobal,
   type DocumentWithCategories,
-} from './db/documents';
-import { getCategoryById } from './db/categories';
+} from './db/compat/documents';
+import { getCategoryById } from './db/compat/categories';
 import { extractText, getMimeTypeFromFilename, type ExtractedPage } from './document-extractor';
 import type { DocumentChunk, GlobalDocument } from '@/types';
 import {
@@ -46,7 +46,7 @@ import {
 } from './tools/tavily';
 
 // Create splitter with configurable settings
-function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveTextSplitter {
+async function createSplitter(chunkSize?: number, chunkOverlap?: number): Promise<RecursiveTextSplitter> {
   if (chunkSize !== undefined && chunkOverlap !== undefined) {
     return new RecursiveTextSplitter({
       chunkSize,
@@ -55,7 +55,7 @@ function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveTex
     });
   }
 
-  const settings = getRagSettings();
+  const settings = await getRagSettings();
   return new RecursiveTextSplitter({
     chunkSize: settings.chunkSize,
     chunkOverlap: settings.chunkOverlap,
@@ -95,7 +95,7 @@ export async function chunkText(
   userId?: string,
   pages?: PageText[]
 ): Promise<DocumentChunk[]> {
-  const settings = getRagSettings();
+  const settings = await getRagSettings();
   const useSemanticChunking = settings.chunkingStrategy === 'semantic';
 
   // Create appropriate chunker based on strategy
@@ -108,7 +108,7 @@ export async function chunkText(
         return chunker.splitText(pageText);
       }
     : async (pageText: string) => {
-        const splitter = createSplitter();
+        const splitter = await createSplitter();
         return splitter.splitText(pageText);
       };
 
@@ -211,8 +211,8 @@ export async function ingestDocument(
   const filePath = path.join(globalDocsDir, filename);
   await writeFileBuffer(filePath, buffer);
 
-  // Create document record in SQLite
-  const doc = createDocument({
+  // Create document record
+  const doc = await createDocument({
     filename,
     filepath: filename,
     fileSize: buffer.length,
@@ -234,7 +234,7 @@ export async function ingestDocument(
     // Get category slugs for collection names
     const categorySlugs: string[] = [];
     for (const catId of categoryIds) {
-      const category = getCategoryById(catId);
+      const category = await getCategoryById(catId);
       if (category) {
         categorySlugs.push(category.slug);
       }
@@ -275,17 +275,17 @@ export async function ingestDocument(
     }
 
     // Update document status
-    updateDocument(doc.id, {
+    await updateDocument(doc.id, {
       chunkCount: chunks.length,
       status: 'ready',
     });
 
     // Fetch updated document
-    const updatedDoc = getDocumentWithCategories(doc.id);
+    const updatedDoc = await getDocumentWithCategories(doc.id);
     return toGlobalDocument(updatedDoc!);
   } catch (error) {
     // Update document with error status
-    updateDocument(doc.id, {
+    await updateDocument(doc.id, {
       status: 'error',
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     });
@@ -336,8 +336,8 @@ export async function ingestTextContent(
   const filePath = path.join(globalDocsDir, filename);
   await writeFileBuffer(filePath, buffer);
 
-  // Create document record in SQLite
-  const doc = createDocument({
+  // Create document record
+  const doc = await createDocument({
     filename,
     filepath: filename,
     fileSize: buffer.length,
@@ -358,7 +358,7 @@ export async function ingestTextContent(
     // Get category slugs for collection names
     const categorySlugs: string[] = [];
     for (const catId of categoryIds) {
-      const category = getCategoryById(catId);
+      const category = await getCategoryById(catId);
       if (category) {
         categorySlugs.push(category.slug);
       }
@@ -399,17 +399,17 @@ export async function ingestTextContent(
     }
 
     // Update document status
-    updateDocument(doc.id, {
+    await updateDocument(doc.id, {
       chunkCount: chunks.length,
       status: 'ready',
     });
 
     // Fetch updated document
-    const updatedDoc = getDocumentWithCategories(doc.id);
+    const updatedDoc = await getDocumentWithCategories(doc.id);
     return toGlobalDocument(updatedDoc!);
   } catch (error) {
     // Update document with error status
-    updateDocument(doc.id, {
+    await updateDocument(doc.id, {
       status: 'error',
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     });
@@ -423,7 +423,7 @@ export async function ingestTextContent(
  */
 export async function deleteDocument(docId: string): Promise<{ filename: string; chunksRemoved: number } | null> {
   const numericId = parseInt(docId, 10);
-  const doc = getDocumentWithCategories(numericId);
+  const doc = await getDocumentWithCategories(numericId);
 
   if (!doc) {
     return null;
@@ -455,8 +455,8 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
   const filePath = path.join(globalDocsDir, doc.filepath);
   await deleteFile(filePath);
 
-  // Delete from SQLite
-  dbDeleteDocument(numericId);
+  // Delete from DB
+  await dbDeleteDocument(numericId);
 
   return {
     filename: doc.filename,
@@ -469,7 +469,7 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
  */
 export async function reindexDocument(docId: string): Promise<GlobalDocument | null> {
   const numericId = parseInt(docId, 10);
-  const doc = getDocumentWithCategories(numericId);
+  const doc = await getDocumentWithCategories(numericId);
 
   if (!doc) {
     return null;
@@ -501,7 +501,7 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
   }
 
   // Update status to processing
-  updateDocument(numericId, { status: 'processing' });
+  await updateDocument(numericId, { status: 'processing' });
 
   try {
     // Re-extract and chunk
@@ -536,16 +536,16 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
     }
 
     // Update document status
-    updateDocument(numericId, {
+    await updateDocument(numericId, {
       chunkCount: chunks.length,
       status: 'ready',
       errorMessage: null,
     });
 
-    const updatedDoc = getDocumentWithCategories(numericId);
+    const updatedDoc = await getDocumentWithCategories(numericId);
     return toGlobalDocument(updatedDoc!);
   } catch (error) {
-    updateDocument(numericId, {
+    await updateDocument(numericId, {
       status: 'error',
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     });
@@ -558,7 +558,7 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
  * List all global documents
  */
 export async function listGlobalDocuments(): Promise<GlobalDocument[]> {
-  const docs = getAllDocumentsWithCategories();
+  const docs = await getAllDocumentsWithCategories();
   return docs.map(toGlobalDocument);
 }
 
@@ -567,7 +567,7 @@ export async function listGlobalDocuments(): Promise<GlobalDocument[]> {
  */
 export async function getGlobalDocument(docId: string): Promise<GlobalDocument | null> {
   const numericId = parseInt(docId, 10);
-  const doc = getDocumentWithCategories(numericId);
+  const doc = await getDocumentWithCategories(numericId);
   return doc ? toGlobalDocument(doc) : null;
 }
 
@@ -582,7 +582,7 @@ export async function updateDocumentCategories(
   categoryIds: number[]
 ): Promise<void> {
   const numericId = parseInt(docId, 10);
-  const doc = getDocumentWithCategories(numericId);
+  const doc = await getDocumentWithCategories(numericId);
 
   if (!doc) {
     throw new Error('Document not found');
@@ -592,7 +592,7 @@ export async function updateDocumentCategories(
   const oldSlugs = doc.categories.map(c => c.slug);
   const newSlugs: string[] = [];
   for (const catId of categoryIds) {
-    const category = getCategoryById(catId);
+    const category = await getCategoryById(catId);
     if (category) {
       newSlugs.push(category.slug);
     }
@@ -633,8 +633,8 @@ export async function updateDocumentCategories(
     }
   }
 
-  // Update SQLite
-  setDocumentCategories(numericId, categoryIds);
+  // Update DB
+  await setDocumentCategories(numericId, categoryIds);
 }
 
 /**
@@ -646,7 +646,7 @@ export async function toggleDocumentGlobal(
   isGlobal: boolean
 ): Promise<void> {
   const numericId = parseInt(docId, 10);
-  const doc = getDocumentWithCategories(numericId);
+  const doc = await getDocumentWithCategories(numericId);
 
   if (!doc) {
     throw new Error('Document not found');
@@ -700,8 +700,8 @@ export async function toggleDocumentGlobal(
     }
   }
 
-  // Update SQLite
-  setDocumentGlobal(numericId, isGlobal);
+  // Update DB
+  await setDocumentGlobal(numericId, isGlobal);
 }
 
 // ============ URL Ingestion Functions ============
@@ -731,10 +731,10 @@ export interface UrlIngestionResult {
 /**
  * Check what URL ingestion methods are available
  */
-export function getUrlIngestionStatus(): UrlIngestionStatus {
-  const webEnabled = isTavilyConfigured();
-  const crawlEnabled = isTavilyConfigured(); // Crawl uses same Tavily API key
-  const youtubeSupadataEnabled = isYouTubeApiConfigured(); // Now checks Supadata config
+export async function getUrlIngestionStatus(): Promise<UrlIngestionStatus> {
+  const webEnabled = await isTavilyConfigured();
+  const crawlEnabled = await isTavilyConfigured(); // Crawl uses same Tavily API key
+  const youtubeSupadataEnabled = await isYouTubeApiConfigured(); // Now checks Supadata config
 
   const messages: string[] = [];
   if (!webEnabled) {

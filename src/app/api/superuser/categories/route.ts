@@ -16,11 +16,12 @@ import {
   isCategoryCreatedBy,
   deleteCategoryWithRelatedData,
   getDocumentIdsForCategory,
-} from '@/lib/db/categories';
-import { assignCategoryToSuperUser, getSuperUserWithAssignments } from '@/lib/db/users';
-import { getSuperuserSettings } from '@/lib/db/config';
+  assignCategoryToSuperUser,
+  getSuperUserWithAssignments,
+  getSuperuserSettings,
+} from '@/lib/db/compat';
 import { deleteDocument } from '@/lib/ingest';
-import { getDocumentById, getDocumentCategories } from '@/lib/db/documents';
+import { getDocumentById, getDocumentCategories } from '@/lib/db/compat';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { invalidateCategoryCache } from '@/lib/redis';
 
@@ -42,7 +43,7 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     const categories = (superUserData?.assignedCategories || []).map(c => ({
       id: c.categoryId,
       name: c.categoryName,
@@ -86,8 +87,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check category limit
-    const settings = getSuperuserSettings();
-    const currentCount = getCreatedCategoriesCount(user.email);
+    const settings = await getSuperuserSettings();
+    const currentCount = await getCreatedCategoriesCount(user.email);
 
     if (currentCount >= settings.maxCategoriesPerSuperuser) {
       return NextResponse.json(
@@ -101,14 +102,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the category
-    const category = createCategory({
+    const category = await createCategory({
       name: name.trim(),
       description: description?.trim() || undefined,
       createdBy: user.email,
     });
 
     // Auto-assign the category to the superuser
-    assignCategoryToSuperUser(userId, category.id, user.email);
+    await assignCategoryToSuperUser(userId, category.id, user.email);
 
     return NextResponse.json({
       success: true,
@@ -155,13 +156,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify the category exists
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     // Verify the superuser created this category
-    if (!isCategoryCreatedBy(categoryId, user.email)) {
+    if (!(await isCategoryCreatedBy(categoryId, user.email))) {
       return NextResponse.json(
         { error: 'You can only delete categories you created' },
         { status: 403 }
@@ -169,11 +170,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 1. Get documents and check their other categories BEFORE deletion
-    const categoryDocIds = getDocumentIdsForCategory(categoryId);
+    const categoryDocIds = await getDocumentIdsForCategory(categoryId);
     const docsToDelete: number[] = [];
 
     for (const docId of categoryDocIds) {
-      const docCategoryIds = getDocumentCategories(docId);
+      const docCategoryIds = await getDocumentCategories(docId);
       const otherCategories = docCategoryIds.filter(catId => catId !== categoryId);
 
       if (otherCategories.length === 0) {
@@ -183,7 +184,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 2. Delete category and all associations
-    const { deleted } = deleteCategoryWithRelatedData(categoryId);
+    const { deleted } = await deleteCategoryWithRelatedData(categoryId);
 
     if (!deleted) {
       return NextResponse.json({ error: 'Failed to delete category' }, { status: 500 });
@@ -193,7 +194,7 @@ export async function DELETE(request: NextRequest) {
     const deleteErrors: string[] = [];
     for (const docId of docsToDelete) {
       try {
-        const doc = getDocumentById(docId);
+        const doc = await getDocumentById(docId);
         if (doc) {
           await deleteDocument(docId.toString());
         }

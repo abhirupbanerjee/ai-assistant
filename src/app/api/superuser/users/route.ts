@@ -17,7 +17,7 @@ import {
   addSubscription,
   removeSubscription,
   getAllUsers,
-} from '@/lib/db/users';
+} from '@/lib/db/compat';
 
 // GET - Get users the super user can manage (subscribed to their assigned categories)
 export async function GET() {
@@ -38,7 +38,7 @@ export async function GET() {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       return NextResponse.json({
         assignedCategories: [],
@@ -47,7 +47,7 @@ export async function GET() {
     }
 
     // Get all users and filter to those subscribed to super user's categories
-    const allUsers = getAllUsers();
+    const allUsers = await getAllUsers();
     const regularUsers = allUsers.filter(u => u.role === 'user');
 
     // Build a map of users with their subscriptions to super user's categories
@@ -59,7 +59,7 @@ export async function GET() {
     }>();
 
     for (const category of superUserData.assignedCategories) {
-      const subscribedUsers = getUsersSubscribedToCategory(category.categoryId);
+      const subscribedUsers = await getUsersSubscribedToCategory(category.categoryId);
 
       for (const sub of subscribedUsers) {
         const regularUser = regularUsers.find(u => u.id === sub.userId);
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify super user has access to this category
-    const superUserData = getSuperUserWithAssignments(superUserId);
+    const superUserData = await getSuperUserWithAssignments(superUserId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Super user data not found' }, { status: 404 });
     }
@@ -145,14 +145,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create target user
-    let targetUser = dbGetUserByEmail(userEmail);
+    let targetUser = await dbGetUserByEmail(userEmail);
     let userCreated = false;
 
     if (!targetUser) {
       // Create the user with 'user' role
       try {
         await addAllowedUser(userEmail, 'user', user.email, userName || undefined);
-        targetUser = dbGetUserByEmail(userEmail);
+        targetUser = await dbGetUserByEmail(userEmail);
         userCreated = true;
 
         if (!targetUser) {
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add subscription
-    const added = addSubscription(targetUser.id, categoryId, user.email);
+    const added = await addSubscription(targetUser.id, categoryId, user.email);
 
     if (!added) {
       return NextResponse.json(
@@ -231,7 +231,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify super user has access to this category
-    const superUserData = getSuperUserWithAssignments(superUserId);
+    const superUserData = await getSuperUserWithAssignments(superUserId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Super user data not found' }, { status: 404 });
     }
@@ -245,13 +245,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Get target user
-    const targetUser = dbGetUserByEmail(userEmail);
+    const targetUser = await dbGetUserByEmail(userEmail);
     if (!targetUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Remove subscription
-    const removed = removeSubscription(targetUser.id, categoryId);
+    const removed = await removeSubscription(targetUser.id, categoryId);
 
     if (!removed) {
       return NextResponse.json(

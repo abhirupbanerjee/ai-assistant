@@ -11,8 +11,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { getUserByEmail } from '@/lib/db/users';
-import { getAllCategories, getCategoriesForUser, getCategoriesForSuperUser } from '@/lib/db/categories';
+import { getUserByEmail } from '@/lib/db/compat';
+import { getAllCategories, getCategoriesForUser, getCategoriesForSuperUser } from '@/lib/db/compat';
 
 export async function GET() {
   try {
@@ -25,7 +25,7 @@ export async function GET() {
       );
     }
 
-    const user = getUserByEmail(session.user.email);
+    const user = await getUserByEmail(session.user.email);
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -38,18 +38,18 @@ export async function GET() {
     switch (user.role) {
       case 'admin':
         // Admins can access all categories
-        categories = getAllCategories();
+        categories = await getAllCategories();
         break;
 
       case 'superuser':
         // Super users can access their assigned categories
-        categories = getCategoriesForSuperUser(user.id);
+        categories = await getCategoriesForSuperUser(user.id);
         break;
 
       case 'user':
       default:
         // Regular users can access their subscribed categories
-        categories = getCategoriesForUser(user.id);
+        categories = await getCategoriesForUser(user.id);
         break;
     }
 

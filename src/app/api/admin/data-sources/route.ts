@@ -11,7 +11,7 @@ import {
   getAllDataAPIs,
   getAllDataCSVs,
   createDataAPI,
-} from '@/lib/db/data-sources';
+} from '@/lib/db/compat/data-sources';
 import { maskSensitiveValue } from '@/lib/encryption';
 import type { DataAPIConfig } from '@/types/data-sources';
 
@@ -63,8 +63,8 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get('categoryId');
 
     // Get data sources
-    const apis = type === 'csv' ? [] : getAllDataAPIs();
-    const csvs = type === 'api' ? [] : getAllDataCSVs();
+    const apis = type === 'csv' ? [] : await getAllDataAPIs();
+    const csvs = type === 'api' ? [] : await getAllDataCSVs();
 
     // Filter by category if specified
     let filteredAPIs = apis;
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Create the data source
-    const created = createDataAPI(apiConfig, user.email);
+    const created = await createDataAPI(apiConfig, user.email);
 
     // Return masked config
     return NextResponse.json({

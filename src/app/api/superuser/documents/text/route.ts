@@ -7,9 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getCategoryById } from '@/lib/db/categories';
-import { getDocumentsByCategory } from '@/lib/db/documents';
+import { getSuperUserWithAssignments, getCategoryById, getDocumentsByCategory } from '@/lib/db/compat';
 import { ingestTextContent } from '@/lib/ingest';
 
 const MAX_CONTENT_SIZE = 10 * 1024 * 1024; // 10MB
@@ -34,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData || superUserData.assignedCategories.length === 0) {
       return NextResponse.json(
         { error: 'No categories assigned to you' },
@@ -105,14 +103,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify category exists
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     // Check for duplicate filename in this category
     const filename = name.endsWith('.txt') ? name : `${name}.txt`;
-    const categoryDocs = getDocumentsByCategory(categoryId);
+    const categoryDocs = await getDocumentsByCategory(categoryId);
     if (categoryDocs.some(d => d.filename.toLowerCase() === filename.toLowerCase())) {
       return NextResponse.json(
         { error: 'Document with this name already exists in this category' },

@@ -1,14 +1,11 @@
 /**
  * Compliance - Async Compatibility Layer
  *
- * Provides async wrappers that work with both SQLite and PostgreSQL.
- * - SQLite: Delegates to existing sync functions in compliance.ts
- * - PostgreSQL: Uses Kysely query builder
+ * Uses Kysely query builder for PostgreSQL.
  */
 
-import { getDb, getDatabaseProvider } from '../kysely';
+import { getDb } from '../kysely';
 import { sql } from 'kysely';
-import * as sync from '../compliance';
 import type {
   ComplianceResultRecord,
   ComplianceDecision,
@@ -18,6 +15,7 @@ import type {
 } from '../../../types/compliance';
 
 export type { ComplianceStats } from '../compliance';
+import type { ComplianceStats } from '../compliance';
 
 // ============ Save Operations ============
 
@@ -31,9 +29,6 @@ export async function saveComplianceResult(
   decision: ComplianceDecision,
   hitlEvent?: HitlClarificationEvent
 ): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.saveComplianceResult(messageId, conversationId, skillIds, decision, hitlEvent);
-  }
   const db = await getDb();
   const result = await db
     .insertInto('compliance_results')
@@ -63,9 +58,6 @@ export async function updateHitlResponse(
   userResponse: HitlUserResponse,
   action: HitlAction
 ): Promise<void> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.updateHitlResponse(messageId, userResponse, action);
-  }
   const db = await getDb();
   await db
     .updateTable('compliance_results')
@@ -83,9 +75,6 @@ export async function updateHitlResponse(
  * Get compliance result by message ID
  */
 export async function getComplianceResult(messageId: string): Promise<ComplianceResultRecord | null> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getComplianceResult(messageId);
-  }
   const db = await getDb();
   const row = await db
     .selectFrom('compliance_results')
@@ -101,9 +90,6 @@ export async function getComplianceResult(messageId: string): Promise<Compliance
 export async function getComplianceResultsForConversation(
   conversationId: string
 ): Promise<ComplianceResultRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getComplianceResultsForConversation(conversationId);
-  }
   const db = await getDb();
   const rows = await db
     .selectFrom('compliance_results')
@@ -125,9 +111,6 @@ export async function getRecentComplianceResults(
     limit?: number;
   } = {}
 ): Promise<ComplianceResultRecord[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getRecentComplianceResults(filters);
-  }
   const db = await getDb();
   const limit = filters.limit || 100;
 
@@ -158,10 +141,7 @@ export async function getRecentComplianceResults(
  */
 export async function getComplianceStats(
   filters: { skillId?: number; from?: Date; to?: Date } = {}
-): Promise<sync.ComplianceStats> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getComplianceStats(filters);
-  }
+): Promise<ComplianceStats> {
   const db = await getDb();
 
   let countsQuery = db
@@ -241,9 +221,6 @@ export async function getComplianceStats(
  * Delete old compliance results (for data retention)
  */
 export async function deleteOldComplianceResults(olderThanDays: number): Promise<number> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.deleteOldComplianceResults(olderThanDays);
-  }
   const db = await getDb();
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);

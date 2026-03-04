@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole } from '@/lib/users';
-import { getWorkspaceById } from '@/lib/db/workspaces';
+import { getWorkspaceById } from '@/lib/db/compat';
 import {
   generateEmbedScriptWithOptions,
   generateIframeEmbed,
@@ -35,14 +35,14 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },

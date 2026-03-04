@@ -11,12 +11,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
 import {
   getAllDataAPIs,
   getAllDataCSVs,
   createDataAPI,
-} from '@/lib/db/data-sources';
+} from '@/lib/db/compat/data-sources';
 import { maskSensitiveValue } from '@/lib/encryption';
 import type { DataAPIConfig } from '@/types/data-sources';
 
@@ -65,7 +65,7 @@ export async function GET() {
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -73,8 +73,8 @@ export async function GET() {
     const assignedCategoryIds = superUserData.assignedCategories.map(c => c.categoryId);
 
     // Get all data sources
-    const allApis = getAllDataAPIs();
-    const allCsvs = getAllDataCSVs();
+    const allApis = await getAllDataAPIs();
+    const allCsvs = await getAllDataCSVs();
 
     // Filter to only show data sources that have at least one assigned category
     const apis = allApis
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Create the data source
-    const created = createDataAPI(apiConfig, user.email);
+    const created = await createDataAPI(apiConfig, user.email);
 
     // Return masked config
     return NextResponse.json({

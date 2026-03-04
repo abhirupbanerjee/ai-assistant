@@ -12,9 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getCategoryById } from '@/lib/db/categories';
-import { getUserByEmail, superUserHasCategory } from '@/lib/db/users';
-import { getSystemPrompt } from '@/lib/db/config';
+import { getCategoryById, getUserByEmail, superUserHasCategory, getSystemPrompt } from '@/lib/db/compat';
 import { optimizeCategoryPrompt, OptimizationResult } from '@/lib/prompt-optimizer';
 
 interface RouteParams {
@@ -27,7 +25,7 @@ interface RouteParams {
 async function checkCategoryAccess(categoryId: number): Promise<void> {
   const authUser = await requireAuth();
 
-  const dbUser = getUserByEmail(authUser.email);
+  const dbUser = await getUserByEmail(authUser.email);
   if (!dbUser) {
     throw new Error('User not found');
   }
@@ -42,7 +40,7 @@ async function checkCategoryAccess(categoryId: number): Promise<void> {
 
   // Super users can only access their assigned categories
   if (isSuperUser) {
-    const hasAccess = superUserHasCategory(dbUser.id, categoryId);
+    const hasAccess = await superUserHasCategory(dbUser.id, categoryId);
     if (!hasAccess) {
       throw new Error('No access to this category');
     }
@@ -69,7 +67,7 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
@@ -87,7 +85,7 @@ export async function POST(request: Request, { params }: RouteParams): Promise<N
     }
 
     // Get global prompt for context
-    const globalPrompt = getSystemPrompt();
+    const globalPrompt = await getSystemPrompt();
 
     // Run optimization
     const result = await optimizeCategoryPrompt(globalPrompt, categoryAddendum);

@@ -13,7 +13,7 @@ import {
   addRateLimitHeaders,
   agentBotErrors,
 } from '@/lib/agent-bot/auth';
-import { getJobWithOutputs } from '@/lib/db/agent-bot-jobs';
+import { getJobWithOutputs } from '@/lib/db/compat';
 import type {
   JobStatusResponse,
   InvokeOutputItem,
@@ -31,7 +31,7 @@ export async function GET(
   const { slug, jobId } = await params;
 
   // 1. Authenticate request
-  const authResult = authenticateRequest(request, slug);
+  const authResult = await authenticateRequest(request, slug);
   if (isAuthError(authResult)) {
     return authResult;
   }
@@ -40,7 +40,7 @@ export async function GET(
 
   try {
     // 2. Get job with outputs
-    const job = getJobWithOutputs(jobId);
+    const job = await getJobWithOutputs(jobId);
 
     if (!job) {
       const response = agentBotErrors.jobNotFound();

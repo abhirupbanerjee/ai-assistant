@@ -11,7 +11,7 @@ import {
   getAllToolConfigs,
   ensureToolConfigsExist,
   TOOL_DEFAULTS,
-} from '@/lib/db/tool-config';
+} from '@/lib/db/compat/tool-config';
 import { getAllTools, initializeTools, HYBRID_TOOLS } from '@/lib/tools';
 import { TERMINAL_TOOLS } from '@/lib/openai';
 
@@ -40,13 +40,13 @@ export async function GET() {
     }
 
     // Initialize tools system if needed
-    initializeTools();
+    await initializeTools();
 
     // Get all tool definitions from registry
     const toolDefinitions = getAllTools();
 
     // Get all tool configurations from database
-    const toolConfigs = getAllToolConfigs();
+    const toolConfigs = await getAllToolConfigs();
     const configMap = new Map(toolConfigs.map(tc => [tc.toolName, tc]));
 
     // Combine tool definitions with their configurations
@@ -108,7 +108,7 @@ export async function POST() {
     }
 
     // Ensure all tools have configurations
-    ensureToolConfigsExist(user.email);
+    await ensureToolConfigsExist(user.email);
 
     return NextResponse.json({
       success: true,

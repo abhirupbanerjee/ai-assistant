@@ -11,25 +11,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import * as path from 'path';
-import { queryOne, execute } from '@/lib/db';
+import {
+  getWorkspaceOutputById,
+  incrementWorkspaceOutputDownloadCount,
+} from '@/lib/db/compat';
 
 interface RouteParams {
   params: Promise<{ docId: string }>;
-}
-
-interface WorkspaceOutput {
-  id: number;
-  workspace_id: string;
-  session_id: string;
-  thread_id: string | null;
-  filename: string;
-  filepath: string;
-  file_type: string;
-  file_size: number;
-  generation_config: string | null;
-  expires_at: string | null;
-  download_count: number;
-  created_at: string;
 }
 
 /**
@@ -48,10 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get document metadata from workspace_outputs table
-    const doc = queryOne<WorkspaceOutput>(
-      'SELECT * FROM workspace_outputs WHERE id = ?',
-      [docIdNum]
-    );
+    const doc = await getWorkspaceOutputById(docIdNum);
 
     if (!doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
@@ -99,10 +84,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const fileBuffer = fs.readFileSync(filepath);
 
     // Increment download count
-    execute(
-      'UPDATE workspace_outputs SET download_count = download_count + 1 WHERE id = ?',
-      [docIdNum]
-    );
+    await incrementWorkspaceOutputDownloadCount(docIdNum);
 
     // Determine content type
     const contentType = getContentType(doc.file_type, filename);

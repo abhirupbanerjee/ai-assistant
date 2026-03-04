@@ -2,11 +2,12 @@
  * Reindex Job Manager
  *
  * Handles background reindexing of documents when embedding model changes.
- * Stores job state in SQLite for persistence across restarts.
+ * Stores job state in PostgreSQL via Kysely for persistence across restarts.
  */
 
-import { execute, queryOne, queryAll } from './db/index';
-import { getEmbeddingSettings, setEmbeddingSettings } from './db/config';
+import { getDb } from './db/kysely';
+import { sql } from 'kysely';
+import { getEmbeddingSettings, setEmbeddingSettings } from './db/compat/config';
 import { listGlobalDocuments, reindexDocument } from './ingest';
 import { getVectorStore } from './vector-store';
 import { clearAllCache } from './redis';
@@ -58,26 +59,11 @@ let jobAborted = false;
 
 /**
  * Initialize the reindex_jobs table
+ * No-op: table creation is handled by Kysely migrations in kysely.ts
  */
-export function initReindexJobsTable(): void {
-  execute(`
-    CREATE TABLE IF NOT EXISTS reindex_jobs (
-      id TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'pending',
-      target_model TEXT NOT NULL,
-      target_dimensions INTEGER NOT NULL,
-      previous_model TEXT NOT NULL,
-      previous_dimensions INTEGER NOT NULL,
-      total_documents INTEGER DEFAULT 0,
-      processed_documents INTEGER DEFAULT 0,
-      failed_documents INTEGER DEFAULT 0,
-      errors TEXT DEFAULT '[]',
-      started_at DATETIME,
-      completed_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      created_by TEXT NOT NULL
-    )
-  `);
+export async function initReindexJobsTable(): Promise<void> {
+  // Table is created by runPostgresMigrations() in kysely.ts
+  return;
 }
 
 /**
@@ -112,133 +98,146 @@ function rowToJob(row: ReindexJobRow): ReindexJob {
 /**
  * Get a reindex job by ID
  */
-export function getReindexJob(jobId: string): ReindexJob | null {
-  const row = queryOne<ReindexJobRow>(
-    'SELECT * FROM reindex_jobs WHERE id = ?',
-    [jobId]
-  );
-  return row ? rowToJob(row) : null;
+export async function getReindexJob(jobId: string): Promise<ReindexJob | null> {
+  const db = await getDb();
+  const row = await db
+    .selectFrom('reindex_jobs')
+    .selectAll()
+    .where('id', '=', jobId)
+    .executeTakeFirst();
+
+  return row ? rowToJob(row as unknown as ReindexJobRow) : null;
 }
 
 /**
  * Get the currently running reindex job (if any)
  */
-export function getRunningReindexJob(): ReindexJob | null {
-  const row = queryOne<ReindexJobRow>(
-    "SELECT * FROM reindex_jobs WHERE status = 'running' ORDER BY created_at DESC LIMIT 1"
-  );
-  return row ? rowToJob(row) : null;
+export async function getRunningReindexJob(): Promise<ReindexJob | null> {
+  const db = await getDb();
+  const row = await db
+    .selectFrom('reindex_jobs')
+    .selectAll()
+    .where('status', '=', 'running')
+    .orderBy('created_at', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+
+  return row ? rowToJob(row as unknown as ReindexJobRow) : null;
 }
 
 /**
  * Get recent reindex jobs
  */
-export function getRecentReindexJobs(limit: number = 10): ReindexJob[] {
-  const rows = queryAll<ReindexJobRow>(
-    'SELECT * FROM reindex_jobs ORDER BY created_at DESC LIMIT ?',
-    [limit]
-  );
-  return rows.map(rowToJob);
+export async function getRecentReindexJobs(limit: number = 10): Promise<ReindexJob[]> {
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('reindex_jobs')
+    .selectAll()
+    .orderBy('created_at', 'desc')
+    .limit(limit)
+    .execute();
+
+  return rows.map((row) => rowToJob(row as unknown as ReindexJobRow));
 }
 
 /**
  * Check if a reindex job is currently running
  */
-export function isReindexRunning(): boolean {
-  const job = getRunningReindexJob();
+export async function isReindexRunning(): Promise<boolean> {
+  const job = await getRunningReindexJob();
   return job !== null;
 }
 
 /**
  * Create a new reindex job
  */
-export function createReindexJob(
+export async function createReindexJob(
   targetModel: string,
   createdBy: string
-): ReindexJob {
+): Promise<ReindexJob> {
   // Check if a job is already running
-  if (isReindexRunning()) {
+  if (await isReindexRunning()) {
     throw new Error('A reindex job is already running');
   }
 
   // Get current settings
-  const currentSettings = getEmbeddingSettings();
+  const currentSettings = await getEmbeddingSettings();
   const targetDimensions = getEmbeddingModelDimensions(targetModel);
-
-  // Initialize table if needed
-  initReindexJobsTable();
 
   const jobId = generateJobId();
 
-  execute(`
-    INSERT INTO reindex_jobs (
-      id, status, target_model, target_dimensions,
-      previous_model, previous_dimensions, created_by
-    ) VALUES (?, 'pending', ?, ?, ?, ?, ?)
-  `, [
-    jobId,
-    targetModel,
-    targetDimensions,
-    currentSettings.model,
-    currentSettings.dimensions,
-    createdBy,
-  ]);
+  const db = await getDb();
+  await db
+    .insertInto('reindex_jobs')
+    .values({
+      id: jobId,
+      target_model: targetModel,
+      target_dimensions: targetDimensions,
+      previous_model: currentSettings.model,
+      previous_dimensions: currentSettings.dimensions,
+      created_by: createdBy,
+    })
+    .execute();
 
-  return getReindexJob(jobId)!;
+  return (await getReindexJob(jobId))!;
 }
 
 /**
  * Update job progress
  */
-function updateJobProgress(
+async function updateJobProgress(
   jobId: string,
   processedDocuments: number,
   failedDocuments: number,
   errors: string[]
-): void {
-  execute(`
-    UPDATE reindex_jobs
-    SET processed_documents = ?,
-        failed_documents = ?,
-        errors = ?
-    WHERE id = ?
-  `, [processedDocuments, failedDocuments, JSON.stringify(errors), jobId]);
+): Promise<void> {
+  const db = await getDb();
+  await db
+    .updateTable('reindex_jobs')
+    .set({
+      processed_documents: processedDocuments,
+      failed_documents: failedDocuments,
+      errors: JSON.stringify(errors),
+    })
+    .where('id', '=', jobId)
+    .execute();
 }
 
 /**
  * Update job status
  */
-function updateJobStatus(
+async function updateJobStatus(
   jobId: string,
   status: ReindexJobStatus,
   completedAt?: string
-): void {
+): Promise<void> {
+  const db = await getDb();
   if (completedAt) {
-    execute(`
-      UPDATE reindex_jobs
-      SET status = ?, completed_at = ?
-      WHERE id = ?
-    `, [status, completedAt, jobId]);
+    await db
+      .updateTable('reindex_jobs')
+      .set({ status, completed_at: completedAt })
+      .where('id', '=', jobId)
+      .execute();
   } else {
-    execute(`
-      UPDATE reindex_jobs
-      SET status = ?
-      WHERE id = ?
-    `, [status, jobId]);
+    await db
+      .updateTable('reindex_jobs')
+      .set({ status })
+      .where('id', '=', jobId)
+      .execute();
   }
 }
 
 /**
  * Cancel a running reindex job
  */
-export function cancelReindexJob(jobId: string): boolean {
-  const job = getReindexJob(jobId);
+export async function cancelReindexJob(jobId: string): Promise<boolean> {
+  const job = await getReindexJob(jobId);
   if (!job || job.status !== 'running') {
     return false;
   }
 
   jobAborted = true;
-  updateJobStatus(jobId, 'cancelled', new Date().toISOString());
+  await updateJobStatus(jobId, 'cancelled', new Date().toISOString());
   runningJobId = null;
 
   return true;
@@ -249,7 +248,7 @@ export function cancelReindexJob(jobId: string): boolean {
  * This is called asynchronously after the API returns
  */
 export async function runReindexJob(jobId: string): Promise<void> {
-  const job = getReindexJob(jobId);
+  const job = await getReindexJob(jobId);
   if (!job) {
     throw new Error(`Job ${jobId} not found`);
   }
@@ -262,12 +261,13 @@ export async function runReindexJob(jobId: string): Promise<void> {
   runningJobId = jobId;
   jobAborted = false;
 
-  execute(`
+  const db = await getDb();
+  await sql`
     UPDATE reindex_jobs
     SET status = 'running',
         started_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `, [jobId]);
+    WHERE id = ${jobId}
+  `.execute(db);
 
   try {
     console.log(`[Reindex] Starting job ${jobId}: ${job.previousModel} -> ${job.targetModel}`);
@@ -334,7 +334,7 @@ export async function runReindexJob(jobId: string): Promise<void> {
     }
 
     // Step 3: Update embedding settings (safe because collections are empty)
-    setEmbeddingSettings({
+    await setEmbeddingSettings({
       model: job.targetModel,
       dimensions: job.targetDimensions,
     }, job.createdBy);
@@ -348,17 +348,17 @@ export async function runReindexJob(jobId: string): Promise<void> {
     const documents = await listGlobalDocuments();
     const totalDocuments = documents.length;
 
-    execute(`
-      UPDATE reindex_jobs
-      SET total_documents = ?
-      WHERE id = ?
-    `, [totalDocuments, jobId]);
+    await db
+      .updateTable('reindex_jobs')
+      .set({ total_documents: totalDocuments })
+      .where('id', '=', jobId)
+      .execute();
 
     console.log(`[Reindex] Found ${totalDocuments} documents to reindex`);
 
     if (totalDocuments === 0) {
       // No documents to reindex, mark as complete
-      updateJobStatus(jobId, 'completed', new Date().toISOString());
+      await updateJobStatus(jobId, 'completed', new Date().toISOString());
       runningJobId = null;
       console.log('[Reindex] No documents to reindex, job completed');
       return;
@@ -388,27 +388,27 @@ export async function runReindexJob(jobId: string): Promise<void> {
       }
 
       // Update progress
-      updateJobProgress(jobId, processedDocuments, failedDocuments, errors);
+      await updateJobProgress(jobId, processedDocuments, failedDocuments, errors);
     }
 
     // Step 6: Mark job as completed or failed
     if (jobAborted) {
-      updateJobStatus(jobId, 'cancelled', new Date().toISOString());
+      await updateJobStatus(jobId, 'cancelled', new Date().toISOString());
       console.log('[Reindex] Job cancelled');
     } else if (failedDocuments > 0 && failedDocuments === totalDocuments) {
-      updateJobStatus(jobId, 'failed', new Date().toISOString());
+      await updateJobStatus(jobId, 'failed', new Date().toISOString());
       console.log('[Reindex] Job failed - all documents failed');
     } else {
-      updateJobStatus(jobId, 'completed', new Date().toISOString());
+      await updateJobStatus(jobId, 'completed', new Date().toISOString());
       console.log(`[Reindex] Job completed: ${processedDocuments} succeeded, ${failedDocuments} failed`);
     }
   } catch (error) {
     console.error('[Reindex] Job failed with error:', error);
-    updateJobStatus(jobId, 'failed', new Date().toISOString());
+    await updateJobStatus(jobId, 'failed', new Date().toISOString());
 
     // Store the error
     const errors = [error instanceof Error ? error.message : 'Unknown error'];
-    updateJobProgress(jobId, 0, 0, errors);
+    await updateJobProgress(jobId, 0, 0, errors);
   } finally {
     runningJobId = null;
     jobAborted = false;

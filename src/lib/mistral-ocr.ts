@@ -1,6 +1,6 @@
 import { Mistral } from '@mistralai/mistralai';
 import { getApiKey } from '@/lib/provider-helpers';
-import { getOcrSettings } from '@/lib/db/config';
+import { getOcrSettings } from '@/lib/db/compat/config';
 
 let mistralClient: Mistral | null = null;
 
@@ -15,11 +15,11 @@ export function resetMistralOcrClient(): void {
  * Get or create Mistral client for OCR
  * Priority: OCR settings → LLM provider config → env var
  */
-function getMistralClient(): Mistral {
+async function getMistralClient(): Promise<Mistral> {
   if (!mistralClient) {
     // Priority: OCR settings → LLM provider → env var
-    const ocrSettings = getOcrSettings();
-    const apiKey = ocrSettings.mistralApiKey || getApiKey('mistral');
+    const ocrSettings = await getOcrSettings();
+    const apiKey = ocrSettings.mistralApiKey || await getApiKey('mistral');
 
     if (!apiKey) {
       throw new Error('Mistral API key not configured. Set in Settings > Document Processing or Configure LLM.');
@@ -52,7 +52,7 @@ export async function extractTextWithMistral(
   buffer: Buffer,
   mimeType: string = 'application/pdf'
 ): Promise<{ text: string; numPages: number; pages: MistralPageText[] }> {
-  const client = getMistralClient();
+  const client = await getMistralClient();
 
   // Convert buffer to base64 data URL
   const base64Data = buffer.toString('base64');

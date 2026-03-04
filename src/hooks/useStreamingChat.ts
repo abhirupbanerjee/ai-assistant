@@ -167,6 +167,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const { onComplete, onError, onPhaseChange, onModelSwitch } = options;
 
   const [state, setState] = useState<StreamingState>(initialState);
+  // Always-current state ref — used to read values outside setState updaters
+  // (calling onComplete inside a setState updater fires twice in React strict mode)
+  const stateRef = useRef<StreamingState>(initialState);
+  stateRef.current = state;
 
   // Refs for chunk batching and race condition prevention
   const contentBufferRef = useRef('');
@@ -496,34 +500,36 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }
         break;
 
-      case 'done':
+      case 'done': {
         // Final flush of any remaining content
         if (rafRef.current) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = undefined;
         }
-        setState(prev => {
-          const finalContent = contentBufferRef.current || prev.currentContent;
-          const metadata = (event.model || event.totalMs || event.completionTokens) ? {
-            model: event.model,
-            totalMs: event.totalMs,
-            llmMs: event.llmMs,
-            ragMs: event.ragMs,
-            completionTokens: event.completionTokens,
-          } : undefined;
-          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images, prev.diagrams, prev.podcasts, metadata);
-          return {
-            ...prev,
-            isStreaming: false,
+        // Read current state values from ref BEFORE setState to avoid calling
+        // onComplete inside a setState updater (would fire twice in React strict mode)
+        const doneState = stateRef.current;
+        const finalContent = contentBufferRef.current || doneState.currentContent;
+        const metadata = (event.model || event.totalMs || event.completionTokens) ? {
+          model: event.model,
+          totalMs: event.totalMs,
+          llmMs: event.llmMs,
+          ragMs: event.ragMs,
+          completionTokens: event.completionTokens,
+        } : undefined;
+        setState(prev => ({
+          ...prev,
+          isStreaming: false,
+          phase: 'complete',
+          currentContent: finalContent,
+          processingDetails: {
+            ...prev.processingDetails,
             phase: 'complete',
-            currentContent: finalContent,
-            processingDetails: {
-              ...prev.processingDetails,
-              phase: 'complete',
-            },
-          };
-        });
+          },
+        }));
+        onComplete?.(event.messageId, finalContent, doneState.sources, doneState.visualizations, doneState.documents, doneState.images, doneState.diagrams, doneState.podcasts, metadata);
         break;
+      }
 
       case 'error':
         setState(prev => ({

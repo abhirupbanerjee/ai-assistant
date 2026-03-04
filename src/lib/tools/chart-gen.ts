@@ -5,7 +5,7 @@
  * Uses the same visualization infrastructure as data_source tool.
  */
 
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type { ChartType } from '../../types/data-sources';
 import type {
@@ -68,8 +68,8 @@ const chartGenConfigSchema = {
 /**
  * Get tool configuration with defaults
  */
-function getChartGenConfig(): ChartGenConfig {
-  const config = getToolConfig('chart_gen');
+async function getChartGenConfig(): Promise<ChartGenConfig> {
+  const config = await getToolConfig('chart_gen');
   if (config?.config) {
     const c = config.config as Record<string, unknown>;
     return {
@@ -84,10 +84,9 @@ function getChartGenConfig(): ChartGenConfig {
 /**
  * Validate tool arguments
  */
-function validateArgs(args: ChartGenToolArgs): ChartGenValidation {
+function validateArgs(args: ChartGenToolArgs, config: ChartGenConfig): ChartGenValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const config = getChartGenConfig();
 
   // Required fields
   if (!args.title || typeof args.title !== 'string') {
@@ -361,10 +360,10 @@ CRITICAL RULES:
 
   execute: async (args: Record<string, unknown>): Promise<string> => {
     const typedArgs = args as unknown as ChartGenToolArgs;
-    const config = getChartGenConfig();
+    const config = await getChartGenConfig();
 
     // Validate arguments
-    const validation = validateArgs(typedArgs);
+    const validation = validateArgs(typedArgs, config);
     if (!validation.valid) {
       return formatError(
         'VALIDATION_ERROR',

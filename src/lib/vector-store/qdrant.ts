@@ -8,7 +8,7 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import * as crypto from 'crypto';
 import type { VectorStoreClient, VectorQueryResult, CollectionNameHelpers } from './types';
 import type { ChunkMetadata } from '@/types';
-import { getEmbeddingSettings } from '../db/config';
+import { getEmbeddingSettings } from '../db/compat/config';
 
 // Collection naming conventions (matching ChromaDB pattern)
 const CATEGORY_PREFIX = 'category_';
@@ -22,9 +22,9 @@ const DEFAULT_VECTOR_SIZE = 3072;
  * Get the current vector size from embedding settings
  * Dynamically returns the dimensions of the configured embedding model
  */
-function getVectorSize(): number {
+async function getVectorSize(): Promise<number> {
   try {
-    const settings = getEmbeddingSettings();
+    const settings = await getEmbeddingSettings();
     return settings.dimensions || DEFAULT_VECTOR_SIZE;
   } catch {
     // If settings can't be loaded (e.g., during initialization), use default
@@ -130,7 +130,7 @@ export class QdrantVectorStore implements VectorStoreClient {
     }
 
     // Get dynamic vector size from embedding settings
-    const vectorSize = getVectorSize();
+    const vectorSize = await getVectorSize();
 
     await qdrant.createCollection(name, {
       vectors: {

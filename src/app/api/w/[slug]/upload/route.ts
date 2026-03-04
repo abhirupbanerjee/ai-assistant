@@ -15,7 +15,7 @@ import {
   extractIP,
   hashIP,
 } from '@/lib/workspace/validator';
-import { getSession, isSessionValid } from '@/lib/db/workspace-sessions';
+import { getSession, isSessionValid } from '@/lib/db/compat';
 import {
   checkRateLimit,
   getRateLimitHeaders,
@@ -173,14 +173,14 @@ export async function POST(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -190,7 +190,7 @@ export async function POST(
 
     // Rate limiting for embed mode
     if (workspace.type === 'embed') {
-      const rateLimit = checkRateLimit(workspace.id, ipHash, sessionId);
+      const rateLimit = await checkRateLimit(workspace.id, ipHash, sessionId);
 
       if (!rateLimit.allowed) {
         return NextResponse.json(
@@ -298,14 +298,14 @@ export async function GET(
     const workspace = validation.workspace;
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -366,14 +366,14 @@ export async function DELETE(
     const workspace = validation.workspace;
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },

@@ -14,7 +14,7 @@ import {
   deleteFunctionAPIConfig,
   validateToolsSchema,
   validateEndpointMappings,
-} from '@/lib/db/function-api-config';
+} from '@/lib/db/compat';
 import { maskSensitiveValue } from '@/lib/encryption';
 import type { FunctionAPIConfig, UpdateFunctionAPIRequest } from '@/types/function-api';
 
@@ -49,7 +49,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const config = getFunctionAPIConfig(id);
+    const config = await getFunctionAPIConfig(id);
 
     if (!config) {
       return NextResponse.json(
@@ -91,7 +91,7 @@ export async function PUT(
     const body = (await request.json()) as UpdateFunctionAPIRequest;
 
     // Check if config exists
-    const existing = getFunctionAPIConfig(id);
+    const existing = await getFunctionAPIConfig(id);
     if (!existing) {
       return NextResponse.json(
         { error: 'Function API not found' },
@@ -140,7 +140,7 @@ export async function PUT(
     }
 
     // Update the Function API config
-    const updated = updateFunctionAPIConfig(id, body, user.email);
+    const updated = await updateFunctionAPIConfig(id, body, user.email);
 
     if (!updated) {
       return NextResponse.json(
@@ -191,7 +191,7 @@ export async function DELETE(
     const { id } = await params;
 
     // Check if config exists
-    const existing = getFunctionAPIConfig(id);
+    const existing = await getFunctionAPIConfig(id);
     if (!existing) {
       return NextResponse.json(
         { error: 'Function API not found' },
@@ -200,7 +200,7 @@ export async function DELETE(
     }
 
     // Delete the Function API config
-    const deleted = deleteFunctionAPIConfig(id);
+    const deleted = await deleteFunctionAPIConfig(id);
 
     if (!deleted) {
       return NextResponse.json(

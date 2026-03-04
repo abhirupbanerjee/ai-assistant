@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getGlobalDocument, deleteDocument, reindexDocument, updateDocumentCategories, toggleDocumentGlobal } from '@/lib/ingest';
-import { getDocumentWithCategories } from '@/lib/db/documents';
+import { getDocumentWithCategories } from '@/lib/db/compat';
 import type { GlobalDocument, AdminDeleteResponse, AdminUploadResponse, ApiError } from '@/types';
 
 interface RouteParams {
@@ -191,7 +191,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get updated document with categories
-    const updatedDoc = getDocumentWithCategories(parseInt(docId, 10));
+    const updatedDoc = await getDocumentWithCategories(parseInt(docId, 10));
 
     return NextResponse.json({
       success: true,

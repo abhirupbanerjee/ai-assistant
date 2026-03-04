@@ -9,13 +9,13 @@
  * Extended to support unified keyword actions (skills + tool routing)
  */
 
-import { getSkillsSettings } from '../db/config';
+import { getSkillsSettings } from '../db/compat/config';
 import {
   getSkillsByTrigger,
   getIndexSkillsForCategories,
   getKeywordSkills,
   getCategoriesForSkill,
-} from '../db/skills';
+} from '../db/compat/skills';
 import type { Skill, ResolvedSkills, ForceMode, DataSourceFilter } from './types';
 
 /**
@@ -123,11 +123,11 @@ export function determineToolChoice(
  * @param userMessage - The user's message to check for keywords
  * @returns Resolved skills with combined prompt and metadata
  */
-export function resolveSkills(
+export async function resolveSkills(
   categoryIds: number[],
   userMessage: string
-): ResolvedSkills {
-  const settings = getSkillsSettings();
+): Promise<ResolvedSkills> {
+  const settings = await getSkillsSettings();
 
   // Return empty if skills feature is disabled
   if (!settings.enabled) {
@@ -148,7 +148,7 @@ export function resolveSkills(
   const seenIds = new Set<number>();
 
   // 1. Get "always" trigger skills (core prompts)
-  const alwaysSkills = getSkillsByTrigger('always');
+  const alwaysSkills = await getSkillsByTrigger('always');
   for (const skill of alwaysSkills) {
     if (!seenIds.has(skill.id)) {
       seenIds.add(skill.id);
@@ -159,7 +159,7 @@ export function resolveSkills(
 
   // 2. Get category index skills
   if (categoryIds.length > 0) {
-    const indexSkills = getIndexSkillsForCategories(categoryIds);
+    const indexSkills = await getIndexSkillsForCategories(categoryIds);
     for (const skill of indexSkills) {
       if (!seenIds.has(skill.id)) {
         seenIds.add(skill.id);
@@ -170,7 +170,7 @@ export function resolveSkills(
   }
 
   // 3. Match keyword-triggered skills
-  const keywordSkills = getKeywordSkills();
+  const keywordSkills = await getKeywordSkills();
   const toolMatches: Array<{
     skillId: number;
     skillName: string;
@@ -189,7 +189,7 @@ export function resolveSkills(
 
     // Check category restriction
     if (skill.category_restricted && categoryIds.length > 0) {
-      const skillCategories = getCategoriesForSkill(skill.id);
+      const skillCategories = await getCategoriesForSkill(skill.id);
       const skillCategoryIds = skillCategories.map(c => c.id);
       const hasMatchingCategory = categoryIds.some(id => skillCategoryIds.includes(id));
 
@@ -292,16 +292,16 @@ export function resolveSkills(
  * Get a preview of which skills would be activated
  * Useful for admin UI testing
  */
-export function previewSkillResolution(
+export async function previewSkillResolution(
   categoryIds: number[],
   testMessage: string
-): {
+): Promise<{
   wouldActivate: { name: string; trigger: string; tokens: number }[];
   totalTokens: number;
   exceedsLimit: boolean;
-} {
-  const settings = getSkillsSettings();
-  const resolved = resolveSkills(categoryIds, testMessage);
+}> {
+  const settings = await getSkillsSettings();
+  const resolved = await resolveSkills(categoryIds, testMessage);
 
   const wouldActivate = resolved.skills.map(skill => {
     let trigger = 'unknown';

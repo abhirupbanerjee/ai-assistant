@@ -5,7 +5,7 @@
  * whether to force specific tool calls via OpenAI's tool_choice parameter.
  */
 
-import { getActiveRoutingRules } from './db/tool-routing';
+import { getActiveRoutingRules } from './db/compat/tool-routing';
 import { toolsLogger as logger } from './logger';
 import type { RoutingDecision, ToolRoutingResult } from '../types/tool-routing';
 
@@ -108,11 +108,11 @@ function determineToolChoice(
  * @param categoryIds - Category IDs to filter rules by (empty = all rules)
  * @returns RoutingDecision with matches and toolChoice
  */
-export function resolveToolRouting(
+export async function resolveToolRouting(
   userMessage: string,
   categoryIds: number[]
-): RoutingDecision {
-  const rules = getActiveRoutingRules(categoryIds);
+): Promise<RoutingDecision> {
+  const rules = await getActiveRoutingRules(categoryIds);
   const messageLower = userMessage.toLowerCase();
   const matches: ToolRoutingResult[] = [];
 
@@ -171,10 +171,10 @@ export function resolveToolRouting(
  * @param categoryIds - Category IDs to filter rules by
  * @returns Detailed test results
  */
-export function testToolRouting(
+export async function testToolRouting(
   message: string,
   categoryIds: number[]
-): {
+): Promise<{
   message: string;
   categoryIds: number[];
   matches: {
@@ -184,8 +184,8 @@ export function testToolRouting(
     forceMode: string;
   }[];
   finalToolChoice: string;
-} {
-  const decision = resolveToolRouting(message, categoryIds);
+}> {
+  const decision = await resolveToolRouting(message, categoryIds);
 
   return {
     message,
@@ -210,11 +210,11 @@ export function testToolRouting(
  * @param categoryIds - Category IDs to filter rules by
  * @returns The tool name if forced, or null if not forced
  */
-export function getForcedToolName(
+export async function getForcedToolName(
   userMessage: string,
   categoryIds: number[]
-): string | null {
-  const decision = resolveToolRouting(userMessage, categoryIds);
+): Promise<string | null> {
+  const decision = await resolveToolRouting(userMessage, categoryIds);
 
   if (
     typeof decision.toolChoice === 'object' &&

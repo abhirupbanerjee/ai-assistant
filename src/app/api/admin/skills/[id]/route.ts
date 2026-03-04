@@ -14,7 +14,7 @@ import {
   updateSkill,
   deleteSkill,
   toggleSkillActive,
-} from '@/lib/db/skills';
+} from '@/lib/db/compat/skills';
 import type { CreateSkillInput, TriggerType } from '@/lib/skills/types';
 
 interface RouteParams {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid skill ID' }, { status: 400 });
     }
 
-    const skill = getSkillById(skillId);
+    const skill = await getSkillById(skillId);
     if (!skill) {
       return NextResponse.json({ error: 'Skill not found' }, { status: 404 });
     }
@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid skill ID' }, { status: 400 });
     }
 
-    const existing = getSkillById(skillId);
+    const existing = await getSkillById(skillId);
     if (!existing) {
       return NextResponse.json({ error: 'Skill not found' }, { status: 404 });
     }
@@ -102,7 +102,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     // Compliance configuration
     if (body.compliance_config !== undefined) updates.compliance_config = body.compliance_config || undefined;
 
-    updateSkill(skillId, updates, user.email);
+    await updateSkill(skillId, updates, user.email);
 
     return NextResponse.json({ message: 'Skill updated' });
   } catch (error) {
@@ -131,7 +131,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid skill ID' }, { status: 400 });
     }
 
-    const result = deleteSkill(skillId);
+    const result = await deleteSkill(skillId);
     if (!result.success) {
       return NextResponse.json(
         { error: result.message },
@@ -166,7 +166,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid skill ID' }, { status: 400 });
     }
 
-    const newStatus = toggleSkillActive(skillId, user.email);
+    const newStatus = await toggleSkillActive(skillId, user.email);
 
     return NextResponse.json({
       message: `Skill ${newStatus ? 'activated' : 'deactivated'}`,

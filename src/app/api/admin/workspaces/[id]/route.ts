@@ -12,7 +12,7 @@ import {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
-} from '@/lib/db/workspaces';
+} from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
 interface RouteParams {
@@ -25,14 +25,14 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -63,14 +63,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -135,7 +135,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (authRequired !== undefined) updates.auth_required = authRequired;
     if (accessMode !== undefined) updates.access_mode = accessMode;
 
-    const updatedWorkspace = updateWorkspace(id, updates);
+    const updatedWorkspace = await updateWorkspace(id, updates);
 
     return NextResponse.json({ workspace: updatedWorkspace });
   } catch (error) {
@@ -160,14 +160,14 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -175,7 +175,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
 
-    deleteWorkspace(id);
+    await deleteWorkspace(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

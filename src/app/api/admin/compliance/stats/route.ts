@@ -7,8 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getComplianceStats, getRecentComplianceResults } from '@/lib/db/compliance';
-import { getToolConfig } from '@/lib/db/tool-config';
+import { getComplianceStats, getRecentComplianceResults, getToolConfig } from '@/lib/db/compat';
 import { COMPLIANCE_CHECKER_DEFAULTS } from '@/lib/tools/compliance-checker';
 import type { ApiError } from '@/types';
 
@@ -77,10 +76,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get compliance stats
-    const stats = getComplianceStats(filters);
+    const stats = await getComplianceStats(filters);
 
     // Get tool config
-    const toolConfig = getToolConfig('compliance_checker');
+    const toolConfig = await getToolConfig('compliance_checker');
     const config = toolConfig?.config as Record<string, unknown> || {};
 
     // Build response
@@ -98,7 +97,7 @@ export async function GET(request: NextRequest) {
     // Include recent results if requested
     if (includeRecent) {
       const limit = limitParam ? parseInt(limitParam, 10) : 20;
-      response.recentResults = getRecentComplianceResults({
+      response.recentResults = await getRecentComplianceResults({
         skillId: filters.skillId,
         limit: isNaN(limit) ? 20 : limit,
       });

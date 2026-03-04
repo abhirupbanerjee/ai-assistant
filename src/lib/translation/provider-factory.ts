@@ -5,7 +5,7 @@
  * Follows the image-gen pattern for provider configuration and selection.
  */
 
-import { getToolConfig } from '@/lib/db/tool-config';
+import { getToolConfig } from '@/lib/db/compat/tool-config';
 import { getDefaultLLMModel, getModelPresetsFromConfig } from '../config-loader';
 import { toolsLogger as logger } from '../logger';
 
@@ -174,8 +174,8 @@ export const TRANSLATION_DEFAULTS: TranslationConfig = {
 /**
  * Get translation configuration from database with defaults
  */
-export function getTranslationConfig(): TranslationConfig {
-  const toolConfig = getToolConfig('translation');
+export async function getTranslationConfig(): Promise<TranslationConfig> {
+  const toolConfig = await getToolConfig('translation');
   const defaults = getTranslationDefaultsLazy();
 
   if (toolConfig?.config) {
@@ -242,8 +242,8 @@ export function getProviderSettings(
 /**
  * Check if any translation provider is available
  */
-export function isTranslationAvailable(): boolean {
-  const config = getTranslationConfig();
+export async function isTranslationAvailable(): Promise<boolean> {
+  const config = await getTranslationConfig();
   return Object.values(config.providers).some(p => p.enabled);
 }
 

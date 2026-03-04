@@ -8,8 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getDataAPI, updateDataAPI } from '@/lib/db/data-sources';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
+import { getDataAPI, updateDataAPI } from '@/lib/db/compat/data-sources';
 import { testAPIConnection } from '@/lib/data-sources/api-caller';
 
 /**
@@ -47,7 +47,7 @@ export async function POST(
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -55,7 +55,7 @@ export async function POST(
     const assignedCategoryIds = superUserData.assignedCategories.map(c => c.categoryId);
     const { id } = await params;
 
-    const api = getDataAPI(id);
+    const api = await getDataAPI(id);
     if (!api) {
       return NextResponse.json({ error: 'API data source not found' }, { status: 404 });
     }
@@ -72,7 +72,7 @@ export async function POST(
     const latency = Date.now() - startTime;
 
     // Update status based on result
-    updateDataAPI(id, {
+    await updateDataAPI(id, {
       status: result.success ? 'active' : 'error',
       lastTested: new Date().toISOString(),
       lastError: result.success ? undefined : result.message,

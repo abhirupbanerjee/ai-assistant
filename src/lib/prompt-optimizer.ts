@@ -6,18 +6,18 @@
  */
 
 import OpenAI from 'openai';
-import { getLlmSettings } from './db/config';
+import { getLlmSettings } from './db/compat/config';
 import { getApiKey } from '@/lib/provider-helpers';
 
 let openaiClient: OpenAI | null = null;
 
-function getOpenAI(): OpenAI {
+async function getOpenAI(): Promise<OpenAI> {
   if (!openaiClient) {
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
-      : getApiKey('openai');
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
 
     openaiClient = new OpenAI({
       apiKey: apiKey || '',
@@ -80,8 +80,8 @@ export async function optimizeCategoryPrompt(
     };
   }
 
-  const llmSettings = getLlmSettings();
-  const openai = getOpenAI();
+  const llmSettings = await getLlmSettings();
+  const openai = await getOpenAI();
 
   const prompt = OPTIMIZATION_PROMPT
     .replace('{globalPrompt}', globalPrompt)

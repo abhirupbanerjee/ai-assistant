@@ -13,7 +13,7 @@ import {
   updateEnabledModel,
   deleteEnabledModel,
   type UpdateEnabledModelInput,
-} from '@/lib/db/enabled-models';
+} from '@/lib/db/compat/enabled-models';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const model = getEnabledModel(id);
+    const model = await getEnabledModel(id);
 
     if (!model) {
       return NextResponse.json<ApiError>(
@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const body = await request.json() as UpdateEnabledModelInput;
 
-    const model = updateEnabledModel(id, body);
+    const model = await updateEnabledModel(id, body);
 
     if (!model) {
       return NextResponse.json<ApiError>(
@@ -104,7 +104,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const deleted = deleteEnabledModel(id);
+    const deleted = await deleteEnabledModel(id);
 
     if (!deleted) {
       return NextResponse.json<ApiError>(

@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentBotById } from '@/lib/db/agent-bots';
-import { listVersions, createVersion } from '@/lib/db/agent-bot-versions';
+import { getAgentBotById, listVersions, createVersion } from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 import type { InputSchema, OutputConfig } from '@/types/agent-bot';
 
@@ -23,7 +22,7 @@ export async function GET(
     await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -31,7 +30,7 @@ export async function GET(
       );
     }
 
-    const versions = listVersions(id);
+    const versions = await listVersions(id);
     return NextResponse.json({ versions });
   } catch (error) {
     if (error instanceof Error && error.message.includes('access required')) {
@@ -75,7 +74,7 @@ export async function POST(
     const user = await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -110,7 +109,7 @@ export async function POST(
     }
 
     // Create the version
-    const version = createVersion(
+    const version = await createVersion(
       id,
       {
         version_label: body.version_label,

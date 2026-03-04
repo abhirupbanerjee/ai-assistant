@@ -7,18 +7,19 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail } from '@/lib/db/compat';
 import {
   validateWorkspaceRequest,
   extractOrigin,
 } from '@/lib/workspace/validator';
-import { getSession, isSessionValid } from '@/lib/db/workspace-sessions';
 import {
-  createThread,
+  getSession,
+  isSessionValid,
+  createWorkspaceThread as createThread,
   getSessionThreads,
   getSessionThreadCount,
-} from '@/lib/db/workspace-threads';
-import type { CreateWorkspaceThreadInput } from '@/types/workspace';
+  type CreateWorkspaceThreadInput,
+} from '@/lib/db/compat';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -88,14 +89,14 @@ export async function GET(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -104,13 +105,13 @@ export async function GET(
     }
 
     // Get threads
-    const threads = getSessionThreads(sessionId, {
+    const threads = await getSessionThreads(sessionId, {
       includeArchived,
       limit,
       offset,
     });
 
-    const total = getSessionThreadCount(sessionId, includeArchived);
+    const total = await getSessionThreadCount(sessionId, includeArchived);
 
     return NextResponse.json({
       threads,
@@ -180,14 +181,14 @@ export async function POST(
     }
 
     // Validate session
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -201,7 +202,7 @@ export async function POST(
       input.title = title;
     }
 
-    const thread = createThread(workspace.id, sessionId, input);
+    const thread = await createThread(workspace.id, sessionId, input);
 
     return NextResponse.json({ thread }, { status: 201 });
   } catch (error) {

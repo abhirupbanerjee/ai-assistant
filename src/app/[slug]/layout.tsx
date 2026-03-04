@@ -6,7 +6,7 @@
  */
 
 import { notFound } from 'next/navigation';
-import { getWorkspaceBySlug } from '@/lib/db/workspaces';
+import { getWorkspaceBySlug } from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
 interface LayoutProps {
@@ -29,7 +29,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps)
   }
 
   // Validate workspace exists and is standalone type
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) {
     notFound();
   }

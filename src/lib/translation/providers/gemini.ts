@@ -19,8 +19,8 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 /**
  * Get Gemini API key using centralized provider helper (DB-first, then env var fallback)
  */
-function getGeminiApiKey(): string {
-  const apiKey = getApiKey('gemini');
+async function getGeminiApiKey(): Promise<string> {
+  const apiKey = await getApiKey('gemini');
   if (!apiKey) {
     throw new Error('Gemini API key not configured');
   }
@@ -82,7 +82,7 @@ export async function translateWithGemini(
       };
     }
 
-    const apiKey = getGeminiApiKey();
+    const apiKey = await getGeminiApiKey();
     const sourceLangDesc = sourceLanguage
       ? SUPPORTED_LANGUAGES[sourceLanguage]
       : 'the source language (auto-detect)';
@@ -184,6 +184,6 @@ export async function translateWithGemini(
 /**
  * Check if Gemini provider is configured (DB-first, then env var fallback)
  */
-export function isGeminiConfigured(): boolean {
+export async function isGeminiConfigured(): Promise<boolean> {
   return isProviderConfigured('gemini');
 }

@@ -1,7 +1,7 @@
 /**
  * User Management Module
  *
- * Now uses SQLite database for user storage
+ * Uses async compat layer for user storage (supports both SQLite and PostgreSQL).
  * Supports three roles: admin, superuser, user
  */
 
@@ -15,11 +15,10 @@ import {
   initializeAdminCredentialsFromEnv,
   type DbUser,
   type UserRole,
-} from './db/users';
-import { getDatabase } from './db';
+} from './db/compat/users';
 
 // Re-export types
-export type { UserRole } from './db/users';
+export type { UserRole } from './db/compat/users';
 
 export interface AllowedUser {
   email: string;
@@ -27,26 +26,6 @@ export interface AllowedUser {
   role: UserRole;
   addedAt: Date;
   addedBy: string;
-}
-
-// Initialize database on first access
-let initialized = false;
-let credentialsInitialized = false;
-
-function ensureInitialized(): void {
-  if (!initialized) {
-    getDatabase(); // This triggers schema creation and default settings
-    initializeAdminsFromEnv();
-    initialized = true;
-
-    // Initialize admin credentials async (fire-and-forget, non-blocking)
-    if (!credentialsInitialized) {
-      credentialsInitialized = true;
-      initializeAdminCredentialsFromEnv().catch((err) => {
-        console.error('[Auth] Failed to initialize admin credentials:', err);
-      });
-    }
-  }
 }
 
 /**
@@ -66,8 +45,7 @@ function toAllowedUser(dbUser: DbUser): AllowedUser {
  * Get all allowed users
  */
 export async function getAllowedUsers(): Promise<AllowedUser[]> {
-  ensureInitialized();
-  const users = dbGetAllUsers();
+  const users = await dbGetAllUsers();
   return users.map(toAllowedUser);
 }
 
@@ -76,8 +54,7 @@ export async function getAllowedUsers(): Promise<AllowedUser[]> {
  */
 export async function isUserAllowed(email: string): Promise<boolean> {
   if (!email) return false;
-  ensureInitialized();
-  const user = dbGetUserByEmail(email);
+  const user = await dbGetUserByEmail(email);
   return !!user;
 }
 
@@ -86,8 +63,7 @@ export async function isUserAllowed(email: string): Promise<boolean> {
  */
 export async function getUserRole(email: string): Promise<UserRole | null> {
   if (!email) return null;
-  ensureInitialized();
-  const user = dbGetUserByEmail(email);
+  const user = await dbGetUserByEmail(email);
   return user?.role || null;
 }
 
@@ -96,8 +72,7 @@ export async function getUserRole(email: string): Promise<UserRole | null> {
  */
 export async function getUserId(email: string): Promise<number | null> {
   if (!email) return null;
-  ensureInitialized();
-  const user = dbGetUserByEmail(email);
+  const user = await dbGetUserByEmail(email);
   return user?.id || null;
 }
 
@@ -106,8 +81,7 @@ export async function getUserId(email: string): Promise<number | null> {
  */
 export async function getUserByEmail(email: string): Promise<AllowedUser | null> {
   if (!email) return null;
-  ensureInitialized();
-  const user = dbGetUserByEmail(email);
+  const user = await dbGetUserByEmail(email);
   return user ? toAllowedUser(user) : null;
 }
 
@@ -120,19 +94,17 @@ export async function addAllowedUser(
   addedBy: string,
   name?: string
 ): Promise<AllowedUser> {
-  ensureInitialized();
-
   // Check if user exists
-  const existing = dbGetUserByEmail(email);
+  const existing = await dbGetUserByEmail(email);
 
   if (existing) {
     // Update existing user
-    const updated = dbUpdateUser(existing.id, { name, role });
+    const updated = await dbUpdateUser(existing.id, { name, role });
     return toAllowedUser(updated!);
   }
 
   // Create new user
-  const newUser = dbCreateUser({
+  const newUser = await dbCreateUser({
     email,
     name,
     role,
@@ -146,19 +118,17 @@ export async function addAllowedUser(
  * Remove an allowed user
  */
 export async function removeAllowedUser(email: string): Promise<boolean> {
-  ensureInitialized();
-  return dbDeleteUserByEmail(email);
+  return await dbDeleteUserByEmail(email);
 }
 
 /**
  * Update user role
  */
 export async function updateUserRole(email: string, role: UserRole): Promise<boolean> {
-  ensureInitialized();
-  const user = dbGetUserByEmail(email);
+  const user = await dbGetUserByEmail(email);
   if (!user) return false;
 
-  dbUpdateUser(user.id, { role });
+  await dbUpdateUser(user.id, { role });
   return true;
 }
 

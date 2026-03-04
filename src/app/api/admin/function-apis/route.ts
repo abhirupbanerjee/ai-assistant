@@ -12,7 +12,7 @@ import {
   createFunctionAPIConfig,
   validateToolsSchema,
   validateEndpointMappings,
-} from '@/lib/db/function-api-config';
+} from '@/lib/db/compat';
 import { maskSensitiveValue } from '@/lib/encryption';
 import type { FunctionAPIConfig, CreateFunctionAPIRequest } from '@/types/function-api';
 
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get('categoryId');
 
     // Get all Function API configs
-    let configs = getAllFunctionAPIConfigs();
+    let configs = await getAllFunctionAPIConfigs();
 
     // Filter by category if specified
     if (categoryId) {
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the Function API config
-    const created = createFunctionAPIConfig(body, user.email);
+    const created = await createFunctionAPIConfig(body, user.email);
 
     // Return masked config
     return NextResponse.json({

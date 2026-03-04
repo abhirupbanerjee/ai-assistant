@@ -12,7 +12,7 @@ import { isToolEnabled } from '@/lib/tools';
 export async function GET() {
   try {
     // Check if translation tool is enabled
-    if (!isToolEnabled('translation')) {
+    if (!(await isToolEnabled('translation'))) {
       return NextResponse.json({
         languages: [{ code: 'en', name: 'English' }],
         translationEnabled: false,
@@ -20,7 +20,7 @@ export async function GET() {
     }
 
     // Get translation config and enabled languages
-    const config = getTranslationConfig();
+    const config = await getTranslationConfig();
     const enabledLanguages = getEnabledLanguages(config);
 
     // Convert to array format for frontend

@@ -9,7 +9,7 @@ import { getCurrentUser } from '@/lib/auth';
 import {
   getFunctionAPIConfig,
   updateFunctionAPITestStatus,
-} from '@/lib/db/function-api-config';
+} from '@/lib/db/compat';
 import type { FunctionAPIConfig, FunctionAPITestResult } from '@/types/function-api';
 
 /**
@@ -71,7 +71,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const config = getFunctionAPIConfig(id);
+    const config = await getFunctionAPIConfig(id);
 
     if (!config) {
       return NextResponse.json(
@@ -94,7 +94,7 @@ export async function POST(
       const functionToTest = testFunctionName || functionNames[0];
 
       if (!functionToTest || !config.endpointMappings[functionToTest]) {
-        updateFunctionAPITestStatus(id, false, 'No endpoints configured');
+        await updateFunctionAPITestStatus(id, false, 'No endpoints configured');
         return NextResponse.json({
           success: false,
           message: 'No endpoints configured to test',
@@ -121,7 +121,7 @@ export async function POST(
         const errorText = await response.text().catch(() => 'Unknown error');
         const errorMessage = `HTTP ${response.status}: ${response.statusText}. ${errorText.substring(0, 200)}`;
 
-        updateFunctionAPITestStatus(id, false, errorMessage);
+        await updateFunctionAPITestStatus(id, false, errorMessage);
 
         return NextResponse.json({
           success: false,
@@ -139,7 +139,7 @@ export async function POST(
       }
 
       // Success - update status
-      updateFunctionAPITestStatus(id, true);
+      await updateFunctionAPITestStatus(id, true);
 
       return NextResponse.json({
         success: true,
@@ -168,7 +168,7 @@ export async function POST(
         errorMessage = 'Unknown error';
       }
 
-      updateFunctionAPITestStatus(id, false, errorMessage);
+      await updateFunctionAPITestStatus(id, false, errorMessage);
 
       return NextResponse.json({
         success: false,

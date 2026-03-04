@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
-import { queryOne } from '@/lib/db';
+import { getUserByEmail, getThreadOwner } from '@/lib/db/compat';
 import {
   getThreadSummary,
   getThreadSummaryHistory,
   summarizeThread,
 } from '@/lib/summarization';
 import type { ApiError } from '@/types';
-
-interface ThreadOwner {
-  user_id: number;
-}
 
 /**
  * GET /api/threads/[threadId]/summary
@@ -33,7 +28,7 @@ export async function GET(
     const { threadId } = await params;
 
     // Verify thread ownership
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -41,10 +36,7 @@ export async function GET(
       );
     }
 
-    const thread = queryOne<ThreadOwner>(
-      'SELECT user_id FROM threads WHERE id = ?',
-      [threadId]
-    );
+    const thread = await getThreadOwner(threadId);
 
     if (!thread) {
       return NextResponse.json<ApiError>(
@@ -61,10 +53,10 @@ export async function GET(
     }
 
     // Get current summary
-    const summary = getThreadSummary(threadId);
+    const summary = await getThreadSummary(threadId);
 
     // Get summary history
-    const history = getThreadSummaryHistory(threadId);
+    const history = await getThreadSummaryHistory(threadId);
 
     return NextResponse.json({
       hasSummary: !!summary,
@@ -104,7 +96,7 @@ export async function POST(
     const { threadId } = await params;
 
     // Verify thread ownership
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -112,10 +104,7 @@ export async function POST(
       );
     }
 
-    const thread = queryOne<ThreadOwner>(
-      'SELECT user_id FROM threads WHERE id = ?',
-      [threadId]
-    );
+    const thread = await getThreadOwner(threadId);
 
     if (!thread) {
       return NextResponse.json<ApiError>(

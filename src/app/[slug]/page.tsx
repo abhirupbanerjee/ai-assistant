@@ -6,7 +6,7 @@
  */
 
 import { notFound } from 'next/navigation';
-import { getWorkspaceBySlug } from '@/lib/db/workspaces';
+import { getWorkspaceBySlug } from '@/lib/db/compat';
 import { WorkspacePageClient } from './WorkspacePageClient';
 
 interface PageProps {
@@ -22,7 +22,7 @@ export default async function StandaloneWorkspacePage({ params }: PageProps) {
   }
 
   // Get workspace
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace || workspace.type !== 'standalone' || !workspace.is_enabled) {
     notFound();
   }
@@ -48,7 +48,7 @@ export default async function StandaloneWorkspacePage({ params }: PageProps) {
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
 
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) {
     return { title: 'Not Found' };
   }

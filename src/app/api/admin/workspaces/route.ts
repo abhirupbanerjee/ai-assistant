@@ -11,7 +11,7 @@ import {
   listWorkspaces,
   createWorkspace,
   getWorkspaceBySlug,
-} from '@/lib/db/workspaces';
+} from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 import type { WorkspaceType } from '@/types/workspace';
 
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     await requireAdmin();
 
     // Check if feature is enabled
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json({
         workspaces: [],
         featureEnabled: false,
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') as WorkspaceType | null;
 
-    const workspaces = listWorkspaces(type || undefined);
+    const workspaces = await listWorkspaces(type || undefined);
 
     return NextResponse.json({
       workspaces,
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
 
     // Check if feature is enabled
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
     }
 
     // Create workspace
-    const workspace = createWorkspace(
+    const workspace = await createWorkspace(
       {
         name: name.trim(),
         type,
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
     );
 
     // Get full workspace with relations for response
-    const fullWorkspace = getWorkspaceBySlug(workspace.slug);
+    const fullWorkspace = await getWorkspaceBySlug(workspace.slug);
 
     return NextResponse.json({ workspace: fullWorkspace }, { status: 201 });
   } catch (error) {

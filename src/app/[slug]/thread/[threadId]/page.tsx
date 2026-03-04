@@ -6,8 +6,7 @@
  */
 
 import { notFound } from 'next/navigation';
-import { getWorkspaceBySlug } from '@/lib/db/workspaces';
-import { getThread } from '@/lib/db/workspace-threads';
+import { getWorkspaceBySlug, getWorkspaceThread as getThread } from '@/lib/db/compat';
 import { WorkspacePageClient } from '../../WorkspacePageClient';
 
 interface PageProps {
@@ -23,13 +22,13 @@ export default async function ThreadViewPage({ params }: PageProps) {
   }
 
   // Get workspace
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace || workspace.type !== 'standalone' || !workspace.is_enabled) {
     notFound();
   }
 
   // Validate thread exists and belongs to this workspace
-  const thread = getThread(threadId);
+  const thread = await getThread(threadId);
   if (!thread || thread.workspace_id !== workspace.id) {
     notFound();
   }
@@ -56,12 +55,12 @@ export default async function ThreadViewPage({ params }: PageProps) {
 export async function generateMetadata({ params }: PageProps) {
   const { slug, threadId } = await params;
 
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) {
     return { title: 'Not Found' };
   }
 
-  const thread = getThread(threadId);
+  const thread = await getThread(threadId);
   const title = thread?.title || 'Chat';
 
   return {

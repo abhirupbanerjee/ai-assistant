@@ -5,7 +5,7 @@
  * with validation status.
  */
 
-import { getToolConfig, isToolEnabled } from '../db/tool-config';
+import { getToolConfig, isToolEnabled } from '../db/compat/tool-config';
 import { isProviderConfigured } from '@/lib/provider-helpers';
 
 // ============ Types ============
@@ -51,7 +51,7 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
       envVars: [{ name: 'TAVILY_API_KEY', description: 'Tavily API key', settingsPath: 'config.apiKey' }]
     },
     validates: async () => {
-      const config = getToolConfig('web_search');
+      const config = await getToolConfig('web_search');
       const hasKey = Boolean(config?.config?.apiKey || process.env.TAVILY_API_KEY);
       return {
         ok: hasKey,
@@ -91,7 +91,7 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
       tools: ['data_source']
     },
     validates: async () => {
-      const dataEnabled = isToolEnabled('data_source');
+      const dataEnabled = await isToolEnabled('data_source');
       return {
         ok: dataEnabled,
         message: dataEnabled ? 'Ready' : 'Requires Data Source tool to be enabled',
@@ -130,8 +130,8 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     },
     validates: async () => {
       // Use centralized provider helper (DB-first, then env var fallback)
-      const hasOpenAI = isProviderConfigured('openai');
-      const hasGemini = isProviderConfigured('gemini');
+      const hasOpenAI = await isProviderConfigured('openai');
+      const hasGemini = await isProviderConfigured('gemini');
       const hasAny = hasOpenAI || hasGemini;
 
       const providers: string[] = [];
@@ -166,9 +166,9 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     },
     validates: async () => {
       // Use centralized provider helper (DB-first, then env var fallback)
-      const hasOpenAI = isProviderConfigured('openai');
-      const hasGemini = isProviderConfigured('gemini');
-      const hasMistral = isProviderConfigured('mistral');
+      const hasOpenAI = await isProviderConfigured('openai');
+      const hasGemini = await isProviderConfigured('gemini');
+      const hasMistral = await isProviderConfigured('mistral');
       const hasAny = hasOpenAI || hasGemini || hasMistral;
 
       const providers: string[] = [];
@@ -203,7 +203,7 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     },
     validates: async () => {
       // Use centralized provider helper (DB-first, then env var fallback)
-      const hasOpenAI = isProviderConfigured('openai');
+      const hasOpenAI = await isProviderConfigured('openai');
       const hasLiteLLM = Boolean(process.env.OPENAI_BASE_URL);
       const hasAny = hasOpenAI || hasLiteLLM;
 
@@ -245,14 +245,14 @@ export async function getAllToolDependencyStatuses(): Promise<ToolDependencyStat
   const results: ToolDependencyStatus[] = [];
 
   for (const [name, dep] of Object.entries(TOOL_DEPENDENCIES)) {
-    const enabled = isToolEnabled(name);
+    const enabled = await isToolEnabled(name);
     const validation = await dep.validates();
     const missingDeps: string[] = [];
 
     // Check environment variables
     if (dep.requires.envVars) {
       for (const env of dep.requires.envVars) {
-        const config = getToolConfig(name);
+        const config = await getToolConfig(name);
         const hasValue = Boolean(
           (env.settingsPath && getNestedValue(config, env.settingsPath)) ||
           process.env[env.name]
@@ -266,7 +266,7 @@ export async function getAllToolDependencyStatuses(): Promise<ToolDependencyStat
     // Check tool dependencies
     if (dep.requires.tools) {
       for (const tool of dep.requires.tools) {
-        if (!isToolEnabled(tool)) {
+        if (!(await isToolEnabled(tool))) {
           const depInfo = TOOL_DEPENDENCIES[tool];
           missingDeps.push(`Tool: ${depInfo?.displayName || tool}`);
         }
@@ -297,13 +297,13 @@ export async function getToolDependencyStatus(toolName: string): Promise<ToolDep
   const dep = TOOL_DEPENDENCIES[toolName];
   if (!dep) return null;
 
-  const enabled = isToolEnabled(toolName);
+  const enabled = await isToolEnabled(toolName);
   const validation = await dep.validates();
   const missingDeps: string[] = [];
 
   if (dep.requires.envVars) {
     for (const env of dep.requires.envVars) {
-      const config = getToolConfig(toolName);
+      const config = await getToolConfig(toolName);
       const hasValue = Boolean(
         (env.settingsPath && getNestedValue(config, env.settingsPath)) ||
         process.env[env.name]
@@ -316,7 +316,7 @@ export async function getToolDependencyStatus(toolName: string): Promise<ToolDep
 
   if (dep.requires.tools) {
     for (const tool of dep.requires.tools) {
-      if (!isToolEnabled(tool)) {
+      if (!(await isToolEnabled(tool))) {
         const depInfo = TOOL_DEPENDENCIES[tool];
         missingDeps.push(`Tool: ${depInfo?.displayName || tool}`);
       }

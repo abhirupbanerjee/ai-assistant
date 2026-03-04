@@ -23,7 +23,7 @@ import {
   getFileStorageStats,
 } from '@/lib/monitoring';
 import { getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
 import type { ApiError } from '@/types';
 
 export async function GET() {
@@ -55,15 +55,15 @@ export async function GET() {
         );
       }
 
-      const superUserData = getSuperUserWithAssignments(userId);
+      const superUserData = await getSuperUserWithAssignments(userId);
       const categoryIds = superUserData?.assignedCategories.map(c => c.categoryId) || [];
 
       // Get filtered database stats and global system stats (ChromaDB, Storage)
       const [database, chroma, storage, recentActivity] = await Promise.all([
-        Promise.resolve(getDatabaseStatsForCategories(categoryIds)),
+        getDatabaseStatsForCategories(categoryIds),
         getChromaStats(),
         getFileStorageStats(),
-        Promise.resolve(getRecentActivityForCategories(categoryIds, 10)),
+        getRecentActivityForCategories(categoryIds, 10),
       ]);
 
       return NextResponse.json({
@@ -84,7 +84,7 @@ export async function GET() {
     // For admins, return global system-wide stats (unchanged behavior)
     const [systemStats, recentActivity] = await Promise.all([
       getSystemStats(),
-      Promise.resolve(getRecentActivity(10)),
+      getRecentActivity(10),
     ]);
 
     return NextResponse.json({

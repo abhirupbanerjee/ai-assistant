@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getLlmSettings } from '@/lib/db/config';
+import { getLlmSettings } from '@/lib/db/compat';
 import { getImageCapabilities, type ImageCapabilities } from '@/lib/config-capability-checker';
 
 export async function GET(): Promise<NextResponse<ImageCapabilities | { error: string }>> {
@@ -22,8 +22,8 @@ export async function GET(): Promise<NextResponse<ImageCapabilities | { error: s
     }
 
     // Get current model and check capabilities
-    const llmSettings = getLlmSettings();
-    const capabilities = getImageCapabilities(llmSettings.model);
+    const llmSettings = await getLlmSettings();
+    const capabilities = await getImageCapabilities(llmSettings.model);
 
     return NextResponse.json(capabilities);
   } catch (error) {

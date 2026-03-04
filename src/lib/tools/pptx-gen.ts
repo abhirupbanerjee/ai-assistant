@@ -15,7 +15,7 @@ import type {
   SlideDefinition,
 } from '@/types/pptx-gen';
 import { getRequestContext } from '../request-context';
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import { generatePptx } from '../pptxgen/pptx-builder';
 import { getOutputDirectory, generateDocumentFilename } from '../docgen/branding';
 import { addThreadOutput, addWorkspaceOutput, getThreadContext } from '../db/compat/threads';
@@ -306,7 +306,7 @@ Available themes: corporate, modern, minimal, bold`,
       }
 
       // Get tool configuration
-      const toolConfig = getToolConfig('pptx_gen');
+      const toolConfig = await getToolConfig('pptx_gen');
       const config = (toolConfig?.config as Partial<PptxGenConfig>) || {};
       const organizationName = config.branding?.organizationName || '';
 

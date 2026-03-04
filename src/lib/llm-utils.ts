@@ -11,12 +11,12 @@ import { getApiKey } from '@/lib/provider-helpers';
 
 let openaiClient: OpenAI | null = null;
 
-function getOpenAI(): OpenAI {
+async function getOpenAI(): Promise<OpenAI> {
   if (!openaiClient) {
     // When using LiteLLM proxy, a dummy key is sufficient
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.LITELLM_BASE_URL;
-    const apiKey = baseURL ? 'dummy-key' : getApiKey('openai');
+    const apiKey = baseURL ? 'dummy-key' : await getApiKey('openai');
 
     openaiClient = new OpenAI({
       apiKey: apiKey || undefined,
@@ -41,7 +41,7 @@ export async function callLLMForJson(
   prompt: string,
   options: CallLLMOptions = {}
 ): Promise<string> {
-  const openai = getOpenAI();
+  const openai = await getOpenAI();
 
   const {
     model = getDefaultLLMModel(),
@@ -98,7 +98,7 @@ export async function callLLMForText(
   prompt: string,
   options: CallLLMOptions = {}
 ): Promise<string> {
-  const openai = getOpenAI();
+  const openai = await getOpenAI();
 
   const {
     model = getDefaultLLMModel(),

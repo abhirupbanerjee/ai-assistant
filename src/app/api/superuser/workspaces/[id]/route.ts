@@ -9,12 +9,12 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserCategories } from '@/lib/db/users';
+import { getSuperUserCategories } from '@/lib/db/compat';
 import {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
-} from '@/lib/db/workspaces';
+} from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
 interface RouteParams {
@@ -35,14 +35,14 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -82,14 +82,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -111,7 +111,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
 
     // Get superuser's assigned categories for validation
-    const assignedCategoryIds = getSuperUserCategories(userId);
+    const assignedCategoryIds = await getSuperUserCategories(userId);
 
     const body = await request.json();
     const {
@@ -180,7 +180,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (webSearchEnabled !== undefined) updates.web_search_enabled = webSearchEnabled;
     if (accessMode !== undefined) updates.access_mode = accessMode;
 
-    const updatedWorkspace = updateWorkspace(id, updates);
+    const updatedWorkspace = await updateWorkspace(id, updates);
 
     return NextResponse.json({ workspace: updatedWorkspace });
   } catch (error) {
@@ -206,14 +206,14 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
     const { id } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -229,7 +229,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
 
-    deleteWorkspace(id);
+    await deleteWorkspace(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

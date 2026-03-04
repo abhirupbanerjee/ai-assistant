@@ -5,9 +5,10 @@
  * Memory persists across conversation threads and is injected into prompts.
  */
 
-import { execute, queryOne, queryAll } from './db';
-import { getMemorySettings } from './db/config';
-import { getLlmSettings } from './db/config';
+import { sql } from 'kysely';
+import { getDb } from './db/kysely';
+import { getMemorySettings } from './db/compat/config';
+import { getLlmSettings } from './db/compat/config';
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/provider-helpers';
 
@@ -63,19 +64,9 @@ IMPORTANT: Return ONLY a valid JSON array of strings, nothing else. Example:
 
 If no new facts worth remembering, return an empty array: []`;
 
-// ============ Database Operations ============
+// ============ Helper ============
 
-/**
- * Get memory for a user in a specific category
- */
-export function getMemoryForUser(userId: number, categoryId: number | null = null): UserMemory | null {
-  const row = queryOne<DbUserMemory>(
-    `SELECT * FROM user_memories WHERE user_id = ? AND ${categoryId === null ? 'category_id IS NULL' : 'category_id = ?'}`,
-    categoryId === null ? [userId] : [userId, categoryId]
-  );
-
-  if (!row) return null;
-
+function toUserMemory(row: DbUserMemory): UserMemory {
   return {
     id: row.id,
     userId: row.user_id,
@@ -86,77 +77,126 @@ export function getMemoryForUser(userId: number, categoryId: number | null = nul
   };
 }
 
+// ============ Database Operations ============
+
+/**
+ * Get memory for a user in a specific category
+ */
+export async function getMemoryForUser(userId: number, categoryId: number | null = null): Promise<UserMemory | null> {
+  const db = await getDb();
+  let query = db
+    .selectFrom('user_memories')
+    .selectAll()
+    .where('user_id', '=', userId);
+
+  if (categoryId === null) {
+    query = query.where('category_id', 'is', null);
+  } else {
+    query = query.where('category_id', '=', categoryId);
+  }
+
+  const row = await query.executeTakeFirst();
+  if (!row) return null;
+
+  return toUserMemory(row as unknown as DbUserMemory);
+}
+
 /**
  * Get all memories for a user (across all categories)
  */
-export function getAllMemoriesForUser(userId: number): UserMemory[] {
-  const rows = queryAll<DbUserMemory>(
-    'SELECT * FROM user_memories WHERE user_id = ? ORDER BY category_id',
-    [userId]
-  );
+export async function getAllMemoriesForUser(userId: number): Promise<UserMemory[]> {
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('user_memories')
+    .selectAll()
+    .where('user_id', '=', userId)
+    .orderBy('category_id')
+    .execute();
 
-  return rows.map((row) => ({
-    id: row.id,
-    userId: row.user_id,
-    categoryId: row.category_id,
-    facts: JSON.parse(row.facts_json) as string[],
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
+  return rows.map((row) => toUserMemory(row as unknown as DbUserMemory));
 }
 
 /**
  * Update memory for a user in a specific category
  */
-export function updateMemory(userId: number, categoryId: number | null, facts: string[]): UserMemory {
-  const existingMemory = getMemoryForUser(userId, categoryId);
+export async function updateMemory(userId: number, categoryId: number | null, facts: string[]): Promise<UserMemory> {
+  const db = await getDb();
+  const existingMemory = await getMemoryForUser(userId, categoryId);
 
   if (existingMemory) {
     // Update existing memory
-    execute(
-      `UPDATE user_memories SET facts_json = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = ? AND ${categoryId === null ? 'category_id IS NULL' : 'category_id = ?'}`,
-      categoryId === null ? [JSON.stringify(facts), userId] : [JSON.stringify(facts), userId, categoryId]
-    );
+    let updateQuery = db
+      .updateTable('user_memories')
+      .set({
+        facts_json: JSON.stringify(facts),
+        updated_at: new Date().toISOString(),
+      })
+      .where('user_id', '=', userId);
+
+    if (categoryId === null) {
+      updateQuery = updateQuery.where('category_id', 'is', null);
+    } else {
+      updateQuery = updateQuery.where('category_id', '=', categoryId);
+    }
+
+    await updateQuery.execute();
   } else {
     // Insert new memory
-    execute(
-      'INSERT INTO user_memories (user_id, category_id, facts_json) VALUES (?, ?, ?)',
-      [userId, categoryId, JSON.stringify(facts)]
-    );
+    await db
+      .insertInto('user_memories')
+      .values({
+        user_id: userId,
+        category_id: categoryId,
+        facts_json: JSON.stringify(facts),
+      })
+      .execute();
   }
 
-  return getMemoryForUser(userId, categoryId)!;
+  return (await getMemoryForUser(userId, categoryId))!;
 }
 
 /**
  * Clear memory for a user in a specific category
  */
-export function clearMemory(userId: number, categoryId?: number | null): void {
+export async function clearMemory(userId: number, categoryId?: number | null): Promise<void> {
+  const db = await getDb();
+
   if (categoryId === undefined) {
     // Clear all memories for user
-    execute('DELETE FROM user_memories WHERE user_id = ?', [userId]);
+    await db.deleteFrom('user_memories').where('user_id', '=', userId).execute();
   } else {
     // Clear specific category memory
-    execute(
-      `DELETE FROM user_memories WHERE user_id = ? AND ${categoryId === null ? 'category_id IS NULL' : 'category_id = ?'}`,
-      categoryId === null ? [userId] : [userId, categoryId]
-    );
+    let deleteQuery = db
+      .deleteFrom('user_memories')
+      .where('user_id', '=', userId);
+
+    if (categoryId === null) {
+      deleteQuery = deleteQuery.where('category_id', 'is', null);
+    } else {
+      deleteQuery = deleteQuery.where('category_id', '=', categoryId);
+    }
+
+    await deleteQuery.execute();
   }
 }
 
 /**
  * Get memory statistics for admin dashboard
  */
-export function getMemoryStats(): MemoryStats {
-  const usersWithMemory = queryOne<{ count: number }>(
-    'SELECT COUNT(DISTINCT user_id) as count FROM user_memories'
-  )?.count || 0;
+export async function getMemoryStats(): Promise<MemoryStats> {
+  const db = await getDb();
 
-  const totalFactsResult = queryAll<{ facts_json: string }>(
-    'SELECT facts_json FROM user_memories'
-  );
-  const totalFacts = totalFactsResult.reduce((sum, row) => {
+  const usersWithMemoryResult = await db
+    .selectFrom('user_memories')
+    .select(db.fn.count<number>('user_id').distinct().as('count'))
+    .executeTakeFirst();
+  const usersWithMemory = usersWithMemoryResult?.count ?? 0;
+
+  const totalFactsRows = await db
+    .selectFrom('user_memories')
+    .select('facts_json')
+    .execute();
+  const totalFacts = totalFactsRows.reduce((sum, row) => {
     try {
       const facts = JSON.parse(row.facts_json) as string[];
       return sum + facts.length;
@@ -165,21 +205,26 @@ export function getMemoryStats(): MemoryStats {
     }
   }, 0);
 
-  const categoriesActive = queryOne<{ count: number }>(
-    'SELECT COUNT(DISTINCT category_id) as count FROM user_memories WHERE category_id IS NOT NULL'
-  )?.count || 0;
+  const categoriesActiveResult = await db
+    .selectFrom('user_memories')
+    .select(db.fn.count<number>('category_id').distinct().as('count'))
+    .where('category_id', 'is not', null)
+    .executeTakeFirst();
+  const categoriesActive = categoriesActiveResult?.count ?? 0;
 
-  // For extractions today, we'd need to track this separately
-  // For now, count memories updated today
-  const extractionsToday = queryOne<{ count: number }>(
-    "SELECT COUNT(*) as count FROM user_memories WHERE DATE(updated_at) = DATE('now')"
-  )?.count || 0;
+  // Count memories updated today
+  const extractionsTodayResult = await db
+    .selectFrom('user_memories')
+    .select(db.fn.countAll<number>().as('count'))
+    .where(sql`DATE(updated_at)`, '=', sql`DATE(NOW())`)
+    .executeTakeFirst();
+  const extractionsToday = extractionsTodayResult?.count ?? 0;
 
   return {
-    usersWithMemory,
+    usersWithMemory: Number(usersWithMemory),
     totalFacts,
-    categoriesActive,
-    extractionsToday,
+    categoriesActive: Number(categoriesActive),
+    extractionsToday: Number(extractionsToday),
   };
 }
 
@@ -193,7 +238,7 @@ export async function extractFacts(
   existingFacts: string[] = [],
   maxFacts: number = 20
 ): Promise<string[]> {
-  const settings = getMemorySettings();
+  const settings = await getMemorySettings();
   if (!settings.enabled) {
     return existingFacts;
   }
@@ -203,7 +248,7 @@ export async function extractFacts(
     return existingFacts;
   }
 
-  const llmSettings = getLlmSettings();
+  const llmSettings = await getLlmSettings();
 
   // Format messages for the prompt
   const formattedMessages = messages
@@ -221,8 +266,8 @@ export async function extractFacts(
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
     const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || getApiKey('openai'))
-      : getApiKey('openai');
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
 
     const client = new OpenAI({
       baseURL,
@@ -230,7 +275,7 @@ export async function extractFacts(
     });
 
     // Get memory settings for configurable max tokens
-    const memorySettings = getMemorySettings();
+    const memorySettings = await getMemorySettings();
 
     const response = await client.chat.completions.create({
       model: llmSettings.model,
@@ -289,8 +334,8 @@ Use this context to provide more personalized and relevant responses.
 /**
  * Get memory context for a user (combines global and category-specific)
  */
-export function getMemoryContext(userId: number, categoryIds: number[] = []): string {
-  const settings = getMemorySettings();
+export async function getMemoryContext(userId: number, categoryIds: number[] = []): Promise<string> {
+  const settings = await getMemorySettings();
   if (!settings.enabled) {
     return '';
   }
@@ -298,14 +343,14 @@ export function getMemoryContext(userId: number, categoryIds: number[] = []): st
   const allFacts: string[] = [];
 
   // Get global memory (category_id = null)
-  const globalMemory = getMemoryForUser(userId, null);
+  const globalMemory = await getMemoryForUser(userId, null);
   if (globalMemory) {
     allFacts.push(...globalMemory.facts);
   }
 
   // Get category-specific memories
   for (const categoryId of categoryIds) {
-    const categoryMemory = getMemoryForUser(userId, categoryId);
+    const categoryMemory = await getMemoryForUser(userId, categoryId);
     if (categoryMemory) {
       allFacts.push(...categoryMemory.facts);
     }
@@ -325,13 +370,13 @@ export async function processConversationForMemory(
   categoryId: number | null,
   messages: Array<{ role: string; content: string }>
 ): Promise<void> {
-  const settings = getMemorySettings();
+  const settings = await getMemorySettings();
   if (!settings.enabled) {
     return;
   }
 
   // Get existing memory
-  const existingMemory = getMemoryForUser(userId, categoryId);
+  const existingMemory = await getMemoryForUser(userId, categoryId);
   const existingFacts = existingMemory?.facts || [];
 
   // Extract new facts
@@ -343,7 +388,7 @@ export async function processConversationForMemory(
 
   // Update memory if facts changed
   if (JSON.stringify(newFacts) !== JSON.stringify(existingFacts)) {
-    updateMemory(userId, categoryId, newFacts);
+    await updateMemory(userId, categoryId, newFacts);
     console.log(`[Memory] Updated memory for user ${userId}, category ${categoryId}: ${newFacts.length} facts`);
   }
 }

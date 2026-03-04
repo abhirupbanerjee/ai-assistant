@@ -375,7 +375,7 @@ export interface TaskPlansTable {
   category_slug: string | null;
   title: string | null;
   tasks_json: string;
-  status: Generated<'active' | 'completed' | 'cancelled' | 'failed'>;
+  status: Generated<'active' | 'completed' | 'cancelled' | 'failed' | 'paused' | 'stopped'>;
   total_tasks: Generated<number>;
   completed_tasks: Generated<number>;
   failed_tasks: Generated<number>;
@@ -732,6 +732,190 @@ export interface ComplianceResultsTable {
   validated_at: Generated<string>;
 }
 
+// ============ Agent Bots ============
+
+export interface AgentBotsTable {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  is_active: Generated<number>;
+  created_by: string;
+  created_by_role: 'admin' | 'superuser';
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type AgentBot = Selectable<AgentBotsTable>;
+export type NewAgentBot = Insertable<AgentBotsTable>;
+export type AgentBotUpdate = Updateable<AgentBotsTable>;
+
+// ============ Agent Bot Versions ============
+
+export interface AgentBotVersionsTable {
+  id: string;
+  agent_bot_id: string;
+  version_number: number;
+  version_label: string | null;
+  is_default: Generated<number>;
+  input_schema: string;
+  output_config: string;
+  system_prompt: string | null;
+  llm_model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  is_active: Generated<number>;
+  created_by: string;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type AgentBotVersion = Selectable<AgentBotVersionsTable>;
+export type NewAgentBotVersion = Insertable<AgentBotVersionsTable>;
+export type AgentBotVersionUpdate = Updateable<AgentBotVersionsTable>;
+
+// ============ Agent Bot Version Categories ============
+
+export interface AgentBotVersionCategoriesTable {
+  version_id: string;
+  category_id: number;
+}
+
+// ============ Agent Bot Version Skills ============
+
+export interface AgentBotVersionSkillsTable {
+  version_id: string;
+  skill_id: number;
+}
+
+// ============ Agent Bot Version Tools ============
+
+export interface AgentBotVersionToolsTable {
+  id: string;
+  version_id: string;
+  tool_name: string;
+  is_enabled: Generated<number>;
+  config_override: string | null;
+}
+
+// ============ Agent Bot API Keys ============
+
+export interface AgentBotApiKeysTable {
+  id: string;
+  agent_bot_id: string;
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  permissions: Generated<string>;
+  rate_limit_rpm: Generated<number>;
+  rate_limit_rpd: Generated<number>;
+  expires_at: string | null;
+  last_used_at: string | null;
+  is_active: Generated<number>;
+  created_by: string;
+  created_at: Generated<string>;
+  revoked_at: string | null;
+}
+
+export type AgentBotApiKey = Selectable<AgentBotApiKeysTable>;
+export type NewAgentBotApiKey = Insertable<AgentBotApiKeysTable>;
+export type AgentBotApiKeyUpdate = Updateable<AgentBotApiKeysTable>;
+
+// ============ Agent Bot Jobs ============
+
+export interface AgentBotJobsTable {
+  id: string;
+  agent_bot_id: string;
+  version_id: string;
+  api_key_id: string;
+  status: Generated<'pending' | 'running' | 'completed' | 'failed' | 'cancelled'>;
+  input_json: string;
+  input_files_json: string | null;
+  output_type: Generated<string>;
+  webhook_url: string | null;
+  webhook_secret: string | null;
+  priority: Generated<number>;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  error_code: string | null;
+  processing_time_ms: number | null;
+  token_usage_json: string | null;
+  created_at: Generated<string>;
+  expires_at: string | null;
+}
+
+export type AgentBotJob = Selectable<AgentBotJobsTable>;
+export type NewAgentBotJob = Insertable<AgentBotJobsTable>;
+export type AgentBotJobUpdate = Updateable<AgentBotJobsTable>;
+
+// ============ Agent Bot Job Outputs ============
+
+export interface AgentBotJobOutputsTable {
+  id: string;
+  job_id: string;
+  output_type: 'text' | 'json' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'podcast' | 'md';
+  content: string | null;
+  filename: string | null;
+  filepath: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  metadata_json: string | null;
+  created_at: Generated<string>;
+}
+
+export type AgentBotJobOutput = Selectable<AgentBotJobOutputsTable>;
+export type NewAgentBotJobOutput = Insertable<AgentBotJobOutputsTable>;
+
+// ============ Agent Bot Job Files ============
+
+export interface AgentBotJobFilesTable {
+  id: string;
+  job_id: string;
+  original_filename: string;
+  stored_filepath: string;
+  file_size: number;
+  mime_type: string;
+  extracted_text: string | null;
+  extraction_status: Generated<'pending' | 'processing' | 'ready' | 'error'>;
+  created_at: Generated<string>;
+}
+
+export type AgentBotJobFile = Selectable<AgentBotJobFilesTable>;
+export type NewAgentBotJobFile = Insertable<AgentBotJobFilesTable>;
+
+// ============ Agent Bot Usage ============
+
+export interface AgentBotUsageTable {
+  id: Generated<number>;
+  api_key_id: string;
+  agent_bot_id: string;
+  date: string;
+  hour: number;
+  request_count: Generated<number>;
+  token_count: Generated<number>;
+  error_count: Generated<number>;
+}
+
+// ============ Reindex Jobs ============
+
+export interface ReindexJobsTable {
+  id: string;
+  status: Generated<string>;
+  target_model: string;
+  target_dimensions: number;
+  previous_model: string;
+  previous_dimensions: number;
+  total_documents: Generated<number>;
+  processed_documents: Generated<number>;
+  failed_documents: Generated<number>;
+  errors: Generated<string>;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: Generated<string>;
+  created_by: string;
+}
+
 // ============ Complete Database Interface ============
 
 export interface DB {
@@ -784,4 +968,17 @@ export interface DB {
   folder_syncs: FolderSyncsTable;
   folder_sync_files: FolderSyncFilesTable;
   compliance_results: ComplianceResultsTable;
+  // Agent Bots
+  agent_bots: AgentBotsTable;
+  agent_bot_versions: AgentBotVersionsTable;
+  agent_bot_version_categories: AgentBotVersionCategoriesTable;
+  agent_bot_version_skills: AgentBotVersionSkillsTable;
+  agent_bot_version_tools: AgentBotVersionToolsTable;
+  agent_bot_api_keys: AgentBotApiKeysTable;
+  agent_bot_jobs: AgentBotJobsTable;
+  agent_bot_job_outputs: AgentBotJobOutputsTable;
+  agent_bot_job_files: AgentBotJobFilesTable;
+  agent_bot_usage: AgentBotUsageTable;
+  // Reindex Jobs
+  reindex_jobs: ReindexJobsTable;
 }

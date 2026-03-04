@@ -10,8 +10,7 @@ import * as fs from 'fs';
 import path from 'path';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
-import { getDocumentWithCategories } from '@/lib/db/documents';
+import { getSuperUserWithAssignments, getDocumentWithCategories } from '@/lib/db/compat';
 import { getGlobalDocsDir } from '@/lib/storage';
 
 interface RouteParams {
@@ -48,13 +47,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get document with categories
-    const doc = getDocumentWithCategories(docIdNum);
+    const doc = await getDocumentWithCategories(docIdNum);
     if (!doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
     // Get super user's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Super user data not found' }, { status: 404 });
     }

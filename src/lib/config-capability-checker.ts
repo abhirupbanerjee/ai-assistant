@@ -11,8 +11,8 @@
  * - 'none': No image processing available
  */
 
-import { getEnabledModel, getDefaultModel, isModelVisionCapable } from '@/lib/db/enabled-models';
-import { getOcrSettings } from '@/lib/db/config';
+import { getEnabledModel, getDefaultModel, isModelVisionCapable } from '@/lib/db/compat/enabled-models';
+import { getOcrSettings } from '@/lib/db/compat/config';
 import { isProviderConfigured } from '@/lib/provider-helpers';
 
 // ============ Types ============
@@ -40,8 +40,8 @@ export interface ImageCapabilities {
  * Check if a specific model supports vision/image input
  * Uses the database as the authoritative source
  */
-export function isVisionCapableModel(modelId: string): boolean {
-  return isModelVisionCapable(modelId);
+export async function isVisionCapableModel(modelId: string): Promise<boolean> {
+  return await isModelVisionCapable(modelId);
 }
 
 /**
@@ -49,8 +49,8 @@ export function isVisionCapableModel(modelId: string): boolean {
  * Note: pdf-parse only supports PDFs, not images
  * Returns true if Mistral or Azure DI is configured and enabled
  */
-export function isImageOcrAvailable(): boolean {
-  const ocrSettings = getOcrSettings();
+export async function isImageOcrAvailable(): Promise<boolean> {
+  const ocrSettings = await getOcrSettings();
 
   for (const { provider, enabled } of ocrSettings.providers) {
     if (!enabled) continue;
@@ -58,7 +58,7 @@ export function isImageOcrAvailable(): boolean {
     switch (provider) {
       case 'mistral': {
         // Check DB settings first, then provider config (which includes env vars)
-        const hasMistral = ocrSettings.mistralApiKey || isProviderConfigured('mistral');
+        const hasMistral = ocrSettings.mistralApiKey || await isProviderConfigured('mistral');
         if (hasMistral) return true;
         break;
       }
@@ -81,9 +81,9 @@ export function isImageOcrAvailable(): boolean {
  * Get comprehensive image processing capabilities for a model
  * Determines the best strategy based on available resources
  */
-export function getImageCapabilities(modelId: string): ImageCapabilities {
-  const hasVision = isVisionCapableModel(modelId);
-  const hasOcr = isImageOcrAvailable();
+export async function getImageCapabilities(modelId: string): Promise<ImageCapabilities> {
+  const hasVision = await isVisionCapableModel(modelId);
+  const hasOcr = await isImageOcrAvailable();
 
   // Scenario 1: No vision, no OCR - cannot process images
   if (!hasVision && !hasOcr) {
@@ -137,10 +137,10 @@ export function getImageCapabilities(modelId: string): ImageCapabilities {
  * Get image capabilities for the system default model
  * Useful when no specific model is selected
  */
-export function getDefaultImageCapabilities(): ImageCapabilities {
-  const defaultModel = getDefaultModel();
+export async function getDefaultImageCapabilities(): Promise<ImageCapabilities> {
+  const defaultModel = await getDefaultModel();
   const modelId = defaultModel?.id || 'unknown';
-  return getImageCapabilities(modelId);
+  return await getImageCapabilities(modelId);
 }
 
 /**

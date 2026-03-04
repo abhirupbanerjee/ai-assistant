@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { saveUpload, deleteUpload, getThread, getThreadUploadCount } from '@/lib/threads';
-import { getUploadLimits } from '@/lib/db/config';
+import { getUploadLimits } from '@/lib/db/compat';
 import { extractWebContent, generateFilenameFromUrl, formatWebContentForIngestion, isTavilyConfigured } from '@/lib/tools/tavily';
 import { getYouTubeConfig, extractWithSupadata } from '@/lib/tools/youtube';
 import { extractVideoId, isYouTubeUrl as checkYouTubeUrl } from '@/lib/youtube';
@@ -39,8 +39,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get upload limits and check per-thread limit
-    const uploadLimits = getUploadLimits();
-    const currentUploadCount = getThreadUploadCount(threadId);
+    const uploadLimits = await getUploadLimits();
+    const currentUploadCount = await getThreadUploadCount(threadId);
 
     if (uploadLimits.maxFilesPerThread > 0 && currentUploadCount >= uploadLimits.maxFilesPerThread) {
       return NextResponse.json<ApiError>(
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           );
         }
 
-        const { config } = getYouTubeConfig();
+        const { config } = await getYouTubeConfig();
         if (!config.apiKey) {
           return NextResponse.json<ApiError>(
             { error: 'YouTube extraction not configured. Contact admin.', code: 'NOT_CONFIGURED' },

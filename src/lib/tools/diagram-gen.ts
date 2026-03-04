@@ -6,7 +6,7 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import { generateMermaidDiagram, getDiagramGenConfig, DIAGRAM_GEN_DEFAULTS } from '../diagram-gen/generator';
 import { DIAGRAM_TEMPLATES } from '../diagram-gen/templates';
 import type { DiagramGenToolArgs, DiagramGenResponse, MermaidDiagramType } from '@/types/diagram-gen';
@@ -86,8 +86,8 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
 
 // ===== Check if Enabled =====
 
-export function isDiagramGenEnabled(): boolean {
-  const config = getToolConfig('diagram_gen');
+export async function isDiagramGenEnabled(): Promise<boolean> {
+  const config = await getToolConfig('diagram_gen');
   return config?.isEnabled ?? false;
 }
 
@@ -95,7 +95,7 @@ export function isDiagramGenEnabled(): boolean {
 
 async function executeDiagramGen(args: DiagramGenToolArgs): Promise<string> {
   const startTime = Date.now();
-  const config = getDiagramGenConfig();
+  const config = await getDiagramGenConfig();
 
   // Validate diagram type
   const validTypes = Object.keys(DIAGRAM_TEMPLATES) as MermaidDiagramType[];

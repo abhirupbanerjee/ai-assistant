@@ -212,7 +212,7 @@ export function deleteRoutingRule(id: string): boolean {
 
 // ============ Seed Default Rules ============
 
-const DEFAULT_ROUTING_RULES: ToolRoutingRuleInput[] = [
+export const DEFAULT_ROUTING_RULES: ToolRoutingRuleInput[] = [
   // Chart Generator
   {
     toolName: 'chart_gen',

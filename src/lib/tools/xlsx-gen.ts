@@ -10,7 +10,7 @@ import * as path from 'path';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type { XlsxGenToolArgs, XlsxGenConfig, XlsxGenResponse } from '@/types/xlsx-gen';
 import { getRequestContext } from '../request-context';
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import { generateXlsx } from '../xlsxgen/xlsx-builder';
 import { getOutputDirectory, generateDocumentFilename } from '../docgen/branding';
 import { addThreadOutput, addWorkspaceOutput, getThreadContext } from '../db/compat/threads';
@@ -291,7 +291,7 @@ The generated file will be available for download.`,
       }
 
       // Get tool configuration
-      const toolConfig = getToolConfig('xlsx_gen');
+      const toolConfig = await getToolConfig('xlsx_gen');
       const config = (toolConfig?.config as Partial<XlsxGenConfig>) || {};
       const organizationName = config.branding?.organizationName || '';
 

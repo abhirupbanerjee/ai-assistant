@@ -5,8 +5,8 @@
  * Handles domain validation, access control, and feature enablement checks.
  */
 
-import { getWorkspaceBySlug, canUserAccessWorkspace, validateDomain as checkDomain } from '../db/workspaces';
-import { getSetting } from '../db/config';
+import { getWorkspaceBySlug, canUserAccessWorkspace, validateDomain as checkDomain } from '../db/compat/workspaces';
+import { getSetting } from '../db/compat/config';
 import type { Workspace, WorkspaceValidationResult } from '@/types/workspace';
 
 // ============================================================================
@@ -16,9 +16,9 @@ import type { Workspace, WorkspaceValidationResult } from '@/types/workspace';
 /**
  * Check if the workspaces feature is enabled globally
  */
-export function isWorkspacesFeatureEnabled(): boolean {
+export async function isWorkspacesFeatureEnabled(): Promise<boolean> {
   try {
-    const settings = getSetting<{ enabled: boolean }>('workspaces-settings');
+    const settings = await getSetting<{ enabled: boolean }>('workspaces-settings');
     return settings?.enabled !== false; // Default to enabled if not set
   } catch {
     return true; // Default to enabled
@@ -47,7 +47,7 @@ export async function validateWorkspaceRequest(
   const { origin, userId, checkEnabled = true } = options;
 
   // Check if feature is enabled globally
-  if (!isWorkspacesFeatureEnabled()) {
+  if (!(await isWorkspacesFeatureEnabled())) {
     return {
       valid: false,
       error: 'Workspaces feature is disabled',
@@ -65,7 +65,7 @@ export async function validateWorkspaceRequest(
   }
 
   // Get workspace
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) {
     return {
       valid: false,
@@ -96,7 +96,7 @@ export async function validateWorkspaceRequest(
       // If URL parsing fails, proceed with validation
     }
 
-    if (!isHostedEmbed && !validateDomain(workspace, origin)) {
+    if (!isHostedEmbed && !(await validateDomain(workspace, origin))) {
       return {
         valid: false,
         workspace,
@@ -109,7 +109,7 @@ export async function validateWorkspaceRequest(
   // For standalone mode with explicit access mode: check user access
   // For category-based mode, we allow access but RAG queries will be scoped to user's categories
   if (workspace.type === 'standalone' && workspace.access_mode === 'explicit' && userId !== undefined) {
-    if (!canUserAccessWorkspace(userId, workspace.id)) {
+    if (!(await canUserAccessWorkspace(userId, workspace.id))) {
       return {
         valid: false,
         workspace,
@@ -136,7 +136,7 @@ export function isValidSlug(slug: string): boolean {
 /**
  * Validate domain for embed workspace
  */
-export function validateDomain(workspace: Workspace, origin: string): boolean {
+export async function validateDomain(workspace: Workspace, origin: string): Promise<boolean> {
   return checkDomain(workspace.id, origin);
 }
 
@@ -258,12 +258,12 @@ export function getWorkspaceClientConfig(workspace: Workspace): {
  * Get LLM configuration for a workspace
  * Falls back to global settings if not overridden
  */
-export function getWorkspaceLLMConfig(workspace: Workspace): {
+export async function getWorkspaceLLMConfig(workspace: Workspace): Promise<{
   provider: string;
   model: string;
   temperature: number;
-} {
-  const globalSettings = getSetting<{
+}> {
+  const globalSettings = await getSetting<{
     model: string;
     temperature: number;
   }>('llm-settings') || { model: 'gpt-4o-mini', temperature: 0.3 };
@@ -302,8 +302,8 @@ IMPORTANT: This is an embedded chat widget with TEXT-ONLY output.
  * Combines workspace-specific prompt with global default
  * For embed mode, adds restrictions about unavailable features
  */
-export function getWorkspaceSystemPrompt(workspace: Workspace): string {
-  const globalPrompt = getSetting<{ content: string }>('system-prompt')?.content || '';
+export async function getWorkspaceSystemPrompt(workspace: Workspace): Promise<string> {
+  const globalPrompt = (await getSetting<{ content: string }>('system-prompt'))?.content || '';
 
   let prompt = globalPrompt;
 

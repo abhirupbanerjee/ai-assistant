@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getTaskPlan, skipTask } from '@/lib/db/task-plans';
+import { getTaskPlan, skipTask } from '@/lib/db/compat/task-plans';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify plan exists and belongs to user
-    const plan = getTaskPlan(planId);
+    const plan = await getTaskPlan(planId);
     if (!plan) {
       return NextResponse.json<ApiError>(
         { error: 'Plan not found', code: 'NOT_FOUND' },
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Skip the task
-    const updatedPlan = skipTask(planId, taskIdNum, body.reason);
+    const updatedPlan = await skipTask(planId, taskIdNum, body.reason);
     if (!updatedPlan) {
       return NextResponse.json<ApiError>(
         { error: `Cannot skip task with status '${task.status}'`, code: 'INVALID_STATE' },

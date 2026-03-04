@@ -4,8 +4,8 @@
  * Discovers available models from LLM provider APIs (OpenAI, Gemini, Mistral, Ollama)
  */
 
-import { getProviderApiKey, getProviderApiBase } from '../db/llm-providers';
-import { getEnabledModel } from '../db/enabled-models';
+import { getProviderApiKey, getProviderApiBase } from '../db/compat/llm-providers';
+import { getEnabledModel } from '../db/compat/enabled-models';
 import { generateDisplayName, getProviderFromModelPath } from '../litellm-validator';
 
 // ============ Types ============
@@ -256,19 +256,18 @@ async function discoverOpenAIModels(apiKey: string): Promise<DiscoveredModel[]> 
 
   const data = await response.json() as { data: Array<{ id: string }> };
 
-  return data.data
-    .filter(m => isChatModel(m.id))
-    .map(m => ({
-      id: m.id,
-      name: generateDisplayName(m.id),
-      provider: 'openai',
-      toolCapable: isToolCapable(m.id),
-      visionCapable: isVisionCapable(m.id),
-      maxInputTokens: getContextWindow(m.id),
-      maxOutputTokens: getDefaultOutputTokens('openai'),
-      isEnabled: !!getEnabledModel(m.id),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = data.data.filter(m => isChatModel(m.id));
+  const models = await Promise.all(filtered.map(async m => ({
+    id: m.id,
+    name: generateDisplayName(m.id),
+    provider: 'openai',
+    toolCapable: isToolCapable(m.id),
+    visionCapable: isVisionCapable(m.id),
+    maxInputTokens: getContextWindow(m.id),
+    maxOutputTokens: getDefaultOutputTokens('openai'),
+    isEnabled: !!(await getEnabledModel(m.id)),
+  })));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -292,28 +291,27 @@ async function discoverGeminiModels(apiKey: string): Promise<DiscoveredModel[]> 
     }>;
   };
 
-  return data.models
-    .filter(m => {
-      // Filter to generative models only
-      const methods = m.supportedGenerationMethods || [];
-      return methods.includes('generateContent') && isChatModel(m.name);
-    })
-    .map(m => {
-      // Extract model ID from full name (e.g., "models/gemini-2.5-flash" -> "gemini-2.5-flash")
-      const id = m.name.replace('models/', '');
-      return {
-        id,
-        name: generateDisplayName(id),
-        provider: 'gemini',
-        toolCapable: isToolCapable(id),
-        visionCapable: isVisionCapable(id),
-        maxInputTokens: m.inputTokenLimit || getContextWindow(id),
-        // Use actual outputTokenLimit from API if available, else provider default
-        maxOutputTokens: m.outputTokenLimit || getDefaultOutputTokens('gemini'),
-        isEnabled: !!getEnabledModel(id),
-      };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = data.models.filter(m => {
+    // Filter to generative models only
+    const methods = m.supportedGenerationMethods || [];
+    return methods.includes('generateContent') && isChatModel(m.name);
+  });
+  const models = await Promise.all(filtered.map(async m => {
+    // Extract model ID from full name (e.g., "models/gemini-2.5-flash" -> "gemini-2.5-flash")
+    const id = m.name.replace('models/', '');
+    return {
+      id,
+      name: generateDisplayName(id),
+      provider: 'gemini',
+      toolCapable: isToolCapable(id),
+      visionCapable: isVisionCapable(id),
+      maxInputTokens: m.inputTokenLimit || getContextWindow(id),
+      // Use actual outputTokenLimit from API if available, else provider default
+      maxOutputTokens: m.outputTokenLimit || getDefaultOutputTokens('gemini'),
+      isEnabled: !!(await getEnabledModel(id)),
+    };
+  }));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -330,19 +328,18 @@ async function discoverMistralModels(apiKey: string): Promise<DiscoveredModel[]>
 
   const data = await response.json() as { data: Array<{ id: string }> };
 
-  return data.data
-    .filter(m => isChatModel(m.id))
-    .map(m => ({
-      id: m.id,
-      name: generateDisplayName(m.id),
-      provider: 'mistral',
-      toolCapable: isToolCapable(m.id),
-      visionCapable: isVisionCapable(m.id),
-      maxInputTokens: getContextWindow(m.id),
-      maxOutputTokens: getDefaultOutputTokens('mistral'),
-      isEnabled: !!getEnabledModel(m.id),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = data.data.filter(m => isChatModel(m.id));
+  const models = await Promise.all(filtered.map(async m => ({
+    id: m.id,
+    name: generateDisplayName(m.id),
+    provider: 'mistral',
+    toolCapable: isToolCapable(m.id),
+    visionCapable: isVisionCapable(m.id),
+    maxInputTokens: getContextWindow(m.id),
+    maxOutputTokens: getDefaultOutputTokens('mistral'),
+    isEnabled: !!(await getEnabledModel(m.id)),
+  })));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -358,24 +355,23 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
 
   const data = await response.json() as { models: Array<{ name: string }> };
 
-  return data.models
-    .filter(m => isChatModel(m.name))
-    .map(m => {
-      // Ollama model names often include tags like ":latest"
-      const baseName = m.name.split(':')[0];
-      const id = `ollama-${baseName}`;
-      return {
-        id,
-        name: generateDisplayName(id),
-        provider: 'ollama',
-        toolCapable: isToolCapable(baseName),
-        visionCapable: isVisionCapable(baseName),
-        maxInputTokens: null,  // Ollama doesn't report this
-        maxOutputTokens: getDefaultOutputTokens('ollama'),
-        isEnabled: !!getEnabledModel(id),
-      };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = data.models.filter(m => isChatModel(m.name));
+  const models = await Promise.all(filtered.map(async m => {
+    // Ollama model names often include tags like ":latest"
+    const baseName = m.name.split(':')[0];
+    const id = `ollama-${baseName}`;
+    return {
+      id,
+      name: generateDisplayName(id),
+      provider: 'ollama',
+      toolCapable: isToolCapable(baseName),
+      visionCapable: isVisionCapable(baseName),
+      maxInputTokens: null,  // Ollama doesn't report this
+      maxOutputTokens: getDefaultOutputTokens('ollama'),
+      isEnabled: !!(await getEnabledModel(id)),
+    };
+  }));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -416,19 +412,18 @@ async function discoverAnthropicModels(apiKey: string): Promise<DiscoveredModel[
     'claude-3-haiku',
   ];
 
-  return knownModels
-    .filter(m => isChatModel(m))
-    .map(m => ({
-      id: m,
-      name: generateDisplayName(m),
-      provider: 'anthropic',
-      toolCapable: isToolCapable(m),
-      visionCapable: isVisionCapable(m),
-      maxInputTokens: getContextWindow(m),
-      maxOutputTokens: getDefaultOutputTokens('anthropic'),
-      isEnabled: !!getEnabledModel(m),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = knownModels.filter(m => isChatModel(m));
+  const models = await Promise.all(filtered.map(async m => ({
+    id: m,
+    name: generateDisplayName(m),
+    provider: 'anthropic',
+    toolCapable: isToolCapable(m),
+    visionCapable: isVisionCapable(m),
+    maxInputTokens: getContextWindow(m),
+    maxOutputTokens: getDefaultOutputTokens('anthropic'),
+    isEnabled: !!(await getEnabledModel(m)),
+  })));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -445,20 +440,19 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
 
   const data = await response.json() as { data: Array<{ id: string }> };
 
-  return data.data
-    .filter(m => isChatModel(m.id))
-    .map(m => ({
-      id: m.id,
-      name: generateDisplayName(m.id),
-      provider: 'deepseek',
-      toolCapable: isToolCapable(m.id),
-      // DeepSeek does NOT support vision
-      visionCapable: false,
-      maxInputTokens: getContextWindow(m.id),
-      maxOutputTokens: getDefaultOutputTokens('deepseek'),
-      isEnabled: !!getEnabledModel(m.id),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = data.data.filter(m => isChatModel(m.id));
+  const models = await Promise.all(filtered.map(async m => ({
+    id: m.id,
+    name: generateDisplayName(m.id),
+    provider: 'deepseek',
+    toolCapable: isToolCapable(m.id),
+    // DeepSeek does NOT support vision
+    visionCapable: false,
+    maxInputTokens: getContextWindow(m.id),
+    maxOutputTokens: getDefaultOutputTokens('deepseek'),
+    isEnabled: !!(await getEnabledModel(m.id)),
+  })));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ============ Main Discovery Function ============
@@ -472,7 +466,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
 
     switch (provider) {
       case 'openai': {
-        const apiKey = getProviderApiKey('openai');
+        const apiKey = await getProviderApiKey('openai');
         if (!apiKey) {
           return { success: false, provider, models: [], error: 'API key not configured' };
         }
@@ -481,7 +475,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       }
 
       case 'gemini': {
-        const apiKey = getProviderApiKey('gemini');
+        const apiKey = await getProviderApiKey('gemini');
         if (!apiKey) {
           return { success: false, provider, models: [], error: 'API key not configured' };
         }
@@ -490,7 +484,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       }
 
       case 'mistral': {
-        const apiKey = getProviderApiKey('mistral');
+        const apiKey = await getProviderApiKey('mistral');
         if (!apiKey) {
           return { success: false, provider, models: [], error: 'API key not configured' };
         }
@@ -499,7 +493,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       }
 
       case 'ollama': {
-        const apiBase = getProviderApiBase('ollama');
+        const apiBase = await getProviderApiBase('ollama');
         if (!apiBase) {
           return { success: false, provider, models: [], error: 'API base URL not configured' };
         }
@@ -508,7 +502,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       }
 
       case 'anthropic': {
-        const apiKey = getProviderApiKey('anthropic');
+        const apiKey = await getProviderApiKey('anthropic');
         if (!apiKey) {
           return { success: false, provider, models: [], error: 'API key not configured' };
         }
@@ -517,7 +511,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       }
 
       case 'deepseek': {
-        const apiKey = getProviderApiKey('deepseek');
+        const apiKey = await getProviderApiKey('deepseek');
         if (!apiKey) {
           return { success: false, provider, models: [], error: 'API key not configured' };
         }

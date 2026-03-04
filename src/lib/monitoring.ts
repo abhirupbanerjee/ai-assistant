@@ -10,7 +10,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getDataDir, getGlobalDocsDir, getThreadsDir } from './storage';
-import { queryOne, queryAll } from './db';
+import { getDb } from './db/kysely';
+import { sql } from 'kysely';
 import {
   getVectorStore,
   getVectorStoreProvider,
@@ -99,93 +100,68 @@ export interface SystemStats {
 
 // ============ Database Statistics ============
 
-export function getDatabaseStats(): DatabaseStats {
+export async function getDatabaseStats(): Promise<DatabaseStats> {
+  const db = await getDb();
+
   // User stats
-  const userCounts = queryOne<{
-    total: number;
-    admins: number;
-    superUsers: number;
-    regularUsers: number;
-  }>(`
-    SELECT
-      COUNT(*) as total,
-      SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) as admins,
-      SUM(CASE WHEN role = 'superuser' THEN 1 ELSE 0 END) as superUsers,
-      SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) as regularUsers
-    FROM users
-  `);
+  const userCounts = await db.selectFrom('users')
+    .select([
+      db.fn.countAll().as('total'),
+      sql<number>`SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END)`.as('admins'),
+      sql<number>`SUM(CASE WHEN role = 'superuser' THEN 1 ELSE 0 END)`.as('super_users'),
+      sql<number>`SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END)`.as('regular_users'),
+    ])
+    .executeTakeFirst();
 
   // Category stats
-  const categoryStats = queryOne<{
-    total: number;
-    withDocuments: number;
-    totalSubscriptions: number;
-  }>(`
-    SELECT
-      (SELECT COUNT(*) FROM categories) as total,
-      (SELECT COUNT(DISTINCT category_id) FROM document_categories) as withDocuments,
-      (SELECT COUNT(*) FROM user_subscriptions WHERE is_active = 1) as totalSubscriptions
-  `);
+  const catTotal = await db.selectFrom('categories').select(db.fn.countAll().as('count')).executeTakeFirst();
+  const withDocs = await db.selectFrom('document_categories').select(db.fn.count('category_id').distinct().as('count')).executeTakeFirst();
+  const totalSubs = await db.selectFrom('user_subscriptions').select(db.fn.countAll().as('count')).where('is_active', '=', 1).executeTakeFirst();
 
   // Thread stats
-  const threadStats = queryOne<{
-    total: number;
-    totalMessages: number;
-    totalUploads: number;
-  }>(`
-    SELECT
-      (SELECT COUNT(*) FROM threads) as total,
-      (SELECT COUNT(*) FROM messages) as totalMessages,
-      (SELECT COUNT(*) FROM thread_uploads) as totalUploads
-  `);
+  const threadTotal = await db.selectFrom('threads').select(db.fn.countAll().as('count')).executeTakeFirst();
+  const msgTotal = await db.selectFrom('messages').select(db.fn.countAll().as('count')).executeTakeFirst();
+  const uploadTotal = await db.selectFrom('thread_uploads').select(db.fn.countAll().as('count')).executeTakeFirst();
 
   // Document stats
-  const documentStats = queryOne<{
-    total: number;
-    globalDocs: number;
-    categoryDocs: number;
-    totalChunks: number;
-    processingCount: number;
-    readyCount: number;
-    errorCount: number;
-  }>(`
-    SELECT
-      COUNT(*) as total,
-      SUM(CASE WHEN is_global = 1 THEN 1 ELSE 0 END) as globalDocs,
-      SUM(CASE WHEN is_global = 0 THEN 1 ELSE 0 END) as categoryDocs,
-      SUM(chunk_count) as totalChunks,
-      SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processingCount,
-      SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) as readyCount,
-      SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errorCount
-    FROM documents
-  `);
+  const docStats = await db.selectFrom('documents')
+    .select([
+      db.fn.countAll().as('total'),
+      sql<number>`SUM(CASE WHEN is_global = 1 THEN 1 ELSE 0 END)`.as('global_docs'),
+      sql<number>`SUM(CASE WHEN is_global = 0 THEN 1 ELSE 0 END)`.as('category_docs'),
+      sql<number>`COALESCE(SUM(chunk_count), 0)`.as('total_chunks'),
+      sql<number>`SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END)`.as('processing_count'),
+      sql<number>`SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END)`.as('ready_count'),
+      sql<number>`SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END)`.as('error_count'),
+    ])
+    .executeTakeFirst();
 
   return {
     users: {
-      total: userCounts?.total || 0,
-      admins: userCounts?.admins || 0,
-      superUsers: userCounts?.superUsers || 0,
-      regularUsers: userCounts?.regularUsers || 0,
+      total: Number(userCounts?.total) || 0,
+      admins: Number(userCounts?.admins) || 0,
+      superUsers: Number(userCounts?.super_users) || 0,
+      regularUsers: Number(userCounts?.regular_users) || 0,
     },
     categories: {
-      total: categoryStats?.total || 0,
-      withDocuments: categoryStats?.withDocuments || 0,
-      totalSubscriptions: categoryStats?.totalSubscriptions || 0,
+      total: Number(catTotal?.count) || 0,
+      withDocuments: Number(withDocs?.count) || 0,
+      totalSubscriptions: Number(totalSubs?.count) || 0,
     },
     threads: {
-      total: threadStats?.total || 0,
-      totalMessages: threadStats?.totalMessages || 0,
-      totalUploads: threadStats?.totalUploads || 0,
+      total: Number(threadTotal?.count) || 0,
+      totalMessages: Number(msgTotal?.count) || 0,
+      totalUploads: Number(uploadTotal?.count) || 0,
     },
     documents: {
-      total: documentStats?.total || 0,
-      globalDocuments: documentStats?.globalDocs || 0,
-      categoryDocuments: documentStats?.categoryDocs || 0,
-      totalChunks: documentStats?.totalChunks || 0,
+      total: Number(docStats?.total) || 0,
+      globalDocuments: Number(docStats?.global_docs) || 0,
+      categoryDocuments: Number(docStats?.category_docs) || 0,
+      totalChunks: Number(docStats?.total_chunks) || 0,
       byStatus: {
-        processing: documentStats?.processingCount || 0,
-        ready: documentStats?.readyCount || 0,
-        error: documentStats?.errorCount || 0,
+        processing: Number(docStats?.processing_count) || 0,
+        ready: Number(docStats?.ready_count) || 0,
+        error: Number(docStats?.error_count) || 0,
       },
     },
   };
@@ -355,7 +331,7 @@ export async function getFileStorageStats(): Promise<FileStorageStats> {
 
 export async function getSystemStats(): Promise<SystemStats> {
   const [database, vectorStore, storage] = await Promise.all([
-    Promise.resolve(getDatabaseStats()),
+    getDatabaseStats(),
     getVectorStats(),
     getFileStorageStats(),
   ]);
@@ -372,7 +348,7 @@ export async function getSystemStats(): Promise<SystemStats> {
 
 // ============ Category-Filtered Database Statistics (for Superusers) ============
 
-export function getDatabaseStatsForCategories(categoryIds: number[]): DatabaseStats {
+export async function getDatabaseStatsForCategories(categoryIds: number[]): Promise<DatabaseStats> {
   if (categoryIds.length === 0) {
     return {
       users: { total: 0, admins: 0, superUsers: 0, regularUsers: 0 },
@@ -382,101 +358,94 @@ export function getDatabaseStatsForCategories(categoryIds: number[]): DatabaseSt
     };
   }
 
-  const placeholders = categoryIds.map(() => '?').join(', ');
+  const db = await getDb();
 
   // User stats - count subscribers to assigned categories
-  const userCounts = queryOne<{
-    total: number;
-  }>(`
-    SELECT COUNT(DISTINCT u.id) as total
-    FROM users u
-    JOIN user_subscriptions us ON u.id = us.user_id
-    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
-  `, categoryIds);
+  const userCounts = await db.selectFrom('users as u')
+    .innerJoin('user_subscriptions as us', 'u.id', 'us.user_id')
+    .where('us.category_id', 'in', categoryIds)
+    .where('us.is_active', '=', 1)
+    .select(sql<number>`COUNT(DISTINCT u.id)`.as('total'))
+    .executeTakeFirst();
 
   // Category stats - only assigned categories
-  const categoryStats = queryOne<{
-    total: number;
-    withDocuments: number;
-    totalSubscriptions: number;
-  }>(`
-    SELECT
-      ? as total,
-      (SELECT COUNT(DISTINCT dc.category_id) FROM document_categories dc WHERE dc.category_id IN (${placeholders})) as withDocuments,
-      (SELECT COUNT(*) FROM user_subscriptions us WHERE us.category_id IN (${placeholders}) AND us.is_active = 1) as totalSubscriptions
-  `, [categoryIds.length, ...categoryIds, ...categoryIds]);
+  const withDocuments = await db.selectFrom('document_categories as dc')
+    .where('dc.category_id', 'in', categoryIds)
+    .select(sql<number>`COUNT(DISTINCT dc.category_id)`.as('count'))
+    .executeTakeFirst();
+
+  const totalSubscriptions = await db.selectFrom('user_subscriptions as us')
+    .where('us.category_id', 'in', categoryIds)
+    .where('us.is_active', '=', 1)
+    .select(db.fn.countAll().as('count'))
+    .executeTakeFirst();
 
   // Thread stats - threads from users subscribed to assigned categories
-  const threadStats = queryOne<{
-    total: number;
-    totalMessages: number;
-    totalUploads: number;
-  }>(`
-    SELECT
-      COUNT(DISTINCT t.id) as total,
-      (SELECT COUNT(*) FROM messages m WHERE m.thread_id IN (
-        SELECT DISTINCT t2.id FROM threads t2
-        JOIN users u ON t2.user_id = u.id
-        JOIN user_subscriptions us ON u.id = us.user_id
-        WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
-      )) as totalMessages,
-      (SELECT COUNT(*) FROM thread_uploads tu WHERE tu.thread_id IN (
-        SELECT DISTINCT t2.id FROM threads t2
-        JOIN users u ON t2.user_id = u.id
-        JOIN user_subscriptions us ON u.id = us.user_id
-        WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
-      )) as totalUploads
-    FROM threads t
-    JOIN users u ON t.user_id = u.id
-    JOIN user_subscriptions us ON u.id = us.user_id
-    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
-  `, [...categoryIds, ...categoryIds, ...categoryIds]);
+  // Build a subquery for thread IDs belonging to users in these categories
+  const threadIdsSubquery = db.selectFrom('threads as t2')
+    .innerJoin('users as u', 't2.user_id', 'u.id')
+    .innerJoin('user_subscriptions as us', 'u.id', 'us.user_id')
+    .where('us.category_id', 'in', categoryIds)
+    .where('us.is_active', '=', 1)
+    .select('t2.id');
+
+  const threadTotal = await db.selectFrom('threads as t')
+    .innerJoin('users as u', 't.user_id', 'u.id')
+    .innerJoin('user_subscriptions as us', 'u.id', 'us.user_id')
+    .where('us.category_id', 'in', categoryIds)
+    .where('us.is_active', '=', 1)
+    .select(sql<number>`COUNT(DISTINCT t.id)`.as('count'))
+    .executeTakeFirst();
+
+  const msgTotal = await db.selectFrom('messages as m')
+    .where('m.thread_id', 'in', threadIdsSubquery)
+    .select(db.fn.countAll().as('count'))
+    .executeTakeFirst();
+
+  const uploadTotal = await db.selectFrom('thread_uploads as tu')
+    .where('tu.thread_id', 'in', threadIdsSubquery)
+    .select(db.fn.countAll().as('count'))
+    .executeTakeFirst();
 
   // Document stats - documents in assigned categories
-  const documentStats = queryOne<{
-    total: number;
-    totalChunks: number;
-    processingCount: number;
-    readyCount: number;
-    errorCount: number;
-  }>(`
-    SELECT
-      COUNT(DISTINCT d.id) as total,
-      SUM(d.chunk_count) as totalChunks,
-      SUM(CASE WHEN d.status = 'processing' THEN 1 ELSE 0 END) as processingCount,
-      SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END) as readyCount,
-      SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END) as errorCount
-    FROM documents d
-    JOIN document_categories dc ON d.id = dc.document_id
-    WHERE dc.category_id IN (${placeholders})
-  `, categoryIds);
+  const documentStats = await db.selectFrom('documents as d')
+    .innerJoin('document_categories as dc', 'd.id', 'dc.document_id')
+    .where('dc.category_id', 'in', categoryIds)
+    .select([
+      sql<number>`COUNT(DISTINCT d.id)`.as('total'),
+      sql<number>`COALESCE(SUM(d.chunk_count), 0)`.as('total_chunks'),
+      sql<number>`SUM(CASE WHEN d.status = 'processing' THEN 1 ELSE 0 END)`.as('processing_count'),
+      sql<number>`SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END)`.as('ready_count'),
+      sql<number>`SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END)`.as('error_count'),
+    ])
+    .executeTakeFirst();
 
   return {
     users: {
-      total: userCounts?.total || 0,
+      total: Number(userCounts?.total) || 0,
       admins: 0,
       superUsers: 0,
-      regularUsers: userCounts?.total || 0,
+      regularUsers: Number(userCounts?.total) || 0,
     },
     categories: {
-      total: categoryStats?.total || 0,
-      withDocuments: categoryStats?.withDocuments || 0,
-      totalSubscriptions: categoryStats?.totalSubscriptions || 0,
+      total: categoryIds.length,
+      withDocuments: Number(withDocuments?.count) || 0,
+      totalSubscriptions: Number(totalSubscriptions?.count) || 0,
     },
     threads: {
-      total: threadStats?.total || 0,
-      totalMessages: threadStats?.totalMessages || 0,
-      totalUploads: threadStats?.totalUploads || 0,
+      total: Number(threadTotal?.count) || 0,
+      totalMessages: Number(msgTotal?.count) || 0,
+      totalUploads: Number(uploadTotal?.count) || 0,
     },
     documents: {
-      total: documentStats?.total || 0,
+      total: Number(documentStats?.total) || 0,
       globalDocuments: 0,
-      categoryDocuments: documentStats?.total || 0,
-      totalChunks: documentStats?.totalChunks || 0,
+      categoryDocuments: Number(documentStats?.total) || 0,
+      totalChunks: Number(documentStats?.total_chunks) || 0,
       byStatus: {
-        processing: documentStats?.processingCount || 0,
-        ready: documentStats?.readyCount || 0,
-        error: documentStats?.errorCount || 0,
+        processing: Number(documentStats?.processing_count) || 0,
+        ready: Number(documentStats?.ready_count) || 0,
+        error: Number(documentStats?.error_count) || 0,
       },
     },
   };
@@ -507,121 +476,146 @@ export interface RecentActivity {
   }[];
 }
 
-export function getRecentActivity(limit: number = 10): RecentActivity {
-  const recentThreads = queryAll<{
-    id: string;
-    title: string;
-    userEmail: string;
-    messageCount: number;
-    createdAt: string;
-  }>(`
-    SELECT
-      t.id,
-      t.title,
-      u.email as userEmail,
-      (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id) as messageCount,
-      t.created_at as createdAt
-    FROM threads t
-    JOIN users u ON t.user_id = u.id
-    ORDER BY t.created_at DESC
-    LIMIT ?
-  `, [limit]);
+export async function getRecentActivity(limit: number = 10): Promise<RecentActivity> {
+  const db = await getDb();
 
-  const recentDocuments = queryAll<{
-    id: number;
-    filename: string;
-    uploadedBy: string;
-    status: string;
-    createdAt: string;
-  }>(`
-    SELECT id, filename, uploaded_by as uploadedBy, status, created_at as createdAt
-    FROM documents
-    ORDER BY created_at DESC
-    LIMIT ?
-  `, [limit]);
+  const recentThreads = await db.selectFrom('threads as t')
+    .innerJoin('users as u', 't.user_id', 'u.id')
+    .select([
+      't.id',
+      't.title',
+      'u.email as userEmail',
+      sql<number>`(SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id)`.as('messageCount'),
+      't.created_at as createdAt',
+    ])
+    .orderBy('t.created_at', 'desc')
+    .limit(limit)
+    .execute();
 
-  const recentUsers = queryAll<{
-    id: number;
-    email: string;
-    role: string;
-    createdAt: string;
-  }>(`
-    SELECT id, email, role, created_at as createdAt
-    FROM users
-    ORDER BY created_at DESC
-    LIMIT ?
-  `, [limit]);
+  const recentDocuments = await db.selectFrom('documents')
+    .select([
+      'id',
+      'filename',
+      'uploaded_by as uploadedBy',
+      'status',
+      'created_at as createdAt',
+    ])
+    .orderBy('created_at', 'desc')
+    .limit(limit)
+    .execute();
+
+  const recentUsers = await db.selectFrom('users')
+    .select([
+      'id',
+      'email',
+      'role',
+      'created_at as createdAt',
+    ])
+    .orderBy('created_at', 'desc')
+    .limit(limit)
+    .execute();
 
   return {
-    recentThreads,
-    recentDocuments,
-    recentUsers,
+    recentThreads: recentThreads.map(t => ({
+      id: t.id,
+      title: t.title,
+      userEmail: t.userEmail,
+      messageCount: Number(t.messageCount) || 0,
+      createdAt: t.createdAt,
+    })),
+    recentDocuments: recentDocuments.map(d => ({
+      id: d.id,
+      filename: d.filename,
+      uploadedBy: d.uploadedBy,
+      status: d.status,
+      createdAt: d.createdAt,
+    })),
+    recentUsers: recentUsers.map(u => ({
+      id: u.id,
+      email: u.email,
+      role: u.role,
+      createdAt: u.createdAt,
+    })),
   };
 }
 
-export function getRecentActivityForCategories(categoryIds: number[], limit: number = 10): RecentActivity {
+export async function getRecentActivityForCategories(categoryIds: number[], limit: number = 10): Promise<RecentActivity> {
   if (categoryIds.length === 0) {
     return { recentThreads: [], recentDocuments: [], recentUsers: [] };
   }
 
-  const placeholders = categoryIds.map(() => '?').join(', ');
+  const db = await getDb();
 
   // Recent threads from users subscribed to assigned categories
-  const recentThreads = queryAll<{
-    id: string;
-    title: string;
-    userEmail: string;
-    messageCount: number;
-    createdAt: string;
-  }>(`
-    SELECT DISTINCT
-      t.id,
-      t.title,
-      u.email as userEmail,
-      (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id) as messageCount,
-      t.created_at as createdAt
-    FROM threads t
-    JOIN users u ON t.user_id = u.id
-    JOIN user_subscriptions us ON u.id = us.user_id
-    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
-    ORDER BY t.created_at DESC
-    LIMIT ?
-  `, [...categoryIds, limit]);
+  const recentThreads = await db.selectFrom('threads as t')
+    .innerJoin('users as u', 't.user_id', 'u.id')
+    .innerJoin('user_subscriptions as us', 'u.id', 'us.user_id')
+    .where('us.category_id', 'in', categoryIds)
+    .where('us.is_active', '=', 1)
+    .select([
+      't.id',
+      't.title',
+      'u.email as userEmail',
+      sql<number>`(SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id)`.as('messageCount'),
+      't.created_at as createdAt',
+    ])
+    .distinct()
+    .orderBy('t.created_at', 'desc')
+    .limit(limit)
+    .execute();
 
   // Recent documents in assigned categories
-  const recentDocuments = queryAll<{
-    id: number;
-    filename: string;
-    uploadedBy: string;
-    status: string;
-    createdAt: string;
-  }>(`
-    SELECT DISTINCT d.id, d.filename, d.uploaded_by as uploadedBy, d.status, d.created_at as createdAt
-    FROM documents d
-    JOIN document_categories dc ON d.id = dc.document_id
-    WHERE dc.category_id IN (${placeholders})
-    ORDER BY d.created_at DESC
-    LIMIT ?
-  `, [...categoryIds, limit]);
+  const recentDocuments = await db.selectFrom('documents as d')
+    .innerJoin('document_categories as dc', 'd.id', 'dc.document_id')
+    .where('dc.category_id', 'in', categoryIds)
+    .select([
+      'd.id',
+      'd.filename',
+      'd.uploaded_by as uploadedBy',
+      'd.status',
+      'd.created_at as createdAt',
+    ])
+    .distinct()
+    .orderBy('d.created_at', 'desc')
+    .limit(limit)
+    .execute();
 
   // Recent users who subscribed to assigned categories
-  const recentUsers = queryAll<{
-    id: number;
-    email: string;
-    role: string;
-    createdAt: string;
-  }>(`
-    SELECT DISTINCT u.id, u.email, u.role, u.created_at as createdAt
-    FROM users u
-    JOIN user_subscriptions us ON u.id = us.user_id
-    WHERE us.category_id IN (${placeholders}) AND us.is_active = 1
-    ORDER BY us.subscribed_at DESC
-    LIMIT ?
-  `, [...categoryIds, limit]);
+  const recentUsers = await db.selectFrom('users as u')
+    .innerJoin('user_subscriptions as us', 'u.id', 'us.user_id')
+    .where('us.category_id', 'in', categoryIds)
+    .where('us.is_active', '=', 1)
+    .select([
+      'u.id',
+      'u.email',
+      'u.role',
+      'u.created_at as createdAt',
+    ])
+    .distinct()
+    .orderBy('us.subscribed_at', 'desc')
+    .limit(limit)
+    .execute();
 
   return {
-    recentThreads,
-    recentDocuments,
-    recentUsers,
+    recentThreads: recentThreads.map(t => ({
+      id: t.id,
+      title: t.title,
+      userEmail: t.userEmail,
+      messageCount: Number(t.messageCount) || 0,
+      createdAt: t.createdAt,
+    })),
+    recentDocuments: recentDocuments.map(d => ({
+      id: d.id,
+      filename: d.filename,
+      uploadedBy: d.uploadedBy,
+      status: d.status,
+      createdAt: d.createdAt,
+    })),
+    recentUsers: recentUsers.map(u => ({
+      id: u.id,
+      email: u.email,
+      role: u.role,
+      createdAt: u.createdAt,
+    })),
   };
 }

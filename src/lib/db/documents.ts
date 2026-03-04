@@ -344,3 +344,21 @@ export function getTotalStorageSize(): number {
   `);
   return result?.total ?? 0;
 }
+
+// ============ Folder Sync Operations ============
+
+/**
+ * Update document with folder sync metadata
+ */
+export function updateDocumentFolderSync(
+  docId: number | string,
+  folderSyncId: string,
+  relativePath: string
+): void {
+  const id = typeof docId === 'string' ? parseInt(docId, 10) : docId;
+  execute(`
+    UPDATE documents
+    SET folder_sync_id = ?, original_relative_path = ?
+    WHERE id = ?
+  `, [folderSyncId, relativePath, id]);
+}

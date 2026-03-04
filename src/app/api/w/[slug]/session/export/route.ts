@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateWorkspaceRequest, extractOrigin } from '@/lib/workspace/validator';
-import { getSession, isSessionValid } from '@/lib/db/workspace-sessions';
-import { getSessionMessages, parseSources } from '@/lib/db/workspace-messages';
+import { getSession, isSessionValid, getSessionMessages, parseSources } from '@/lib/db/compat';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -75,14 +74,14 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     const workspace = validation.workspace;
 
-    if (!isSessionValid(sessionId)) {
+    if (!(await isSessionValid(sessionId))) {
       return NextResponse.json(
         { error: 'Session expired', code: 'SESSION_EXPIRED' },
         { status: 401 }
       );
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (!session || session.workspace_id !== workspace.id) {
       return NextResponse.json(
         { error: 'Invalid session', code: 'SESSION_INVALID' },
@@ -90,7 +89,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    const messages = getSessionMessages(sessionId);
+    const messages = await getSessionMessages(sessionId);
     const markdown = formatSessionAsMarkdown(messages);
 
     const dateStr = new Date().toISOString().slice(0, 10);

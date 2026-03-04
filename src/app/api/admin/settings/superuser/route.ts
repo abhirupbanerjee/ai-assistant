@@ -7,13 +7,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getSuperuserSettings, setSuperuserSettings, type SuperuserSettings } from '@/lib/db/config';
+import { getSuperuserSettings, setSuperuserSettings, type SuperuserSettings } from '@/lib/db/compat';
 
 // GET - Get superuser settings
 export async function GET() {
   try {
     await requireAdmin();
-    const settings = getSuperuserSettings();
+    const settings = await getSuperuserSettings();
     return NextResponse.json(settings);
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updatedSettings = setSuperuserSettings(updates, admin.email);
+    const updatedSettings = await setSuperuserSettings(updates, admin.email);
 
     return NextResponse.json({
       success: true,

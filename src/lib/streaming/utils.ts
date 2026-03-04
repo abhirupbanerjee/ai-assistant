@@ -6,7 +6,7 @@
  */
 
 import type { StreamEvent, StreamPhase } from '@/types/stream';
-import { getStreamingConfig } from '@/lib/db/agent-config';
+import { getStreamingConfig } from '@/lib/db/compat/agent-config';
 
 /**
  * Create SSE encoder for streaming responses
@@ -97,13 +97,13 @@ const DEFAULT_STREAMING_CONFIG = {
  * Get streaming configuration from database (with fallback to defaults)
  * Returns values in milliseconds for direct use
  */
-export function getStreamingConfigMs(): {
+export async function getStreamingConfigMs(): Promise<{
   KEEPALIVE_INTERVAL_MS: number;
   MAX_STREAM_DURATION_MS: number;
   TOOL_TIMEOUT_MS: number;
-} {
+}> {
   try {
-    const config = getStreamingConfig();
+    const config = await getStreamingConfig();
     return {
       KEEPALIVE_INTERVAL_MS: config.keepalive_interval_seconds * 1000,
       MAX_STREAM_DURATION_MS: config.max_stream_duration_seconds * 1000,

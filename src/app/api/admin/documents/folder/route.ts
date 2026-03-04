@@ -12,8 +12,8 @@ import {
   createFolderSyncFile,
   updateFolderSync,
   updateFolderSyncFile,
-} from '@/lib/db/folder-syncs';
-import { execute } from '@/lib/db';
+} from '@/lib/db/compat/folder-syncs';
+import { updateDocumentFolderSync } from '@/lib/db/compat';
 import { calculateFileHash, MAX_FILES_PER_FOLDER, MAX_FILE_SIZE_BYTES } from '@/lib/folder-sync-utils';
 import type { ApiError } from '@/types';
 
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create folder sync record
-    const folderSync = createFolderSync({
+    const folderSync = await createFolderSync({
       folderName,
       originalPath: folderName,
       uploadedBy: user.email,
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       // Skip unsupported file types
       if (!isSupportedMimeType(file.type)) {
         // Create file record as skipped
-        createFolderSyncFile({
+        await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
           filename: file.name,
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
           lastModified: file.lastModified,
         });
 
-        updateFolderSyncFile(
+        await updateFolderSyncFile(
           (await getFolderSyncFileByPath(folderSync.id, relativePath))!.id,
           {
             status: 'skipped',
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
 
       // Skip files that are too large
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        createFolderSyncFile({
+        await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
           filename: file.name,
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
 
         const syncFile = await getFolderSyncFileByPath(folderSync.id, relativePath);
         if (syncFile) {
-          updateFolderSyncFile(syncFile.id, {
+          await updateFolderSyncFile(syncFile.id, {
             status: 'error',
             errorMessage: 'File too large (max 50MB)',
           });
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
         const fileHash = calculateFileHash(buffer);
 
         // Create folder sync file record
-        const syncFile = createFolderSyncFile({
+        const syncFile = await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
           filename: file.name,
@@ -194,14 +194,10 @@ export async function POST(request: NextRequest) {
         });
 
         // Update document with folder sync metadata
-        execute(`
-          UPDATE documents
-          SET folder_sync_id = ?, original_relative_path = ?
-          WHERE id = ?
-        `, [folderSync.id, relativePath, doc.id]);
+        await updateDocumentFolderSync(doc.id, folderSync.id, relativePath);
 
         // Update sync file record
-        updateFolderSyncFile(syncFile.id, {
+        await updateFolderSyncFile(syncFile.id, {
           documentId: parseInt(doc.id),
           status: 'synced',
           syncedAt: new Date().toISOString(),
@@ -218,7 +214,7 @@ export async function POST(request: NextRequest) {
         // Get or create the sync file record
         let syncFile = await getFolderSyncFileByPath(folderSync.id, relativePath);
         if (!syncFile) {
-          syncFile = createFolderSyncFile({
+          syncFile = await createFolderSyncFile({
             folderSyncId: folderSync.id,
             relativePath,
             filename: file.name,
@@ -227,7 +223,7 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        updateFolderSyncFile(syncFile.id, {
+        await updateFolderSyncFile(syncFile.id, {
           status: 'error',
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
@@ -242,7 +238,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update folder sync totals
-    updateFolderSync(folderSync.id, {
+    await updateFolderSync(folderSync.id, {
       totalFiles: files.length,
       syncedFiles: successful,
       failedFiles: failed,
@@ -280,6 +276,6 @@ export async function POST(request: NextRequest) {
 
 // Helper to get folder sync file by path (inline to avoid circular dependency)
 async function getFolderSyncFileByPath(folderSyncId: string, relativePath: string) {
-  const { findFolderSyncFileByPath } = await import('@/lib/db/folder-syncs');
+  const { findFolderSyncFileByPath } = await import('@/lib/db/compat/folder-syncs');
   return findFolderSyncFileByPath(folderSyncId, relativePath);
 }

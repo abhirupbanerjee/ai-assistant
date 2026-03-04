@@ -52,7 +52,8 @@ export default function LLMSettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const formatDate = (date: Date | string) => {
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'Never';
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleString();
   };
@@ -61,22 +62,31 @@ export default function LLMSettingsTab() {
     try {
       setIsLoading(true);
 
+      // Default settings to use if API fails
+      const defaultLlmData = {
+        model: 'gpt-4.1-mini',
+        temperature: 0.7,
+        maxTokens: 2000,
+        promptOptimizationMaxTokens: 200,
+      };
+
       // Fetch settings and providers in parallel
       const [settingsRes, providersRes] = await Promise.all([
         fetch('/api/admin/settings'),
         fetch('/api/admin/providers'),
       ]);
 
-      if (!settingsRes.ok) throw new Error('Failed to fetch settings');
+      if (!settingsRes.ok) {
+        // Use defaults if settings fetch fails
+        setSettings(null);
+        setEditedSettings(defaultLlmData);
+        throw new Error('Failed to fetch settings');
+      }
+
       const settingsData = await settingsRes.json();
 
       // Load LLM settings
-      const llmData = settingsData.llm || {
-        model: 'gpt-4.1-mini',
-        temperature: 0.7,
-        maxTokens: 2000,
-        promptOptimizationMaxTokens: 200,
-      };
+      const llmData = settingsData.llm || defaultLlmData;
       setSettings(llmData);
       setEditedSettings({
         model: llmData.model,
@@ -299,7 +309,7 @@ export default function LLMSettingsTab() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Prompt Optimization Max Tokens</label>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-medium text-gray-900">{editedSettings.promptOptimizationMaxTokens.toLocaleString()}</span>
+                <span className="text-lg font-medium text-gray-900">{editedSettings?.promptOptimizationMaxTokens?.toLocaleString() ?? '200'}</span>
                 <span className="text-xs text-gray-400">tokens</span>
               </div>
               <p className="mt-1 text-xs text-blue-500">Configure in Settings &rarr; Limits &rarr; Token Limits</p>

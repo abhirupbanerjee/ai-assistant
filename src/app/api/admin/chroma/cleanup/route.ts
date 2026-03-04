@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getAllCategories } from '@/lib/db/categories';
+import { getAllCategories } from '@/lib/db/compat';
 import {
   getVectorStore,
   getCollectionNames,
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     const collNames = getCollectionNames();
 
     // Get all category slugs from database
-    const categories = getAllCategories();
+    const categories = await getAllCategories();
     const validSlugs = new Set(categories.map((c) => c.slug));
 
     // Get all collections from vector store

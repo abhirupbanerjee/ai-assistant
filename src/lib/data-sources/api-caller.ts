@@ -6,7 +6,7 @@
 
 import { safeDecrypt } from '../encryption';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import type {
   DataAPIConfig,
   DataAPIParameter,
@@ -18,8 +18,8 @@ import type {
 /**
  * Get data source tool configuration
  */
-function getDataSourceConfig(): { cacheTTLSeconds: number; timeout: number } {
-  const config = getToolConfig('data_source');
+async function getDataSourceConfig(): Promise<{ cacheTTLSeconds: number; timeout: number }> {
+  const config = await getToolConfig('data_source');
   if (config?.config) {
     return {
       cacheTTLSeconds: (config.config as Record<string, number>).cacheTTLSeconds || 3600,
@@ -39,7 +39,7 @@ export async function callDataAPI(
   params: Record<string, unknown> = {}
 ): Promise<DataQueryResponse> {
   const startTime = Date.now();
-  const toolConfig = getDataSourceConfig();
+  const toolConfig = await getDataSourceConfig();
 
   // Generate cache key
   const cacheKey = `data_api:${config.id}:${hashQuery(JSON.stringify(params))}`;

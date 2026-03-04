@@ -185,7 +185,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       timestamp: new Date(),
       metadata,
     };
-    setMessages(prev => [...prev, assistantMessage]);
+    setMessages(prev => {
+      // Guard against race condition where loadThread already added this message
+      if (prev.some(m => m.id === messageId)) return prev;
+      return [...prev, assistantMessage];
+    });
     setLoading(false);
   }, []);
 

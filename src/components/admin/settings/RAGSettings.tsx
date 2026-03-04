@@ -80,7 +80,8 @@ export default function RAGSettingsTab() {
   const [fallbackDismissed, setFallbackDismissed] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const formatDate = (date: Date | string) => {
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'Never';
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleString();
   };

@@ -18,7 +18,7 @@ import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/
 import { getRequestContext } from '@/lib/request-context';
 import { getDisclaimerConfigIfEnabled } from '../disclaimer';
 import { getApiKey } from '@/lib/provider-helpers';
-import { getLlmSettings } from '@/lib/db/config';
+import { getLlmSettings } from '@/lib/db/compat/config';
 import { pcmToWav, GEMINI_TTS_PCM_OPTIONS, estimateDurationFromPCM } from '@/lib/audio/pcm-to-wav';
 import type {
   PodcastGenConfig,
@@ -123,12 +123,12 @@ let ttsClient: OpenAI | null = null;
 /**
  * Get client for chat completions (uses LiteLLM proxy if configured)
  */
-function getChatClient(): OpenAI {
+async function getChatClient(): Promise<OpenAI> {
   if (!chatClient) {
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || getApiKey('openai')
-      : getApiKey('openai');
+      ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
+      : await getApiKey('openai');
 
     if (!apiKey && !process.env.OPENAI_BASE_URL) {
       throw new Error('OpenAI API key or LiteLLM proxy required for podcast formatting');
@@ -145,10 +145,10 @@ function getChatClient(): OpenAI {
 /**
  * Get client for TTS (always direct OpenAI API)
  */
-function getTTSClient(): OpenAI {
+async function getTTSClient(): Promise<OpenAI> {
   if (!ttsClient) {
     // TTS always uses direct OpenAI API (not available via LiteLLM)
-    const apiKey = getApiKey('openai');
+    const apiKey = await getApiKey('openai');
     if (!apiKey) {
       throw new Error('OpenAI API key not configured for TTS');
     }
@@ -188,8 +188,8 @@ async function formatContentForAudio(
   style: 'formal' | 'conversational' | 'news',
   length: 'short' | 'medium' | 'long'
 ): Promise<FormatterResult> {
-  const openai = getChatClient();
-  const llmSettings = getLlmSettings();
+  const openai = await getChatClient();
+  const llmSettings = await getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
   const lengthConfig = LENGTH_CONFIG_DATA[length];
@@ -241,7 +241,7 @@ async function generateAudioWithOpenAI(
   script: string,
   config: PodcastGenConfig
 ): Promise<{ buffer: Buffer; duration: number }> {
-  const openai = getTTSClient();
+  const openai = await getTTSClient();
   const providerConfig = config.providers.openai;
 
   console.log(`[PodcastGen] Generating audio with model: ${providerConfig.model}, voice: ${providerConfig.voice}`);
@@ -296,8 +296,8 @@ async function formatContentForDialogue(
   style: 'formal' | 'conversational' | 'news',
   length: 'short' | 'medium' | 'long'
 ): Promise<FormatterResult> {
-  const openai = getChatClient();
-  const llmSettings = getLlmSettings();
+  const openai = await getChatClient();
+  const llmSettings = await getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
   const lengthConfig = LENGTH_CONFIG_DATA[length];
@@ -348,7 +348,7 @@ async function generateAudioWithGemini(
 ): Promise<{ buffer: Buffer; duration: number; format: AudioFormat }> {
   const { GoogleGenAI } = await import('@google/genai');
 
-  const apiKey = getApiKey('gemini');
+  const apiKey = await getApiKey('gemini');
   if (!apiKey) {
     throw new Error('Gemini API key not configured for TTS');
   }
@@ -568,8 +568,8 @@ async function selectVoicesWithLLM(
   topic: string,
   geminiConfig: GeminiTTSConfig
 ): Promise<{ hostVoice: GeminiVoice; expertVoice: GeminiVoice }> {
-  const openai = getChatClient();
-  const llmSettings = getLlmSettings();
+  const openai = await getChatClient();
+  const llmSettings = await getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
   // Filter available voices by preferences

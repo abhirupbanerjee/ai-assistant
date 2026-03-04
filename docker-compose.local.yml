@@ -1,0 +1,116 @@
+# =============================================================================
+# Policy Bot - Local Development Docker Compose (Hybrid Mode)
+# =============================================================================
+#
+# This file runs infrastructure services (PostgreSQL, Qdrant, Redis, LiteLLM)
+# with ports exposed to the host machine, allowing you to run the Next.js app
+# locally with `npm run dev` while using Docker for infrastructure.
+#
+# USAGE:
+#   Start:  docker compose -f docker-compose.local.yml up -d
+#   Stop:   docker compose -f docker-compose.local.yml down
+#   Clean:  docker compose -f docker-compose.local.yml down -v
+#
+# Make sure your .env.local has:
+#   DATABASE_PROVIDER=postgres
+#   POSTGRES_PASSWORD=<your-password>
+#   DATABASE_URL=postgresql://policybot:<password>@localhost:5432/policybot
+#   VECTOR_STORE_PROVIDER=qdrant
+#   QDRANT_HOST=localhost
+#   REDIS_URL=redis://localhost:6379
+#   OPENAI_BASE_URL=http://localhost:4000/v1
+#
+# =============================================================================
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: policy-bot-postgres-local
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env.local
+    environment:
+      POSTGRES_USER: policybot
+      POSTGRES_PASSWORD: 12f1ecab9910c6253261be41092a916a
+      POSTGRES_DB: policybot
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      # Auto-run schema on first init (only executes once when DB is created)
+      - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U policybot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Qdrant Vector Store
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: policy-bot-qdrant-local
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: policy-bot-redis-local
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LiteLLM Proxy
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: policy-bot-litellm-local
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
+    env_file:
+      - .env.local
+    environment:
+      # Override database variables (use dummy PostgreSQL URL to satisfy Prisma validation)
+      - DATABASE_URL=postgresql://dummy:dummy@localhost:9999/dummy
+      - DATABASE_PROVIDER=
+      - POSTGRES_PASSWORD=
+      - DATABASE_POOL_MAX=
+      - DATABASE_POOL_IDLE_TIMEOUT=
+      - DATABASE_POOL_CONNECTION_TIMEOUT=
+      # LiteLLM settings
+      - STORE_MODEL_IN_DB=False
+      - DISABLE_SPEND_LOGS=True
+    command: --config /app/config.yaml --port 4000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

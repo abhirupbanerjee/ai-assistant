@@ -10,9 +10,9 @@ import type { RetrievedChunk } from '@/types';
 import { createEmbeddings } from '../openai';
 import { buildContext, type UserDocTruncation } from '../rag';
 import { rerankChunks } from '../reranker';
-import { getRagSettings, getAcronymMappings } from '../db/config';
-import { getResolvedSystemPrompt } from '../db/category-prompts';
-import { getCategoryIdsBySlugs } from '../db/categories';
+import { getRagSettings, getAcronymMappings } from '../db/compat/config';
+import { getResolvedSystemPrompt } from '../db/compat/category-prompts';
+import { getCategoryIdsBySlugs } from '../db/compat/categories';
 import { resolveSkills } from '../skills/resolver';
 import { getAvailableDataSourcesDescription } from '../tools/data-source';
 import { getToolDefinitions } from '../tools';
@@ -77,7 +77,7 @@ async function expandQueries(originalQuery: string, enabled: boolean): Promise<s
   }
 
   const lowerQuery = originalQuery.toLowerCase();
-  const acronymExpansions = getAcronymMappings();
+  const acronymExpansions = await getAcronymMappings();
 
   for (const [acronym, expansions] of Object.entries(acronymExpansions)) {
     for (const expansion of expansions) {
@@ -158,14 +158,14 @@ export async function performRAGRetrieval(
   send?: (event: StreamEvent) => void,
   conversationHistory: Message[] = []
 ): Promise<RAGRetrievalResult> {
-  const ragSettings = getRagSettings();
+  const ragSettings = await getRagSettings();
   const { queryExpansionEnabled } = ragSettings;
 
   logger.debug('Starting RAG retrieval', { categorySlugs, userDocPaths: userDocPaths.length });
 
   // Resolve category IDs
   const categoryIds = categorySlugs.length > 0
-    ? getCategoryIdsBySlugs(categorySlugs)
+    ? await getCategoryIdsBySlugs(categorySlugs)
     : [];
 
   // Expand query for better retrieval
@@ -288,10 +288,10 @@ export async function performRAGRetrieval(
 
   // Build system prompt
   const categoryId = categoryIds[0];
-  let systemPrompt = getResolvedSystemPrompt(categoryId);
+  let systemPrompt = await getResolvedSystemPrompt(categoryId);
 
   // Resolve skills and extract info for progressive disclosure
-  const resolvedSkills = resolveSkills(categoryIds, userMessage);
+  const resolvedSkills = await resolveSkills(categoryIds, userMessage);
   const activatedSkills: SkillInfo[] = resolvedSkills.skills.map(skill => {
     // Determine trigger reason
     const triggerReason = resolvedSkills.activatedBy.always.includes(skill.name)
@@ -324,7 +324,7 @@ export async function performRAGRetrieval(
   // follow-up detection via the conversation-context module
 
   // Get available tools
-  const toolDefs = getToolDefinitions(categoryIds);
+  const toolDefs = await getToolDefinitions(categoryIds);
   const availableTools = toolDefs.map(t => t.function.name);
 
   // Send context_loaded event for progressive disclosure

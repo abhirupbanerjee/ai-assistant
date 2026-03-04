@@ -14,7 +14,7 @@
 import { NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail } from '@/lib/db/compat';
 import {
   validateWorkspaceRequest,
   extractOrigin,
@@ -23,19 +23,22 @@ import {
   getWorkspaceSystemPrompt,
   getWorkspaceLLMConfig,
 } from '@/lib/workspace/validator';
-import { getSession, isSessionValid, incrementMessageCount } from '@/lib/db/workspace-sessions';
-import { getThread, createThread, touchThread } from '@/lib/db/workspace-threads';
 import {
-  addMessage,
+  getSession,
+  isSessionValid,
+  incrementMessageCount,
+  getWorkspaceThread as getThread,
+  createWorkspaceThread as createThread,
+  touchThread,
+  addWorkspaceMessage as addMessage,
   getRecentSessionMessages,
   getRecentThreadMessages,
-} from '@/lib/db/workspace-messages';
+} from '@/lib/db/compat';
 import {
   checkAndIncrementRateLimit,
   getRateLimitHeaders,
 } from '@/lib/workspace/rate-limiter';
-import { getWorkspaceCategorySlugs } from '@/lib/db/workspaces';
-import { getCategoryIdsBySlugs } from '@/lib/db/categories';
+import { getWorkspaceCategorySlugs, getCategoryIdsBySlugs } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
 import { generateResponseWithTools } from '@/lib/openai';
 import {
@@ -133,14 +136,14 @@ export async function POST(
         const workspace = validation.workspace;
 
         // Validate session
-        if (!isSessionValid(sessionId)) {
+        if (!(await isSessionValid(sessionId))) {
           send({ type: 'error', code: 'SESSION_EXPIRED', message: 'Session expired', recoverable: false });
           cleanup();
           controller.close();
           return;
         }
 
-        const session = getSession(sessionId);
+        const session = await getSession(sessionId);
         if (!session || session.workspace_id !== workspace.id) {
           send({ type: 'error', code: 'SESSION_INVALID', message: 'Invalid session', recoverable: false });
           cleanup();
@@ -150,7 +153,7 @@ export async function POST(
 
         // Rate limiting for embed mode
         if (workspace.type === 'embed') {
-          const rateLimit = checkAndIncrementRateLimit(workspace.id, ipHash, sessionId);
+          const rateLimit = await checkAndIncrementRateLimit(workspace.id, ipHash, sessionId);
 
           if (!rateLimit.allowed) {
             send({
@@ -170,16 +173,16 @@ export async function POST(
 
         // ============ Setup ============
         // Get workspace categories for RAG
-        const categorySlugs = getWorkspaceCategorySlugs(workspace.id);
+        const categorySlugs = await getWorkspaceCategorySlugs(workspace.id);
         const categoryIds = categorySlugs.length > 0
-          ? getCategoryIdsBySlugs(categorySlugs)
+          ? await getCategoryIdsBySlugs(categorySlugs)
           : [];
 
         // Resolve effective LLM config (workspace override → global default)
-        const workspaceLLMConfig = getWorkspaceLLMConfig(workspace);
+        const workspaceLLMConfig = await getWorkspaceLLMConfig(workspace);
 
         // Get system prompt
-        const systemPromptOverride = getWorkspaceSystemPrompt(workspace);
+        const systemPromptOverride = await getWorkspaceSystemPrompt(workspace);
 
         // Get conversation history based on mode
         let conversationHistory: Message[] = [];
@@ -187,21 +190,21 @@ export async function POST(
 
         if (workspace.type === 'standalone' && threadId) {
           // Standalone mode: use thread-based history
-          const thread = getThread(threadId);
+          const thread = await getThread(threadId);
           if (thread && thread.session_id === sessionId) {
             currentThreadId = threadId;
-            const recentMessages = getRecentThreadMessages(threadId, 20);
+            const recentMessages = await getRecentThreadMessages(threadId, 20);
             conversationHistory = recentMessages.map(m => ({
               id: m.id,
               role: m.role,
               content: m.content,
               timestamp: new Date(m.created_at),
             }));
-            touchThread(threadId);
+            await touchThread(threadId);
           }
         } else if (workspace.type === 'embed') {
           // Embed mode: use session-based history (last N messages)
-          const recentMessages = getRecentSessionMessages(sessionId, 10);
+          const recentMessages = await getRecentSessionMessages(sessionId, 10);
           conversationHistory = recentMessages.map(m => ({
             id: m.id,
             role: m.role,
@@ -212,7 +215,7 @@ export async function POST(
 
         // Create user message
         const userMessageId = uuidv4();
-        const userMessage = addMessage({
+        const userMessage = await addMessage({
           workspaceId: workspace.id,
           sessionId,
           threadId: currentThreadId,
@@ -221,7 +224,7 @@ export async function POST(
         });
 
         // Increment session message count
-        incrementMessageCount(sessionId);
+        await incrementMessageCount(sessionId);
 
         // Create assistant message ID
         const assistantMessageId = uuidv4();
@@ -243,7 +246,7 @@ export async function POST(
             let imageContents: ImageContent[] = [];
 
             // Check image processing capabilities for current model
-            const imageCapabilities = getImageCapabilities(workspaceLLMConfig.model);
+            const imageCapabilities = await getImageCapabilities(workspaceLLMConfig.model);
 
             if (attachments && attachments.length > 0 && workspace.file_upload_enabled) {
               const uploadDetails = await getWorkspaceUploadDetails(
@@ -426,7 +429,7 @@ export async function POST(
               score: s.score,
             }));
 
-            addMessage({
+            await addMessage({
               workspaceId: workspace.id,
               sessionId,
               threadId: currentThreadId,
@@ -437,7 +440,7 @@ export async function POST(
             });
 
             // Increment session message count for assistant message
-            incrementMessageCount(sessionId);
+            await incrementMessageCount(sessionId);
 
             // Send completion
             send({

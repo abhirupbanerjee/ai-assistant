@@ -7,8 +7,8 @@
 import { extractTextWithMistral } from './mistral-ocr';
 import { extractTextWithAzureDI } from './azure-document-intelligence';
 import pdf from 'pdf-parse';
-import { getOcrSettings } from './db/config';
-import type { OcrProvider } from './db/config';
+import { getOcrSettings } from './db/compat/config';
+import type { OcrProvider } from './db/compat/config';
 import { isProviderConfigured } from '@/lib/provider-helpers';
 
 // ============================================
@@ -170,7 +170,7 @@ export async function extractText(
   }
 
   // Load provider priority from admin settings
-  const ocrSettings = getOcrSettings();
+  const ocrSettings = await getOcrSettings();
 
   for (let i = 0; i < ocrSettings.providers.length; i++) {
     const { provider, enabled } = ocrSettings.providers[i];
@@ -209,8 +209,8 @@ async function attemptProvider(
   switch (provider) {
     case 'mistral': {
       // Check OCR settings first, then LLM provider config
-      const ocrSettings = getOcrSettings();
-      const hasMistral = ocrSettings.mistralApiKey || isProviderConfigured('mistral');
+      const ocrSettings = await getOcrSettings();
+      const hasMistral = ocrSettings.mistralApiKey || await isProviderConfigured('mistral');
       if (!isMistralSupported(mimeType) || !hasMistral) return null;
       try {
         console.log(`[${tierLabel}] Attempting Mistral OCR for ${filename}...`);
@@ -226,7 +226,7 @@ async function attemptProvider(
     }
     case 'azure-di': {
       // Check OCR settings first, then env vars
-      const azureOcrSettings = getOcrSettings();
+      const azureOcrSettings = await getOcrSettings();
       const hasAzureDI = (azureOcrSettings.azureDiEndpoint && azureOcrSettings.azureDiKey) ||
                          (process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY);
       if (!hasAzureDI) return null;

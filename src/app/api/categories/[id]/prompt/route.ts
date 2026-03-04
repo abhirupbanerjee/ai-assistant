@@ -11,9 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getCategoryById, getCategorySlugsByIds } from '@/lib/db/categories';
-import { getUserByEmail, superUserHasCategory } from '@/lib/db/users';
-import { getSystemPrompt } from '@/lib/db/config';
+import { getCategoryById, getCategorySlugsByIds, getUserByEmail, superUserHasCategory, getSystemPrompt } from '@/lib/db/compat';
 import {
   getCategoryPrompt,
   setCategoryPrompt,
@@ -29,7 +27,7 @@ import {
   getMaxStarterPromptLength,
   MAX_COMBINED_PROMPT_LENGTH,
   StarterPrompt,
-} from '@/lib/db/category-prompts';
+} from '@/lib/db/compat/category-prompts';
 import { invalidateCategoryCache } from '@/lib/redis';
 
 interface RouteParams {
@@ -46,7 +44,7 @@ async function checkCategoryAccess(categoryId: number): Promise<{
 }> {
   const authUser = await requireAuth();
 
-  const dbUser = getUserByEmail(authUser.email);
+  const dbUser = await getUserByEmail(authUser.email);
   if (!dbUser) {
     throw new Error('User not found');
   }
@@ -64,7 +62,7 @@ async function checkCategoryAccess(categoryId: number): Promise<{
 
   // Super users can only access their assigned categories
   if (isSuperUser) {
-    const hasAccess = superUserHasCategory(dbUser.id, categoryId);
+    const hasAccess = await superUserHasCategory(dbUser.id, categoryId);
     if (!hasAccess) {
       throw new Error('No access to this category');
     }
@@ -97,7 +95,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
@@ -105,10 +103,10 @@ export async function GET(request: Request, { params }: RouteParams) {
     const { user } = await checkCategoryAccess(categoryId);
 
     // Get prompt data
-    const globalPrompt = getSystemPrompt();
-    const categoryPrompt = getCategoryPrompt(categoryId);
-    const combinedPrompt = getResolvedSystemPrompt(categoryId);
-    const charInfo = getPromptCharacterInfo(categoryId);
+    const globalPrompt = await getSystemPrompt();
+    const categoryPrompt = await getCategoryPrompt(categoryId);
+    const combinedPrompt = await getResolvedSystemPrompt(categoryId);
+    const charInfo = await getPromptCharacterInfo(categoryId);
 
     return NextResponse.json({
       category: {
@@ -120,9 +118,9 @@ export async function GET(request: Request, { params }: RouteParams) {
       categoryAddendum: categoryPrompt?.promptAddendum || '',
       starterPrompts: categoryPrompt?.starterPrompts || [],
       starterLimits: {
-        maxStarters: getMaxStarterPrompts(),
-        maxLabelLength: getMaxStarterLabelLength(),
-        maxPromptLength: getMaxStarterPromptLength(),
+        maxStarters: await getMaxStarterPrompts(),
+        maxLabelLength: await getMaxStarterLabelLength(),
+        maxPromptLength: await getMaxStarterPromptLength(),
       },
       welcomeTitle: categoryPrompt?.welcomeTitle || '',
       welcomeMessage: categoryPrompt?.welcomeMessage || '',
@@ -180,7 +178,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
@@ -209,24 +207,24 @@ export async function PUT(request: Request, { params }: RouteParams) {
         );
       }
 
-      setCategoryWelcome(categoryId, title, message, user.email);
+      await setCategoryWelcome(categoryId, title, message, user.email);
     }
 
     // Handle starterPrompts if provided (can be independent of promptAddendum)
     if (starterPrompts !== undefined) {
       if (starterPrompts === null || (Array.isArray(starterPrompts) && starterPrompts.length === 0)) {
         // Clear starters
-        setCategoryStarterPrompts(categoryId, null, user.email);
+        await setCategoryStarterPrompts(categoryId, null, user.email);
       } else if (Array.isArray(starterPrompts)) {
         // Validate and save
-        const starterErrors = validateStarterPrompts(starterPrompts as StarterPrompt[]);
+        const starterErrors = await validateStarterPrompts(starterPrompts as StarterPrompt[]);
         if (starterErrors.length > 0) {
           return NextResponse.json(
             { error: 'Starter prompts validation failed', details: starterErrors },
             { status: 400 }
           );
         }
-        setCategoryStarterPrompts(categoryId, starterPrompts as StarterPrompt[], user.email);
+        await setCategoryStarterPrompts(categoryId, starterPrompts as StarterPrompt[], user.email);
       } else {
         return NextResponse.json(
           { error: 'starterPrompts must be an array or null' },
@@ -237,11 +235,11 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     // If only starterPrompts was provided (no promptAddendum), return updated data
     if (promptAddendum === undefined) {
-      const updatedPrompt = getCategoryPrompt(categoryId);
-      const charInfo = getPromptCharacterInfo(categoryId);
+      const updatedPrompt = await getCategoryPrompt(categoryId);
+      const charInfo = await getPromptCharacterInfo(categoryId);
 
       // Invalidate cache
-      const [slug] = getCategorySlugsByIds([categoryId]);
+      const [slug] = await getCategorySlugsByIds([categoryId]);
       if (slug) {
         await invalidateCategoryCache(slug);
       }
@@ -250,7 +248,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
         success: true,
         categoryAddendum: updatedPrompt?.promptAddendum || '',
         starterPrompts: updatedPrompt?.starterPrompts || [],
-        combinedPrompt: getResolvedSystemPrompt(categoryId),
+        combinedPrompt: await getResolvedSystemPrompt(categoryId),
         charInfo: {
           globalLength: charInfo.globalLength,
           categoryLength: charInfo.categoryLength,
@@ -276,10 +274,10 @@ export async function PUT(request: Request, { params }: RouteParams) {
 
     // If empty string, treat as delete (reset to global)
     if (promptAddendum.trim() === '') {
-      const deleted = deleteCategoryPrompt(categoryId);
+      const deleted = await deleteCategoryPrompt(categoryId);
 
       // Invalidate cache
-      const [slug] = getCategorySlugsByIds([categoryId]);
+      const [slug] = await getCategorySlugsByIds([categoryId]);
       if (slug) {
         await invalidateCategoryCache(slug);
       }
@@ -292,7 +290,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     }
 
     // Validate content
-    const errors = validatePromptAddendum(promptAddendum);
+    const errors = await validatePromptAddendum(promptAddendum);
     if (errors.length > 0) {
       return NextResponse.json(
         { error: 'Validation failed', details: errors },
@@ -301,22 +299,22 @@ export async function PUT(request: Request, { params }: RouteParams) {
     }
 
     // Save the prompt
-    const saved = setCategoryPrompt(categoryId, promptAddendum.trim(), user.email);
+    const saved = await setCategoryPrompt(categoryId, promptAddendum.trim(), user.email);
 
     // Invalidate cache
-    const [slug] = getCategorySlugsByIds([categoryId]);
+    const [slug] = await getCategorySlugsByIds([categoryId]);
     if (slug) {
       await invalidateCategoryCache(slug);
     }
 
     // Get updated character info
-    const charInfo = getPromptCharacterInfo(categoryId);
+    const charInfo = await getPromptCharacterInfo(categoryId);
 
     return NextResponse.json({
       success: true,
       categoryAddendum: saved.promptAddendum,
       starterPrompts: saved.starterPrompts || [],
-      combinedPrompt: getResolvedSystemPrompt(categoryId),
+      combinedPrompt: await getResolvedSystemPrompt(categoryId),
       charInfo: {
         globalLength: charInfo.globalLength,
         categoryLength: charInfo.categoryLength,
@@ -368,17 +366,17 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: 'Invalid category ID' }, { status: 400 });
     }
 
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     await checkCategoryAccess(categoryId);
 
-    const deleted = deleteCategoryPrompt(categoryId);
+    const deleted = await deleteCategoryPrompt(categoryId);
 
     // Invalidate cache
-    const [slug] = getCategorySlugsByIds([categoryId]);
+    const [slug] = await getCategorySlugsByIds([categoryId]);
     if (slug) {
       await invalidateCategoryCache(slug);
     }

@@ -13,7 +13,7 @@ import {
   isAuthError,
   agentBotErrors,
 } from '@/lib/agent-bot/auth';
-import { getJobById, getOutputById } from '@/lib/db/agent-bot-jobs';
+import { getJobById, getOutputById } from '@/lib/db/compat';
 import type { AgentBotError } from '@/types/agent-bot';
 
 // ============================================================================
@@ -27,7 +27,7 @@ export async function GET(
   const { slug, jobId, outputId } = await params;
 
   // 1. Authenticate request
-  const authResult = authenticateRequest(request, slug);
+  const authResult = await authenticateRequest(request, slug);
   if (isAuthError(authResult)) {
     return authResult;
   }
@@ -36,7 +36,7 @@ export async function GET(
 
   try {
     // 2. Get job
-    const job = getJobById(jobId);
+    const job = await getJobById(jobId);
     if (!job) {
       return agentBotErrors.jobNotFound();
     }
@@ -52,7 +52,7 @@ export async function GET(
     }
 
     // 5. Get output
-    const output = getOutputById(outputId);
+    const output = await getOutputById(outputId);
     if (!output || output.job_id !== jobId) {
       return NextResponse.json(
         { error: 'Output not found', code: 'JOB_NOT_FOUND' as const },

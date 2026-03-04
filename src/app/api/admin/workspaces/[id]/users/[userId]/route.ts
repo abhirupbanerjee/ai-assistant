@@ -6,8 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getWorkspaceById } from '@/lib/db/workspaces';
-import { removeUserFromWorkspace } from '@/lib/db/workspace-users';
+import { getWorkspaceById, removeUserFromWorkspace } from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
 interface RouteParams {
@@ -20,14 +19,14 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
     const { id, userId } = await params;
 
-    if (!isWorkspacesFeatureEnabled()) {
+    if (!(await isWorkspacesFeatureEnabled())) {
       return NextResponse.json(
         { error: 'Workspaces feature is disabled' },
         { status: 403 }
       );
     }
 
-    const workspace = getWorkspaceById(id);
+    const workspace = await getWorkspaceById(id);
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
@@ -42,7 +41,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
 
-    removeUserFromWorkspace(id, parseInt(userId, 10));
+    await removeUserFromWorkspace(id, parseInt(userId, 10));
 
     return NextResponse.json({ success: true });
   } catch (error) {

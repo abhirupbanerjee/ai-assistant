@@ -9,8 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getSetting, setSetting } from '@/lib/db/config';
-import { getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig } from '@/lib/db/agent-config';
+import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig } from '@/lib/db/compat';
 
 export async function GET() {
   try {
@@ -20,16 +19,16 @@ export async function GET() {
     }
 
     // Get agent settings from database
-    const modelConfigs = getAgentModelConfigs();
-    const streamingConfig = getStreamingConfig();
+    const modelConfigs = await getAgentModelConfigs();
+    const streamingConfig = await getStreamingConfig();
 
     const settings = {
-      budgetMaxLlmCalls: parseInt(getSetting('agent_budget_max_llm_calls', '500'), 10),
-      budgetMaxTokens: parseInt(getSetting('agent_budget_max_tokens', '2000000'), 10),
-      budgetMaxWebSearches: parseInt(getSetting('agent_budget_max_web_searches', '100'), 10),
-      confidenceThreshold: parseInt(getSetting('agent_confidence_threshold', '80'), 10),
-      budgetMaxDurationMinutes: parseInt(getSetting('agent_budget_max_duration_minutes', '30'), 10),
-      taskTimeoutMinutes: parseInt(getSetting('agent_task_timeout_minutes', '5'), 10),
+      budgetMaxLlmCalls: parseInt(await getSetting('agent_budget_max_llm_calls', '500'), 10),
+      budgetMaxTokens: parseInt(await getSetting('agent_budget_max_tokens', '2000000'), 10),
+      budgetMaxWebSearches: parseInt(await getSetting('agent_budget_max_web_searches', '100'), 10),
+      confidenceThreshold: parseInt(await getSetting('agent_confidence_threshold', '80'), 10),
+      budgetMaxDurationMinutes: parseInt(await getSetting('agent_budget_max_duration_minutes', '30'), 10),
+      taskTimeoutMinutes: parseInt(await getSetting('agent_task_timeout_minutes', '5'), 10),
       plannerModel: modelConfigs.planner,
       executorModel: modelConfigs.executor,
       checkerModel: modelConfigs.checker,
@@ -162,15 +161,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Save budget settings to database
-    setSetting('agent_budget_max_llm_calls', String(budgetMaxLlmCalls), user.email);
-    setSetting('agent_budget_max_tokens', String(budgetMaxTokens), user.email);
-    setSetting('agent_budget_max_web_searches', String(budgetMaxWebSearches), user.email);
-    setSetting('agent_confidence_threshold', String(confidenceThreshold), user.email);
-    setSetting('agent_budget_max_duration_minutes', String(budgetMaxDurationMinutes), user.email);
-    setSetting('agent_task_timeout_minutes', String(taskTimeoutMinutes), user.email);
+    await setSetting('agent_budget_max_llm_calls', String(budgetMaxLlmCalls), user.email);
+    await setSetting('agent_budget_max_tokens', String(budgetMaxTokens), user.email);
+    await setSetting('agent_budget_max_web_searches', String(budgetMaxWebSearches), user.email);
+    await setSetting('agent_confidence_threshold', String(confidenceThreshold), user.email);
+    await setSetting('agent_budget_max_duration_minutes', String(budgetMaxDurationMinutes), user.email);
+    await setSetting('agent_task_timeout_minutes', String(taskTimeoutMinutes), user.email);
 
     // Save model configurations
-    setAgentModelConfigs(
+    await setAgentModelConfigs(
       {
         planner: plannerModel,
         executor: executorModel,
@@ -182,8 +181,8 @@ export async function POST(request: NextRequest) {
 
     // Save streaming configuration (if provided)
     if (hasStreamingConfig) {
-      const currentStreaming = getStreamingConfig();
-      setStreamingConfig(
+      const currentStreaming = await getStreamingConfig();
+      await setStreamingConfig(
         {
           keepalive_interval_seconds: streamingKeepaliveInterval ?? currentStreaming.keepalive_interval_seconds,
           max_stream_duration_seconds: streamingMaxDuration ?? currentStreaming.max_stream_duration_seconds,
@@ -194,7 +193,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get current streaming config for response
-    const finalStreamingConfig = getStreamingConfig();
+    const finalStreamingConfig = await getStreamingConfig();
 
     return NextResponse.json({
       success: true,

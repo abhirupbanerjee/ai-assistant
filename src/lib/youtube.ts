@@ -70,8 +70,8 @@ export function isYouTubeUrl(url: string): boolean {
  * Check if YouTube extraction is configured (Supadata API key)
  * Re-exported for backward compatibility
  */
-export function isYouTubeApiConfigured(): boolean {
-  return isSupadataConfigured();
+export async function isYouTubeApiConfigured(): Promise<boolean> {
+  return await isSupadataConfigured();
 }
 
 // ============ Supadata API (Primary) ============
@@ -80,7 +80,7 @@ export function isYouTubeApiConfigured(): boolean {
  * Try to get transcript using Supadata API
  */
 async function trySupadataApi(videoId: string): Promise<YouTubeExtractResult | null> {
-  const { config } = getYouTubeConfig();
+  const { config } = await getYouTubeConfig();
 
   if (!config.apiKey) {
     return null;
@@ -111,7 +111,7 @@ async function trySupadataApi(videoId: string): Promise<YouTubeExtractResult | n
  * Try to get transcript using youtube-transcript npm package
  */
 async function tryYouTubeTranscriptNpm(videoId: string): Promise<YouTubeExtractResult | null> {
-  const { config } = getYouTubeConfig();
+  const { config } = await getYouTubeConfig();
 
   // Check if fallback is enabled
   if (!config.fallbackEnabled) {
@@ -167,7 +167,7 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeExtr
     };
   }
 
-  const { config } = getYouTubeConfig();
+  const { config } = await getYouTubeConfig();
 
   // Primary: Try Supadata API
   const supadataResult = await trySupadataApi(videoId);

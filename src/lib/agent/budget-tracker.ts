@@ -8,8 +8,8 @@
  */
 
 import type { AgentBudget, BudgetUsage, BudgetStatus } from '@/types/agent';
-import { getSetting } from '../db/config';
-import { queryAll } from '../db';
+import { getSetting } from '../db/compat/config';
+import { getDb } from '../db/kysely';
 
 const WARNING_THRESHOLD_1 = 0.5; // 50%
 const WARNING_THRESHOLD_2 = 0.75; // 75%
@@ -17,13 +17,13 @@ const WARNING_THRESHOLD_2 = 0.75; // 75%
 /**
  * Get global budget settings from database
  */
-export function getGlobalBudgetSettings(): AgentBudget {
+export async function getGlobalBudgetSettings(): Promise<AgentBudget> {
   return {
-    max_llm_calls: parseInt(getSetting('agent_budget_max_llm_calls', '500'), 10),
-    max_tokens: parseInt(getSetting('agent_budget_max_tokens', '2000000'), 10),
-    max_web_searches: parseInt(getSetting('agent_budget_max_web_searches', '100'), 10),
-    max_duration_minutes: parseInt(getSetting('agent_budget_max_duration_minutes', '30'), 10),
-    task_timeout_minutes: parseInt(getSetting('agent_task_timeout_minutes', '5'), 10),
+    max_llm_calls: parseInt(await getSetting('agent_budget_max_llm_calls', '500'), 10),
+    max_tokens: parseInt(await getSetting('agent_budget_max_tokens', '2000000'), 10),
+    max_web_searches: parseInt(await getSetting('agent_budget_max_web_searches', '100'), 10),
+    max_duration_minutes: parseInt(await getSetting('agent_budget_max_duration_minutes', '30'), 10),
+    task_timeout_minutes: parseInt(await getSetting('agent_task_timeout_minutes', '5'), 10),
   };
 }
 
@@ -42,10 +42,15 @@ export class GlobalBudgetTracker {
   private usageCacheTime: number = 0;
   private static readonly CACHE_TTL_MS = 2000; // 2 second cache
 
-  constructor(onEvent?: (event: BudgetWarningEvent) => void) {
-    this.globalBudget = getGlobalBudgetSettings();
+  private constructor(budget: AgentBudget, onEvent?: (event: BudgetWarningEvent) => void) {
+    this.globalBudget = budget;
     this.startTime = Date.now();
     this.onEvent = onEvent;
+  }
+
+  static async create(onEvent?: (event: BudgetWarningEvent) => void): Promise<GlobalBudgetTracker> {
+    const budget = await getGlobalBudgetSettings();
+    return new GlobalBudgetTracker(budget, onEvent);
   }
 
   /**
@@ -59,23 +64,23 @@ export class GlobalBudgetTracker {
   /**
    * Record an LLM call and check budget
    */
-  recordLLMCall(tokens: number): BudgetStatus {
+  async recordLLMCall(tokens: number): Promise<BudgetStatus> {
     return this.checkBudget();
   }
 
   /**
    * Record a web search and check budget
    */
-  recordWebSearch(): BudgetStatus {
+  async recordWebSearch(): Promise<BudgetStatus> {
     return this.checkBudget();
   }
 
   /**
    * Check current budget status against global limits
    */
-  checkBudget(usage?: BudgetUsage): BudgetStatus {
+  async checkBudget(usage?: BudgetUsage): Promise<BudgetStatus> {
     // If no usage provided, get current totals from all active plans
-    const totalUsage = usage || this.getTotalUsage();
+    const totalUsage = usage || await this.getTotalUsage();
 
     const llmPct = (totalUsage.llm_calls / this.globalBudget.max_llm_calls) * 100;
     const tokenPct = (totalUsage.tokens_used / this.globalBudget.max_tokens) * 100;
@@ -107,7 +112,7 @@ export class GlobalBudgetTracker {
   /**
    * Get total usage across all active plans (with TTL caching)
    */
-  private getTotalUsage(): BudgetUsage {
+  private async getTotalUsage(): Promise<BudgetUsage> {
     const now = Date.now();
 
     // Return cached value if still valid
@@ -115,10 +120,14 @@ export class GlobalBudgetTracker {
       return this.usageCache;
     }
 
-    // Query database for fresh usage data
-    const activePlans = queryAll<{ budget_used_json: string }>(
-      "SELECT budget_used_json FROM task_plans WHERE status = 'active' AND mode = 'autonomous'"
-    );
+    // Query database for fresh usage data via Kysely
+    const db = await getDb();
+    const activePlans = await db
+      .selectFrom('task_plans')
+      .select('budget_used_json')
+      .where('status', '=', 'active')
+      .where('mode', '=', 'autonomous')
+      .execute();
 
     const total: BudgetUsage = {
       llm_calls: 0,
@@ -128,7 +137,7 @@ export class GlobalBudgetTracker {
 
     for (const plan of activePlans) {
       try {
-        const usage: BudgetUsage = JSON.parse(plan.budget_used_json);
+        const usage: BudgetUsage = JSON.parse(plan.budget_used_json as string);
         total.llm_calls += usage.llm_calls || 0;
         total.tokens_used += usage.tokens_used || 0;
         total.web_searches += usage.web_searches || 0;
@@ -191,8 +200,8 @@ export class GlobalBudgetTracker {
   /**
    * Get current usage summary
    */
-  getUsageSummary() {
-    const total = this.getTotalUsage();
+  async getUsageSummary() {
+    const total = await this.getTotalUsage();
     const elapsedMinutes = Math.round((Date.now() - this.startTime) / 60000);
 
     return {

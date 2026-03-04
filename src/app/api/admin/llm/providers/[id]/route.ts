@@ -14,7 +14,7 @@ import {
   deleteProvider,
   maskApiKey,
   type UpdateProviderInput,
-} from '@/lib/db/llm-providers';
+} from '@/lib/db/compat/llm-providers';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const provider = getProvider(id);
+    const provider = await getProvider(id);
 
     if (!provider) {
       return NextResponse.json<ApiError>(
@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const body = await request.json() as UpdateProviderInput;
 
-    const provider = updateProvider(id, body);
+    const provider = await updateProvider(id, body);
 
     if (!provider) {
       return NextResponse.json<ApiError>(
@@ -122,7 +122,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const coreProviders = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek'];
     if (coreProviders.includes(id)) {
       // Clear API key instead of deleting
-      const provider = updateProvider(id, { apiKey: '', apiBase: '', enabled: false });
+      const provider = await updateProvider(id, { apiKey: '', apiBase: '', enabled: false });
       if (!provider) {
         return NextResponse.json<ApiError>(
           { error: 'Provider not found', code: 'NOT_FOUND' },
@@ -139,7 +139,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       });
     }
 
-    const deleted = deleteProvider(id);
+    const deleted = await deleteProvider(id);
     if (!deleted) {
       return NextResponse.json<ApiError>(
         { error: 'Provider not found', code: 'NOT_FOUND' },

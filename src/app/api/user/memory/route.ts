@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail, getCategoriesByIds } from '@/lib/db/compat';
 import {
   getAllMemoriesForUser,
   clearMemory,
   getMemoryForUser,
 } from '@/lib/memory';
-import { queryAll } from '@/lib/db';
 import type { ApiError } from '@/types';
-
-interface CategoryInfo {
-  id: number;
-  name: string;
-  slug: string;
-}
 
 /**
  * GET /api/user/memory
@@ -29,7 +22,7 @@ export async function GET() {
       );
     }
 
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -38,20 +31,16 @@ export async function GET() {
     }
 
     // Get all memories for the user
-    const memories = getAllMemoriesForUser(dbUser.id);
+    const memories = await getAllMemoriesForUser(dbUser.id);
 
     // Get category information for each memory
     const categoryIds = memories
       .map((m) => m.categoryId)
       .filter((id): id is number => id !== null);
 
-    let categories: CategoryInfo[] = [];
-    if (categoryIds.length > 0) {
-      categories = queryAll<CategoryInfo>(
-        `SELECT id, name, slug FROM categories WHERE id IN (${categoryIds.map(() => '?').join(',')})`,
-        categoryIds
-      );
-    }
+    const categories = categoryIds.length > 0
+      ? await getCategoriesByIds(categoryIds)
+      : [];
 
     // Map memories with category info
     const memoriesWithCategories = memories.map((memory) => {
@@ -102,7 +91,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const dbUser = getUserByEmail(user.email);
+    const dbUser = await getUserByEmail(user.email);
     if (!dbUser) {
       return NextResponse.json<ApiError>(
         { error: 'User not found', code: 'NOT_FOUND' },
@@ -124,7 +113,7 @@ export async function DELETE(request: NextRequest) {
       }
 
       // Check memory exists before clearing
-      const memory = getMemoryForUser(dbUser.id, categoryId);
+      const memory = await getMemoryForUser(dbUser.id, categoryId);
       if (!memory) {
         return NextResponse.json<ApiError>(
           { error: 'Memory not found for this category', code: 'NOT_FOUND' },
@@ -132,14 +121,14 @@ export async function DELETE(request: NextRequest) {
         );
       }
 
-      clearMemory(dbUser.id, categoryId);
+      await clearMemory(dbUser.id, categoryId);
       return NextResponse.json({
         success: true,
         message: `Cleared memory for ${categoryIdParam === 'global' ? 'global context' : `category ${categoryId}`}`,
       });
     } else {
       // Clear all memories
-      clearMemory(dbUser.id);
+      await clearMemory(dbUser.id);
       return NextResponse.json({
         success: true,
         message: 'Cleared all memories',

@@ -7,9 +7,8 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
-import { getToolConfig, TOOL_DEFAULTS } from '../db/tool-config';
-import { getToolConfigAsync } from '@/lib/db/compat';
-import { getEffectiveToolConfig, type BrandingConfig } from '../db/category-tool-config';
+import { getToolConfig, TOOL_DEFAULTS } from '../db/compat/tool-config';
+import { getEffectiveToolConfig, type BrandingConfig } from '../db/compat/category-tool-config';
 import {
   createDocumentGenerator,
   type DocumentFormat,
@@ -291,7 +290,7 @@ export const documentGenerationTool: ToolDefinition = {
       }
 
       // Get tool configuration
-      const toolConfig = await getToolConfigAsync('doc_gen');
+      const toolConfig = await getToolConfig('doc_gen');
       const config = toolConfig?.config || TOOL_DEFAULTS.doc_gen.config;
 
       // Build DocGenConfig
@@ -324,7 +323,7 @@ export const documentGenerationTool: ToolDefinition = {
       // Get category branding if applicable
       let categoryBranding: BrandingConfig | null = null;
       if (categoryId) {
-        const effective = getEffectiveToolConfig('doc_gen', categoryId);
+        const effective = await getEffectiveToolConfig('doc_gen', categoryId);
         categoryBranding = effective.branding;
       }
 
@@ -385,8 +384,8 @@ function formatFileSize(bytes: number): string {
 /**
  * Get the document generation configuration
  */
-export function getDocGenConfig(): DocGenConfig {
-  const toolConfig = getToolConfig('doc_gen');
+export async function getDocGenConfig(): Promise<DocGenConfig> {
+  const toolConfig = await getToolConfig('doc_gen');
   const config = toolConfig?.config || TOOL_DEFAULTS.doc_gen.config;
 
   return {
@@ -402,16 +401,16 @@ export function getDocGenConfig(): DocGenConfig {
 /**
  * Check if document generation is enabled
  */
-export function isDocGenEnabled(): boolean {
-  const toolConfig = getToolConfig('doc_gen');
+export async function isDocGenEnabled(): Promise<boolean> {
+  const toolConfig = await getToolConfig('doc_gen');
   return toolConfig?.isEnabled ?? TOOL_DEFAULTS.doc_gen.enabled;
 }
 
 /**
  * Get enabled formats
  */
-export function getEnabledFormats(): DocumentFormat[] {
-  const config = getDocGenConfig();
+export async function getEnabledFormats(): Promise<DocumentFormat[]> {
+  const config = await getDocGenConfig();
   return config.enabledFormats;
 }
 

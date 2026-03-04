@@ -11,11 +11,11 @@ import {
   getAgentBotById,
   updateAgentBot,
   deleteAgentBot,
-  slugExists,
-  nameExists,
-} from '@/lib/db/agent-bots';
-import { listVersions } from '@/lib/db/agent-bot-versions';
-import { listApiKeys } from '@/lib/db/agent-bot-api-keys';
+  agentBotSlugExists as slugExists,
+  agentBotNameExists as nameExists,
+  listVersions,
+  listApiKeys,
+} from '@/lib/db/compat';
 import { requireElevated } from '@/lib/auth';
 
 // ============================================================================
@@ -30,7 +30,7 @@ export async function GET(
     await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -39,8 +39,8 @@ export async function GET(
     }
 
     // Get associated data
-    const versions = listVersions(id);
-    const apiKeys = listApiKeys(id);
+    const versions = await listVersions(id);
+    const apiKeys = await listApiKeys(id);
 
     return NextResponse.json({
       agentBot,
@@ -82,7 +82,7 @@ export async function PATCH(
     await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -108,7 +108,7 @@ export async function PATCH(
         );
       }
       // Check for duplicates (excluding current)
-      if (nameExists(name, id)) {
+      if (await nameExists(name, id)) {
         return NextResponse.json(
           { error: 'An agent bot with this name already exists' },
           { status: 409 }
@@ -127,7 +127,7 @@ export async function PATCH(
         );
       }
       // Check for duplicates (excluding current)
-      if (slugExists(slug, id)) {
+      if (await slugExists(slug, id)) {
         return NextResponse.json(
           { error: 'An agent bot with this slug already exists' },
           { status: 409 }
@@ -147,7 +147,7 @@ export async function PATCH(
     }
 
     // Update the agent bot
-    const updated = updateAgentBot(id, updates);
+    const updated = await updateAgentBot(id, updates);
     if (!updated) {
       return NextResponse.json(
         { error: 'Failed to update agent bot' },
@@ -180,7 +180,7 @@ export async function DELETE(
     await requireElevated();
     const { id } = await params;
 
-    const agentBot = getAgentBotById(id);
+    const agentBot = await getAgentBotById(id);
     if (!agentBot) {
       return NextResponse.json(
         { error: 'Agent bot not found' },
@@ -189,7 +189,7 @@ export async function DELETE(
     }
 
     // Delete the agent bot (cascades to versions, api keys, jobs)
-    const deleted = deleteAgentBot(id);
+    const deleted = await deleteAgentBot(id);
     if (!deleted) {
       return NextResponse.json(
         { error: 'Failed to delete agent bot' },

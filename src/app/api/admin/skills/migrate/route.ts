@@ -10,7 +10,7 @@ import { requireAdmin, getCurrentUser } from '@/lib/auth';
 import {
   migrateToolRoutingToSkills,
   isToolRoutingMigrated,
-} from '@/lib/db/skills';
+} from '@/lib/db/compat/skills';
 
 /**
  * GET: Check if migration has been completed
@@ -19,7 +19,7 @@ export async function GET() {
   try {
     await requireAdmin();
 
-    const isMigrated = isToolRoutingMigrated();
+    const isMigrated = await isToolRoutingMigrated();
 
     return NextResponse.json({
       success: true,
@@ -48,7 +48,7 @@ export async function POST() {
     const user = await getCurrentUser();
 
     const userEmail = user?.email || 'admin';
-    const results = migrateToolRoutingToSkills(userEmail);
+    const results = await migrateToolRoutingToSkills(userEmail);
 
     return NextResponse.json({
       success: true,

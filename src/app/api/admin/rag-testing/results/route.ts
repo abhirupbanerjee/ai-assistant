@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole } from '@/lib/users';
-import { getRecentResults, getTestStats, cleanupOldResults } from '@/lib/db/rag-testing';
+import { getRecentResults, getTestStats, cleanupOldResults } from '@/lib/db/compat';
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,7 +51,7 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const keepRecent = parseInt(searchParams.get('keepRecent') || '50');
 
-    const deleted = cleanupOldResults(keepRecent);
+    const deleted = await cleanupOldResults(keepRecent);
 
     return NextResponse.json({
       success: true,

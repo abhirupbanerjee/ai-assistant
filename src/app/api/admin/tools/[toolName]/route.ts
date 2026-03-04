@@ -14,7 +14,7 @@ import {
   resetToolToDefaults,
   getToolConfigAuditHistory,
   TOOL_DEFAULTS,
-} from '@/lib/db/tool-config';
+} from '@/lib/db/compat/tool-config';
 import { getTool, validateToolConfig, initializeTools } from '@/lib/tools';
 import { invalidateTavilyCache } from '@/lib/redis';
 import { upsertToolConfigAsync } from '@/lib/db/compat';
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { toolName } = await params;
 
     // Initialize tools system
-    initializeTools();
+    await initializeTools();
 
     // Get tool definition
     const tool = getTool(toolName);
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get tool configuration from database
-    const config = getToolConfig(toolName);
+    const config = await getToolConfig(toolName);
     const defaults = TOOL_DEFAULTS[toolName];
 
     // Mask API keys
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get audit history
-    const auditHistory = getToolConfigAuditHistory(toolName, 10);
+    const auditHistory = await getToolConfigAuditHistory(toolName, 10);
 
     // Get default description from tool definition
     const defaultDescription = tool.definition?.function?.description ?? tool.description;
@@ -137,7 +137,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { toolName } = await params;
 
     // Initialize tools system
-    initializeTools();
+    await initializeTools();
 
     // Get tool definition
     const tool = getTool(toolName);
@@ -153,7 +153,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Handle reset to defaults
     if (reset === true) {
-      const updated = resetToolToDefaults(toolName, user.email);
+      const updated = await resetToolToDefaults(toolName, user.email);
       if (!updated) {
         return NextResponse.json(
           { error: 'Failed to reset tool' },
@@ -182,7 +182,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Validate configuration if provided
     if (config !== undefined) {
       // Get current config to merge with updates
-      const currentConfig = getToolConfig(toolName);
+      const currentConfig = await getToolConfig(toolName);
       const mergedConfig = {
         ...(currentConfig?.config || tool.defaultConfig),
         ...config,
@@ -208,7 +208,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       // Update configuration (or create if doesn't exist)
-      let updated = updateToolConfig(toolName, {
+      let updated = await updateToolConfig(toolName, {
         isEnabled: enabled,
         config: mergedConfig,
         ...(descriptionOverride !== undefined && { descriptionOverride }),
@@ -216,7 +216,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       // If update failed because config doesn't exist, create it
       if (!updated) {
-        const created = createToolConfig(
+        const created = await createToolConfig(
           toolName,
           mergedConfig,
           enabled ?? false,
@@ -271,11 +271,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (enabled !== undefined) updates.isEnabled = enabled;
       if (descriptionOverride !== undefined) updates.descriptionOverride = descriptionOverride;
 
-      let updated = updateToolConfig(toolName, updates, user.email);
+      let updated = await updateToolConfig(toolName, updates, user.email);
 
       // If update failed because config doesn't exist, create it
       if (!updated) {
-        const created = createToolConfig(
+        const created = await createToolConfig(
           toolName,
           tool.defaultConfig,
           enabled ?? false,

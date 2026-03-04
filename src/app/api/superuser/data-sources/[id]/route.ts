@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
-import { getSuperUserWithAssignments } from '@/lib/db/users';
+import { getSuperUserWithAssignments } from '@/lib/db/compat';
 import {
   getDataAPI,
   getDataCSV,
@@ -19,7 +19,7 @@ import {
   updateDataCSV,
   deleteDataAPI,
   deleteDataCSV,
-} from '@/lib/db/data-sources';
+} from '@/lib/db/compat/data-sources';
 import { maskSensitiveValue } from '@/lib/encryption';
 import type { DataAPIConfig } from '@/types/data-sources';
 
@@ -81,7 +81,7 @@ export async function GET(
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -90,7 +90,7 @@ export async function GET(
     const { id } = await params;
 
     // Try to find as API first, then CSV
-    const api = getDataAPI(id);
+    const api = await getDataAPI(id);
     if (api) {
       if (!hasAccessToDataSource(api.categoryIds, assignedCategoryIds)) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -101,7 +101,7 @@ export async function GET(
       });
     }
 
-    const csv = getDataCSV(id);
+    const csv = await getDataCSV(id);
     if (csv) {
       if (!hasAccessToDataSource(csv.categoryIds, assignedCategoryIds)) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -147,7 +147,7 @@ export async function PUT(
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -171,13 +171,13 @@ export async function PUT(
     }
 
     // Try to find and update as API first
-    const api = getDataAPI(id);
+    const api = await getDataAPI(id);
     if (api) {
       if (!hasAccessToDataSource(api.categoryIds, assignedCategoryIds)) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
 
-      const updated = updateDataAPI(id, body, user.email);
+      const updated = await updateDataAPI(id, body, user.email);
       if (updated) {
         return NextResponse.json({
           success: true,
@@ -187,13 +187,13 @@ export async function PUT(
     }
 
     // Try CSV
-    const csv = getDataCSV(id);
+    const csv = await getDataCSV(id);
     if (csv) {
       if (!hasAccessToDataSource(csv.categoryIds, assignedCategoryIds)) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
 
-      const updated = updateDataCSV(id, body, user.email);
+      const updated = await updateDataCSV(id, body, user.email);
       if (updated) {
         return NextResponse.json({
           success: true,
@@ -237,7 +237,7 @@ export async function DELETE(
     }
 
     // Get superuser's assigned categories
-    const superUserData = getSuperUserWithAssignments(userId);
+    const superUserData = await getSuperUserWithAssignments(userId);
     if (!superUserData) {
       return NextResponse.json({ error: 'Superuser data not found' }, { status: 404 });
     }
@@ -246,24 +246,24 @@ export async function DELETE(
     const { id } = await params;
 
     // Try to find and delete as API first
-    const api = getDataAPI(id);
+    const api = await getDataAPI(id);
     if (api) {
       if (!hasAccessToDataSource(api.categoryIds, assignedCategoryIds)) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
 
-      deleteDataAPI(id, user.email);
+      await deleteDataAPI(id, user.email);
       return NextResponse.json({ success: true });
     }
 
     // Try CSV
-    const csv = getDataCSV(id);
+    const csv = await getDataCSV(id);
     if (csv) {
       if (!hasAccessToDataSource(csv.categoryIds, assignedCategoryIds)) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
 
-      deleteDataCSV(id, user.email);
+      await deleteDataCSV(id, user.email);
       return NextResponse.json({ success: true });
     }
 

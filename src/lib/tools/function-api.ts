@@ -12,7 +12,7 @@ import {
   getToolDefinitionsForCategories,
   findConfigForFunction,
   getFunctionAPIConfigsForCategories,
-} from '../db/function-api-config';
+} from '../db/compat';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getRequestContext } from '../request-context';
 
@@ -142,7 +142,7 @@ async function executeFunction(
   const categoryIds = context.categoryIds && context.categoryIds.length > 0 ? context.categoryIds : [];
 
   // Find the config that contains this function
-  const match = findConfigForFunction(functionName, categoryIds);
+  const match = await findConfigForFunction(functionName, categoryIds);
 
   if (!match) {
     return formatResponseForLLM({
@@ -309,25 +309,25 @@ export const functionApiTool: ToolDefinition = {
  * Get dynamic function definitions for specific categories
  * Called by the tool registry to inject function definitions
  */
-export function getDynamicFunctionDefinitions(
+export async function getDynamicFunctionDefinitions(
   categoryIds: number[]
-): OpenAI.Chat.ChatCompletionFunctionTool[] {
+): Promise<OpenAI.Chat.ChatCompletionFunctionTool[]> {
   return getToolDefinitionsForCategories(categoryIds);
 }
 
 /**
  * Check if a function name belongs to a Function API
  */
-export function isFunctionAPIFunction(functionName: string): boolean {
-  const match = findConfigForFunction(functionName);
+export async function isFunctionAPIFunction(functionName: string): Promise<boolean> {
+  const match = await findConfigForFunction(functionName);
   return match !== undefined;
 }
 
 /**
  * Get available Function API descriptions for system prompt
  */
-export function getFunctionAPIDescriptions(categoryIds: number[]): string {
-  const configs = getFunctionAPIConfigsForCategories(categoryIds);
+export async function getFunctionAPIDescriptions(categoryIds: number[]): Promise<string> {
+  const configs = await getFunctionAPIConfigsForCategories(categoryIds);
   if (configs.length === 0) return '';
 
   const descriptions = ['## Available Function APIs'];

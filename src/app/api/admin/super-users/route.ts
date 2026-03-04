@@ -6,19 +6,19 @@
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getSuperUsers, getSuperUserWithAssignments } from '@/lib/db/users';
+import { getSuperUsers, getSuperUserWithAssignments } from '@/lib/db/compat';
 
 export async function GET() {
   try {
     await requireAdmin();
 
-    const superUsers = getSuperUsers();
+    const superUsers = await getSuperUsers();
 
     // Get assignments for each super user
-    const superUsersWithAssignments = superUsers.map(user => {
-      const withAssignments = getSuperUserWithAssignments(user.id);
+    const superUsersWithAssignments = await Promise.all(superUsers.map(async user => {
+      const withAssignments = await getSuperUserWithAssignments(user.id);
       return withAssignments || { ...user, assignedCategories: [] };
-    });
+    }));
 
     return NextResponse.json({ superUsers: superUsersWithAssignments });
   } catch (error) {

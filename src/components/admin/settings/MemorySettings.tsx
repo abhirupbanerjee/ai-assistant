@@ -24,7 +24,8 @@ export default function MemorySettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const formatDate = (date: Date | string) => {
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'Never';
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleString();
   };
@@ -202,7 +203,7 @@ export default function MemorySettingsTab() {
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-1">Extraction Max Tokens</label>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-medium text-gray-900">{editedSettings.extractionMaxTokens.toLocaleString()}</span>
+                <span className="text-lg font-medium text-gray-900">{editedSettings.extractionMaxTokens?.toLocaleString() ?? '1000'}</span>
                 <span className="text-xs text-gray-400">tokens</span>
               </div>
               <p className="mt-1 text-xs text-blue-500">Configure in Settings → Limits → Token Limits</p>

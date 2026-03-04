@@ -6,7 +6,7 @@
  */
 
 import { notFound, redirect } from 'next/navigation';
-import { getWorkspaceBySlug } from '@/lib/db/workspaces';
+import { getWorkspaceBySlug } from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 import { getCurrentUser } from '@/lib/auth';
 import { EmbedPageClient } from './EmbedPageClient';
@@ -29,7 +29,7 @@ export default async function HostedEmbedPage({ params }: PageProps) {
   }
 
   // Get workspace
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) {
     notFound();
   }
@@ -73,7 +73,7 @@ export default async function HostedEmbedPage({ params }: PageProps) {
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
 
-  const workspace = getWorkspaceBySlug(slug);
+  const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) {
     return { title: 'Not Found' };
   }

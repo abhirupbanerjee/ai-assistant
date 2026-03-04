@@ -11,13 +11,12 @@
 import { NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/users';
+import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread } from '@/lib/db/compat';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
-import { linkOutputsToMessage, getEffectiveModelForThread } from '@/lib/db/threads';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
-import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
+import { getMemorySettings, getSummarizationSettings } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
 import { generateResponseWithTools } from '@/lib/openai';
 import {
@@ -33,7 +32,7 @@ import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualizat
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
-import { getLlmSettings } from '@/lib/db/config';
+import { getLlmSettings } from '@/lib/db/compat';
 import {
   buildModelsToTry,
   withModelFallback,
@@ -50,7 +49,7 @@ export async function POST(request: NextRequest) {
   let keepAliveInterval: NodeJS.Timeout | null = null;
 
   // Get streaming config from database (with fallback defaults)
-  const streamingConfig = getStreamingConfigMs();
+  const streamingConfig = await getStreamingConfigMs();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -127,15 +126,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Resolve effective model for this thread (thread override or global default)
-        const effectiveModel = getEffectiveModelForThread(threadId);
+        const effectiveModel = await getEffectiveModelForThread(threadId);
         const requestStart = Date.now();
 
         send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
 
         // ============ Setup ============
-        const dbUser = getUserByEmail(user.email);
-        const memorySettings = getMemorySettings();
-        const summarizationSettings = getSummarizationSettings();
+        const dbUser = await getUserByEmail(user.email);
+        const memorySettings = await getMemorySettings();
+        const summarizationSettings = await getSummarizationSettings();
 
         // Create and save user message
         const userMessageId = uuidv4();
@@ -146,7 +145,7 @@ export async function POST(request: NextRequest) {
           timestamp: new Date(),
         };
         await addMessage(user.id, threadId, userMessage);
-        updateThreadTokenCount(threadId, countTokens(message));
+        await updateThreadTokenCount(threadId, countTokens(message));
 
         // ============ AUTONOMOUS MODE BRANCH ============
         if (mode === 'autonomous') {
@@ -160,11 +159,11 @@ export async function POST(request: NextRequest) {
           // Get memory and summary context
           let memoryContext = '';
           if (memorySettings.enabled && dbUser) {
-            memoryContext = getMemoryContext(dbUser.id, categoryIds);
+            memoryContext = await getMemoryContext(dbUser.id, categoryIds);
           }
 
           let summaryContext = '';
-          const existingSummary = getThreadSummary(threadId);
+          const existingSummary = await getThreadSummary(threadId);
           if (existingSummary) {
             summaryContext = formatSummaryForContext(existingSummary.summary);
           }
@@ -216,19 +215,19 @@ export async function POST(request: NextRequest) {
                 };
 
                 await addMessage(user.id, threadId, assistantMessage);
-                updateThreadTokenCount(threadId, countTokens(result.summary));
+                await updateThreadTokenCount(threadId, countTokens(result.summary));
 
                 // Link generated outputs to message
                 if (result.generatedDocuments.length > 0 || result.generatedImages.length > 0) {
                   try {
-                    linkOutputsToMessage(threadId, assistantMessageId);
+                    await linkOutputsToMessage(threadId, assistantMessageId);
                   } catch (linkError) {
                     console.error('[Stream] Failed to link autonomous outputs to message:', linkError);
                   }
                 }
 
                 // Background tasks (non-blocking)
-                if (summarizationSettings.enabled && shouldSummarize(threadId)) {
+                if (summarizationSettings.enabled && await shouldSummarize(threadId)) {
                   summarizeThread(threadId).catch(() => {});
                 }
 
@@ -263,11 +262,11 @@ export async function POST(request: NextRequest) {
         // Get memory and summary context
         let memoryContext = '';
         if (memorySettings.enabled && dbUser) {
-          memoryContext = getMemoryContext(dbUser.id, categoryIds);
+          memoryContext = await getMemoryContext(dbUser.id, categoryIds);
         }
 
         let summaryContext = '';
-        const existingSummary = getThreadSummary(threadId);
+        const existingSummary = await getThreadSummary(threadId);
         if (existingSummary) {
           summaryContext = formatSummaryForContext(existingSummary.summary);
         }
@@ -276,8 +275,8 @@ export async function POST(request: NextRequest) {
         const uploadDetails = await getUploadDetails(user.id, threadId);
 
         // Check image processing capabilities for current model
-        const llmSettings = getLlmSettings();
-        const imageCapabilities = getImageCapabilities(llmSettings.model);
+        const llmSettings = await getLlmSettings();
+        const imageCapabilities = await getImageCapabilities(llmSettings.model);
 
         // Document paths for RAG text extraction (PDFs, DOCX, etc.)
         // Also include images for OCR text extraction as additional context
@@ -357,7 +356,7 @@ export async function POST(request: NextRequest) {
             // ============ Build Model Fallback Chain ============
             // Determine models to try based on capabilities and health status
             const hasImages = imageContents.length > 0;
-            const { models: modelsToTry, capabilitySwitch } = buildModelsToTry(
+            const { models: modelsToTry, capabilitySwitch } = await buildModelsToTry(
               effectiveModel,
               hasImages,  // requiresVision
               true        // requiresTools (generally enabled)
@@ -571,7 +570,7 @@ export async function POST(request: NextRequest) {
               s => s.complianceConfig?.enabled === true
             );
 
-            if (isToolEnabled('compliance_checker') && skillsWithComplianceEnabled.length > 0) {
+            if ((await isToolEnabled('compliance_checker')) && skillsWithComplianceEnabled.length > 0) {
               try {
                 const complianceResultStr = await complianceCheckerTool.execute({
                   userMessage: message,
@@ -616,13 +615,13 @@ export async function POST(request: NextRequest) {
             };
 
             await addMessage(user.id, threadId, assistantMessage);
-            updateThreadTokenCount(threadId, countTokens(fullContent));
+            await updateThreadTokenCount(threadId, countTokens(fullContent));
 
             // Link any generated outputs (documents, images, diagrams, podcasts) to this message
             // This must happen after addMessage since message_id is a foreign key
             if (documents.length > 0 || images.length > 0 || diagrams.length > 0 || podcasts.length > 0) {
               try {
-                linkOutputsToMessage(threadId, assistantMessageId);
+                await linkOutputsToMessage(threadId, assistantMessageId);
               } catch (linkError) {
                 // Log but don't fail - message is saved, just outputs not linked
                 console.error('[Stream] Failed to link outputs to message:', linkError);
@@ -630,7 +629,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Background tasks (non-blocking)
-            if (summarizationSettings.enabled && shouldSummarize(threadId)) {
+            if (summarizationSettings.enabled && await shouldSummarize(threadId)) {
               summarizeThread(threadId).catch(() => {});
             }
 

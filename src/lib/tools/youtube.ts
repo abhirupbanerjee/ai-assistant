@@ -7,7 +7,7 @@
  * Configuration is managed through the Tools admin UI.
  */
 
-import { getToolConfig } from '../db/tool-config';
+import { getToolConfig } from '../db/compat/tool-config';
 import type { ToolDefinition, ValidationResult } from '../tools';
 
 // ============ Types ============
@@ -30,8 +30,8 @@ export interface SupadataResult {
 /**
  * Get YouTube tool configuration from database
  */
-export function getYouTubeConfig(): { enabled: boolean; config: YouTubeToolConfig } {
-  const toolConfig = getToolConfig('youtube');
+export async function getYouTubeConfig(): Promise<{ enabled: boolean; config: YouTubeToolConfig }> {
+  const toolConfig = await getToolConfig('youtube');
   if (toolConfig) {
     const config = toolConfig.config as Record<string, unknown>;
     return {
@@ -52,8 +52,8 @@ export function getYouTubeConfig(): { enabled: boolean; config: YouTubeToolConfi
 /**
  * Check if Supadata API is configured
  */
-export function isSupadataConfigured(): boolean {
-  const { config } = getYouTubeConfig();
+export async function isSupadataConfigured(): Promise<boolean> {
+  const { config } = await getYouTubeConfig();
   return !!config.apiKey;
 }
 

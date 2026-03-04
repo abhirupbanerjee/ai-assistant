@@ -29,7 +29,7 @@ import {
   transitionTaskState,
   incrementBudgetUsage,
   getPlanControlStatus,
-} from '../db/task-plans';
+} from '../db/compat/task-plans';
 
 /**
  * Orchestrator callbacks for progress updates
@@ -71,7 +71,7 @@ export async function executeAutonomousPlan(
   callbacks?: OrchestratorCallbacks
 ): Promise<OrchestratorResult> {
   // Load plan from database
-  let plan = getTaskPlan(planId) as unknown as AgentPlan | undefined;
+  let plan = await getTaskPlan(planId) as unknown as AgentPlan | undefined;
   if (!plan) {
     const error = `Plan ${planId} not found`;
     callbacks?.onError?.(error);
@@ -83,7 +83,7 @@ export async function executeAutonomousPlan(
   }
 
   // Initialize budget tracker with callbacks
-  const budgetTracker = new GlobalBudgetTracker((event) => {
+  const budgetTracker = await GlobalBudgetTracker.create((event) => {
     if (event.type === 'budget_warning') {
       callbacks?.onBudgetWarning?.(
         `Budget ${event.level} warning: ${event.percentage}% used`,
@@ -98,7 +98,7 @@ export async function executeAutonomousPlan(
     // Phase 1: Planning (already done if plan exists with tasks)
     if (!plan.tasks || plan.tasks.length === 0) {
       callbacks?.onError?.('Plan has no tasks - planning phase failed');
-      updateTaskPlanStatus(planId, 'failed');
+      await updateTaskPlanStatus(planId, 'failed');
       return {
         success: false,
         error: 'Plan has no tasks',
@@ -116,7 +116,7 @@ export async function executeAutonomousPlan(
     }
 
     // Reload plan to get updated task states
-    plan = (getTaskPlan(planId) as unknown as AgentPlan) || plan;
+    plan = (await getTaskPlan(planId) as unknown as AgentPlan) || plan;
 
     // Phase 3: Summarization
     callbacks?.onSummarizing?.();
@@ -124,7 +124,7 @@ export async function executeAutonomousPlan(
 
     if (!summaryResult.success) {
       callbacks?.onError?.(summaryResult.error || 'Summary generation failed');
-      updateTaskPlanStatus(planId, 'failed');
+      await updateTaskPlanStatus(planId, 'failed');
       return {
         success: false,
         error: summaryResult.error,
@@ -133,10 +133,10 @@ export async function executeAutonomousPlan(
     }
 
     // Mark plan as completed
-    updateTaskPlanStatus(planId, 'completed');
+    await updateTaskPlanStatus(planId, 'completed');
 
     // Bug fix: Reload plan from database to get fresh data for callback
-    const finalPlan = (getTaskPlan(planId) as unknown as AgentPlan) || plan;
+    const finalPlan = (await getTaskPlan(planId) as unknown as AgentPlan) || plan;
     callbacks?.onPlanCompleted?.(finalPlan, summaryResult.summary || '');
 
     return {
@@ -149,7 +149,7 @@ export async function executeAutonomousPlan(
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[Orchestrator] Execution error:', errorMsg);
     callbacks?.onError?.(errorMsg);
-    updateTaskPlanStatus(planId, 'failed');
+    await updateTaskPlanStatus(planId, 'failed');
 
     return {
       success: false,
@@ -175,11 +175,11 @@ async function executeTasksInOrder(
     iteration++;
 
     // Check for budget exceeded BEFORE starting new tasks
-    const budgetStatus = budgetTracker.checkBudget();
+    const budgetStatus = await budgetTracker.checkBudget();
     if (budgetStatus.exceeded) {
       const errorMsg = `Budget exceeded: ${budgetStatus.message}`;
       callbacks?.onError?.(errorMsg);
-      updateTaskPlanStatus(plan.id, 'failed');
+      await updateTaskPlanStatus(plan.id, 'failed');
       return {
         success: false,
         error: errorMsg,
@@ -188,11 +188,11 @@ async function executeTasksInOrder(
     }
 
     // Reload plan to get latest task states
-    const currentPlan = getTaskPlan(plan.id);
+    const currentPlan = await getTaskPlan(plan.id);
     if (!currentPlan) {
       // Bug fix: Mark plan as failed before returning
       callbacks?.onError?.('Plan not found during execution');
-      updateTaskPlanStatus(plan.id, 'failed');
+      await updateTaskPlanStatus(plan.id, 'failed');
       return {
         success: false,
         error: 'Plan not found during execution',
@@ -222,7 +222,7 @@ async function executeTasksInOrder(
       if (stuckResult.isStuck) {
         const errorMsg = `Plan stuck: ${stuckResult.reason}`;
         callbacks?.onError?.(errorMsg);
-        updateTaskPlanStatus(plan.id, 'failed');
+        await updateTaskPlanStatus(plan.id, 'failed');
         return {
           success: false,
           error: errorMsg,
@@ -255,18 +255,18 @@ async function executeTasksInOrder(
 
     // Update budget usage
     if (result.tokens_used || result.llm_calls) {
-      incrementBudgetUsage(plan.id, {
+      await incrementBudgetUsage(plan.id, {
         llm_calls: result.llm_calls || 0,
         tokens_used: result.tokens_used || 0,
       });
     }
 
     // Bug fix: Check budget AFTER task completion to catch overages
-    const postTaskBudget = budgetTracker.checkBudget();
+    const postTaskBudget = await budgetTracker.checkBudget();
     if (postTaskBudget.exceeded) {
       const errorMsg = `Budget exceeded after task ${nextTask.id}: ${postTaskBudget.message}`;
       callbacks?.onError?.(errorMsg);
-      updateTaskPlanStatus(plan.id, 'failed');
+      await updateTaskPlanStatus(plan.id, 'failed');
       return {
         success: false,
         error: errorMsg,
@@ -275,17 +275,17 @@ async function executeTasksInOrder(
     }
 
     // Bug fix: Reload task from database to get fresh data for callback
-    const updatedPlan = getTaskPlan(plan.id);
+    const updatedPlan = await getTaskPlan(plan.id);
     const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === nextTask.id) || nextTask;
     callbacks?.onTaskCompleted?.(updatedTask, result);
 
     // === Control Signal Checks ===
     // Check for pause/stop signals AFTER task completion
-    const controlStatus = getPlanControlStatus(plan.id);
+    const controlStatus = await getPlanControlStatus(plan.id);
     if (controlStatus) {
       // Check pause signal
       if (controlStatus.isPaused) {
-        const pausedPlan = (getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
+        const pausedPlan = (await getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
         callbacks?.onPlanPaused?.(pausedPlan, controlStatus.pauseReason);
         console.log(`[Orchestrator] Plan ${plan.id} paused after task ${nextTask.id}`);
         return {
@@ -297,7 +297,7 @@ async function executeTasksInOrder(
 
       // Check stop signal (graceful termination)
       if (controlStatus.isStopped) {
-        const stoppedPlan = (getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
+        const stoppedPlan = (await getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
         callbacks?.onPlanStopped?.(stoppedPlan, controlStatus.stopReason);
         console.log(`[Orchestrator] Plan ${plan.id} stopped after task ${nextTask.id}`);
 
@@ -341,7 +341,7 @@ async function executeTasksInOrder(
   // Safety limit reached
   const errorMsg = `Execution exceeded maximum iterations (${maxIterations})`;
   callbacks?.onError?.(errorMsg);
-  updateTaskPlanStatus(plan.id, 'failed');
+  await updateTaskPlanStatus(plan.id, 'failed');
   return {
     success: false,
     error: errorMsg,
@@ -386,7 +386,7 @@ async function generatePlanSummary(
   budgetTracker: GlobalBudgetTracker
 ): Promise<{ success: boolean; summary?: string; error?: string }> {
   // Check budget before summary
-  const budgetStatus = budgetTracker.checkBudget();
+  const budgetStatus = await budgetTracker.checkBudget();
   if (budgetStatus.exceeded) {
     return {
       success: false,
@@ -398,7 +398,7 @@ async function generatePlanSummary(
     const summaryResult = await generateSummary(plan, modelConfig);
 
     // Track summarizer LLM usage
-    incrementBudgetUsage(plan.id, {
+    await incrementBudgetUsage(plan.id, {
       llm_calls: 1,
       tokens_used: summaryResult.tokens_used,
     });
@@ -496,8 +496,8 @@ export async function createAndExecuteAutonomousPlan(
     }
 
     // Create plan in database
-    const { createAutonomousPlan } = await import('../db/task-plans');
-    const planId = createAutonomousPlan(
+    const { createAutonomousPlan } = await import('../db/compat/task-plans');
+    const planId = await createAutonomousPlan(
       planConfig.threadId,
       planConfig.userId,
       planResult.title,

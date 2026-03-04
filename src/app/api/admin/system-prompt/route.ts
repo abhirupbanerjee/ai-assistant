@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getSystemPrompt, setSystemPrompt, getSettingMetadata, deleteSetting, getDefaultSystemPrompt } from '@/lib/db/config';
+import { getSystemPrompt, setSystemPrompt, getSettingMetadata, deleteSetting, getDefaultSystemPrompt } from '@/lib/db/compat';
 import { invalidateQueryCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
@@ -21,8 +21,8 @@ export async function GET() {
       );
     }
 
-    const prompt = getSystemPrompt();
-    const meta = getSettingMetadata('system-prompt');
+    const prompt = await getSystemPrompt();
+    const meta = await getSettingMetadata('system-prompt');
 
     return NextResponse.json({
       prompt,
@@ -76,8 +76,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    setSystemPrompt(prompt.trim(), user.email);
-    const meta = getSettingMetadata('system-prompt');
+    await setSystemPrompt(prompt.trim(), user.email);
+    const meta = await getSettingMetadata('system-prompt');
 
     // Invalidate query cache since system prompt changed
     await invalidateQueryCache();
@@ -121,10 +121,10 @@ export async function DELETE() {
     }
 
     // Delete system prompt from SQLite to fall back to JSON config default
-    deleteSetting('system-prompt');
+    await deleteSetting('system-prompt');
 
     // Get the default prompt from config
-    const defaultPrompt = getDefaultSystemPrompt();
+    const defaultPrompt = await getDefaultSystemPrompt();
 
     // Invalidate query cache since system prompt changed
     await invalidateQueryCache();

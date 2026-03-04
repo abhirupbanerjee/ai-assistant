@@ -9,7 +9,7 @@
  * Configuration is managed through the Tools admin UI.
  */
 
-import { getToolConfig, isToolEnabled } from '../db/tool-config';
+import { getToolConfig, isToolEnabled } from '../db/compat/tool-config';
 import {
   createThreadShare,
   getThreadShares,
@@ -28,8 +28,8 @@ import type { ShareThreadToolConfig, ThreadShare } from '@/types';
 /**
  * Get share_thread tool configuration from database
  */
-export function getShareThreadConfig(): { enabled: boolean; config: ShareThreadToolConfig } {
-  const toolConfig = getToolConfig('share_thread');
+export async function getShareThreadConfig(): Promise<{ enabled: boolean; config: ShareThreadToolConfig }> {
+  const toolConfig = await getToolConfig('share_thread');
   if (toolConfig) {
     const config = toolConfig.config as Record<string, unknown>;
     return {
@@ -58,8 +58,8 @@ export function getShareThreadConfig(): { enabled: boolean; config: ShareThreadT
 /**
  * Check if a user role can create shares
  */
-export function canRoleShare(role: string): boolean {
-  const { enabled, config } = getShareThreadConfig();
+export async function canRoleShare(role: string): Promise<boolean> {
+  const { enabled, config } = await getShareThreadConfig();
   if (!enabled) return false;
   return config.allowedRoles.includes(role as 'admin' | 'superuser' | 'user');
 }
@@ -68,7 +68,7 @@ export function canRoleShare(role: string): boolean {
  * Check rate limit for share creation
  */
 export async function checkShareRateLimit(userId: number): Promise<{ allowed: boolean; message?: string }> {
-  const { config } = getShareThreadConfig();
+  const { config } = await getShareThreadConfig();
   const recentCount = await countUserSharesInLastHour(userId);
 
   if (recentCount >= config.rateLimitPerHour) {
@@ -85,7 +85,7 @@ export async function checkShareRateLimit(userId: number): Promise<{ allowed: bo
  * Check if thread has reached max shares
  */
 export async function checkMaxSharesPerThread(threadId: string): Promise<{ allowed: boolean; message?: string }> {
-  const { config } = getShareThreadConfig();
+  const { config } = await getShareThreadConfig();
   const activeCount = await countActiveThreadShares(threadId);
 
   if (activeCount >= config.maxSharesPerThread) {
@@ -116,7 +116,7 @@ export async function createShare(options: CreateShareOptions): Promise<{
   error?: string;
 }> {
   const { threadId, createdBy, allowDownload, expiresInDays } = options;
-  const { config } = getShareThreadConfig();
+  const { config } = await getShareThreadConfig();
 
   // Check rate limit
   const rateCheck = await checkShareRateLimit(createdBy);
@@ -177,8 +177,8 @@ export { getShareById, validateShareAccess };
 /**
  * Check if send_email tool is available for email notifications
  */
-export function isSendEmailAvailable(): boolean {
-  return isToolEnabled('send_email');
+export async function isSendEmailAvailable(): Promise<boolean> {
+  return await isToolEnabled('send_email');
 }
 
 // ============ Tool Definition ============
