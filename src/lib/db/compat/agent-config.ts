@@ -15,7 +15,7 @@ export type { AgentModelConfig, StoredAgentModelConfigs, StreamingConfig } from 
 import type { AgentModelConfig, StoredAgentModelConfigs, StreamingConfig } from '../agent-config';
 
 // Re-export pure validation function (no DB access)
-export { validateAgentModelConfig } from '../agent-config';
+export { validateAgentModelConfig } from '../utils';
 
 // ============================================================================
 // Streaming Configuration

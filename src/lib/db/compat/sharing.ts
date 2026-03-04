@@ -13,7 +13,7 @@ import { sql } from 'kysely';
 import type { ThreadShare, ShareAccessLog } from '@/types';
 
 // Re-export pure utility functions (no DB access)
-export { generateShareToken, validateShareAccess } from '../sharing';
+export { generateShareToken, validateShareAccess } from '../utils';
 
 // ============ Mappers ============
 

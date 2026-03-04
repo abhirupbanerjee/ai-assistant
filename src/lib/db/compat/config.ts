@@ -102,7 +102,7 @@ export {
   BRANDING_ICONS,
   DEFAULT_MODEL_ID,
   DEFAULT_CREDENTIALS_AUTH_SETTINGS,
-} from '../config';
+} from '../utils';
 
 // Re-export ToolConfig type
 export type { ToolConfig } from '../tool-config';

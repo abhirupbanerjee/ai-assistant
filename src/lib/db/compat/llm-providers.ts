@@ -10,7 +10,7 @@ import { getDb } from '../kysely';
 
 // Re-export types and constants from sync module
 export type { LLMProvider, CreateProviderInput, UpdateProviderInput } from '../llm-providers';
-export { DEFAULT_PROVIDERS, maskApiKey } from '../llm-providers';
+export { DEFAULT_PROVIDERS, maskApiKey } from '../utils';
 
 import type { LLMProvider, CreateProviderInput, UpdateProviderInput } from '../llm-providers';
 
@@ -235,7 +235,7 @@ export async function getProviderApiBase(id: string): Promise<string | null> {
  * Auto-populates API keys from environment variables
  */
 export async function seedDefaultProviders(): Promise<void> {
-  const { DEFAULT_PROVIDERS } = await import('../llm-providers');
+  const { DEFAULT_PROVIDERS } = await import('../utils');
   const existing = await getAllProviders();
   const existingIds = new Set(existing.map((p) => p.id));
 

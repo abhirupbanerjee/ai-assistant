@@ -29,8 +29,8 @@ import type {
 } from '@/types/agent-bot';
 
 // Re-export helper (doesn't need DB access)
-export { generateSlugFromName } from '../agent-bots';
-import { generateSlugFromName } from '../agent-bots';
+export { generateSlugFromName } from '../utils';
+import { generateSlugFromName } from '../utils';
 
 // ============ Helper Functions ============
 

@@ -26,10 +26,10 @@ export type {
 };
 
 // Re-export the helper function
-export { generateSlug } from '../workspaces';
+export { generateWorkspaceSlug as generateSlug } from '../utils';
 
 // Import for local use (pure utility only — no DB calls)
-import { generateSlug } from '../workspaces';
+import { generateWorkspaceSlug as generateSlug } from '../utils';
 
 // ============ Read Operations ============
 

@@ -8,13 +8,13 @@
 
 import { getDb } from '../kysely';
 import { nanoid } from 'nanoid';
-import { calculateStats } from '../task-plans';
+import { calculateStats } from '../utils';
 
 // Re-export types from sync module
 export type { TaskStatus, PlanStatus, Task, TaskPlan, TaskPlanStats } from '../task-plans';
 
 // Re-export sync-safe functions
-export { calculateStats } from '../task-plans';
+export { calculateStats } from '../utils';
 
 import type { TaskStatus, PlanStatus, Task, TaskPlan, TaskPlanStats } from '../task-plans';
 

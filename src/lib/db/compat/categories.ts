@@ -23,8 +23,8 @@ import type {
 } from '../categories';
 
 // Re-export helper (doesn't need DB access)
-export { generateSlug } from '../categories';
-import { generateSlug } from '../categories';
+export { generateCategorySlug as generateSlug } from '../utils';
+import { generateCategorySlug as generateSlug } from '../utils';
 
 // ============ Category CRUD ============
 

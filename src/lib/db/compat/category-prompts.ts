@@ -13,7 +13,7 @@ export {
   MAX_STARTER_PROMPTS,
   MAX_STARTER_LABEL_LENGTH,
   MAX_STARTER_PROMPT_LENGTH,
-} from '../category-prompts';
+} from '../utils';
 
 import type { StarterPrompt, CategoryPrompt } from '../category-prompts';
 

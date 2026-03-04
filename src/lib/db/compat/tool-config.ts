@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Re-export types and constants from sync module
 export type { ToolConfig, ToolConfigAuditEntry } from '../tool-config';
-export { TOOL_DEFAULTS, getToolDefaultsForTool } from '../tool-config';
+export { TOOL_DEFAULTS, getToolDefaultsForTool } from '../utils';
 
 import type { ToolConfig, ToolConfigAuditEntry } from '../tool-config';
 
@@ -344,7 +344,7 @@ export async function getWebSearchConfig(): Promise<{
  * This is called during initialization to seed missing tool configs
  */
 export async function ensureToolConfigsExist(updatedBy: string = 'system'): Promise<void> {
-  const { TOOL_DEFAULTS, getToolDefaultsForTool } = await import('../tool-config');
+  const { TOOL_DEFAULTS, getToolDefaultsForTool } = await import('../utils');
 
   for (const toolName of Object.keys(TOOL_DEFAULTS)) {
     const existing = await getToolConfig(toolName);
@@ -361,7 +361,7 @@ export async function ensureToolConfigsExist(updatedBy: string = 'system'): Prom
  * Reset a tool to its default configuration
  */
 export async function resetToolToDefaults(toolName: string, updatedBy: string): Promise<ToolConfig | undefined> {
-  const { getToolDefaultsForTool } = await import('../tool-config');
+  const { getToolDefaultsForTool } = await import('../utils');
   // Use dynamic defaults where available
   const defaults = getToolDefaultsForTool(toolName);
   if (!defaults) return undefined;

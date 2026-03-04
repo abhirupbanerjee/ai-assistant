@@ -337,4 +337,4 @@ export async function getToolDefinitionsForCategories(
 export {
   validateToolsSchema,
   validateEndpointMappings,
-} from '../function-api-config';
+} from '../utils';

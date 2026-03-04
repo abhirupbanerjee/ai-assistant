@@ -15,7 +15,7 @@ import type {
 
 // Re-export types and helpers
 export type { WorkspaceMessage, WorkspaceMessageSource } from '@/types/workspace';
-export { parseSources } from '../workspace-messages';
+export { parseSources } from '../utils';
 
 // ============================================================================
 // Helpers
