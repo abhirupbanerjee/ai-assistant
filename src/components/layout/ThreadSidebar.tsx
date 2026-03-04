@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
-  PanelLeftClose, PanelLeftOpen, Share2, Download, ChevronDown, ChevronRight
+  PanelLeftClose, PanelLeftOpen, Share2, Download, ChevronDown, ChevronRight, Search, X
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -97,6 +97,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   const [creating, setCreating] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Section collapse state with localStorage persistence
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(() => {
@@ -324,9 +325,16 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
         thread.categories?.some(cat => cat.id === selectedCategoryId)
       );
 
+  // Apply search filter
+  const searchedThreads = searchQuery.trim()
+    ? filteredThreads.filter(thread =>
+        thread.title.toLowerCase().includes(searchQuery.trim().toLowerCase())
+      )
+    : filteredThreads;
+
   // Then apply pin grouping
-  const pinnedThreads = filteredThreads.filter(t => t.isPinned);
-  const otherThreads = filteredThreads.filter(t => !t.isPinned);
+  const pinnedThreads = searchedThreads.filter(t => t.isPinned);
+  const otherThreads = searchedThreads.filter(t => !t.isPinned);
 
   // Hidden state (mobile input focused)
   if (hidden) {
@@ -482,29 +490,66 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
           </div>
         )}
 
+        {/* Search Input */}
+        <div className="px-4 py-2 border-b">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search threads..."
+              className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Thread List */}
         <div className="flex-1 overflow-y-auto px-2 pb-4">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-pulse text-gray-400">Loading...</div>
             </div>
-          ) : filteredThreads.length === 0 ? (
+          ) : searchedThreads.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
-              {selectedCategoryId ? (
+              {searchQuery ? (
                 <>
-                  <p className="text-sm">No threads in this category</p>
+                  <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No threads matching &quot;{searchQuery}&quot;</p>
                   <button
-                    onClick={() => setSelectedCategoryId(null)}
+                    onClick={() => setSearchQuery('')}
                     className="mt-2 text-xs text-blue-600 hover:text-blue-700 underline"
                   >
-                    Show all categories
+                    Clear search
                   </button>
                 </>
               ) : (
                 <>
-                  <p className="text-sm">No threads yet</p>
-                  <p className="text-xs">Start a new conversation</p>
+                  <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  {selectedCategoryId ? (
+                    <>
+                      <p className="text-sm">No threads in this category</p>
+                      <button
+                        onClick={() => setSelectedCategoryId(null)}
+                        className="mt-2 text-xs text-blue-600 hover:text-blue-700 underline"
+                      >
+                        Show all categories
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm">No threads yet</p>
+                      <p className="text-xs">Start a new conversation</p>
+                    </>
+                  )}
                 </>
               )}
             </div>
