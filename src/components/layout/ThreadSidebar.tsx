@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
-  PanelLeftClose, PanelLeftOpen, Share2, Download
+  PanelLeftClose, PanelLeftOpen, Share2, Download, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -31,6 +31,40 @@ const SUBSCRIPTION_COLORS = [
 // Get consistent color for a category based on its ID
 const getCategoryColor = (categoryId: number) => {
   return SUBSCRIPTION_COLORS[categoryId % SUBSCRIPTION_COLORS.length];
+};
+
+// Date grouping helpers
+type DateGroup = 'today' | 'yesterday' | 'lastWeek' | 'lastMonth' | 'older';
+
+const DATE_GROUP_LABELS: Record<DateGroup, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  lastWeek: 'Last Week',
+  lastMonth: 'Last Month',
+  older: 'Older',
+};
+
+const DATE_GROUP_ORDER: DateGroup[] = ['today', 'yesterday', 'lastWeek', 'lastMonth', 'older'];
+
+const getDateGroup = (date: Date): DateGroup => {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return 'lastWeek';
+  if (days < 30) return 'lastMonth';
+  return 'older';
+};
+
+const groupThreadsByDate = (threads: Thread[]): Record<DateGroup, Thread[]> => {
+  const groups: Record<DateGroup, Thread[]> = {
+    today: [], yesterday: [], lastWeek: [], lastMonth: [], older: [],
+  };
+  threads.forEach(thread => {
+    groups[getDateGroup(thread.updatedAt)].push(thread);
+  });
+  return groups;
 };
 
 interface ThreadSidebarProps {
@@ -63,6 +97,28 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   const [creating, setCreating] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
+
+  // Section collapse state with localStorage persistence
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sidebar-favorites-collapsed') === 'true';
+    }
+    return false;
+  });
+  const [othersCollapsed, setOthersCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sidebar-others-collapsed') === 'true';
+    }
+    return false;
+  });
+  const [collapsedDateGroups, setCollapsedDateGroups] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return JSON.parse(localStorage.getItem('sidebar-collapsed-date-groups') || '{}');
+      } catch { return {}; }
+    }
+    return {};
+  });
 
   // Resizable sidebar hook - handles width and collapsed state
   const {
@@ -114,6 +170,18 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-favorites-collapsed', String(favoritesCollapsed));
+  }, [favoritesCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-others-collapsed', String(othersCollapsed));
+  }, [othersCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed-date-groups', JSON.stringify(collapsedDateGroups));
+  }, [collapsedDateGroups]);
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -215,6 +283,15 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
     } catch (err) {
       console.error('Failed to toggle pin:', err);
     }
+  };
+
+  const toggleDateGroup = (section: 'favorites' | 'others', group: DateGroup) => {
+    const key = `${section}-${group}`;
+    setCollapsedDateGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const isDateGroupCollapsed = (section: 'favorites' | 'others', group: DateGroup) => {
+    return collapsedDateGroups[`${section}-${group}`] ?? false;
   };
 
   const formatDate = (date: Date) => {
@@ -433,224 +510,172 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
             </div>
           ) : (
             <>
-              {/* Pinned Threads Section */}
-              {pinnedThreads.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 mt-3 flex items-center gap-1">
-                    <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                    Favorites
-                    {selectedCategoryId && (
-                      <span className="text-[10px] text-gray-400 normal-case ml-1">
-                        ({pinnedThreads.length})
-                      </span>
-                    )}
-                  </h3>
-                  <div className="space-y-1">
-                    {pinnedThreads.map((thread) => (
-                      <div
-                        key={thread.id}
-                        className={`
-                          group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
-                          ${selectedThreadId === thread.id
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'hover:bg-gray-100 text-gray-700'
-                          }
-                        `}
-                        onClick={() => {
-                          onThreadSelect?.(thread);
-                        }}
-                      >
-                        <MessageSquare size={16} className="shrink-0 opacity-50" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {thread.title}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-xs text-gray-500">
-                              {formatDate(thread.updatedAt)}
-                            </span>
-                            {thread.isSummarized && (
-                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
-                                <BookOpen size={10} />
-                                <span>Summarized</span>
-                              </span>
-                            )}
-                          </div>
-                          {thread.categories && thread.categories.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {thread.categories.map((category) => {
-                                const colors = getCategoryColor(category.id);
-                                return (
-                                  <span
-                                    key={category.id}
-                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
-                                    title={category.name}
-                                  >
-                                    {category.name}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                          <button
-                            onClick={(e) => handleTogglePin(thread, e)}
-                            className={`p-1 rounded transition-colors ${
-                              thread.isPinned
-                                ? 'text-yellow-500 hover:text-yellow-600'
-                                : 'text-gray-400 hover:text-yellow-500'
-                            }`}
-                            title={thread.isPinned ? 'Unpin thread' : 'Pin thread'}
-                          >
-                            <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
-                          </button>
-                          {onShareThread && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onShareThread(thread);
-                              }}
-                              className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                              title="Share thread"
-                            >
-                              <Share2 size={14} />
-                            </button>
-                          )}
-                          <a
-                            href={`/api/threads/${thread.id}/export`}
-                            download
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-1 text-gray-400 hover:text-green-600 rounded"
-                            title="Export as Markdown"
-                          >
-                            <Download size={14} />
-                          </a>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteThread(thread);
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded"
-                            title="Delete thread"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+              {/* Render thread item */}
+              {(() => {
+                const renderThread = (thread: Thread) => (
+                  <div
+                    key={thread.id}
+                    className={`
+                      group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
+                      ${selectedThreadId === thread.id
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'hover:bg-gray-100 text-gray-700'
+                      }
+                    `}
+                    onClick={() => onThreadSelect?.(thread)}
+                  >
+                    <MessageSquare size={16} className="shrink-0 opacity-50" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{thread.title}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs text-gray-500">{formatDate(thread.updatedAt)}</span>
+                        {thread.isSummarized && (
+                          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
+                            <BookOpen size={10} />
+                            <span>Summarized</span>
+                          </span>
+                        )}
                       </div>
-                    ))}
+                      {thread.categories && thread.categories.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {thread.categories.map((category) => {
+                            const colors = getCategoryColor(category.id);
+                            return (
+                              <span
+                                key={category.id}
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
+                                title={category.name}
+                              >
+                                {category.name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                      <button
+                        onClick={(e) => handleTogglePin(thread, e)}
+                        className={`p-1 rounded transition-colors ${
+                          thread.isPinned
+                            ? 'text-yellow-500 hover:text-yellow-600'
+                            : 'text-gray-400 hover:text-yellow-500'
+                        }`}
+                        title={thread.isPinned ? 'Unpin thread' : 'Pin thread'}
+                      >
+                        <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
+                      </button>
+                      {onShareThread && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onShareThread(thread); }}
+                          className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                          title="Share thread"
+                        >
+                          <Share2 size={14} />
+                        </button>
+                      )}
+                      <a
+                        href={`/api/threads/${thread.id}/export`}
+                        download
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 text-gray-400 hover:text-green-600 rounded"
+                        title="Export as Markdown"
+                      >
+                        <Download size={14} />
+                      </a>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteThread(thread); }}
+                        className="p-1 text-gray-400 hover:text-red-600 rounded"
+                        title="Delete thread"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
 
-              {/* Other Threads Section */}
-              {otherThreads.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 mt-3">
-                    {pinnedThreads.length > 0 ? 'Others' : 'Recent'}
-                    {selectedCategoryId && (
-                      <span className="text-[10px] text-gray-400 normal-case ml-1">
-                        ({otherThreads.length})
-                      </span>
-                    )}
-                  </h3>
-                  <div className="space-y-1">
-                    {otherThreads.map((thread) => (
-                      <div
-                        key={thread.id}
-                        className={`
-                          group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
-                          ${selectedThreadId === thread.id
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'hover:bg-gray-100 text-gray-700'
+                const renderDateGroups = (threads: Thread[], section: 'favorites' | 'others') => {
+                  const grouped = groupThreadsByDate(threads);
+                  return DATE_GROUP_ORDER.map(group => {
+                    const groupThreads = grouped[group];
+                    if (groupThreads.length === 0) return null;
+                    const collapsed = isDateGroupCollapsed(section, group);
+                    return (
+                      <div key={group}>
+                        <button
+                          onClick={() => toggleDateGroup(section, group)}
+                          className="w-full flex items-center gap-1 px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          {collapsed
+                            ? <ChevronRight size={10} className="shrink-0" />
+                            : <ChevronDown size={10} className="shrink-0" />
                           }
-                        `}
-                        onClick={() => {
-                          onThreadSelect?.(thread);
-                        }}
-                      >
-                        <MessageSquare size={16} className="shrink-0 opacity-50" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {thread.title}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-xs text-gray-500">
-                              {formatDate(thread.updatedAt)}
-                            </span>
-                            {thread.isSummarized && (
-                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
-                                <BookOpen size={10} />
-                                <span>Summarized</span>
-                              </span>
-                            )}
+                          <span>{DATE_GROUP_LABELS[group]}</span>
+                          <span className="ml-auto">({groupThreads.length})</span>
+                        </button>
+                        {!collapsed && (
+                          <div className="space-y-1">
+                            {groupThreads.map(renderThread)}
                           </div>
-                          {thread.categories && thread.categories.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {thread.categories.map((category) => {
-                                const colors = getCategoryColor(category.id);
-                                return (
-                                  <span
-                                    key={category.id}
-                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
-                                    title={category.name}
-                                  >
-                                    {category.name}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                          <button
-                            onClick={(e) => handleTogglePin(thread, e)}
-                            className={`p-1 rounded transition-colors ${
-                              thread.isPinned
-                                ? 'text-yellow-500 hover:text-yellow-600'
-                                : 'text-gray-400 hover:text-yellow-500'
-                            }`}
-                            title={thread.isPinned ? 'Unpin thread' : 'Pin thread'}
-                          >
-                            <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
-                          </button>
-                          {onShareThread && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onShareThread(thread);
-                              }}
-                              className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                              title="Share thread"
-                            >
-                              <Share2 size={14} />
-                            </button>
-                          )}
-                          <a
-                            href={`/api/threads/${thread.id}/export`}
-                            download
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-1 text-gray-400 hover:text-green-600 rounded"
-                            title="Export as Markdown"
-                          >
-                            <Download size={14} />
-                          </a>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteThread(thread);
-                            }}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded"
-                            title="Delete thread"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    );
+                  });
+                };
+
+                return (
+                  <>
+                    {/* Pinned Threads Section */}
+                    {pinnedThreads.length > 0 && (
+                      <div className="mb-4">
+                        <button
+                          onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
+                          className="w-full flex items-center gap-1 px-2 mb-1 mt-3 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 transition-colors"
+                        >
+                          {favoritesCollapsed
+                            ? <ChevronRight size={12} className="shrink-0" />
+                            : <ChevronDown size={12} className="shrink-0" />
+                          }
+                          <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                          Favorites
+                          <span className="text-[10px] text-gray-400 normal-case ml-1">
+                            ({pinnedThreads.length})
+                          </span>
+                        </button>
+                        {!favoritesCollapsed && (
+                          <div className="space-y-1">
+                            {renderDateGroups(pinnedThreads, 'favorites')}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Other Threads Section */}
+                    {otherThreads.length > 0 && (
+                      <div className="mb-4">
+                        <button
+                          onClick={() => setOthersCollapsed(!othersCollapsed)}
+                          className="w-full flex items-center gap-1 px-2 mb-1 mt-3 text-xs font-medium text-gray-500 uppercase hover:text-gray-700 transition-colors"
+                        >
+                          {othersCollapsed
+                            ? <ChevronRight size={12} className="shrink-0" />
+                            : <ChevronDown size={12} className="shrink-0" />
+                          }
+                          {pinnedThreads.length > 0 ? 'Others' : 'Recent'}
+                          <span className="text-[10px] text-gray-400 normal-case ml-1">
+                            ({otherThreads.length})
+                          </span>
+                        </button>
+                        {!othersCollapsed && (
+                          <div className="space-y-1">
+                            {renderDateGroups(otherThreads, 'others')}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </>
           )}
         </div>
