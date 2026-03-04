@@ -26,6 +26,7 @@ import {
   Languages,
   Activity,
   Code,
+  Gauge,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -38,6 +39,7 @@ import TranslationConfig from './TranslationConfig';
 import PodcastGenConfig from './PodcastGenConfig';
 import WebsiteAnalysisConfig from './WebsiteAnalysisConfig';
 import CodeAnalysisConfig from './CodeAnalysisConfig';
+import LoadTestConfig from './LoadTestConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
 
@@ -160,6 +162,8 @@ function getToolIcon(toolName: string) {
       return Activity;
     case 'code_analysis':
       return Code;
+    case 'load_testing':
+      return Gauge;
     default:
       return Settings;
   }
@@ -1386,6 +1390,15 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'code_analysis':
         return (
           <CodeAnalysisConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+            hideSensitive={forSuperuser}
+          />
+        );
+      case 'load_testing':
+        return (
+          <LoadTestConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}

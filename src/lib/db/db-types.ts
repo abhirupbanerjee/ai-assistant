@@ -897,6 +897,24 @@ export interface AgentBotUsageTable {
   error_count: Generated<number>;
 }
 
+// ============ Load Test Results ============
+
+export interface LoadTestResultsTable {
+  id: Generated<number>;
+  url: string;
+  test_run_id: string | null;
+  output_url: string | null;
+  users: number;
+  duration: number;
+  metrics_json: string;
+  passed: Generated<boolean>;
+  run_by: string | null;
+  created_at: Generated<string>;
+}
+
+export type LoadTestResult = Selectable<LoadTestResultsTable>;
+export type NewLoadTestResult = Insertable<LoadTestResultsTable>;
+
 // ============ Reindex Jobs ============
 
 export interface ReindexJobsTable {
@@ -979,6 +997,8 @@ export interface DB {
   agent_bot_job_outputs: AgentBotJobOutputsTable;
   agent_bot_job_files: AgentBotJobFilesTable;
   agent_bot_usage: AgentBotUsageTable;
+  // Load Test Results
+  load_test_results: LoadTestResultsTable;
   // Reindex Jobs
   reindex_jobs: ReindexJobsTable;
 }

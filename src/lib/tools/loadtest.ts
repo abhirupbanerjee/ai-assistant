@@ -1,0 +1,685 @@
+/**
+ * Load Testing Tool - k6 Cloud Integration
+ *
+ * Two-phase architecture:
+ * - Admin triggers tests via Admin UI → API route → k6 CLI execution
+ * - Users retrieve cached results via LLM tool ("get load test for <url>")
+ *
+ * The LLM-facing tool is read-only. Test execution is admin-only.
+ */
+
+import { spawn } from 'child_process';
+import { writeFile, unlink } from 'fs/promises';
+import { join } from 'path';
+import { getToolConfig } from '../db/compat/tool-config';
+import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
+import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
+import { insertLoadTestResult, getLatestLoadTestResult } from '../db/compat/loadtest-results';
+import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
+
+// ============ Types ============
+
+export interface LoadTestConfig {
+  apiToken: string;
+  maxConcurrentUsers: number;
+  defaultDuration: number;
+  maxDuration: number;
+  cacheTTLSeconds: number;
+  rateLimitPerDay: number;
+  allowedDomains: string[];
+}
+
+export interface LoadTestMetrics {
+  http_req_duration: {
+    p50: number;
+    p95: number;
+    p99: number;
+    avg: number;
+  };
+  http_req_failed: number;
+  http_reqs: number;
+  vus: number;
+  iterations: number;
+}
+
+// ============ Concurrency Lock ============
+
+let testRunning = false;
+
+// ============ Config Helpers ============
+
+const defaultConfig: LoadTestConfig = {
+  apiToken: '',
+  maxConcurrentUsers: 50,
+  defaultDuration: 300,
+  maxDuration: 600,
+  cacheTTLSeconds: 2592000, // 30 days
+  rateLimitPerDay: 10,
+  allowedDomains: [],
+};
+
+/**
+ * Get load test configuration with optional category override
+ */
+export async function getLoadTestConfig(categoryId?: number): Promise<{
+  enabled: boolean;
+  config: LoadTestConfig;
+}> {
+  if (categoryId) {
+    const effective = await getEffectiveToolConfig('load_testing', categoryId);
+    return {
+      enabled: effective.enabled,
+      config: (effective.config as unknown as LoadTestConfig) || defaultConfig,
+    };
+  }
+
+  const toolConfig = await getToolConfig('load_testing');
+  if (toolConfig) {
+    return {
+      enabled: toolConfig.isEnabled,
+      config: toolConfig.config as unknown as LoadTestConfig,
+    };
+  }
+
+  return { enabled: false, config: defaultConfig };
+}
+
+// ============ k6 CLI Functions (Admin-only) ============
+
+/**
+ * Check if k6 CLI is installed on the server
+ */
+export async function checkK6Installed(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn('k6', ['version'], { stdio: 'pipe' });
+    proc.on('close', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
+  });
+}
+
+/**
+ * Generate a k6 test script.
+ * Uses __ENV.TARGET_URL to avoid command injection.
+ */
+export function generateK6Script(users: number, duration: number): string {
+  // Ensure ramp stages fit within duration
+  const rampUp = Math.min(30, Math.floor(duration * 0.2));
+  const rampDown = Math.min(30, Math.floor(duration * 0.2));
+  const sustain = duration - rampUp - rampDown;
+
+  return `
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  stages: [
+    { duration: '${rampUp}s', target: ${users} },
+    { duration: '${sustain}s', target: ${users} },
+    { duration: '${rampDown}s', target: 0 },
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.05'],
+  },
+};
+
+export default function () {
+  const url = __ENV.TARGET_URL;
+  const res = http.get(url);
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time OK': (r) => r.timings.duration < 500,
+  });
+  sleep(1);
+}
+`.trim();
+}
+
+/**
+ * Execute k6 cloud test via CLI.
+ * Returns the test run ID and k6 Cloud dashboard URL.
+ */
+export async function runK6CloudTest(
+  script: string,
+  apiToken: string,
+  targetUrl: string
+): Promise<{ testRunId: string; outputUrl: string }> {
+  const tmpDir = process.env.TMPDIR || '/tmp';
+  const scriptPath = join(tmpDir, `k6-test-${Date.now()}.js`);
+  await writeFile(scriptPath, script, 'utf-8');
+
+  try {
+    return await new Promise((resolve, reject) => {
+      const k6Process = spawn('k6', ['cloud', 'run', scriptPath], {
+        env: {
+          ...process.env,
+          K6_CLOUD_TOKEN: apiToken,
+          TARGET_URL: targetUrl,
+        },
+      });
+
+      let output = '';
+      let testRunId = '';
+      let outputUrl = '';
+
+      k6Process.stdout.on('data', (data: Buffer) => {
+        output += data.toString();
+
+        // Extract test run URL from k6 output
+        // Example: "output: cloud (https://app.k6.io/runs/123456)"
+        const urlMatch = output.match(/cloud \((https:\/\/[^)]+)\)/);
+        if (urlMatch) {
+          outputUrl = urlMatch[1];
+          const idMatch = outputUrl.match(/\/runs\/(\d+)/);
+          if (idMatch) {
+            testRunId = idMatch[1];
+          }
+        }
+      });
+
+      k6Process.stderr.on('data', (data: Buffer) => {
+        console.error('[k6] stderr:', data.toString());
+      });
+
+      k6Process.on('close', (code) => {
+        if (code === 0 && testRunId) {
+          resolve({ testRunId, outputUrl });
+        } else {
+          reject(new Error(`k6 exited with code ${code}. Output: ${output.slice(0, 500)}`));
+        }
+      });
+
+      k6Process.on('error', (err) => {
+        reject(new Error(`Failed to start k6: ${err.message}`));
+      });
+    });
+  } finally {
+    try {
+      await unlink(scriptPath);
+    } catch {
+      console.error('[k6] Failed to cleanup temp file:', scriptPath);
+    }
+  }
+}
+
+// ============ k6 Cloud v5 API ============
+
+const K6_CLOUD_API_V5 = 'https://api.k6.io/cloud/v5';
+
+/**
+ * Poll k6 Cloud for test completion.
+ * Statuses: -1=created, 0=validating, 1=queued, 2=initializing,
+ * 3=running, 4=finished, 5=timed_out, 6=aborted_user,
+ * 7=aborted_system, 8=aborted_script_error
+ */
+export async function pollTestCompletion(
+  testRunId: string,
+  apiToken: string,
+  maxAttempts: number = 60
+): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const response = await fetch(
+      `${K6_CLOUD_API_V5}/test_runs/${testRunId}`,
+      {
+        headers: {
+          'Authorization': `Token ${apiToken}`,
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`k6 Cloud API error: ${response.status} ${response.statusText}`);
+    }
+
+    const status = await response.json();
+
+    if (status.run_status >= 4) {
+      return; // Test completed (finished, timed out, or aborted)
+    }
+
+    // Wait 10 seconds before next poll
+    await new Promise(resolve => setTimeout(resolve, 10000));
+  }
+
+  throw new Error('Test timeout: exceeded polling limit');
+}
+
+/**
+ * Fetch test run metrics from k6 Cloud v5 API
+ */
+export async function fetchTestRunMetrics(
+  testRunId: string,
+  apiToken: string
+): Promise<LoadTestMetrics> {
+  await pollTestCompletion(testRunId, apiToken);
+
+  const params = new URLSearchParams({
+    metric: 'http_req_duration',
+    query: 'histogram_quantile(0.50),histogram_quantile(0.95),histogram_quantile(0.99),avg',
+  });
+
+  const response = await fetch(
+    `${K6_CLOUD_API_V5}/test_runs/${testRunId}/query_aggregate_k6?${params.toString()}`,
+    {
+      headers: {
+        'Authorization': `Token ${apiToken}`,
+        'Accept': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`k6 Cloud metrics API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return parseMetricsResponse(data);
+}
+
+function parseMetricsResponse(data: Record<string, unknown>): LoadTestMetrics {
+  const dataObj = data.data as Record<string, unknown> | undefined;
+  const results = (dataObj?.result as Array<Record<string, unknown>>) || [];
+
+  return {
+    http_req_duration: {
+      p50: extractMetricValue(results, '0.50'),
+      p95: extractMetricValue(results, '0.95'),
+      p99: extractMetricValue(results, '0.99'),
+      avg: extractMetricValue(results, 'avg'),
+    },
+    http_req_failed: 0,
+    http_reqs: 0,
+    vus: 0,
+    iterations: 0,
+  };
+}
+
+function extractMetricValue(
+  results: Array<Record<string, unknown>>,
+  quantile: string
+): number {
+  for (const result of results) {
+    const metric = result.metric as Record<string, string> | undefined;
+    const value = result.value as [number, string] | undefined;
+    if (metric?.quantile === quantile || metric?.aggregation === quantile) {
+      return value ? parseFloat(value[1]) : 0;
+    }
+  }
+  return 0;
+}
+
+// ============ Security Helpers ============
+
+/**
+ * Check if a URL's domain is in the allowed list
+ */
+export function isDomainAllowed(url: string, allowedDomains: string[]): boolean {
+  if (allowedDomains.length === 0) return false;
+
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return allowedDomains.some(domain => {
+      const d = domain.toLowerCase().trim();
+      return hostname === d || hostname.endsWith('.' + d);
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a URL targets a private/internal IP range
+ */
+export function isPrivateUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    // Block common private ranges
+    if (
+      hostname === 'localhost' ||
+      hostname.startsWith('127.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('192.168.') ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true; // Block on parse error
+  }
+}
+
+// ============ Admin Test Execution ============
+
+/**
+ * Execute a load test (admin-only, called from API route).
+ * Stores result in Postgres and Redis cache.
+ */
+export async function executeLoadTest(
+  url: string,
+  users: number,
+  duration: number,
+  config: LoadTestConfig,
+  adminEmail: string
+): Promise<{ success: boolean; error?: string; errorCode?: string; result?: Record<string, unknown> }> {
+  // Concurrency lock
+  if (testRunning) {
+    return {
+      success: false,
+      error: 'A load test is already running. Please wait for it to complete.',
+      errorCode: 'TEST_IN_PROGRESS',
+    };
+  }
+
+  // Domain allowlist check
+  if (!isDomainAllowed(url, config.allowedDomains)) {
+    return {
+      success: false,
+      error: 'URL domain is not in the allowed domains list. Configure allowed domains in tool settings.',
+      errorCode: 'DOMAIN_NOT_ALLOWED',
+    };
+  }
+
+  // Private IP check
+  if (isPrivateUrl(url)) {
+    return {
+      success: false,
+      error: 'Cannot test private/internal URLs.',
+      errorCode: 'PRIVATE_URL',
+    };
+  }
+
+  // Validate parameters
+  const effectiveUsers = Math.min(users, config.maxConcurrentUsers);
+  const effectiveDuration = Math.min(Math.max(duration, 90), config.maxDuration);
+
+  // API token check
+  const apiToken = config.apiToken || process.env.K6_CLOUD_API_TOKEN;
+  if (!apiToken) {
+    return {
+      success: false,
+      error: 'k6 Cloud API token not configured.',
+      errorCode: 'NOT_CONFIGURED',
+    };
+  }
+
+  // k6 installation check
+  if (!await checkK6Installed()) {
+    return {
+      success: false,
+      error: 'k6 CLI not installed on server.',
+      errorCode: 'K6_NOT_INSTALLED',
+    };
+  }
+
+  testRunning = true;
+  try {
+    // Generate and execute script
+    const script = generateK6Script(effectiveUsers, effectiveDuration);
+    const { testRunId, outputUrl } = await runK6CloudTest(script, apiToken, url);
+
+    // Fetch metrics
+    const metrics = await fetchTestRunMetrics(testRunId, apiToken);
+    const passed = metrics.http_req_duration.p95 < 500;
+
+    // Store in Postgres
+    const dbResult = await insertLoadTestResult({
+      url,
+      test_run_id: testRunId,
+      output_url: outputUrl,
+      users: effectiveUsers,
+      duration: effectiveDuration,
+      metrics_json: JSON.stringify(metrics),
+      passed,
+      run_by: adminEmail,
+    });
+
+    // Cache in Redis
+    const cacheKey = `loadtest:${hashQuery(url)}`;
+    const resultPayload = {
+      success: true,
+      result: {
+        url,
+        testRunId,
+        outputUrl,
+        users: effectiveUsers,
+        duration: effectiveDuration,
+        metrics,
+        passed,
+        testDate: dbResult.created_at,
+        runBy: adminEmail,
+      },
+    };
+    await cacheQuery(cacheKey, JSON.stringify(resultPayload), config.cacheTTLSeconds);
+
+    return resultPayload;
+  } catch (error) {
+    console.error('[LoadTest] Execution error:', error);
+    return {
+      success: false,
+      error: 'Load test execution failed',
+      errorCode: 'EXECUTION_ERROR',
+    };
+  } finally {
+    testRunning = false;
+  }
+}
+
+// ============ Config Schema ============
+
+const configSchema = {
+  type: 'object',
+  properties: {
+    apiToken: {
+      type: 'string',
+      title: 'k6 Cloud API Token',
+      description: 'Get from https://app.k6.io/account/api-token',
+      format: 'password',
+    },
+    maxConcurrentUsers: {
+      type: 'number',
+      title: 'Max Concurrent Users',
+      description: 'Maximum virtual users per test',
+      minimum: 10,
+      maximum: 100,
+      default: 50,
+    },
+    defaultDuration: {
+      type: 'number',
+      title: 'Default Test Duration (seconds)',
+      description: 'Default test duration when not specified',
+      minimum: 90,
+      maximum: 600,
+      default: 300,
+    },
+    maxDuration: {
+      type: 'number',
+      title: 'Max Test Duration (seconds)',
+      description: 'Maximum allowed test duration',
+      minimum: 90,
+      maximum: 600,
+      default: 600,
+    },
+    cacheTTLSeconds: {
+      type: 'number',
+      title: 'Redis Cache Duration (seconds)',
+      description: 'How long to cache results in Redis (Postgres stores permanently)',
+      minimum: 3600,
+      maximum: 2592000,
+      default: 2592000,
+    },
+    rateLimitPerDay: {
+      type: 'number',
+      title: 'Daily Test Limit',
+      description: 'Maximum tests per 24 hours',
+      minimum: 1,
+      maximum: 50,
+      default: 10,
+    },
+    allowedDomains: {
+      type: 'array',
+      title: 'Allowed Domains',
+      description: 'Only these domains can be tested (e.g., example.com, ministry.gd)',
+      items: { type: 'string' },
+      default: [],
+    },
+  },
+  required: ['apiToken'],
+};
+
+function validateConfig(config: Record<string, unknown>): ValidationResult {
+  const errors: string[] = [];
+
+  if (config.maxConcurrentUsers !== undefined) {
+    const v = config.maxConcurrentUsers as number;
+    if (typeof v !== 'number' || v < 10 || v > 100) {
+      errors.push('maxConcurrentUsers must be between 10 and 100');
+    }
+  }
+
+  if (config.defaultDuration !== undefined) {
+    const v = config.defaultDuration as number;
+    if (typeof v !== 'number' || v < 90 || v > 600) {
+      errors.push('defaultDuration must be between 90 and 600');
+    }
+  }
+
+  if (config.maxDuration !== undefined) {
+    const v = config.maxDuration as number;
+    if (typeof v !== 'number' || v < 90 || v > 600) {
+      errors.push('maxDuration must be between 90 and 600');
+    }
+  }
+
+  if (config.cacheTTLSeconds !== undefined) {
+    const v = config.cacheTTLSeconds as number;
+    if (typeof v !== 'number' || v < 3600 || v > 2592000) {
+      errors.push('cacheTTLSeconds must be between 3600 and 2592000');
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ============ Tool Definition (LLM-facing, read-only) ============
+
+export const loadTestingTool: ToolDefinition = {
+  name: 'load_testing',
+  displayName: 'Load Testing',
+  description: 'Retrieve load test results for a website. Tests are run by admins via the Admin panel; this tool fetches the most recent results.',
+  category: 'autonomous',
+
+  definition: {
+    type: 'function',
+    function: {
+      name: 'load_testing',
+      description: 'Get load test results for a website URL. Returns performance metrics (response times p50/p95/p99, error rate) from the most recent k6 Cloud load test. Use when users ask about load testing, performance testing, or stress testing results for a specific URL.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'The full URL to look up load test results for (e.g., https://example.com). Must include protocol.',
+          },
+        },
+        required: ['url'],
+      },
+    },
+  },
+
+  validateConfig,
+  defaultConfig: defaultConfig as unknown as Record<string, unknown>,
+  configSchema,
+
+  execute: async (
+    args: { url: string },
+    options?: ToolExecutionOptions
+  ): Promise<string> => {
+    // Get config with category/skill override support
+    const categoryIds = (options as { categoryIds?: number[] })?.categoryIds || [];
+    const { enabled, config: globalSettings } = categoryIds.length > 0
+      ? await getLoadTestConfig(categoryIds[0])
+      : await getLoadTestConfig();
+
+    const configOverride = options?.configOverride || {};
+    const settings = { ...globalSettings, ...configOverride } as LoadTestConfig;
+
+    // Check if tool is enabled
+    if (!enabled) {
+      return JSON.stringify({
+        success: false,
+        error: 'Load testing is currently disabled',
+        errorCode: 'TOOL_DISABLED',
+      });
+    }
+
+    // Validate URL
+    try {
+      new URL(args.url);
+    } catch {
+      return JSON.stringify({
+        success: false,
+        error: 'Invalid URL format. Please provide a full URL including protocol (e.g., https://example.com)',
+        errorCode: 'INVALID_URL',
+      });
+    }
+
+    // Try Redis cache first (fast path)
+    const cacheKey = `loadtest:${hashQuery(args.url)}`;
+    const cached = await getCachedQuery(cacheKey);
+    if (cached) {
+      console.log('[LoadTest] Cache hit:', args.url);
+      return cached;
+    }
+
+    // Fallback to Postgres
+    console.log('[LoadTest] Cache miss, checking Postgres:', args.url);
+    const dbResult = await getLatestLoadTestResult(args.url);
+
+    if (dbResult) {
+      let metrics: LoadTestMetrics;
+      try {
+        metrics = JSON.parse(dbResult.metrics_json);
+      } catch {
+        return JSON.stringify({
+          success: false,
+          error: 'Failed to parse stored test results',
+          errorCode: 'PARSE_ERROR',
+        });
+      }
+
+      const resultPayload = {
+        success: true,
+        result: {
+          url: dbResult.url,
+          testRunId: dbResult.test_run_id,
+          outputUrl: dbResult.output_url,
+          users: dbResult.users,
+          duration: dbResult.duration,
+          metrics,
+          passed: dbResult.passed,
+          testDate: dbResult.created_at,
+          runBy: dbResult.run_by,
+        },
+      };
+
+      // Re-cache in Redis for next time
+      const resultString = JSON.stringify(resultPayload);
+      await cacheQuery(cacheKey, resultString, settings.cacheTTLSeconds);
+
+      return resultString;
+    }
+
+    // No results found
+    return JSON.stringify({
+      success: false,
+      error: 'No load test results found for this URL. An admin must run a test first from the Admin panel.',
+      errorCode: 'NO_RESULTS',
+    });
+  },
+};

@@ -17,6 +17,7 @@ import { pptxGenTool } from './tools/pptx-gen';
 import { podcastGenTool } from './tools/podcast-gen';
 import { websiteAnalysisTool } from './tools/pagespeed';
 import { codeAnalysisTool } from './tools/sonarcloud';
+import { loadTestingTool } from './tools/loadtest';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -115,6 +116,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   podcast_gen: podcastGenTool,
   website_analysis: websiteAnalysisTool,
   code_analysis: codeAnalysisTool,
+  load_testing: loadTestingTool,
 };
 
 // ============ Initialization ============

@@ -160,6 +160,25 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured reindex_jobs table exists');
 
+  // Migration: Create load_test_results table if it doesn't exist
+  await sql`
+    CREATE TABLE IF NOT EXISTS load_test_results (
+      id SERIAL PRIMARY KEY,
+      url TEXT NOT NULL,
+      test_run_id TEXT,
+      output_url TEXT,
+      users INTEGER NOT NULL,
+      duration INTEGER NOT NULL,
+      metrics_json TEXT NOT NULL,
+      passed BOOLEAN DEFAULT FALSE,
+      run_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_load_test_results_url ON load_test_results(url)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_load_test_results_created ON load_test_results(created_at DESC)`.execute(database);
+  console.log('[Kysely] Ensured load_test_results table exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 }
 

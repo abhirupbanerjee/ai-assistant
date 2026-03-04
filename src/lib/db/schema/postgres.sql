@@ -1036,6 +1036,25 @@ CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_key ON agent_bot_usage(api_key_id
 CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_bot ON agent_bot_usage(agent_bot_id);
 CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_date ON agent_bot_usage(date);
 
+-- ============ Load Test Results ============
+
+-- Stores k6 Cloud load test results for LLM retrieval
+CREATE TABLE IF NOT EXISTS load_test_results (
+  id SERIAL PRIMARY KEY,
+  url TEXT NOT NULL,
+  test_run_id TEXT,                -- k6 Cloud run ID
+  output_url TEXT,                 -- k6 Cloud dashboard link
+  users INTEGER NOT NULL,
+  duration INTEGER NOT NULL,       -- test duration in seconds
+  metrics_json TEXT NOT NULL,      -- JSON blob of all metrics (p50/p95/p99/avg, error rate, etc.)
+  passed BOOLEAN DEFAULT FALSE,
+  run_by TEXT,                     -- admin email who triggered the test
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_load_test_results_url ON load_test_results(url);
+CREATE INDEX IF NOT EXISTS idx_load_test_results_created ON load_test_results(created_at DESC);
+
 -- ============ Triggers (PostgreSQL syntax) ============
 
 -- Update user updated_at timestamp
