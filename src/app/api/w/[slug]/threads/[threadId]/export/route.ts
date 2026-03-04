@@ -34,7 +34,7 @@ function formatMessagesAsMarkdown(title: string, messages: { role: string; conte
     lines.push(msg.content);
 
     if (msg.sources_json) {
-      const sources = parseSources(msg.sources_json);
+      const sources = parseSources<{ document_name: string; page_number?: number; score: number }>(msg.sources_json);
       if (sources.length > 0) {
         lines.push('');
         lines.push('*Sources:*');
