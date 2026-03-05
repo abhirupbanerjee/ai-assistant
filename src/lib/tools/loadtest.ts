@@ -202,8 +202,7 @@ export default function () {
 export async function runK6CloudTest(
   script: string,
   apiToken: string,
-  targetUrl: string,
-  stackId?: string
+  targetUrl: string
 ): Promise<{ testRunId: string; outputUrl: string }> {
   const tmpDir = process.env.TMPDIR || '/tmp';
   const scriptPath = join(tmpDir, `k6-test-${Date.now()}.js`);
@@ -212,11 +211,12 @@ export async function runK6CloudTest(
   try {
     return await new Promise((resolve, reject) => {
       // -e flag forwards env vars to k6 cloud runners (process.env only affects local CLI)
-      // K6_CLOUD_STACK_ID tells CLI which Grafana Cloud stack to use (fixes deprecation warning)
+      // Note: K6_CLOUD_STACK_ID is NOT set here — it requires a project ID too (from `k6 cloud login`).
+      // The CLI falls back to the first available stack, which works for test execution.
+      // Stack ID is only used for API polling (separate from CLI).
       const env = {
         ...process.env,
         K6_CLOUD_TOKEN: apiToken,
-        ...(stackId ? { K6_CLOUD_STACK_ID: stackId } : {}),
       };
 
       const k6Process = spawn('k6', ['cloud', 'run', '-e', `TARGET_URL=${targetUrl}`, scriptPath], {
@@ -570,12 +570,14 @@ export async function executeLoadTest(
   testRunning = true;
   try {
     // Generate and execute script
-    const stackId = config.stackId || process.env.K6_CLOUD_STACK_ID;
     console.log('[LoadTest] Generating k6 script:', { url, users: effectiveUsers, duration: effectiveDuration });
     const script = generateK6Script(effectiveUsers, effectiveDuration);
-    const { testRunId, outputUrl } = await runK6CloudTest(script, apiToken, url, stackId);
+    const { testRunId, outputUrl } = await runK6CloudTest(script, apiToken, url);
     console.log('[LoadTest] k6 cloud test started:', { testRunId, outputUrl });
-    console.log('[LoadTest] Fetching metrics for run:', testRunId, stackId ? `(stack: ${stackId})` : '(no stackId, using legacy v5)');
+
+    // stackId is used for API polling only (not for the k6 CLI)
+    const stackId = config.stackId || process.env.K6_CLOUD_STACK_ID;
+    console.log('[LoadTest] Polling for completion:', testRunId, stackId ? `(stack: ${stackId})` : '(no stackId, v5 only)');
     const metrics = await fetchTestRunMetrics(testRunId, apiToken, stackId);
     console.log('[LoadTest] Metrics received:', JSON.stringify(metrics));
     const passed = metrics.http_req_duration.p95 < 500;
