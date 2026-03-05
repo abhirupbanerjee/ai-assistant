@@ -331,7 +331,7 @@ async function fetchTestRun(
 function isTestComplete(data: Record<string, unknown>, apiVersion: 'v6' | 'v5'): { done: boolean; statusStr: string } {
   // v6 terminal statuses
   const v6TerminalStatuses = new Set([
-    'finished', 'timed_out', 'aborted_user', 'aborted_system',
+    'finished', 'completed', 'timed_out', 'aborted_user', 'aborted_system',
     'aborted_script_error', 'aborted_limit', 'aborted_by_threshold',
   ]);
 
