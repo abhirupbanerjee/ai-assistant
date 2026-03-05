@@ -111,7 +111,7 @@ export default function LoadTestConfig({
         }
       }, 10000);
 
-      // Safety: stop polling after 15 minutes
+      // Safety: stop polling after 25 minutes (test can take up to 20 min on k6 Cloud)
       setTimeout(() => {
         clearInterval(poll);
         setTestStatus(prev =>
@@ -119,7 +119,7 @@ export default function LoadTestConfig({
             ? { state: 'error', message: 'Polling timed out. Check test results manually.' }
             : prev
         );
-      }, 900000);
+      }, 1500000);
     } catch (err) {
       setTestStatus({
         state: 'error',
@@ -151,15 +151,27 @@ export default function LoadTestConfig({
               disabled={disabled}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Get from{' '}
-              <a
-                href="https://app.k6.io/account/api-token"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
-              >
-                k6 Cloud
-              </a>
+              Get from Grafana Cloud &rarr; k6 &rarr; Settings &rarr; API tokens
+            </p>
+          </div>
+        )}
+
+        {/* Stack ID */}
+        {!hideSensitive && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Grafana Cloud Stack ID
+            </label>
+            <input
+              type="text"
+              value={(config.stackId as string) || ''}
+              onChange={(e) => handleChange('stackId', e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="e.g., 123456"
+              disabled={disabled}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Required for Grafana Cloud k6. Find in your Grafana Cloud portal URL or stack settings.
             </p>
           </div>
         )}

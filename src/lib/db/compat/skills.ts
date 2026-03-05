@@ -448,7 +448,12 @@ export async function seedCoreSkill(
   promptContent: string,
   triggerType: TriggerType,
   triggerValue: string | null,
-  priority: number
+  priority: number,
+  options?: {
+    toolName?: string;
+    forceMode?: 'required' | 'preferred' | 'suggested';
+    toolConfigOverride?: Record<string, unknown>;
+  }
 ): Promise<void> {
   const db = await getDb();
   const tokenEstimate = Math.ceil(promptContent.length / 4);
@@ -471,6 +476,9 @@ export async function seedCoreSkill(
       created_by: 'system',
       updated_by: 'system',
       match_type: 'keyword',
+      tool_name: options?.toolName ?? null,
+      force_mode: options?.forceMode ?? null,
+      tool_config_override: options?.toolConfigOverride ? JSON.stringify(options.toolConfigOverride) : null,
     })
     .onConflict(oc =>
       oc.column('name').doUpdateSet({
@@ -483,6 +491,9 @@ export async function seedCoreSkill(
         token_estimate: tokenEstimate,
         updated_by: 'system',
         updated_at: new Date().toISOString(),
+        tool_name: options?.toolName ?? null,
+        force_mode: options?.forceMode ?? null,
+        tool_config_override: options?.toolConfigOverride ? JSON.stringify(options.toolConfigOverride) : null,
       })
     )
     .execute();
