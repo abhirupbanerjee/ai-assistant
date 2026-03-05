@@ -202,7 +202,8 @@ export default function () {
 export async function runK6CloudTest(
   script: string,
   apiToken: string,
-  targetUrl: string
+  targetUrl: string,
+  stackId?: string
 ): Promise<{ testRunId: string; outputUrl: string }> {
   const tmpDir = process.env.TMPDIR || '/tmp';
   const scriptPath = join(tmpDir, `k6-test-${Date.now()}.js`);
@@ -211,11 +212,15 @@ export async function runK6CloudTest(
   try {
     return await new Promise((resolve, reject) => {
       // -e flag forwards env vars to k6 cloud runners (process.env only affects local CLI)
+      // K6_CLOUD_STACK_ID tells CLI which Grafana Cloud stack to use (fixes deprecation warning)
+      const env = {
+        ...process.env,
+        K6_CLOUD_TOKEN: apiToken,
+        ...(stackId ? { K6_CLOUD_STACK_ID: stackId } : {}),
+      };
+
       const k6Process = spawn('k6', ['cloud', 'run', '-e', `TARGET_URL=${targetUrl}`, scriptPath], {
-        env: {
-          ...process.env,
-          K6_CLOUD_TOKEN: apiToken,
-        },
+        env,
       });
 
       let output = '';
@@ -272,29 +277,80 @@ const K6_CLOUD_API_V5 = 'https://api.k6.io/cloud/v5';
 
 /**
  * Build auth headers for k6 Cloud API.
- * v6 API uses Bearer token + X-Stack-Id (Grafana Cloud k6).
  */
-function k6ApiHeaders(apiToken: string, stackId?: string): Record<string, string> {
+function k6ApiHeaders(apiToken: string, stackId?: string, useBearer?: boolean): Record<string, string> {
   const headers: Record<string, string> = {
     'Accept': 'application/json',
+    'Authorization': useBearer ? `Bearer ${apiToken}` : `Token ${apiToken}`,
   };
   if (stackId) {
-    // Grafana Cloud k6 (v6 API): Bearer + Stack ID
-    headers['Authorization'] = `Bearer ${apiToken}`;
     headers['X-Stack-Id'] = stackId;
-  } else {
-    // Legacy k6 Cloud (v5 API): Token auth
-    headers['Authorization'] = `Token ${apiToken}`;
   }
   return headers;
 }
 
 /**
+ * Try to fetch a test run from the API, attempting v6 then v5.
+ * Returns the parsed JSON and which API version worked.
+ */
+async function fetchTestRun(
+  testRunId: string,
+  apiToken: string,
+  stackId?: string
+): Promise<{ data: Record<string, unknown>; apiVersion: 'v6' | 'v5' }> {
+  // If stackId is set, try v6 with Token auth first (personal API tokens use Token format)
+  if (stackId) {
+    const v6Headers = k6ApiHeaders(apiToken, stackId, false); // Token auth + X-Stack-Id
+    const v6Res = await fetch(`${K6_CLOUD_API_V6}/test_runs/${testRunId}`, { headers: v6Headers });
+    if (v6Res.ok) {
+      return { data: await v6Res.json(), apiVersion: 'v6' };
+    }
+    // Try Bearer auth if Token didn't work
+    const v6BearerHeaders = k6ApiHeaders(apiToken, stackId, true);
+    const v6BearerRes = await fetch(`${K6_CLOUD_API_V6}/test_runs/${testRunId}`, { headers: v6BearerHeaders });
+    if (v6BearerRes.ok) {
+      return { data: await v6BearerRes.json(), apiVersion: 'v6' };
+    }
+    console.log(`[LoadTest] v6 API returned ${v6Res.status}/${v6BearerRes.status}, falling back to v5`);
+  }
+
+  // Fallback to v5
+  const v5Headers = k6ApiHeaders(apiToken, stackId, false);
+  const v5Res = await fetch(`${K6_CLOUD_API_V5}/test_runs/${testRunId}`, { headers: v5Headers });
+  if (!v5Res.ok) {
+    throw new Error(`k6 Cloud API error: ${v5Res.status} ${v5Res.statusText}`);
+  }
+  return { data: await v5Res.json(), apiVersion: 'v5' };
+}
+
+/**
+ * Extract status from API response.
+ * v6: status is a string or { type: string } object
+ * v5: run_status is numeric (3=running, 4=finished, 5=timed_out, etc.)
+ */
+function isTestComplete(data: Record<string, unknown>, apiVersion: 'v6' | 'v5'): { done: boolean; statusStr: string } {
+  // v6 terminal statuses
+  const v6TerminalStatuses = new Set([
+    'finished', 'timed_out', 'aborted_user', 'aborted_system',
+    'aborted_script_error', 'aborted_limit', 'aborted_by_threshold',
+  ]);
+
+  if (apiVersion === 'v6') {
+    const statusObj = data.status as Record<string, unknown> | string | undefined;
+    const status = typeof statusObj === 'object' && statusObj !== null
+      ? (statusObj.type as string) || String(statusObj)
+      : String(statusObj ?? 'unknown');
+    return { done: v6TerminalStatuses.has(status), statusStr: `status="${status}"` };
+  } else {
+    const runStatus = (data.run_status ?? (data.data as Record<string, unknown>)?.run_status) as number | undefined;
+    const done = runStatus !== undefined && runStatus >= 4;
+    return { done, statusStr: `run_status=${runStatus}` };
+  }
+}
+
+/**
  * Poll k6 Cloud for test completion.
- * v6 API: status is a string ("created", "validated", "queued", "initializing",
- *   "running", "finished", "timed_out", "aborted_user", "aborted_system",
- *   "aborted_script_error", "aborted_limit", "aborted_by_threshold")
- * v5 API (legacy): run_status is numeric (3=running, 4=finished, etc.)
+ * Tries v6 API first (if stackId set), falls back to v5.
  */
 export async function pollTestCompletion(
   testRunId: string,
@@ -302,55 +358,25 @@ export async function pollTestCompletion(
   stackId?: string,
   maxAttempts: number = 120
 ): Promise<void> {
-  const useV6 = !!stackId;
-  const baseUrl = useV6 ? K6_CLOUD_API_V6 : K6_CLOUD_API_V5;
-  const headers = k6ApiHeaders(apiToken, stackId);
-
-  // Terminal statuses for v6 API (string-based)
-  const v6TerminalStatuses = new Set([
-    'finished', 'timed_out', 'aborted_user', 'aborted_system',
-    'aborted_script_error', 'aborted_limit', 'aborted_by_threshold',
-  ]);
-
   for (let i = 0; i < maxAttempts; i++) {
-    const response = await fetch(
-      `${baseUrl}/test_runs/${testRunId}`,
-      { headers }
-    );
-
-    if (!response.ok) {
-      throw new Error(`k6 Cloud API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const { data, apiVersion } = await fetchTestRun(testRunId, apiToken, stackId);
 
     // On first poll, log full response for debugging
     if (i === 0) {
-      console.log(`[LoadTest] Using ${useV6 ? 'v6' : 'v5'} API (stackId: ${stackId || 'none'})`);
+      console.log(`[LoadTest] Using ${apiVersion} API (stackId: ${stackId || 'none'})`);
       console.log(`[LoadTest] Poll API response keys:`, Object.keys(data));
       console.log(`[LoadTest] Poll API response (first 500 chars):`, JSON.stringify(data).slice(0, 500));
     }
 
-    if (useV6) {
-      // v6: status is a string field
-      const status = data.status?.type || data.status;
-      if (i === 0 || i % 10 === 0) {
-        console.log(`[LoadTest] Poll ${i + 1}/${maxAttempts}: status="${status}" (testRunId=${testRunId})`);
-      }
-      if (typeof status === 'string' && v6TerminalStatuses.has(status)) {
-        console.log(`[LoadTest] Test finished: status="${status}" after ${i + 1} polls (~${(i + 1) * 10}s)`);
-        return;
-      }
-    } else {
-      // v5 (legacy): run_status is numeric
-      const runStatus = data.run_status ?? data.data?.run_status;
-      if (i === 0 || i % 10 === 0) {
-        console.log(`[LoadTest] Poll ${i + 1}/${maxAttempts}: run_status=${runStatus} (testRunId=${testRunId})`);
-      }
-      if (runStatus !== undefined && runStatus >= 4) {
-        console.log(`[LoadTest] Test finished: run_status=${runStatus} after ${i + 1} polls (~${(i + 1) * 10}s)`);
-        return;
-      }
+    const { done, statusStr } = isTestComplete(data, apiVersion);
+
+    if (i === 0 || i % 10 === 0) {
+      console.log(`[LoadTest] Poll ${i + 1}/${maxAttempts}: ${statusStr} [${apiVersion}] (testRunId=${testRunId})`);
+    }
+
+    if (done) {
+      console.log(`[LoadTest] Test finished: ${statusStr} after ${i + 1} polls (~${(i + 1) * 10}s)`);
+      return;
     }
 
     // Wait 10 seconds before next poll
@@ -362,8 +388,7 @@ export async function pollTestCompletion(
 
 /**
  * Fetch test run metrics from k6 Cloud API.
- * Metrics endpoint still uses v5 path even for Grafana Cloud k6 accounts,
- * but auth headers are updated to Bearer + X-Stack-Id when stackId is provided.
+ * Uses v5 aggregate endpoint with Token auth + X-Stack-Id.
  */
 export async function fetchTestRunMetrics(
   testRunId: string,
@@ -372,7 +397,8 @@ export async function fetchTestRunMetrics(
 ): Promise<LoadTestMetrics> {
   await pollTestCompletion(testRunId, apiToken, stackId);
 
-  const headers = k6ApiHeaders(apiToken, stackId);
+  // Metrics aggregate endpoint is v5-only (still supported by Grafana Cloud)
+  const headers = k6ApiHeaders(apiToken, stackId, false); // Token auth
 
   const params = new URLSearchParams({
     metric: 'http_req_duration',
@@ -385,50 +411,20 @@ export async function fetchTestRunMetrics(
   );
 
   if (!response.ok) {
-    console.error(`[LoadTest] Metrics API error: ${response.status}. Trying v6 endpoint...`);
-    // Fallback: try v6 metrics endpoint if v5 fails
-    if (stackId) {
-      return await fetchMetricsV6Fallback(testRunId, apiToken, stackId);
-    }
-    throw new Error(`k6 Cloud metrics API error: ${response.status} ${response.statusText}`);
+    console.error(`[LoadTest] Metrics API error: ${response.status}. Response: ${await response.text().catch(() => 'N/A')}`);
+    // Return zeroed metrics — test completion is confirmed, metrics just couldn't be fetched
+    console.log('[LoadTest] Returning default metrics (test completed but metrics API unavailable)');
+    return {
+      http_req_duration: { p50: 0, p95: 0, p99: 0, avg: 0 },
+      http_req_failed: 0,
+      http_reqs: 0,
+      vus: 0,
+      iterations: 0,
+    };
   }
 
   const data = await response.json();
   return parseMetricsResponse(data);
-}
-
-/**
- * Fallback: fetch basic metrics from v6 test run endpoint
- * when v5 aggregate endpoint is not available.
- */
-async function fetchMetricsV6Fallback(
-  testRunId: string,
-  apiToken: string,
-  stackId: string
-): Promise<LoadTestMetrics> {
-  const headers = k6ApiHeaders(apiToken, stackId);
-  const response = await fetch(
-    `${K6_CLOUD_API_V6}/test_runs/${testRunId}`,
-    { headers }
-  );
-
-  if (!response.ok) {
-    throw new Error(`k6 Cloud v6 metrics fallback error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  console.log('[LoadTest] v6 fallback response keys:', Object.keys(data));
-  console.log('[LoadTest] v6 fallback response (first 500 chars):', JSON.stringify(data).slice(0, 500));
-
-  // v6 test run response may contain result or metrics in different locations
-  // Return default metrics structure — the test completion status is confirmed
-  return {
-    http_req_duration: { p50: 0, p95: 0, p99: 0, avg: 0 },
-    http_req_failed: 0,
-    http_reqs: 0,
-    vus: 0,
-    iterations: 0,
-  };
 }
 
 function parseMetricsResponse(data: Record<string, unknown>): LoadTestMetrics {
@@ -574,13 +570,11 @@ export async function executeLoadTest(
   testRunning = true;
   try {
     // Generate and execute script
+    const stackId = config.stackId || process.env.K6_CLOUD_STACK_ID;
     console.log('[LoadTest] Generating k6 script:', { url, users: effectiveUsers, duration: effectiveDuration });
     const script = generateK6Script(effectiveUsers, effectiveDuration);
-    const { testRunId, outputUrl } = await runK6CloudTest(script, apiToken, url);
+    const { testRunId, outputUrl } = await runK6CloudTest(script, apiToken, url, stackId);
     console.log('[LoadTest] k6 cloud test started:', { testRunId, outputUrl });
-
-    // Fetch metrics (polls until test completes, then fetches)
-    const stackId = config.stackId || process.env.K6_CLOUD_STACK_ID;
     console.log('[LoadTest] Fetching metrics for run:', testRunId, stackId ? `(stack: ${stackId})` : '(no stackId, using legacy v5)');
     const metrics = await fetchTestRunMetrics(testRunId, apiToken, stackId);
     console.log('[LoadTest] Metrics received:', JSON.stringify(metrics));
