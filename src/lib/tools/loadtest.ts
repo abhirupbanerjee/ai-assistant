@@ -224,8 +224,11 @@ export async function runK6CloudTest(
         output += data.toString();
 
         // Extract test run URL from k6 output
-        // Example: "output: cloud (https://app.k6.io/runs/123456)"
-        const urlMatch = output.match(/cloud \((https:\/\/[^)]+)\)/);
+        // Grafana Cloud format: "output: https://org.grafana.net/a/k6-app/runs/123456"
+        // Legacy format: "output: cloud (https://app.k6.io/runs/123456)"
+        const grafanaMatch = output.match(/output:\s+(https:\/\/[^\s]+\/runs\/\d+)/);
+        const legacyMatch = output.match(/cloud \((https:\/\/[^)]+)\)/);
+        const urlMatch = grafanaMatch || legacyMatch;
         if (urlMatch) {
           outputUrl = urlMatch[1];
           const idMatch = outputUrl.match(/\/runs\/(\d+)/);
