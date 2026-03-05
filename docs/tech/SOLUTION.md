@@ -40,8 +40,8 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            ▼            ▼            ▼            ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │    DATABASE     │ │  VECTOR STORE   │ │     REDIS       │ │   FILESYSTEM    │
-│ SQLite (default)│ │ChromaDB(default)│ │  Cache/Session  │ │  Threads/Docs   │
-│ or PostgreSQL   │ │   or Qdrant     │ │                 │ │                 │
+│  PostgreSQL     │ │ChromaDB(default)│ │  Cache/Session  │ │  Threads/Docs   │
+│  (Kysely ORM)   │ │   or Qdrant     │ │                 │ │                 │
 └─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
            │
            ▼
@@ -85,7 +85,7 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 |-------|------------|---------|
 | Frontend | Next.js 15, React 19, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
-| Database | SQLite (better-sqlite3) | Metadata storage |
+| Database | PostgreSQL (Kysely ORM) | Metadata storage |
 | LLM Gateway | LiteLLM Proxy | Multi-provider LLM abstraction (OpenAI-compatible API) |
 | LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision |
 | LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision support |
@@ -342,7 +342,7 @@ File Upload
     │
     ▼
 ┌─────────────────┐
-│ Update SQLite   │
+│ Update Database │
 │ Document record │
 └─────────────────┘
 ```
@@ -380,7 +380,7 @@ Text Content
     │
     ▼
 ┌─────────────────┐
-│ Update SQLite   │
+│ Update Database │
 │ Document record │
 └─────────────────┘
 ```
@@ -810,7 +810,7 @@ User Access
 │                 │
 │ Allowlist Mode: │
 │  Check user in  │
-│  SQLite users   │
+│  DB users table │
 │                 │
 │ Domain Mode:    │
 │  Check email    │
@@ -830,7 +830,7 @@ User Access
 
 | Mode | Configuration | Description |
 |------|---------------|-------------|
-| **Allowlist** | `ACCESS_MODE=allowlist` | Only users explicitly added to SQLite can sign in |
+| **Allowlist** | `ACCESS_MODE=allowlist` | Only users explicitly added to the database can sign in |
 | **Domain** | `ACCESS_MODE=domain` | Any user from allowed email domains can sign in |
 
 ---
@@ -1360,13 +1360,8 @@ getThreadContext(threadId)
     ├── Query PostgreSQL workspace_threads
     ├── Query PostgreSQL workspace_sessions
     │
-    └── SQLite fallback (if DATABASE_PROVIDER=postgres)
-            └── sync.getThreadById(threadId)
-                    ↓ Found → return { exists: true }
-                    ↓ Not found → return { exists: false } → save fails
+    └── Return thread context or null
 ```
-
-The `thread_outputs.thread_id` FK is intentionally not enforced in PostgreSQL — the startup migration drops it — so outputs can be saved even when the thread exists only in SQLite (pre-migration data). Diagram generation (`diagram_gen`) is unaffected as it returns Mermaid code inline with no database save.
 
 **Implementation:** `src/lib/image-gen/provider-factory.ts`, `src/lib/docgen/document-generator.ts`, `src/lib/db/compat/threads.ts`
 
@@ -1440,7 +1435,7 @@ Admin can upload documents via two methods: file upload or text content paste.
 5. Admin submits upload
 6. Backend validates file type and size (≤ 50MB)
 7. Saves to global-docs folder
-8. Creates SQLite document record
+8. Creates database document record
 9. Triggers ingestion pipeline:
    a. Extract text (Mistral OCR or Azure DI)
    b. Chunk text with current settings
@@ -1462,7 +1457,7 @@ Admin can upload documents via two methods: file upload or text content paste.
 5. Admin submits
 6. Backend validates name and content
 7. Saves content as .txt file to global-docs folder
-8. Creates SQLite document record
+8. Creates database document record
 9. Triggers direct text ingestion (bypasses OCR):
    a. Chunk text directly
    b. Create embeddings
@@ -1482,7 +1477,7 @@ Admin/Super User manages subscriptions:
 3. For super users (admin only):
    - Assign categories to manage
    - Super user can then manage users in those categories
-4. Changes update SQLite relationships
+4. Changes update database relationships
 5. User's threads now search new category collections
 ```
 
@@ -1490,14 +1485,14 @@ Admin/Super User manages subscriptions:
 
 ## Key Design Decisions
 
-### 1. SQLite for Metadata
-- **Replaces**: JSON file storage for users, documents, categories
+### 1. PostgreSQL for Metadata
 - **Benefits**:
   - ACID transactions for data integrity
   - Efficient queries with indexes
+  - Connection pooling for high concurrency
   - Relationships between entities (users, categories, subscriptions)
-  - Single file, easy backup
-- **Tables**: users, categories, documents, user_subscriptions, super_user_categories, document_categories, config
+  - Accessed via Kysely ORM for type-safe async queries
+- **Tables**: users, categories, documents, user_subscriptions, super_user_categories, document_categories, settings
 
 ### 2. Category-Based ChromaDB Collections
 - Each category gets its own ChromaDB collection
@@ -1511,14 +1506,11 @@ Admin/Super User manages subscriptions:
 - **User**: Access to subscribed categories only
 - Enables organizational hierarchy for large deployments
 
-### 4. Hybrid Storage Strategy
-- **SQLite** (always active): Sync primary store for structured metadata — users, categories, documents, config, threads
-- **PostgreSQL** (optional, `DATABASE_PROVIDER=postgres`): Async mirror of SQLite; becomes primary read store at scale; SQLite fallback for migrated/legacy data
+### 4. Storage Strategy
+- **PostgreSQL**: Primary store for all structured metadata — users, categories, documents, settings, threads
 - **ChromaDB / Qdrant**: Vector embeddings for semantic search
 - **Redis**: Fast caching and session management
 - **Filesystem**: Generated files (images, PDFs, DOCX) and thread uploads
-
-**Dual-Write Pattern**: When `DATABASE_PROVIDER=postgres`, writes go to SQLite synchronously, then mirror to PostgreSQL asynchronously. Reads hit PostgreSQL first with automatic SQLite fallback, enabling zero-downtime migration. The `thread_outputs.thread_id` FK is intentionally absent so generated files can reference threads that exist only in SQLite.
 
 ### 5. Multi-Turn Context (5 Messages)
 - Enables follow-up questions like "what about section 3?"
@@ -1537,7 +1529,7 @@ Admin/Super User manages subscriptions:
 - Graceful fallback for unsupported browsers
 
 ### 8. Dynamic Branding System
-- **Sidebar branding**: Admin-configurable bot name and icon stored in SQLite settings
+- **Sidebar branding**: Admin-configurable bot name and icon stored in database settings
 - **Chat header**: Dynamic based on user's category subscriptions:
   - Single subscription: "[Category] Assistant"
   - Multiple subscriptions: "GEA Global Assistant"
@@ -1579,7 +1571,7 @@ Admin/Super User manages subscriptions:
 - Multi-provider OAuth (Azure AD and Google)
 - Two access control modes: allowlist (specific users) or domain-based
 - Session-based authentication via NextAuth
-- Role-based access control stored in SQLite
+- Role-based access control stored in PostgreSQL
 - Admin users initially seeded from ADMIN_EMAILS environment variable
 
 ### Authorization
@@ -1630,7 +1622,7 @@ Admin/Super User manages subscriptions:
 - Reduces OpenAI API calls during ingestion
 
 ### Database Indexing
-- SQLite indexes on frequently queried columns
+- PostgreSQL indexes on frequently queried columns
 - ChromaDB HNSW index for vector search
 
 ### Lazy Loading
@@ -1641,14 +1633,14 @@ Admin/Super User manages subscriptions:
 
 ## Scalability Notes
 
-### Current Design (Pilot Phase)
+### Current Design
 - Single VM deployment
-- Local SQLite database
+- PostgreSQL database (Kysely ORM)
 - Local filesystem storage
-- Suitable for 1-50 concurrent users
+- Suitable for 50+ concurrent users
 
 ### Future Scaling Options
-1. **Database**: Migrate SQLite to PostgreSQL for multi-instance support
+1. **Database**: Use managed PostgreSQL (Azure Database, AWS RDS) for HA
 2. **Horizontal Scaling**: Move thread storage to shared database
 3. **CDN**: Static asset caching via Cloudflare
 4. **Queue Processing**: Background job queue for document ingestion
@@ -1677,4 +1669,4 @@ Recommended additions for production:
 - LLM API usage tracking (via LiteLLM metrics)
 - ChromaDB query latency metrics
 - Error rate dashboards
-- SQLite query performance monitoring
+- PostgreSQL query performance monitoring

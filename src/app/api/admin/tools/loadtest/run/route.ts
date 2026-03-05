@@ -1,15 +1,18 @@
 /**
  * Admin Load Test API - Trigger and retrieve k6 Cloud load tests
  *
- * POST /api/admin/tools/loadtest/run - Run a new load test
- * GET  /api/admin/tools/loadtest/run - Get results for a URL or list recent tests
+ * POST /api/admin/tools/loadtest/run - Start a new load test (returns immediately, runs async)
+ * GET  /api/admin/tools/loadtest/run?testId=<id> - Poll running test status
+ * GET  /api/admin/tools/loadtest/run?url=<url> - Get latest results for a URL
+ * GET  /api/admin/tools/loadtest/run - List recent tests
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
   getLoadTestConfig,
-  executeLoadTest,
+  startTestAsync,
+  getTestStatus,
 } from '@/lib/tools/loadtest';
 import { getLatestLoadTestResult, getAllLoadTestResults } from '@/lib/db/compat/loadtest-results';
 
@@ -30,7 +33,7 @@ function checkDailyRateLimit(limit: number): { allowed: boolean; remaining: numb
 
 /**
  * POST /api/admin/tools/loadtest/run
- * Trigger a new load test
+ * Start a new load test (non-blocking — returns testId for polling)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -75,11 +78,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Execute test (this may take several minutes)
+    // Start test async (non-blocking)
     const effectiveUsers = users || config.maxConcurrentUsers;
     const effectiveDuration = duration || config.defaultDuration;
+    const testId = `test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    const result = await executeLoadTest(
+    startTestAsync(
+      testId,
       url,
       Math.min(effectiveUsers, config.maxConcurrentUsers),
       Math.min(effectiveDuration, config.maxDuration),
@@ -87,11 +92,13 @@ export async function POST(request: NextRequest) {
       user.email
     );
 
-    if (result.success) {
-      dailyCounter.count++;
-    }
+    dailyCounter.count++;
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      success: true,
+      testId,
+      message: 'Load test started. Poll GET ?testId= for status.',
+    });
   } catch (error) {
     console.error('[LoadTest API] Error:', error);
     return NextResponse.json(
@@ -103,7 +110,9 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/admin/tools/loadtest/run
- * Get latest results for a URL or list recent tests
+ * - ?testId=<id> → poll running test status
+ * - ?url=<url>   → get latest stored result for a URL
+ * - (no params)  → list recent tests
  */
 export async function GET(request: NextRequest) {
   try {
@@ -115,10 +124,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const url = request.nextUrl.searchParams.get('url');
+    // Poll active test by ID
+    const testId = request.nextUrl.searchParams.get('testId');
+    if (testId) {
+      const status = getTestStatus(testId);
+      if (!status) {
+        return NextResponse.json({ error: 'Test not found' }, { status: 404 });
+      }
+      return NextResponse.json(status);
+    }
 
+    // Get latest result for specific URL
+    const url = request.nextUrl.searchParams.get('url');
     if (url) {
-      // Get latest result for specific URL
       const result = await getLatestLoadTestResult(url);
       if (!result) {
         return NextResponse.json({ found: false });
@@ -149,4 +167,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

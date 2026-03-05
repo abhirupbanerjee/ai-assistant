@@ -42,9 +42,67 @@ export interface LoadTestMetrics {
   iterations: number;
 }
 
-// ============ Concurrency Lock ============
+// ============ Concurrency Lock & Async Tracker ============
 
 let testRunning = false;
+
+export interface ActiveTest {
+  status: 'running' | 'complete' | 'error';
+  message: string;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
+const activeTests = new Map<string, ActiveTest>();
+
+/**
+ * Start a load test in the background (non-blocking).
+ * Caller gets a testId to poll for status.
+ */
+export function startTestAsync(
+  testId: string,
+  url: string,
+  users: number,
+  duration: number,
+  config: LoadTestConfig,
+  adminEmail: string
+): void {
+  activeTests.set(testId, { status: 'running', message: 'Starting load test...' });
+
+  executeLoadTest(url, users, duration, config, adminEmail)
+    .then(result => {
+      if (result.success) {
+        activeTests.set(testId, {
+          status: 'complete',
+          message: 'Test completed',
+          result: result.result,
+        });
+      } else {
+        activeTests.set(testId, {
+          status: 'error',
+          message: result.error || 'Test failed',
+          error: result.error,
+        });
+      }
+    })
+    .catch(err => {
+      activeTests.set(testId, {
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Test failed',
+        error: err instanceof Error ? err.message : 'Test failed',
+      });
+    });
+
+  // Clean up tracker after 1 hour
+  setTimeout(() => activeTests.delete(testId), 3600000);
+}
+
+/**
+ * Get the status of an async test run.
+ */
+export function getTestStatus(testId: string): ActiveTest | null {
+  return activeTests.get(testId) || null;
+}
 
 // ============ Config Helpers ============
 
@@ -150,11 +208,11 @@ export async function runK6CloudTest(
 
   try {
     return await new Promise((resolve, reject) => {
-      const k6Process = spawn('k6', ['cloud', 'run', scriptPath], {
+      // -e flag forwards env vars to k6 cloud runners (process.env only affects local CLI)
+      const k6Process = spawn('k6', ['cloud', 'run', '-e', `TARGET_URL=${targetUrl}`, scriptPath], {
         env: {
           ...process.env,
           K6_CLOUD_TOKEN: apiToken,
-          TARGET_URL: targetUrl,
         },
       });
 

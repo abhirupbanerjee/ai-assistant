@@ -4,10 +4,10 @@
 
 This document provides detailed schema definitions, column descriptions, and data models for the Policy Bot database.
 
-**For architecture documentation** (SQLite vs PostgreSQL, connection pooling, operations mapping), see [DB-techstack.md](DB-techstack.md).
+**For architecture documentation** (connection pooling, operations mapping), see [DB-techstack.md](DB-techstack.md).
 
 **Storage Components:**
-- **Database** (SQLite or PostgreSQL): Structured metadata
+- **Database** (PostgreSQL): Structured metadata
 - **Vector Store** (ChromaDB or Qdrant): Embeddings for semantic search
 - **Redis**: Caching and session management
 - **Filesystem**: PDF files and uploads
@@ -16,7 +16,7 @@ This document provides detailed schema definitions, column descriptions, and dat
 
 ## 1. Database Schema
 
-Both SQLite and PostgreSQL use the same schema and table structure. The database stores all structured metadata with ACID transactions.
+PostgreSQL stores all structured metadata with ACID transactions. The database is accessed via the Kysely ORM.
 
 ### Entity Relationship Diagram
 
@@ -2068,7 +2068,7 @@ interface Session {
 
 ```
 data/
-├── policy-bot.db           ← SQLite database
+├── postgres/               ← PostgreSQL data directory
 ├── global-docs/            ← Admin-uploaded policy documents
 │   ├── Leave_Policy.pdf
 │   ├── Travel_Guidelines.pdf
@@ -2089,7 +2089,7 @@ data/
 
 ### File Storage Notes
 
-- **global-docs/**: Admin uploads stored here, metadata in SQLite `documents` table
+- **global-docs/**: Admin uploads stored here, metadata in `documents` table
 - **threads/{userId}/{threadId}/uploads/**: User uploads, metadata in `thread_uploads` table
 - **threads/{userId}/{threadId}/outputs/**: AI outputs, metadata in `thread_outputs` table
 - **workspace-uploads/{workspaceId}/{sessionId}/**: Workspace session uploads (both embed and standalone modes)
@@ -2294,7 +2294,7 @@ User Query
 
 ## 8. Indexes and Performance
 
-### SQLite Indexes
+### Database Indexes
 
 | Table | Index | Purpose |
 |-------|-------|---------|
@@ -2335,14 +2335,14 @@ ChromaDB maintains HNSW (Hierarchical Navigable Small World) index for fast ANN 
 
 ## 9. Backup & Recovery
 
-### SQLite Backup
+### PostgreSQL Backup
 
 ```bash
 # Backup database
-sqlite3 data/policy-bot.db ".backup data/backup-$(date +%Y%m%d).db"
+docker exec policy-bot-postgres pg_dump -U policybot policybot > data/backup-$(date +%Y%m%d).sql
 
 # Restore database
-cp data/backup-20241202.db data/policy-bot.db
+docker exec -i policy-bot-postgres psql -U policybot policybot < data/backup-20241202.sql
 ```
 
 ### ChromaDB Backup
@@ -2372,8 +2372,8 @@ docker run --rm -v policy-bot_redis_data:/data -v $(pwd):/backup \
 BACKUP_DIR="/backups/policy-bot/$(date +%Y%m%d)"
 mkdir -p $BACKUP_DIR
 
-# SQLite
-sqlite3 data/policy-bot.db ".backup $BACKUP_DIR/policy-bot.db"
+# PostgreSQL
+docker exec policy-bot-postgres pg_dump -U policybot policybot > $BACKUP_DIR/postgres.sql
 
 # Global docs
 tar -czvf $BACKUP_DIR/global-docs.tar.gz data/global-docs/
@@ -2505,28 +2505,19 @@ if (!threadColumnNames.includes('selected_model')) {
 
 ### Database Persistence Across VM Changes
 
-The SQLite database is persisted via Docker volume mount (defined in `docker-compose.yml`):
-
-```yaml
-volumes:
-  - ./data/app:/app/data
-```
-
-**Key file location:** `./data/app/policybot.db`
+The PostgreSQL database is managed via Docker volume mount and Kysely ORM migrations.
 
 #### VM Migration Checklist
 
 When migrating to a new VM:
 
-1. **Copy the data directory** - Transfer `./data/app/` containing `policybot.db`
-2. **Copy global documents** - Transfer `./data/app/global-docs/` if documents exist
-3. **Copy thread uploads** - Transfer `./data/app/threads/` for user uploads
-4. **Rebuild the Docker image** - `docker compose build app`
-5. **Start the containers** - `docker compose up -d`
+1. **Backup PostgreSQL** - `docker exec policy-bot-postgres pg_dump -U policybot policybot > backup.sql`
+2. **Copy app data** - Transfer `./data/app/` (global-docs, threads)
+3. **Rebuild the Docker image** - `docker compose build app`
+4. **Start the containers** - `docker compose --profile postgres --profile qdrant up -d`
+5. **Restore PostgreSQL** - `docker exec -i policy-bot-postgres psql -U policybot policybot < backup.sql`
 
-The migration system will automatically:
-- **On existing database**: Add any missing columns via `ALTER TABLE` migrations
-- **On new database**: Create full schema from scratch
+The Kysely migration system will automatically apply any missing schema changes on startup.
 
 #### Verifying Migrations Ran
 
@@ -2536,66 +2527,24 @@ Check Docker logs for migration messages:
 docker compose logs app | grep -i migration
 ```
 
-Expected output:
-```
-[DB] Initializing database schema and migrations...
-[DB Migration] Starting migrations...
-[DB Migration] Added selected_model column to threads
-[DB Migration] Migrations completed successfully
-```
-
 #### Manual Database Fixes (Emergency)
 
-If migrations fail to run (e.g., schema.sql not found in standalone build), apply schema changes manually from the **host machine**.
-
-**Important:** The Docker container doesn't include `sqlite3`. Use the host machine instead.
-
-**Step-by-step procedure:**
+Connect to PostgreSQL directly:
 
 ```bash
-# 1. Stop the app container (releases database lock)
-docker compose stop app
+docker exec -it policy-bot-postgres psql -U policybot policybot
 
-# 2. Run the migration from host (requires sqlite3 installed)
-#    Use sudo because the file is owned by container user (1001:1001)
-sudo sqlite3 ./data/app/policybot.db "ALTER TABLE threads ADD COLUMN selected_model TEXT; CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model);"
-
-# 3. Start the app container
-docker compose start app
-
-# 4. Verify the fix worked
-docker logs policy-bot-app 2>&1 | head -20
+# Example: Add missing column
+ALTER TABLE threads ADD COLUMN IF NOT EXISTS selected_model TEXT;
 ```
-
-**If sqlite3 isn't installed on the host:**
-
-```bash
-sudo apt-get update && sudo apt-get install -y sqlite3
-```
-
-**To verify the column was added:**
-
-```bash
-sqlite3 ./data/app/policybot.db ".schema threads"
-```
-
-**Common manual migrations:**
-
-| Column | Table | Command |
-|--------|-------|---------|
-| `selected_model` | threads | `ALTER TABLE threads ADD COLUMN selected_model TEXT` |
-| `is_pinned` | threads | `ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0` |
-| `is_summarized` | threads | `ALTER TABLE threads ADD COLUMN is_summarized INTEGER DEFAULT 0` |
-| `total_tokens` | threads | `ALTER TABLE threads ADD COLUMN total_tokens INTEGER DEFAULT 0` |
 
 #### Rollback Strategy
 
 Migrations are additive (nullable columns, new tables). To rollback:
 
 ```sql
--- Remove column (SQLite doesn't support DROP COLUMN directly)
 -- Option 1: Leave column in place (safe, no data loss)
--- Option 2: Recreate table without column (requires data migration)
+-- Option 2: DROP COLUMN (PostgreSQL supports this natively)
 
 -- For new tables, simply DROP:
 DROP TABLE IF EXISTS table_name;

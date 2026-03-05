@@ -1,8 +1,9 @@
 # SQLite to Postgres Migration — Issue Tracker (Postgres-Only Strategy)
 
+> **Status:** ✅ **COMPLETED** — Migration executed 2026-03-03. This file is kept as historical reference.
 > **Last audited:** 2026-03-03
 > **Strategy:** Drop SQLite entirely. Postgres via Kysely is the only database.
-> **Architecture:** `src/lib/db/compat/` becomes Kysely-only (no dual-path branching)
+> **Architecture:** `src/lib/db/compat/` is Kysely-only (no dual-path branching). Pure utilities in `src/lib/db/utils.ts`.
 
 ---
 

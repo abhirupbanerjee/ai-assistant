@@ -119,8 +119,8 @@ interface StreamChatRequest {
 - **[src/lib/agent/streaming-executor.ts](src/lib/agent/streaming-executor.ts)** - Streaming integration
 
 #### Database Operations
-- **[src/lib/db/task-plans.ts](src/lib/db/task-plans.ts)** - Extended with autonomous mode functions
-- **[src/lib/db/index.ts](src/lib/db/index.ts)** - Automatic migrations on startup
+- **[src/lib/db/compat/task-plans.ts](src/lib/db/compat/task-plans.ts)** - Async task plan CRUD via Kysely
+- **[src/lib/db/kysely.ts](src/lib/db/kysely.ts)** - PostgreSQL connection pool + automatic migrations on startup
 
 #### Types
 - **[src/types/agent.ts](src/types/agent.ts)** - All agent-related types
@@ -419,7 +419,7 @@ The Admin panel (`/admin` → Settings → Autonomous Agent) provides configurat
 
 ### Default Model Configuration
 
-The default models used at runtime are defined in [src/lib/db/agent-config.ts](src/lib/db/agent-config.ts):
+The default models used at runtime are defined in [src/lib/db/compat/agent-config.ts](src/lib/db/compat/agent-config.ts):
 
 | Agent Role | Provider | Model | Temperature |
 |------------|----------|-------|-------------|
@@ -449,7 +449,7 @@ Each agent role has a configured maximum token limit for LLM responses:
 | Checker | 2048 | Quality validation (small outputs) |
 | Summarizer | 4096 | Final plan summaries |
 
-These limits are defined in `src/lib/db/agent-config.ts` and can be customized via database settings.
+These limits are defined in `src/lib/db/compat/agent-config.ts` and can be customized via database settings.
 
 ### Budget Configuration
 

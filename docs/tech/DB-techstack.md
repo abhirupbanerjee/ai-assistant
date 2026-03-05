@@ -1,12 +1,10 @@
-# Database Architecture: SQLite vs PostgreSQL Usage
+# Database Architecture: PostgreSQL via Kysely
 
 ## Overview
 
-The application supports **dual database backends** controlled by `DATABASE_PROVIDER` environment variable:
-- **SQLite** (default): `better-sqlite3` - Synchronous, file-based, ideal for development/small deployments
-- **PostgreSQL**: `pg` + Kysely ORM - Async, connection-pooled, ideal for production/scale
+The application uses **PostgreSQL** as its sole database backend, accessed via the **Kysely ORM** for type-safe async queries.
 
-**Key Insight**: Both backends support **identical operations** - the difference is in the access pattern (sync vs async), not capabilities.
+> **Note:** SQLite support was removed in March 2026. All database access is now async via Kysely.
 
 ---
 
@@ -14,9 +12,10 @@ The application supports **dual database backends** controlled by `DATABASE_PROV
 
 | Layer | File | Purpose | Used By |
 |-------|------|---------|---------|
-| **Sync SQLite** | `src/lib/db/index.ts` | Direct `better-sqlite3` access | Legacy code, startup |
-| **Async Kysely** | `src/lib/db/kysely.ts` | ORM for both SQLite & PostgreSQL | New async code |
-| **Compat Layer** | `src/lib/db/compat/*.ts` | Unified async API | All API routes |
+| **Kysely ORM** | `src/lib/db/kysely.ts` | PostgreSQL connection pool + migrations | All database code |
+| **Compat Layer** | `src/lib/db/compat/*.ts` | Unified async API (31 modules) | All API routes |
+| **Pure Utilities** | `src/lib/db/utils.ts` | Constants, validators, slug generators (no DB access) | Compat modules |
+| **Type Definitions** | `src/lib/db/db-types.ts` | Kysely TypeScript types for all tables | Compat modules |
 
 ---
 
@@ -24,165 +23,164 @@ The application supports **dual database backends** controlled by `DATABASE_PROV
 
 ### User & Authentication
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Get all users | `users` | Sync | Async | `compat/users.ts` |
-| Create user | `users` | Sync | Async | `compat/users.ts` |
-| Update user role | `users` | Sync | Async | `compat/users.ts` |
-| Delete user | `users` | Sync | Async | `compat/users.ts` |
-| Assign superuser categories | `super_user_categories` | Sync | Async | `users.ts` |
-| User subscriptions | `user_subscriptions` | Sync | Async | `users.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Get all users | `users` | `compat/users.ts` |
+| Create user | `users` | `compat/users.ts` |
+| Update user role | `users` | `compat/users.ts` |
+| Delete user | `users` | `compat/users.ts` |
+| Assign superuser categories | `super_user_categories` | `compat/users.ts` |
+| User subscriptions | `user_subscriptions` | `compat/users.ts` |
 
 ### Categories & Organization
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create category | `categories` | Sync | Async | `compat/categories.ts` |
-| List categories | `categories` | Sync | Async | `compat/categories.ts` |
-| Update category | `categories` | Sync | Async | `compat/categories.ts` |
-| Delete category | `categories` | Sync | Async | `compat/categories.ts` |
-| Category prompts | `category_prompts` | Sync | Async | `category-prompts.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create category | `categories` | `compat/categories.ts` |
+| List categories | `categories` | `compat/categories.ts` |
+| Update category | `categories` | `compat/categories.ts` |
+| Delete category | `categories` | `compat/categories.ts` |
+| Category prompts | `category_prompts` | `compat/category-prompts.ts` |
 
 ### Document Management (RAG)
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Upload document | `documents`, `document_categories` | Sync | Async | `compat/documents.ts` |
-| List documents | `documents` | Sync | Async | `compat/documents.ts` |
-| Update document status | `documents` | Sync | Async | `compat/documents.ts` |
-| Delete document | `documents`, `document_categories` | Sync | Async | `compat/documents.ts` |
-| Folder sync tracking | `folder_syncs`, `folder_sync_files` | Sync | Async | `folder-syncs.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Upload document | `documents`, `document_categories` | `compat/documents.ts` |
+| List documents | `documents` | `compat/documents.ts` |
+| Update document status | `documents` | `compat/documents.ts` |
+| Delete document | `documents`, `document_categories` | `compat/documents.ts` |
+| Folder sync tracking | `folder_syncs`, `folder_sync_files` | `compat/folder-syncs.ts` |
 
 ### Conversation/Chat
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create thread | `threads`, `thread_categories` | Sync | Async | `compat/threads.ts` |
-| Get thread context | `threads`, `messages` | Sync | Async | `compat/threads.ts` |
-| Add message | `messages` | Sync | Async | `compat/threads.ts` |
-| Update message | `messages` | Sync | Async | `compat/threads.ts` |
-| Delete thread | `threads`, `messages` | Sync | Async | `compat/threads.ts` |
-| Thread uploads | `thread_uploads` | Sync | Async | `threads.ts` |
-| Thread outputs (images, PDFs, audio) | `thread_outputs` | Sync | Async | `compat/threads.ts` |
-| Thread summarization | `thread_summaries`, `archived_messages` | Sync | Async | `threads.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create thread | `threads`, `thread_categories` | `compat/threads.ts` |
+| Get thread context | `threads`, `messages` | `compat/threads.ts` |
+| Add message | `messages` | `compat/threads.ts` |
+| Update message | `messages` | `compat/threads.ts` |
+| Delete thread | `threads`, `messages` | `compat/threads.ts` |
+| Thread uploads | `thread_uploads` | `compat/threads.ts` |
+| Thread outputs | `thread_outputs` | `compat/threads.ts` |
+| Thread summarization | `thread_summaries`, `archived_messages` | `compat/summarization.ts` |
 
 ### User Memory System
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Store user memory | `user_memories` | Sync | Async | `user-memories.ts` |
-| Get user memories | `user_memories` | Sync | Async | `user-memories.ts` |
-| Delete memory | `user_memories` | Sync | Async | `user-memories.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Store user memory | `user_memories` | `compat/memory.ts` |
+| Get user memories | `user_memories` | `compat/memory.ts` |
+| Delete memory | `user_memories` | `compat/memory.ts` |
 
 ### Settings & Configuration
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Get setting | `settings` | Sync | Async | `compat/config.ts` |
-| Set setting | `settings` | Sync | Async | `compat/config.ts` |
-| RAG settings | `settings` | Sync | Async | `config.ts` |
-| LLM settings | `settings` | Sync | Async | `config.ts` |
-| System prompt | `settings` | Sync | Async | `config.ts` |
-| Upload limits | `settings` | Sync | Async | `config.ts` |
-| Memory/summarization settings | `settings` | Sync | Async | `config.ts` |
-| Agent budget settings | `settings` | Sync | Async | `config.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Get setting | `settings` | `compat/config.ts` |
+| Set setting | `settings` | `compat/config.ts` |
+| RAG settings | `settings` | `compat/config.ts` |
+| LLM settings | `settings` | `compat/config.ts` |
+| System prompt | `settings` | `compat/config.ts` |
+| Upload limits | `settings` | `compat/config.ts` |
+| Memory/summarization settings | `settings` | `compat/config.ts` |
+| Agent budget settings | `settings` | `compat/config.ts` |
 
 ### LLM Provider Management
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| List providers | `llm_providers` | Sync | Async | `llm-providers.ts` |
-| Add/update provider | `llm_providers` | Sync | Async | `llm-providers.ts` |
-| List enabled models | `enabled_models` | Sync | Async | `enabled-models.ts` |
-| Enable/disable model | `enabled_models` | Sync | Async | `enabled-models.ts` |
-| Set default model | `enabled_models` | Sync | Async | `enabled-models.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| List providers | `llm_providers` | `compat/llm-providers.ts` |
+| Add/update provider | `llm_providers` | `compat/llm-providers.ts` |
+| List enabled models | `enabled_models` | `compat/enabled-models.ts` |
+| Enable/disable model | `enabled_models` | `compat/enabled-models.ts` |
+| Set default model | `enabled_models` | `compat/enabled-models.ts` |
 
 ### Tool System
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Get tool config | `tool_configs` | Sync | Async | `tool-config.ts` |
-| Update tool config | `tool_configs`, `tool_config_audit` | Sync | Async | `tool-config.ts` |
-| Category tool overrides | `category_tool_configs` | Sync | Async | `category-tool-config.ts` |
-| Tool routing rules | `tool_routing_rules` | Sync | Async | `tool-routing.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Get tool config | `tool_configs` | `compat/tool-config.ts` |
+| Update tool config | `tool_configs`, `tool_config_audit` | `compat/tool-config.ts` |
+| Category tool overrides | `category_tool_configs` | `compat/category-tool-config.ts` |
+| Tool routing rules | `tool_routing_rules` | `compat/tool-routing.ts` |
 
 ### Skills System
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create skill | `skills` | Sync | Async | `skills.ts` |
-| List skills | `skills`, `category_skills` | Sync | Async | `skills.ts` |
-| Update skill | `skills` | Sync | Async | `skills.ts` |
-| Delete skill | `skills`, `category_skills` | Sync | Async | `skills.ts` |
-| Assign skill to category | `category_skills` | Sync | Async | `skills.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create skill | `skills` | `compat/skills.ts` |
+| List skills | `skills`, `category_skills` | `compat/skills.ts` |
+| Update skill | `skills` | `compat/skills.ts` |
+| Delete skill | `skills`, `category_skills` | `compat/skills.ts` |
+| Assign skill to category | `category_skills` | `compat/skills.ts` |
 
 ### Data Sources
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create API config | `data_api_configs`, `data_api_categories` | Sync | Async | `data-sources.ts` |
-| Create CSV config | `data_csv_configs`, `data_csv_categories` | Sync | Async | `data-sources.ts` |
-| List data sources | `data_api_configs`, `data_csv_configs` | Sync | Async | `data-sources.ts` |
-| Update data source | `data_*_configs` | Sync | Async | `data-sources.ts` |
-| Data source audit | `data_source_audit` | Sync | Async | `data-sources.ts` |
-| Function API configs | `function_api_configs`, `function_api_categories` | Sync | Async | `function-api-config.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create API config | `data_api_configs`, `data_api_categories` | `compat/data-sources.ts` |
+| Create CSV config | `data_csv_configs`, `data_csv_categories` | `compat/data-sources.ts` |
+| List data sources | `data_api_configs`, `data_csv_configs` | `compat/data-sources.ts` |
+| Update data source | `data_*_configs` | `compat/data-sources.ts` |
+| Data source audit | `data_source_audit` | `compat/data-sources.ts` |
+| Function API configs | `function_api_configs`, `function_api_categories` | `compat/function-api-config.ts` |
 
 ### Task Planning (Autonomous Agent)
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create task plan | `task_plans` | Sync | Async | `task-plans.ts` |
-| Update task progress | `task_plans` | Sync | Async | `task-plans.ts` |
-| Get active plan | `task_plans` | Sync | Async | `task-plans.ts` |
-| Track budget usage | `task_plans` | Sync | Async | `task-plans.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create task plan | `task_plans` | `compat/task-plans.ts` |
+| Update task progress | `task_plans` | `compat/task-plans.ts` |
+| Get active plan | `task_plans` | `compat/task-plans.ts` |
+| Track budget usage | `task_plans` | `compat/task-plans.ts` |
 
 ### Thread Sharing
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create share token | `thread_shares` | Sync | Async | `compat/sharing.ts` |
-| Validate share token | `thread_shares` | Sync | Async | `compat/sharing.ts` |
-| Log share access | `share_access_log` | Sync | Async | `sharing.ts` |
-| Revoke share | `thread_shares` | Sync | Async | `sharing.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create share token | `thread_shares` | `compat/sharing.ts` |
+| Validate share token | `thread_shares` | `compat/sharing.ts` |
+| Log share access | `share_access_log` | `compat/sharing.ts` |
+| Revoke share | `thread_shares` | `compat/sharing.ts` |
 
 ### Compliance System
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Store compliance result | `compliance_results` | Sync | Async | `compat/compliance.ts` |
-| Get compliance history | `compliance_results` | Sync | Async | `compliance.ts` |
-| HITL response | `compliance_results` | Sync | Async | `compliance.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Store compliance result | `compliance_results` | `compat/compliance.ts` |
+| Get compliance history | `compliance_results` | `compat/compliance.ts` |
+| HITL response | `compliance_results` | `compat/compliance.ts` |
 
 ### RAG Testing & Tuning
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Save test query | `rag_test_queries` | Sync | Async | `rag-testing.ts` |
-| Run test & save result | `rag_test_results` | Sync | Async | `rag-testing.ts` |
-| Get test history | `rag_test_results` | Sync | Async | `rag-testing.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Save test query | `rag_test_queries` | `compat/rag-testing.ts` |
+| Run test & save result | `rag_test_results` | `compat/rag-testing.ts` |
+| Get test history | `rag_test_results` | `compat/rag-testing.ts` |
 
 ### Workspace System (Embed & Standalone)
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Create workspace | `workspaces`, `workspace_categories` | Sync | Async | `workspaces.ts` |
-| List workspaces | `workspaces` | Sync | Async | `workspaces.ts` |
-| Update workspace | `workspaces` | Sync | Async | `workspaces.ts` |
-| Workspace users | `workspace_users` | Sync | Async | `workspace-users.ts` |
-| Create session | `workspace_sessions` | Sync | Async | `workspace-sessions.ts` |
-| Workspace threads | `workspace_threads` | Sync | Async | `workspace-threads.ts` |
-| Workspace messages | `workspace_messages` | Sync | Async | `workspace-messages.ts` |
-| Workspace outputs | `workspace_outputs` | Sync | Async | `workspaces.ts` |
-| Rate limiting | `workspace_rate_limits` | Sync | Async | `workspaces.ts` |
-| Analytics rollup | `workspace_analytics` | Sync | Async | `workspace-sessions.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create workspace | `workspaces`, `workspace_categories` | `compat/workspaces.ts` |
+| List workspaces | `workspaces` | `compat/workspaces.ts` |
+| Update workspace | `workspaces` | `compat/workspaces.ts` |
+| Workspace users | `workspace_users` | `compat/workspace-users.ts` |
+| Create session | `workspace_sessions` | `compat/workspace-sessions.ts` |
+| Workspace threads | `workspace_threads` | `compat/workspace-threads.ts` |
+| Workspace messages | `workspace_messages` | `compat/workspace-messages.ts` |
+| Workspace outputs | `workspace_outputs` | `compat/workspaces.ts` |
+| Rate limiting | `workspace_rate_limits` | `compat/workspaces.ts` |
+| Analytics rollup | `workspace_analytics` | `compat/workspace-sessions.ts` |
 
 ### Backup & Migration
 
-| Operation | Table(s) | SQLite | PostgreSQL | Access Module |
-|-----------|----------|--------|------------|---------------|
-| Export all data | All 45+ tables | Supported | Supported | `backup-async.ts` |
-| Import all data | All 45+ tables | Supported | Supported | `backup-async.ts` |
-| Cross-provider migration | All tables | SQLite to PostgreSQL | PostgreSQL to SQLite | `backup-async.ts` |
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Export all data | All 45+ tables | `compat/backup-async.ts` |
+| Import all data | All 45+ tables | `compat/backup-async.ts` |
 
 ---
 
@@ -244,35 +242,29 @@ The application supports **dual database backends** controlled by `DATABASE_PROV
 
 ## Key Architectural Decisions
 
-### 1. Schema Parity
-Both SQLite and PostgreSQL use **identical schemas** (with minor syntax differences):
-- SQLite: `INTEGER PRIMARY KEY AUTOINCREMENT`
-- PostgreSQL: `SERIAL PRIMARY KEY`
-
-### 2. Compatibility Layer Pattern
+### 1. Compat Layer Pattern
 ```typescript
-// src/lib/db/compat/users.ts
+// src/lib/db/compat/users.ts — all modules follow this pattern
 export async function getAllUsers(): Promise<DbUser[]> {
-  if (getDatabaseProvider() === 'sqlite') {
-    return sync.getAllUsers();  // Wraps sync in Promise
-  }
-  // PostgreSQL uses Kysely async
   const db = await getDb();
   return db.selectFrom('users').selectAll().execute();
 }
 ```
 
+### 2. Pure Utility Extraction
+Pure functions (validators, slug generators, constants) live in `src/lib/db/utils.ts` — imported by compat modules without triggering any DB connection.
+
 ### 3. Connection Handling
-| Aspect | SQLite | PostgreSQL |
-|--------|--------|------------|
-| Connection Type | Single file handle | Pool (max 10) |
-| Concurrency | WAL mode | Native |
-| Timeout | N/A | 30s idle |
-| Transaction | Immediate | Serializable |
+
+| Aspect | PostgreSQL |
+|--------|------------|
+| Connection Type | Pool (max 20, configurable) |
+| Concurrency | Native |
+| Idle Timeout | 30s (configurable) |
+| Connection Timeout | 10s (configurable) |
 
 ### 4. Migration Strategy
-- **SQLite**: `ALTER TABLE` in `index.ts` startup
-- **PostgreSQL**: Idempotent DDL in `runPostgresMigrations()`
+Kysely runs idempotent DDL migrations in `runPostgresMigrations()` on startup.
 
 ---
 
@@ -286,65 +278,29 @@ export async function getAllUsers(): Promise<DbUser[]> {
 | Simple tool (chart/web search) | 30 seconds | Single tool invocation |
 | Complex tool (PPT with images) | 200 seconds | Multi-step generation with external calls |
 
-### Pool Capacity Analysis (Default: 10 connections)
+### Pool Capacity Analysis (Default: 20 connections)
 
 #### Scenario 1: All Simple Text Queries (10s each)
 
 ```
-Pool capacity: 10 connections
+Pool capacity: 20 connections
 Query duration: 10 seconds
 Queries per connection per minute: 60s / 10s = 6
-Total queries per minute: 10 × 6 = 60 queries/min
-
-Concurrent users supported: 60 queries/min means 60 users can each
-make 1 query per minute, or 30 users can make 2 queries per minute.
+Total queries per minute: 20 × 6 = 120 queries/min
 ```
 
-**Result**: 10 connections can handle ~30-60 concurrent light users comfortably.
+**Result**: 20 connections can handle ~60-120 concurrent light users comfortably.
 
 #### Scenario 2: Mixed Simple Tools (30s each)
 
 ```
-Pool capacity: 10 connections
+Pool capacity: 20 connections
 Query duration: 30 seconds
 Queries per connection per minute: 60s / 30s = 2
-Total queries per minute: 10 × 2 = 20 queries/min
+Total queries per minute: 20 × 2 = 40 queries/min
 ```
 
-**Result**: 10 connections can handle ~20 tool-using queries per minute.
-
-#### Scenario 3: Complex Tools (200s each)
-
-```
-Pool capacity: 10 connections
-Query duration: 200 seconds (~3.3 minutes)
-Queries per connection per minute: 60s / 200s = 0.3
-Total queries per minute: 10 × 0.3 = 3 queries/min
-```
-
-**Result**: Only 3 complex operations can run simultaneously. The 4th user must wait.
-
-### Real-World Mixed Load Example
-
-Assume typical usage pattern:
-- 60% simple text (10s)
-- 30% simple tools (30s)
-- 10% complex tools (200s)
-
-With 10 connections and 50 queries arriving per minute:
-```
-Simple text:  30 queries × 10s = 300 connection-seconds
-Simple tools: 15 queries × 30s = 450 connection-seconds
-Complex:       5 queries × 200s = 1000 connection-seconds
-                                  ─────────────────────────
-Total:                            1750 connection-seconds needed
-
-Available: 10 connections × 60 seconds = 600 connection-seconds
-
-Deficit: 1750 - 600 = 1150 connection-seconds
-```
-
-**This means**: At peak load with complex tools, queries will queue up significantly.
+**Result**: 20 connections can handle ~40 tool-using queries per minute.
 
 ### Recommended Pool Sizes
 
@@ -360,7 +316,7 @@ Deficit: 1750 - 600 = 1150 connection-seconds
 Pool settings are configurable via environment variables in `src/lib/db/kysely.ts`:
 
 ```bash
-# .env - PostgreSQL pool settings (ignored for SQLite)
+# .env - PostgreSQL pool settings
 DATABASE_POOL_MAX=20                      # Max connections (default: 20)
 DATABASE_POOL_IDLE_TIMEOUT=30000          # Idle timeout in ms (default: 30000)
 DATABASE_POOL_CONNECTION_TIMEOUT=10000    # Connection timeout in ms (default: 10000)
@@ -390,13 +346,12 @@ DATABASE_POOL_CONNECTION_TIMEOUT=10000    # Connection timeout in ms (default: 1
 ## Environment Configuration
 
 ```bash
-# SQLite (default)
-DATABASE_PROVIDER=sqlite
-SQLITE_DB_PATH=./data/policybot.db
-
-# PostgreSQL
-DATABASE_PROVIDER=postgres
+# PostgreSQL (required)
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
+# Or individual vars:
+POSTGRES_USER=policybot
+POSTGRES_PASSWORD=your-strong-password
+POSTGRES_DB=policybot
 ```
 
 ---
@@ -405,24 +360,9 @@ DATABASE_URL=postgresql://user:pass@host:5432/dbname
 
 | File | Purpose |
 |------|---------|
-| `src/lib/db/index.ts` | SQLite initialization, sync operations |
-| `src/lib/db/kysely.ts` | Kysely ORM factory for both backends |
-| `src/lib/db/async.ts` | Async query helpers |
-| `src/lib/db/compat/*.ts` | Unified async API layer |
-| `src/lib/db/schema/postgres.sql` | PostgreSQL schema (33KB) |
-| `src/lib/db/db-types.ts` | TypeScript type definitions |
-| `src/lib/db/setup.ts` | Database setup script |
-| `src/lib/db/backup-async.ts` | Cross-provider backup/migration |
-
----
-
-## When to Use Which Backend
-
-| Scenario | Recommended | Reason |
-|----------|-------------|--------|
-| Local development | SQLite | Zero setup, fast |
-| Single-user deployment | SQLite | Simple, sufficient |
-| Multi-user production | PostgreSQL | Concurrent access |
-| Docker/Kubernetes | PostgreSQL | External DB, scaling |
-| High availability | PostgreSQL | Replication support |
-| Backup/migration | Either | `backup-async.ts` works with both |
+| `src/lib/db/kysely.ts` | Kysely ORM factory, PostgreSQL connection pool, migrations |
+| `src/lib/db/compat/*.ts` | Unified async API layer (31 modules) |
+| `src/lib/db/utils.ts` | Pure utility functions (validators, constants, slug generators) |
+| `src/lib/db/db-types.ts` | TypeScript type definitions for all tables |
+| `src/lib/db/schema/postgres.sql` | PostgreSQL schema |
+| `src/lib/db/compat/backup-async.ts` | Backup/restore operations |

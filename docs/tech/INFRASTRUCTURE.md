@@ -12,7 +12,7 @@ Policy Bot supports pluggable database and vector store backends, selected at de
 
 | Component | Options | Selection Method |
 |-----------|---------|-----------------|
-| **Database** | SQLite (default) or PostgreSQL | `DATABASE_PROVIDER` env var + Docker profile |
+| **Database** | PostgreSQL | `--profile postgres` Docker profile |
 | **Vector Store** | ChromaDB or Qdrant | `VECTOR_STORE_PROVIDER` env var + Docker profile |
 
 > **Important:** Always use explicit `--profile` flags — do not rely on `COMPOSE_PROFILES` env var (unreliable across Docker versions).
@@ -43,17 +43,17 @@ Policy Bot supports pluggable database and vector store backends, selected at de
 │         ▼              ▼              ▼              ▼                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
 │  │  DATABASE   │ │VECTOR STORE │ │    REDIS    │ │   LITELLM   │        │
-│  │ SQLite  or  │ │ ChromaDB or │ │  Port 6379  │ │  Port 4000  │        │
-│  │ PostgreSQL  │ │   Qdrant    │ │  (internal) │ │  (internal) │        │
-│  │  Port 5432* │ │ Port 8000*  │ │             │ │             │        │
+│  │ PostgreSQL  │ │ ChromaDB or │ │  Port 6379  │ │  Port 4000  │        │
+│  │  Port 5432  │ │   Qdrant    │ │  (internal) │ │  (internal) │        │
+│  │             │ │ Port 8000*  │ │             │ │             │        │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘        │
 │  * optional containers, via Docker profiles                              │
 │         │              │              │              │                   │
 │         ▼              ▼              ▼              │                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │                   │
-│  │  data/app   │ │ data/chroma │ │ data/redis  │    │                   │
-│  │  (sqlite or │ │ or data/    │ │  (volume)   │    │                   │
-│  │  app files) │ │   qdrant    │ └─────────────┘    │                   │
+│  │data/postgres│ │ data/chroma │ │ data/redis  │    │                   │
+│  │  (volume)   │ │ or data/    │ │  (volume)   │    │                   │
+│  │             │ │   qdrant    │ └─────────────┘    │                   │
 │  └─────────────┘ └─────────────┘                    │                   │
 │         │                                           │                   │
 │         ▼                                           ▼                   │
@@ -74,9 +74,9 @@ Policy Bot supports pluggable database and vector store backends, selected at de
 
 ## Data Storage Architecture
 
-### Primary Database (SQLite or PostgreSQL)
+### Primary Database (PostgreSQL)
 
-Policy Bot stores all structured metadata in the primary database. The provider is selected via `DATABASE_PROVIDER` env var:
+Policy Bot stores all structured metadata in PostgreSQL via the Kysely ORM:
 
 | Data | Table | Notes |
 |------|-------|-------|
@@ -89,15 +89,10 @@ Policy Bot stores all structured metadata in the primary database. The provider 
 | Messages | `messages` | Chat history |
 | Settings | `settings` | System configuration |
 
-**SQLite** (`DATABASE_PROVIDER=sqlite`):
-- File at `data/app/policybot.db`
-- Zero configuration, WAL mode enabled for concurrency
-- Best for: development, small deployments (<50 users)
-
-**PostgreSQL** (`DATABASE_PROVIDER=postgres`):
+**PostgreSQL**:
 - Container: `policy-bot-postgres` (port 5432 internal)
-- Schema auto-initialised on first start via `/docker-entrypoint-initdb.d/`
-- Best for: production, high-concurrency, 50+ users
+- Schema auto-initialised on first start via Kysely migrations
+- Connection pooling (max 20 connections, configurable)
 
 ### Vector Store (ChromaDB or Qdrant)
 
@@ -126,8 +121,7 @@ Global documents are indexed into ALL category collections.
 
 | Path | Purpose |
 |------|---------|
-| `data/app/policybot.db` | SQLite database (if using SQLite) |
-| `data/postgres/` | PostgreSQL data directory (if using PostgreSQL) |
+| `data/postgres/` | PostgreSQL data directory |
 | `data/chroma/` | ChromaDB vector data (if using ChromaDB) |
 | `data/qdrant/` | Qdrant vector data (if using Qdrant) |
 | `data/app/global-docs/` | Admin-uploaded policy PDFs |
@@ -159,10 +153,6 @@ LITELLM_MASTER_KEY=sk-litellm-master-change-this
 # Embeddings (defaults shown)
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
-
-# Database provider: sqlite | postgres (default: sqlite)
-DATABASE_PROVIDER=sqlite
-SQLITE_DB_PATH=./data/policybot.db
 
 # Vector store provider: chromadb | qdrant (default: chromadb)
 VECTOR_STORE_PROVIDER=chromadb
@@ -209,9 +199,7 @@ LITELLM_MASTER_KEY=sk-litellm-master-change-this
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
 
-# Database provider: sqlite | postgres
-# Must match the --profile flag used with docker compose
-DATABASE_PROVIDER=postgres
+# PostgreSQL (always required)
 POSTGRES_USER=policybot
 POSTGRES_PASSWORD=your-strong-password
 POSTGRES_DB=policybot
@@ -272,9 +260,8 @@ Vector Store (choose one):
   --profile chromadb    → ChromaDB   (set VECTOR_STORE_PROVIDER=chromadb)
   --profile qdrant      → Qdrant     (set VECTOR_STORE_PROVIDER=qdrant)
 
-Database (choose one):
-  (no profile)          → SQLite     (set DATABASE_PROVIDER=sqlite)
-  --profile postgres    → PostgreSQL (set DATABASE_PROVIDER=postgres)
+Database:
+  --profile postgres    → PostgreSQL (always required)
 
 Always-on services (no profile needed):
   traefik, app, redis, litellm
@@ -283,12 +270,6 @@ Always-on services (no profile needed):
 ### Startup Command Examples
 
 ```bash
-# SQLite + ChromaDB
-docker compose --profile chromadb up -d
-
-# SQLite + Qdrant
-docker compose --profile qdrant up -d
-
 # PostgreSQL + ChromaDB
 docker compose --profile postgres --profile chromadb up -d
 
@@ -351,7 +332,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Create data directory for SQLite and files
+# Create data directory for files
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
 USER nextjs
@@ -372,21 +353,9 @@ CMD ["node", "server.js"]
 
 Before deploying, choose the right combination of database and vector store for your scale.
 
-### Choosing a Database
+### Database
 
-| Factor | SQLite | PostgreSQL |
-|--------|--------|------------|
-| Users | Up to ~50 | 50+ |
-| Concurrent writes | Limited (WAL mode) | High (connection pooling, max 10) |
-| Setup | Zero config | Auto-init via Docker |
-| Ops overhead | Minimal | Low |
-| Backup method | Admin UI + file copy | Admin UI + pg_dump |
-| HA / replication | No | Yes (external managed DB) |
-| Best for | Dev, pilots, small orgs | Production, growing orgs |
-
-**Use SQLite when:** Small deployment, single server, simplest operations, PoC/staging.
-
-**Use PostgreSQL when:** 50+ concurrent users, high document ingestion volume, existing PostgreSQL infrastructure, or planning for future scaling.
+PostgreSQL is the sole database backend. It provides connection pooling, high concurrency, and supports managed database services for HA/replication.
 
 ### Choosing a Vector Store
 
@@ -405,29 +374,24 @@ Before deploying, choose the right combination of database and vector store for 
 
 ### Recommended Combinations
 
-| Scenario | Database | Vector Store | Command |
-|----------|----------|--------------|---------|
-| Development | SQLite | ChromaDB | `--profile chromadb` |
-| Small org (<50 users) | SQLite | ChromaDB | `--profile chromadb` |
-| Medium org (50–200 users) | PostgreSQL | ChromaDB | `--profile postgres --profile chromadb` |
-| Large org (200+ users) | PostgreSQL | Qdrant | `--profile postgres --profile qdrant` |
-| High-volume RAG | PostgreSQL | Qdrant | `--profile postgres --profile qdrant` |
+| Scenario | Vector Store | Command |
+|----------|--------------|---------|
+| Development / Small org | ChromaDB | `--profile postgres --profile chromadb` |
+| Medium org (50–200 users) | ChromaDB | `--profile postgres --profile chromadb` |
+| Large org (200+ users) | Qdrant | `--profile postgres --profile qdrant` |
+| High-volume RAG | Qdrant | `--profile postgres --profile qdrant` |
 
-### Migration Path (Switching Providers)
+### Migration Path (Switching Vector Store)
 
-Migrating between providers is done via the Admin UI backup/restore flow:
+Migrating vector stores is done via the Admin UI backup/restore flow:
 
 1. Go to **Admin → Backup** → Create full backup on the current system
-2. Update `DATABASE_PROVIDER` / `VECTOR_STORE_PROVIDER` in `.env`
+2. Update `VECTOR_STORE_PROVIDER` in `.env`
 3. Bring up new containers with updated profiles
 4. Go to **Admin → Restore** → Upload backup and restore
-5. Re-index documents if switching vector stores (use the re-embed option in restore)
+5. Re-index documents (use the re-embed option in restore)
 
 ### Scalability Signals
-
-**When to move from SQLite → PostgreSQL:**
-- Log errors: `SQLITE_BUSY` or lock timeouts during heavy document ingestion
-- Slow admin dashboard queries during peak usage
 
 **When to move from ChromaDB → Qdrant:**
 - Similarity search response time >2 seconds
@@ -554,18 +518,14 @@ cp .env.example .env
 # Edit .env — set required values:
 # - OPENAI_API_KEY
 # - NEXTAUTH_SECRET (generate with: openssl rand -base64 32)
-# - DATABASE_PROVIDER=postgres (or sqlite)
 # - VECTOR_STORE_PROVIDER=qdrant (or chromadb)
-# - POSTGRES_PASSWORD (if using postgres)
+# - POSTGRES_PASSWORD
 # - DOMAIN=your-domain.com
 # - ACME_EMAIL=admin@example.com
 
-# 4. Choose profiles matching your DATABASE_PROVIDER and VECTOR_STORE_PROVIDER
+# 4. Choose profiles (postgres is always required, pick a vector store)
 # Example: PostgreSQL + Qdrant
 docker compose --profile postgres --profile qdrant up -d --build
-
-# Example: SQLite + ChromaDB
-# docker compose --profile chromadb up -d --build
 
 # 5. Check status
 docker compose ps
@@ -615,9 +575,6 @@ docker compose logs -f app
 # All logs
 docker compose logs -f
 
-# Database size (SQLite)
-du -h data/app/policybot.db
-
 # Database size (PostgreSQL)
 docker exec policy-bot-postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
 
@@ -637,10 +594,8 @@ DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p $BACKUP_DIR
 
-# Backup SQLite database
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db '.backup /app/data/backup.db'"
-docker cp policy-bot-app:/app/data/backup.db $BACKUP_DIR/policy-bot-$DATE.db
-docker exec policy-bot-app rm /app/data/backup.db
+# Backup PostgreSQL database
+docker exec policy-bot-postgres pg_dump -U policybot policybot > $BACKUP_DIR/postgres-$DATE.sql
 
 # Backup app data (global-docs, threads)
 docker run --rm \
@@ -684,8 +639,8 @@ fi
 # Stop services
 docker compose down
 
-# Restore SQLite database
-docker cp $BACKUP_DIR/policy-bot-$DATE.db policy-bot-app:/app/data/policy-bot.db
+# Restore PostgreSQL database
+docker exec -i policy-bot-postgres psql -U policybot policybot < $BACKUP_DIR/postgres-$DATE.sql
 
 # Restore app data (includes global-docs and threads)
 docker run --rm \
@@ -713,21 +668,7 @@ echo "Restore completed from: $DATE"
 
 ### Database Maintenance
 
-#### SQLite (`DATABASE_PROVIDER=sqlite`)
-
-```bash
-# Vacuum database (reclaim space — run monthly)
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'VACUUM;'"
-
-# Check integrity
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'PRAGMA integrity_check;'"
-
-# Count records
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'SELECT COUNT(*) FROM users;'"
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'SELECT COUNT(*) FROM documents;'"
-```
-
-#### PostgreSQL (`DATABASE_PROVIDER=postgres`)
+#### PostgreSQL
 
 ```bash
 # Check connection and record counts
@@ -945,7 +886,7 @@ Policy Bot's PWA implementation has intentional limitations:
 | LiteLLM | `http://litellm:4000/health/liveliness` | 200 OK | Always |
 | ChromaDB | `http://chroma:8000/api/v1/heartbeat` | 200 OK | `--profile chromadb` |
 | Qdrant | `http://qdrant:6333/readyz` | 200 OK | `--profile qdrant` |
-| PostgreSQL | `pg_isready -U policybot` | accepting | `--profile postgres` |
+| PostgreSQL | `pg_isready -U policybot` | accepting | `--profile postgres` (always) |
 
 > **Tip:** Use Admin → Dashboard → Infrastructure to check provider status via the UI.
 
@@ -990,19 +931,12 @@ fi
 #   echo "✗ Qdrant: unhealthy"
 # fi
 
-# PostgreSQL (uncomment if DATABASE_PROVIDER=postgres)
-# if docker exec policy-bot-postgres pg_isready -U policybot | grep -q "accepting"; then
-#   echo "✓ PostgreSQL: healthy"
-# else
-#   echo "✗ PostgreSQL: unhealthy"
-# fi
-
-# SQLite (uncomment if DATABASE_PROVIDER=sqlite)
-# if docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'SELECT 1;'" | grep -q 1; then
-#   echo "✓ SQLite: healthy"
-# else
-#   echo "✗ SQLite: unhealthy"
-# fi
+# PostgreSQL (always active)
+if docker exec policy-bot-postgres pg_isready -U policybot | grep -q "accepting"; then
+  echo "✓ PostgreSQL: healthy"
+else
+  echo "✗ PostgreSQL: unhealthy"
+fi
 ```
 
 ---
@@ -1048,7 +982,7 @@ fi
 - [ ] Rotate secrets quarterly
 - [ ] Review user allowlist regularly
 - [ ] Monitor database storage size (`du -sh data/app/` or PostgreSQL `pg_database_size`)
-- [ ] SQLite: run VACUUM monthly; PostgreSQL: auto-vacuumed (no action needed)
+- [ ] PostgreSQL: auto-vacuumed (no manual action needed)
 - [ ] Monitor vector store data size (`du -sh data/chroma/` or `data/qdrant/`)
 
 ---
@@ -1125,18 +1059,6 @@ docker compose logs redis
 docker exec policy-bot-redis redis-cli ping
 ```
 
-#### SQLite Database Issues
-
-```bash
-# Check database file exists
-docker exec policy-bot-app ls -la /app/data/policybot.db
-
-# Check integrity
-docker exec policy-bot-app sh -c "sqlite3 /app/data/policybot.db 'PRAGMA integrity_check;'"
-
-# If corrupted, restore from Admin UI backup or file backup
-```
-
 #### Out of Memory
 
 ```bash
@@ -1175,7 +1097,6 @@ sudo swapon /swapfile
 
 | Component | Typical Size | Notes |
 |-----------|--------------|-------|
-| SQLite database | 10–100 MB | `data/app/policybot.db` |
 | PostgreSQL data | 50–500 MB | `data/postgres/` |
 | Global documents | 100 MB – 1 GB | `data/app/global-docs/` |
 | ChromaDB vectors | 50–500 MB | `data/chroma/` |

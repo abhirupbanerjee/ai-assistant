@@ -46,9 +46,10 @@ export default function LoadTestConfig({
   const runTest = async () => {
     if (!testUrl) return;
 
-    setTestStatus({ state: 'running', message: 'Starting load test... This may take several minutes.' });
+    setTestStatus({ state: 'running', message: 'Starting load test...' });
 
     try {
+      // POST starts the test async and returns a testId immediately
       const response = await fetch('/api/admin/tools/loadtest/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,20 +65,52 @@ export default function LoadTestConfig({
       if (!response.ok || !data.success) {
         setTestStatus({
           state: 'error',
-          message: data.error || 'Test failed',
+          message: data.error || 'Failed to start test',
         });
         return;
       }
 
-      setTestStatus({
-        state: 'complete',
-        message: 'Test completed successfully',
-        result: data.result,
-      });
+      // Poll for results every 10 seconds
+      const testId = data.testId as string;
+      setTestStatus({ state: 'running', message: 'Load test running on k6 Cloud... This may take several minutes.' });
+
+      const poll = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/admin/tools/loadtest/run?testId=${testId}`);
+          const statusData = await statusRes.json();
+
+          if (statusData.status === 'complete') {
+            clearInterval(poll);
+            setTestStatus({
+              state: 'complete',
+              message: 'Test completed successfully',
+              result: statusData.result,
+            });
+          } else if (statusData.status === 'error') {
+            clearInterval(poll);
+            setTestStatus({
+              state: 'error',
+              message: statusData.error || statusData.message || 'Test failed',
+            });
+          }
+        } catch {
+          // Network blip during poll — keep trying
+        }
+      }, 10000);
+
+      // Safety: stop polling after 15 minutes
+      setTimeout(() => {
+        clearInterval(poll);
+        setTestStatus(prev =>
+          prev.state === 'running'
+            ? { state: 'error', message: 'Polling timed out. Check test results manually.' }
+            : prev
+        );
+      }, 900000);
     } catch (err) {
       setTestStatus({
         state: 'error',
-        message: err instanceof Error ? err.message : 'Failed to run test',
+        message: err instanceof Error ? err.message : 'Failed to start test',
       });
     }
   };

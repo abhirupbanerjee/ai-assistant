@@ -15,7 +15,7 @@ Policy Bot solves this by providing:
 | **Data Sovereignty** | All data remains on your infrastructure—databases, vector stores, and files never leave your control |
 | **Open Source** | Polyform NonCommercial licensed, fully auditable code with no proprietary dependencies |
 | **Interoperability** | Switch AI providers freely (OpenAI, Anthropic, Mistral, Gemini, DeepSeek, or local Ollama) |
-| **No Lock-In** | Standard PostgreSQL/SQLite databases, portable vector stores, exportable configurations |
+| **No Lock-In** | Standard PostgreSQL database, portable vector stores, exportable configurations |
 | **Zero ML Complexity** | Admin dashboard handles all AI configuration—no data scientists required |
 | **Enterprise Security** | Role-based access, department isolation, audit trails, SSO integration |
 | **Cost Control** | Shared infrastructure reduces per-user costs; budget controls on AI spending |
@@ -41,7 +41,7 @@ Deploy across ministries, departments, and public-facing services:
 Built with enterprise-grade, open-source technologies:
 
 - **Next.js** - Modern React framework with server-side rendering
-- **PostgreSQL/SQLite** - Battle-tested relational databases
+- **PostgreSQL** - Battle-tested relational database via Kysely ORM
 - **ChromaDB/Qdrant** - Open-source vector databases for semantic search
 - **LiteLLM** - Unified gateway to 100+ LLM providers
 - **Redis** - High-performance caching and session management
@@ -153,7 +153,7 @@ policy-bot/
 │   │   ├── workspace/          # Workspace components (embed + standalone)
 │   │   └── ui/                 # Shared UI components
 │   ├── lib/                    # Core libraries
-│   │   ├── db/                 # Database layer — SQLite + PostgreSQL (users, categories, documents, config)
+│   │   ├── db/                 # Database layer — PostgreSQL via Kysely (users, categories, documents, config)
 │   │   ├── tools/              # Tool implementations (web search, charts, data sources)
 │   │   ├── agent/              # Autonomous agent (planner, executor, checker, summarizer)
 │   │   ├── image-gen/          # Image generation (DALL-E, Gemini Imagen)
@@ -181,7 +181,7 @@ policy-bot/
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md # Autonomous mode
 │   ├── tech/                   # Technical architecture
 │   │   ├── SOLUTION.md         # Architecture and design decisions
-│   │   ├── DATABASE.md         # Complete SQLite/PostgreSQL/ChromaDB/Redis schema
+│   │   ├── DATABASE.md         # Complete PostgreSQL/ChromaDB/Redis schema
 │   │   ├── INFRASTRUCTURE.md   # Deployment and operations
 │   │   ├── Bot-Config-architecture.md # Configuration architecture
 │   │   └── UI_WIREFRAMES.md    # Interface designs
@@ -200,14 +200,14 @@ policy-bot/
 ### Development
 ```bash
 cp .env.example .env.local
-# Configure OPENAI_API_KEY, ADMIN_EMAILS, DATABASE_PROVIDER, VECTOR_STORE_PROVIDER
+# Configure OPENAI_API_KEY, ADMIN_EMAILS, DATABASE_URL, VECTOR_STORE_PROVIDER
 
-# SQLite + ChromaDB (default)
+# PostgreSQL + ChromaDB (default)
 docker compose -f docker-compose.dev.yml up -d
 npm install && npm run dev
 
 # Or PostgreSQL + Qdrant
-docker compose -f docker-compose.dev.yml --profile postgres --profile qdrant up -d
+docker compose -f docker-compose.dev.yml --profile qdrant up -d
 npm install && npm run dev
 ```
 
@@ -215,11 +215,11 @@ npm install && npm run dev
 ```bash
 # Configure .env with auth providers and domain
 
-# SQLite + ChromaDB (small teams, ≤25 users)
+# PostgreSQL + ChromaDB (default)
 docker compose --profile chromadb up -d --build
 
-# PostgreSQL + Qdrant (recommended for 25+ users)
-docker compose --profile postgres --profile qdrant up -d --build
+# PostgreSQL + Qdrant (recommended for 100+ users)
+docker compose --profile qdrant up -d --build
 ```
 
 ## Scaling Guide
@@ -228,7 +228,7 @@ Choose your configuration based on concurrent user count:
 
 | Users | Database | Pool | Vector Store | Redis | Instances | Est. Cost |
 |-------|----------|------|--------------|-------|-----------|-----------|
-| **1-25** | SQLite | N/A | ChromaDB | Optional | 1 | $20-50/mo |
+| **1-25** | PostgreSQL | 15 | ChromaDB | Optional | 1 | $20-50/mo |
 | **26-100** | PostgreSQL | 25 | ChromaDB/Qdrant | Yes | 1-2 | $100-200/mo |
 | **100-250** | PostgreSQL | 40 | Qdrant | Dedicated | 2-3 | $300-600/mo |
 | **250-500** | PostgreSQL HA | 50 | Qdrant Cluster | Cluster | 4-5 | $800-1500/mo |
@@ -236,11 +236,10 @@ Choose your configuration based on concurrent user count:
 
 **Key Configuration:**
 ```bash
-# Database pool size (PostgreSQL only)
+# Database pool size
 DATABASE_POOL_MAX=20                      # Default, adjust per tier
 
-# Provider selection
-DATABASE_PROVIDER=postgres                # sqlite | postgres
+# Vector store selection
 VECTOR_STORE_PROVIDER=qdrant              # chromadb | qdrant
 ```
 
@@ -253,8 +252,7 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 | **Traefik** | Reverse proxy + TLS (ports 80, 443) | Default |
 | **Next.js** | Application (port 3000) | Default |
 | **Redis** | Cache + sessions (port 6379) | Default |
-| **SQLite** | Relational database (file-based) | Default |
-| **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
+| **PostgreSQL** | Relational database (port 5432) | Default |
 | **ChromaDB** | Vector database (port 8000) | `--profile chromadb` |
 | **Qdrant** | Vector database (port 6333) | `--profile qdrant` |
 | **LiteLLM** | Multi-provider LLM gateway (port 4000) | `--profile litellm` |
