@@ -294,6 +294,7 @@ export async function pollTestCompletion(
     }
 
     const status = await response.json();
+    console.log(`[LoadTest] Poll ${i + 1}/${maxAttempts}: run_status=${status.run_status}`);
 
     if (status.run_status >= 4) {
       return; // Test completed (finished, timed out, or aborted)
@@ -481,14 +482,19 @@ export async function executeLoadTest(
   testRunning = true;
   try {
     // Generate and execute script
+    console.log('[LoadTest] Generating k6 script:', { url, users: effectiveUsers, duration: effectiveDuration });
     const script = generateK6Script(effectiveUsers, effectiveDuration);
     const { testRunId, outputUrl } = await runK6CloudTest(script, apiToken, url);
+    console.log('[LoadTest] k6 cloud test started:', { testRunId, outputUrl });
 
-    // Fetch metrics
+    // Fetch metrics (polls until test completes, then fetches)
+    console.log('[LoadTest] Fetching metrics for run:', testRunId);
     const metrics = await fetchTestRunMetrics(testRunId, apiToken);
+    console.log('[LoadTest] Metrics received:', JSON.stringify(metrics));
     const passed = metrics.http_req_duration.p95 < 500;
 
     // Store in Postgres
+    console.log('[LoadTest] Storing result in Postgres...');
     const dbResult = await insertLoadTestResult({
       url,
       test_run_id: testRunId,
@@ -517,6 +523,7 @@ export async function executeLoadTest(
       },
     };
     await cacheQuery(cacheKey, JSON.stringify(resultPayload), config.cacheTTLSeconds);
+    console.log('[LoadTest] Complete. Passed:', passed);
 
     return resultPayload;
   } catch (error) {

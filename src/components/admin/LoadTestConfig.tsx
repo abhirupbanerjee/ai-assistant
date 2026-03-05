@@ -77,6 +77,19 @@ export default function LoadTestConfig({
       const poll = setInterval(async () => {
         try {
           const statusRes = await fetch(`/api/admin/tools/loadtest/run?testId=${testId}`);
+
+          // Handle server restart (test tracker lost) or other HTTP errors
+          if (!statusRes.ok) {
+            clearInterval(poll);
+            setTestStatus({
+              state: 'error',
+              message: statusRes.status === 404
+                ? 'Test tracker lost (server may have restarted). Check k6 Cloud dashboard for results.'
+                : `Polling failed (HTTP ${statusRes.status})`,
+            });
+            return;
+          }
+
           const statusData = await statusRes.json();
 
           if (statusData.status === 'complete') {
