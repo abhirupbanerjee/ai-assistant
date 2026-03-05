@@ -408,8 +408,8 @@ export async function fetchTestRunMetrics(
     if (v6Metrics) return v6Metrics;
   }
 
-  // Strategy 2: Try v5 aggregate endpoint (without X-Stack-Id — v5 doesn't use it)
-  const v5Metrics = await tryV5MetricsApi(testRunId, apiToken);
+  // Strategy 2: Try v5 aggregate endpoint (with and without X-Stack-Id)
+  const v5Metrics = await tryV5MetricsApi(testRunId, apiToken, stackId);
   if (v5Metrics) return v5Metrics;
 
   // Strategy 3: Extract from v6 test run response result_details
@@ -459,35 +459,117 @@ async function tryV6MetricsApi(
 }
 
 /**
- * Try the v5 aggregate endpoint (legacy, no X-Stack-Id).
+ * Try the v5 aggregate endpoint with OData function-call syntax.
+ * Makes separate calls per percentile (combined queries are not supported).
+ * Tries both Token and Bearer auth.
  */
 async function tryV5MetricsApi(
   testRunId: string,
-  apiToken: string
+  apiToken: string,
+  stackId?: string
 ): Promise<LoadTestMetrics | null> {
-  try {
-    // Use Token auth without X-Stack-Id for v5
-    const headers = k6ApiHeaders(apiToken, undefined, false);
+  const baseUrl = `${K6_CLOUD_API_V5}/test_runs/${testRunId}`;
 
-    // v5 uses OData function-call syntax (parameters in URL path, not query string)
-    const query = encodeURIComponent("histogram_quantile(0.50),histogram_quantile(0.95),histogram_quantile(0.99),avg");
-    const metric = encodeURIComponent("http_req_duration");
-    const res = await fetch(
-      `${K6_CLOUD_API_V5}/test_runs/${testRunId}/query_aggregate_k6(metric='${metric}',query='${query}')`,
-      { headers }
-    );
+  // Auth header variants to try (Token and Bearer, with/without X-Stack-Id)
+  const headerVariants = [
+    ...(stackId ? [
+      { label: 'Token+stackId', headers: k6ApiHeaders(apiToken, stackId, false) },
+      { label: 'Bearer+stackId', headers: k6ApiHeaders(apiToken, stackId, true) },
+    ] : []),
+    { label: 'Token', headers: k6ApiHeaders(apiToken, undefined, false) },
+    { label: 'Bearer', headers: k6ApiHeaders(apiToken, undefined, true) },
+  ];
 
-    if (res.ok) {
-      const data = await res.json();
-      console.log('[LoadTest] v5 Metrics API response:', JSON.stringify(data).slice(0, 500));
-      return parseMetricsResponse(data);
+  for (const { label, headers } of headerVariants) {
+    try {
+      // Start with simple p95 query to test if this auth works
+      const testUrl = `${baseUrl}/query_aggregate_k6(metric='http_req_duration',query='histogram_quantile(0.95)')`;
+      console.log(`[LoadTest] Trying v5 metrics [${label}]:`, testUrl);
+      const testRes = await fetch(testUrl, { headers });
+
+      if (!testRes.ok) {
+        const body = await testRes.text().catch(() => '');
+        console.log(`[LoadTest] v5 [${label}] returned ${testRes.status}: ${body.slice(0, 200)}`);
+        continue;
+      }
+
+      // This auth variant works — fetch all percentiles
+      console.log(`[LoadTest] v5 [${label}] auth works, fetching all metrics...`);
+
+      const queries = [
+        { key: 'p50', query: "histogram_quantile(0.50)" },
+        { key: 'p95', query: "histogram_quantile(0.95)" },
+        { key: 'p99', query: "histogram_quantile(0.99)" },
+        { key: 'avg', query: "avg" },
+      ];
+
+      const metrics: LoadTestMetrics = {
+        http_req_duration: { p50: 0, p95: 0, p99: 0, avg: 0 },
+        http_req_failed: 0,
+        http_reqs: 0,
+        vus: 0,
+        iterations: 0,
+      };
+
+      // Reuse the p95 response we already have
+      const p95Data = await testRes.json();
+      console.log(`[LoadTest] v5 p95 response:`, JSON.stringify(p95Data).slice(0, 300));
+      metrics.http_req_duration.p95 = extractV5AggregateValue(p95Data);
+
+      // Fetch remaining metrics
+      for (const { key, query } of queries) {
+        if (key === 'p95') continue; // already fetched
+        try {
+          const url = `${baseUrl}/query_aggregate_k6(metric='http_req_duration',query='${query}')`;
+          const res = await fetch(url, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            const value = extractV5AggregateValue(data);
+            if (key === 'p50') metrics.http_req_duration.p50 = value;
+            else if (key === 'p99') metrics.http_req_duration.p99 = value;
+            else if (key === 'avg') metrics.http_req_duration.avg = value;
+          }
+        } catch {
+          // Continue with other metrics
+        }
+      }
+
+      console.log('[LoadTest] v5 metrics result:', JSON.stringify(metrics));
+      if (metrics.http_req_duration.p95 > 0 || metrics.http_req_duration.avg > 0) {
+        return metrics;
+      }
+    } catch (err) {
+      console.log(`[LoadTest] v5 [${label}] error:`, err instanceof Error ? err.message : err);
     }
-
-    console.log(`[LoadTest] v5 Metrics API returned ${res.status}`);
-  } catch (err) {
-    console.log('[LoadTest] v5 Metrics API error:', err instanceof Error ? err.message : err);
   }
   return null;
+}
+
+/**
+ * Extract a single aggregate value from v5 query_aggregate_k6 response.
+ * Response format: { data: { result: [{ values: [[timestamp, value]] }] } }
+ */
+function extractV5AggregateValue(data: Record<string, unknown>): number {
+  try {
+    const dataObj = data.data as Record<string, unknown> | undefined;
+    const results = (dataObj?.result as Array<Record<string, unknown>>) || [];
+    for (const result of results) {
+      // v5 response uses "values" (plural) with [timestamp, value] pairs
+      const values = result.values as Array<[number, number | string]> | undefined;
+      if (values && values.length > 0) {
+        const val = values[0][1];
+        return typeof val === 'number' ? val : parseFloat(String(val)) || 0;
+      }
+      // Also try "value" (singular) format
+      const value = result.value as [number, string] | undefined;
+      if (value) {
+        return parseFloat(value[1]) || 0;
+      }
+    }
+  } catch {
+    // Return 0 on parse failure
+  }
+  return 0;
 }
 
 /**
