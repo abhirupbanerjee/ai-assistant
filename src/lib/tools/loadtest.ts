@@ -469,13 +469,11 @@ async function tryV5MetricsApi(
     // Use Token auth without X-Stack-Id for v5
     const headers = k6ApiHeaders(apiToken, undefined, false);
 
-    const params = new URLSearchParams({
-      metric: 'http_req_duration',
-      query: 'histogram_quantile(0.50),histogram_quantile(0.95),histogram_quantile(0.99),avg',
-    });
-
+    // v5 uses OData function-call syntax (parameters in URL path, not query string)
+    const query = encodeURIComponent("histogram_quantile(0.50),histogram_quantile(0.95),histogram_quantile(0.99),avg");
+    const metric = encodeURIComponent("http_req_duration");
     const res = await fetch(
-      `${K6_CLOUD_API_V5}/test_runs/${testRunId}/query_aggregate_k6?${params.toString()}`,
+      `${K6_CLOUD_API_V5}/test_runs/${testRunId}/query_aggregate_k6(metric='${metric}',query='${query}')`,
       { headers }
     );
 
