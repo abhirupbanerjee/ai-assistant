@@ -351,13 +351,14 @@ function isTestComplete(data: Record<string, unknown>, apiVersion: 'v6' | 'v5'):
 /**
  * Poll k6 Cloud for test completion.
  * Tries v6 API first (if stackId set), falls back to v5.
+ * Returns the final API response data (useful for extracting metrics from v6).
  */
 export async function pollTestCompletion(
   testRunId: string,
   apiToken: string,
   stackId?: string,
   maxAttempts: number = 120
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   for (let i = 0; i < maxAttempts; i++) {
     const { data, apiVersion } = await fetchTestRun(testRunId, apiToken, stackId);
 
@@ -365,7 +366,7 @@ export async function pollTestCompletion(
     if (i === 0) {
       console.log(`[LoadTest] Using ${apiVersion} API (stackId: ${stackId || 'none'})`);
       console.log(`[LoadTest] Poll API response keys:`, Object.keys(data));
-      console.log(`[LoadTest] Poll API response (first 500 chars):`, JSON.stringify(data).slice(0, 500));
+      console.log(`[LoadTest] Poll API full response:`, JSON.stringify(data).slice(0, 2000));
     }
 
     const { done, statusStr } = isTestComplete(data, apiVersion);
@@ -376,7 +377,7 @@ export async function pollTestCompletion(
 
     if (done) {
       console.log(`[LoadTest] Test finished: ${statusStr} after ${i + 1} polls (~${(i + 1) * 10}s)`);
-      return;
+      return data;
     }
 
     // Wait 10 seconds before next poll
@@ -387,44 +388,165 @@ export async function pollTestCompletion(
 }
 
 /**
- * Fetch test run metrics from k6 Cloud API.
- * Uses v5 aggregate endpoint with Token auth + X-Stack-Id.
+ * Fetch test run metrics.
+ * Strategy:
+ * 1. Poll for completion (returns v6 response with result_details)
+ * 2. Try v6 Metrics API for detailed p50/p95/p99
+ * 3. Fallback to v5 aggregate endpoint
+ * 4. Last resort: extract what we can from the v6 test run response
  */
 export async function fetchTestRunMetrics(
   testRunId: string,
   apiToken: string,
   stackId?: string
 ): Promise<LoadTestMetrics> {
-  await pollTestCompletion(testRunId, apiToken, stackId);
+  const testRunData = await pollTestCompletion(testRunId, apiToken, stackId);
 
-  // Metrics aggregate endpoint is v5-only (still supported by Grafana Cloud)
-  const headers = k6ApiHeaders(apiToken, stackId, false); // Token auth
-
-  const params = new URLSearchParams({
-    metric: 'http_req_duration',
-    query: 'histogram_quantile(0.50),histogram_quantile(0.95),histogram_quantile(0.99),avg',
-  });
-
-  const response = await fetch(
-    `${K6_CLOUD_API_V5}/test_runs/${testRunId}/query_aggregate_k6?${params.toString()}`,
-    { headers }
-  );
-
-  if (!response.ok) {
-    console.error(`[LoadTest] Metrics API error: ${response.status}. Response: ${await response.text().catch(() => 'N/A')}`);
-    // Return zeroed metrics — test completion is confirmed, metrics just couldn't be fetched
-    console.log('[LoadTest] Returning default metrics (test completed but metrics API unavailable)');
-    return {
-      http_req_duration: { p50: 0, p95: 0, p99: 0, avg: 0 },
-      http_req_failed: 0,
-      http_reqs: 0,
-      vus: 0,
-      iterations: 0,
-    };
+  // Strategy 1: Try v6 Metrics API
+  if (stackId) {
+    const v6Metrics = await tryV6MetricsApi(testRunId, apiToken, stackId);
+    if (v6Metrics) return v6Metrics;
   }
 
-  const data = await response.json();
-  return parseMetricsResponse(data);
+  // Strategy 2: Try v5 aggregate endpoint (without X-Stack-Id — v5 doesn't use it)
+  const v5Metrics = await tryV5MetricsApi(testRunId, apiToken);
+  if (v5Metrics) return v5Metrics;
+
+  // Strategy 3: Extract from v6 test run response result_details
+  const extracted = extractMetricsFromTestRun(testRunData);
+  if (extracted) return extracted;
+
+  console.log('[LoadTest] All metrics strategies failed, returning zeroed metrics');
+  return {
+    http_req_duration: { p50: 0, p95: 0, p99: 0, avg: 0 },
+    http_req_failed: 0,
+    http_reqs: 0,
+    vus: 0,
+    iterations: 0,
+  };
+}
+
+/**
+ * Try the v6 Metrics REST API for a test run.
+ */
+async function tryV6MetricsApi(
+  testRunId: string,
+  apiToken: string,
+  stackId: string
+): Promise<LoadTestMetrics | null> {
+  try {
+    const headers = k6ApiHeaders(apiToken, stackId, false);
+
+    // v6 metrics endpoint: GET /cloud/v6/test_runs/{id}/metrics/{metric_id}/aggregation
+    // Try fetching http_req_duration summary
+    const res = await fetch(
+      `${K6_CLOUD_API_V6}/test_runs/${testRunId}/metrics/http_req_duration/aggregation`,
+      { headers }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log('[LoadTest] v6 Metrics API response:', JSON.stringify(data).slice(0, 500));
+      // Try to parse v6 metrics format
+      return parseV6MetricsResponse(data);
+    }
+
+    console.log(`[LoadTest] v6 Metrics API returned ${res.status}, trying alternatives...`);
+  } catch (err) {
+    console.log('[LoadTest] v6 Metrics API error:', err instanceof Error ? err.message : err);
+  }
+  return null;
+}
+
+/**
+ * Try the v5 aggregate endpoint (legacy, no X-Stack-Id).
+ */
+async function tryV5MetricsApi(
+  testRunId: string,
+  apiToken: string
+): Promise<LoadTestMetrics | null> {
+  try {
+    // Use Token auth without X-Stack-Id for v5
+    const headers = k6ApiHeaders(apiToken, undefined, false);
+
+    const params = new URLSearchParams({
+      metric: 'http_req_duration',
+      query: 'histogram_quantile(0.50),histogram_quantile(0.95),histogram_quantile(0.99),avg',
+    });
+
+    const res = await fetch(
+      `${K6_CLOUD_API_V5}/test_runs/${testRunId}/query_aggregate_k6?${params.toString()}`,
+      { headers }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log('[LoadTest] v5 Metrics API response:', JSON.stringify(data).slice(0, 500));
+      return parseMetricsResponse(data);
+    }
+
+    console.log(`[LoadTest] v5 Metrics API returned ${res.status}`);
+  } catch (err) {
+    console.log('[LoadTest] v5 Metrics API error:', err instanceof Error ? err.message : err);
+  }
+  return null;
+}
+
+/**
+ * Parse v6 metrics API response format.
+ */
+function parseV6MetricsResponse(data: Record<string, unknown>): LoadTestMetrics | null {
+  try {
+    // v6 format varies — try common structures
+    const values = (data.values || data.data || data.value) as Record<string, unknown> | unknown[] | undefined;
+    if (!values) return null;
+
+    console.log('[LoadTest] v6 metrics values:', JSON.stringify(values).slice(0, 300));
+    // TODO: parse based on actual v6 response structure (logged above for next iteration)
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract metrics from v6 test run response's result_details field.
+ * The v6 GET /test_runs/{id} response includes result and result_details.
+ */
+function extractMetricsFromTestRun(data: Record<string, unknown>): LoadTestMetrics | null {
+  try {
+    // Log what we have for debugging
+    const result = data.result as Record<string, unknown> | undefined;
+    const resultDetails = data.result_details as Record<string, unknown>[] | undefined;
+    console.log('[LoadTest] v6 test run result:', JSON.stringify(result));
+    console.log('[LoadTest] v6 test run result_details:', JSON.stringify(resultDetails)?.slice(0, 1000));
+
+    // result_details may contain threshold results with metric values
+    if (resultDetails && Array.isArray(resultDetails)) {
+      let p95 = 0;
+      for (const detail of resultDetails) {
+        // Look for http_req_duration thresholds
+        const metric = detail.metric as string | undefined;
+        const thresholdValue = detail.calculated_value as number | undefined;
+        if (metric === 'http_req_duration' && typeof thresholdValue === 'number') {
+          p95 = thresholdValue;
+        }
+      }
+      if (p95 > 0) {
+        console.log('[LoadTest] Extracted p95 from result_details:', p95);
+        return {
+          http_req_duration: { p50: 0, p95, p99: 0, avg: 0 },
+          http_req_failed: 0,
+          http_reqs: 0,
+          vus: 0,
+          iterations: 0,
+        };
+      }
+    }
+  } catch (err) {
+    console.log('[LoadTest] extractMetricsFromTestRun error:', err instanceof Error ? err.message : err);
+  }
+  return null;
 }
 
 function parseMetricsResponse(data: Record<string, unknown>): LoadTestMetrics {
