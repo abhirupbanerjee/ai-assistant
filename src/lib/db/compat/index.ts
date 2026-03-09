@@ -42,6 +42,7 @@ export {
   getSuperUserWithAssignments,
   assignCategoryToSuperUser,
   removeCategoryFromSuperUser,
+  replaceSuperUserCategories,
   getSuperUserCategories,
   superUserHasCategory,
   // User Subscriptions

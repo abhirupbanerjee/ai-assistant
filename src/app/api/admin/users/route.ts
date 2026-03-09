@@ -113,8 +113,8 @@ export async function POST(request: NextRequest) {
     const userId = await getUserId(email);
 
     if (userId) {
-      // Add subscriptions for regular users
-      if (role === 'user' && categoryIdsToSubscribe.length > 0) {
+      // Add subscriptions for regular users and super users
+      if ((role === 'user' || role === 'superuser') && categoryIdsToSubscribe.length > 0) {
         for (const catId of categoryIdsToSubscribe) {
           await addSubscription(userId, catId, admin.email);
         }

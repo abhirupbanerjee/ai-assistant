@@ -23,6 +23,19 @@ interface Category {
   slug: string;
 }
 
+type CategoryRole = 'none' | 'user' | 'superuser';
+
+function deriveCategoryArrays(roleMap: Record<number, CategoryRole>) {
+  const subscriptions: number[] = [];
+  const assignedCategories: number[] = [];
+  for (const [catIdStr, role] of Object.entries(roleMap)) {
+    const catId = Number(catIdStr);
+    if (role === 'user') subscriptions.push(catId);
+    else if (role === 'superuser') assignedCategories.push(catId);
+  }
+  return { subscriptions, assignedCategories };
+}
+
 export default function UserManagement() {
   // Users state
   const [users, setUsers] = useState<AllowedUser[]>([]);
@@ -39,6 +52,7 @@ export default function UserManagement() {
   const [newUserRole, setNewUserRole] = useState<'admin' | 'superuser' | 'user'>('user');
   const [newUserSubscriptions, setNewUserSubscriptions] = useState<number[]>([]);
   const [newUserAssignedCategories, setNewUserAssignedCategories] = useState<number[]>([]);
+  const [newUserCategoryRoles, setNewUserCategoryRoles] = useState<Record<number, CategoryRole>>({});
   const [addingUser, setAddingUser] = useState(false);
 
   // Delete user modal state
@@ -53,6 +67,7 @@ export default function UserManagement() {
   const [managingUserSubs, setManagingUserSubs] = useState<AllowedUser | null>(null);
   const [editUserSubscriptions, setEditUserSubscriptions] = useState<number[]>([]);
   const [editUserAssignedCategories, setEditUserAssignedCategories] = useState<number[]>([]);
+  const [editCategoryRoles, setEditCategoryRoles] = useState<Record<number, CategoryRole>>({});
   const [savingUserSubs, setSavingUserSubs] = useState(false);
 
   // Load users
@@ -112,8 +127,14 @@ export default function UserManagement() {
           email: newUserEmail.trim(),
           name: newUserName.trim() || undefined,
           role: newUserRole,
-          subscriptions: newUserRole === 'user' ? newUserSubscriptions : undefined,
-          assignedCategories: newUserRole === 'superuser' ? newUserAssignedCategories : undefined,
+          subscriptions: newUserRole === 'user'
+            ? newUserSubscriptions
+            : newUserRole === 'superuser'
+            ? deriveCategoryArrays(newUserCategoryRoles).subscriptions
+            : undefined,
+          assignedCategories: newUserRole === 'superuser'
+            ? deriveCategoryArrays(newUserCategoryRoles).assignedCategories
+            : undefined,
         }),
       });
 
@@ -129,6 +150,7 @@ export default function UserManagement() {
       setNewUserRole('user');
       setNewUserSubscriptions([]);
       setNewUserAssignedCategories([]);
+      setNewUserCategoryRoles({});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add user');
     } finally {
@@ -195,9 +217,20 @@ export default function UserManagement() {
     if (user.role === 'user') {
       setEditUserSubscriptions(user.subscriptions?.map(s => s.categoryId) || []);
       setEditUserAssignedCategories([]);
+      setEditCategoryRoles({});
     } else if (user.role === 'superuser') {
       setEditUserSubscriptions(user.subscriptions?.map(s => s.categoryId) || []);
       setEditUserAssignedCategories(user.assignedCategories?.map(c => c.categoryId) || []);
+      const roleMap: Record<number, CategoryRole> = {};
+      for (const cat of user.assignedCategories || []) {
+        roleMap[cat.categoryId] = 'superuser';
+      }
+      for (const sub of user.subscriptions || []) {
+        if (!roleMap[sub.categoryId]) {
+          roleMap[sub.categoryId] = 'user';
+        }
+      }
+      setEditCategoryRoles(roleMap);
     }
   };
 
@@ -239,14 +272,44 @@ export default function UserManagement() {
           }
         }
       } else if (managingUserSubs.role === 'superuser') {
+        const { subscriptions, assignedCategories } = deriveCategoryArrays(editCategoryRoles);
+
+        // Bulk update assigned categories
         const response = await fetch(`/api/admin/super-users/${userId}/categories`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ categoryIds: editUserAssignedCategories }),
+          body: JSON.stringify({ categoryIds: assignedCategories }),
         });
         if (!response.ok) {
           const data = await response.json();
-          throw new Error(data.error || 'Failed to update categories');
+          throw new Error(data.error || 'Failed to update assigned categories');
+        }
+
+        // Sync subscriptions
+        const currentSubs = managingUserSubs.subscriptions?.map(s => s.categoryId) || [];
+        const toAddSub = subscriptions.filter(id => !currentSubs.includes(id));
+        const toRemoveSub = currentSubs.filter(id => !subscriptions.includes(id));
+
+        for (const categoryId of toAddSub) {
+          const resp = await fetch(`/api/admin/users/${userId}/subscriptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categoryId }),
+          });
+          if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.error || 'Failed to add subscription');
+          }
+        }
+
+        for (const categoryId of toRemoveSub) {
+          const resp = await fetch(`/api/admin/users/${userId}/subscriptions?categoryId=${categoryId}`, {
+            method: 'DELETE',
+          });
+          if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.error || 'Failed to remove subscription');
+          }
         }
       }
 
@@ -505,24 +568,27 @@ export default function UserManagement() {
             )}
             {newUserRole === 'superuser' && categories.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Categories</label>
-                <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2 space-y-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category Access</label>
+                <p className="text-xs text-gray-500 mb-2">Set access level for each category</p>
+                <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-2 space-y-1">
                   {categories.map(cat => (
-                    <label key={cat.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newUserAssignedCategories.includes(cat.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setNewUserAssignedCategories([...newUserAssignedCategories, cat.id]);
-                          } else {
-                            setNewUserAssignedCategories(newUserAssignedCategories.filter(id => id !== cat.id));
-                          }
-                        }}
-                        className="rounded border-gray-300"
-                      />
+                    <div key={cat.id} className="flex items-center justify-between p-1.5 hover:bg-gray-50 rounded">
                       <span className="text-sm text-gray-700">{cat.name}</span>
-                    </label>
+                      <select
+                        value={newUserCategoryRoles[cat.id] || 'none'}
+                        onChange={(e) => {
+                          setNewUserCategoryRoles(prev => ({
+                            ...prev,
+                            [cat.id]: e.target.value as CategoryRole,
+                          }));
+                        }}
+                        className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="none">None</option>
+                        <option value="user">User (read)</option>
+                        <option value="superuser">Super User (manage)</option>
+                      </select>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -601,40 +667,52 @@ export default function UserManagement() {
       >
         <p className="text-gray-600 mb-4">
           {managingUserSubs?.role === 'superuser'
-            ? `Select categories for ${managingUserSubs?.email} to manage`
+            ? `Set access level per category for ${managingUserSubs?.email}`
             : `Select categories for ${managingUserSubs?.email} to access`}
         </p>
-        <div className="max-h-60 overflow-y-auto border border-gray-300 rounded-lg p-2 space-y-1 mb-6">
-          {categories.map(cat => (
-            <label key={cat.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
-              <input
-                type="checkbox"
-                checked={
-                  managingUserSubs?.role === 'superuser'
-                    ? editUserAssignedCategories.includes(cat.id)
-                    : editUserSubscriptions.includes(cat.id)
-                }
-                onChange={(e) => {
-                  if (managingUserSubs?.role === 'superuser') {
-                    if (e.target.checked) {
-                      setEditUserAssignedCategories([...editUserAssignedCategories, cat.id]);
-                    } else {
-                      setEditUserAssignedCategories(editUserAssignedCategories.filter(id => id !== cat.id));
-                    }
-                  } else {
+        {managingUserSubs?.role === 'superuser' ? (
+          <div className="max-h-60 overflow-y-auto border border-gray-300 rounded-lg p-2 space-y-1 mb-6">
+            {categories.map(cat => (
+              <div key={cat.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+                <span className="text-sm text-gray-700">{cat.name}</span>
+                <select
+                  value={editCategoryRoles[cat.id] || 'none'}
+                  onChange={(e) => {
+                    setEditCategoryRoles(prev => ({
+                      ...prev,
+                      [cat.id]: e.target.value as CategoryRole,
+                    }));
+                  }}
+                  className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="none">None</option>
+                  <option value="user">User (read)</option>
+                  <option value="superuser">Super User (manage)</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="max-h-60 overflow-y-auto border border-gray-300 rounded-lg p-2 space-y-1 mb-6">
+            {categories.map(cat => (
+              <label key={cat.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editUserSubscriptions.includes(cat.id)}
+                  onChange={(e) => {
                     if (e.target.checked) {
                       setEditUserSubscriptions([...editUserSubscriptions, cat.id]);
                     } else {
                       setEditUserSubscriptions(editUserSubscriptions.filter(id => id !== cat.id));
                     }
-                  }
-                }}
-                className="rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">{cat.name}</span>
-            </label>
-          ))}
-        </div>
+                  }}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">{cat.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={() => setManagingUserSubs(null)}>
             Cancel

@@ -200,6 +200,26 @@ export async function removeCategoryFromSuperUser(userId: number, categoryId: nu
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
 }
 
+export async function replaceSuperUserCategories(
+  userId: number,
+  categoryIds: number[],
+  assignedBy: string
+): Promise<void> {
+  return transaction(async (trx) => {
+    await trx
+      .deleteFrom('super_user_categories')
+      .where('user_id', '=', userId)
+      .execute();
+
+    for (const categoryId of categoryIds) {
+      await trx
+        .insertInto('super_user_categories')
+        .values({ user_id: userId, category_id: categoryId, assigned_by: assignedBy })
+        .execute();
+    }
+  });
+}
+
 export async function getSuperUserCategories(userId: number): Promise<number[]> {
   const db = await getDb();
   const results = await db
