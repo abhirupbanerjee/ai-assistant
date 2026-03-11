@@ -77,7 +77,7 @@ const COMPLIANCE_MAP: Record<string, string[]> = {
   ssl: ['OWASP A02:2021', 'PCI-DSS 4.2.1', 'ISO27001 A.8.24'],
   tls: ['OWASP A02:2021', 'PCI-DSS 4.2.1', 'ISO27001 A.8.24'],
   misconfig: ['OWASP A05:2021', 'PCI-DSS 2.2', 'ISO27001 A.8.9'],
-  exposure: ['OWASP A05:2021', 'PCI-DSS 6.4', 'ISO27001 A.8.10'],
+  exposure: ['OWASP A05:2021', 'PCI-DSS 6.4.1', 'ISO27001 A.8.10'],
   cve: ['OWASP A06:2021', 'PCI-DSS 6.3.3', 'ISO27001 A.8.8'],
   dns: ['ISO27001 A.8.21'],
   rce: ['OWASP A03:2021', 'PCI-DSS 6.3.3', 'ISO27001 A.8.8'],
