@@ -122,7 +122,7 @@ async function runNuclei(
   return new Promise((resolve, reject) => {
     const args: string[] = [
       '-u', url,
-      '-json',                                          // Output as JSON (one line per finding)
+      '-jsonl',                                         // Output as JSONL (v3 flag, one JSON per line)
       '-silent',                                        // Suppress banner/progress noise
       '-no-color',                                      // Clean output for parsing
       '-timeout', String(config.timeoutSeconds),        // Per-request timeout
