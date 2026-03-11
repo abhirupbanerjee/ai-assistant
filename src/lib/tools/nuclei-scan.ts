@@ -145,7 +145,15 @@ async function runNuclei(
 
     const child = spawn(binaryPath, args, {
       timeout: (config.timeoutSeconds + 60) * 1000,   // Process timeout = scan timeout + 60s buffer
-      env: { ...process.env, HOME: process.env.HOME || '/root' }, // Nuclei needs HOME for templates path
+      env: {
+        ...process.env,
+        // Templates are bind-mounted at this path on the VM host
+        HOME: '/home/azureuser',
+        // Redirect Nuclei config/cache writes to writable tmp dirs
+        // (container runs as nextjs user — /home/nextjs does not exist)
+        XDG_CONFIG_HOME: '/tmp/nuclei-config',
+        XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || '/tmp/cache',
+      },
     });
 
     child.stdout.on('data', (data: Buffer) => {
