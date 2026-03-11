@@ -1178,6 +1178,24 @@ export default function WelcomeScreen({
       defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
+    {
+      id: 'nuclei-scan',
+      icon: <ShieldAlert size={24} />,
+      title: 'Nuclei Scan',
+      code: 'NVS',
+      description: 'Template-based CVE and misconfiguration scanning using ProjectDiscovery Nuclei. Checks known vulnerability signatures with OWASP, PCI-DSS and ISO 27001 annotations — zero data leaves your infrastructure.',
+      tier: 5,
+      minRole: 'superuser',
+      colorClass: 'border-orange-200 hover:border-orange-300 hover:shadow-md',
+      iconBgClass: 'bg-orange-100 text-orange-600',
+      actionType: 'category',
+      categorySlug: 'cyber',
+      category: 'Cyber',
+      samplePrompt: '**Nuclei scan** https://policybot.abhirup.app — run CVE and misconfiguration checks and show all findings above medium severity.',
+      magicWords: ['nuclei scan', 'vulnerability scan', 'cve scan'],
+      defaultLLM: 'Claude Haiku',
+      fallbackLLM: 'Claude Sonnet',
+    },
   ];
 
   const visibleSetupCards = setupCards.filter((card) =>
