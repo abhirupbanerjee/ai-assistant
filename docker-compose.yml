@@ -76,6 +76,8 @@ services:
       # Fix transformers cache permission (reranker model caching)
       - TRANSFORMERS_CACHE=/tmp/transformers_cache
       - XDG_CACHE_HOME=/tmp/cache
+      # Nuclei needs HOME to locate ~/.nuclei-templates
+      - HOME=/home/azureuser
       # Hugging Face token for downloading gated models (local embeddings)
       - HF_TOKEN=${HF_TOKEN}
     env_file:
@@ -95,6 +97,8 @@ services:
       - ./data/app:/app/data
       - ./config:/app/config:ro
       - ./data/transformers_cache:/tmp/transformers_cache  # Persist BGE reranker models (~670MB)
+      - /usr/local/bin/nuclei:/usr/local/bin/nuclei:ro    # Nuclei binary (installed on VM host)
+      - /home/azureuser/.nuclei-templates:/home/azureuser/.nuclei-templates:ro  # Nuclei templates
     # Note: Vector store (chroma/qdrant) dependencies are handled via profiles.
     # PostgreSQL: waits for healthy status when the postgres profile is active.
     depends_on:
