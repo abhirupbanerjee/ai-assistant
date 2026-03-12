@@ -59,7 +59,8 @@ async function pollSslLabs(
     { headers: SSL_LABS_HEADERS }
   );
   if (!triggerRes.ok) {
-    throw new Error(`SSL Labs API error: ${triggerRes.status} ${triggerRes.statusText}`);
+    const body = await triggerRes.text().catch(() => '');
+    throw new Error(`SSL Labs API error: ${triggerRes.status} ${triggerRes.statusText}${body ? ` — ${body}` : ''}`);
   }
 
   let data = await triggerRes.json() as Record<string, unknown>;
@@ -76,7 +77,9 @@ async function pollSslLabs(
       `${SSL_LABS_API}?host=${encodeURIComponent(hostname)}&all=done`,
       { headers: SSL_LABS_HEADERS }
     );
-    if (!pollRes.ok) break;
+    if (!pollRes.ok) {
+      throw new Error(`SSL Labs polling error: ${pollRes.status} ${pollRes.statusText}`);
+    }
     data = await pollRes.json() as Record<string, unknown>;
   }
 
@@ -397,6 +400,7 @@ export const sslScanTool: ToolDefinition = {
 
     // Run SSL Labs scan
     try {
+      console.log('[SSLScan] Scanning:', hostname);
       const rawData = await pollSslLabs(hostname, settings.maxWaitSeconds);
       const result = normalizeResult(args.url, rawData);
 
