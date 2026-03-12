@@ -54,8 +54,10 @@ async function pollSslLabs(
   hostname: string,
   maxWaitSeconds: number
 ): Promise<Record<string, unknown>> {
+  // Omit startNew=on — SSL Labs uses its own cache when fresh, starts new scan when not.
+  // startNew=on forces a fresh scan every time and triggers 529 overload errors on the free API.
   const triggerRes = await fetch(
-    `${SSL_LABS_API}?host=${encodeURIComponent(hostname)}&startNew=on&all=done`,
+    `${SSL_LABS_API}?host=${encodeURIComponent(hostname)}&all=done`,
     { headers: SSL_LABS_HEADERS }
   );
   if (!triggerRes.ok) {
