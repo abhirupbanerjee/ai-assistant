@@ -42,7 +42,6 @@ import WebsiteAnalysisConfig from './WebsiteAnalysisConfig';
 import CodeAnalysisConfig from './CodeAnalysisConfig';
 import LoadTestConfig from './LoadTestConfig';
 import SecurityScanConfig from './SecurityScanConfig';
-import NucleiScanConfig from './NucleiScanConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
 
@@ -168,8 +167,6 @@ function getToolIcon(toolName: string) {
     case 'load_testing':
       return Gauge;
     case 'security_scan':
-      return Shield;
-    case 'nuclei_scan':
       return Shield;
     default:
       return Settings;
@@ -1415,14 +1412,6 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'security_scan':
         return (
           <SecurityScanConfig
-            config={editedConfig}
-            onChange={setEditedConfig}
-            disabled={saving}
-          />
-        );
-      case 'nuclei_scan':
-        return (
-          <NucleiScanConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}

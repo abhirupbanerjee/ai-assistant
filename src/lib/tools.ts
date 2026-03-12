@@ -19,7 +19,6 @@ import { websiteAnalysisTool } from './tools/pagespeed';
 import { codeAnalysisTool } from './tools/sonarcloud';
 import { loadTestingTool } from './tools/loadtest';
 import { securityScanTool } from './tools/security-scan';
-import { nucleiScanTool } from './tools/nuclei-scan';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -120,7 +119,6 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   code_analysis: codeAnalysisTool,
   load_testing: loadTestingTool,
   security_scan: securityScanTool,
-  nuclei_scan: nucleiScanTool,
 };
 
 // ============ Initialization ============

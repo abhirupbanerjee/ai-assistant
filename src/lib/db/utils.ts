@@ -306,18 +306,6 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       },
     },
   },
-  nuclei_scan: {
-    enabled: false, // Disabled by default — requires Nuclei binary installed on server
-    config: {
-      binaryPath: '/usr/local/bin/nuclei',
-      templateCategories: ['http/misconfiguration', 'http/exposures', 'ssl', 'dns'],
-      severityFilter: ['medium', 'high', 'critical'],
-      timeoutSeconds: 30,
-      cacheTTLSeconds: 21600,
-      rateLimitPerDay: 10,
-      maxRatePerSecond: 10,
-    },
-  },
 };
 
 function getTranslationToolDefaults(): { enabled: boolean; config: Record<string, unknown> } {
