@@ -262,7 +262,7 @@ function normalizeResponse(
   options: { strategy: 'mobile' | 'desktop'; includeOpportunities: boolean; includeDiagnostics: boolean; accessibilityAudit?: boolean }
 ): PageSpeedResult {
   const lighthouse = data.lighthouseResult as Record<string, unknown> | undefined;
-  const categories = (lighthouse?.categories || {}) as Record<string, { score?: number }>;
+  const categories = (lighthouse?.categories || {}) as Record<string, { score?: number; auditRefs?: { id: string }[] }>;
   const audits = (lighthouse?.audits || {}) as Record<string, {
     id: string;
     title: string;
@@ -335,7 +335,13 @@ function normalizeResponse(
   // Build accessibility audit if requested
   let accessibilityAudit: AccessibilityAudit | undefined;
   if (options.accessibilityAudit) {
-    accessibilityAudit = buildAccessibilityAudit(scores.accessibility, audits);
+    const a11yIds = new Set(
+      (categories.accessibility as { auditRefs?: { id: string }[] })?.auditRefs?.map(r => r.id) ?? []
+    );
+    const a11yAudits = a11yIds.size > 0
+      ? Object.fromEntries(Object.entries(audits).filter(([id]) => a11yIds.has(id)))
+      : audits;
+    accessibilityAudit = buildAccessibilityAudit(scores.accessibility, a11yAudits);
   }
 
   return {

@@ -21,11 +21,12 @@ This document describes the AI tools system that extends the bot's capabilities 
 13. [YouTube Tool](#youtube-tool)
 14. [Thread Sharing Tool](#thread-sharing-tool)
 15. [Email Tool](#email-tool)
-16. [Tool Routing](#tool-routing)
-17. [Tool Configuration](#tool-configuration)
-18. [Category-Level Overrides](#category-level-overrides)
-19. [Creating a New Tool](#creating-a-new-tool)
-20. [API Reference](#api-reference)
+16. [SSL Scan Tool](#ssl-scan-tool)
+17. [Tool Routing](#tool-routing)
+18. [Tool Configuration](#tool-configuration)
+19. [Category-Level Overrides](#category-level-overrides)
+20. [Creating a New Tool](#creating-a-new-tool)
+21. [API Reference](#api-reference)
 
 ---
 
@@ -2259,6 +2260,87 @@ Configure in **Admin > Tools > Compliance Checker**:
 ### Database
 
 Compliance results are logged to `compliance_results` table for audit and analytics.
+
+---
+
+## SSL Scan Tool
+
+### Purpose
+
+Performs SSL/TLS security assessment of a domain. Returns a letter grade (A+ through F), certificate details, protocol version, cipher vulnerabilities, and forward secrecy status.
+
+### Provider
+
+**SSL Labs API v4** (Qualys) — industry-standard TLS grading service.
+
+> **Note:** SSL Labs API v3 was deprecated on January 1st 2024. This tool uses v4, which requires a one-time registration.
+
+**Fallback:** If SSL Labs is unavailable or no email is configured, the tool performs a **direct TLS check** using Node.js `tls.connect()`. This provides certificate expiry, issuer, and protocol version but does **not** produce a letter grade.
+
+### SSL Labs v4 Registration (Required for graded scan)
+
+SSL Labs v4 requires a one-time free registration with an **organisation email** (not Gmail/Yahoo/Hotmail).
+
+**Step 1 — Register once:**
+
+```bash
+curl -X POST https://api.ssllabs.com/api/v4/register \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Admin","lastName":"YourOrg","email":"admin@yourorg.com","organization":"YourOrg"}'
+```
+
+Expected response: `{"message":"User successfully registered","status":"success"}`
+
+**Step 2 — Configure in Admin UI:**
+
+Admin → Tools → SSL Scan → Config → set the `email` field to the registered address.
+
+Without an email configured, the tool skips SSL Labs and falls back to the direct TLS check automatically — no error, just no letter grade.
+
+### Configuration
+
+```typescript
+interface SslScanConfig {
+  maxWaitSeconds: number;    // Max polling time for SSL Labs scan (default: 120)
+  cacheTTLSeconds: number;   // Result cache TTL in seconds (default: 21600 = 6 hours)
+  rateLimitPerDay: number;   // Max scans per day (default: 20)
+  email: string;             // Registered SSL Labs v4 org email — required for graded scan
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": true,
+  "config": {
+    "maxWaitSeconds": 120,
+    "cacheTTLSeconds": 21600,
+    "rateLimitPerDay": 20,
+    "email": ""
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `grade` | string | SSL Labs letter grade (A+/A/B/C/D/F) or "TLS Direct Check" if fallback used |
+| `protocol` | string | Highest TLS protocol supported (e.g. "TLS 1.3") |
+| `certExpiry` | string | Certificate expiry date (ISO 8601) |
+| `certIssuer` | string | Certificate authority name |
+| `daysUntilExpiry` | number | Days until certificate expires |
+| `forwardSecrecy` | boolean | Whether forward secrecy is enabled |
+| `supportsOldTls` | boolean | Whether TLS 1.0/1.1 is still supported (security risk if true) |
+| `vulnerabilities` | string[] | Detected vulnerabilities (e.g. POODLE, BEAST, CRIME) |
+
+### Notes
+
+- SSL Labs scans take 60–120 seconds for a fresh assessment
+- Results are cached for 6 hours to avoid hitting rate limits
+- The free SSL Labs tier allows ~25 new scans/hour globally; during peak times the API returns HTTP 529 ("Running at full capacity") and the tool falls back to the direct TLS check
+- Registered email is sent as a request header on every SSL Labs API call (v4 requirement)
 
 ---
 
