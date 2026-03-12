@@ -1,17 +1,19 @@
 /**
- * SSL Scan Tool — SSL Labs API v3 Integration
+ * SSL Scan Tool — SSL Labs API v4 Integration
  *
  * Analyzes SSL/TLS configuration of a website using the free SSL Labs API.
  * Checks: TLS grade (A+ to F), protocol versions, certificate validity,
  * cipher strength, and known vulnerabilities (BEAST, Heartbleed, POODLE, etc.)
  *
- * API docs: https://github.com/ssllabs/ssllabs-scan/blob/master/ssllabs-api-docs-v3.md
- * Free, no API key required. Results cached 6 hours.
+ * API docs: https://github.com/ssllabs/ssllabs-scan/blob/master/ssllabs-api-docs-v4.md
+ * Free, but requires one-time email registration at https://api.ssllabs.com/api/v4/register
+ * Results cached 6 hours.
  *
- * Note: First-time scan for a host takes 60–120 seconds (SSL Labs runs a full
- * handshake analysis). Subsequent requests within the cache window return instantly.
+ * Note: v3 was deprecated January 2024. v4 requires the registered email sent as a
+ * request header. Without an email configured, falls back to direct TLS check.
  */
 
+import * as tls from 'tls';
 import { getToolConfig } from '../db/compat/tool-config';
 import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
@@ -23,6 +25,7 @@ interface SslScanConfig {
   maxWaitSeconds: number;
   cacheTTLSeconds: number;
   rateLimitPerDay: number;
+  email: string;
 }
 
 interface SslScanResult {
@@ -45,20 +48,18 @@ interface SslScanResult {
 
 // ============ SSL Labs Client ============
 
-const SSL_LABS_API = 'https://api.ssllabs.com/api/v3/analyze';
-const SSL_LABS_HEADERS = {
-  'User-Agent': 'PolicyBot-SSLScan/1.0',
-};
+const SSL_LABS_API = 'https://api.ssllabs.com/api/v4/analyze';
 
 async function pollSslLabs(
   hostname: string,
-  maxWaitSeconds: number
+  maxWaitSeconds: number,
+  email: string
 ): Promise<Record<string, unknown>> {
-  // Omit startNew=on — SSL Labs uses its own cache when fresh, starts new scan when not.
-  // startNew=on forces a fresh scan every time and triggers 529 overload errors on the free API.
+  const headers = { 'User-Agent': 'PolicyBot-SSLScan/1.0', email };
+
   const triggerRes = await fetch(
     `${SSL_LABS_API}?host=${encodeURIComponent(hostname)}&all=done`,
-    { headers: SSL_LABS_HEADERS }
+    { headers }
   );
   if (!triggerRes.ok) {
     const body = await triggerRes.text().catch(() => '');
@@ -77,7 +78,7 @@ async function pollSslLabs(
 
     const pollRes = await fetch(
       `${SSL_LABS_API}?host=${encodeURIComponent(hostname)}&all=done`,
-      { headers: SSL_LABS_HEADERS }
+      { headers }
     );
     if (!pollRes.ok) {
       throw new Error(`SSL Labs polling error: ${pollRes.status} ${pollRes.statusText}`);
@@ -202,6 +203,86 @@ function normalizeResult(url: string, data: Record<string, unknown>): SslScanRes
   };
 }
 
+// ============ TLS Direct Fallback ============
+// Used when SSL Labs API is unavailable (529 overloaded). Connects directly to port 443
+// and extracts certificate info, protocol version, and cipher from the TLS handshake.
+
+async function tlsDirectCheck(url: string, hostname: string): Promise<SslScanResult> {
+  return new Promise((resolve, reject) => {
+    const socket = tls.connect(
+      { host: hostname, port: 443, servername: hostname, rejectUnauthorized: false },
+      () => {
+        const cert = socket.getPeerCertificate(true);
+        const protocol = socket.getProtocol() ?? 'Unknown';
+        const cipher = socket.getCipher();
+        socket.destroy();
+
+        let certExpiry: string | null = null;
+        let daysUntilExpiry: number | null = null;
+        if (cert.valid_to) {
+          const expiryDate = new Date(cert.valid_to);
+          certExpiry = expiryDate.toISOString().split('T')[0];
+          daysUntilExpiry = Math.floor((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        }
+
+        const issuer = cert.issuer as unknown as Record<string, string>;
+        const certIssuer = issuer?.O || issuer?.CN || null;
+
+        const authorized = socket.authorized;
+        const authError = socket.authorizationError;
+
+        // Forward secrecy: cipher name includes DHE or ECDHE
+        const cipherName = cipher?.name ?? '';
+        const forwardSecrecy = /ECDHE|DHE/.test(cipherName);
+
+        const recommendations: string[] = [];
+        if (!authorized && authError) {
+          recommendations.push(`Certificate trust issue: ${authError}`);
+        }
+        if (daysUntilExpiry !== null && daysUntilExpiry < 30) {
+          recommendations.push(`Certificate expires in ${daysUntilExpiry} days — renew immediately.`);
+        } else if (daysUntilExpiry !== null && daysUntilExpiry < 60) {
+          recommendations.push(`Certificate expires in ${daysUntilExpiry} days — schedule renewal soon.`);
+        }
+        if (!forwardSecrecy) {
+          recommendations.push('Forward secrecy not detected — consider enabling ECDHE cipher suites.');
+        }
+        if (recommendations.length === 0) {
+          recommendations.push('Certificate is valid and TLS connection succeeded. Run a full SSL Labs scan for a detailed grade.');
+        }
+
+        const passed = authorized && (daysUntilExpiry === null || daysUntilExpiry > 0);
+        const summaryParts = [`Protocol: ${protocol}`, `Cipher: ${cipherName}`];
+        if (certExpiry) summaryParts.push(`Cert expires: ${certExpiry} (${daysUntilExpiry}d)`);
+        if (certIssuer) summaryParts.push(`Issuer: ${certIssuer}`);
+
+        resolve({
+          url,
+          hostname,
+          scannedAt: new Date().toISOString(),
+          grade: 'N/A (SSL Labs unavailable — direct TLS check)',
+          protocol,
+          certExpiry,
+          certIssuer,
+          daysUntilExpiry,
+          supportsOldTls: false,
+          forwardSecrecy,
+          vulnerabilities: [],
+          passed,
+          summary: summaryParts.join(' | '),
+          recommendations,
+        });
+      }
+    );
+
+    socket.setTimeout(15000, () => {
+      socket.destroy();
+      reject(new Error('TLS connection timed out'));
+    });
+    socket.on('error', reject);
+  });
+}
+
 // ============ Rate Limiting ============
 
 async function checkRateLimit(
@@ -285,6 +366,12 @@ const configSchema = {
       maximum: 50,
       default: 20,
     },
+    email: {
+      type: 'string',
+      title: 'SSL Labs v4 Registered Email',
+      description: 'Organisation email registered at https://api.ssllabs.com/api/v4/register — required for SSL Labs v4 API access. Without this, falls back to direct TLS check (no grade).',
+      default: '',
+    },
   },
 };
 
@@ -292,6 +379,7 @@ const defaultConfig: SslScanConfig = {
   maxWaitSeconds: 120,
   cacheTTLSeconds: 21600,
   rateLimitPerDay: 20,
+  email: '',
 };
 
 function validateConfig(config: Record<string, unknown>): ValidationResult {
@@ -400,11 +488,25 @@ export const sslScanTool: ToolDefinition = {
       return cached;
     }
 
-    // Run SSL Labs scan
+    // Run SSL Labs v4 scan with TLS direct fallback
     try {
       console.log('[SSLScan] Scanning:', hostname);
-      const rawData = await pollSslLabs(hostname, settings.maxWaitSeconds);
-      const result = normalizeResult(args.url, rawData);
+      let result: SslScanResult;
+      if (!settings.email) {
+        console.log('[SSLScan] No SSL Labs email configured — using direct TLS check');
+        result = await tlsDirectCheck(args.url, hostname);
+        console.log('[SSLScan] Direct TLS check complete:', hostname);
+      } else {
+        try {
+          const rawData = await pollSslLabs(hostname, settings.maxWaitSeconds, settings.email);
+          result = normalizeResult(args.url, rawData);
+          console.log('[SSLScan] SSL Labs v4 success:', hostname);
+        } catch (sslLabsErr) {
+          console.log('[SSLScan] SSL Labs v4 failed, falling back to direct TLS check:', hostname, (sslLabsErr as Error).message);
+          result = await tlsDirectCheck(args.url, hostname);
+          console.log('[SSLScan] Direct TLS check complete:', hostname);
+        }
+      }
 
       const response = JSON.stringify({ success: true, data: result }, null, 2);
       await cacheQuery(`sslscan:${cacheKey}`, response, settings.cacheTTLSeconds);
