@@ -35,6 +35,27 @@ export interface AuditItem {
   displayValue?: string;
 }
 
+export interface WcagViolation {
+  auditId: string;
+  title: string;
+  description: string;
+  wcagCriterion: string | null;
+  wcagLevel: 'A' | 'AA' | 'AAA' | null;
+  wcagPrinciple: string | null;
+  score: number | null;
+  displayValue?: string;
+  impact: 'critical' | 'serious' | 'moderate' | 'minor';
+}
+
+export interface AccessibilityAudit {
+  accessibilityScore: number;
+  wcagLevel: 'A' | 'AA' | 'Partial AA' | 'Failing';
+  totalViolations: number;
+  byLevel: { A: number; AA: number; AAA: number; unmapped: number };
+  violations: WcagViolation[];
+  recommendations: string[];
+}
+
 export interface PageSpeedResult {
   url: string;
   fetchTime: string;
@@ -43,6 +64,7 @@ export interface PageSpeedResult {
   coreWebVitals: CoreWebVitals;
   opportunities: AuditItem[];
   diagnostics: AuditItem[];
+  accessibilityAudit?: AccessibilityAudit;
 }
 
 interface WebsiteAnalysisConfig {
@@ -51,6 +73,136 @@ interface WebsiteAnalysisConfig {
   cacheTTLSeconds: number;
   includeOpportunities: boolean;
   includeDiagnostics: boolean;
+}
+
+// ============ WCAG Mapping ============
+
+const WCAG_MAP: Record<string, { criterion: string; level: 'A' | 'AA' | 'AAA'; principle: string }> = {
+  'image-alt':              { criterion: '1.1.1', level: 'A',  principle: 'Images must have alternative text' },
+  'input-image-alt':        { criterion: '1.1.1', level: 'A',  principle: 'Image buttons must have alternative text' },
+  'object-alt':             { criterion: '1.1.1', level: 'A',  principle: 'Object elements must have alternative text' },
+  'video-caption':          { criterion: '1.2.2', level: 'A',  principle: 'Videos must have captions' },
+  'audio-caption':          { criterion: '1.2.4', level: 'AA', principle: 'Live audio must have captions' },
+  'color-contrast':         { criterion: '1.4.3', level: 'AA', principle: 'Text must have sufficient colour contrast' },
+  'color-contrast-enhanced':{ criterion: '1.4.6', level: 'AAA',principle: 'Text must have enhanced colour contrast' },
+  'meta-viewport':          { criterion: '1.4.4', level: 'AA', principle: 'Page must not disable user scaling' },
+  'document-title':         { criterion: '2.4.2', level: 'A',  principle: 'Page must have a descriptive title' },
+  'html-has-lang':          { criterion: '3.1.1', level: 'A',  principle: 'Page must have a language attribute' },
+  'html-lang-valid':        { criterion: '3.1.1', level: 'A',  principle: 'Page language attribute must be valid' },
+  'valid-lang':             { criterion: '3.1.2', level: 'AA', principle: 'Language of parts must be valid' },
+  'label':                  { criterion: '1.3.1', level: 'A',  principle: 'Form inputs must have associated labels' },
+  'button-name':            { criterion: '4.1.2', level: 'A',  principle: 'Buttons must have accessible names' },
+  'link-name':              { criterion: '2.4.4', level: 'A',  principle: 'Links must have descriptive text' },
+  'frame-title':            { criterion: '2.4.1', level: 'A',  principle: 'Frames must have titles' },
+  'duplicate-id-active':    { criterion: '4.1.1', level: 'A',  principle: 'Active elements must not share IDs' },
+  'duplicate-id-aria':      { criterion: '4.1.1', level: 'A',  principle: 'ARIA IDs must be unique' },
+  'aria-allowed-attr':      { criterion: '4.1.2', level: 'A',  principle: 'ARIA attributes must be valid for role' },
+  'aria-required-attr':     { criterion: '4.1.2', level: 'A',  principle: 'Required ARIA attributes must be present' },
+  'aria-roles':             { criterion: '4.1.2', level: 'A',  principle: 'ARIA roles must be valid' },
+  'aria-valid-attr':        { criterion: '4.1.2', level: 'A',  principle: 'ARIA attributes must be valid' },
+  'aria-valid-attr-value':  { criterion: '4.1.2', level: 'A',  principle: 'ARIA attribute values must be valid' },
+  'aria-hidden-focus':      { criterion: '4.1.2', level: 'A',  principle: 'aria-hidden must not contain focusable elements' },
+  'tabindex':               { criterion: '2.4.3', level: 'A',  principle: 'tabindex values greater than 0 disrupt focus order' },
+  'logical-tab-order':      { criterion: '2.4.3', level: 'A',  principle: 'Focus order must be logical' },
+  'focusable-controls':     { criterion: '2.1.1', level: 'A',  principle: 'All interactive controls must be keyboard accessible' },
+  'interactive-element-affordance': { criterion: '2.1.1', level: 'A', principle: 'Interactive elements must be operable' },
+  'managed-focus':          { criterion: '2.4.3', level: 'A',  principle: 'Focus must be managed after dynamic content changes' },
+  'use-landmarks':          { criterion: '1.3.6', level: 'AAA',principle: 'Page should use ARIA landmark regions' },
+  'bypass':                 { criterion: '2.4.1', level: 'A',  principle: 'Mechanism must exist to bypass repeated blocks' },
+  'heading-order':          { criterion: '1.3.1', level: 'A',  principle: 'Heading levels must be sequential' },
+  'list':                   { criterion: '1.3.1', level: 'A',  principle: 'Lists must be marked up correctly' },
+  'listitem':               { criterion: '1.3.1', level: 'A',  principle: 'List items must be inside list elements' },
+  'definition-list':        { criterion: '1.3.1', level: 'A',  principle: 'Definition lists must be correctly structured' },
+  'dlitem':                 { criterion: '1.3.1', level: 'A',  principle: 'Definition list items must be properly nested' },
+  'td-headers-attr':        { criterion: '1.3.1', level: 'A',  principle: 'Table cells must reference valid headers' },
+  'th-has-data-cells':      { criterion: '1.3.1', level: 'A',  principle: 'Table headers must have associated data cells' },
+};
+
+function classifyViolations(
+  audits: Record<string, { id: string; title: string; description: string; score: number | null; displayValue?: string }>
+): WcagViolation[] {
+  const violations: WcagViolation[] = [];
+
+  for (const [id, audit] of Object.entries(audits)) {
+    // Only include failing audits (score < 1 and not null)
+    if (audit.score === null || audit.score >= 1) continue;
+
+    const wcag = WCAG_MAP[id] || null;
+
+    const impact: WcagViolation['impact'] =
+      audit.score === 0 ? 'critical'
+      : audit.score < 0.5 ? 'serious'
+      : audit.score < 0.9 ? 'moderate'
+      : 'minor';
+
+    violations.push({
+      auditId: id,
+      title: audit.title,
+      description: audit.description,
+      wcagCriterion: wcag?.criterion || null,
+      wcagLevel: wcag?.level || null,
+      wcagPrinciple: wcag?.principle || null,
+      score: audit.score,
+      displayValue: audit.displayValue,
+      impact,
+    });
+  }
+
+  const impactOrder = { critical: 0, serious: 1, moderate: 2, minor: 3 };
+  return violations.sort((a, b) => impactOrder[a.impact] - impactOrder[b.impact]);
+}
+
+function assessWcagLevel(score: number, byLevel: { A: number; AA: number }): AccessibilityAudit['wcagLevel'] {
+  if (byLevel.A > 0) return 'Failing';
+  if (score >= 90 && byLevel.AA === 0) return 'AA';
+  if (score >= 75) return 'Partial AA';
+  return 'Failing';
+}
+
+function buildAccessibilityAudit(
+  accessibilityScore: number,
+  audits: Record<string, { id: string; title: string; description: string; score: number | null; displayValue?: string }>
+): AccessibilityAudit {
+  const violations = classifyViolations(audits);
+
+  const byLevel = { A: 0, AA: 0, AAA: 0, unmapped: 0 };
+  for (const v of violations) {
+    if (v.wcagLevel === 'A') byLevel.A++;
+    else if (v.wcagLevel === 'AA') byLevel.AA++;
+    else if (v.wcagLevel === 'AAA') byLevel.AAA++;
+    else byLevel.unmapped++;
+  }
+
+  const wcagLevel = assessWcagLevel(accessibilityScore, byLevel);
+
+  const recommendations: string[] = [];
+  const critical = violations.filter(v => v.impact === 'critical');
+  const serious = violations.filter(v => v.impact === 'serious');
+
+  if (critical.length > 0) {
+    recommendations.push(`${critical.length} critical violation(s): ${critical.map(v => v.title).join(', ')}`);
+  }
+  if (serious.length > 0) {
+    recommendations.push(`${serious.length} serious violation(s): ${serious.map(v => v.title).join(', ')}`);
+  }
+  if (byLevel.A > 0) {
+    recommendations.push(`${byLevel.A} WCAG Level A failure(s) — these are the minimum conformance requirements and must be fixed.`);
+  }
+  if (byLevel.AA > 0) {
+    recommendations.push(`${byLevel.AA} WCAG Level AA failure(s) — required for most accessibility standards and regulations.`);
+  }
+  if (recommendations.length === 0) {
+    recommendations.push('No accessibility violations detected. Score meets WCAG AA conformance.');
+  }
+
+  return {
+    accessibilityScore,
+    wcagLevel,
+    totalViolations: violations.length,
+    byLevel,
+    violations,
+    recommendations,
+  };
 }
 
 // ============ PageSpeed Client ============
@@ -67,6 +219,7 @@ async function analyzeUrl(
     strategy: 'mobile' | 'desktop';
     includeOpportunities: boolean;
     includeDiagnostics: boolean;
+    accessibilityAudit?: boolean;
   }
 ): Promise<PageSpeedResult> {
   // Build URL with parameters
@@ -106,7 +259,7 @@ async function analyzeUrl(
  */
 function normalizeResponse(
   data: Record<string, unknown>,
-  options: { strategy: 'mobile' | 'desktop'; includeOpportunities: boolean; includeDiagnostics: boolean }
+  options: { strategy: 'mobile' | 'desktop'; includeOpportunities: boolean; includeDiagnostics: boolean; accessibilityAudit?: boolean }
 ): PageSpeedResult {
   const lighthouse = data.lighthouseResult as Record<string, unknown> | undefined;
   const categories = (lighthouse?.categories || {}) as Record<string, { score?: number }>;
@@ -179,6 +332,12 @@ function normalizeResponse(
       }));
   }
 
+  // Build accessibility audit if requested
+  let accessibilityAudit: AccessibilityAudit | undefined;
+  if (options.accessibilityAudit) {
+    accessibilityAudit = buildAccessibilityAudit(scores.accessibility, audits);
+  }
+
   return {
     url: data.id as string,
     fetchTime: data.analysisUTCTimestamp as string,
@@ -187,6 +346,7 @@ function normalizeResponse(
     coreWebVitals,
     opportunities,
     diagnostics,
+    accessibilityAudit,
   };
 }
 
@@ -306,7 +466,7 @@ export const websiteAnalysisTool: ToolDefinition = {
     type: 'function',
     function: {
       name: 'website_analysis',
-      description: 'Analyze a website for performance, accessibility, SEO, and best practices using Google PageSpeed Insights. Use when users ask about website speed, Core Web Vitals, performance optimization, SEO issues, or accessibility problems. Returns scores (0-100), Core Web Vitals metrics, and actionable optimization opportunities.',
+      description: 'Analyze a website for performance, accessibility, SEO, and best practices using Google PageSpeed Insights. Use when users ask about website speed, Core Web Vitals, performance optimization, SEO issues, or accessibility problems. Returns scores (0-100), Core Web Vitals metrics, and actionable optimization opportunities. Set accessibilityAudit=true for a detailed WCAG 2.1 compliance report.',
       parameters: {
         type: 'object',
         properties: {
@@ -318,6 +478,10 @@ export const websiteAnalysisTool: ToolDefinition = {
             type: 'string',
             enum: ['mobile', 'desktop'],
             description: 'Device type for the analysis. Mobile is typically more important for SEO and is the default.',
+          },
+          accessibilityAudit: {
+            type: 'boolean',
+            description: 'Set to true for a detailed WCAG 2.1 accessibility audit with violations mapped to specific WCAG criteria and levels (A/AA/AAA). Use when users specifically ask about WCAG compliance, accessibility violations, or need a detailed a11y report.',
           },
         },
         required: ['url'],
@@ -333,6 +497,7 @@ export const websiteAnalysisTool: ToolDefinition = {
     args: {
       url: string;
       strategy?: 'mobile' | 'desktop';
+      accessibilityAudit?: boolean;
     },
     options?: ToolExecutionOptions
   ): Promise<string> => {
@@ -373,7 +538,8 @@ export const websiteAnalysisTool: ToolDefinition = {
     const strategy = args.strategy ?? settings.defaultStrategy ?? 'mobile';
 
     // Check cache
-    const cacheKey = hashQuery(`pagespeed:${args.url}:${strategy}`);
+    const wcagSuffix = args.accessibilityAudit ? ':wcag' : '';
+    const cacheKey = hashQuery(`pagespeed:${args.url}:${strategy}${wcagSuffix}`);
     const cached = await getCachedQuery(`pagespeed:${cacheKey}`);
     if (cached) {
       console.log('[PageSpeed] Cache hit:', args.url);
@@ -388,6 +554,7 @@ export const websiteAnalysisTool: ToolDefinition = {
         strategy,
         includeOpportunities: settings.includeOpportunities,
         includeDiagnostics: settings.includeDiagnostics,
+        accessibilityAudit: args.accessibilityAudit,
       });
 
       const response = {

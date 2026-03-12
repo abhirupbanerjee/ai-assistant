@@ -19,6 +19,10 @@ import { websiteAnalysisTool } from './tools/pagespeed';
 import { codeAnalysisTool } from './tools/sonarcloud';
 import { loadTestingTool } from './tools/loadtest';
 import { securityScanTool } from './tools/security-scan';
+import { sslScanTool } from './tools/ssl-scan';
+import { dnsScanTool } from './tools/dns-scan';
+import { cookieAuditTool } from './tools/cookie-audit';
+import { redirectAuditTool } from './tools/redirect-audit';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -119,6 +123,10 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   code_analysis: codeAnalysisTool,
   load_testing: loadTestingTool,
   security_scan: securityScanTool,
+  ssl_scan: sslScanTool,
+  dns_scan: dnsScanTool,
+  cookie_audit: cookieAuditTool,
+  redirect_audit: redirectAuditTool,
 };
 
 // ============ Initialization ============

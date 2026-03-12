@@ -28,6 +28,10 @@ import {
   Code,
   Gauge,
   Shield,
+  Lock,
+  Server,
+  Cookie,
+  ArrowRightLeft,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -168,6 +172,14 @@ function getToolIcon(toolName: string) {
       return Gauge;
     case 'security_scan':
       return Shield;
+    case 'ssl_scan':
+      return Lock;
+    case 'dns_scan':
+      return Server;
+    case 'cookie_audit':
+      return Cookie;
+    case 'redirect_audit':
+      return ArrowRightLeft;
     default:
       return Settings;
   }
