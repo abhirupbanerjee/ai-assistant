@@ -353,6 +353,54 @@ export async function POST(request: NextRequest) {
             // Send sources from RAG
             send({ type: 'sources', data: ragResult.sources });
 
+            // ============ Phase 2.5: Pre-flight Clarification ============
+            // Check if any matched skill has preflight enabled + global toggle
+            {
+              const { getComplianceConfig } = await import('@/lib/tools/compliance-checker');
+              const complianceConfig = await getComplianceConfig();
+
+              if (complianceConfig.preflightEnabled) {
+                const { hasPreflightEnabled, findPreflightSkill, resolvePreflightConfig, runPreflightAssessment } = await import('@/lib/compliance/preflight');
+
+                if (hasPreflightEnabled(complianceConfig, ragResult.matchedSkills)) {
+                  const preflightSkill = findPreflightSkill(ragResult.matchedSkills);
+
+                  if (preflightSkill) {
+                    const resolvedPf = resolvePreflightConfig(complianceConfig, preflightSkill.config);
+
+                    // Check follow-up skip
+                    let skipPreflight = false;
+                    if (resolvedPf.skipOnFollowUp) {
+                      const { detectFollowUp } = await import('@/lib/conversation-context');
+                      skipPreflight = detectFollowUp(message).isFollowUp;
+                    }
+
+                    if (!skipPreflight) {
+                      const preflightEvent = await runPreflightAssessment(
+                        message, assistantMessageId, resolvedPf, complianceConfig, preflightSkill.name
+                      );
+
+                      if (preflightEvent) {
+                        // Notify UI and pause stream
+                        send({ type: 'status', phase: 'clarifying_question', content: 'Waiting for your input...' });
+                        send({ type: 'hitl_preflight', data: preflightEvent });
+
+                        const { createPreflightResolver } = await import('@/lib/streaming/preflight-resolver');
+                        const preflightResult = await createPreflightResolver(
+                          assistantMessageId, resolvedPf.timeoutMs, request.signal
+                        );
+
+                        // Inject user clarification into RAG context
+                        if (preflightResult?.enrichedContext) {
+                          ragResult.context += `\n\n[User clarification: ${preflightResult.enrichedContext}]`;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
             // ============ Build Model Fallback Chain ============
             // Determine models to try based on capabilities and health status
             const hasImages = imageContents.length > 0;

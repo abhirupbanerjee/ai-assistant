@@ -25,6 +25,7 @@ import type {
   PodcastHint,
   ChatPreferences,
 } from '@/types';
+import type { PreflightClarificationEvent, HitlClarificationEvent } from '@/types/compliance';
 
 // ============ Types ============
 
@@ -94,6 +95,10 @@ export interface StreamingState {
   isStopped: boolean;
   /** Active plan ID (for control operations) */
   activePlanId: string | null;
+  /** HITL pre-flight clarification event (waiting for user input) */
+  preflightEvent: PreflightClarificationEvent | null;
+  /** HITL post-response clarification event */
+  hitlEvent: HitlClarificationEvent | null;
 }
 
 export interface UseStreamingChatOptions {
@@ -159,6 +164,8 @@ const initialState: StreamingState = {
   isPaused: false,
   isStopped: false,
   activePlanId: null,
+  preflightEvent: null,
+  hitlEvent: null,
 };
 
 // ============ Hook ============
@@ -479,6 +486,22 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             },
           };
         });
+        break;
+
+      case 'hitl_preflight':
+        // Pre-flight clarification — waiting for user input before response generation
+        setState(prev => ({
+          ...prev,
+          preflightEvent: event.data,
+        }));
+        break;
+
+      case 'hitl_clarification':
+        // Post-response HITL — compliance-triggered clarification
+        setState(prev => ({
+          ...prev,
+          hitlEvent: event.data,
+        }));
         break;
 
       case 'model_switch':

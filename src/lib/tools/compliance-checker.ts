@@ -141,7 +141,7 @@ const complianceCheckerConfigSchema = {
 /**
  * Get tool configuration with defaults
  */
-async function getComplianceConfig(): Promise<ComplianceGlobalConfig> {
+export async function getComplianceConfig(): Promise<ComplianceGlobalConfig> {
   const config = await getToolConfig('compliance_checker');
   if (config?.config) {
     const c = config.config as Record<string, unknown>;
@@ -157,6 +157,11 @@ async function getComplianceConfig(): Promise<ComplianceGlobalConfig> {
       clarificationTimeout: (c.clarificationTimeout as number) ?? COMPLIANCE_CHECKER_DEFAULTS.clarificationTimeout,
       fallbackToTemplates: (c.fallbackToTemplates as boolean) ?? COMPLIANCE_CHECKER_DEFAULTS.fallbackToTemplates,
       allowAcceptFlagged: (c.allowAcceptFlagged as boolean) ?? COMPLIANCE_CHECKER_DEFAULTS.allowAcceptFlagged,
+      // Pre-flight clarification
+      preflightEnabled: (c.preflightEnabled as boolean) ?? COMPLIANCE_CHECKER_DEFAULTS.preflightEnabled,
+      preflightDefaultTimeoutMs: (c.preflightDefaultTimeoutMs as number) ?? COMPLIANCE_CHECKER_DEFAULTS.preflightDefaultTimeoutMs,
+      preflightMaxQuestions: (c.preflightMaxQuestions as number) ?? COMPLIANCE_CHECKER_DEFAULTS.preflightMaxQuestions,
+      preflightSkipOnFollowUp: (c.preflightSkipOnFollowUp as boolean) ?? COMPLIANCE_CHECKER_DEFAULTS.preflightSkipOnFollowUp,
     };
   }
   return COMPLIANCE_CHECKER_DEFAULTS;

@@ -12,6 +12,7 @@ import ProcessingIndicator from './ProcessingIndicator';
 import AutonomousTaskList from './AutonomousTaskList';
 import ShareModal from '@/components/sharing/ShareModal';
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
+import HitlClarificationCard from './HitlClarificationCard';
 import { useScrollHide } from '@/hooks/useScrollHide';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 
@@ -639,6 +640,80 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             onPause={() => pausePlan()}
             onResume={() => resumePlan()}
             onStop={() => stopPlan()}
+          />
+        )}
+
+        {/* Pre-flight HITL Clarification Card */}
+        {streamingState.preflightEvent && (
+          <HitlClarificationCard
+            event={streamingState.preflightEvent}
+            mode="preflight"
+            onSubmit={async (responses, freeTextInputs) => {
+              try {
+                await fetch('/api/chat/preflight', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    messageId: streamingState.preflightEvent!.messageId,
+                    responses,
+                    freeTextInputs,
+                  }),
+                });
+              } catch (e) {
+                console.error('[HITL Preflight] Submit error:', e);
+              }
+            }}
+            onFallback={async (action) => {
+              try {
+                await fetch('/api/chat/preflight', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    messageId: streamingState.preflightEvent!.messageId,
+                    fallbackAction: action,
+                  }),
+                });
+              } catch (e) {
+                console.error('[HITL Preflight] Fallback error:', e);
+              }
+            }}
+          />
+        )}
+
+        {/* Post-response HITL Clarification Card */}
+        {streamingState.hitlEvent && (
+          <HitlClarificationCard
+            event={streamingState.hitlEvent}
+            mode="post-response"
+            onSubmit={async (responses, freeTextInputs) => {
+              try {
+                await fetch('/api/chat/hitl', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    messageId: streamingState.hitlEvent!.messageId,
+                    responses,
+                    freeTextInputs,
+                  }),
+                });
+              } catch (e) {
+                console.error('[HITL] Submit error:', e);
+              }
+            }}
+            onFallback={async (action) => {
+              try {
+                await fetch('/api/chat/hitl', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    messageId: streamingState.hitlEvent!.messageId,
+                    fallbackAction: action,
+                  }),
+                });
+              } catch (e) {
+                console.error('[HITL] Fallback error:', e);
+              }
+            }}
           />
         )}
 

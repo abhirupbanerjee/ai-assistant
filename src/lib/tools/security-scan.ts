@@ -230,7 +230,7 @@ const configSchema = {
       description: 'How long to cache scan results',
       minimum: 300,
       maximum: 86400,
-      default: 3600,
+      default: 86400,
     },
     minAcceptableScore: {
       type: 'number',
@@ -260,7 +260,7 @@ const configSchema = {
 };
 
 const defaultConfig: SecurityScanConfig = {
-  cacheTTLSeconds: 3600,
+  cacheTTLSeconds: 86400,
   minAcceptableScore: 70,
   rateLimitPerDay: 20,
   rateLimitPerWeek: 100,

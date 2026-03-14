@@ -34,6 +34,12 @@ export const DEFAULT_COMPLIANCE_CONFIG: ComplianceGlobalConfig = {
   fallbackToTemplates: true,
 
   allowAcceptFlagged: true,
+
+  // Pre-flight clarification defaults
+  preflightEnabled: false,                // Global kill switch — off by default
+  preflightDefaultTimeoutMs: 300000,      // 5 minutes
+  preflightMaxQuestions: 2,               // 1-4 range
+  preflightSkipOnFollowUp: true,          // Skip preflight on follow-up messages
 };
 
 /**

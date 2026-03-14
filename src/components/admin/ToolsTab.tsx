@@ -1006,6 +1006,95 @@ function ComplianceCheckerConfig({
           </p>
         </div>
       </div>
+
+      {/* Pre-flight Clarification Defaults */}
+      <div className="border rounded-lg p-4 bg-gray-50">
+        <h4 className="text-sm font-semibold text-gray-800 mb-3">Pre-flight Clarification Defaults</h4>
+        <p className="text-xs text-gray-500 mb-3">
+          When enabled, ambiguous queries to preflight-enabled skills trigger clarification questions <em>before</em> generating a response. Per-skill opt-in is still required.
+        </p>
+        <div className="space-y-3">
+          {/* Global Enable */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="preflightEnabled"
+              checked={config.preflightEnabled === true}
+              onChange={(e) => onChange({ ...config, preflightEnabled: e.target.checked })}
+              disabled={disabled}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="preflightEnabled" className="text-sm font-medium text-gray-700">
+              Enable Pre-flight Clarification
+            </label>
+          </div>
+
+          {/* Timeout */}
+          <div>
+            <label htmlFor="preflightDefaultTimeoutMs" className="block text-sm font-medium text-gray-700 mb-1">
+              Default Timeout
+            </label>
+            <select
+              id="preflightDefaultTimeoutMs"
+              value={Number(config.preflightDefaultTimeoutMs) || 300000}
+              onChange={(e) => onChange({ ...config, preflightDefaultTimeoutMs: Number(e.target.value) })}
+              disabled={disabled || config.preflightEnabled !== true}
+              className="w-48 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm disabled:opacity-50"
+            >
+              <option value={60000}>1 minute</option>
+              <option value={120000}>2 minutes</option>
+              <option value={180000}>3 minutes</option>
+              <option value={300000}>5 minutes</option>
+              <option value={600000}>10 minutes</option>
+              <option value={900000}>15 minutes</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              How long to wait for user response before auto-skipping.
+            </p>
+          </div>
+
+          {/* Max Questions */}
+          <div>
+            <label htmlFor="preflightMaxQuestions" className="block text-sm font-medium text-gray-700 mb-1">
+              Max Questions
+            </label>
+            <input
+              type="number"
+              id="preflightMaxQuestions"
+              value={Number(config.preflightMaxQuestions) || 2}
+              onChange={(e) => {
+                const val = Math.max(1, Math.min(4, Number(e.target.value) || 2));
+                onChange({ ...config, preflightMaxQuestions: val });
+              }}
+              min={1}
+              max={4}
+              disabled={disabled || config.preflightEnabled !== true}
+              className="w-20 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm disabled:opacity-50"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum clarification questions per query (1-4).
+            </p>
+          </div>
+
+          {/* Skip on Follow-up */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="preflightSkipOnFollowUp"
+              checked={config.preflightSkipOnFollowUp !== false}
+              onChange={(e) => onChange({ ...config, preflightSkipOnFollowUp: e.target.checked })}
+              disabled={disabled || config.preflightEnabled !== true}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="preflightSkipOnFollowUp" className="text-sm font-medium text-gray-700">
+              Skip on Follow-up Messages
+            </label>
+          </div>
+          <p className="text-xs text-gray-500 -mt-2 ml-6">
+            Don&apos;t trigger pre-flight clarification when the user&apos;s message appears to be a follow-up to an existing conversation.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

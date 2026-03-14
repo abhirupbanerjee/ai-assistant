@@ -7,7 +7,7 @@
  *
  * API docs: https://github.com/ssllabs/ssllabs-scan/blob/master/ssllabs-api-docs-v4.md
  * Free, but requires one-time email registration at https://api.ssllabs.com/api/v4/register
- * Results cached 6 hours.
+ * Results cached 24 hours.
  *
  * Note: v3 was deprecated January 2024. v4 requires the registered email sent as a
  * request header. Without an email configured, falls back to direct TLS check.
@@ -353,10 +353,10 @@ const configSchema = {
     cacheTTLSeconds: {
       type: 'number',
       title: 'Cache Duration (seconds)',
-      description: 'How long to cache scan results (21600 = 6 hours)',
+      description: 'How long to cache scan results (86400 = 24 hours)',
       minimum: 3600,
       maximum: 86400,
-      default: 21600,
+      default: 86400,
     },
     rateLimitPerDay: {
       type: 'number',
@@ -377,7 +377,7 @@ const configSchema = {
 
 const defaultConfig: SslScanConfig = {
   maxWaitSeconds: 120,
-  cacheTTLSeconds: 21600,
+  cacheTTLSeconds: 86400,
   rateLimitPerDay: 20,
   email: '',
 };

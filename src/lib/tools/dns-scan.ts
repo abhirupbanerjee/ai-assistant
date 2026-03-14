@@ -8,7 +8,7 @@
  * - DNSSEC                             — DNS response integrity
  *
  * Uses Google DNS-over-HTTPS (dns.google/resolve) — free, no API key needed.
- * Results cached 6 hours (DNS records change infrequently).
+ * Results cached 24 hours (DNS records change infrequently).
  */
 
 import { getToolConfig } from '../db/compat/tool-config';
@@ -314,10 +314,10 @@ const configSchema = {
     cacheTTLSeconds: {
       type: 'number',
       title: 'Cache Duration (seconds)',
-      description: 'DNS records change infrequently — 6 hours is appropriate (21600)',
+      description: 'DNS records change infrequently — 24 hours is appropriate (86400)',
       minimum: 3600,
       maximum: 86400,
-      default: 21600,
+      default: 86400,
     },
     rateLimitPerDay: {
       type: 'number',
@@ -331,7 +331,7 @@ const configSchema = {
 };
 
 const defaultConfig: DnsScanConfig = {
-  cacheTTLSeconds: 21600,
+  cacheTTLSeconds: 86400,
   rateLimitPerDay: 50,
   dkimSelectors: ['default', 'google', 'selector1', 'selector2', 'mail', 'smtp', 'dkim'],
 };

@@ -164,7 +164,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-policybot}
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - policybot-pgdata:/var/lib/postgresql/data
       # Auto-run schema on first init (only executes once when DB is created)
       - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
@@ -220,3 +220,5 @@ networks:
 volumes:
   letsencrypt:
     name: policy-bot-letsencrypt
+  policybot-pgdata:
+    name: policybot-pgdata

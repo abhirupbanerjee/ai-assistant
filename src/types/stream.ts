@@ -6,7 +6,7 @@
  */
 
 import type { Source, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization, DiagramHint, PodcastHint } from './index';
-import type { ComplianceDecision, HitlClarificationEvent } from './compliance';
+import type { ComplianceDecision, HitlClarificationEvent, PreflightClarificationEvent } from './compliance';
 import type { FallbackReason, ModelSwitchEvent } from '@/lib/llm-fallback';
 
 
@@ -18,6 +18,7 @@ import type { FallbackReason, ModelSwitchEvent } from '@/lib/llm-fallback';
 export type StreamPhase =
   | 'init'        // Connection established
   | 'rag'         // RAG retrieval in progress
+  | 'clarifying_question' // Pre-flight: waiting for user clarification
   | 'tools'       // Executing tool calls
   | 'generating'  // Streaming LLM response
   | 'agent_planning'   // Autonomous mode: Creating task plan
@@ -134,6 +135,7 @@ export type StreamEvent =
   // Compliance events
   | { type: 'compliance'; data: ComplianceDecision }
   | { type: 'hitl_clarification'; data: HitlClarificationEvent }
+  | { type: 'hitl_preflight'; data: PreflightClarificationEvent }
 
   // LLM fallback events
   | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string };

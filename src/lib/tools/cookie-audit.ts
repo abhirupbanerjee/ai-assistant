@@ -159,10 +159,10 @@ const configSchema = {
     cacheTTLSeconds: {
       type: 'number',
       title: 'Cache Duration (seconds)',
-      description: 'How long to cache results (3600 = 1 hour)',
+      description: 'How long to cache results (86400 = 24 hours)',
       minimum: 300,
       maximum: 86400,
-      default: 3600,
+      default: 86400,
     },
     rateLimitPerDay: {
       type: 'number',
@@ -176,7 +176,7 @@ const configSchema = {
 };
 
 const defaultConfig: CookieAuditConfig = {
-  cacheTTLSeconds: 3600,
+  cacheTTLSeconds: 86400,
   rateLimitPerDay: 50,
   followRedirects: true,
 };

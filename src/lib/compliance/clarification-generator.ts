@@ -12,6 +12,7 @@ import type {
   ComplianceCheckResult,
   TemplateClarification,
   ComplianceGlobalConfig,
+  ResolvedPreflightConfig,
 } from '../../types/compliance';
 
 // ============ Template Clarifications ============
@@ -220,7 +221,7 @@ async function callClarificationLLM(
 /**
  * Parse LLM response with defensive JSON handling
  */
-function parseClarificationResponse(raw: string): ClarificationQuestion[] {
+export function parseClarificationResponse(raw: string): ClarificationQuestion[] {
   // Strip markdown fences (Gemini/Mistral sometimes add these)
   let cleaned = raw
     .replace(/```json\n?/g, '')
@@ -352,4 +353,59 @@ function getTemplateKey(failure: ComplianceCheckResult): string {
   }
 
   return 'tool_error'; // Default fallback
+}
+
+// ============ Pre-flight Clarification ============
+
+const PREFLIGHT_SYSTEM_PROMPT = `You assess whether a user query is ambiguous and needs clarification BEFORE generating a response.
+
+IMPORTANT: Most queries are clear enough to answer directly. Only generate questions when the query is genuinely ambiguous and clarification would meaningfully improve the response.
+
+Return JSON only. If the query is clear, return: {"questions": []}
+
+If ambiguous, return 1-{{maxQuestions}} questions:
+{"questions": [{"id": "q1", "context": "Why this needs clarification", "question": "Your question?", "options": [{"id": "a", "label": "Option A", "action": "retry_with"}, {"id": "b", "label": "Option B", "action": "retry_with"}], "allowFreeText": true}]}
+
+Rules:
+- Prefer FEWER questions. One good question > multiple marginal ones.
+- Each question must have 2-4 options.
+- Use action "retry_with" for all options (pre-flight context enrichment).
+- Set allowFreeText: true when the user might have a specific answer not in the options.
+- Do NOT ask about formatting, length, or style preferences.
+- Do NOT ask questions the response can easily cover with a general answer.`;
+
+/**
+ * Generate pre-flight clarification questions for an ambiguous query.
+ * Returns [] when the query is clear (the common case).
+ * Never throws — returns [] on any error.
+ */
+export async function generatePreflightClarifications(
+  userMessage: string,
+  resolvedConfig: ResolvedPreflightConfig,
+  globalConfig: ComplianceGlobalConfig,
+): Promise<ClarificationQuestion[]> {
+  try {
+    const { callLLMForJson } = await import('../llm-utils');
+
+    const systemPrompt = PREFLIGHT_SYSTEM_PROMPT
+      .replace('{{maxQuestions}}', String(resolvedConfig.maxQuestions));
+
+    const userPrompt = resolvedConfig.instructions
+      ? `DOMAIN CONTEXT:\n${resolvedConfig.instructions}\n\nUSER QUERY: "${userMessage}"`
+      : `USER QUERY: "${userMessage}"`;
+
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+
+    const response = await callLLMForJson(fullPrompt, {
+      model: globalConfig.clarificationModel || undefined,
+      timeout: Math.min(globalConfig.clarificationTimeout, 10000), // Cap at 10s for preflight LLM call
+      temperature: 0.2,
+      maxTokens: 800,
+    });
+
+    return parseClarificationResponse(response);
+  } catch (error) {
+    console.warn('[Preflight] LLM clarification generation failed:', error);
+    return [];
+  }
 }

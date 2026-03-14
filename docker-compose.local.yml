@@ -37,7 +37,7 @@ services:
       POSTGRES_PASSWORD: 12f1ecab9910c6253261be41092a916a
       POSTGRES_DB: policybot
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - policybot-pgdata-local:/var/lib/postgresql/data
       # Auto-run schema on first init (only executes once when DB is created)
       - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
@@ -114,3 +114,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+volumes:
+  policybot-pgdata-local:
+    name: policybot-pgdata-local

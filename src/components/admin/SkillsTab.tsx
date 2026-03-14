@@ -49,6 +49,13 @@ interface SkillComplianceConfig {
   passThreshold?: number;
   warnThreshold?: number;
   clarificationInstructions?: string;
+  preflightClarification?: {
+    enabled: boolean;
+    instructions?: string;
+    maxQuestions?: number;
+    timeoutMs?: number;
+    skipOnFollowUp?: boolean;
+  };
 }
 
 interface Skill {
@@ -116,6 +123,13 @@ interface SkillFormData {
   compliance_passThreshold: number | undefined;
   compliance_warnThreshold: number | undefined;
   compliance_clarificationInstructions: string;
+
+  // Pre-flight clarification per-skill config
+  compliance_preflight_enabled: boolean;
+  compliance_preflight_instructions: string;
+  compliance_preflight_maxQuestions: number | undefined;
+  compliance_preflight_timeoutMs: number | undefined;
+  compliance_preflight_skipOnFollowUp: boolean | undefined;
 }
 
 const initialFormData: SkillFormData = {
@@ -141,6 +155,13 @@ const initialFormData: SkillFormData = {
   compliance_passThreshold: undefined,
   compliance_warnThreshold: undefined,
   compliance_clarificationInstructions: '',
+
+  // Pre-flight clarification defaults
+  compliance_preflight_enabled: false,
+  compliance_preflight_instructions: '',
+  compliance_preflight_maxQuestions: undefined,
+  compliance_preflight_timeoutMs: undefined,
+  compliance_preflight_skipOnFollowUp: undefined,
 };
 
 // Priority tiers
@@ -348,7 +369,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
 
     // Build compliance_config if enabled
     if (formData.compliance_enabled) {
-      data.compliance_config = {
+      const complianceConfig: Record<string, unknown> = {
         enabled: true,
         sections: formData.compliance_sections
           ? formData.compliance_sections.split(',').map(s => s.trim()).filter(Boolean)
@@ -357,6 +378,19 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
         warnThreshold: formData.compliance_warnThreshold,
         clarificationInstructions: formData.compliance_clarificationInstructions || undefined,
       };
+
+      // Add preflight clarification config if enabled
+      if (formData.compliance_preflight_enabled) {
+        complianceConfig.preflightClarification = {
+          enabled: true,
+          instructions: formData.compliance_preflight_instructions || undefined,
+          maxQuestions: formData.compliance_preflight_maxQuestions,
+          timeoutMs: formData.compliance_preflight_timeoutMs,
+          skipOnFollowUp: formData.compliance_preflight_skipOnFollowUp,
+        };
+      }
+
+      data.compliance_config = complianceConfig;
     } else {
       data.compliance_config = null;
     }
@@ -367,6 +401,11 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
     delete data.compliance_passThreshold;
     delete data.compliance_warnThreshold;
     delete data.compliance_clarificationInstructions;
+    delete data.compliance_preflight_enabled;
+    delete data.compliance_preflight_instructions;
+    delete data.compliance_preflight_maxQuestions;
+    delete data.compliance_preflight_timeoutMs;
+    delete data.compliance_preflight_skipOnFollowUp;
 
     return data;
   };
@@ -549,6 +588,13 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       compliance_passThreshold: skill.compliance_config?.passThreshold,
       compliance_warnThreshold: skill.compliance_config?.warnThreshold,
       compliance_clarificationInstructions: skill.compliance_config?.clarificationInstructions || '',
+
+      // Pre-flight clarification
+      compliance_preflight_enabled: skill.compliance_config?.preflightClarification?.enabled || false,
+      compliance_preflight_instructions: skill.compliance_config?.preflightClarification?.instructions || '',
+      compliance_preflight_maxQuestions: skill.compliance_config?.preflightClarification?.maxQuestions,
+      compliance_preflight_timeoutMs: skill.compliance_config?.preflightClarification?.timeoutMs,
+      compliance_preflight_skipOnFollowUp: skill.compliance_config?.preflightClarification?.skipOnFollowUp,
     });
     setShowEditModal(true);
   };
@@ -722,6 +768,18 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
         if (skill.compliance_config.clarificationInstructions) {
           lines.push(`| **Clarification Instructions** | ${skill.compliance_config.clarificationInstructions} |`);
         }
+        if (skill.compliance_config.preflightClarification?.enabled) {
+          lines.push(`| **Pre-flight Clarification** | Enabled |`);
+          if (skill.compliance_config.preflightClarification.instructions) {
+            lines.push(`| **Pre-flight Instructions** | ${skill.compliance_config.preflightClarification.instructions} |`);
+          }
+          if (skill.compliance_config.preflightClarification.maxQuestions !== undefined) {
+            lines.push(`| **Pre-flight Max Questions** | ${skill.compliance_config.preflightClarification.maxQuestions} |`);
+          }
+          if (skill.compliance_config.preflightClarification.timeoutMs !== undefined) {
+            lines.push(`| **Pre-flight Timeout** | ${skill.compliance_config.preflightClarification.timeoutMs / 1000}s |`);
+          }
+        }
         lines.push('');
       }
 
@@ -787,6 +845,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
           passThreshold: skill.compliance_config.passThreshold,
           warnThreshold: skill.compliance_config.warnThreshold,
           clarificationInstructions: skill.compliance_config.clarificationInstructions,
+          preflightClarification: skill.compliance_config.preflightClarification,
         } : null,
         promptContent: skill.prompt_content,
         metadata: {
@@ -2045,6 +2104,99 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                     <p className="text-xs text-gray-500 mt-1">
                       Custom instructions injected into the LLM prompt when generating clarification questions.
                     </p>
+                  </div>
+
+                  {/* Pre-flight Clarification */}
+                  <div className="border rounded-lg p-3 bg-gray-50 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="compliance_preflight_enabled"
+                        checked={formData.compliance_preflight_enabled}
+                        onChange={(e) => setFormData({ ...formData, compliance_preflight_enabled: e.target.checked })}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="compliance_preflight_enabled" className="text-sm font-medium text-gray-700">
+                        Enable Pre-flight Clarification
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 -mt-1">
+                      Ask clarifying questions <em>before</em> generating a response when the query is ambiguous. Requires global pre-flight to be enabled in Compliance Checker settings.
+                    </p>
+
+                    {formData.compliance_preflight_enabled && (
+                      <div className="space-y-3 ml-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Domain Instructions
+                          </label>
+                          <textarea
+                            value={formData.compliance_preflight_instructions || ''}
+                            onChange={(e) => setFormData({ ...formData, compliance_preflight_instructions: e.target.value })}
+                            placeholder="For this skill, ask about the specific policy area or time period when queries mention multiple topics."
+                            rows={2}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Context injected into the pre-flight LLM prompt to guide question generation for this skill.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Max Questions
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={4}
+                              value={formData.compliance_preflight_maxQuestions ?? ''}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                compliance_preflight_maxQuestions: e.target.value ? parseInt(e.target.value) : undefined
+                              })}
+                              placeholder="Global default"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Timeout
+                            </label>
+                            <select
+                              value={formData.compliance_preflight_timeoutMs ?? ''}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                compliance_preflight_timeoutMs: e.target.value ? Number(e.target.value) : undefined
+                              })}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                            >
+                              <option value="">Global default</option>
+                              <option value={60000}>1 minute</option>
+                              <option value={120000}>2 minutes</option>
+                              <option value={180000}>3 minutes</option>
+                              <option value={300000}>5 minutes</option>
+                              <option value={600000}>10 minutes</option>
+                              <option value={900000}>15 minutes</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="compliance_preflight_skipOnFollowUp"
+                            checked={formData.compliance_preflight_skipOnFollowUp ?? true}
+                            onChange={(e) => setFormData({ ...formData, compliance_preflight_skipOnFollowUp: e.target.checked })}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <label htmlFor="compliance_preflight_skipOnFollowUp" className="text-sm font-medium text-gray-700">
+                            Skip on follow-up messages
+                          </label>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

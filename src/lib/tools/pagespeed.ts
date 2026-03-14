@@ -413,7 +413,7 @@ const configSchema = {
       description: 'How long to cache analysis results (reduces API calls)',
       minimum: 60,
       maximum: 86400,
-      default: 3600,
+      default: 86400,
     },
     includeOpportunities: {
       type: 'boolean',
@@ -433,7 +433,7 @@ const configSchema = {
 const defaultConfig: WebsiteAnalysisConfig = {
   apiKey: '',
   defaultStrategy: 'mobile',
-  cacheTTLSeconds: 3600,
+  cacheTTLSeconds: 86400,
   includeOpportunities: true,
   includeDiagnostics: true,
 };

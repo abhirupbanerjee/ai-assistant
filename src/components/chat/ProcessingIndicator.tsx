@@ -62,6 +62,12 @@ function getPhaseInfo(phase: StreamPhase): { icon: React.ReactNode; label: strin
         label: 'Searching knowledge base...',
         color: 'text-blue-600',
       };
+    case 'clarifying_question':
+      return {
+        icon: <Pause size={16} />,
+        label: 'Waiting for your input...',
+        color: 'text-amber-600',
+      };
     case 'tools':
       return {
         icon: <Wrench size={16} />,

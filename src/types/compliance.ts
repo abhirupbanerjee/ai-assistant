@@ -99,6 +99,13 @@ export interface SkillComplianceConfig {
     minResults?: number;
     failureAction?: FailureAction;
   }>;
+  preflightClarification?: {         // Pre-response HITL clarification
+    enabled: boolean;                // Per-skill opt-in (requires global preflightEnabled)
+    instructions?: string;           // Domain-specific LLM prompt context for ambiguity assessment
+    maxQuestions?: number;           // Override global preflightMaxQuestions
+    timeoutMs?: number;              // Override global preflightDefaultTimeoutMs (max 900000)
+    skipOnFollowUp?: boolean;        // Override global preflightSkipOnFollowUp
+  };
 }
 
 // ============ Global Compliance Config ============
@@ -120,6 +127,12 @@ export interface ComplianceGlobalConfig {
 
   // Async HITL
   allowAcceptFlagged: boolean;       // Default: true
+
+  // Pre-flight clarification (pre-response HITL)
+  preflightEnabled: boolean;               // Global kill switch. Default: false
+  preflightDefaultTimeoutMs: number;       // Default: 300000 (5 min). Max: 900000 (15 min)
+  preflightMaxQuestions: number;           // Default: 2. Range: 1-4
+  preflightSkipOnFollowUp: boolean;        // Default: true
 }
 
 // ============ Clarification Types ============
@@ -238,8 +251,35 @@ export interface ClarificationRequest {
   customInstructions?: string;
 }
 
+// ============ Pre-flight Clarification Types ============
+
+export interface PreflightClarificationEvent {
+  type: 'hitl_preflight';
+  messageId: string;
+  questions: ClarificationQuestion[];
+  fallbackActions: HitlFallbackAction[];
+  timeoutMs: number;
+  skillName?: string;
+}
+
+export interface PreflightUserResponse {
+  messageId: string;
+  responses: Record<string, string>;      // questionId -> optionId
+  freeTextInputs: Record<string, string>; // questionId -> free text
+  fallbackAction?: HitlAction;
+}
+
+export interface ResolvedPreflightConfig {
+  enabled: boolean;
+  instructions?: string;
+  maxQuestions: number;
+  timeoutMs: number;
+  skipOnFollowUp: boolean;
+}
+
 // ============ Stream Event Types ============
 
 export type ComplianceStreamEvent =
   | { type: 'compliance'; data: ComplianceDecision }
-  | { type: 'hitl_clarification'; data: HitlClarificationEvent };
+  | { type: 'hitl_clarification'; data: HitlClarificationEvent }
+  | { type: 'hitl_preflight'; data: PreflightClarificationEvent };

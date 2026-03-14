@@ -69,6 +69,7 @@ export function getToolDisplayName(toolName: string): string {
 const PHASE_MESSAGES: Record<StreamPhase, string> = {
   init: 'Starting...',
   rag: 'Searching knowledge base...',
+  clarifying_question: 'Waiting for your input...',
   tools: 'Processing tools...',
   generating: 'Generating response...',
   agent_planning: 'Creating autonomous task plan...',

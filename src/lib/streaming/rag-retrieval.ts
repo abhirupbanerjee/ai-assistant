@@ -33,6 +33,13 @@ export interface MatchedSkillForCompliance {
     warnThreshold?: number;
     clarificationInstructions?: string;
     hitlModel?: string;
+    preflightClarification?: {
+      enabled: boolean;
+      instructions?: string;
+      maxQuestions?: number;
+      timeoutMs?: number;
+      skipOnFollowUp?: boolean;
+    };
   };
 }
 
@@ -353,6 +360,7 @@ export async function performRAGRetrieval(
       warnThreshold: skill.compliance_config.warnThreshold,
       clarificationInstructions: skill.compliance_config.clarificationInstructions,
       hitlModel: skill.compliance_config.hitlModel,
+      preflightClarification: skill.compliance_config.preflightClarification,
     } : undefined,
   }));
 
