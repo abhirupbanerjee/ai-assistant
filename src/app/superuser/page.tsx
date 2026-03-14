@@ -10,7 +10,11 @@ import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import SuperuserSidebarMenu from '@/components/superuser/SuperuserSidebarMenu';
-import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
+import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
+import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
+import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
+import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
+import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
 import DocumentsManagement from '@/components/superuser/DocumentsManagement';
 import SuperuserDashboard from '@/components/superuser/SuperuserDashboard';
@@ -171,8 +175,8 @@ function SuperUserPageContent() {
   };
 
   // Settings sidebar section state
-  type SettingsSection = 'rag-tuning' | 'backup';
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('rag-tuning');
+  type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache';
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
 
   // Stats state
   const [stats, setStats] = useState<SuperUserStats | null>(null);
@@ -973,12 +977,12 @@ function SuperUserPageContent() {
         {/* Skills Tab (Skill Library) */}
         {/* Tools Tab (level 1 menu item) */}
         {activeTab === 'tools' && (
-          <ToolsTab isSuperuser />
+          <ToolsTab readOnly isSuperuser />
         )}
 
         {/* Skills Tab (level 1 menu item) */}
         {activeTab === 'skills' && (
-          <SkillsTab isSuperuser />
+          <SkillsTab readOnly isSuperuser />
         )}
 
         {/* Workspaces Section */}
@@ -991,56 +995,14 @@ function SuperUserPageContent() {
           <SuperuserAgentBotsList />
         )}
 
-        {/* Settings Section */}
+        {/* Settings Section (view only) */}
         {activeTab === 'settings' && (
           <>
-            {settingsSection === 'rag-tuning' && (
-              <RagTuningDashboard />
-            )}
-            {settingsSection === 'backup' && (
-              <div className="bg-white rounded-lg border shadow-sm">
-                <div className="px-6 py-4 border-b">
-                  <h2 className="font-semibold text-gray-900">Backup Threads</h2>
-                  <p className="text-sm text-gray-500">
-                    Export conversation threads from your assigned categories
-                  </p>
-                </div>
-                <div className="p-6">
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 mb-4">
-                      Download threads and messages from categories you manage.
-                    </p>
-                    <Button
-                      onClick={async () => {
-                        try {
-                          const response = await fetch('/api/superuser/backup', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ includeThreads: true }),
-                          });
-                          if (!response.ok) throw new Error('Backup failed');
-                          const blob = await response.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `threads-backup-${new Date().toISOString().split('T')[0]}.json`;
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          a.remove();
-                        } catch (err) {
-                          console.error('Backup error:', err);
-                          alert('Failed to create backup. Please try again.');
-                        }
-                      }}
-                    >
-                      <FileText size={16} className="mr-2" />
-                      Export Threads
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {settingsSection === 'llm' && <UnifiedLLMSettings readOnly />}
+            {settingsSection === 'rag' && <UnifiedRAGSettings readOnly />}
+            {settingsSection === 'reranker' && <RerankerSettingsTab readOnly />}
+            {settingsSection === 'ocr' && <DocumentProcessingTab readOnly />}
+            {settingsSection === 'cache' && <CacheSettingsTab readOnly />}
           </>
         )}
         </main>

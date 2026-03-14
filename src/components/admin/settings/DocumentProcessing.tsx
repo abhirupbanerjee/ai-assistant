@@ -45,7 +45,7 @@ const PROVIDER_INFO: Record<string, { label: string; description: string; format
   },
 };
 
-export default function DocumentProcessingTab() {
+export default function DocumentProcessingTab({ readOnly = false }: { readOnly?: boolean }) {
   const [settings, setSettings] = useState<OcrSettings | null>(null);
   const [editedProviders, setEditedProviders] = useState<OcrProviderConfig[] | null>(null);
   // Credential inputs
@@ -174,24 +174,28 @@ export default function DocumentProcessingTab() {
   };
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm">
+    <div className={`bg-white rounded-lg border shadow-sm ${readOnly ? '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_input]:opacity-75 [&_select]:opacity-75' : ''}`}>
       <div className="px-6 py-4 border-b">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-900">Document Processing</h2>
-            <p className="text-sm text-gray-500">Configure OCR providers and their priority order for document text extraction</p>
+            <p className="text-sm text-gray-500">
+              {readOnly ? 'Current OCR provider configuration (view only).' : 'Configure OCR providers and their priority order for document text extraction'}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            {isModified && (
-              <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
-                Reset
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              {isModified && (
+                <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
+                  Reset
+                </Button>
+              )}
+              <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
+                <Save size={18} className="mr-2" />
+                Save
               </Button>
-            )}
-            <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
-              <Save size={18} className="mr-2" />
-              Save
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

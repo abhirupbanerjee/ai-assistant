@@ -37,7 +37,7 @@ const EVICTION_POLICIES = [
   { value: 'volatile-ttl', label: 'Shortest Time-to-Live', description: 'Remove keys that are closest to their expiration time' },
 ];
 
-export default function CacheSettingsTab() {
+export default function CacheSettingsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -138,12 +138,12 @@ export default function CacheSettingsTab() {
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${readOnly ? '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_input]:opacity-75 [&_select]:opacity-75' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Cache Management</h2>
-          <p className="text-sm text-gray-500">Monitor and manage Redis cache</p>
+          <p className="text-sm text-gray-500">{readOnly ? 'Redis cache status (view only).' : 'Monitor and manage Redis cache'}</p>
         </div>
         <Button
           variant="secondary"
@@ -237,16 +237,18 @@ export default function CacheSettingsTab() {
                 <div className="text-2xl font-bold text-blue-600">{stats?.keys.rag ?? 0}</div>
                 <div className="text-sm text-blue-700">RAG Queries</div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => handleFlush('flush-rag', 'RAG cache')}
-                disabled={actionLoading !== null || (stats?.keys.rag ?? 0) === 0}
-                className="!p-2"
-                title="Clear RAG cache"
-              >
-                <Trash2 size={16} />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleFlush('flush-rag', 'RAG cache')}
+                  disabled={actionLoading !== null || (stats?.keys.rag ?? 0) === 0}
+                  className="!p-2"
+                  title="Clear RAG cache"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
@@ -254,16 +256,18 @@ export default function CacheSettingsTab() {
                 <div className="text-2xl font-bold text-green-600">{stats?.keys.tavily ?? 0}</div>
                 <div className="text-sm text-green-700">Web Search</div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => handleFlush('flush-tavily', 'Web Search cache')}
-                disabled={actionLoading !== null || (stats?.keys.tavily ?? 0) === 0}
-                className="!p-2"
-                title="Clear Web Search cache"
-              >
-                <Trash2 size={16} />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleFlush('flush-tavily', 'Web Search cache')}
+                  disabled={actionLoading !== null || (stats?.keys.tavily ?? 0) === 0}
+                  className="!p-2"
+                  title="Clear Web Search cache"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
@@ -271,16 +275,18 @@ export default function CacheSettingsTab() {
                 <div className="text-2xl font-bold text-purple-600">{stats?.keys.dataApi ?? 0}</div>
                 <div className="text-sm text-purple-700">Data API</div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => handleFlush('flush-data-api', 'Data API cache')}
-                disabled={actionLoading !== null || (stats?.keys.dataApi ?? 0) === 0}
-                className="!p-2"
-                title="Clear Data API cache"
-              >
-                <Trash2 size={16} />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleFlush('flush-data-api', 'Data API cache')}
+                  disabled={actionLoading !== null || (stats?.keys.dataApi ?? 0) === 0}
+                  className="!p-2"
+                  title="Clear Data API cache"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg">
@@ -288,16 +294,18 @@ export default function CacheSettingsTab() {
                 <div className="text-2xl font-bold text-orange-600">{stats?.keys.functionApi ?? 0}</div>
                 <div className="text-sm text-orange-700">Function API</div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => handleFlush('flush-function-api', 'Function API cache')}
-                disabled={actionLoading !== null || (stats?.keys.functionApi ?? 0) === 0}
-                className="!p-2"
-                title="Clear Function API cache"
-              >
-                <Trash2 size={16} />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleFlush('flush-function-api', 'Function API cache')}
+                  disabled={actionLoading !== null || (stats?.keys.functionApi ?? 0) === 0}
+                  className="!p-2"
+                  title="Clear Function API cache"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
@@ -305,16 +313,18 @@ export default function CacheSettingsTab() {
                 <div className="text-2xl font-bold text-red-600">{stats?.keys.total ?? 0}</div>
                 <div className="text-sm text-red-700">Total Keys</div>
               </div>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => handleFlush('flush-all', 'ALL cache')}
-                disabled={actionLoading !== null || (stats?.keys.total ?? 0) === 0}
-                className="!p-2"
-                title="Clear all cache"
-              >
-                <Trash2 size={16} />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => handleFlush('flush-all', 'ALL cache')}
+                  disabled={actionLoading !== null || (stats?.keys.total ?? 0) === 0}
+                  className="!p-2"
+                  title="Clear all cache"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -380,20 +390,22 @@ export default function CacheSettingsTab() {
           </div>
 
           {/* Save Button */}
-          <div className="pt-4 border-t">
-            <Button
-              onClick={handleSaveConfig}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-2"
-            >
-              {actionLoading ? <Spinner size="sm" /> : <Zap size={16} />}
-              Apply Configuration
-            </Button>
-            <p className="text-xs text-gray-400 mt-2">
-              Note: Changes are applied immediately but not persisted across Redis restarts.
-              For permanent changes, update your Redis config file or Docker command.
-            </p>
-          </div>
+          {!readOnly && (
+            <div className="pt-4 border-t">
+              <Button
+                onClick={handleSaveConfig}
+                disabled={actionLoading !== null}
+                className="flex items-center gap-2"
+              >
+                {actionLoading ? <Spinner size="sm" /> : <Zap size={16} />}
+                Apply Configuration
+              </Button>
+              <p className="text-xs text-gray-400 mt-2">
+                Note: Changes are applied immediately but not persisted across Redis restarts.
+                For permanent changes, update your Redis config file or Docker command.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

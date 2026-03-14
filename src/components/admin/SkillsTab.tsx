@@ -212,9 +212,11 @@ function PriorityBadge({ priority }: { priority: number }) {
 interface SkillsTabProps {
   /** If true, restricts to superuser permissions (no 'always' trigger, priority >= 100) */
   isSuperuser?: boolean;
+  /** If true, all controls are hidden — view-only mode */
+  readOnly?: boolean;
 }
 
-export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
+export default function SkillsTab({ isSuperuser = false, readOnly = false }: SkillsTabProps) {
   // State
   const [skills, setSkills] = useState<Skill[]>([]);
   const [settings, setSettings] = useState<SkillsSettings>({
@@ -1053,7 +1055,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
       )}
 
       {/* Settings Panel - Admin only */}
-      {!isSuperuser && (
+      {!isSuperuser && !readOnly && (
         <div className="bg-white rounded-lg border shadow-sm">
           <div className="px-6 py-4 border-b flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -1116,14 +1118,14 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!isSuperuser && (
+            {!isSuperuser && !readOnly && (
               <Button variant="secondary" onClick={() => setShowRestoreModal(true)} title="Restore core skills to config defaults">
                 <RotateCcw size={16} className="mr-2" />
                 Restore Defaults
               </Button>
             )}
             {/* Export dropdown */}
-            {!isSuperuser && (
+            {!isSuperuser && !readOnly && (
               <div className="relative group">
                 <Button variant="secondary" title="Export skills">
                   <Download size={16} className="mr-2" />
@@ -1171,17 +1173,19 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
               <Eye size={16} className="mr-2" />
               Preview
             </Button>
-            <Button onClick={() => {
-              setFormData({
-                ...initialFormData,
-                trigger_type: isSuperuser ? 'keyword' : 'keyword',
-                priority: isSuperuser ? PRIORITY_SUPERUSER_MIN : 100,
-              });
-              setShowCreateModal(true);
-            }}>
-              <Plus size={16} className="mr-2" />
-              Add Skill
-            </Button>
+            {!readOnly && (
+              <Button onClick={() => {
+                setFormData({
+                  ...initialFormData,
+                  trigger_type: isSuperuser ? 'keyword' : 'keyword',
+                  priority: isSuperuser ? PRIORITY_SUPERUSER_MIN : 100,
+                });
+                setShowCreateModal(true);
+              }}>
+                <Plus size={16} className="mr-2" />
+                Add Skill
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1233,7 +1237,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             <thead className="bg-gray-50">
               <tr>
                 {/* Selection checkbox column - admin only */}
-                {!isSuperuser && (
+                {!isSuperuser && !readOnly && (
                   <th className="px-3 py-3 w-10">
                     <input
                       type="checkbox"
@@ -1310,13 +1314,13 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                {!readOnly && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredSkills.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperuser ? 7 : 8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={readOnly ? 6 : (isSuperuser ? 7 : 8)} className="px-6 py-8 text-center text-gray-500">
                     No skills found. Create your first skill to get started.
                   </td>
                 </tr>
@@ -1324,7 +1328,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                 filteredSkills.map((skill) => (
                   <tr key={skill.id} className={`hover:bg-gray-50 ${!skill.is_active ? 'opacity-60' : ''}`}>
                     {/* Selection checkbox - admin only */}
-                    {!isSuperuser && (
+                    {!isSuperuser && !readOnly && (
                       <td className="px-3 py-4">
                         <input
                           type="checkbox"
@@ -1395,6 +1399,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                         </span>
                       )}
                     </td>
+                    {!readOnly && (
                     <td className="px-6 py-4">
                       {(() => {
                         // Superusers can only modify skills they created (priority >= 100 and not core)
@@ -1431,6 +1436,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                         );
                       })()}
                     </td>
+                    )}
                   </tr>
                 ))
               )}

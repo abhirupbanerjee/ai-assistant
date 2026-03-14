@@ -80,7 +80,7 @@ type SectionId = 'providers' | 'models' | 'chatDefaults' | 'fallback' | 'overvie
 
 // ============ Component ============
 
-export default function UnifiedLLMSettings() {
+export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: boolean }) {
   // Section expand/collapse
   const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(
     new Set(['providers', 'models'])
@@ -494,12 +494,12 @@ export default function UnifiedLLMSettings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${readOnly ? '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_input]:opacity-75 [&_select]:opacity-75' : ''}`}>
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-gray-900">LLM Settings</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Manage providers, models, and generation parameters.
+          {readOnly ? 'Current provider and model configuration (view only).' : 'Manage providers, models, and generation parameters.'}
         </p>
       </div>
 
@@ -537,24 +537,28 @@ export default function UnifiedLLMSettings() {
       {/* ============ Section 2: Enabled Models ============ */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="models" title="Enabled Models" subtitle="Models available for users in the chat dropdown">
-          <Button
-            variant="secondary"
-            onClick={handleRefreshCapabilities}
-            disabled={isRefreshing || enabledModels.length === 0}
-          >
-            <RefreshCw size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button
-            onClick={() => {
-              setSelectedProviderForDiscovery(null);
-              setShowDiscoveryModal(true);
-            }}
-            disabled={configuredProviders.length === 0}
-          >
-            <Plus size={16} className="mr-2" />
-            Add Models
-          </Button>
+          {!readOnly && (
+            <>
+              <Button
+                variant="secondary"
+                onClick={handleRefreshCapabilities}
+                disabled={isRefreshing || enabledModels.length === 0}
+              >
+                <RefreshCw size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button
+                onClick={() => {
+                  setSelectedProviderForDiscovery(null);
+                  setShowDiscoveryModal(true);
+                }}
+                disabled={configuredProviders.length === 0}
+              >
+                <Plus size={16} className="mr-2" />
+                Add Models
+              </Button>
+            </>
+          )}
         </SectionHeader>
         {expandedSections.has('models') && (
           <>
@@ -573,7 +577,7 @@ export default function UnifiedLLMSettings() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capabilities</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Output</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      {!readOnly && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -639,6 +643,7 @@ export default function UnifiedLLMSettings() {
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Disabled</span>
                           )}
                         </td>
+                        {!readOnly && (
                         <td className="px-6 py-4 whitespace-nowrap text-right relative">
                           <button onClick={() => setActiveModelMenu(activeModelMenu === model.id ? null : model.id)}
                             className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
@@ -667,6 +672,7 @@ export default function UnifiedLLMSettings() {
                             </div>
                           )}
                         </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -687,16 +693,20 @@ export default function UnifiedLLMSettings() {
       {/* ============ Section 3: Chat Defaults ============ */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="chatDefaults" title="Chat Defaults" subtitle="Temperature, token limits, and generation parameters">
-          <Button variant="secondary" onClick={() => setShowRestoreConfirm(true)} disabled={restoringDefaults}
-            className="text-orange-600 border-orange-300 hover:bg-orange-50">
-            <RefreshCw size={16} className="mr-2" />Reset All
-          </Button>
-          {defaultsModified && (
-            <Button variant="secondary" onClick={handleResetDefaults} disabled={isSavingDefaults}>Reset</Button>
+          {!readOnly && (
+            <>
+              <Button variant="secondary" onClick={() => setShowRestoreConfirm(true)} disabled={restoringDefaults}
+                className="text-orange-600 border-orange-300 hover:bg-orange-50">
+                <RefreshCw size={16} className="mr-2" />Reset All
+              </Button>
+              {defaultsModified && (
+                <Button variant="secondary" onClick={handleResetDefaults} disabled={isSavingDefaults}>Reset</Button>
+              )}
+              <Button onClick={handleSaveDefaults} disabled={!defaultsModified || isSavingDefaults} loading={isSavingDefaults}>
+                <Save size={18} className="mr-2" />Save
+              </Button>
+            </>
           )}
-          <Button onClick={handleSaveDefaults} disabled={!defaultsModified || isSavingDefaults} loading={isSavingDefaults}>
-            <Save size={18} className="mr-2" />Save
-          </Button>
         </SectionHeader>
         {expandedSections.has('chatDefaults') && editedDefaults && (
           <div className="p-6 space-y-6">
@@ -758,12 +768,16 @@ export default function UnifiedLLMSettings() {
       {/* ============ Section 4: Fallback ============ */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="fallback" title="Fallback" subtitle="Automatic model failover when primary LLM is unavailable">
-          {fallbackModified && (
-            <Button variant="secondary" onClick={handleResetFallback} disabled={isSavingFallback}>Reset</Button>
+          {!readOnly && (
+            <>
+              {fallbackModified && (
+                <Button variant="secondary" onClick={handleResetFallback} disabled={isSavingFallback}>Reset</Button>
+              )}
+              <Button onClick={handleSaveFallback} disabled={!fallbackModified || isSavingFallback} loading={isSavingFallback}>
+                <Save size={18} className="mr-2" />Save
+              </Button>
+            </>
           )}
-          <Button onClick={handleSaveFallback} disabled={!fallbackModified || isSavingFallback} loading={isSavingFallback}>
-            <Save size={18} className="mr-2" />Save
-          </Button>
         </SectionHeader>
         {expandedSections.has('fallback') && fallbackData && editedFallback && (
           <div className="p-6 space-y-6">

@@ -25,7 +25,7 @@ import {
 // ============================================================================
 
 type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agent-bots' | 'settings';
-type SettingsSection = 'rag-tuning' | 'backup';
+type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -62,8 +62,11 @@ const MENU_CONFIG: MenuConfigItem[] = [
     icon: Settings,
     expandable: true,
     submenu: [
-      { id: 'rag-tuning', label: 'RAG Tuning' },
-      { id: 'backup', label: 'Backup' },
+      { id: 'llm', label: 'LLM' },
+      { id: 'rag', label: 'RAG' },
+      { id: 'reranker', label: 'Reranker' },
+      { id: 'ocr', label: 'Document Processing' },
+      { id: 'cache', label: 'Cache' },
     ]
   },
 ];

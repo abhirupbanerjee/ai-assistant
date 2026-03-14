@@ -68,7 +68,7 @@ type SectionId = 'embedding' | 'ragParams' | 'ragTuning';
 
 // ============ Component ============
 
-export default function UnifiedRAGSettings() {
+export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: boolean }) {
   // Section collapse/expand
   const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(
     new Set(['embedding', 'ragParams'])
@@ -404,7 +404,7 @@ export default function UnifiedRAGSettings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${readOnly ? '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_input]:opacity-75 [&_select]:opacity-75' : ''}`}>
       {/* Global alerts */}
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
@@ -519,15 +519,17 @@ export default function UnifiedRAGSettings() {
                     ))}
                   </optgroup>
                 </select>
-                <Button
-                  onClick={handleSaveFallback}
-                  disabled={!isFallbackModelChanged || isSavingFallback}
-                  loading={isSavingFallback}
-                  size="sm"
-                >
-                  <Save size={14} className="mr-1" />
-                  Save
-                </Button>
+                {!readOnly && (
+                  <Button
+                    onClick={handleSaveFallback}
+                    disabled={!isFallbackModelChanged || isSavingFallback}
+                    loading={isSavingFallback}
+                    size="sm"
+                  >
+                    <Save size={14} className="mr-1" />
+                    Save
+                  </Button>
+                )}
               </div>
               <p className="mt-1 text-xs text-gray-500">
                 If the primary model fails to load, the system will automatically use this fallback.
@@ -561,6 +563,7 @@ export default function UnifiedRAGSettings() {
             )}
 
             {/* Apply & Reindex Button */}
+            {!readOnly && (
             <div className="flex items-center gap-3">
               <Button
                 onClick={handleChangeEmbedding}
@@ -586,6 +589,7 @@ export default function UnifiedRAGSettings() {
                 </Button>
               )}
             </div>
+            )}
 
             {/* Progress Bar */}
             {isReindexing && (
@@ -617,15 +621,19 @@ export default function UnifiedRAGSettings() {
       {/* ==================== Section 2: RAG Parameters ==================== */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="ragParams" title="RAG Parameters" subtitle="Configure retrieval and chunking parameters">
-          {isModified && (
-            <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
-              Reset
-            </Button>
+          {!readOnly && (
+            <>
+              {isModified && (
+                <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
+                  Reset
+                </Button>
+              )}
+              <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
+                <Save size={18} className="mr-2" />
+                Save
+              </Button>
+            </>
           )}
-          <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
-            <Save size={18} className="mr-2" />
-            Save
-          </Button>
         </SectionHeader>
         {expandedSections.has('ragParams') && editedSettings && (
           <div className="p-6 space-y-6">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { MessageSquare, MessagesSquare, Upload, RefreshCw, Clock } from 'lucide-react';
+import { MessageSquare, MessagesSquare, Upload, RefreshCw } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -11,20 +11,9 @@ interface ThreadStats {
   totalUploads: number;
 }
 
-interface RecentThread {
-  id: string;
-  title: string;
-  userEmail: string;
-  messageCount: number;
-  createdAt: string;
-}
-
 interface SystemStats {
   database: {
     threads: ThreadStats;
-  };
-  recentActivity: {
-    recentThreads: RecentThread[];
   };
 }
 
@@ -53,12 +42,6 @@ export default function QueryStatistics() {
   }, [fetchStats]);
 
   const threadStats = stats?.database?.threads;
-  const recentThreads = stats?.recentActivity?.recentThreads || [];
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  };
 
   return (
     <div className="space-y-6">
@@ -143,31 +126,6 @@ export default function QueryStatistics() {
               </div>
             )}
 
-            {/* Recent Threads */}
-            <div className="border-t pt-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock size={16} className="text-gray-400" />
-                <h3 className="text-sm font-medium text-gray-900">Recent Conversations</h3>
-              </div>
-              {recentThreads.length > 0 ? (
-                <div className="space-y-2">
-                  {recentThreads.slice(0, 5).map((thread) => (
-                    <div key={thread.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{thread.title || 'Untitled'}</p>
-                        <p className="text-xs text-gray-500">{thread.userEmail}</p>
-                      </div>
-                      <div className="text-right ml-4">
-                        <p className="text-sm text-gray-600">{thread.messageCount} msgs</p>
-                        <p className="text-xs text-gray-400">{formatDate(thread.createdAt)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No recent conversations</p>
-              )}
-            </div>
           </div>
         ) : (
           <div className="px-6 py-12 text-center text-gray-500">

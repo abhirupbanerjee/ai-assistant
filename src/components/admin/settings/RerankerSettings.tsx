@@ -62,7 +62,7 @@ const DEFAULT_PROVIDERS: RerankerProviderConfig[] = [
   { provider: 'local', enabled: true },
 ];
 
-export default function RerankerSettingsTab() {
+export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [settings, setSettings] = useState<RerankerSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [cohereApiKeyInput, setCohereApiKeyInput] = useState('');
@@ -226,7 +226,7 @@ export default function RerankerSettingsTab() {
   const isCohereEnabled = editedSettings?.providers.some(p => p.provider === 'cohere' && p.enabled);
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${readOnly ? '[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_input]:opacity-75 [&_select]:opacity-75' : ''}`}>
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
           <p className="text-sm text-red-700">{error}</p>
@@ -274,17 +274,19 @@ export default function RerankerSettingsTab() {
               <h2 className="font-semibold text-gray-900">Reranker</h2>
               <p className="text-sm text-gray-500">Configure document reranking for improved RAG quality</p>
             </div>
-            <div className="flex items-center gap-2">
-              {isModified && (
-                <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
-                  Reset
+            {!readOnly && (
+              <div className="flex items-center gap-2">
+                {isModified && (
+                  <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
+                    Reset
+                  </Button>
+                )}
+                <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
+                  <Save size={18} className="mr-2" />
+                  Save
                 </Button>
-              )}
-              <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
-                <Save size={18} className="mr-2" />
-                Save
-              </Button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
         {isLoading ? (

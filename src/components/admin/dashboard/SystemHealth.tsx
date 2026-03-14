@@ -26,6 +26,7 @@ export default function SystemHealth() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAllCollections, setShowAllCollections] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -117,29 +118,51 @@ export default function SystemHealth() {
             </div>
 
             {/* Collections Table */}
-            {chromaStats.collections.length > 0 && (
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Collections</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        <th className="px-4 py-2 text-left font-medium text-gray-600">Name</th>
-                        <th className="px-4 py-2 text-right font-medium text-gray-600">Documents</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {chromaStats.collections.map((collection) => (
-                        <tr key={collection.name} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 text-gray-900">{collection.name}</td>
-                          <td className="px-4 py-2 text-gray-600 text-right">{collection.documentCount.toLocaleString()}</td>
+            {chromaStats.collections.length > 0 && (() => {
+              const displayedCollections = showAllCollections
+                ? chromaStats.collections
+                : chromaStats.collections.slice(0, 5);
+              const hasMore = chromaStats.collections.length > 5;
+
+              return (
+                <div className="border-t pt-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3">
+                    Collections
+                    {hasMore && !showAllCollections && (
+                      <span className="text-gray-400 font-normal"> (showing 5 of {chromaStats.collections.length})</span>
+                    )}
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">Name</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-600">Documents</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y">
+                        {displayedCollections.map((collection) => (
+                          <tr key={collection.name} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 text-gray-900">{collection.name}</td>
+                            <td className="px-4 py-2 text-gray-600 text-right">{collection.documentCount.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {hasMore && (
+                    <button
+                      onClick={() => setShowAllCollections(!showAllCollections)}
+                      className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      {showAllCollections
+                        ? 'Show less'
+                        : `Show all ${chromaStats.collections.length} collections`}
+                    </button>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ) : (
           <div className="px-6 py-12 text-center text-gray-500">
