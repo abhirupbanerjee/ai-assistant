@@ -165,7 +165,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-policybot}
     volumes:
       - policybot-pgdata:/var/lib/postgresql/data
-      # Auto-run schema on first init (only executes once when DB is created)
+      # Auto-run on first init (only executes once when DB is created)
+      - ./src/lib/db/schema/00-create-litellm-db.sql:/docker-entrypoint-initdb.d/00-create-litellm-db.sql:ro
       - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-policybot}"]
@@ -207,8 +208,8 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-}
       # LiteLLM needs a DB for /model/new API (auto-sync models from app).
-      # Uses the same Postgres instance; LiteLLM tables are prefixed with "LiteLLM_".
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-policybot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-policybot}
+      # Uses a separate "litellm" database in the same Postgres instance.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-policybot}:${POSTGRES_PASSWORD}@postgres:5432/litellm
       - STORE_MODEL_IN_DB=True
       - DISABLE_SPEND_LOGS=True
     command: --config /app/config.yaml --port 4000
@@ -221,7 +222,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s
     networks:
       - policy-bot-network
     restart: unless-stopped

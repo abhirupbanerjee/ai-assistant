@@ -38,7 +38,8 @@ services:
       POSTGRES_DB: policybot
     volumes:
       - policybot-pgdata-local:/var/lib/postgresql/data
-      # Auto-run schema on first init (only executes once when DB is created)
+      # Auto-run on first init (only executes once when DB is created)
+      - ./src/lib/db/schema/00-create-litellm-db.sql:/docker-entrypoint-initdb.d/00-create-litellm-db.sql:ro
       - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U policybot"]
@@ -99,8 +100,8 @@ services:
     environment:
       # Override DATABASE_URL from .env.local (which uses localhost) to Docker hostname.
       # LiteLLM needs a DB for /model/new API (auto-sync models from app).
-      # Tables are prefixed with "LiteLLM_" — no conflicts with app tables.
-      - DATABASE_URL=postgresql://policybot:12f1ecab9910c6253261be41092a916a@postgres:5432/policybot
+      # Uses separate "litellm" database — created by 00-create-litellm-db.sql on first init.
+      - DATABASE_URL=postgresql://policybot:12f1ecab9910c6253261be41092a916a@postgres:5432/litellm
       - DATABASE_PROVIDER=
       - POSTGRES_PASSWORD=
       - DATABASE_POOL_MAX=
@@ -118,7 +119,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s
 
 volumes:
   policybot-pgdata-local:
