@@ -196,7 +196,8 @@ services:
     volumes:
       - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
     # NOTE: Do NOT use env_file here. Loading .env passes DATABASE_URL to Prisma,
-    # which crashes LiteLLM even with store_model_in_db=false. Pass only needed vars.
+    # which crashes LiteLLM when the URL format doesn't match expectations.
+    # Pass only needed vars explicitly via ${VAR} substitution from .env.
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -205,9 +206,16 @@ services:
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-}
-      - STORE_MODEL_IN_DB=False
+      # LiteLLM needs a DB for /model/new API (auto-sync models from app).
+      # Uses the same Postgres instance; LiteLLM tables are prefixed with "LiteLLM_".
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-policybot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-policybot}
+      - STORE_MODEL_IN_DB=True
       - DISABLE_SPEND_LOGS=True
     command: --config /app/config.yaml --port 4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false  # Only enforced when postgres profile is active
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 30s

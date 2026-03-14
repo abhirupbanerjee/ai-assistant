@@ -97,17 +97,22 @@ services:
     env_file:
       - .env.local
     environment:
-      # Clear DATABASE_URL inherited from .env — LiteLLM doesn't need a database
-      - DATABASE_URL=
+      # Override DATABASE_URL from .env.local (which uses localhost) to Docker hostname.
+      # LiteLLM needs a DB for /model/new API (auto-sync models from app).
+      # Tables are prefixed with "LiteLLM_" — no conflicts with app tables.
+      - DATABASE_URL=postgresql://policybot:12f1ecab9910c6253261be41092a916a@postgres:5432/policybot
       - DATABASE_PROVIDER=
       - POSTGRES_PASSWORD=
       - DATABASE_POOL_MAX=
       - DATABASE_POOL_IDLE_TIMEOUT=
       - DATABASE_POOL_CONNECTION_TIMEOUT=
       # LiteLLM settings
-      - STORE_MODEL_IN_DB=False
+      - STORE_MODEL_IN_DB=True
       - DISABLE_SPEND_LOGS=True
     command: --config /app/config.yaml --port 4000
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
       interval: 30s
