@@ -356,8 +356,12 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'llm': {
-        // Validate LLM settings
-        const { model, temperature, maxTokens, promptOptimizationMaxTokens } = settings;
+        // Auto-populate missing fields from current stored settings
+        const currentLlm = await getLlmSettings();
+        const model = settings.model || currentLlm.model;
+        const temperature = settings.temperature ?? currentLlm.temperature;
+        const maxTokens = settings.maxTokens ?? currentLlm.maxTokens;
+        const promptOptimizationMaxTokens = settings.promptOptimizationMaxTokens ?? currentLlm.promptOptimizationMaxTokens;
 
         if (!model || !(await getAvailableModels()).some(m => m.id === model)) {
           return NextResponse.json<ApiError>(

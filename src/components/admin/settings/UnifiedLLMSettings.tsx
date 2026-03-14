@@ -356,10 +356,17 @@ export default function UnifiedLLMSettings() {
     if (!editedDefaults || !defaultsModified) return;
     try {
       setIsSavingDefaults(true);
+      // Include model and promptOptimizationMaxTokens from current chatDefaults
+      // so the API validation passes (it requires all fields)
+      const fullSettings = {
+        model: chatDefaults?.model,
+        promptOptimizationMaxTokens: chatDefaults?.promptOptimizationMaxTokens,
+        ...editedDefaults,
+      };
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'llm', settings: editedDefaults }),
+        body: JSON.stringify({ type: 'llm', settings: fullSettings }),
       });
       if (!res.ok) throw new Error('Failed to save settings');
       const result = await res.json();

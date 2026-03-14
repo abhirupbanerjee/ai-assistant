@@ -14,6 +14,7 @@ import {
   deleteEnabledModel,
   type UpdateEnabledModelInput,
 } from '@/lib/db/compat/enabled-models';
+import { setLlmSettings, getLlmSettings } from '@/lib/db/compat/config';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -76,6 +77,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         { error: 'Model not found', code: 'NOT_FOUND' },
         { status: 404 }
       );
+    }
+
+    // Sync llm-settings.model when a new default is set
+    if (body.isDefault) {
+      try {
+        const current = await getLlmSettings();
+        if (current.model !== id) {
+          await setLlmSettings({ model: id }, user.email);
+        }
+      } catch (err) {
+        console.warn('[Enabled Model] Failed to sync llm-settings.model:', err);
+      }
     }
 
     return NextResponse.json({ model });

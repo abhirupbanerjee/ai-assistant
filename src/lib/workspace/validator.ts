@@ -7,6 +7,7 @@
 
 import { getWorkspaceBySlug, canUserAccessWorkspace, validateDomain as checkDomain } from '../db/compat/workspaces';
 import { getSetting } from '../db/compat/config';
+import { getDefaultModel } from '../db/compat/enabled-models';
 import type { Workspace, WorkspaceValidationResult } from '@/types/workspace';
 
 // ============================================================================
@@ -266,12 +267,19 @@ export async function getWorkspaceLLMConfig(workspace: Workspace): Promise<{
   const globalSettings = await getSetting<{
     model: string;
     temperature: number;
-  }>('llm-settings') || { model: 'gpt-4o-mini', temperature: 0.3 };
+  }>('llm-settings');
+
+  // Resolve model: workspace override > llm-settings > enabled_models default > fallback
+  let model = workspace.llm_model || globalSettings?.model;
+  if (!model) {
+    const defaultModel = await getDefaultModel();
+    model = defaultModel?.id || 'gpt-4o-mini';
+  }
 
   return {
     provider: workspace.llm_provider || 'openai',
-    model: workspace.llm_model || globalSettings.model,
-    temperature: workspace.temperature ?? globalSettings.temperature,
+    model,
+    temperature: workspace.temperature ?? globalSettings?.temperature ?? 0.3,
   };
 }
 

@@ -518,7 +518,7 @@ export async function getJobStats(
 
   const tokenResult = await db
     .selectFrom('agent_bot_jobs')
-    .select(sql<number>`SUM((token_usage_json->>'totalTokens')::int)`.as('total_tokens'))
+    .select(sql<number>`SUM((token_usage_json::jsonb->>'totalTokens')::int)`.as('total_tokens'))
     .where('agent_bot_id', '=', agentBotId)
     .where(sql`DATE(created_at)`, '>=', startDate)
     .where(sql`DATE(created_at)`, '<=', endDate)
@@ -569,7 +569,7 @@ export async function getUsageStats(
   // Get total tokens
   const tokenResult = await db
     .selectFrom('agent_bot_jobs')
-    .select(sql<number>`SUM((token_usage_json->>'totalTokens')::int)`.as('total_tokens'))
+    .select(sql<number>`SUM((token_usage_json::jsonb->>'totalTokens')::int)`.as('total_tokens'))
     .where('agent_bot_id', '=', agentBotId)
     .where(sql`DATE(created_at)`, '>=', cutoff)
     .where('token_usage_json', 'is not', null)
@@ -581,7 +581,7 @@ export async function getUsageStats(
     .select([
       sql<string>`DATE(created_at)`.as('date'),
       db.fn.count<number>('id').as('requests'),
-      sql<number>`COALESCE(SUM((token_usage_json->>'totalTokens')::int), 0)`.as('tokens'),
+      sql<number>`COALESCE(SUM((token_usage_json::jsonb->>'totalTokens')::int), 0)`.as('tokens'),
       sql<number>`SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)`.as('errors'),
     ])
     .where('agent_bot_id', '=', agentBotId)

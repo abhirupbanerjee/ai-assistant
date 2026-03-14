@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Save } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -30,7 +30,30 @@ interface AgentSettings {
   updatedBy?: string;
 }
 
+interface EnabledModel {
+  id: string;
+  providerId: string;
+  displayName: string;
+  toolCapable: boolean;
+  visionCapable: boolean;
+  enabled: boolean;
+}
+
 const MODEL_KEYS = ['plannerModel', 'executorModel', 'checkerModel', 'summarizerModel'] as const;
+
+/** Map a provider ID from enabled_models to a valid agent provider value */
+function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' {
+  switch (providerId) {
+    case 'gemini':
+    case 'google':
+      return 'gemini';
+    case 'mistral':
+      return 'mistral';
+    default:
+      // All other providers (openai, anthropic, etc.) route through OpenAI client → LiteLLM proxy
+      return 'openai';
+  }
+}
 
 export default function AgentSettingsTab() {
   const [settings, setSettings] = useState<AgentSettings | null>(null);
@@ -39,6 +62,17 @@ export default function AgentSettingsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availableModels, setAvailableModels] = useState<EnabledModel[]>([]);
+
+  // Group models by provider for optgroup rendering
+  const modelsByProvider = useMemo(() => {
+    const groups: Record<string, EnabledModel[]> = {};
+    for (const model of availableModels) {
+      if (!groups[model.providerId]) groups[model.providerId] = [];
+      groups[model.providerId].push(model);
+    }
+    return groups;
+  }, [availableModels]);
 
   const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleDateString('en-US', {
@@ -47,6 +81,18 @@ export default function AgentSettingsTab() {
       day: 'numeric',
     });
   };
+
+  const fetchAvailableModels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/llm/models?active=true');
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableModels(data.models || []);
+      }
+    } catch {
+      // Non-critical - models dropdown will be empty
+    }
+  }, []);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -81,7 +127,8 @@ export default function AgentSettingsTab() {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchAvailableModels();
+  }, [fetchSettings, fetchAvailableModels]);
 
   const handleSave = async () => {
     if (!editedSettings || !isModified) return;
@@ -149,6 +196,18 @@ export default function AgentSettingsTab() {
       });
       setIsModified(true);
     }
+  };
+
+  /** Handle model selection from dropdown — also auto-sets the provider */
+  const handleModelSelect = (modelKey: typeof MODEL_KEYS[number], modelId: string) => {
+    if (!editedSettings) return;
+    const selectedModel = availableModels.find(m => m.id === modelId);
+    const provider = selectedModel ? mapProviderForAgent(selectedModel.providerId) : editedSettings[modelKey].provider;
+    setEditedSettings({
+      ...editedSettings,
+      [modelKey]: { ...editedSettings[modelKey], model: modelId, provider }
+    });
+    setIsModified(true);
   };
 
   return (
@@ -263,59 +322,69 @@ export default function AgentSettingsTab() {
               <p className="text-sm text-gray-500">Assign models to different agent roles</p>
             </div>
             <div className="p-6 space-y-6">
-              {MODEL_KEYS.map((modelKey) => (
-                <div key={modelKey} className="border-b pb-6 last:border-b-0 last:pb-0">
-                  <h4 className="text-sm font-medium text-gray-900 mb-4 capitalize">
-                    {modelKey.replace('Model', ' Model')}
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Provider</label>
-                      <select
-                        value={editedSettings[modelKey].provider}
-                        onChange={(e) => updateModelConfig(modelKey, 'provider', e.target.value as 'openai' | 'gemini' | 'mistral')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      >
-                        <option value="openai">OpenAI</option>
-                        <option value="gemini">Gemini</option>
-                        <option value="mistral">Mistral</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
-                      <input
-                        type="text"
-                        value={editedSettings[modelKey].model}
-                        onChange={(e) => updateModelConfig(modelKey, 'model', e.target.value)}
-                        placeholder="gpt-4o"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Temperature</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="2"
-                        value={editedSettings[modelKey].temperature}
-                        onChange={(e) => updateModelConfig(modelKey, 'temperature', parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Max Tokens</label>
-                      <input
-                        type="number"
-                        value={editedSettings[modelKey].max_tokens || ''}
-                        onChange={(e) => updateModelConfig(modelKey, 'max_tokens', parseInt(e.target.value) || undefined)}
-                        placeholder="4096"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
+              {MODEL_KEYS.map((modelKey) => {
+                const currentModel = editedSettings[modelKey];
+                const isKnownModel = availableModels.some(m => m.id === currentModel.model);
+
+                return (
+                  <div key={modelKey} className="border-b pb-6 last:border-b-0 last:pb-0">
+                    <h4 className="text-sm font-medium text-gray-900 mb-4 capitalize">
+                      {modelKey.replace('Model', ' Model')}
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="lg:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
+                        <select
+                          value={currentModel.model}
+                          onChange={(e) => handleModelSelect(modelKey, e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          {/* Show current value if not in the available models list */}
+                          {!isKnownModel && currentModel.model && (
+                            <option value={currentModel.model}>
+                              {currentModel.model} ({currentModel.provider})
+                            </option>
+                          )}
+                          {Object.entries(modelsByProvider).map(([providerId, models]) => (
+                            <optgroup key={providerId} label={providerId}>
+                              {models.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.displayName}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <span className="text-xs text-gray-400 mt-1 block">
+                          Provider: {currentModel.provider}
+                        </span>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Temperature</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="2"
+                          value={currentModel.temperature}
+                          onChange={(e) => updateModelConfig(modelKey, 'temperature', parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Max Tokens</label>
+                        <input
+                          type="number"
+                          value={currentModel.max_tokens || ''}
+                          onChange={(e) => updateModelConfig(modelKey, 'max_tokens', parseInt(e.target.value) || undefined)}
+                          placeholder="4096"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
