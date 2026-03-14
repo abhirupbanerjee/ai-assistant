@@ -431,12 +431,16 @@ export async function initializeAdminsFromEnv(): Promise<void> {
       .filter(Boolean) || [];
 
   for (const email of adminEmails) {
-    if (!(await userExists(email))) {
+    const existing = await getUserByEmail(email);
+    if (!existing) {
       await createUser({
         email,
         role: 'admin',
         addedBy: 'system',
       });
+    } else if (existing.role !== 'admin') {
+      await updateUser(existing.id, { role: 'admin' });
+      console.log(`[Auth] Re-promoted env admin: ${email}`);
     }
   }
 }

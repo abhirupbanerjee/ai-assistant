@@ -26,6 +26,17 @@ export interface AllowedUser {
   role: UserRole;
   addedAt: Date;
   addedBy: string;
+  hasCredentials?: boolean;
+  isRootAdmin?: boolean;
+}
+
+/**
+ * Check if an email belongs to a root admin (defined in ADMIN_EMAILS env var).
+ * Root admins cannot be demoted or deleted through the UI.
+ */
+export function isRootAdmin(email: string): boolean {
+  const envAdmins = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()).filter(Boolean) || [];
+  return envAdmins.includes(email.toLowerCase());
 }
 
 /**
@@ -38,6 +49,8 @@ function toAllowedUser(dbUser: DbUser): AllowedUser {
     role: dbUser.role,
     addedAt: new Date(dbUser.created_at),
     addedBy: dbUser.added_by || 'system',
+    hasCredentials: !!(dbUser.password_hash && dbUser.credentials_enabled === 1),
+    isRootAdmin: isRootAdmin(dbUser.email),
   };
 }
 

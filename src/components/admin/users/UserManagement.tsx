@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Users, UserPlus, Shield, User, Trash2, FolderOpen, Tag } from 'lucide-react';
+import { Users, UserPlus, Shield, User, Trash2, FolderOpen, Tag, KeyRound, Lock } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -15,6 +15,8 @@ interface AllowedUser {
   addedBy: string;
   subscriptions?: { categoryId: number; categoryName: string; isActive: boolean }[];
   assignedCategories?: { categoryId: number; categoryName: string }[];
+  hasCredentials?: boolean;
+  isRootAdmin?: boolean;
 }
 
 interface Category {
@@ -69,6 +71,13 @@ export default function UserManagement() {
   const [editUserAssignedCategories, setEditUserAssignedCategories] = useState<number[]>([]);
   const [editCategoryRoles, setEditCategoryRoles] = useState<Record<number, CategoryRole>>({});
   const [savingUserSubs, setSavingUserSubs] = useState(false);
+
+  // Credentials modal state
+  const [credentialsUser, setCredentialsUser] = useState<AllowedUser | null>(null);
+  const [credentialsPassword, setCredentialsPassword] = useState('');
+  const [savingCredentials, setSavingCredentials] = useState(false);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
+  const [credentialsSuccess, setCredentialsSuccess] = useState<string | null>(null);
 
   // Load users
   const loadUsers = useCallback(async () => {
@@ -322,6 +331,71 @@ export default function UserManagement() {
     }
   };
 
+  // Set/update password handler
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!credentialsUser?.id || !credentialsPassword) return;
+
+    setSavingCredentials(true);
+    setCredentialsError(null);
+    setCredentialsSuccess(null);
+
+    try {
+      const response = await fetch(`/api/admin/users/${credentialsUser.id}/credentials`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: credentialsPassword }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to set password');
+      }
+
+      setCredentialsSuccess('Password set successfully');
+      setCredentialsPassword('');
+      await loadUsers();
+    } catch (err) {
+      setCredentialsError(err instanceof Error ? err.message : 'Failed to set password');
+    } finally {
+      setSavingCredentials(false);
+    }
+  };
+
+  // Remove credentials handler
+  const handleRemoveCredentials = async () => {
+    if (!credentialsUser?.id) return;
+
+    setSavingCredentials(true);
+    setCredentialsError(null);
+    setCredentialsSuccess(null);
+
+    try {
+      const response = await fetch(`/api/admin/users/${credentialsUser.id}/credentials`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to remove credentials');
+      }
+
+      setCredentialsSuccess('Credentials removed');
+      await loadUsers();
+    } catch (err) {
+      setCredentialsError(err instanceof Error ? err.message : 'Failed to remove credentials');
+    } finally {
+      setSavingCredentials(false);
+    }
+  };
+
+  const openCredentialsModal = (user: AllowedUser) => {
+    setCredentialsUser(user);
+    setCredentialsPassword('');
+    setCredentialsError(null);
+    setCredentialsSuccess(null);
+  };
+
   return (
     <>
       <div className="bg-white rounded-lg border shadow-sm">
@@ -397,15 +471,23 @@ export default function UserManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                        user.role === 'admin'
-                          ? 'bg-purple-100 text-purple-700'
-                          : user.role === 'superuser'
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {user.role === 'superuser' ? 'super user' : user.role}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                          user.role === 'admin'
+                            ? 'bg-purple-100 text-purple-700'
+                            : user.role === 'superuser'
+                            ? 'bg-orange-100 text-orange-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {user.role === 'superuser' ? 'super user' : user.role}
+                        </span>
+                        {user.isRootAdmin && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-gray-200 text-gray-600" title="Defined in ADMIN_EMAILS env var">
+                            <Lock size={9} />
+                            root
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
@@ -478,19 +560,41 @@ export default function UserManagement() {
                           </button>
                         )}
                         <button
-                          onClick={() => setEditingUser(user)}
-                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
-                          title="Change role"
+                          onClick={() => openCredentialsModal(user)}
+                          className={`p-2 rounded-lg ${
+                            user.hasCredentials
+                              ? 'text-amber-500 hover:text-amber-700 hover:bg-amber-50'
+                              : 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+                          }`}
+                          title={user.hasCredentials ? 'Manage credentials' : 'Set password'}
                         >
-                          <Shield size={16} />
+                          <KeyRound size={16} />
                         </button>
-                        <button
-                          onClick={() => setDeleteUser(user)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                          title="Remove user"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {user.isRootAdmin ? (
+                          <span
+                            className="p-2 text-gray-300 cursor-not-allowed"
+                            title="Root admin — role is locked"
+                          >
+                            <Lock size={16} />
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setEditingUser(user)}
+                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                              title="Change role"
+                            >
+                              <Shield size={16} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteUser(user)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                              title="Remove user"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -721,6 +825,73 @@ export default function UserManagement() {
             Save Changes
           </Button>
         </div>
+      </Modal>
+
+      {/* Manage Credentials Modal */}
+      <Modal
+        isOpen={!!credentialsUser}
+        onClose={() => setCredentialsUser(null)}
+        title="Manage Credentials"
+      >
+        <p className="text-gray-600 mb-1">
+          Email/password login for <strong>{credentialsUser?.email}</strong>
+        </p>
+        <p className="text-sm text-gray-500 mb-4">
+          {credentialsUser?.hasCredentials
+            ? 'This user has email/password login enabled.'
+            : 'This user has no password set.'}
+        </p>
+
+        {credentialsError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-700">{credentialsError}</p>
+          </div>
+        )}
+        {credentialsSuccess && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-700">{credentialsSuccess}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSetPassword}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {credentialsUser?.hasCredentials ? 'New Password' : 'Password'}
+            </label>
+            <input
+              type="password"
+              value={credentialsPassword}
+              onChange={(e) => setCredentialsPassword(e.target.value)}
+              placeholder="Enter password"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              minLength={8}
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              {credentialsUser?.hasCredentials && (
+                <Button
+                  variant="danger"
+                  onClick={handleRemoveCredentials}
+                  loading={savingCredentials}
+                  type="button"
+                >
+                  Remove Credentials
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => setCredentialsUser(null)} type="button">
+                Close
+              </Button>
+              <Button type="submit" loading={savingCredentials} disabled={!credentialsPassword}>
+                {credentialsUser?.hasCredentials ? 'Update Password' : 'Set Password'}
+              </Button>
+            </div>
+          </div>
+        </form>
       </Modal>
     </>
   );

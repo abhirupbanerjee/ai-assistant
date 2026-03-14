@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { getAllowedUsers, addAllowedUser, removeAllowedUser, updateUserRole, getUserId } from '@/lib/users';
+import { getAllowedUsers, addAllowedUser, removeAllowedUser, updateUserRole, getUserId, isRootAdmin } from '@/lib/users';
 import {
   addSubscription,
   assignCategoryToSuperUser,
@@ -163,6 +163,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 });
     }
 
+    // Prevent deletion of root admins (defined in ADMIN_EMAILS env var)
+    if (isRootAdmin(email)) {
+      return NextResponse.json({ error: 'Cannot remove a root admin' }, { status: 403 });
+    }
+
     const removed = await removeAllowedUser(email);
 
     if (!removed) {
@@ -204,6 +209,11 @@ export async function PATCH(request: NextRequest) {
     // Prevent admin from demoting themselves
     if (email.toLowerCase() === admin.email.toLowerCase() && role !== 'admin') {
       return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 });
+    }
+
+    // Prevent role change for root admins (defined in ADMIN_EMAILS env var)
+    if (isRootAdmin(email)) {
+      return NextResponse.json({ error: 'Cannot change role of a root admin' }, { status: 403 });
     }
 
     const updated = await updateUserRole(email, role);
