@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, X, Eye, EyeOff, Loader2, Search, Edit2, Save } from 'lucide-react';
+import { Check, X, Eye, EyeOff, Loader2, Edit2, Save } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 interface LLMProvider {
@@ -17,10 +17,9 @@ interface ProviderCardProps {
   provider: LLMProvider;
   onUpdate: (updates: { apiKey?: string; apiBase?: string; enabled?: boolean }) => Promise<void>;
   onTest: () => Promise<{ success: boolean; message: string }>;
-  onDiscoverModels: () => void;
 }
 
-export default function ProviderCard({ provider, onUpdate, onTest, onDiscoverModels }: ProviderCardProps) {
+export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedApiKey, setEditedApiKey] = useState('');
   const [editedApiBase, setEditedApiBase] = useState(provider.apiBase || '');
@@ -100,15 +99,6 @@ export default function ProviderCard({ provider, onUpdate, onTest, onDiscoverMod
                 loading={isTesting}
               >
                 Test
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={onDiscoverModels}
-                disabled={!provider.enabled}
-              >
-                <Search size={14} className="mr-1" />
-                Browse Models
               </Button>
             </>
           )}

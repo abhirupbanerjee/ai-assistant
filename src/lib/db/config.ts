@@ -284,7 +284,7 @@ export interface AvailableModel {
  * Get available models
  * Priority: Database (admin-configured) > LiteLLM YAML > Hardcoded presets
  *
- * When admin has configured models via Settings → Configure LLM,
+ * When admin has configured models via Settings → LLM,
  * those take precedence over YAML/preset discovery.
  */
 export function getAvailableModels(): AvailableModel[] {
@@ -795,7 +795,7 @@ export function getModelTokenLimits(): ModelTokenLimits {
  * Priority: enabled_models.max_output_tokens > Provider default > Fallback
  *
  * Note: max_output_tokens is set during model discovery and can be edited
- * in the enabled models table (Settings → Configure LLM)
+ * in the enabled models table (Settings → LLM)
  */
 export function getEffectiveMaxTokens(model: string): number {
   // Check enabled_models.max_output_tokens (set during discovery)

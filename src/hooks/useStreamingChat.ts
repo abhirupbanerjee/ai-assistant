@@ -206,6 +206,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         setState(prev => ({
           ...prev,
           phase: event.phase,
+          // Clear preflight card when phase moves past clarifying_question
+          ...(prev.preflightEvent && event.phase !== 'clarifying_question'
+            ? { preflightEvent: null }
+            : {}),
           processingDetails: {
             ...prev.processingDetails,
             phase: event.phase,

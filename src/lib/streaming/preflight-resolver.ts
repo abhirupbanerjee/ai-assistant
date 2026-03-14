@@ -35,8 +35,17 @@ export function createPreflightResolver(
   abortSignal?: AbortSignal
 ): Promise<PreflightResult | null> {
   // Warn if map is growing unexpectedly (potential leak)
-  if (pending.size > 10) {
-    console.warn(`[PreflightResolver] ${pending.size} pending resolvers — possible leak`);
+  if (pending.size > 50) {
+    console.log(`[PreflightResolver] ${pending.size} pending resolvers — check for leaks`);
+  }
+
+  // Guard: clear any existing resolver for this messageId (prevents timer leak)
+  const existing = pending.get(messageId);
+  if (existing) {
+    console.warn(`[PreflightResolver] Overwriting existing resolver for messageId=${messageId}`);
+    clearTimeout(existing.timer);
+    existing.resolve(null);
+    pending.delete(messageId);
   }
 
   return new Promise<PreflightResult | null>((resolve) => {

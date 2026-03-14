@@ -274,9 +274,9 @@ export async function POST(request: NextRequest) {
         // Get user uploads - separate images from documents
         const uploadDetails = await getUploadDetails(user.id, threadId);
 
-        // Check image processing capabilities for current model
+        // Check image processing capabilities for the actual model being used
         const llmSettings = await getLlmSettings();
-        const imageCapabilities = await getImageCapabilities(llmSettings.model);
+        const imageCapabilities = await getImageCapabilities(effectiveModel || llmSettings.model);
 
         // Document paths for RAG text extraction (PDFs, DOCX, etc.)
         // Also include images for OCR text extraction as additional context
@@ -359,11 +359,22 @@ export async function POST(request: NextRequest) {
               const { getComplianceConfig } = await import('@/lib/tools/compliance-checker');
               const complianceConfig = await getComplianceConfig();
 
+              console.log('[Preflight] Global preflightEnabled:', complianceConfig.preflightEnabled);
+              console.log('[Preflight] Matched skills:', ragResult.matchedSkills.map(s => ({
+                name: s.name,
+                hasComplianceConfig: !!s.complianceConfig,
+                preflightEnabled: s.complianceConfig?.preflightClarification?.enabled,
+              })));
+
               if (complianceConfig.preflightEnabled) {
                 const { hasPreflightEnabled, findPreflightSkill, resolvePreflightConfig, runPreflightAssessment } = await import('@/lib/compliance/preflight');
 
-                if (hasPreflightEnabled(complianceConfig, ragResult.matchedSkills)) {
+                const hasPreflight = hasPreflightEnabled(complianceConfig, ragResult.matchedSkills);
+                console.log('[Preflight] hasPreflightEnabled result:', hasPreflight);
+
+                if (hasPreflight) {
                   const preflightSkill = findPreflightSkill(ragResult.matchedSkills);
+                  console.log('[Preflight] Found preflight skill:', preflightSkill?.name, preflightSkill?.config);
 
                   if (preflightSkill) {
                     const resolvedPf = resolvePreflightConfig(complianceConfig, preflightSkill.config);
@@ -372,13 +383,17 @@ export async function POST(request: NextRequest) {
                     let skipPreflight = false;
                     if (resolvedPf.skipOnFollowUp) {
                       const { detectFollowUp } = await import('@/lib/conversation-context');
-                      skipPreflight = detectFollowUp(message).isFollowUp;
+                      const followUp = detectFollowUp(message);
+                      skipPreflight = followUp.isFollowUp;
+                      console.log('[Preflight] Follow-up detection:', followUp);
                     }
 
                     if (!skipPreflight) {
+                      console.log('[Preflight] Running assessment for message:', message.substring(0, 80));
                       const preflightEvent = await runPreflightAssessment(
                         message, assistantMessageId, resolvedPf, complianceConfig, preflightSkill.name
                       );
+                      console.log('[Preflight] Assessment result:', preflightEvent ? `${preflightEvent.questions.length} questions` : 'null (query clear)');
 
                       if (preflightEvent) {
                         // Notify UI and pause stream
@@ -398,6 +413,8 @@ export async function POST(request: NextRequest) {
                     }
                   }
                 }
+              } else {
+                console.log('[Preflight] Skipped — global preflightEnabled is false');
               }
             }
 

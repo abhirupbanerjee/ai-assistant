@@ -22,7 +22,7 @@ async function getMistralClient(): Promise<Mistral> {
     const apiKey = ocrSettings.mistralApiKey || await getApiKey('mistral');
 
     if (!apiKey) {
-      throw new Error('Mistral API key not configured. Set in Settings > Document Processing or Configure LLM.');
+      throw new Error('Mistral API key not configured. Set in Settings > Document Processing or LLM > Providers.');
     }
     mistralClient = new Mistral({ apiKey });
   }

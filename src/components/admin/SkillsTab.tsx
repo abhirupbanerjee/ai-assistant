@@ -2195,6 +2195,9 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                             Skip on follow-up messages
                           </label>
                         </div>
+                        {formData.compliance_preflight_skipOnFollowUp === undefined && (
+                          <p className="text-xs text-gray-400 ml-6">Using global default</p>
+                        )}
                       </div>
                     )}
                   </div>

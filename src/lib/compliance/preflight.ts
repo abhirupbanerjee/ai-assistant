@@ -15,6 +15,7 @@ import type {
   HitlFallbackAction,
 } from '../../types/compliance';
 
+const MIN_TIMEOUT_MS = 5000;   // 5 seconds minimum
 const MAX_TIMEOUT_MS = 900000; // 15 minutes hard cap
 
 /**
@@ -52,9 +53,9 @@ export function resolvePreflightConfig(
   globalConfig: ComplianceGlobalConfig,
   skillConfig?: SkillComplianceConfig['preflightClarification']
 ): ResolvedPreflightConfig {
-  const timeoutMs = Math.min(
-    skillConfig?.timeoutMs ?? globalConfig.preflightDefaultTimeoutMs,
-    MAX_TIMEOUT_MS
+  const timeoutMs = Math.max(
+    MIN_TIMEOUT_MS,
+    Math.min(skillConfig?.timeoutMs ?? globalConfig.preflightDefaultTimeoutMs, MAX_TIMEOUT_MS)
   );
 
   return {

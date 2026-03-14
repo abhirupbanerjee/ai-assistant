@@ -280,7 +280,7 @@ export default function DocumentProcessingTab() {
                         <div className="mt-3 pt-3 border-t border-gray-200">
                           {settings?.mistralFromLlmProvider ? (
                             <p className="text-xs text-green-600 mb-2">
-                              Using API key from Settings &gt; Configure LLM &gt; Mistral
+                              Using API key from Settings &gt; LLM &gt; Providers &gt; Mistral
                             </p>
                           ) : null}
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -375,7 +375,7 @@ export default function DocumentProcessingTab() {
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> Providers are tried in order. Configure API keys above or via environment variables.
-              Mistral OCR will also use the key from Configure LLM if available.
+              Mistral OCR will also use the key from LLM Settings &gt; Providers if available.
               Plain text files (.txt, .md) are handled directly without OCR.
             </p>
           </div>

@@ -31,6 +31,8 @@ interface CallLLMOptions {
   timeout?: number;
   temperature?: number;
   maxTokens?: number;
+  /** When provided, sent as a separate role: 'system' message before the user prompt */
+  systemPrompt?: string;
 }
 
 /**
@@ -48,21 +50,23 @@ export async function callLLMForJson(
     timeout = 5000,
     temperature = 0.3,
     maxTokens = 1000,
+    systemPrompt,
   } = options;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
   try {
     const response = await openai.chat.completions.create(
       {
         model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        messages,
         temperature,
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
@@ -105,21 +109,23 @@ export async function callLLMForText(
     timeout = 5000,
     temperature = 0.3,
     maxTokens = 1000,
+    systemPrompt,
   } = options;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
   try {
     const response = await openai.chat.completions.create(
       {
         model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        messages,
         temperature,
         max_tokens: maxTokens,
       },

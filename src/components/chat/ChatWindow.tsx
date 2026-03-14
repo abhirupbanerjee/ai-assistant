@@ -649,8 +649,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             event={streamingState.preflightEvent}
             mode="preflight"
             onSubmit={async (responses, freeTextInputs) => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
               try {
-                await fetch('/api/chat/preflight', {
+                const res = await fetch('/api/chat/preflight', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -658,23 +660,39 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                     responses,
                     freeTextInputs,
                   }),
+                  signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
               } catch (e) {
+                clearTimeout(timeoutId);
                 console.error('[HITL Preflight] Submit error:', e);
+                setError(e instanceof Error && e.name === 'AbortError'
+                  ? 'Clarification submission timed out.'
+                  : 'Failed to submit clarification.');
               }
             }}
             onFallback={async (action) => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
               try {
-                await fetch('/api/chat/preflight', {
+                const res = await fetch('/api/chat/preflight', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     messageId: streamingState.preflightEvent!.messageId,
                     fallbackAction: action,
                   }),
+                  signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
               } catch (e) {
+                clearTimeout(timeoutId);
                 console.error('[HITL Preflight] Fallback error:', e);
+                setError(e instanceof Error && e.name === 'AbortError'
+                  ? 'Clarification submission timed out.'
+                  : 'Failed to submit clarification.');
               }
             }}
           />
@@ -686,8 +704,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             event={streamingState.hitlEvent}
             mode="post-response"
             onSubmit={async (responses, freeTextInputs) => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
               try {
-                await fetch('/api/chat/hitl', {
+                const res = await fetch('/api/chat/hitl', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -695,23 +715,39 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                     responses,
                     freeTextInputs,
                   }),
+                  signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
               } catch (e) {
+                clearTimeout(timeoutId);
                 console.error('[HITL] Submit error:', e);
+                setError(e instanceof Error && e.name === 'AbortError'
+                  ? 'Clarification submission timed out.'
+                  : 'Failed to submit clarification.');
               }
             }}
             onFallback={async (action) => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
               try {
-                await fetch('/api/chat/hitl', {
+                const res = await fetch('/api/chat/hitl', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     messageId: streamingState.hitlEvent!.messageId,
                     fallbackAction: action,
                   }),
+                  signal: controller.signal,
                 });
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
               } catch (e) {
+                clearTimeout(timeoutId);
                 console.error('[HITL] Fallback error:', e);
+                setError(e instanceof Error && e.name === 'AbortError'
+                  ? 'Clarification submission timed out.'
+                  : 'Failed to submit clarification.');
               }
             }}
           />

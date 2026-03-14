@@ -453,15 +453,15 @@ export async function refreshModelCapabilities(modelId: string): Promise<Enabled
   const model = await getEnabledModel(modelId);
   if (!model) return null;
 
-  // Import capability detection from model-discovery (lazy to avoid circular deps)
-  const { isToolCapable, isVisionCapable, getContextWindow } = require('../../services/model-discovery');
+  // Import capability detection from model-discovery (dynamic to avoid circular deps)
+  const { isToolCapable, isVisionCapable, getContextWindow } = await import('../../services/model-discovery');
 
   const newTokens = getContextWindow(modelId);
 
   return updateEnabledModel(modelId, {
     toolCapable: isToolCapable(modelId),
     visionCapable: isVisionCapable(modelId),
-    maxInputTokens: newTokens ?? model.maxInputTokens,
+    maxInputTokens: newTokens ?? model.maxInputTokens ?? undefined,
   });
 }
 

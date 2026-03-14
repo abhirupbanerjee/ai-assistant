@@ -18,12 +18,10 @@ import MemorySettingsTab from '@/components/admin/settings/MemorySettings';
 import SummarizationSettingsTab from '@/components/admin/settings/SummarizationSettings';
 import SuperuserSettingsTab from '@/components/admin/settings/SuperuserSettings';
 import CredentialsAuthSettingsTab from '@/components/admin/settings/CredentialsAuthSettings';
-import LLMSettingsTab from '@/components/admin/settings/LLMSettings';
+import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import RAGSettingsTab from '@/components/admin/settings/RAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
-import LLMConfigSettings from '@/components/admin/settings/LLMConfigSettings';
-import LLMFallbackSettingsTab from '@/components/admin/settings/LLMFallbackSettings';
 import DashboardOverview from '@/components/admin/dashboard/DashboardOverview';
 import UserStatistics from '@/components/admin/dashboard/UserStatistics';
 import DocumentStatistics from '@/components/admin/dashboard/DocumentStatistics';
@@ -135,7 +133,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'llm-fallback' | 'llm-config' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'llm' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -1227,13 +1225,7 @@ function AdminPageContent() {
         {activeTab === 'settings' && (
           <>
               {/* LLM Settings Section */}
-              {settingsSection === 'llm' && <LLMSettingsTab />}
-
-              {/* LLM Fallback Section */}
-              {settingsSection === 'llm-fallback' && <LLMFallbackSettingsTab />}
-
-              {/* LLM Configuration Section */}
-              {settingsSection === 'llm-config' && <LLMConfigSettings />}
+              {settingsSection === 'llm' && <UnifiedLLMSettings />}
 
               {/* RAG Settings Section */}
               {settingsSection === 'rag' && <RAGSettingsTab />}

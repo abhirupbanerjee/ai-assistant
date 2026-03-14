@@ -257,7 +257,20 @@ export function parseClarificationResponse(raw: string): ClarificationQuestion[]
       id: q.id as string,
       context: q.context as string,
       question: q.question as string,
-      options: (q.options as ClarificationOption[]) || [],
+      options: (Array.isArray(q.options) ? q.options : [])
+        .filter((opt: unknown): opt is Record<string, unknown> =>
+          typeof opt === 'object' && opt !== null &&
+          typeof (opt as Record<string, unknown>).id === 'string' &&
+          typeof (opt as Record<string, unknown>).label === 'string' &&
+          typeof (opt as Record<string, unknown>).action === 'string'
+        )
+        .map((opt: Record<string, unknown>) => ({
+          id: opt.id as string,
+          label: opt.label as string,
+          action: opt.action as ClarificationOption['action'],
+          description: (opt.description as string) || undefined,
+          ...(opt.actionData ? { actionData: opt.actionData as Record<string, unknown> } : {}),
+        })),
       allowFreeText: (q.allowFreeText as boolean) ?? true,
     }));
   } catch (error) {
@@ -394,13 +407,12 @@ export async function generatePreflightClarifications(
       ? `DOMAIN CONTEXT:\n${resolvedConfig.instructions}\n\nUSER QUERY: "${userMessage}"`
       : `USER QUERY: "${userMessage}"`;
 
-    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-
-    const response = await callLLMForJson(fullPrompt, {
+    const response = await callLLMForJson(userPrompt, {
       model: globalConfig.clarificationModel || undefined,
       timeout: Math.min(globalConfig.clarificationTimeout, 10000), // Cap at 10s for preflight LLM call
       temperature: 0.2,
       maxTokens: 800,
+      systemPrompt,
     });
 
     return parseClarificationResponse(response);

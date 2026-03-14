@@ -376,52 +376,34 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
 
 /**
  * Discover models from Anthropic API
- * Note: Anthropic doesn't have a public models list endpoint,
- * so we return a hardcoded list of known models
+ * Uses the List Models endpoint: GET /v1/models
  */
 async function discoverAnthropicModels(apiKey: string): Promise<DiscoveredModel[]> {
-  // Verify API key by making a simple request
-  // Anthropic doesn't have a models endpoint, so we test with a minimal completion
-  const testResponse = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
+  const response = await fetch('https://api.anthropic.com/v1/models?limit=100', {
     headers: {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
   });
 
-  // Check if API key is valid (we don't need the response to succeed, just auth)
-  if (testResponse.status === 401) {
-    throw new Error('Anthropic API error: Invalid API key');
+  if (!response.ok) {
+    throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
   }
 
-  // Return hardcoded list of known Claude models
-  const knownModels = [
-    'claude-sonnet-4-5',
-    'claude-haiku-4-5',
-    'claude-opus-4-5',
-    'claude-3-5-sonnet',
-    'claude-3-opus',
-    'claude-3-sonnet',
-    'claude-3-haiku',
-  ];
+  const data = await response.json() as {
+    data: Array<{ id: string; display_name: string; created_at: string; type: string }>;
+  };
 
-  const filtered = knownModels.filter(m => isChatModel(m));
+  const filtered = data.data.filter(m => isChatModel(m.id));
   const models = await Promise.all(filtered.map(async m => ({
-    id: m,
-    name: generateDisplayName(m),
+    id: m.id,
+    name: generateDisplayName(m.id),
     provider: 'anthropic',
-    toolCapable: isToolCapable(m),
-    visionCapable: isVisionCapable(m),
-    maxInputTokens: getContextWindow(m),
+    toolCapable: isToolCapable(m.id),
+    visionCapable: isVisionCapable(m.id),
+    maxInputTokens: getContextWindow(m.id),
     maxOutputTokens: getDefaultOutputTokens('anthropic'),
-    isEnabled: !!(await getEnabledModel(m)),
+    isEnabled: !!(await getEnabledModel(m.id)),
   })));
   return models.sort((a, b) => a.name.localeCompare(b.name));
 }
