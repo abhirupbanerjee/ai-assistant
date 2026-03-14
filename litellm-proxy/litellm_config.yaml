@@ -338,6 +338,13 @@ model_list:
   # ===========================================================================
   # OLLAMA LOCAL MODELS
   # ===========================================================================
+  - model_name: ollama-qwen2.5
+    litellm_params:
+      model: ollama/qwen2.5:3b
+      api_base: os.environ/OLLAMA_API_BASE
+    model_info:
+      supports_function_calling: true
+
   - model_name: ollama-llama3.2
     litellm_params:
       model: ollama/llama3.2
@@ -345,31 +352,9 @@ model_list:
     model_info:
       supports_function_calling: true
 
-  - model_name: ollama-qwen2.5
+  - model_name: ollama-qwen3
     litellm_params:
-      model: ollama/qwen2.5
-      api_base: os.environ/OLLAMA_API_BASE
-    model_info:
-      supports_function_calling: true
-
-  - model_name: ollama-mistral
-    litellm_params:
-      model: ollama/mistral
-      api_base: os.environ/OLLAMA_API_BASE
-    model_info:
-      supports_function_calling: true
-
-  - model_name: ollama-phi4
-    litellm_params:
-      model: ollama/phi4
-      api_base: os.environ/OLLAMA_API_BASE
-    model_info:
-      supports_function_calling: false
-
-  # Additional Ollama models from defaults
-  - model_name: ollama-gemma3
-    litellm_params:
-      model: ollama/gemma3:12b
+      model: ollama/qwen3:4b
       api_base: os.environ/OLLAMA_API_BASE
     model_info:
       supports_function_calling: true

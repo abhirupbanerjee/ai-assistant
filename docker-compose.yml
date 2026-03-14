@@ -15,11 +15,15 @@
 #     (no profile)          → SQLite (default, set DATABASE_PROVIDER=sqlite)
 #     --profile postgres    → PostgreSQL (set DATABASE_PROVIDER=postgres)
 #
+#   Local LLM:
+#     --profile ollama      → Ollama (set OLLAMA_API_BASE=http://ollama:11434)
+#
 # EXAMPLES:
 #   SQLite + ChromaDB:     docker compose --profile chromadb up -d
 #   SQLite + Qdrant:       docker compose --profile qdrant up -d
 #   PostgreSQL + ChromaDB: docker compose --profile postgres --profile chromadb up -d
 #   PostgreSQL + Qdrant:   docker compose --profile postgres --profile qdrant up -d
+#   PostgreSQL + Qdrant + Ollama: docker compose --profile postgres --profile qdrant --profile ollama up -d
 #
 # =============================================================================
 
@@ -191,6 +195,36 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
+  # Ollama Local LLM Server (optional - use for local model inference)
+  # Start with: docker compose --profile ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: policy-bot-ollama
+    profiles:
+      - ollama
+    entrypoint: ["/bin/bash", "/ollama-entrypoint.sh"]
+    volumes:
+      - ollama-models:/root/.ollama
+      - ./scripts/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-0}
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-8192}
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: policy-bot-litellm
@@ -236,3 +270,5 @@ volumes:
     name: policy-bot-letsencrypt
   policybot-pgdata:
     name: policybot-pgdata
+  ollama-models:
+    name: policy-bot-ollama-models
