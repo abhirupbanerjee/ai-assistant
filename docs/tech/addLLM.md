@@ -33,38 +33,14 @@ For most providers, new models are **automatically discovered** when you click "
 | **Mistral** | `api.mistral.ai/v1/models` | ✅ Yes |
 | **DeepSeek** | `api.deepseek.com/models` | ✅ Yes |
 | **Ollama** | `{apiBase}/api/tags` | ✅ Yes |
-| **Anthropic** | ❌ No public API | ⚠️ **Hardcoded - requires code update** |
+| **Anthropic** | `api.anthropic.com/v1/models` | ✅ Yes |
 
 ### When Code Changes ARE Required
 
 | Scenario | What to Update | Example |
 |----------|---------------|---------|
-| **New Anthropic/Claude model** | Add to hardcoded list in `model-discovery.ts` | Claude 4, Claude 5 |
 | **New model family** (different naming pattern) | Add capability detection patterns | GPT-6.x, Gemini 3.x, o5-series |
 | **Model has different capabilities than pattern suggests** | Override via Admin UI API or add specific pattern | A mini model that supports vision |
-
-### Anthropic Models (Hardcoded)
-
-Anthropic doesn't provide a public models list API. Models are hardcoded in `src/lib/services/model-discovery.ts` (lines 409-417):
-
-```typescript
-const knownModels = [
-  'claude-sonnet-4-5',
-  'claude-haiku-4-5',
-  'claude-opus-4-5',
-  'claude-3-5-sonnet',
-  'claude-3-opus',
-  'claude-3-sonnet',
-  'claude-3-haiku',
-];
-```
-
-**To add a new Claude model:**
-
-1. Edit `src/lib/services/model-discovery.ts`
-2. Add the new model ID to the `knownModels` array in `discoverAnthropicModels()`
-3. If needed, add context window to `CONTEXT_WINDOWS`
-4. Rebuild and restart
 
 ### Capability Detection for New Model Families
 
@@ -118,6 +94,48 @@ Model Configuration Priority:
         └─────────────────────────────────────┘
 ```
 
+### LiteLLM Auto-Sync
+
+Models enabled via the Admin UI are **automatically registered with the LiteLLM proxy** — no YAML edits or LiteLLM restarts required.
+
+```
+Auto-Sync Flow:
+
+  Admin UI "Add Models"                    App Startup
+         │                                      │
+         ▼                                      ▼
+  POST /api/admin/llm/models          DB migrations complete
+         │                                      │
+         ▼                                      ▼
+  Save to enabled_models DB           syncAllModelsToLiteLLM()
+         │                              (re-registers all active
+         ▼                               models from DB)
+  syncModelToLiteLLM()                          │
+         │                                      │
+         ▼                                      ▼
+  POST litellm:4000/model/new ◄─────── POST litellm:4000/model/new
+         │
+         ▼
+  Model available immediately
+  (no restart needed)
+```
+
+**How it works:**
+- `src/lib/services/litellm-sync.ts` maps each provider ID to the correct LiteLLM prefix and API key env var
+- Uses LiteLLM's `/model/new` API with `LITELLM_MASTER_KEY` for auth
+- On **model add**: each new model is registered immediately (fire-and-forget)
+- On **app startup**: all active models from DB are re-registered (since LiteLLM's in-memory store is lost on restart when `store_model_in_db: false`)
+- Models already in YAML are unaffected — `/model/new` returns "already exists" which is silently accepted
+
+**Requirements:**
+- `LITELLM_MASTER_KEY` env var must be set
+- `OPENAI_BASE_URL` must point to LiteLLM proxy (e.g., `http://litellm:4000/v1`)
+
+**Startup logs:**
+```
+[LiteLLM Sync] Startup: synced 17 models (0 failed)
+```
+
 ### Supported Providers
 
 The system currently supports these LLM providers out of the box:
@@ -125,13 +143,13 @@ The system currently supports these LLM providers out of the box:
 | Provider | ID | Models Examples | Vision | Auto-Discovery |
 |----------|-----|-----------------|--------|----------------|
 | **OpenAI** | `openai` | GPT-4.1, GPT-5.x, o1, o3 | Yes | ✅ API |
-| **Anthropic** | `anthropic` | Claude Sonnet/Haiku/Opus 4.5 | Yes | ⚠️ Hardcoded* |
+| **Anthropic** | `anthropic` | Claude Sonnet/Haiku/Opus 4.5/4.6 | Yes | ✅ API |
 | **Google** | `gemini` | Gemini 2.5 Pro/Flash | Yes | ✅ API |
 | **Mistral** | `mistral` | Mistral Large 3, Small 3.2 | Yes | ✅ API |
 | **DeepSeek** | `deepseek` | DeepSeek Chat, Reasoner | No | ✅ API |
 | **Ollama** | `ollama` | Llama 3.2, Qwen 2.5, Phi4 | Varies | ✅ API |
 
-*Anthropic doesn't have a public models list API. New Claude models require a code update - see [When Providers Release New Models](#when-providers-release-new-models).
+All providers now support auto-discovery via their respective APIs.
 
 ---
 
@@ -144,16 +162,19 @@ Use this table to determine what files need updating based on your scenario:
 | What | File | Required? |
 |------|------|-----------|
 | Enable via Admin UI | Web browser | **Yes** (easiest) |
-| OR add to YAML | `litellm-proxy/litellm_config.yaml` | Alternative |
 | Update capability patterns | `src/lib/services/model-discovery.ts` | Only if auto-detection fails |
+
+The model is auto-synced to LiteLLM proxy on add — no YAML edit or restart needed.
 
 ### Scenario 2: Adding a New Model Family (e.g., GPT-6.x)
 
 | What | File | Required? |
 |------|------|-----------|
-| Add to YAML | `litellm-proxy/litellm_config.yaml` | **Yes** |
+| Enable via Admin UI | Web browser | **Yes** |
 | Add capability patterns | `src/lib/services/model-discovery.ts` | **Yes** |
 | Add context windows | `src/lib/services/model-discovery.ts` | Recommended |
+
+YAML is optional — auto-sync registers the model with LiteLLM. But adding capability patterns ensures correct tool/vision flags during discovery.
 
 ### Scenario 3: Adding a New Provider (e.g., Cohere, xAI)
 
@@ -161,8 +182,8 @@ Use this table to determine what files need updating based on your scenario:
 |------|------|-----------|
 | Add provider constants | `src/lib/db/llm-providers.ts` | **Yes** |
 | Add discovery function | `src/lib/services/model-discovery.ts` | **Yes** |
-| Add to YAML | `litellm-proxy/litellm_config.yaml` | **Yes** |
 | Add capability patterns | `src/lib/services/model-discovery.ts` | **Yes** |
+| Add to LiteLLM sync map | `src/lib/services/litellm-sync.ts` | **Yes** |
 
 ---
 
@@ -175,11 +196,11 @@ Use this table to determine what files need updating based on your scenario:
 
 ### UI Overview
 
-Navigate to **Admin > Settings > Configure LLM**:
+Navigate to **Admin > Settings > LLM**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ Settings > Configure LLM                                                │
+│ Settings > LLM                                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │ ┌─── Providers ─────────────────────────────────────────────────────┐   │
@@ -213,7 +234,7 @@ Navigate to **Admin > Settings > Configure LLM**:
 
 #### Step 1: Configure Provider (if needed)
 
-1. Go to **Admin > Settings > Configure LLM**
+1. Go to **Admin > Settings > LLM**
 2. Find the provider (OpenAI, Google, Mistral, Ollama)
 3. If showing "Not configured", click **[+ Add Key]**
 4. Enter your API key
@@ -723,31 +744,32 @@ export async function discoverAllModels(): Promise<{...}> {
 
 See [Capability Detection Patterns](#capability-detection-patterns) section below.
 
-### Step 7: Add to YAML Config
+### Step 7: Add to LiteLLM Sync Map
 
-Add model entries to `litellm-proxy/litellm_config.yaml`:
+Edit `src/lib/services/litellm-sync.ts` and add the provider to `PROVIDER_MAP`:
 
-```yaml
-# ===========================================================================
-# COHERE MODELS
-# ===========================================================================
-- model_name: command-r-plus
-  litellm_params:
-    model: cohere/command-r-plus
-    api_key: os.environ/COHERE_API_KEY
-  model_info:
-    supports_function_calling: true
-    supports_vision: false
-    max_input_tokens: 128000
+```typescript
+const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
+  openai:    { prefix: 'openai/',    envKey: 'OPENAI_API_KEY' },
+  anthropic: { prefix: 'anthropic/', envKey: 'ANTHROPIC_API_KEY' },
+  gemini:    { prefix: 'gemini/',    envKey: 'GEMINI_API_KEY' },
+  mistral:   { prefix: 'mistral/',   envKey: 'MISTRAL_API_KEY' },
+  deepseek:  { prefix: 'deepseek/',  envKey: 'DEEPSEEK_API_KEY' },
+  ollama:    { prefix: 'ollama/',    envKey: '' },
+  cohere:    { prefix: 'cohere/',    envKey: 'COHERE_API_KEY' },  // ADD THIS
+};
 ```
+
+This ensures models from the new provider are auto-registered with LiteLLM when added via Admin UI.
 
 ### Step 8: Test
 
 1. Add API key to `.env.local`: `COHERE_API_KEY=your-key`
 2. Restart the application
-3. Go to **Admin > Configure LLM** and verify provider appears
+3. Go to **Admin > Settings > LLM** and verify provider appears
 4. Click **Test** to verify connection
 5. Click **Add Models** to discover available models
+6. Check server logs for: `[LiteLLM Sync] Startup: synced N models`
 
 ---
 
@@ -854,14 +876,26 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5': 1000000,
   'gpt-5.1': 1000000,
   'gpt-5.2': 1000000,
+  'gpt-5.4': 1000000,
+  'gpt-5-mini': 1000000,
+  'gpt-5-nano': 1000000,
   // OpenAI - GPT-4 family
   'gpt-4.1': 1000000,
   'gpt-4.1-mini': 1000000,
   'gpt-4.1-nano': 1000000,
   'gpt-4o': 128000,
   'gpt-4o-mini': 128000,
+  'gpt-4o-mini-transcribe': 128000,
   // ... more models ...
+  // Gemini
+  'gemini-2.5-pro': 1000000,
+  'gemini-2.5-flash': 1000000,
+  'gemini-pro-latest': 1049000,
+  'gemini-flash-latest': 1049000,
+  'gemini-flash-lite-latest': 1049000,
   // Anthropic Claude
+  'claude-sonnet-4-6': 1000000,
+  'claude-opus-4-6': 1000000,
   'claude-sonnet-4-5': 1000000,
   'claude-haiku-4-5': 1000000,
   'claude-opus-4-5': 1000000,
@@ -911,7 +945,7 @@ Each model has two token-related settings:
 
 #### Via Admin UI
 
-1. Go to **Admin > Settings > Configure LLM**
+1. Go to **Admin > Settings > LLM**
 2. Find the model in the Enabled Models table
 3. Click **[⋯]** menu → **Edit**
 4. Update the **Max Output Tokens** field
@@ -960,15 +994,9 @@ If `max_output_tokens` is NULL, the system uses the provider default from `DEFAU
 
 ### Option 1: Admin UI (Recommended)
 
-1. Go to **Admin > Settings > Configure LLM**
+1. Go to **Admin > Settings > LLM**
 2. In the Enabled Models table, click **[⋯]** menu
 3. Select **Set Default**
-
-### Option 2: Admin > Settings > LLM
-
-1. Go to **Admin > Settings > LLM**
-2. Select the new model from the dropdown
-3. Save changes
 
 ### Option 3: Code Change
 
@@ -994,8 +1022,9 @@ This affects:
 
 After adding a new model:
 
-- [ ] Model appears in **Admin > Settings > Configure LLM** (if using Admin UI)
-- [ ] OR startup logs show: `[LiteLLM] Discovered N models` (if using YAML)
+- [ ] Model appears in **Admin > Settings > LLM** (if using Admin UI)
+- [ ] Startup logs show: `[LiteLLM Sync] Startup: synced N models` (auto-sync)
+- [ ] OR startup logs show: `[LiteLLM] Discovered N models` (if using YAML only)
 - [ ] Model appears in chat model dropdown
 - [ ] Tool badge (🔧) appears if tool-capable
 - [ ] Vision badge appears if vision-capable (for models with image support)
@@ -1007,7 +1036,7 @@ After adding a new model:
 
 If capabilities weren't auto-detected correctly:
 
-1. Check model in Configure LLM - does it show 🔧 (tools) / Vision badges?
+1. Check model in LLM - does it show 🔧 (tools) / Vision badges?
 2. If not, check if model ID matches patterns in `model-discovery.ts`
 3. Update via API if needed (see "Advanced: Manual Capability Configuration")
 4. Verify tools work by asking the model to use a function (e.g., "search for X")
@@ -1059,7 +1088,27 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
      -H "Content-Type: application/json" \
      -d '{"toolCapable": true, "visionCapable": true}'
    ```
-4. Verify changes in Configure LLM page
+4. Verify changes in LLM page
+
+### Auto-Sync Issues
+
+#### Models added via UI but not working in chat
+
+1. **Check `LITELLM_MASTER_KEY` is set** — required for auto-sync to authenticate with LiteLLM
+2. **Check server logs** for sync errors:
+   - `[LiteLLM Sync] LITELLM_MASTER_KEY not set, skipping sync` — set the env var
+   - `[LiteLLM Sync] Unknown provider: xxx` — add provider to `PROVIDER_MAP` in `litellm-sync.ts`
+   - `[LiteLLM Sync] Failed to register xxx: 400` — check LiteLLM proxy logs
+3. **Verify LiteLLM proxy is reachable** from the app container:
+   ```bash
+   # From within the app container
+   curl http://litellm:4000/health/liveliness
+   ```
+4. **Check LiteLLM `DATABASE_URL` is cleared** — if LiteLLM inherits the app's `DATABASE_URL`, it returns `400 No connected db` errors. Ensure `docker-compose.yml` has `- DATABASE_URL=` in the LiteLLM environment.
+
+#### Models disappear after LiteLLM restart
+
+This is expected. With `store_model_in_db: false`, LiteLLM's in-memory store is cleared on restart. Models from YAML are reloaded, and the app's startup sync re-registers DB models. If the app doesn't restart, wait for the next request — models are re-synced on next app startup.
 
 ### YAML Configuration Issues
 
@@ -1144,11 +1193,10 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 
 | Task | Primary File(s) |
 |------|-----------------|
-| Add model via UI | Admin UI (no code changes) |
+| Add model via UI | Admin UI (no code changes — auto-synced to LiteLLM) |
 | Add model via YAML | `litellm-proxy/litellm_config.yaml` |
 | Fix capability detection | `src/lib/services/model-discovery.ts` |
-| Add new provider | `src/lib/db/llm-providers.ts` + `src/lib/services/model-discovery.ts` |
-| **Add new Claude/Anthropic model** | `src/lib/services/model-discovery.ts` (hardcoded list at line ~409) |
+| Add new provider | `src/lib/db/llm-providers.ts` + `src/lib/services/model-discovery.ts` + `src/lib/services/litellm-sync.ts` |
 | Change default model | `src/lib/config-loader.ts` |
 | Debug model issues | Check `enabled_models` table in database |
 
@@ -1159,7 +1207,7 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 | `src/lib/db/llm-providers.ts` | Provider CRUD operations, `DEFAULT_PROVIDERS` |
 | `src/lib/db/enabled-models.ts` | Enabled models CRUD, capability helpers |
 | `src/lib/services/model-discovery.ts` | Provider API discovery, capability patterns |
-| `src/components/admin/settings/LLMConfigSettings.tsx` | Main Configure LLM UI |
+| `src/components/admin/settings/UnifiedLLMSettings.tsx` | Main LLM settings UI |
 | `src/components/admin/settings/ProviderCard.tsx` | Provider configuration cards |
 | `src/components/admin/settings/ModelDiscoveryModal.tsx` | Model browser/selector modal |
 | `src/app/api/admin/llm/providers/route.ts` | Provider list/create API |
@@ -1173,7 +1221,8 @@ The capability checker (`src/lib/config-capability-checker.ts`) uses:
 
 | File | Purpose |
 |------|---------|
-| `litellm-proxy/litellm_config.yaml` | LiteLLM model routing + capabilities |
+| `litellm-proxy/litellm_config.yaml` | LiteLLM model routing + capabilities (bootstrap config) |
+| `src/lib/services/litellm-sync.ts` | Auto-registers enabled models with LiteLLM proxy via `/model/new` API |
 | `src/lib/litellm-validator.ts` | YAML parsing, model discovery, display name generation |
 | `src/lib/config-loader.ts` | Model presets API, fallback defaults |
 | `src/lib/db/config.ts` | `getAvailableModels()` with DB-first priority |
@@ -1204,7 +1253,7 @@ Only **chat** models appear in the LLM selection dropdown. Embedding and transcr
 
 ## Specialized Model Settings
 
-Besides chat models, the system uses specialized models for various features. API keys configured in **Configure LLM** are shared across all features.
+Besides chat models, the system uses specialized models for various features. API keys configured in **LLM** are shared across all features.
 
 | Feature | Model(s) | Configure In | File |
 |---------|----------|--------------|------|

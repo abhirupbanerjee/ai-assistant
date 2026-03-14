@@ -195,13 +195,16 @@ services:
     container_name: policy-bot-litellm
     volumes:
       - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
-    env_file:
-      - .env
+    # NOTE: Do NOT use env_file here. Loading .env passes DATABASE_URL to Prisma,
+    # which crashes LiteLLM even with store_model_in_db=false. Pass only needed vars.
     environment:
-      # Clear OPENAI_BASE_URL so LiteLLM uses direct OpenAI endpoint (prevents loop)
-      - OPENAI_BASE_URL=
-      # Clear DATABASE_URL inherited from .env — LiteLLM doesn't need a database
-      - DATABASE_URL=
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-}
       - STORE_MODEL_IN_DB=False
       - DISABLE_SPEND_LOGS=True
     command: --config /app/config.yaml --port 4000
