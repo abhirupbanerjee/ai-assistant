@@ -399,7 +399,9 @@ export type SettingKey =
   // LLM Fallback
   | 'llm-fallback-settings'
   // Credentials Authentication
-  | 'credentials-auth-settings';
+  | 'credentials-auth-settings'
+  // Backup Schedule
+  | 'backup-schedule';
 
 // ============ Generic Operations ============
 

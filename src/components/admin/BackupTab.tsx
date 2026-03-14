@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, CheckSquare, Square, Bot, Filter, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database, LayoutGrid, Zap, Brain, GitBranch, Share2, CheckSquare, Square, Bot, Filter, ChevronDown, ChevronRight, Clock, Trash2, HardDrive, Play } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -269,6 +269,88 @@ export default function BackupTab() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Saved backups state
+  const [savedBackups, setSavedBackups] = useState<{ filename: string; size: number; createdAt: string }[]>([]);
+  const [scheduleConfig, setScheduleConfig] = useState({ enabled: true, hour: 2, retentionDays: 7 });
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [triggeringBackup, setTriggeringBackup] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
+
+  // Fetch saved backups
+  const fetchSavedBackups = useCallback(async () => {
+    setLoadingSaved(true);
+    try {
+      const res = await fetch('/api/admin/backup/files');
+      if (res.ok) {
+        const data = await res.json();
+        setSavedBackups(data.files || []);
+        if (data.schedule) setScheduleConfig(data.schedule);
+      }
+    } catch (err) {
+      console.error('Failed to fetch saved backups:', err);
+    } finally {
+      setLoadingSaved(false);
+    }
+  }, []);
+
+  // Trigger immediate backup
+  const handleTriggerBackup = async () => {
+    setTriggeringBackup(true);
+    try {
+      const res = await fetch('/api/admin/backup/files/trigger', { method: 'POST' });
+      if (res.ok) {
+        await fetchSavedBackups();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to trigger backup');
+      }
+    } catch (err) {
+      setError('Failed to trigger backup');
+    } finally {
+      setTriggeringBackup(false);
+    }
+  };
+
+  // Save schedule config
+  const handleSaveSchedule = async () => {
+    setSavingSchedule(true);
+    try {
+      const res = await fetch('/api/admin/backup/files/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scheduleConfig),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Failed to save schedule');
+      }
+    } catch {
+      setError('Failed to save schedule');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  // Delete a saved backup
+  const handleDeleteBackup = async (filename: string) => {
+    if (!confirm(`Delete backup "${filename}"?`)) return;
+    setDeletingFile(filename);
+    try {
+      const res = await fetch(`/api/admin/backup/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSavedBackups(prev => prev.filter(f => f.filename !== filename));
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to delete backup');
+      }
+    } catch {
+      setError('Failed to delete backup');
+    } finally {
+      setDeletingFile(null);
+    }
+  };
+
   // Fetch categories on mount
   useEffect(() => {
     const fetchCategories = async () => {
@@ -286,7 +368,8 @@ export default function BackupTab() {
       }
     };
     fetchCategories();
-  }, []);
+    fetchSavedBackups();
+  }, [fetchSavedBackups]);
 
   // Fetch skills when categories are selected (Level 2)
   useEffect(() => {
@@ -1184,6 +1267,151 @@ export default function BackupTab() {
               </Button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Saved Backups Section */}
+      <div className="bg-white rounded-lg border shadow-sm">
+        <div className="px-6 py-4 border-b flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <HardDrive className="text-purple-600" size={20} />
+            <div>
+              <h2 className="font-semibold text-gray-900">Saved Backups</h2>
+              <p className="text-sm text-gray-500">Automated daily backups stored on the server</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={fetchSavedBackups}
+              disabled={loadingSaved}
+            >
+              <RefreshCw size={14} className={loadingSaved ? 'animate-spin' : ''} />
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleTriggerBackup}
+              disabled={triggeringBackup}
+            >
+              {triggeringBackup ? (
+                <><Spinner size="sm" className="mr-1" /> Backing up...</>
+              ) : (
+                <><Play size={14} className="mr-1" /> Backup Now</>
+              )}
+            </Button>
+          </div>
+        </div>
+        <div className="p-6 space-y-6">
+          {/* Schedule Settings */}
+          <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+            <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Clock size={16} />
+              Backup Schedule
+            </h3>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={scheduleConfig.enabled}
+                  onChange={(e) => setScheduleConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm">Enable daily backups</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Run at:</label>
+                <select
+                  value={scheduleConfig.hour}
+                  onChange={(e) => setScheduleConfig(prev => ({ ...prev, hour: parseInt(e.target.value) }))}
+                  className="text-sm border rounded px-2 py-1"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, '0')}:00 UTC</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Keep:</label>
+                <select
+                  value={scheduleConfig.retentionDays}
+                  onChange={(e) => setScheduleConfig(prev => ({ ...prev, retentionDays: parseInt(e.target.value) }))}
+                  className="text-sm border rounded px-2 py-1"
+                >
+                  {[3, 5, 7, 14, 30].map(d => (
+                    <option key={d} value={d}>{d} days</option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSaveSchedule}
+                disabled={savingSchedule}
+              >
+                {savingSchedule ? 'Saving...' : 'Save Schedule'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Backup Files List */}
+          {loadingSaved ? (
+            <div className="flex items-center justify-center py-8 text-gray-500">
+              <Spinner size="sm" className="mr-2" /> Loading backups...
+            </div>
+          ) : savedBackups.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <HardDrive size={32} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No saved backups yet</p>
+              <p className="text-xs text-gray-400 mt-1">Click &quot;Backup Now&quot; or wait for the scheduled backup</p>
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Filename</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Date</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-600">Size</th>
+                    <th className="text-right px-4 py-2 font-medium text-gray-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {savedBackups.map((file) => (
+                    <tr key={file.filename} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 font-mono text-xs">{file.filename}</td>
+                      <td className="px-4 py-2 text-gray-600">
+                        {new Date(file.createdAt).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-600">
+                        {(file.size / (1024 * 1024)).toFixed(1)} MB
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <a
+                            href={`/api/admin/backup/files/${encodeURIComponent(file.filename)}/download`}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Download"
+                          >
+                            <Download size={14} />
+                          </a>
+                          <button
+                            onClick={() => handleDeleteBackup(file.filename)}
+                            disabled={deletingFile === file.filename}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                            title="Delete"
+                          >
+                            {deletingFile === file.filename ? <Spinner size="sm" /> : <Trash2 size={14} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

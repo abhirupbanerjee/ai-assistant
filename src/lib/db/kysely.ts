@@ -191,6 +191,11 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       })
       .catch(err => console.warn('[LiteLLM Sync] Startup sync failed:', err))
   );
+
+  // Fire-and-forget: initialize automated backup scheduler
+  import('../services/backup-scheduler').then(({ initBackupScheduler }) =>
+    initBackupScheduler().catch(err => console.warn('[Backup] Scheduler init failed:', err))
+  );
 }
 
 /**

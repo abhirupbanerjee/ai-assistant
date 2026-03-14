@@ -576,7 +576,15 @@ export async function updateAgentBotsSettings(
 // ============ Credentials Auth Settings ============
 
 export async function getCredentialsAuthSettings(): Promise<CredentialsAuthSettings> {
-  return await getSetting<CredentialsAuthSettings>('credentials-auth-settings') ?? DEFAULT_CREDENTIALS_AUTH_SETTINGS_VAL;
+  const settings = await getSetting<CredentialsAuthSettings>('credentials-auth-settings') ?? DEFAULT_CREDENTIALS_AUTH_SETTINGS_VAL;
+
+  // Allow env var to override the database setting
+  const envOverride = process.env.CREDENTIALS_AUTH_ENABLED;
+  if (envOverride !== undefined) {
+    settings.enabled = envOverride === 'true' || envOverride === '1';
+  }
+
+  return settings;
 }
 
 export async function setCredentialsAuthSettings(
