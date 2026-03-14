@@ -1,9 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Save, Cpu, AlertTriangle, RefreshCw, AlertCircle, X } from 'lucide-react';
+import {
+  Save, Cpu, AlertTriangle, RefreshCw, AlertCircle, X,
+  ChevronUp, ChevronDown,
+} from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
+import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
+
+// ============ Types ============
 
 interface RAGSettings {
   topKChunks: number;
@@ -58,21 +64,33 @@ interface ReindexJob {
   errors: string[];
 }
 
-export default function RAGSettingsTab() {
+type SectionId = 'embedding' | 'ragParams' | 'ragTuning';
+
+// ============ Component ============
+
+export default function UnifiedRAGSettings() {
+  // Section collapse/expand
+  const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(
+    new Set(['embedding', 'ragParams'])
+  );
+
+  // Shared UI state
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // RAG parameters state
   const [settings, setSettings] = useState<RAGSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<RAGSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [isModified, setIsModified] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Embedding state
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
   const [availableEmbeddingModels, setAvailableEmbeddingModels] = useState<AvailableEmbeddingModel[]>([]);
   const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>('');
   const [selectedFallbackModel, setSelectedFallbackModel] = useState<string>('');
   const [isSavingFallback, setIsSavingFallback] = useState(false);
-  const [isModified, setIsModified] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  // Reindex state
   const [isReindexing, setIsReindexing] = useState(false);
   const [reindexProgress, setReindexProgress] = useState(0);
   const [reindexJobId, setReindexJobId] = useState<string | null>(null);
@@ -80,14 +98,32 @@ export default function RAGSettingsTab() {
   const [fallbackDismissed, setFallbackDismissed] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ============ Helpers ============
+
+  const toggleSection = (id: SectionId) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const formatDate = (date: Date | string | undefined) => {
     if (!date) return 'Never';
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleString();
   };
 
-  // Check if embedding model has changed from current
+  const showSuccess = (msg: string) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
   const isEmbeddingModelChanged = selectedEmbeddingModel && embeddingSettings?.model !== selectedEmbeddingModel;
+  const isFallbackModelChanged = selectedFallbackModel && embeddingSettings?.fallbackModel !== selectedFallbackModel;
+
+  // ============ Data Loading ============
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -154,7 +190,8 @@ export default function RAGSettingsTab() {
     };
   }, []);
 
-  // Poll for reindex job progress
+  // ============ Embedding Handlers ============
+
   const pollReindexProgress = useCallback(async (jobId: string) => {
     try {
       const res = await fetch(`/api/admin/reindex/${jobId}`);
@@ -168,16 +205,13 @@ export default function RAGSettingsTab() {
       if (job.status === 'completed') {
         setIsReindexing(false);
         setReindexJobId(null);
-        setSuccess(`Reindexing completed! ${job.processedDocuments} documents processed.`);
-        setTimeout(() => setSuccess(null), 5000);
+        showSuccess(`Reindexing completed! ${job.processedDocuments} documents processed.`);
 
-        // Clear polling
         if (pollIntervalRef.current) {
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
         }
 
-        // Refresh settings to get updated embedding info
         fetchSettings();
       } else if (job.status === 'failed' || job.status === 'cancelled') {
         setIsReindexing(false);
@@ -188,7 +222,6 @@ export default function RAGSettingsTab() {
             : `Reindexing failed: ${job.errors.join(', ')}`
         );
 
-        // Clear polling
         if (pollIntervalRef.current) {
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
@@ -199,7 +232,6 @@ export default function RAGSettingsTab() {
     }
   }, [fetchSettings]);
 
-  // Handle embedding model change and reindex
   const handleChangeEmbedding = async () => {
     if (!isEmbeddingModelChanged) return;
 
@@ -222,7 +254,6 @@ export default function RAGSettingsTab() {
       const data = await res.json();
       setReindexJobId(data.job.id);
 
-      // Start polling for progress
       pollIntervalRef.current = setInterval(() => {
         pollReindexProgress(data.job.id);
       }, 2000);
@@ -232,7 +263,6 @@ export default function RAGSettingsTab() {
     }
   };
 
-  // Cancel reindex job
   const handleCancelReindex = async () => {
     if (!reindexJobId) return;
 
@@ -243,7 +273,6 @@ export default function RAGSettingsTab() {
 
       if (!res.ok) throw new Error('Failed to cancel reindex');
 
-      // Clear polling
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -257,10 +286,6 @@ export default function RAGSettingsTab() {
     }
   };
 
-  // Check if fallback model has changed
-  const isFallbackModelChanged = selectedFallbackModel && embeddingSettings?.fallbackModel !== selectedFallbackModel;
-
-  // Save fallback model (no reindexing required)
   const handleSaveFallback = async () => {
     if (!isFallbackModelChanged) return;
 
@@ -284,16 +309,16 @@ export default function RAGSettingsTab() {
         throw new Error(errorData.error || 'Failed to save fallback model');
       }
 
-      // Update local state
       setEmbeddingSettings(prev => prev ? { ...prev, fallbackModel: selectedFallbackModel } : prev);
-      setSuccess('Fallback model saved successfully');
-      setTimeout(() => setSuccess(null), 3000);
+      showSuccess('Fallback model saved successfully');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save fallback model');
     } finally {
       setIsSavingFallback(false);
     }
   };
+
+  // ============ RAG Parameters Handlers ============
 
   const handleChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
     key: K,
@@ -320,8 +345,7 @@ export default function RAGSettingsTab() {
       const result = await res.json();
       setSettings(result.settings);
       setIsModified(false);
-      setSuccess('RAG settings saved successfully');
-      setTimeout(() => setSuccess(null), 3000);
+      showSuccess('RAG settings saved successfully');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
@@ -347,253 +371,263 @@ export default function RAGSettingsTab() {
     }
   };
 
+  // ============ Section Header ============
+
+  const SectionHeader = ({ id, title, subtitle, children }: {
+    id: SectionId; title: string; subtitle: string; children?: React.ReactNode;
+  }) => (
+    <div
+      className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
+      onClick={() => toggleSection(id)}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button className="p-1 hover:bg-gray-100 rounded">
+            {expandedSections.has(id)
+              ? <ChevronUp size={18} className="text-gray-500" />
+              : <ChevronDown size={18} className="text-gray-500" />}
+          </button>
+          <div>
+            <h3 className="font-semibold text-gray-900">{title}</h3>
+            <p className="text-sm text-gray-500">{subtitle}</p>
+          </div>
+        </div>
+        {children && <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>{children}</div>}
+      </div>
+    </div>
+  );
+
+  // ============ Render ============
+
+  if (isLoading) {
+    return <div className="flex justify-center py-12"><Spinner size="lg" /></div>;
+  }
+
   return (
     <div className="space-y-4">
+      {/* Global alerts */}
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
           <p className="text-sm text-red-700">{error}</p>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">×</button>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">&times;</button>
         </div>
       )}
-
       {success && (
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
           <p className="text-sm text-green-700">{success}</p>
         </div>
       )}
 
-      {/* Embedding Model Configuration */}
-      <div className="bg-white rounded-lg border shadow-sm p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Cpu size={20} className="text-purple-600" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-900">Embedding Model</h3>
-              <p className="text-xs text-gray-500">Used for document and query vectorization</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Fallback Warning Banner */}
-        {embeddingSettings?.recentFallback && !fallbackDismissed && (
-          <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2">
-                <AlertCircle size={16} className="text-orange-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-orange-800">Fallback Model Active</p>
-                  <p className="text-xs text-orange-700 mt-1">
-                    Primary model <strong>{embeddingSettings.recentFallback.primaryModel}</strong> failed.
-                    Using fallback: <strong>{embeddingSettings.recentFallback.fallbackModel}</strong>
-                  </p>
-                  <p className="text-xs text-orange-600 mt-1">
-                    Error: {embeddingSettings.recentFallback.error.slice(0, 100)}
-                    {embeddingSettings.recentFallback.error.length > 100 && '...'}
-                  </p>
-                  <p className="text-xs text-orange-500 mt-1">
-                    {new Date(embeddingSettings.recentFallback.timestamp).toLocaleString()}
-                  </p>
+      {/* ==================== Section 1: Embedding Configuration ==================== */}
+      <div className="bg-white rounded-lg border shadow-sm">
+        <SectionHeader id="embedding" title="Embedding Configuration" subtitle="Model selection, fallback, and reindexing" />
+        {expandedSections.has('embedding') && (
+          <div className="p-6">
+            {/* Fallback Warning Banner */}
+            {embeddingSettings?.recentFallback && !fallbackDismissed && (
+              <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={16} className="text-orange-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-orange-800">Fallback Model Active</p>
+                      <p className="text-xs text-orange-700 mt-1">
+                        Primary model <strong>{embeddingSettings.recentFallback.primaryModel}</strong> failed.
+                        Using fallback: <strong>{embeddingSettings.recentFallback.fallbackModel}</strong>
+                      </p>
+                      <p className="text-xs text-orange-600 mt-1">
+                        Error: {embeddingSettings.recentFallback.error.slice(0, 100)}
+                        {embeddingSettings.recentFallback.error.length > 100 && '...'}
+                      </p>
+                      <p className="text-xs text-orange-500 mt-1">
+                        {new Date(embeddingSettings.recentFallback.timestamp).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setFallbackDismissed(true)}
+                    className="text-orange-500 hover:text-orange-700 p-1"
+                    title="Dismiss"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => setFallbackDismissed(true)}
-                className="text-orange-500 hover:text-orange-700 p-1"
-                title="Dismiss"
+            )}
+
+            {/* Model Dropdown */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Model</label>
+              <select
+                value={selectedEmbeddingModel}
+                onChange={(e) => setSelectedEmbeddingModel(e.target.value)}
+                disabled={isReindexing}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
-                <X size={14} />
-              </button>
+                <optgroup label="Cloud Providers">
+                  {availableEmbeddingModels.filter(m => !m.local).map(model => (
+                    <option
+                      key={model.id}
+                      value={model.id}
+                      disabled={!model.available}
+                    >
+                      {model.name} ({model.dimensions} dims)
+                      {!model.available && ' - Not configured'}
+                      {model.id === embeddingSettings?.model && ' (Current)'}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Local Models (Free)">
+                  {availableEmbeddingModels.filter(m => m.local).map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} ({model.dimensions} dims)
+                      {model.id === embeddingSettings?.model && ' (Current)'}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Local models run on-device, no API key required
+              </p>
             </div>
-          </div>
-        )}
 
-        {/* Model Dropdown */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Model</label>
-          <select
-            value={selectedEmbeddingModel}
-            onChange={(e) => setSelectedEmbeddingModel(e.target.value)}
-            disabled={isReindexing}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-          >
-            {/* Cloud Providers Group */}
-            <optgroup label="Cloud Providers">
-              {availableEmbeddingModels.filter(m => !m.local).map(model => (
-                <option
-                  key={model.id}
-                  value={model.id}
-                  disabled={!model.available}
+            {/* Fallback Model Dropdown */}
+            <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fallback Model
+                <span className="ml-2 text-xs font-normal text-gray-500">(Used when primary fails)</span>
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={selectedFallbackModel}
+                  onChange={(e) => setSelectedFallbackModel(e.target.value)}
+                  disabled={isReindexing || isSavingFallback}
+                  className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
                 >
-                  {model.name} ({model.dimensions} dims)
-                  {!model.available && ' - Not configured'}
-                  {model.id === embeddingSettings?.model && ' (Current)'}
-                </option>
-              ))}
-            </optgroup>
-
-            {/* Local Models Group */}
-            <optgroup label="Local Models (Free)">
-              {availableEmbeddingModels.filter(m => m.local).map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name} ({model.dimensions} dims)
-                  {model.id === embeddingSettings?.model && ' (Current)'}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-          <p className="mt-1 text-xs text-gray-500">
-            Local models run on-device, no API key required
-          </p>
-        </div>
-
-        {/* Fallback Model Dropdown */}
-        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Fallback Model
-            <span className="ml-2 text-xs font-normal text-gray-500">(Used when primary fails)</span>
-          </label>
-          <div className="flex gap-2">
-            <select
-              value={selectedFallbackModel}
-              onChange={(e) => setSelectedFallbackModel(e.target.value)}
-              disabled={isReindexing || isSavingFallback}
-              className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
-            >
-              {/* Only show cloud providers as fallback (more reliable) */}
-              {availableEmbeddingModels.filter(m => !m.local && m.available).map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.name} ({model.dimensions} dims)
-                  {model.id === embeddingSettings?.fallbackModel && ' (Current)'}
-                </option>
-              ))}
-              {/* Also allow local models as fallback */}
-              <optgroup label="Local Models">
-                {availableEmbeddingModels.filter(m => m.local).map(model => (
-                  <option key={model.id} value={model.id}>
-                    {model.name} ({model.dimensions} dims)
-                    {model.id === embeddingSettings?.fallbackModel && ' (Current)'}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            <Button
-              onClick={handleSaveFallback}
-              disabled={!isFallbackModelChanged || isSavingFallback}
-              loading={isSavingFallback}
-              size="sm"
-            >
-              <Save size={14} className="mr-1" />
-              Save
-            </Button>
-          </div>
-          <p className="mt-1 text-xs text-gray-500">
-            If the primary model fails to load, the system will automatically use this fallback.
-            Changing fallback does not require reindexing.
-          </p>
-        </div>
-
-        {/* Show warning only when model changed */}
-        {isEmbeddingModelChanged && !isReindexing && (
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-amber-800">Reindexing Required</p>
-                <p className="text-xs text-amber-700 mt-1">
-                  Changing the embedding model requires reindexing all documents.
-                  This runs in the background and may take several minutes depending
-                  on document count. Existing embeddings will be replaced.
-                </p>
+                  {availableEmbeddingModels.filter(m => !m.local && m.available).map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} ({model.dimensions} dims)
+                      {model.id === embeddingSettings?.fallbackModel && ' (Current)'}
+                    </option>
+                  ))}
+                  <optgroup label="Local Models">
+                    {availableEmbeddingModels.filter(m => m.local).map(model => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} ({model.dimensions} dims)
+                        {model.id === embeddingSettings?.fallbackModel && ' (Current)'}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <Button
+                  onClick={handleSaveFallback}
+                  disabled={!isFallbackModelChanged || isSavingFallback}
+                  loading={isSavingFallback}
+                  size="sm"
+                >
+                  <Save size={14} className="mr-1" />
+                  Save
+                </Button>
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                If the primary model fails to load, the system will automatically use this fallback.
+                Changing fallback does not require reindexing.
+              </p>
             </div>
-          </div>
-        )}
 
-        {/* Reindex Error */}
-        {reindexError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
-            <p className="text-sm text-red-700">{reindexError}</p>
-            <button onClick={() => setReindexError(null)} className="text-red-500 hover:text-red-700">×</button>
-          </div>
-        )}
+            {/* Reindexing Warning */}
+            {isEmbeddingModelChanged && !isReindexing && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Reindexing Required</p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Changing the embedding model requires reindexing all documents.
+                      This runs in the background and may take several minutes depending
+                      on document count. Existing embeddings will be replaced.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-        {/* Apply & Reindex Button */}
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={handleChangeEmbedding}
-            disabled={!isEmbeddingModelChanged || isReindexing}
-            loading={isReindexing}
-          >
-            <RefreshCw size={16} className="mr-2" />
-            {isReindexing ? 'Reindexing...' : 'Apply & Start Reindexing'}
-          </Button>
+            {/* Reindex Error */}
+            {reindexError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+                <p className="text-sm text-red-700">{reindexError}</p>
+                <button onClick={() => setReindexError(null)} className="text-red-500 hover:text-red-700">&times;</button>
+              </div>
+            )}
 
-          {isEmbeddingModelChanged && !isReindexing && (
-            <Button
-              variant="secondary"
-              onClick={() => setSelectedEmbeddingModel(embeddingSettings?.model || '')}
-            >
-              Cancel
-            </Button>
-          )}
+            {/* Apply & Reindex Button */}
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleChangeEmbedding}
+                disabled={!isEmbeddingModelChanged || isReindexing}
+                loading={isReindexing}
+              >
+                <RefreshCw size={16} className="mr-2" />
+                {isReindexing ? 'Reindexing...' : 'Apply & Start Reindexing'}
+              </Button>
 
-          {isReindexing && (
-            <Button variant="secondary" onClick={handleCancelReindex}>
-              Cancel Reindex
-            </Button>
-          )}
-        </div>
+              {isEmbeddingModelChanged && !isReindexing && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setSelectedEmbeddingModel(embeddingSettings?.model || '')}
+                >
+                  Cancel
+                </Button>
+              )}
 
-        {/* Progress Bar (shown during reindexing) */}
-        {isReindexing && (
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Reindexing documents...</span>
-              <span>{reindexProgress}%</span>
+              {isReindexing && (
+                <Button variant="secondary" onClick={handleCancelReindex}>
+                  Cancel Reindex
+                </Button>
+              )}
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${reindexProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
 
-        {/* Last updated info */}
-        {embeddingSettings?.updatedAt && !isReindexing && (
-          <p className="mt-4 text-xs text-gray-500 border-t pt-3">
-            Last updated: {formatDate(embeddingSettings.updatedAt)}
-            {embeddingSettings.updatedBy && ` by ${embeddingSettings.updatedBy}`}
-          </p>
+            {/* Progress Bar */}
+            {isReindexing && (
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Reindexing documents...</span>
+                  <span>{reindexProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${reindexProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Last updated info */}
+            {embeddingSettings?.updatedAt && !isReindexing && (
+              <p className="mt-4 text-xs text-gray-500 border-t pt-3">
+                Last updated: {formatDate(embeddingSettings.updatedAt)}
+                {embeddingSettings.updatedBy && ` by ${embeddingSettings.updatedBy}`}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
-      {/* RAG Configuration Card */}
+      {/* ==================== Section 2: RAG Parameters ==================== */}
       <div className="bg-white rounded-lg border shadow-sm">
-        <div className="px-6 py-4 border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-gray-900">RAG</h2>
-              <p className="text-sm text-gray-500">Configure retrieval and chunking parameters</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {isModified && (
-                <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
-                  Reset
-                </Button>
-              )}
-              <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
-                <Save size={18} className="mr-2" />
-                Save
-              </Button>
-            </div>
-          </div>
-        </div>
-        {isLoading ? (
-          <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-        ) : editedSettings && (
+        <SectionHeader id="ragParams" title="RAG Parameters" subtitle="Configure retrieval and chunking parameters">
+          {isModified && (
+            <Button variant="secondary" onClick={handleReset} disabled={isSaving}>
+              Reset
+            </Button>
+          )}
+          <Button onClick={handleSave} disabled={!isModified || isSaving} loading={isSaving}>
+            <Save size={18} className="mr-2" />
+            Save
+          </Button>
+        </SectionHeader>
+        {expandedSections.has('ragParams') && editedSettings && (
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 gap-6">
               <div>
@@ -741,6 +775,16 @@ export default function RAGSettingsTab() {
                 Last updated: {formatDate(settings.updatedAt)} by {settings.updatedBy}
               </p>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ==================== Section 3: RAG Tuning ==================== */}
+      <div className="bg-white rounded-lg border shadow-sm">
+        <SectionHeader id="ragTuning" title="RAG Tuning" subtitle="Test and compare RAG settings with sample queries" />
+        {expandedSections.has('ragTuning') && (
+          <div className="p-6">
+            <RagTuningDashboard embedded />
           </div>
         )}
       </div>

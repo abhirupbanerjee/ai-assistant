@@ -97,8 +97,8 @@ services:
     env_file:
       - .env.local
     environment:
-      # Override database variables (use dummy PostgreSQL URL to satisfy Prisma validation)
-      - DATABASE_URL=postgresql://dummy:dummy@localhost:9999/dummy
+      # Clear DATABASE_URL inherited from .env — LiteLLM doesn't need a database
+      - DATABASE_URL=
       - DATABASE_PROVIDER=
       - POSTGRES_PASSWORD=
       - DATABASE_POOL_MAX=

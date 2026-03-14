@@ -60,7 +60,7 @@ interface Category {
   slug: string;
 }
 
-export function RagTuningDashboard() {
+export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } = {}) {
   // Current settings
   const [currentSettings, setCurrentSettings] = useState<Record<string, unknown> | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -215,18 +215,20 @@ export function RagTuningDashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? 'space-y-4' : 'space-y-6'}>
       {/* Header */}
-      <div className="bg-white rounded-lg border shadow-sm p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Beaker className="text-purple-600" size={24} />
-          <div>
-            <h2 className="font-semibold text-gray-900">RAG Tuning Dashboard</h2>
-            <p className="text-sm text-gray-500">
-              Test and compare RAG settings with sample queries
-            </p>
+      <div className={embedded ? '' : 'bg-white rounded-lg border shadow-sm p-6'}>
+        {!embedded && (
+          <div className="flex items-center gap-3 mb-4">
+            <Beaker className="text-purple-600" size={24} />
+            <div>
+              <h2 className="font-semibold text-gray-900">RAG Tuning Dashboard</h2>
+              <p className="text-sm text-gray-500">
+                Test and compare RAG settings with sample queries
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
@@ -407,7 +409,7 @@ export function RagTuningDashboard() {
 
       {/* History Section */}
       {showHistory && (
-        <div className="bg-white rounded-lg border shadow-sm p-6">
+        <div className={embedded ? 'pt-4 border-t' : 'bg-white rounded-lg border shadow-sm p-6'}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <BarChart3 size={20} className="text-gray-600" />

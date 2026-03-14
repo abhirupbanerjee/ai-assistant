@@ -240,10 +240,10 @@ export function validateLiteLLMOnStartup(): void {
 
   const result = validateLiteLLMConfig();
 
-  // FAIL FAST: Default model missing
+  // Default model missing — warn but don't exit (LiteLLM sync will register it)
   if (result.defaultModelMissing) {
-    console.error(result.errors[0]);
-    process.exit(1);
+    console.warn('[LiteLLM Validator] Default model missing from YAML — will be registered by auto-sync if enabled in DB');
+    console.warn(result.errors[0]);
   }
 
   // WARN ONLY: Other models missing (exclude default which was already checked)

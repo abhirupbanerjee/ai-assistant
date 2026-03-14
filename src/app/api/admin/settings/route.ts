@@ -152,7 +152,7 @@ export async function GET() {
         // Include recent fallback event if any (last 60 minutes)
         recentFallback: wasFallbackUsedRecently(60),
       },
-      availableEmbeddingModels: getAvailableEmbeddingModels(),
+      availableEmbeddingModels: await getAvailableEmbeddingModels(),
       reranker: {
         ...rerankerSettings,
         // Mask key if exists in DB or env, empty string otherwise

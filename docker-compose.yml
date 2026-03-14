@@ -200,6 +200,8 @@ services:
     environment:
       # Clear OPENAI_BASE_URL so LiteLLM uses direct OpenAI endpoint (prevents loop)
       - OPENAI_BASE_URL=
+      # Clear DATABASE_URL inherited from .env — LiteLLM doesn't need a database
+      - DATABASE_URL=
       - STORE_MODEL_IN_DB=False
       - DISABLE_SPEND_LOGS=True
     command: --config /app/config.yaml --port 4000

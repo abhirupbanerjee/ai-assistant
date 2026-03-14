@@ -11,7 +11,6 @@ import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
-import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
 import { AgentBotsManagement, AgentBotDetail } from '@/components/admin/agent-bots';
 import MemorySettingsTab from '@/components/admin/settings/MemorySettings';
@@ -19,7 +18,7 @@ import SummarizationSettingsTab from '@/components/admin/settings/SummarizationS
 import SuperuserSettingsTab from '@/components/admin/settings/SuperuserSettings';
 import CredentialsAuthSettingsTab from '@/components/admin/settings/CredentialsAuthSettings';
 import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
-import RAGSettingsTab from '@/components/admin/settings/RAGSettings';
+import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
 import DashboardOverview from '@/components/admin/dashboard/DashboardOverview';
@@ -58,21 +57,6 @@ interface Category {
   documentCount: number;
   superUserCount: number;
   subscriberCount: number;
-}
-
-interface RAGSettings {
-  topKChunks: number;
-  maxContextChunks: number;
-  similarityThreshold: number;
-  chunkSize: number;
-  chunkOverlap: number;
-  queryExpansionEnabled: boolean;
-  cacheEnabled: boolean;
-  cacheTTLSeconds: number;
-  chunkingStrategy: 'recursive' | 'semantic';
-  semanticBreakpointThreshold: number;
-  updatedAt: string;
-  updatedBy: string;
 }
 
 interface LLMSettings {
@@ -133,7 +117,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -333,8 +317,6 @@ function AdminPageContent() {
   // LLM collapse state
   const [llmSettingsExpanded, setLlmSettingsExpanded] = useState(true);
   const [llmTokenLimitsExpanded, setLlmTokenLimitsExpanded] = useState(false);
-  const [ragSettings, setRagSettings] = useState<RAGSettings | null>(null);
-  const [editedRag, setEditedRag] = useState<Omit<RAGSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
   const [editedLlm, setEditedLlm] = useState<Omit<LLMSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [rerankerSettings, setRerankerSettings] = useState<RerankerSettings | null>(null);
@@ -360,7 +342,6 @@ function AdminPageContent() {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [ragModified, setRagModified] = useState(false);
   const [llmModified, setLlmModified] = useState(false);
   const [rerankerModified, setRerankerModified] = useState(false);
   const [memoryModified, setMemoryModified] = useState(false);
@@ -420,21 +401,6 @@ function AdminPageContent() {
       }
 
       const data = await response.json();
-      if (data.rag) {
-        setRagSettings(data.rag);
-        setEditedRag({
-          topKChunks: data.rag.topKChunks,
-          maxContextChunks: data.rag.maxContextChunks,
-          similarityThreshold: data.rag.similarityThreshold,
-          chunkSize: data.rag.chunkSize,
-          chunkOverlap: data.rag.chunkOverlap,
-          queryExpansionEnabled: data.rag.queryExpansionEnabled,
-          cacheEnabled: data.rag.cacheEnabled,
-          cacheTTLSeconds: data.rag.cacheTTLSeconds,
-          chunkingStrategy: data.rag.chunkingStrategy || 'recursive',
-          semanticBreakpointThreshold: data.rag.semanticBreakpointThreshold ?? 0.5,
-        });
-      }
       if (data.llm) {
         setLlmSettings(data.llm);
         setEditedLlm({
@@ -504,7 +470,6 @@ function AdminPageContent() {
         setTranscriptionModel(data.models.transcription);
       }
       setAvailableModels((data.availableModels || []).filter(Boolean));
-      setRagModified(false);
       setLlmModified(false);
       setRerankerModified(false);
       setMemoryModified(false);
@@ -589,76 +554,6 @@ function AdminPageContent() {
       }
     }
   }, [searchParams, router]); // Only depend on searchParams and router
-
-  // RAG settings handlers
-  const handleRagChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
-    key: K,
-    value: Omit<RAGSettings, 'updatedAt' | 'updatedBy'>[K]
-  ) => {
-    if (!editedRag) return;
-    const updated = { ...editedRag, [key]: value };
-    setEditedRag(updated);
-    setRagModified(
-      JSON.stringify(updated) !== JSON.stringify({
-        topKChunks: ragSettings?.topKChunks,
-        maxContextChunks: ragSettings?.maxContextChunks,
-        similarityThreshold: ragSettings?.similarityThreshold,
-        chunkSize: ragSettings?.chunkSize,
-        chunkOverlap: ragSettings?.chunkOverlap,
-        queryExpansionEnabled: ragSettings?.queryExpansionEnabled,
-        cacheEnabled: ragSettings?.cacheEnabled,
-        cacheTTLSeconds: ragSettings?.cacheTTLSeconds,
-        chunkingStrategy: ragSettings?.chunkingStrategy,
-        semanticBreakpointThreshold: ragSettings?.semanticBreakpointThreshold,
-      })
-    );
-  };
-
-  const handleSaveRag = async () => {
-    if (!ragModified || !editedRag) return;
-
-    setSavingSettings(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'rag', settings: editedRag }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save RAG settings');
-      }
-
-      const result = await response.json();
-      setRagSettings(result.settings);
-      setRagModified(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save RAG settings');
-    } finally {
-      setSavingSettings(false);
-    }
-  };
-
-  const handleResetRag = () => {
-    if (ragSettings) {
-      setEditedRag({
-        topKChunks: ragSettings.topKChunks,
-        maxContextChunks: ragSettings.maxContextChunks,
-        similarityThreshold: ragSettings.similarityThreshold,
-        chunkSize: ragSettings.chunkSize,
-        chunkOverlap: ragSettings.chunkOverlap,
-        queryExpansionEnabled: ragSettings.queryExpansionEnabled,
-        cacheEnabled: ragSettings.cacheEnabled,
-        cacheTTLSeconds: ragSettings.cacheTTLSeconds,
-        chunkingStrategy: ragSettings.chunkingStrategy,
-        semanticBreakpointThreshold: ragSettings.semanticBreakpointThreshold,
-      });
-      setRagModified(false);
-    }
-  };
 
   // LLM settings handlers
   const handleLlmChange = <K extends keyof Omit<LLMSettings, 'updatedAt' | 'updatedBy'>>(
@@ -1228,12 +1123,7 @@ function AdminPageContent() {
               {settingsSection === 'llm' && <UnifiedLLMSettings />}
 
               {/* RAG Settings Section */}
-              {settingsSection === 'rag' && <RAGSettingsTab />}
-
-              {/* RAG Tuning Section */}
-              {settingsSection === 'rag-tuning' && (
-                <RagTuningDashboard />
-              )}
+              {settingsSection === 'rag' && <UnifiedRAGSettings />}
 
               {/* Branding moved to top-level tab */}
 

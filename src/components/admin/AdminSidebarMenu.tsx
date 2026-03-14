@@ -37,7 +37,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'rag' | 'rag-tuning' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -100,7 +100,6 @@ const MENU_CONFIG: MenuConfigItem[] = [
     submenu: [
       { id: 'llm', label: 'LLM' },
       { id: 'rag', label: 'RAG' },
-      { id: 'rag-tuning', label: 'RAG Tuning' },
       { id: 'reranker', label: 'Reranker' },
       { id: 'ocr', label: 'Document Processing' },
       { id: 'cache', label: 'Cache' },

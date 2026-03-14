@@ -180,6 +180,17 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] Ensured load_test_results table exists');
 
   console.log('[Kysely] PostgreSQL migrations completed');
+
+  // Fire-and-forget: sync enabled models to LiteLLM proxy
+  import('../services/litellm-sync').then(({ syncAllModelsToLiteLLM }) =>
+    syncAllModelsToLiteLLM()
+      .then(r => {
+        if (r.synced > 0 || r.failed > 0) {
+          console.log(`[LiteLLM Sync] Startup: synced ${r.synced} models (${r.failed} failed)`);
+        }
+      })
+      .catch(err => console.warn('[LiteLLM Sync] Startup sync failed:', err))
+  );
 }
 
 /**
