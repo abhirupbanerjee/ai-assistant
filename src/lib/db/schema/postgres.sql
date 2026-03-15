@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS messages (
   generated_documents_json TEXT,
   visualizations_json TEXT,
   generated_images_json TEXT,
+  generated_diagrams_json TEXT,
   mode TEXT DEFAULT 'normal' CHECK (mode IN ('normal', 'autonomous')),
   plan_id TEXT,
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE

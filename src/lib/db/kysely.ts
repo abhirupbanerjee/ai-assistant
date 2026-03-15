@@ -179,6 +179,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_load_test_results_created ON load_test_results(created_at DESC)`.execute(database);
   console.log('[Kysely] Ensured load_test_results table exists');
 
+  // Migration: Add generated_diagrams_json column to messages table
+  await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS generated_diagrams_json TEXT`.execute(database);
+  console.log('[Kysely] Ensured messages.generated_diagrams_json column exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

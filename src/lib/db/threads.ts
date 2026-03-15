@@ -6,7 +6,7 @@
 
 import { execute, queryAll, queryOne, transaction } from './index';
 import { v4 as uuidv4 } from 'uuid';
-import type { Source, ToolCall, GeneratedDocumentInfo, MessageVisualization, GeneratedImageInfo, PodcastHint } from '@/types';
+import type { Source, ToolCall, GeneratedDocumentInfo, MessageVisualization, GeneratedImageInfo, PodcastHint, DiagramHint } from '@/types';
 
 // ============ Types ============
 
@@ -35,6 +35,7 @@ export interface DbMessage {
   generated_documents_json: string | null;
   visualizations_json: string | null;
   generated_images_json: string | null;
+  generated_diagrams_json: string | null;
   generated_podcasts_json: string | null;
   created_at: string;
 }
@@ -81,6 +82,7 @@ export interface ParsedMessage {
   generatedDocuments: GeneratedDocumentInfo[] | null;
   visualizations: MessageVisualization[] | null;
   generatedImages: GeneratedImageInfo[] | null;
+  generatedDiagrams: DiagramHint[] | null;
   generatedPodcasts: PodcastHint[] | null;
   createdAt: Date;
 }
@@ -440,6 +442,7 @@ function parseMessage(msg: DbMessage): ParsedMessage {
     generatedDocuments: msg.generated_documents_json ? JSON.parse(msg.generated_documents_json) : null,
     visualizations: msg.visualizations_json ? JSON.parse(msg.visualizations_json) : null,
     generatedImages: msg.generated_images_json ? JSON.parse(msg.generated_images_json) : null,
+    generatedDiagrams: msg.generated_diagrams_json ? JSON.parse(msg.generated_diagrams_json) : null,
     generatedPodcasts: msg.generated_podcasts_json ? JSON.parse(msg.generated_podcasts_json) : null,
     createdAt: new Date(msg.created_at),
   };

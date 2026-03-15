@@ -121,6 +121,7 @@ function toMessage(parsed: ParsedMessage): Message {
     generatedDocuments: parsed.generatedDocuments || undefined,
     visualizations: parsed.visualizations || undefined,
     generatedImages: parsed.generatedImages || undefined,
+    generatedDiagrams: parsed.generatedDiagrams || undefined,
     generatedPodcasts: parsed.generatedPodcasts || undefined,
     timestamp: parsed.createdAt,
   };
@@ -371,6 +372,7 @@ export async function addMessage(
     generatedDocuments: message.generatedDocuments,
     visualizations: message.visualizations,
     generatedImages: message.generatedImages,
+    generatedDiagrams: message.generatedDiagrams,
     generatedPodcasts: message.generatedPodcasts,
   });
 
