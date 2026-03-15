@@ -61,21 +61,19 @@ export async function syncModelToLiteLLM(model: {
     return false;
   }
 
+  // Skip Ollama models — they use YAML-specific model names (e.g. "qwen2.5:3b")
+  // that don't match DB model IDs (e.g. "ollama-qwen2.5"), so syncing them
+  // creates broken duplicates. Ollama models are defined in litellm_config.yaml.
+  if (model.providerId === 'ollama') {
+    return true; // Treat as success — already in YAML
+  }
+
   // Build litellm_params based on provider
   const litellmParams: Record<string, string> = {
     model: `${providerConfig.prefix}${model.id}`,
   };
 
-  if (model.providerId === 'ollama') {
-    const ollamaBase = process.env.OLLAMA_API_BASE;
-    if (!ollamaBase) {
-      console.warn(`[LiteLLM Sync] OLLAMA_API_BASE not set, skipping ${model.id}`);
-      return false;
-    }
-    litellmParams.api_base = ollamaBase;
-  } else {
-    litellmParams.api_key = `os.environ/${providerConfig.envKey}`;
-  }
+  litellmParams.api_key = `os.environ/${providerConfig.envKey}`;
 
   const payload = {
     model_name: model.id,
