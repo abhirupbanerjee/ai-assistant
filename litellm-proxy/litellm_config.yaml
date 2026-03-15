@@ -341,28 +341,28 @@ model_list:
   - model_name: ollama-qwen2.5
     litellm_params:
       model: ollama/qwen2.5:3b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
   - model_name: ollama-llama3.2
     litellm_params:
       model: ollama/llama3.2
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
   - model_name: ollama-qwen3
     litellm_params:
       model: ollama/qwen3:4b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
   - model_name: ollama-gpt-oss
     litellm_params:
       model: ollama/gpt-oss:20b
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
@@ -392,7 +392,7 @@ model_list:
   - model_name: ollama-mxbai-embed
     litellm_params:
       model: ollama/mxbai-embed-large
-      api_base: os.environ/OLLAMA_API_BASE
+      api_base: http://ollama:11434
 
   # ===========================================================================
   # AUDIO/TRANSCRIPTION MODELS
