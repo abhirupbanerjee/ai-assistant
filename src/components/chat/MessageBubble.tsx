@@ -20,7 +20,7 @@ function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
   const [expanded, setExpanded] = useState(false);
 
   const modelLabel = metadata.model
-    ? metadata.model.replace(/^(gpt-|claude-|gemini-)/i, '').replace(/-(\d)/g, ' $1').replace(/-/g, ' ').trim()
+    ? metadata.model.replace(/^(gpt-|claude-|gemini-|ollama-)/i, '').replace(/-(\d)/g, ' $1').replace(/-/g, ' ').trim()
     : null;
   const totalSec = metadata.totalMs ? (metadata.totalMs / 1000).toFixed(1) + 's' : null;
 

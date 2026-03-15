@@ -152,12 +152,14 @@ export function getDefaultOutputTokens(provider: string): number {
 // ============ Capability Detection ============
 
 function isToolCapable(modelId: string): boolean {
-  const id = modelId.toLowerCase();
+  // Strip ollama- prefix so "ollama-qwen2.5" matches /^qwen/ patterns
+  const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
 function isVisionCapable(modelId: string): boolean {
-  const id = modelId.toLowerCase();
+  // Strip ollama- prefix for consistent pattern matching
+  const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return VISION_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
