@@ -281,8 +281,9 @@ export async function generateResponse(
  * Returns the fully assembled { content, tool_calls } mirroring the non-streaming message shape.
  */
 // Streaming timeouts — generous to accommodate Ollama model loading
-const FIRST_CHUNK_TIMEOUT_MS = 120_000; // 2 min: initial response (includes model load)
-const INTER_CHUNK_TIMEOUT_MS = 60_000;  // 1 min: gap between chunks once streaming starts
+const FIRST_CHUNK_TIMEOUT_MS = 120_000;        // 2 min: cloud models
+const FIRST_CHUNK_TIMEOUT_OLLAMA_MS = 180_000; // 3 min: Ollama (CPU cold-start)
+const INTER_CHUNK_TIMEOUT_MS = 60_000;         // 1 min: gap between chunks once streaming starts
 
 async function streamOneCompletion(
   openai: OpenAI,
@@ -291,11 +292,15 @@ async function streamOneCompletion(
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined }> {
   const controller = new AbortController();
 
+  // Ollama models get a longer first-chunk timeout for CPU cold-start
+  const isOllama = params.model?.startsWith('ollama-') || params.model?.startsWith('ollama/');
+  const firstChunkTimeout = isOllama ? FIRST_CHUNK_TIMEOUT_OLLAMA_MS : FIRST_CHUNK_TIMEOUT_MS;
+
   // Start with first-chunk timeout; reset to inter-chunk on each received chunk
   let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
     logger.warn('LLM streaming timed out waiting for first chunk', { model: params.model });
     controller.abort();
-  }, FIRST_CHUNK_TIMEOUT_MS);
+  }, firstChunkTimeout);
 
   const resetTimeout = () => {
     if (timeoutId) clearTimeout(timeoutId);
