@@ -13,10 +13,12 @@ let openaiClient: OpenAI | null = null;
 
 async function getOpenAI(): Promise<OpenAI> {
   if (!openaiClient) {
-    // When using LiteLLM proxy, a dummy key is sufficient
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
     // Otherwise use centralized provider helper (DB-first, then env var fallback)
     const baseURL = process.env.LITELLM_BASE_URL;
-    const apiKey = baseURL ? 'dummy-key' : await getApiKey('openai');
+    const apiKey = baseURL
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
 
     openaiClient = new OpenAI({
       apiKey: apiKey || undefined,

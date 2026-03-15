@@ -67,7 +67,12 @@ export async function syncModelToLiteLLM(model: {
   };
 
   if (model.providerId === 'ollama') {
-    litellmParams.api_base = 'os.environ/OLLAMA_API_BASE';
+    const ollamaBase = process.env.OLLAMA_API_BASE;
+    if (!ollamaBase) {
+      console.warn(`[LiteLLM Sync] OLLAMA_API_BASE not set, skipping ${model.id}`);
+      return false;
+    }
+    litellmParams.api_base = ollamaBase;
   } else {
     litellmParams.api_key = `os.environ/${providerConfig.envKey}`;
   }
