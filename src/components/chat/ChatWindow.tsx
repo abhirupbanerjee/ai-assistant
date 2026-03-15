@@ -664,6 +664,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                 });
                 clearTimeout(timeoutId);
                 if (!res.ok) throw new Error(`Server error: ${res.status}`);
+                const data = await res.json();
+                if (!data.resolved) {
+                  setError('Clarification session expired. Please send your message again.');
+                }
               } catch (e) {
                 clearTimeout(timeoutId);
                 console.error('[HITL Preflight] Submit error:', e);
@@ -687,6 +691,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                 });
                 clearTimeout(timeoutId);
                 if (!res.ok) throw new Error(`Server error: ${res.status}`);
+                const data = await res.json();
+                if (!data.resolved) {
+                  setError('Clarification session expired. Please send your message again.');
+                }
               } catch (e) {
                 clearTimeout(timeoutId);
                 console.error('[HITL Preflight] Fallback error:', e);

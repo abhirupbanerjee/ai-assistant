@@ -280,39 +280,76 @@ export async function generateResponse(
  * Calls onChunk for each content token (only fires when the model produces text, not tool calls).
  * Returns the fully assembled { content, tool_calls } mirroring the non-streaming message shape.
  */
+// Streaming timeouts — generous to accommodate Ollama model loading
+const FIRST_CHUNK_TIMEOUT_MS = 120_000; // 2 min: initial response (includes model load)
+const INTER_CHUNK_TIMEOUT_MS = 60_000;  // 1 min: gap between chunks once streaming starts
+
 async function streamOneCompletion(
   openai: OpenAI,
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
   onChunk?: (text: string) => void,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined }> {
-  const stream = await openai.chat.completions.create({ ...params, stream: true });
+  const controller = new AbortController();
+
+  // Start with first-chunk timeout; reset to inter-chunk on each received chunk
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    logger.warn('LLM streaming timed out waiting for first chunk', { model: params.model });
+    controller.abort();
+  }, FIRST_CHUNK_TIMEOUT_MS);
+
+  const resetTimeout = () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      logger.warn('LLM streaming timed out between chunks', { model: params.model });
+      controller.abort();
+    }, INTER_CHUNK_TIMEOUT_MS);
+  };
 
   let content = '';
   const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta;
-    if (!delta) continue;
+  try {
+    const stream = await openai.chat.completions.create(
+      { ...params, stream: true },
+      { signal: controller.signal },
+    );
 
-    if (delta.content) {
-      content += delta.content;
-      onChunk?.(delta.content);
-    }
+    for await (const chunk of stream) {
+      resetTimeout();
 
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        const idx = tc.index;
-        if (!toolCallMap.has(idx)) {
-          toolCallMap.set(idx, { id: '', name: '', arguments: '' });
+      const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
+
+      if (delta.content) {
+        content += delta.content;
+        onChunk?.(delta.content);
+      }
+
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const idx = tc.index;
+          if (!toolCallMap.has(idx)) {
+            toolCallMap.set(idx, { id: '', name: '', arguments: '' });
+          }
+          const acc = toolCallMap.get(idx)!;
+          // id and name arrive complete in the first chunk for each tool call
+          if (tc.id) acc.id = tc.id;
+          if (tc.function?.name) acc.name = tc.function.name;
+          // arguments arrive as partial JSON fragments — concatenate
+          if (tc.function?.arguments) acc.arguments += tc.function.arguments;
         }
-        const acc = toolCallMap.get(idx)!;
-        // id and name arrive complete in the first chunk for each tool call
-        if (tc.id) acc.id = tc.id;
-        if (tc.function?.name) acc.name = tc.function.name;
-        // arguments arrive as partial JSON fragments — concatenate
-        if (tc.function?.arguments) acc.arguments += tc.function.arguments;
       }
     }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(
+        `LLM streaming timeout (model: ${params.model}). ` +
+        `The model may be unresponsive or unable to handle the requested tool_choice.`
+      );
+    }
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 
   const tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined =
@@ -567,11 +604,23 @@ export async function generateResponseWithTools(
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
   const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
 
+  // Ollama doesn't support forced tool_choice (silently dropped by LiteLLM drop_params).
+  // Downgrade to 'auto' so the model can still use tools voluntarily.
+  const isOllamaModel = effectiveModel.startsWith('ollama-') || effectiveModel.startsWith('ollama/');
+  let effectiveToolChoice = toolChoice;
+  if (isOllamaModel && typeof toolChoice === 'object') {
+    logger.info('Downgraded forced tool_choice to auto for Ollama model', {
+      model: effectiveModel,
+      originalChoice: toolChoice.function.name,
+    });
+    effectiveToolChoice = 'auto' as const;
+  }
+
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
     model: effectiveModel,
     messages,
     tools,
-    tool_choice: tools?.length ? toolChoice : undefined,
+    tool_choice: tools?.length ? effectiveToolChoice : undefined,
     max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
   };

@@ -404,6 +404,11 @@ export async function POST(request: NextRequest) {
                         const preflightResult = await createPreflightResolver(
                           assistantMessageId, resolvedPf.timeoutMs, request.signal
                         );
+                        console.log('[Preflight Stream] Resolver resolved', {
+                          messageId: assistantMessageId,
+                          hasContext: !!preflightResult?.enrichedContext,
+                          aborted: request.signal.aborted,
+                        });
 
                         // Inject user clarification into RAG context
                         if (preflightResult?.enrichedContext) {

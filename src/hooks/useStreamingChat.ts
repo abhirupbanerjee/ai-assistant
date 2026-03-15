@@ -549,6 +549,8 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           isStreaming: false,
           phase: 'complete',
           currentContent: finalContent,
+          preflightEvent: null,
+          hitlEvent: null,
           processingDetails: {
             ...prev.processingDetails,
             phase: 'complete',
@@ -564,6 +566,8 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           isStreaming: false,
           error: event.message,
           errorRecoverable: event.recoverable,
+          preflightEvent: null,
+          hitlEvent: null,
         }));
         onError?.(event.code, event.message, event.recoverable);
         break;
@@ -703,6 +707,8 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     setState(prev => ({
       ...prev,
       isStreaming: false,
+      preflightEvent: null,
+      hitlEvent: null,
       processingDetails: {
         ...prev.processingDetails,
         currentPhase: 'complete',

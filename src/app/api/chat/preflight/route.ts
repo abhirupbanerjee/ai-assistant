@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     // If user chose to skip or cancel, resolve with null
     if (fallbackAction === 'continue' || fallbackAction === 'cancel') {
       const resolved = resolvePreflightById(messageId, null);
+      console.log(`[Preflight POST] messageId=${messageId} fallbackAction=${fallbackAction} resolved=${resolved}`);
       return NextResponse.json({ success: true, resolved });
     }
 
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       messageId,
       enrichedContext ? { enrichedContext } : null
     );
+    console.log(`[Preflight POST] messageId=${messageId} resolved=${resolved} context=${enrichedContext || '(empty)'}`);
 
     return NextResponse.json({ success: true, resolved });
   } catch (error) {
