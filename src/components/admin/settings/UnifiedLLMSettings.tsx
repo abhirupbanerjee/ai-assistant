@@ -581,7 +581,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {enabledModels.map(model => (
+                    {enabledModels.filter(m => m.providerEnabled !== false).map(model => (
                       <tr key={model.id} className={!model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getProviderName(model.providerId)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
