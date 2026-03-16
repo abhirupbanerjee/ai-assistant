@@ -94,6 +94,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   // Search and filter state
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [docCategoryFilter, setDocCategoryFilter] = useState<number | 'all' | 'global' | 'uncategorized'>('all');
+  const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'ready' | 'error' | 'processing'>('all');
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
   const [docSortKey, setDocSortKey] = useState<keyof GlobalDocument | null>(null);
   const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
@@ -105,6 +106,11 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   const [reindexing, setReindexing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [savingDocChanges, setSavingDocChanges] = useState(false);
+
+  // Multi-select state
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -293,6 +299,29 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     loadAcronymMappings();
     loadFolderSyncs();
   }, [loadDocuments, loadCategories, loadAcronymMappings, loadFolderSyncs]);
+
+  // Poll for processing documents (refresh every 5s while any doc is 'processing')
+  useEffect(() => {
+    const hasProcessing = documents.some(d => d.status === 'processing');
+    if (!hasProcessing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch('/api/admin/documents');
+        if (!response.ok) return;
+        const data = await response.json();
+        setDocuments(data.documents.map((d: GlobalDocument) => ({
+          ...d,
+          uploadedAt: new Date(d.uploadedAt),
+        })));
+        setTotalChunks(data.totalChunks);
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [documents]);
 
   // Reset upload form
   const resetUploadForm = () => {
@@ -750,6 +779,54 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     setAcronymsModified(false);
   };
 
+  // Multi-select helpers
+  const toggleDocSelection = useCallback((docId: string) => {
+    setSelectedDocIds(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }, []);
+
+  const handleBulkDownload = useCallback(async () => {
+    for (const docId of selectedDocIds) {
+      const a = document.createElement('a');
+      a.href = `/api/admin/documents/${docId}/download`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Small delay between downloads to prevent browser blocking
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }, [selectedDocIds]);
+
+  const handleBulkDelete = useCallback(async () => {
+    setBulkDeleting(true);
+    try {
+      for (const docId of selectedDocIds) {
+        const res = await fetch(`/api/admin/documents/${docId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const doc = documents.find(d => d.id === docId);
+          console.error(`Failed to delete ${doc?.filename || docId}`);
+        }
+      }
+      setSelectedDocIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      await loadDocuments();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [selectedDocIds, documents, loadDocuments]);
+
+  // Clear selection when filters change
+  useEffect(() => {
+    setSelectedDocIds(new Set());
+  }, [docCategoryFilter, docStatusFilter, docSearchTerm]);
+
   // Filtered and sorted documents
   const filteredAndSortedDocs = useMemo(() => {
     let result = [...documents];
@@ -763,6 +840,11 @@ export default function DocumentsManagement({ documentsSection: initialSection }
       } else {
         result = result.filter(doc => doc.categories?.some(c => c.id === docCategoryFilter));
       }
+    }
+
+    // Apply status filter
+    if (docStatusFilter !== 'all') {
+      result = result.filter(doc => doc.status === docStatusFilter);
     }
 
     // Apply fuzzy search
@@ -847,7 +929,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     }
 
     return result;
-  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docSortOption]);
+  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docStatusFilter, docSortOption]);
 
   // Sortable header component
   const SortableDocHeader = ({ columnKey, label, className = '' }: { columnKey: keyof GlobalDocument; label: string; className?: string }) => {
@@ -991,6 +1073,20 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   </select>
                 </div>
 
+                {/* Status Filter */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={docStatusFilter}
+                    onChange={(e) => setDocStatusFilter(e.target.value as typeof docStatusFilter)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="ready">Ready ({documents.filter(d => d.status === 'ready').length})</option>
+                    <option value="error">Error ({documents.filter(d => d.status === 'error').length})</option>
+                    <option value="processing">Processing ({documents.filter(d => d.status === 'processing').length})</option>
+                  </select>
+                </div>
+
                 {/* Sort Dropdown */}
                 <div className="flex items-center gap-2">
                   <SortAsc size={16} className="text-gray-400" />
@@ -1009,10 +1105,11 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 </div>
 
                 {/* Clear filters button */}
-                {(docCategoryFilter !== 'all' || docSearchTerm) && (
+                {(docCategoryFilter !== 'all' || docStatusFilter !== 'all' || docSearchTerm) && (
                   <button
                     onClick={() => {
                       setDocCategoryFilter('all');
+                      setDocStatusFilter('all');
                       setDocSearchTerm('');
                     }}
                     className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1050,10 +1147,50 @@ export default function DocumentsManagement({ documentsSection: initialSection }
               </button>
             </div>
           ) : (
+            <>
+            {/* Bulk action bar */}
+            {selectedDocIds.size > 0 && (
+              <div className="mx-6 mb-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-blue-800">
+                  {selectedDocIds.size} document{selectedDocIds.size > 1 ? 's' : ''} selected
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleBulkDownload}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-100 hover:bg-green-200 rounded-lg transition-colors"
+                  >
+                    <Download size={14} />
+                    Download
+                  </button>
+                  <button
+                    onClick={() => setShowBulkDeleteConfirm(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 text-left text-sm text-gray-600">
                   <tr>
+                    <th className="px-3 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={filteredAndSortedDocs.length > 0 && filteredAndSortedDocs.every(d => selectedDocIds.has(d.id))}
+                        onChange={() => {
+                          const allSelected = filteredAndSortedDocs.every(d => selectedDocIds.has(d.id));
+                          if (allSelected) {
+                            setSelectedDocIds(new Set());
+                          } else {
+                            setSelectedDocIds(new Set(filteredAndSortedDocs.map(d => d.id)));
+                          }
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
                     <SortableDocHeader columnKey="filename" label="Document" />
                     <th className="px-6 py-3 font-medium">Categories</th>
                     <SortableDocHeader columnKey="size" label="Size" />
@@ -1065,7 +1202,15 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 </thead>
                 <tbody className="divide-y">
                   {filteredAndSortedDocs.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-gray-50">
+                    <tr key={doc.id} className={`hover:bg-gray-50 ${selectedDocIds.has(doc.id) ? 'bg-blue-50' : ''}`}>
+                      <td className="px-3 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedDocIds.has(doc.id)}
+                          onChange={() => toggleDocSelection(doc.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <FileText className="w-5 h-5 text-blue-600" />
@@ -1157,6 +1302,41 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   ))}
                 </tbody>
               </table>
+            </div>
+            </>
+          )}
+
+          {/* Bulk Delete Confirmation Modal */}
+          {showBulkDeleteConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete {selectedDocIds.size} Document{selectedDocIds.size > 1 ? 's' : ''}?</h3>
+                <p className="text-sm text-gray-600 mb-3">This will permanently delete the following documents and their embeddings:</p>
+                <ul className="text-sm text-gray-700 max-h-40 overflow-y-auto mb-4 space-y-1">
+                  {documents.filter(d => selectedDocIds.has(d.id)).map(d => (
+                    <li key={d.id} className="flex items-center gap-2">
+                      <FileText size={12} className="text-gray-400 shrink-0" />
+                      <span className="truncate">{d.filename}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowBulkDeleteConfirm(false)}
+                    disabled={bulkDeleting}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {bulkDeleting ? 'Deleting...' : 'Delete All'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

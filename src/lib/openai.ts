@@ -609,16 +609,26 @@ export async function generateResponseWithTools(
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
   const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
 
-  // Ollama doesn't support forced tool_choice (silently dropped by LiteLLM drop_params).
-  // Downgrade to 'auto' so the model can still use tools voluntarily.
+  // Ollama small models can't reliably handle most tools and the tool definitions
+  // consume thousands of tokens (21 tools ≈ 3000-5000 tokens), causing prompt truncation
+  // on limited context windows. Keep only web_search for Ollama models.
   const isOllamaModel = effectiveModel.startsWith('ollama-') || effectiveModel.startsWith('ollama/');
   let effectiveToolChoice = toolChoice;
-  if (isOllamaModel && typeof toolChoice === 'object') {
-    logger.info('Downgraded forced tool_choice to auto for Ollama model', {
-      model: effectiveModel,
-      originalChoice: toolChoice.function.name,
-    });
-    effectiveToolChoice = 'auto' as const;
+  if (isOllamaModel) {
+    if (tools?.length) {
+      const webSearchOnly = tools.filter(t => t.function?.name === 'web_search');
+      const strippedCount = tools.length - webSearchOnly.length;
+      tools = webSearchOnly.length > 0 ? webSearchOnly : undefined;
+      logger.info('Filtered tools for Ollama model (keeping web_search only)', {
+        model: effectiveModel,
+        kept: webSearchOnly.length,
+        stripped: strippedCount,
+      });
+    }
+    // Ollama doesn't support forced tool_choice — downgrade to auto
+    if (typeof effectiveToolChoice === 'object') {
+      effectiveToolChoice = 'auto' as const;
+    }
   }
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {

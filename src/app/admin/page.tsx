@@ -21,12 +21,7 @@ import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
-import DashboardOverview from '@/components/admin/dashboard/DashboardOverview';
-import UserStatistics from '@/components/admin/dashboard/UserStatistics';
-import DocumentStatistics from '@/components/admin/dashboard/DocumentStatistics';
-import QueryStatistics from '@/components/admin/dashboard/QueryStatistics';
-import SystemHealth from '@/components/admin/dashboard/SystemHealth';
-import InfrastructureStatus from '@/components/admin/dashboard/InfrastructureStatus';
+import DashboardPage from '@/components/admin/dashboard/DashboardPage';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
 import DocumentsManagement from '@/components/admin/documents/DocumentsManagement';
@@ -111,7 +106,6 @@ interface AvailableModel {
 
 // New menu structure types - matching AdminSidebarMenu
 type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'workspaces' | 'settings';
-type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
@@ -262,7 +256,6 @@ function AdminPageContent() {
 
   // RAG/LLM settings state
   // Section state for expandable menus
-  const [dashboardSection, setDashboardSection] = useState<DashboardSection>('overview');
   const [documentsSection, setDocumentsSection] = useState<DocumentsSection>('documents');
   const [usersSection, setUsersSection] = useState<UsersSection>('management');
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('system-prompt');
@@ -990,7 +983,6 @@ function AdminPageContent() {
         {/* Sidebar Navigation */}
         <AdminSidebarMenu
           activeTab={activeTab}
-          dashboardSection={dashboardSection}
           documentsSection={documentsSection}
           usersSection={usersSection}
           promptsSection={promptsSection}
@@ -999,7 +991,6 @@ function AdminPageContent() {
           settingsSection={settingsSection}
           userRole={userRole}
           onTabChange={handleTabChange}
-          onDashboardChange={setDashboardSection}
           onDocumentsChange={setDocumentsSection}
           onUsersChange={setUsersSection}
           onPromptsChange={setPromptsSection}
@@ -1024,16 +1015,7 @@ function AdminPageContent() {
         )}
 
         {/* Dashboard Tab */}
-        {activeTab === 'dashboard' && (
-          <>
-            {dashboardSection === 'overview' && <DashboardOverview />}
-            {dashboardSection === 'user-stats' && <UserStatistics />}
-            {dashboardSection === 'doc-stats' && <DocumentStatistics />}
-            {dashboardSection === 'query-stats' && <QueryStatistics />}
-            {dashboardSection === 'system-health' && <SystemHealth />}
-            {dashboardSection === 'infrastructure' && <InfrastructureStatus />}
-          </>
-        )}
+        {activeTab === 'dashboard' && <DashboardPage />}
 
         {/* Documents Tab */}
         {activeTab === 'documents' && (

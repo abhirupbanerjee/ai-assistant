@@ -31,7 +31,6 @@ import {
 type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'workspaces' | 'settings';
 
 // Section types for expandable menus
-type DashboardSection = 'overview' | 'user-stats' | 'doc-stats' | 'query-stats' | 'system-health' | 'infrastructure';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
@@ -60,20 +59,7 @@ interface MenuConfigItem {
 
 const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'branding', label: 'Branding', icon: Palette, expandable: false },
-  {
-    id: 'dashboard',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-    expandable: true,
-    submenu: [
-      { id: 'overview', label: 'Overview' },
-      { id: 'user-stats', label: 'User Statistics' },
-      { id: 'doc-stats', label: 'Document Statistics' },
-      { id: 'query-stats', label: 'Query Statistics' },
-      { id: 'system-health', label: 'System Health' },
-      { id: 'infrastructure', label: 'Infrastructure' },
-    ]
-  },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, expandable: false },
   { id: 'categories', label: 'Categories', icon: FolderOpen, expandable: false },
   { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
   { id: 'users', label: 'Users', icon: Users, expandable: false },
@@ -121,9 +107,6 @@ const getMenuConfig = (menuId: TabType): MenuConfigItem | undefined =>
 // ============================================================================
 // Legacy exports for backward compatibility
 // ============================================================================
-
-export const DASHBOARD_SUBMENU: { id: DashboardSection; label: string }[] =
-  getMenuConfig('dashboard')?.submenu as { id: DashboardSection; label: string }[] || [];
 
 // These are now used for accordion sections in page content (no longer in sidebar submenu)
 export const DOCUMENTS_SUBMENU: { id: DocumentsSection; label: string }[] = [
@@ -174,7 +157,6 @@ const getFilteredMenuConfig = (userRole?: 'admin' | 'superuser' | 'user'): MenuC
 
 interface AdminSidebarMenuProps {
   activeTab: TabType;
-  dashboardSection: DashboardSection;
   documentsSection: DocumentsSection;
   usersSection: UsersSection;
   promptsSection: PromptsSection;
@@ -183,7 +165,6 @@ interface AdminSidebarMenuProps {
   settingsSection: SettingsSection;
   userRole?: 'admin' | 'superuser' | 'user';
   onTabChange: (tab: TabType) => void;
-  onDashboardChange: (section: DashboardSection) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
@@ -198,7 +179,6 @@ interface AdminSidebarMenuProps {
 
 export default function AdminSidebarMenu({
   activeTab,
-  dashboardSection,
   documentsSection,
   usersSection,
   promptsSection,
@@ -207,7 +187,6 @@ export default function AdminSidebarMenu({
   settingsSection,
   userRole = 'admin',
   onTabChange,
-  onDashboardChange,
   onDocumentsChange,
   onUsersChange,
   onPromptsChange,
@@ -227,7 +206,6 @@ export default function AdminSidebarMenu({
   // Get current active section for a menu
   const getActiveSection = (menuId: TabType): string => {
     switch (menuId) {
-      case 'dashboard': return dashboardSection;
       case 'documents': return documentsSection;
       case 'users': return usersSection;
       case 'prompts': return promptsSection;
@@ -244,9 +222,6 @@ export default function AdminSidebarMenu({
 
     // Route to appropriate section handler
     switch (menuId) {
-      case 'dashboard':
-        onDashboardChange(sectionId as DashboardSection);
-        break;
       case 'documents':
         onDocumentsChange(sectionId as DocumentsSection);
         break;
@@ -482,4 +457,4 @@ export default function AdminSidebarMenu({
 }
 
 // Export types for use in admin/page.tsx
-export type { TabType, DashboardSection, DocumentsSection, UsersSection, PromptsSection, AgentsSection, TokensSection, SettingsSection };
+export type { TabType, DocumentsSection, UsersSection, PromptsSection, AgentsSection, TokensSection, SettingsSection };

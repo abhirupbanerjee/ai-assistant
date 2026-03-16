@@ -211,7 +211,7 @@ export async function ingestDocument(
   const filePath = path.join(globalDocsDir, filename);
   await writeFileBuffer(filePath, buffer);
 
-  // Create document record
+  // Create document record with 'processing' status
   const doc = await createDocument({
     filename,
     filepath: filename,
@@ -221,11 +221,31 @@ export async function ingestDocument(
     categoryIds,
   });
 
+  // Run heavy processing in background (extract → chunk → embed → store)
+  processDocumentAsync(buffer, doc.id, filename, categoryIds, isGlobal, mimeType)
+    .catch(err => console.error(`[Ingest] Background processing failed for ${filename}:`, err));
+
+  // Return immediately with 'processing' status
+  const createdDoc = await getDocumentWithCategories(doc.id);
+  return toGlobalDocument(createdDoc!);
+}
+
+/**
+ * Background document processing: extract text, chunk, embed, store in vector DB.
+ * Updates document status to 'ready' or 'error' on completion.
+ */
+async function processDocumentAsync(
+  buffer: Buffer,
+  docId: number,
+  filename: string,
+  categoryIds: number[],
+  isGlobal: boolean,
+  mimeType: string,
+): Promise<void> {
   try {
-    // Extract and chunk text
     const { text, pages } = await extractText(buffer, mimeType, filename);
-    const docId = String(doc.id);
-    const chunks = await chunkText(text, docId, filename, 'global', undefined, undefined, pages);
+    const docIdStr = String(docId);
+    const chunks = await chunkText(text, docIdStr, filename, 'global', undefined, undefined, pages);
 
     if (chunks.length === 0) {
       throw new Error('No text content extracted from document');
@@ -256,7 +276,6 @@ export async function ingestDocument(
       // Global documents go into global collection and all category collections
       if (isGlobal) {
         await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
-        // Also add to all existing category collections
         const allCollections = await store.listCollections();
         for (const name of allCollections.filter(collNames.isCategory)) {
           await store.addDocuments(name, ids, embeddings, texts, metadatas);
@@ -269,28 +288,22 @@ export async function ingestDocument(
           await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
         }
       } else if (!isGlobal) {
-        // Legacy: add to default collection (for uncategorized, non-global documents)
         await store.addDocuments(collNames.legacy, ids, embeddings, texts, metadatas);
       }
     }
 
-    // Update document status
-    await updateDocument(doc.id, {
+    await updateDocument(docId, {
       chunkCount: chunks.length,
       status: 'ready',
     });
 
-    // Fetch updated document
-    const updatedDoc = await getDocumentWithCategories(doc.id);
-    return toGlobalDocument(updatedDoc!);
+    console.log(`[Ingest] Document "${filename}" processed: ${chunks.length} chunks`);
   } catch (error) {
-    // Update document with error status
-    await updateDocument(doc.id, {
+    await updateDocument(docId, {
       status: 'error',
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     });
-
-    throw error;
+    console.error(`[Ingest] Document "${filename}" failed:`, error);
   }
 }
 
