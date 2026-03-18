@@ -79,6 +79,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
   const [selectedProviderForDiscovery, setSelectedProviderForDiscovery] = useState<string | null>(null);
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
@@ -88,7 +89,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // Get Details state
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
-  const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult } | null>(null);
+  const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult; applyError?: string } | null>(null);
 
   // ============ Helpers ============
 
@@ -359,6 +360,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const handleApplyDetails = async (modelId: string, data: DetailsResult) => {
+    setDetailsPreview(prev => prev ? { ...prev, applyError: undefined } : prev);
     try {
       const updates: Record<string, unknown> = {
         toolCapable: data.toolCapable,
@@ -372,12 +374,16 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error('Failed to apply details');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error || `Failed to apply (${res.status})`);
+      }
       await fetchModels();
       setDetailsPreview(null);
       showSuccess('Model details applied');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to apply details');
+      const msg = err instanceof Error ? err.message : 'Failed to apply details';
+      setDetailsPreview(prev => prev ? { ...prev, applyError: msg } : prev);
     }
   };
 
@@ -610,13 +616,25 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
                         {/* Actions */}
                         {!readOnly && (
-                          <td className="px-4 py-3 whitespace-nowrap text-right relative">
-                            <button onClick={() => setActiveModelMenu(activeModelMenu === model.id ? null : model.id)}
+                          <td className="px-4 py-3 whitespace-nowrap text-right">
+                            <button
+                              onClick={(e) => {
+                                if (activeModelMenu === model.id) {
+                                  setActiveModelMenu(null);
+                                  setMenuAnchor(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setActiveModelMenu(model.id);
+                                  setMenuAnchor({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                }
+                              }}
                               className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
                               <MoreVertical size={16} />
                             </button>
-                            {activeModelMenu === model.id && (
-                              <div className="absolute right-6 top-10 w-52 bg-white rounded-lg shadow-lg border z-10">
+                            {activeModelMenu === model.id && menuAnchor && (
+                              <div
+                                style={{ position: 'fixed', top: menuAnchor.top, right: menuAnchor.right }}
+                                className="w-52 bg-white rounded-lg shadow-lg border z-50">
                                 <button onClick={() => handleGetDetails(model.id)}
                                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
                                   <Sparkles size={14} className="text-purple-500" />Get Details
@@ -696,6 +714,9 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                   <div className="text-xs text-gray-400 mt-1 truncate max-w-lg">
                                     Source: {detailsPreview.data.sources[0]}
                                   </div>
+                                )}
+                                {detailsPreview.applyError && (
+                                  <div className="text-xs text-red-600 mt-1">{detailsPreview.applyError}</div>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
@@ -819,7 +840,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       />
 
       {/* Click outside handler for model menu */}
-      {activeModelMenu && <div className="fixed inset-0 z-0" onClick={() => setActiveModelMenu(null)} />}
+      {activeModelMenu && <div className="fixed inset-0 z-40" onClick={() => { setActiveModelMenu(null); setMenuAnchor(null); }} />}
     </div>
   );
 }
