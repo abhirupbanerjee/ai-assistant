@@ -347,7 +347,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     setDetailsPreview(null);
     setActiveModelMenu(null);
     try {
-      const res = await fetch(`/api/admin/llm/models/${modelId}/get-details`, { method: 'POST' });
+      const res = await fetch(`/api/admin/llm/models/get-details?id=${encodeURIComponent(modelId)}`, { method: 'POST' });
       const data = await res.json() as DetailsResult;
       if (!res.ok) throw new Error('Failed to get model details');
       setDetailsPreview({ modelId, data });

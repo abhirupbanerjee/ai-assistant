@@ -1,12 +1,14 @@
 /**
  * Get Model Details API
  *
- * POST - Fetch capability details for a model using AI search (primary)
- *        or pattern matching (fallback). Does NOT auto-save — returns
- *        data for admin review before applying.
+ * POST /api/admin/llm/models/get-details?id=<modelId>
  *
- * Uses [...id] catch-all to handle model IDs that contain slashes
- * (e.g. fireworks/minimax-m2p5 → params.id = ['fireworks', 'minimax-m2p5'])
+ * Fetch capability details for a model using AI search (primary)
+ * or pattern matching (fallback). Does NOT auto-save — returns
+ * data for admin review before applying.
+ *
+ * Uses a query parameter for the model ID to avoid catch-all routing
+ * conflicts (model IDs like fireworks/minimax-m2p5 contain slashes).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,12 +20,8 @@ import { callLLMForJson } from '@/lib/llm-utils';
 import { isToolCapable, isVisionCapable, getContextWindow } from '@/lib/services/model-discovery';
 import type { ApiError } from '@/types';
 
-interface RouteParams {
-  params: Promise<{ id: string[] }>;
-}
-
-// POST /api/admin/llm/models/[...id]/get-details
-export async function POST(request: NextRequest, { params }: RouteParams) {
+// POST /api/admin/llm/models/get-details?id=<modelId>
+export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user?.isAdmin) {
@@ -33,10 +31,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { id: idParts } = await params;
-    const id = idParts.join('/');
-    const model = await getEnabledModel(id);
+    const id = request.nextUrl.searchParams.get('id');
+    if (!id) {
+      return NextResponse.json<ApiError>(
+        { error: 'Model ID required', code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      );
+    }
 
+    const model = await getEnabledModel(id);
     if (!model) {
       return NextResponse.json<ApiError>(
         { error: 'Model not found', code: 'NOT_FOUND' },
