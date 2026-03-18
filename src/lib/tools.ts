@@ -129,6 +129,35 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   redirect_audit: redirectAuditTool,
 };
 
+/**
+ * Meta-tool injected when preflight clarification is enabled.
+ * NOT in AVAILABLE_TOOLS — not DB-managed, not exposed to regular tool routing.
+ * Injected by generateResponseWithTools when enableClarification=true.
+ */
+export const REQUEST_CLARIFICATION_TOOL: OpenAI.Chat.ChatCompletionFunctionTool = {
+  type: 'function',
+  function: {
+    name: 'request_clarification',
+    description: 'Ask the user a clarification question before generating your response. ONLY call this if the request is genuinely ambiguous after reviewing all documents, conversation history, and available context. Do NOT call this if the documents or prior conversation already address the topic.',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'The clarification question to ask the user' },
+        options: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '2-4 specific, mutually exclusive answer options',
+        },
+        allowFreeText: {
+          type: 'boolean',
+          description: 'Set to true to also allow a free-text answer in addition to the options',
+        },
+      },
+      required: ['question', 'options'],
+    },
+  },
+};
+
 // ============ Initialization ============
 
 let toolsInitialized = false;

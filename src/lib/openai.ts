@@ -4,7 +4,7 @@ import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
 import { getToolDisplayName } from './streaming/utils';
-import { getToolDefinitions, executeTool } from './tools';
+import { getToolDefinitions, executeTool, REQUEST_CLARIFICATION_TOOL } from './tools';
 import { resolveToolRouting } from './tool-routing';
 import { resolveSkills, determineToolChoice } from './skills/resolver';
 import { toolsLogger as logger } from './logger';
@@ -400,7 +400,8 @@ export async function generateResponseWithTools(
   categorySlugs?: string[],
   excludeTools?: string[],
   imageCapabilities?: ImageCapabilities,
-  modelOverride?: string  // Optional model ID to override the default
+  modelOverride?: string,  // Optional model ID to override the default
+  enableClarification?: boolean  // Inject request_clarification meta-tool when preflight skill is active
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -653,6 +654,12 @@ export async function generateResponseWithTools(
     });
   }
 
+  // Inject request_clarification meta-tool when preflight skill is active.
+  // Skipped for Ollama: small models struggle with meta-tools and context is already tight.
+  if (enableClarification && modelSupportsTools && !isOllamaModel) {
+    tools = [...(tools || []), REQUEST_CLARIFICATION_TOOL];
+  }
+
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
     model: effectiveModel,
     messages,
@@ -688,6 +695,35 @@ export async function generateResponseWithTools(
     // Execute each tool call
     for (const toolCall of responseMessage.tool_calls) {
       const toolName = toolCall.function.name;
+
+      // Intercept request_clarification meta-tool — pause stream, show HITL UI, resume with answer
+      if (toolName === 'request_clarification') {
+        let clarificationAnswer = 'No clarification provided, proceed with best interpretation.';
+        if (callbacks?.onClarification) {
+          try {
+            const args = JSON.parse(toolCall.function.arguments) as {
+              question: string;
+              options: string[];
+              allowFreeText?: boolean;
+            };
+            const answer = await callbacks.onClarification(
+              args.question,
+              args.options || [],
+              args.allowFreeText ?? false,
+            );
+            if (answer) clarificationAnswer = answer;
+          } catch (parseErr) {
+            logger.warn('Failed to parse request_clarification arguments', { error: String(parseErr) });
+          }
+        }
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: clarificationAnswer,
+        });
+        continue;
+      }
+
       const displayName = getToolDisplayName(toolName);
       const startTime = Date.now();
 

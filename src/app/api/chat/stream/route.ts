@@ -353,73 +353,28 @@ export async function POST(request: NextRequest) {
             // Send sources from RAG
             send({ type: 'sources', data: ragResult.sources });
 
-            // ============ Phase 2.5: Pre-flight Clarification ============
-            // Check if any matched skill has preflight enabled + global toggle
+            // ============ Phase 2.5: Resolve Preflight Clarification Config ============
+            // The actual clarification is now handled by the main LLM via the
+            // request_clarification tool (Option B). We only resolve config here to
+            // get the timeout and determine whether to inject the tool.
+            let enableClarification = false;
+            let clarificationTimeoutMs = 120000; // 2-minute default
+            let clarificationSkillName: string | undefined;
             {
               const { getComplianceConfig } = await import('@/lib/tools/compliance-checker');
               const complianceConfig = await getComplianceConfig();
 
-              console.log('[Preflight] Global preflightEnabled:', complianceConfig.preflightEnabled);
-              console.log('[Preflight] Matched skills:', ragResult.matchedSkills.map(s => ({
-                name: s.name,
-                hasComplianceConfig: !!s.complianceConfig,
-                preflightEnabled: s.complianceConfig?.preflightClarification?.enabled,
-              })));
-
               if (complianceConfig.preflightEnabled) {
-                const { hasPreflightEnabled, findPreflightSkill, resolvePreflightConfig, runPreflightAssessment } = await import('@/lib/compliance/preflight');
-
-                const hasPreflight = hasPreflightEnabled(complianceConfig, ragResult.matchedSkills);
-                console.log('[Preflight] hasPreflightEnabled result:', hasPreflight);
-
-                if (hasPreflight) {
+                const { hasPreflightEnabled, findPreflightSkill, resolvePreflightConfig } = await import('@/lib/compliance/preflight');
+                if (hasPreflightEnabled(complianceConfig, ragResult.matchedSkills)) {
                   const preflightSkill = findPreflightSkill(ragResult.matchedSkills);
-                  console.log('[Preflight] Found preflight skill:', preflightSkill?.name, preflightSkill?.config);
-
                   if (preflightSkill) {
                     const resolvedPf = resolvePreflightConfig(complianceConfig, preflightSkill.config);
-
-                    // Check follow-up skip
-                    let skipPreflight = false;
-                    if (resolvedPf.skipOnFollowUp) {
-                      const { detectFollowUp } = await import('@/lib/conversation-context');
-                      const followUp = detectFollowUp(message);
-                      skipPreflight = followUp.isFollowUp;
-                      console.log('[Preflight] Follow-up detection:', followUp);
-                    }
-
-                    if (!skipPreflight) {
-                      console.log('[Preflight] Running assessment for message:', message.substring(0, 80));
-                      const preflightEvent = await runPreflightAssessment(
-                        message, assistantMessageId, resolvedPf, complianceConfig, preflightSkill.name
-                      );
-                      console.log('[Preflight] Assessment result:', preflightEvent ? `${preflightEvent.questions.length} questions` : 'null (query clear)');
-
-                      if (preflightEvent) {
-                        // Notify UI and pause stream
-                        send({ type: 'status', phase: 'clarifying_question', content: 'Waiting for your input...' });
-                        send({ type: 'hitl_preflight', data: preflightEvent });
-
-                        const { createPreflightResolver } = await import('@/lib/streaming/preflight-resolver');
-                        const preflightResult = await createPreflightResolver(
-                          assistantMessageId, resolvedPf.timeoutMs, request.signal
-                        );
-                        console.log('[Preflight Stream] Resolver resolved', {
-                          messageId: assistantMessageId,
-                          hasContext: !!preflightResult?.enrichedContext,
-                          aborted: request.signal.aborted,
-                        });
-
-                        // Inject user clarification into RAG context
-                        if (preflightResult?.enrichedContext) {
-                          ragResult.context += `\n\n[User clarification: ${preflightResult.enrichedContext}]`;
-                        }
-                      }
-                    }
+                    enableClarification = true;
+                    clarificationTimeoutMs = resolvedPf.timeoutMs;
+                    clarificationSkillName = preflightSkill.name;
                   }
                 }
-              } else {
-                console.log('[Preflight] Skipped — global preflightEnabled is false');
               }
             }
 
@@ -472,6 +427,11 @@ export async function POST(request: NextRequest) {
               effectiveSystemPrompt = `${tonePrompt}\n\n${ragResult.systemPrompt}`;
             }
 
+            // Append clarification instruction when preflight skill is active
+            if (enableClarification) {
+              effectiveSystemPrompt += '\n\nIf the user\'s request is genuinely ambiguous after reviewing all documents and conversation history, call request_clarification with 2-4 specific options. Do not ask about topics already covered in the documents or prior conversation.';
+            }
+
             // Determine which tools to exclude based on user preferences
             const excludeTools: string[] = [];
             if (!webSearchEnabled) {
@@ -521,6 +481,40 @@ export async function POST(request: NextRequest) {
                   send({ type: 'artifact', subtype: 'podcast', data: podcast });
                 }
               },
+              // Called when main LLM invokes request_clarification tool
+              onClarification: async (question: string, options: string[], allowFreeText: boolean): Promise<string | null> => {
+                const { createPreflightResolver } = await import('@/lib/streaming/preflight-resolver');
+
+                const event = {
+                  type: 'hitl_preflight' as const,
+                  messageId: assistantMessageId,
+                  questions: [{
+                    id: 'q1',
+                    context: '',
+                    question,
+                    options: options.map((label) => ({
+                      id: label, // use label as ID so enrichedContext contains readable text
+                      label,
+                      action: 'retry_with' as const,
+                    })),
+                    allowFreeText,
+                  }],
+                  fallbackActions: [
+                    { action: 'continue' as const, label: 'Continue without clarification' },
+                    { action: 'cancel' as const, label: 'Cancel' },
+                  ],
+                  timeoutMs: clarificationTimeoutMs,
+                  skillName: clarificationSkillName,
+                };
+
+                send({ type: 'status', phase: 'clarifying_question', content: 'Waiting for your input...' });
+                send({ type: 'hitl_preflight', data: event });
+
+                const result = await createPreflightResolver(assistantMessageId, clarificationTimeoutMs, request.signal);
+
+                if (!result?.enrichedContext) return null;
+                return result.enrichedContext;
+              },
             };
 
             // Track which model was actually used
@@ -544,7 +538,8 @@ export async function POST(request: NextRequest) {
                   categorySlugs, // Category slugs for cache key
                   excludeTools,
                   imageCapabilities, // Image processing strategy
-                  model // Model to use (may change on fallback)
+                  model, // Model to use (may change on fallback)
+                  enableClarification // Inject request_clarification tool when preflight skill active
                 ),
                 onSwitch: (event: ModelSwitchEvent) => {
                   send({
