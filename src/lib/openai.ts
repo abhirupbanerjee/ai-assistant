@@ -265,12 +265,15 @@ export async function generateResponse(
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
   const effectiveMaxTokens = await getEffectiveMaxTokens(llmSettings.model);
 
+  const isOllama = llmSettings.model.startsWith('ollama-') || llmSettings.model.startsWith('ollama/');
+
   const response = await openai.chat.completions.create({
     model: llmSettings.model,
     messages,
     max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
-  });
+    ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
   return response.choices[0].message.content || '';
 }
@@ -284,6 +287,20 @@ export async function generateResponse(
 const FIRST_CHUNK_TIMEOUT_MS = 120_000;        // 2 min: cloud models
 const FIRST_CHUNK_TIMEOUT_OLLAMA_MS = 180_000; // 3 min: Ollama (CPU cold-start)
 const INTER_CHUNK_TIMEOUT_MS = 60_000;         // 1 min: gap between chunks once streaming starts
+
+// Ollama per-request context window — overrides server-level OLLAMA_CONTEXT_LENGTH.
+// Default 16384 balances capacity with memory on 4GB+ systems.
+const OLLAMA_NUM_CTX = parseInt(process.env.OLLAMA_NUM_CTX || '16384', 10);
+
+// Tools safe for Ollama: no external API keys required, generate output locally
+const OLLAMA_ALLOWED_TOOLS = new Set([
+  'web_search',    // Tavily (already allowed)
+  'doc_gen',       // Local PDF/Word generation via pdfkit/docx
+  'diagram_gen',   // Mermaid syntax, rendered client-side
+  'xlsx_gen',      // Local Excel generation via ExcelJS
+  'chart_gen',     // Chart config, rendered in frontend
+  'pptx_gen',      // Local PowerPoint generation via pptx lib
+]);
 
 async function streamOneCompletion(
   openai: OpenAI,
@@ -610,25 +627,30 @@ export async function generateResponseWithTools(
   const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
 
   // Ollama small models can't reliably handle most tools and the tool definitions
-  // consume thousands of tokens (21 tools ≈ 3000-5000 tokens), causing prompt truncation
-  // on limited context windows. Keep only web_search for Ollama models.
+  // consume thousands of tokens. Keep only local-generation tools that don't need external APIs.
   const isOllamaModel = effectiveModel.startsWith('ollama-') || effectiveModel.startsWith('ollama/');
   let effectiveToolChoice = toolChoice;
   if (isOllamaModel) {
     if (tools?.length) {
-      const webSearchOnly = tools.filter(t => t.function?.name === 'web_search');
-      const strippedCount = tools.length - webSearchOnly.length;
-      tools = webSearchOnly.length > 0 ? webSearchOnly : undefined;
-      logger.info('Filtered tools for Ollama model (keeping web_search only)', {
+      const allowedTools = tools.filter(t => t.function?.name && OLLAMA_ALLOWED_TOOLS.has(t.function.name));
+      const strippedCount = tools.length - allowedTools.length;
+      tools = allowedTools.length > 0 ? allowedTools : undefined;
+      logger.info('Filtered tools for Ollama model', {
         model: effectiveModel,
-        kept: webSearchOnly.length,
+        kept: allowedTools.length,
         stripped: strippedCount,
+        allowed: Array.from(OLLAMA_ALLOWED_TOOLS),
       });
     }
     // Ollama doesn't support forced tool_choice — downgrade to auto
     if (typeof effectiveToolChoice === 'object') {
       effectiveToolChoice = 'auto' as const;
     }
+    logger.info('Ollama context configured', {
+      model: effectiveModel,
+      num_ctx: OLLAMA_NUM_CTX,
+      max_tokens: effectiveMaxTokens,
+    });
   }
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
@@ -638,7 +660,8 @@ export async function generateResponseWithTools(
     tool_choice: tools?.length ? effectiveToolChoice : undefined,
     max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
-  };
+    ...(isOllamaModel && { num_ctx: OLLAMA_NUM_CTX }),
+  } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
   let responseMessage = await streamOneCompletion(openai, completionParams, callbacks?.onChunk);
