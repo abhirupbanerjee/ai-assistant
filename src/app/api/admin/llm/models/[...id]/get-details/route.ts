@@ -4,6 +4,9 @@
  * POST - Fetch capability details for a model using AI search (primary)
  *        or pattern matching (fallback). Does NOT auto-save — returns
  *        data for admin review before applying.
+ *
+ * Uses [...id] catch-all to handle model IDs that contain slashes
+ * (e.g. fireworks/minimax-m2p5 → params.id = ['fireworks', 'minimax-m2p5'])
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,10 +19,10 @@ import { isToolCapable, isVisionCapable, getContextWindow } from '@/lib/services
 import type { ApiError } from '@/types';
 
 interface RouteParams {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string[] }>;
 }
 
-// POST /api/admin/llm/models/[id]/get-details
+// POST /api/admin/llm/models/[...id]/get-details
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
@@ -30,7 +33,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { id } = await params;
+    const { id: idParts } = await params;
+    const id = idParts.join('/');
     const model = await getEnabledModel(id);
 
     if (!model) {

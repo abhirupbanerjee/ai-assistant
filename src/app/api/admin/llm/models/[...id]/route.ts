@@ -4,6 +4,9 @@
  * GET    - Get model details
  * PUT    - Update model (display name, default, enabled)
  * DELETE - Remove model
+ *
+ * Uses [...id] catch-all to handle model IDs that contain slashes
+ * (e.g. fireworks/minimax-m2p5 → params.id = ['fireworks', 'minimax-m2p5'])
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,10 +21,14 @@ import { setLlmSettings, getLlmSettings } from '@/lib/db/compat/config';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id: string[] }>;
 }
 
-// GET /api/admin/llm/models/[id]
+function resolveId(idParts: string[]): string {
+  return idParts.join('/');
+}
+
+// GET /api/admin/llm/models/[...id]
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
@@ -32,7 +39,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { id } = await params;
+    const { id: idParts } = await params;
+    const id = resolveId(idParts);
     const model = await getEnabledModel(id);
 
     if (!model) {
@@ -56,7 +64,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// PUT /api/admin/llm/models/[id]
+// PUT /api/admin/llm/models/[...id]
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
@@ -67,7 +75,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { id } = await params;
+    const { id: idParts } = await params;
+    const id = resolveId(idParts);
     const body = await request.json() as UpdateEnabledModelInput;
 
     const model = await updateEnabledModel(id, body);
@@ -105,7 +114,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/admin/llm/models/[id]
+// DELETE /api/admin/llm/models/[...id]
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
@@ -116,7 +125,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { id } = await params;
+    const { id: idParts } = await params;
+    const id = resolveId(idParts);
     const deleted = await deleteEnabledModel(id);
 
     if (!deleted) {
