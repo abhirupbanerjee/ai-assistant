@@ -419,6 +419,26 @@ model_list:
       max_input_tokens: 131072
       max_output_tokens: 16384
 
+  - model_name: fireworks/llama4-scout-instruct-basic
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/llama4-scout-instruct-basic
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1048576
+      max_output_tokens: 16384
+
+  - model_name: fireworks/qwen3-4b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/qwen3-4b
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 40960
+      max_output_tokens: 8192
+
   # ===========================================================================
   # EMBEDDING MODELS
   # ===========================================================================

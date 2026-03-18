@@ -128,6 +128,18 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
     }
   }, []);
 
+  const fetchRerankerStatus = useCallback(async () => {
+    try {
+      const statusRes = await fetch('/api/admin/reranker-status');
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setRerankerStatus((statusData.providers || []).filter(Boolean));
+      }
+    } catch {
+      // status refresh is best-effort
+    }
+  }, []);
+
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
@@ -153,14 +165,22 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
       if (!res.ok) throw new Error('Failed to save settings');
 
       const data = await res.json();
-      setSettings(data.settings);
+      const savedSettings = data.settings;
+      setSettings(savedSettings);
+      setEditedSettings({
+        enabled: savedSettings.enabled,
+        providers: savedSettings.providers,
+        topKForReranking: savedSettings.topKForReranking,
+        minRerankerScore: savedSettings.minRerankerScore,
+        cacheTTLSeconds: savedSettings.cacheTTLSeconds,
+      });
       setCohereApiKeyInput(''); // Clear the input after save
       setIsModified(false);
       setSuccess('Reranker settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
 
-      // Refresh status after saving
-      fetchSettings();
+      // Refresh availability status only (not full settings, to avoid overwriting saved state)
+      fetchRerankerStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {

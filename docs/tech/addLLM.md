@@ -6,6 +6,7 @@ This guide explains how to add a new LLM model to the Policy Bot system.
 
 - [Overview](#overview)
 - [Quick Reference: What to Update](#quick-reference-what-to-update)
+  - [Adding a Fireworks AI Model](#adding-a-fireworks-model)
 - [Method 1: Admin UI (Recommended)](#method-1-admin-ui-recommended)
 - [Method 2: YAML Configuration](#method-2-yaml-configuration-alternative)
 - [Adding a New Provider](#adding-a-new-provider)
@@ -69,7 +70,7 @@ Before adding models, choose the provider tier based on data sensitivity and tas
 |---|---|---|
 | **Ollama** (Local) | Simple RAG, document lookup, basic Q&A, non-complex queries | ✅ Government-sensitive / classified — data never leaves the network |
 | **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs |
-| **Fireworks AI** | Developer testing of open-source models (MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3) | Development / test environments only — not for production sensitive data |
+| **Fireworks AI** | Open-source model testing: MiniMax M2.5, Kimi K2.5, GPT-OSS 20B/120B, Qwen3 4B/8B, Llama 4 Scout | Development / test environments only — not for production sensitive data |
 
 > **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.
 
@@ -141,6 +142,17 @@ Auto-Sync Flow:
 - On **app startup**: all active models from DB are re-registered (since LiteLLM's in-memory store is lost on restart when `store_model_in_db: false`)
 - Models already in YAML are unaffected — `/model/new` returns "already exists" which is silently accepted
 
+**Sync Exceptions — Fireworks AI and Ollama:**
+
+Two providers are intentionally **skipped** from auto-sync and must be defined manually in `litellm_config.yaml`:
+
+| Provider | Reason | DB model ID | LiteLLM format needed |
+|----------|--------|------------|----------------------|
+| **Fireworks AI** | ID format mismatch — auto-sync can't reconstruct the full path | `fireworks/minimax-m2p5` | `fireworks_ai/accounts/fireworks/models/minimax-m2p5` |
+| **Ollama** | Model name format collision — DB uses slugified names, Ollama uses tag-style | `ollama-qwen2.5` | `qwen2.5:3b` |
+
+For both providers the sync function returns `true` (treated as success) since the models are already registered via YAML. Auto-syncing them would create broken duplicate entries with incorrect model paths.
+
 **Requirements:**
 - `LITELLM_MASTER_KEY` env var must be set
 - `OPENAI_BASE_URL` must point to LiteLLM proxy (e.g., `http://litellm:4000/v1`)
@@ -162,8 +174,9 @@ The system currently supports these LLM providers out of the box:
 | **Mistral** | `mistral` | Mistral Large 3, Small 3.2 | Yes | ✅ API |
 | **DeepSeek** | `deepseek` | DeepSeek Chat, Reasoner | No | ✅ API |
 | **Ollama** | `ollama` | Llama 3.2, Qwen 2.5, Phi4 | Varies | ✅ API |
+| **Fireworks AI** | `fireworks` | MiniMax M2.5, Kimi K2.5, Llama 4 Scout, Qwen3 4B/8B | Some | ⚠️ Curated list (code change required) |
 
-All providers now support auto-discovery via their respective APIs.
+> **Fireworks exception:** New Fireworks models are NOT auto-discovered from the API. They must be added to the `FIREWORKS_MODELS` curated list in `src/lib/services/model-discovery.ts` and to `litellm_config.yaml`. See [Adding a Fireworks Model](#adding-a-fireworks-model).
 
 ---
 
@@ -198,6 +211,42 @@ YAML is optional — auto-sync registers the model with LiteLLM. But adding capa
 | Add discovery function | `src/lib/services/model-discovery.ts` | **Yes** |
 | Add capability patterns | `src/lib/services/model-discovery.ts` | **Yes** |
 | Add to LiteLLM sync map | `src/lib/services/litellm-sync.ts` | **Yes** |
+
+### Scenario 4: Adding a Fireworks AI Model {#adding-a-fireworks-model}
+
+Fireworks uses a **curated list** (not API discovery) and requires **manual YAML** (not auto-sync). Both files must be updated together:
+
+| What | File | Required? |
+|------|------|-----------|
+| Add to curated model list | `src/lib/services/model-discovery.ts` — `FIREWORKS_MODELS` array | **Yes** |
+| Add to LiteLLM config | `litellm-proxy/litellm_config.yaml` — Fireworks section | **Yes** |
+
+**Step 1** — `src/lib/services/model-discovery.ts`:
+```typescript
+{
+  id: 'fireworks/your-model-slug',
+  name: 'Display Name',
+  toolCapable: true,   // check fireworks.ai/models/fireworks/your-model-slug
+  visionCapable: false,
+  maxInputTokens: 131072,
+  maxOutputTokens: 16384,
+},
+```
+
+**Step 2** — `litellm-proxy/litellm_config.yaml` (under the Fireworks AI section):
+```yaml
+- model_name: fireworks/your-model-slug
+  litellm_params:
+    model: fireworks_ai/accounts/fireworks/models/your-model-slug
+    api_key: os.environ/FIREWORKS_AI_API_KEY
+  model_info:
+    supports_function_calling: true
+    supports_vision: false
+    max_input_tokens: 131072
+    max_output_tokens: 16384
+```
+
+After both edits: restart the stack, then Admin → Settings → LLMs → Discover (Fireworks) → enable the model.
 
 ---
 
@@ -577,6 +626,36 @@ Check startup logs for confirmation:
   model_info:
     supports_function_calling: true
 ```
+
+#### Fireworks AI
+
+> **Important:** Fireworks models are **not** auto-synced to LiteLLM. Every Fireworks model must be added here manually. The DB model ID (`fireworks/model-name`) does not match the LiteLLM path format (`fireworks_ai/accounts/fireworks/models/model-name`).
+>
+> You must also add the model to the `FIREWORKS_MODELS` curated list in `src/lib/services/model-discovery.ts` so it appears in the Admin UI discovery flow.
+
+```yaml
+- model_name: fireworks/minimax-m2p5       # Must match the ID in FIREWORKS_MODELS
+  litellm_params:
+    model: fireworks_ai/accounts/fireworks/models/minimax-m2p5  # Full Fireworks API path
+    api_key: os.environ/FIREWORKS_AI_API_KEY
+  model_info:
+    supports_function_calling: true
+    supports_vision: true
+    max_input_tokens: 1000000
+    max_output_tokens: 16384
+
+- model_name: fireworks/llama4-scout-instruct-basic
+  litellm_params:
+    model: fireworks_ai/accounts/fireworks/models/llama4-scout-instruct-basic
+    api_key: os.environ/FIREWORKS_AI_API_KEY
+  model_info:
+    supports_function_calling: true
+    supports_vision: true
+    max_input_tokens: 1048576
+    max_output_tokens: 16384
+```
+
+**Pattern:** the `model_name` is always `fireworks/{model-slug}` and the `litellm_params.model` is always `fireworks_ai/accounts/fireworks/models/{model-slug}`.
 
 #### Azure OpenAI
 

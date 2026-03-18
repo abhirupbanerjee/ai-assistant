@@ -503,6 +503,22 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
+    {
+      id: 'fireworks/llama4-scout-instruct-basic',
+      name: 'Llama 4 Scout',
+      toolCapable: true,
+      visionCapable: true,
+      maxInputTokens: 1048576,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/qwen3-4b',
+      name: 'Qwen3 4B',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 40960,
+      maxOutputTokens: 8192,
+    },
   ];
 
   return Promise.all(

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdmin, requireElevated } from '@/lib/auth';
 import { getRedisClient } from '@/lib/redis';
 
 // GET - Fetch cache stats and info
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireElevated();
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (error instanceof Error && error.message === 'Admin access required') {
+    if (error instanceof Error && (error.message === 'Elevated access required' || error.message === 'Admin access required')) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     throw error;
