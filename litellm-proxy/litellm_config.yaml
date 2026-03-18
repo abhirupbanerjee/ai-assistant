@@ -367,6 +367,59 @@ model_list:
       supports_function_calling: true
 
   # ===========================================================================
+  # FIREWORKS AI MODELS (SOC2 / GDPR / HIPAA — Zero Data Retention)
+  # ===========================================================================
+  - model_name: fireworks/minimax-m2p5
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/minimax-m2p5
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 1000000
+      max_output_tokens: 16384
+
+  - model_name: fireworks/kimi-k2p5
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/kimi-k2p5
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
+  - model_name: fireworks/gpt-oss-20b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/gpt-oss-20b
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
+  - model_name: fireworks/gpt-oss-120b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/gpt-oss-120b
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
+  - model_name: fireworks/qwen3-8b
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/qwen3-8b
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
+  # ===========================================================================
   # EMBEDDING MODELS
   # ===========================================================================
   - model_name: text-embedding-3-large

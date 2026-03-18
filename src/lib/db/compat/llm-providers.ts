@@ -46,6 +46,7 @@ const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> =
   ollama: { apiBase: 'OLLAMA_API_BASE' },
   anthropic: { apiKey: 'ANTHROPIC_API_KEY' },
   deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
+  fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
 };
 
 // ============ CRUD Operations ============

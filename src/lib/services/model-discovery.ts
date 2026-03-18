@@ -448,6 +448,72 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
   return models.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Curated Fireworks AI models (Zero Data Retention, SOC2/GDPR/HIPAA)
+ * Returns the 5 approved models rather than the full Fireworks catalog (300+)
+ */
+async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[]> {
+  // Validate API key by calling the models endpoint
+  const response = await fetch('https://api.fireworks.ai/inference/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Fireworks API error: ${response.status} ${response.statusText}`);
+  }
+
+  const FIREWORKS_MODELS = [
+    {
+      id: 'fireworks/minimax-m2p5',
+      name: 'MiniMax M2.5',
+      toolCapable: true,
+      visionCapable: true,
+      maxInputTokens: 1000000,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/kimi-k2p5',
+      name: 'Kimi K2.5',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/gpt-oss-20b',
+      name: 'OpenAI GPT-OSS 20B',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/gpt-oss-120b',
+      name: 'OpenAI GPT-OSS 120B',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/qwen3-8b',
+      name: 'Qwen3 8B',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+  ];
+
+  return Promise.all(
+    FIREWORKS_MODELS.map(async m => ({
+      ...m,
+      provider: 'fireworks',
+      isEnabled: !!(await getEnabledModel(m.id)),
+    }))
+  );
+}
+
 // ============ Main Discovery Function ============
 
 /**
@@ -512,6 +578,15 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         break;
       }
 
+      case 'fireworks': {
+        const apiKey = await getProviderApiKey('fireworks');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverFireworksModels(apiKey);
+        break;
+      }
+
       default:
         return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
     }
@@ -556,7 +631,7 @@ export async function discoverAllModels(): Promise<{
   providers: Record<string, DiscoveryResult>;
   totalModels: number;
 }> {
-  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek'];
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks'];
   const results: Record<string, DiscoveryResult> = {};
   let totalModels = 0;
 

@@ -118,6 +118,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       ollama: { apiBase: 'OLLAMA_API_BASE' },
       anthropic: { apiKey: 'ANTHROPIC_API_KEY' },
       deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
+      fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
     };
 
     for (const provider of DEFAULT_PROVIDERS) {

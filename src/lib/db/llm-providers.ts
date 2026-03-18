@@ -52,6 +52,7 @@ export const DEFAULT_PROVIDERS: Omit<LLMProvider, 'createdAt' | 'updatedAt'>[] =
   { id: 'ollama', name: 'Ollama (Local)', apiKey: null, apiBase: null, enabled: true },
   { id: 'anthropic', name: 'Anthropic (Claude)', apiKey: null, apiBase: null, enabled: true },
   { id: 'deepseek', name: 'DeepSeek', apiKey: null, apiBase: null, enabled: true },
+  { id: 'fireworks', name: 'Fireworks AI', apiKey: null, apiBase: null, enabled: true },
 ];
 
 // Environment variable mapping for auto-seeding
@@ -62,6 +63,7 @@ const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> =
   ollama: { apiBase: 'OLLAMA_API_BASE' },
   anthropic: { apiKey: 'ANTHROPIC_API_KEY' },
   deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
+  fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
 };
 
 // ============ Row Mapper ============
