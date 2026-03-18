@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Save, RefreshCw, ChevronUp, ChevronDown, Plus, Wrench, Eye, Star,
+  ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
   MoreVertical, Trash2, EyeOff, Edit2, Check, FileText, Languages,
-  Image, Mic, Database, Search, ExternalLink, AlertTriangle, CheckCircle,
+  Image, Mic, Database, Search, ExternalLink, CheckCircle, RotateCcw, Sparkles,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -41,42 +41,18 @@ interface EnabledModel {
   updatedAt: string;
 }
 
-interface ChatDefaults {
-  model: string;
-  temperature: number;
-  maxTokens: number;
-  promptOptimizationMaxTokens: number;
-  updatedAt: string;
-  updatedBy: string;
+interface DetailsResult {
+  found: boolean;
+  toolCapable: boolean;
+  visionCapable: boolean;
+  maxInputTokens: number | null;
+  maxOutputTokens: number | null;
+  confidence: 'high' | 'medium' | 'low';
+  source: 'web_search' | 'llm_knowledge' | 'pattern_match';
+  sources: string[];
 }
 
-interface EligibleModel {
-  id: string;
-  displayName: string;
-  providerId: string;
-}
-
-interface UnhealthyModel {
-  modelId: string;
-  expiresAt: string;
-}
-
-interface LlmFallbackSettings {
-  universalFallback: string | null;
-  maxRetryAttempts: number;
-  healthCacheDuration: 'hourly' | 'daily' | 'disabled';
-}
-
-interface FallbackData {
-  settings: LlmFallbackSettings;
-  eligibleFallbackModels: EligibleModel[];
-  healthCache: {
-    unhealthyModels: UnhealthyModel[];
-    duration: 'hourly' | 'daily' | 'disabled';
-  };
-}
-
-type SectionId = 'providers' | 'models' | 'chatDefaults' | 'fallback' | 'overview';
+type SectionId = 'providers' | 'models' | 'overview';
 
 // ============ Component ============
 
@@ -90,37 +66,29 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [enabledModels, setEnabledModels] = useState<EnabledModel[]>([]);
 
-  // Chat defaults state
-  const [chatDefaults, setChatDefaults] = useState<ChatDefaults | null>(null);
-  const [editedDefaults, setEditedDefaults] = useState<Pick<ChatDefaults, 'temperature' | 'maxTokens'> | null>(null);
-  const [defaultsModified, setDefaultsModified] = useState(false);
-
-  // Fallback state
-  const [fallbackData, setFallbackData] = useState<FallbackData | null>(null);
-  const [editedFallback, setEditedFallback] = useState<LlmFallbackSettings | null>(null);
-  const [fallbackModified, setFallbackModified] = useState(false);
+  // Fallback model state (lightweight — just the ID + preserved settings for API)
+  const [fallbackModelId, setFallbackModelId] = useState<string | null>(null);
+  const [fallbackSettings, setFallbackSettings] = useState<{ maxRetryAttempts: number; healthCacheDuration: string } | null>(null);
 
   // UI state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Saving states
-  const [isSavingDefaults, setIsSavingDefaults] = useState(false);
-  const [isSavingFallback, setIsSavingFallback] = useState(false);
-  const [restoringDefaults, setRestoringDefaults] = useState(false);
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
-  const [isClearingCache, setIsClearingCache] = useState(false);
-
   // Model actions state
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
   const [selectedProviderForDiscovery, setSelectedProviderForDiscovery] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
   const [editedMaxOutput, setEditedMaxOutput] = useState<number>(0);
+  const [editingMaxInput, setEditingMaxInput] = useState<string | null>(null);
+  const [editedMaxInput, setEditedMaxInput] = useState<number>(0);
+
+  // Get Details state
+  const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
+  const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult } | null>(null);
 
   // ============ Helpers ============
 
@@ -150,7 +118,6 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const configuredProviders = providers.filter(p => p.apiKeyConfigured || p.id === 'ollama');
-  const defaultModel = enabledModels.find(m => m.isDefault);
 
   // ============ Data Loading ============
 
@@ -168,39 +135,28 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     setEnabledModels(data.models || []);
   }, []);
 
-  const fetchChatDefaults = useCallback(async () => {
-    const defaults = { model: 'gpt-4.1-mini', temperature: 0.7, maxTokens: 2000, promptOptimizationMaxTokens: 200 };
-    const res = await fetch('/api/admin/settings');
-    if (!res.ok) {
-      setChatDefaults(null);
-      setEditedDefaults({ temperature: defaults.temperature, maxTokens: defaults.maxTokens });
-      return;
-    }
-    const data = await res.json();
-    const llm = data.llm || defaults;
-    setChatDefaults(llm);
-    setEditedDefaults({ temperature: llm.temperature, maxTokens: llm.maxTokens });
-  }, []);
-
-  const fetchFallback = useCallback(async () => {
+  const fetchFallbackModelId = useCallback(async () => {
     const res = await fetch('/api/admin/settings/llm-fallback');
-    if (!res.ok) return; // non-critical
-    const data: FallbackData = await res.json();
-    setFallbackData(data);
-    setEditedFallback({ ...data.settings });
+    if (!res.ok) return;
+    const data = await res.json();
+    setFallbackModelId(data.settings?.universalFallback ?? null);
+    setFallbackSettings({
+      maxRetryAttempts: data.settings?.maxRetryAttempts ?? 2,
+      healthCacheDuration: data.settings?.healthCacheDuration ?? 'hourly',
+    });
   }, []);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      await Promise.all([fetchProviders(), fetchModels(), fetchChatDefaults(), fetchFallback()]);
+      await Promise.all([fetchProviders(), fetchModels(), fetchFallbackModelId()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
       setIsLoading(false);
     }
-  }, [fetchProviders, fetchModels, fetchChatDefaults, fetchFallback]);
+  }, [fetchProviders, fetchModels, fetchFallbackModelId]);
 
   useEffect(() => {
     loadData();
@@ -322,142 +278,106 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     await fetchModels();
     setShowDiscoveryModal(false);
     setSelectedProviderForDiscovery(null);
-    showSuccess('Models added successfully');
+    showSuccess('Models updated successfully');
   };
 
-  const handleRefreshCapabilities = async () => {
-    setIsRefreshing(true);
-    setError(null);
+  // ============ New Model Capability Actions ============
+
+  const handleToggleCapability = async (modelId: string, field: 'toolCapable' | 'visionCapable', current: boolean) => {
+    // Optimistic update
+    setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: !current } : m));
     try {
-      const res = await fetch('/api/admin/llm/models/refresh', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to refresh');
+      const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: !current }),
+      });
+      if (!res.ok) throw new Error('Failed to update capability');
+      showSuccess(`${field === 'toolCapable' ? 'Tools' : 'Vision'} ${!current ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      // Revert on failure
+      setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: current } : m));
+      setError(err instanceof Error ? err.message : 'Failed to update capability');
+    }
+  };
+
+  const handleEditMaxInput = async (modelId: string) => {
+    if (editedMaxInput < 1000 || editedMaxInput > 2000000) {
+      setError('Max input tokens must be between 1,000 and 2,000,000');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxInputTokens: editedMaxInput }),
+      });
+      if (!res.ok) throw new Error('Failed to update max input tokens');
       await fetchModels();
-      showSuccess(`Refreshed capabilities for ${data.updated} models`);
+      setEditingMaxInput(null);
+      setEditedMaxInput(0);
+      showSuccess('Max input tokens updated');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh capabilities');
-    } finally {
-      setIsRefreshing(false);
+      setError(err instanceof Error ? err.message : 'Failed to update max input tokens');
     }
   };
 
-  // ============ Chat Defaults Actions ============
-
-  const handleDefaultsChange = <K extends 'temperature' | 'maxTokens'>(key: K, value: number) => {
-    if (!editedDefaults) return;
-    const updated = { ...editedDefaults, [key]: value };
-    setEditedDefaults(updated);
-    setDefaultsModified(
-      updated.temperature !== chatDefaults?.temperature || updated.maxTokens !== chatDefaults?.maxTokens
-    );
-  };
-
-  const handleSaveDefaults = async () => {
-    if (!editedDefaults || !defaultsModified) return;
+  const handleSetFallback = async (modelId: string | null) => {
     try {
-      setIsSavingDefaults(true);
-      // Include model and promptOptimizationMaxTokens from current chatDefaults
-      // so the API validation passes (it requires all fields)
-      const fullSettings = {
-        model: chatDefaults?.model,
-        promptOptimizationMaxTokens: chatDefaults?.promptOptimizationMaxTokens,
-        ...editedDefaults,
-      };
-      const res = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'llm', settings: fullSettings }),
-      });
-      if (!res.ok) throw new Error('Failed to save settings');
-      const result = await res.json();
-      setChatDefaults(result.settings);
-      setDefaultsModified(false);
-      showSuccess('Chat defaults saved');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
-    } finally {
-      setIsSavingDefaults(false);
-    }
-  };
-
-  const handleResetDefaults = () => {
-    if (chatDefaults) {
-      setEditedDefaults({ temperature: chatDefaults.temperature, maxTokens: chatDefaults.maxTokens });
-      setDefaultsModified(false);
-    }
-  };
-
-  const handleRestoreAllDefaults = async () => {
-    setRestoringDefaults(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'restoreAllDefaults', settings: {} }),
-      });
-      if (!res.ok) throw new Error('Failed to restore defaults');
-      await fetchChatDefaults();
-      setDefaultsModified(false);
-      setShowRestoreConfirm(false);
-      showSuccess('All settings restored to defaults');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to restore defaults');
-    } finally {
-      setRestoringDefaults(false);
-    }
-  };
-
-  // ============ Fallback Actions ============
-
-  const updateFallbackSetting = <K extends keyof LlmFallbackSettings>(key: K, value: LlmFallbackSettings[K]) => {
-    if (editedFallback) {
-      setEditedFallback({ ...editedFallback, [key]: value });
-      setFallbackModified(true);
-    }
-  };
-
-  const handleSaveFallback = async () => {
-    if (!editedFallback) return;
-    try {
-      setIsSavingFallback(true);
       const res = await fetch('/api/admin/settings/llm-fallback', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editedFallback),
+        body: JSON.stringify({
+          universalFallback: modelId,
+          maxRetryAttempts: fallbackSettings?.maxRetryAttempts ?? 2,
+          healthCacheDuration: fallbackSettings?.healthCacheDuration ?? 'hourly',
+        }),
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to save settings');
-      }
-      await fetchFallback();
-      setFallbackModified(false);
-      showSuccess('Fallback settings saved');
+      if (!res.ok) throw new Error('Failed to update fallback model');
+      setFallbackModelId(modelId);
+      showSuccess(modelId ? 'Fallback model set' : 'Fallback model removed');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
-    } finally {
-      setIsSavingFallback(false);
+      setError(err instanceof Error ? err.message : 'Failed to update fallback model');
     }
+    setActiveModelMenu(null);
   };
 
-  const handleResetFallback = () => {
-    if (fallbackData) {
-      setEditedFallback({ ...fallbackData.settings });
-      setFallbackModified(false);
-    }
-  };
-
-  const handleClearHealthCache = async () => {
+  const handleGetDetails = async (modelId: string) => {
+    setFetchingDetails(modelId);
+    setDetailsPreview(null);
+    setActiveModelMenu(null);
     try {
-      setIsClearingCache(true);
-      const res = await fetch('/api/admin/settings/llm-fallback', { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to clear health cache');
-      await fetchFallback();
-      showSuccess('Health cache cleared - all models marked as healthy');
+      const res = await fetch(`/api/admin/llm/models/${modelId}/get-details`, { method: 'POST' });
+      const data = await res.json() as DetailsResult;
+      if (!res.ok) throw new Error('Failed to get model details');
+      setDetailsPreview({ modelId, data });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear health cache');
+      setError(err instanceof Error ? err.message : 'Failed to get model details');
     } finally {
-      setIsClearingCache(false);
+      setFetchingDetails(null);
+    }
+  };
+
+  const handleApplyDetails = async (modelId: string, data: DetailsResult) => {
+    try {
+      const updates: Record<string, unknown> = {
+        toolCapable: data.toolCapable,
+        visionCapable: data.visionCapable,
+      };
+      if (data.maxInputTokens !== null) updates.maxInputTokens = data.maxInputTokens;
+      if (data.maxOutputTokens !== null) updates.maxOutputTokens = data.maxOutputTokens;
+
+      const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error('Failed to apply details');
+      await fetchModels();
+      setDetailsPreview(null);
+      showSuccess('Model details applied');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply details');
     }
   };
 
@@ -499,7 +419,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       <div>
         <h2 className="text-xl font-semibold text-gray-900">LLM Settings</h2>
         <p className="text-sm text-gray-500 mt-1">
-          {readOnly ? 'Current provider and model configuration (view only).' : 'Manage providers, models, and generation parameters.'}
+          {readOnly ? 'Current provider and model configuration (view only).' : 'Manage providers and models. Click capabilities to toggle, click token values to edit.'}
         </p>
       </div>
 
@@ -538,26 +458,16 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="models" title="Enabled Models" subtitle="Models available for users in the chat dropdown">
           {!readOnly && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={handleRefreshCapabilities}
-                disabled={isRefreshing || enabledModels.length === 0}
-              >
-                <RefreshCw size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-              <Button
-                onClick={() => {
-                  setSelectedProviderForDiscovery(null);
-                  setShowDiscoveryModal(true);
-                }}
-                disabled={configuredProviders.length === 0}
-              >
-                <Plus size={16} className="mr-2" />
-                Add Models
-              </Button>
-            </>
+            <Button
+              onClick={() => {
+                setSelectedProviderForDiscovery(null);
+                setShowDiscoveryModal(true);
+              }}
+              disabled={configuredProviders.length === 0}
+            >
+              <Settings2 size={16} className="mr-2" />
+              Manage Models
+            </Button>
           )}
         </SectionHeader>
         {expandedSections.has('models') && (
@@ -566,26 +476,32 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
               {enabledModels.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <p>No models enabled yet.</p>
-                  <p className="text-sm mt-1">Configure a provider above and click &quot;Add Models&quot; to get started.</p>
+                  <p className="text-sm mt-1">Configure a provider above and click &quot;Manage Models&quot; to get started.</p>
                 </div>
               ) : (
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capabilities</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Output</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      {!readOnly && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tools</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vision</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Input</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Output</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      {!readOnly && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {enabledModels.filter(m => m.providerEnabled !== false).map(model => (
+                      <>
                       <tr key={model.id} className={!model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getProviderName(model.providerId)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
+                        {/* Provider */}
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{getProviderName(model.providerId)}</td>
+
+                        {/* Model name */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
                             {editingModel === model.id ? (
                               <div className="flex items-center gap-2">
                                 <input type="text" value={editedDisplayName} onChange={(e) => setEditedDisplayName(e.target.value)}
@@ -596,45 +512,93 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             ) : (
                               <>
                                 <span className="text-sm font-medium text-gray-900">{model.displayName}</span>
-                                {model.isDefault && <Star size={14} className="text-yellow-500 fill-yellow-500" />}
+                                {model.isDefault && <span title="Default model"><Star size={13} className="text-yellow-500 fill-yellow-500 shrink-0" /></span>}
+                                {fallbackModelId === model.id && <span title="Fallback model"><RotateCcw size={13} className="text-gray-400 shrink-0" /></span>}
                               </>
                             )}
                           </div>
                           <span className="text-xs text-gray-400">{model.id}</span>
+                          {fetchingDetails === model.id && (
+                            <span className="text-xs text-blue-500 mt-0.5 block">Fetching details…</span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {model.toolCapable && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700" title="Tool/Function Calling">
-                                <Wrench size={12} className="mr-1" />Tools
-                              </span>
-                            )}
-                            {model.visionCapable && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700" title="Vision/Image Support">
-                                <Eye size={12} className="mr-1" />Vision
-                              </span>
-                            )}
-                            {model.maxInputTokens && (
-                              <span className="text-xs text-gray-500" title="Context Window">{(model.maxInputTokens / 1000).toFixed(0)}K</span>
-                            )}
-                          </div>
+
+                        {/* Tools toggle */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => !readOnly && handleToggleCapability(model.id, 'toolCapable', model.toolCapable)}
+                            disabled={readOnly}
+                            title={model.toolCapable ? 'Tool calling enabled — click to disable' : 'Tool calling disabled — click to enable'}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                              model.toolCapable
+                                ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                            } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                          >
+                            <Wrench size={11} className="mr-1" />{model.toolCapable ? 'On' : 'Off'}
+                          </button>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+
+                        {/* Vision toggle */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => !readOnly && handleToggleCapability(model.id, 'visionCapable', model.visionCapable)}
+                            disabled={readOnly}
+                            title={model.visionCapable ? 'Vision enabled — click to disable' : 'Vision disabled — click to enable'}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                              model.visionCapable
+                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                            } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                          >
+                            <Eye size={11} className="mr-1" />{model.visionCapable ? 'On' : 'Off'}
+                          </button>
+                        </td>
+
+                        {/* Max Input — inline edit */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {editingMaxInput === model.id ? (
+                            <div className="flex items-center gap-1">
+                              <input type="number" value={editedMaxInput} onChange={(e) => setEditedMaxInput(parseInt(e.target.value) || 0)}
+                                className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500" min={1000} max={2000000} autoFocus />
+                              <button onClick={() => handleEditMaxInput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
+                              <button onClick={() => { setEditingMaxInput(null); setEditedMaxInput(0); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => !readOnly && (setEditingMaxInput(model.id), setEditedMaxInput(model.maxInputTokens || 128000))}
+                              disabled={readOnly}
+                              className={`text-sm text-gray-600 ${readOnly ? '' : 'hover:text-blue-600 hover:underline'}`}
+                              title={readOnly ? undefined : 'Click to edit'}
+                            >
+                              {model.maxInputTokens ? `${(model.maxInputTokens / 1000).toFixed(0)}K` : '—'}
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Max Output — inline edit */}
+                        <td className="px-4 py-3 whitespace-nowrap">
                           {editingMaxOutput === model.id ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                               <input type="number" value={editedMaxOutput} onChange={(e) => setEditedMaxOutput(parseInt(e.target.value) || 0)}
                                 className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500" min={100} max={100000} autoFocus />
-                              <button onClick={() => handleEditMaxOutput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={16} /></button>
+                              <button onClick={() => handleEditMaxOutput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
                               <button onClick={() => { setEditingMaxOutput(null); setEditedMaxOutput(0); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
                             </div>
                           ) : (
-                            <button onClick={() => { setEditingMaxOutput(model.id); setEditedMaxOutput(model.maxOutputTokens || 16000); }}
-                              className="text-sm text-gray-600 hover:text-blue-600 hover:underline" title="Click to edit">
+                            <button
+                              onClick={() => !readOnly && (setEditingMaxOutput(model.id), setEditedMaxOutput(model.maxOutputTokens || 16000))}
+                              disabled={readOnly}
+                              className={`text-sm text-gray-600 ${readOnly ? '' : 'hover:text-blue-600 hover:underline'}`}
+                              title={readOnly ? undefined : 'Click to edit'}
+                            >
                               {model.maxOutputTokens ? `${(model.maxOutputTokens / 1000).toFixed(0)}K` : '—'}
                             </button>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+
+                        {/* Status */}
+                        <td className="px-4 py-3 whitespace-nowrap">
                           {model.providerEnabled === false ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700" title="Provider is disabled">Provider Off</span>
                           ) : model.enabled ? (
@@ -643,37 +607,110 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Disabled</span>
                           )}
                         </td>
+
+                        {/* Actions */}
                         {!readOnly && (
-                        <td className="px-6 py-4 whitespace-nowrap text-right relative">
-                          <button onClick={() => setActiveModelMenu(activeModelMenu === model.id ? null : model.id)}
-                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
-                            <MoreVertical size={16} />
-                          </button>
-                          {activeModelMenu === model.id && (
-                            <div className="absolute right-6 top-10 w-48 bg-white rounded-lg shadow-lg border z-10">
-                              {!model.isDefault && (
-                                <button onClick={() => handleSetDefault(model.id)}
+                          <td className="px-4 py-3 whitespace-nowrap text-right relative">
+                            <button onClick={() => setActiveModelMenu(activeModelMenu === model.id ? null : model.id)}
+                              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
+                              <MoreVertical size={16} />
+                            </button>
+                            {activeModelMenu === model.id && (
+                              <div className="absolute right-6 top-10 w-52 bg-white rounded-lg shadow-lg border z-10">
+                                <button onClick={() => handleGetDetails(model.id)}
                                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                  <Star size={14} />Set as Default
+                                  <Sparkles size={14} className="text-purple-500" />Get Details
                                 </button>
-                              )}
-                              <button onClick={() => { setEditingModel(model.id); setEditedDisplayName(model.displayName); setActiveModelMenu(null); }}
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                <Edit2 size={14} />Edit Display Name
-                              </button>
-                              <button onClick={() => handleToggleModel(model.id, !model.enabled)}
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                {model.enabled ? <><EyeOff size={14} />Disable</> : <><Eye size={14} />Enable</>}
-                              </button>
-                              <button onClick={() => handleDeleteModel(model.id)}
-                                className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
-                                <Trash2 size={14} />Remove
-                              </button>
-                            </div>
-                          )}
-                        </td>
+                                <div className="border-t my-1" />
+                                {!model.isDefault && (
+                                  <button onClick={() => handleSetDefault(model.id)}
+                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                                    <Star size={14} />Set as Default
+                                  </button>
+                                )}
+                                {fallbackModelId === model.id ? (
+                                  <button onClick={() => handleSetFallback(null)}
+                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                                    <RotateCcw size={14} />Remove Fallback
+                                  </button>
+                                ) : (
+                                  <button onClick={() => handleSetFallback(model.id)}
+                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                                    <RotateCcw size={14} />Set as Fallback
+                                  </button>
+                                )}
+                                <div className="border-t my-1" />
+                                <button onClick={() => { setEditingModel(model.id); setEditedDisplayName(model.displayName); setActiveModelMenu(null); }}
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                                  <Edit2 size={14} />Edit Display Name
+                                </button>
+                                <button onClick={() => handleToggleModel(model.id, !model.enabled)}
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                                  {model.enabled ? <><EyeOff size={14} />Disable</> : <><Eye size={14} />Enable</>}
+                                </button>
+                                <button onClick={() => handleDeleteModel(model.id)}
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
+                                  <Trash2 size={14} />Remove
+                                </button>
+                              </div>
+                            )}
+                          </td>
                         )}
                       </tr>
+
+                      {/* Get Details preview row */}
+                      {detailsPreview?.modelId === model.id && (
+                        <tr key={`${model.id}-preview`} className="bg-purple-50">
+                          <td colSpan={!readOnly ? 8 : 7} className="px-4 py-3">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  {detailsPreview.data.source === 'web_search' && (
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
+                                      <Sparkles size={10} />Web search
+                                    </span>
+                                  )}
+                                  {detailsPreview.data.source === 'pattern_match' && (
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                                      ⚙ Pattern match (fallback)
+                                    </span>
+                                  )}
+                                  {detailsPreview.data.source === 'llm_knowledge' && (
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                                      <Sparkles size={10} />AI knowledge
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-500 capitalize">{detailsPreview.data.confidence} confidence</span>
+                                </div>
+                                <div className="flex items-center gap-4 text-sm text-gray-700">
+                                  <span>Tools: <strong>{detailsPreview.data.toolCapable ? '✓' : '✗'}</strong></span>
+                                  <span>Vision: <strong>{detailsPreview.data.visionCapable ? '✓' : '✗'}</strong></span>
+                                  {detailsPreview.data.maxInputTokens && (
+                                    <span>Context: <strong>{(detailsPreview.data.maxInputTokens / 1000).toFixed(0)}K</strong></span>
+                                  )}
+                                  {detailsPreview.data.maxOutputTokens && (
+                                    <span>Max Output: <strong>{(detailsPreview.data.maxOutputTokens / 1000).toFixed(0)}K</strong></span>
+                                  )}
+                                </div>
+                                {detailsPreview.data.sources.length > 0 && (
+                                  <div className="text-xs text-gray-400 mt-1 truncate max-w-lg">
+                                    Source: {detailsPreview.data.sources[0]}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <Button onClick={() => handleApplyDetails(model.id, detailsPreview.data)}>
+                                  Apply Changes
+                                </Button>
+                                <Button variant="secondary" onClick={() => setDetailsPreview(null)}>
+                                  Dismiss
+                                </Button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </>
                     ))}
                   </tbody>
                 </table>
@@ -682,6 +719,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
             {enabledModels.length > 0 && (
               <div className="px-6 py-3 border-t bg-gray-50 text-xs text-gray-500 flex items-center gap-4">
                 <span className="flex items-center gap-1"><Star size={12} className="text-yellow-500 fill-yellow-500" /> Default model</span>
+                <span className="flex items-center gap-1"><RotateCcw size={12} className="text-gray-400" /> Fallback model</span>
                 <span className="flex items-center gap-1"><Wrench size={12} className="text-purple-500" /> Tool support</span>
                 <span className="flex items-center gap-1"><Eye size={12} className="text-blue-500" /> Vision support</span>
               </div>
@@ -690,193 +728,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         )}
       </div>
 
-      {/* ============ Section 3: Chat Defaults ============ */}
-      <div className="bg-white rounded-lg border shadow-sm">
-        <SectionHeader id="chatDefaults" title="Chat Defaults" subtitle="Temperature, token limits, and generation parameters">
-          {!readOnly && (
-            <>
-              <Button variant="secondary" onClick={() => setShowRestoreConfirm(true)} disabled={restoringDefaults}
-                className="text-orange-600 border-orange-300 hover:bg-orange-50">
-                <RefreshCw size={16} className="mr-2" />Reset All
-              </Button>
-              {defaultsModified && (
-                <Button variant="secondary" onClick={handleResetDefaults} disabled={isSavingDefaults}>Reset</Button>
-              )}
-              <Button onClick={handleSaveDefaults} disabled={!defaultsModified || isSavingDefaults} loading={isSavingDefaults}>
-                <Save size={18} className="mr-2" />Save
-              </Button>
-            </>
-          )}
-        </SectionHeader>
-        {expandedSections.has('chatDefaults') && editedDefaults && (
-          <div className="p-6 space-y-6">
-            {/* Default model display (read-only — set via models table) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Default Model</label>
-              <div className="flex items-center gap-2">
-                {defaultModel ? (
-                  <>
-                    <Star size={14} className="text-yellow-500 fill-yellow-500" />
-                    <span className="text-sm font-medium text-gray-900">{defaultModel.displayName}</span>
-                    <span className="text-xs text-gray-400">({defaultModel.id})</span>
-                  </>
-                ) : (
-                  <span className="text-sm text-gray-400">No default model set</span>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-gray-500">Change via &quot;Set as Default&quot; in the Enabled Models table above</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Temperature: {editedDefaults.temperature}
-              </label>
-              <input type="range" min="0" max="2" step="0.1" value={editedDefaults.temperature}
-                onChange={(e) => handleDefaultsChange('temperature', parseFloat(e.target.value))} className="w-full" />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 (Deterministic)</span>
-                <span>2 (Creative)</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Max Tokens (Global Default)</label>
-              <input type="number" min="100" max="16000" value={editedDefaults.maxTokens}
-                onChange={(e) => handleDefaultsChange('maxTokens', parseInt(e.target.value) || 2000)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-              <p className="mt-1 text-xs text-gray-500">Per-model limits (set in Enabled Models table) override this global default</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Prompt Optimization Max Tokens</label>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-medium text-gray-900">{chatDefaults?.promptOptimizationMaxTokens?.toLocaleString() ?? '200'}</span>
-                <span className="text-xs text-gray-400">tokens</span>
-              </div>
-              <p className="mt-1 text-xs text-blue-500">Configure in Settings &rarr; Limits &rarr; Token Limits</p>
-            </div>
-
-            {chatDefaults && (
-              <p className="text-xs text-gray-500 pt-4 border-t">
-                Last updated: {formatDate(chatDefaults.updatedAt)} by {chatDefaults.updatedBy}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ============ Section 4: Fallback ============ */}
-      <div className="bg-white rounded-lg border shadow-sm">
-        <SectionHeader id="fallback" title="Fallback" subtitle="Automatic model failover when primary LLM is unavailable">
-          {!readOnly && (
-            <>
-              {fallbackModified && (
-                <Button variant="secondary" onClick={handleResetFallback} disabled={isSavingFallback}>Reset</Button>
-              )}
-              <Button onClick={handleSaveFallback} disabled={!fallbackModified || isSavingFallback} loading={isSavingFallback}>
-                <Save size={18} className="mr-2" />Save
-              </Button>
-            </>
-          )}
-        </SectionHeader>
-        {expandedSections.has('fallback') && fallbackData && editedFallback && (
-          <div className="p-6 space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Universal Fallback Model</label>
-              <select value={editedFallback.universalFallback || ''}
-                onChange={(e) => updateFallbackSetting('universalFallback', e.target.value || null)}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                <option value="">None (Fallback disabled)</option>
-                {fallbackData.eligibleFallbackModels.map((model) => (
-                  <option key={model.id} value={model.id}>{model.displayName} ({model.providerId})</option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-gray-500">Only models with both vision and tool capabilities are eligible</p>
-              {fallbackData.eligibleFallbackModels.length === 0 && (
-                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded flex items-center gap-2">
-                  <AlertTriangle size={14} className="text-yellow-600" />
-                  <p className="text-xs text-yellow-700">No eligible models found. Enable a model with vision and tool capabilities.</p>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-1">Max Retry Attempts</label>
-                <select value={editedFallback.maxRetryAttempts}
-                  onChange={(e) => updateFallbackSetting('maxRetryAttempts', parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                  <option value={1}>1 (No fallback)</option>
-                  <option value={2}>2 (Selected + Fallback)</option>
-                  <option value={3}>3 (Extended retry)</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">Number of models to try before giving up</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-1">Health Cache Duration</label>
-                <select value={editedFallback.healthCacheDuration}
-                  onChange={(e) => updateFallbackSetting('healthCacheDuration', e.target.value as 'hourly' | 'daily' | 'disabled')}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                  <option value="disabled">Disabled (Check every request)</option>
-                  <option value="hourly">Hourly (Skip failed models for 1 hour)</option>
-                  <option value="daily">Daily (Skip failed models for 24 hours)</option>
-                </select>
-                <p className="mt-1 text-xs text-gray-500">How long to remember failed models before retrying</p>
-              </div>
-            </div>
-
-            <div className="border-t pt-6">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="font-medium text-gray-900">Health Cache Status</h3>
-                  <p className="text-sm text-gray-500">Models temporarily marked as unhealthy after failures</p>
-                </div>
-                <Button variant="secondary" onClick={handleClearHealthCache}
-                  disabled={isClearingCache || fallbackData.healthCache.unhealthyModels.length === 0} loading={isClearingCache}>
-                  <RefreshCw size={16} className="mr-2" />Clear Cache
-                </Button>
-              </div>
-              {fallbackData.healthCache.unhealthyModels.length === 0 ? (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600" />
-                  <p className="text-sm text-green-700">All models are healthy</p>
-                </div>
-              ) : (
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Model</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Healthy At</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {fallbackData.healthCache.unhealthyModels.map((model) => (
-                        <tr key={model.modelId}>
-                          <td className="px-4 py-2 text-sm text-gray-900">{model.modelId}</td>
-                          <td className="px-4 py-2 text-sm text-gray-500">{formatDate(model.expiresAt)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">How Fallback Works</h4>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• When the selected model fails (rate limit, quota, etc.), the fallback model is used</li>
-                <li>• If a non-vision model is selected but images are attached, fallback is used automatically</li>
-                <li>• Failed models are cached to avoid repeated failures within the cache duration</li>
-                <li>• Users are notified in chat when a model switch occurs</li>
-              </ul>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ============ Section 5: Model Settings Overview ============ */}
+      {/* ============ Section 3: Model Settings Overview ============ */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="overview" title="Model Settings Overview"
           subtitle="API keys are shared across all features. Model-specific settings are in their respective sections." />
@@ -965,17 +817,6 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         initialProvider={selectedProviderForDiscovery}
         onModelsAdded={handleModelsAdded}
       />
-
-      {/* Restore Defaults Confirmation Modal */}
-      <Modal isOpen={showRestoreConfirm} onClose={() => setShowRestoreConfirm(false)} title="Restore All Defaults">
-        <div className="space-y-4">
-          <p className="text-gray-700">Are you sure you want to restore all LLM settings to their default values? This action cannot be undone.</p>
-          <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={() => setShowRestoreConfirm(false)}>Cancel</Button>
-            <Button onClick={handleRestoreAllDefaults} loading={restoringDefaults} className="bg-orange-600 hover:bg-orange-700">Restore Defaults</Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Click outside handler for model menu */}
       {activeModelMenu && <div className="fixed inset-0 z-0" onClick={() => setActiveModelMenu(null)} />}

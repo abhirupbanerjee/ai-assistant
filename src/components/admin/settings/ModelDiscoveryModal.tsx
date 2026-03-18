@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Wrench, Eye, Check, RefreshCw, AlertCircle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -57,31 +57,37 @@ export default function ModelDiscoveryModal({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [discoveryResults, setDiscoveryResults] = useState<Map<string, DiscoveryResult>>(new Map());
+  const [selectedModels, setSelectedModels] = useState<Map<string, DiscoveredModel>>(new Map());
   const [modelsToRemove, setModelsToRemove] = useState<Set<string>>(new Set());
   const [outputTokenOverrides, setOutputTokenOverrides] = useState<Map<string, number>>(new Map());
+
+  // Ref tracks current discoveryResults for cache checks inside effects without stale closures
+  const discoveryResultsRef = useRef(discoveryResults);
+  discoveryResultsRef.current = discoveryResults;
+
+  // Current provider's discovery result
+  const discoveryResult = discoveryResults.get(selectedProvider) ?? null;
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedProvider(initialProvider || providers[0]?.id || '');
       setSearchQuery('');
-      setDiscoveryResult(null);
-      setSelectedModels(new Set());
+      setDiscoveryResults(new Map());
+      setSelectedModels(new Map());
       setModelsToRemove(new Set());
       setOutputTokenOverrides(new Map());
       setError(null);
     }
   }, [isOpen, initialProvider, providers]);
 
-  // Discover models from provider
+  // Discover models from provider (fetches only if not already cached)
   const discoverModels = useCallback(async (providerId: string) => {
     if (!providerId) return;
 
     setIsLoading(true);
     setError(null);
-    setDiscoveryResult(null);
 
     try {
       const res = await fetch(`/api/admin/llm/discover?provider=${providerId}`);
@@ -91,7 +97,7 @@ export default function ModelDiscoveryModal({
         throw new Error(data.error || 'Failed to discover models');
       }
 
-      setDiscoveryResult(data);
+      setDiscoveryResults(prev => new Map(prev).set(providerId, data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to discover models');
     } finally {
@@ -99,9 +105,11 @@ export default function ModelDiscoveryModal({
     }
   }, []);
 
-  // Load models when provider changes
+  // Load models when provider changes; skip fetch if already cached
   useEffect(() => {
-    if (isOpen && selectedProvider) {
+    if (!isOpen || !selectedProvider) return;
+    setError(null);
+    if (!discoveryResultsRef.current.has(selectedProvider)) {
       discoverModels(selectedProvider);
     }
   }, [isOpen, selectedProvider, discoverModels]);
@@ -112,15 +120,15 @@ export default function ModelDiscoveryModal({
     model.id.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  // Toggle model selection (for new models to add)
-  const toggleModel = (modelId: string) => {
-    const newSelected = new Set(selectedModels);
-    if (newSelected.has(modelId)) {
-      newSelected.delete(modelId);
+  // Toggle model selection (for new models to add) — stores full model object
+  const toggleModel = (model: DiscoveredModel) => {
+    const next = new Map(selectedModels);
+    if (next.has(model.id)) {
+      next.delete(model.id);
     } else {
-      newSelected.add(modelId);
+      next.set(model.id, model);
     }
-    setSelectedModels(newSelected);
+    setSelectedModels(next);
   };
 
   // Toggle model removal (for enabled models)
@@ -134,15 +142,21 @@ export default function ModelDiscoveryModal({
     setModelsToRemove(newSet);
   };
 
-  // Select all visible models
+  // Select all visible non-enabled models in current provider
   const selectAll = () => {
-    const notEnabled = filteredModels.filter(m => !m.isEnabled).map(m => m.id);
-    setSelectedModels(new Set(notEnabled));
+    const next = new Map(selectedModels);
+    filteredModels.filter(m => !m.isEnabled).forEach(m => next.set(m.id, m));
+    setSelectedModels(next);
   };
 
-  // Clear selection
+  // Clear selection for current provider's visible models only
   const clearSelection = () => {
-    setSelectedModels(new Set());
+    const currentIds = new Set(filteredModels.map(m => m.id));
+    const next = new Map(selectedModels);
+    for (const id of next.keys()) {
+      if (currentIds.has(id)) next.delete(id);
+    }
+    setSelectedModels(next);
   };
 
   // Update output tokens for a model
@@ -157,7 +171,7 @@ export default function ModelDiscoveryModal({
     return outputTokenOverrides.get(model.id) ?? model.maxOutputTokens;
   };
 
-  // Save changes (add new models and remove deselected ones)
+  // Save changes (add new models and remove deselected ones) across all providers
   const handleSaveChanges = async () => {
     if (selectedModels.size === 0 && modelsToRemove.size === 0) return;
 
@@ -165,19 +179,17 @@ export default function ModelDiscoveryModal({
     setError(null);
 
     try {
-      // Add new models
+      // Add new models from all providers
       if (selectedModels.size > 0) {
-        const modelsToAdd = filteredModels
-          .filter(m => selectedModels.has(m.id))
-          .map(m => ({
-            id: m.id,
-            providerId: m.provider,
-            displayName: m.name,
-            toolCapable: m.toolCapable,
-            visionCapable: m.visionCapable,
-            maxInputTokens: m.maxInputTokens,
-            maxOutputTokens: getModelOutputTokens(m),
-          }));
+        const modelsToAdd = Array.from(selectedModels.values()).map(m => ({
+          id: m.id,
+          providerId: m.provider,
+          displayName: m.name,
+          toolCapable: m.toolCapable,
+          visionCapable: m.visionCapable,
+          maxInputTokens: m.maxInputTokens,
+          maxOutputTokens: getModelOutputTokens(m),
+        }));
 
         const res = await fetch('/api/admin/llm/models', {
           method: 'POST',
@@ -275,7 +287,14 @@ export default function ModelDiscoveryModal({
             <p className="text-sm text-gray-500 mt-1">{discoveryResult.error}</p>
             <Button
               variant="secondary"
-              onClick={() => discoverModels(selectedProvider)}
+              onClick={() => {
+                setDiscoveryResults(prev => {
+                  const next = new Map(prev);
+                  next.delete(selectedProvider);
+                  return next;
+                });
+                discoverModels(selectedProvider);
+              }}
               className="mt-4"
             >
               <RefreshCw size={14} className="mr-2" />
@@ -350,13 +369,13 @@ export default function ModelDiscoveryModal({
                             ? 'bg-blue-50 hover:bg-blue-100'
                             : 'hover:bg-blue-50'
                         }`}
-                        onClick={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model.id)}
+                        onClick={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model)}
                       >
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
                             checked={model.isEnabled ? !modelsToRemove.has(model.id) : selectedModels.has(model.id)}
-                            onChange={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model.id)}
+                            onChange={() => model.isEnabled ? toggleRemoveModel(model.id) : toggleModel(model)}
                             onClick={(e) => e.stopPropagation()}
                             className={`rounded border-gray-300 focus:ring-blue-500 ${
                               model.isEnabled ? 'text-green-600' : 'text-blue-600'
