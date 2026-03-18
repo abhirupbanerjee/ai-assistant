@@ -140,6 +140,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     console.log(`[Kysely] Seeded ${DEFAULT_PROVIDERS.length} default LLM providers`);
   }
 
+  // Seed providers added after initial setup — safe to run every startup (ON CONFLICT DO NOTHING)
+  await database
+    .insertInto('llm_providers')
+    .values({
+      id: 'fireworks',
+      name: 'Fireworks AI',
+      api_key: process.env['FIREWORKS_AI_API_KEY'] || null,
+      api_base: null,
+      enabled: 1,
+    })
+    .onConflict(oc => oc.column('id').doNothing())
+    .execute();
+  console.log('[Kysely] Ensured Fireworks AI provider exists');
+
   // Migration: Create reindex_jobs table if it doesn't exist
   await sql`
     CREATE TABLE IF NOT EXISTS reindex_jobs (

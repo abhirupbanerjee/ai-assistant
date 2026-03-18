@@ -61,6 +61,20 @@ Without these patterns, auto-discovered models will appear but may not have corr
 
 ---
 
+## Provider Selection Guidelines
+
+Before adding models, choose the provider tier based on data sensitivity and task complexity:
+
+| Provider Tier | Use Case | Data Classification |
+|---|---|---|
+| **Ollama** (Local) | Simple RAG, document lookup, basic Q&A, non-complex queries | ✅ Government-sensitive / classified — data never leaves the network |
+| **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs |
+| **Fireworks AI** | Developer testing of open-source models (MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3) | Development / test environments only — not for production sensitive data |
+
+> **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.
+
+---
+
 ## Overview
 
 There are **two methods** to add LLM models:

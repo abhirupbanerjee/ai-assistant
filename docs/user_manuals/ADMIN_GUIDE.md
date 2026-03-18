@@ -1339,6 +1339,18 @@ Configure system-wide settings.
 |---------|-------------|
 | **Accent Color** | Primary theme color for the application (users can customize) |
 
+### Provider Selection Guidelines
+
+Choose provider tier based on data sensitivity before configuring the default model:
+
+| Provider Tier | Use Case | Data Classification |
+|---|---|---|
+| **Ollama** (Local) | Simple RAG, document lookup, basic Q&A | ✅ Government-sensitive / classified — data never leaves your network |
+| **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows | Public / non-sensitive data only |
+| **Fireworks AI** | Developer testing of open-source models | Development / test environments only |
+
+> **Rule:** Never configure a Cloud LLM or Fireworks AI model as the default for workspaces that handle government-sensitive or classified data. Use Ollama for all sensitive workloads.
+
 ### AI Configuration
 
 | Setting | Description |
