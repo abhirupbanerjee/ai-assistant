@@ -955,7 +955,7 @@ function AdminPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 h-16">
         <div className="h-full px-4 flex items-center justify-between">
@@ -979,7 +979,7 @@ function AdminPageContent() {
       </header>
 
       {/* Main Layout with Sidebar */}
-      <div className="flex">
+      <div className="flex flex-1 min-h-0">
         {/* Sidebar Navigation */}
         <AdminSidebarMenu
           activeTab={activeTab}
