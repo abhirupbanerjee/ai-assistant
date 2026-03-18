@@ -644,6 +644,114 @@ Compliance:
 
 ---
 
+### Preflight Clarification (Pre-response HITL)
+
+Skills can also enable **pre-response HITL clarification**, which gives the main LLM a chance to ask the user a focused question *before* generating its answer. Unlike post-response compliance checking, this fires before any tokens are generated.
+
+#### How It Works
+
+The main LLM is given a `request_clarification` tool. When enabled, the LLM can call it if — **after reviewing all available documents, conversation history, system prompt, and category prompts** — the query is still genuinely ambiguous. Because the LLM sees full context, it will only ask when truly necessary.
+
+```
+User sends message
+        ↓
+RAG retrieval (documents + prompts + memory)
+        ↓
+Main LLM reviews: documents + history + context + user message
+        ↓
+┌──────────────────────────────────────────────┐
+│ Is the query ambiguous even with full        │
+│ context?                                     │
+│   NO  → Generate response directly           │
+│   YES → Call request_clarification tool      │
+└──────────────────────────────────────────────┘
+        ↓ (if tool called)
+User sees question dialog with 2–4 options
+        ↓
+User selects an option or types a free-text answer
+        ↓
+LLM receives answer as context → generates response
+```
+
+#### Why This Produces Fewer False Positives
+
+The LLM can reason: *"The user asked about leave entitlements. The HR Policy document covers annual leave on page 4. The previous message was about the same topic. No clarification needed."* This is only possible because the same model that writes the response also decides whether to ask — with full visibility into every input.
+
+#### Comparison: Preflight vs Compliance HITL
+
+| Aspect | Preflight Clarification | Compliance Checker HITL |
+|--------|------------------------|------------------------|
+| **Timing** | Before response generation | After response generation |
+| **Trigger** | Query ambiguous given full context | Response fails compliance checks |
+| **Questions** | Generated from query ambiguity | Generated from response failures |
+| **Outcome** | Answer fed back to LLM as context | User retries, accepts, or flags |
+| **Best for** | Policy domains with multiple sub-topics | Structured reports with required sections |
+
+#### Enabling Per Skill
+
+When editing a skill, expand the **Pre-response Clarification** section:
+
+1. **Enable** — Toggle on to allow this skill to request clarification
+2. **Timeout** — How long to wait for the user before auto-continuing (default: 5 min, max: 15 min)
+3. **Skip on follow-up** — Don't interrupt if the message is a follow-up to the previous turn (default: true)
+4. **Instructions** — Optional domain context to help the LLM frame better questions
+
+#### Configuration Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | false | Per-skill opt-in (also requires global `preflightEnabled = true`) |
+| `timeoutMs` | number | 300000 | Per-user wait time in ms (max 900000 = 15 min) |
+| `skipOnFollowUp` | boolean | true | Skip clarification if message is a follow-up |
+| `instructions` | string | null | Domain context for better question framing |
+
+#### Global Settings (Admin > Compliance)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `preflightEnabled` | false | Global kill switch — must be `true` for any skill to use preflight |
+| `preflightDefaultTimeoutMs` | 300000 | Default wait time (5 min) |
+| `preflightMaxQuestions` | 2 | Maximum questions per request (1–4) |
+| `preflightSkipOnFollowUp` | true | Global default for skip-on-follow-up |
+
+#### Example: Preflight-Enabled Skill
+
+```yaml
+Name: Benefits Policy Advisor
+Type: Category
+Category: HR
+Status: Active
+
+Prompt: |
+  Answer questions about employee benefits, leave entitlements, and
+  compensation using the official HR Policy documents.
+
+PreflightClarification:
+  Enabled: true
+  TimeoutMs: 300000       # 5-minute timeout
+  SkipOnFollowUp: true    # Don't interrupt follow-up questions
+  Instructions: >
+    This skill covers leave, benefits, and compensation. Ask about leave
+    type (annual, sick, parental, unpaid) or benefit category (health,
+    retirement, allowances) only when the query does not specify and the
+    documents cover multiple options.
+```
+
+#### When to Enable Preflight
+
+✅ **Enable preflight when:**
+- The skill covers multiple distinct policy sub-topics (leave types, benefit categories, procedures)
+- An ambiguous query would produce a wrong or incomplete response
+- The cost of re-generating a response outweighs one quick clarification question
+
+❌ **Don't enable preflight when:**
+- The skill covers a single, clearly scoped topic
+- Users are predominantly asking follow-ups (`skipOnFollowUp: true` handles most cases)
+- You are using Ollama models (preflight tool is automatically suppressed for local models)
+- The skill is for simple conversational Q&A
+
+---
+
 ## Skill Prompts
 
 ### Writing Effective Skill Prompts

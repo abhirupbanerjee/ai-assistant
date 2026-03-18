@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Trash2, Edit2, Save, RefreshCw, CheckCircle, Wand2, ChevronUp, ChevronDown, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Trash2, Edit2, Save, RefreshCw, CheckCircle, Wand2, ChevronUp, ChevronDown, MessageSquare, Download, Loader2, AlertTriangle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -177,6 +177,31 @@ function SuperUserPageContent() {
   // Settings sidebar section state
   type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache';
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
+  const [exportingHistory, setExportingHistory] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExportHistory = async () => {
+    setExportingHistory(true);
+    setExportError(null);
+    try {
+      const response = await fetch('/api/user/export/threads', { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to export chat history');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chat-history-${new Date().toISOString().split('T')[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to export chat history');
+    } finally {
+      setExportingHistory(false);
+    }
+  };
 
   // Stats state
   const [stats, setStats] = useState<SuperUserStats | null>(null);
@@ -998,11 +1023,52 @@ function SuperUserPageContent() {
         {/* Settings Section (view only) */}
         {activeTab === 'settings' && (
           <>
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <p className="text-sm text-blue-700">These settings are view only. Only users with the Admin role can make changes.</p>
+            </div>
             {settingsSection === 'llm' && <UnifiedLLMSettings readOnly />}
             {settingsSection === 'rag' && <UnifiedRAGSettings readOnly />}
             {settingsSection === 'reranker' && <RerankerSettingsTab readOnly />}
             {settingsSection === 'ocr' && <DocumentProcessingTab readOnly />}
             {settingsSection === 'cache' && <CacheSettingsTab readOnly />}
+            {/* Chat History Export */}
+            <div className="mt-6 bg-white rounded-lg border shadow-sm">
+              <div className="px-6 py-4 border-b">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="text-blue-600" size={24} />
+                  <div>
+                    <h2 className="font-semibold text-gray-900">Chat History Export</h2>
+                    <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4">
+                {exportError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800 text-sm">
+                    <AlertTriangle size={16} />
+                    <span>{exportError}</span>
+                  </div>
+                )}
+                <Button
+                  variant="secondary"
+                  onClick={handleExportHistory}
+                  disabled={exportingHistory}
+                >
+                  {exportingHistory ? (
+                    <>
+                      <Loader2 className="animate-spin mr-2" size={16} />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} className="mr-2" />
+                      Download Chat History
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </>
         )}
         </main>

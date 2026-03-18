@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2, Download, MessageSquare } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -30,6 +30,8 @@ export default function ProfilePage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearingMemory, setClearingMemory] = useState(false);
   const [clearCategoryId, setClearCategoryId] = useState<number | null | 'all'>(null);
+  const [exportingHistory, setExportingHistory] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const loadMemory = useCallback(async () => {
     try {
@@ -100,6 +102,29 @@ export default function ProfilePage() {
     if (clearCategoryId === 'all') return '';
     const memory = memoryData?.memories.find(m => m.categoryId === clearCategoryId);
     return memory?.categoryName || (clearCategoryId === null ? 'Global Memory' : `Category ${clearCategoryId}`);
+  };
+
+  const handleExportHistory = async () => {
+    setExportingHistory(true);
+    setExportError(null);
+    try {
+      const response = await fetch('/api/user/export/threads', { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to export chat history');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chat-history-${new Date().toISOString().split('T')[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to export chat history');
+    } finally {
+      setExportingHistory(false);
+    }
   };
 
   const totalFacts = memoryData?.totalFacts || 0;
@@ -225,6 +250,44 @@ export default function ProfilePage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Chat History Export Section */}
+        <div className="mt-6 bg-white rounded-lg border shadow-sm">
+          <div className="px-6 py-4 border-b">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="text-blue-600" size={24} />
+              <div>
+                <h2 className="font-semibold text-gray-900">Chat History Export</h2>
+                <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-4">
+            {exportError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800 text-sm">
+                <AlertTriangle size={16} />
+                <span>{exportError}</span>
+              </div>
+            )}
+            <Button
+              variant="secondary"
+              onClick={handleExportHistory}
+              disabled={exportingHistory}
+            >
+              {exportingHistory ? (
+                <>
+                  <Loader2 className="animate-spin mr-2" size={16} />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download size={16} className="mr-2" />
+                  Download Chat History
+                </>
+              )}
+            </Button>
           </div>
         </div>
 

@@ -21,12 +21,14 @@ This document describes the AI tools system that extends the bot's capabilities 
 13. [YouTube Tool](#youtube-tool)
 14. [Thread Sharing Tool](#thread-sharing-tool)
 15. [Email Tool](#email-tool)
-16. [SSL Scan Tool](#ssl-scan-tool)
-17. [Tool Routing](#tool-routing)
-18. [Tool Configuration](#tool-configuration)
-19. [Category-Level Overrides](#category-level-overrides)
-20. [Creating a New Tool](#creating-a-new-tool)
-21. [API Reference](#api-reference)
+16. [Compliance Checker Tool](#compliance-checker-tool)
+17. [Preflight Clarification (Pre-response HITL)](#preflight-clarification-pre-response-hitl)
+18. [SSL Scan Tool](#ssl-scan-tool)
+19. [Tool Routing](#tool-routing)
+20. [Tool Configuration](#tool-configuration)
+21. [Category-Level Overrides](#category-level-overrides)
+22. [Creating a New Tool](#creating-a-new-tool)
+23. [API Reference](#api-reference)
 
 ---
 
@@ -74,6 +76,9 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 - `function_api` - Dynamic function calling with OpenAI-format schemas
 - `task_planner` - Manage multi-step task plans for complex operations
 - `youtube` - Extract transcripts from YouTube videos
+
+**Meta-tools (injected by the system, not DB-managed):**
+- `request_clarification` - Pre-response HITL; injected when a skill has preflight clarification enabled. The LLM calls this to ask the user a focused question before generating its answer. See [Preflight Clarification](#preflight-clarification-pre-response-hitl).
 
 ### Processor Tools
 
@@ -2260,6 +2265,77 @@ Configure in **Admin > Tools > Compliance Checker**:
 ### Database
 
 Compliance results are logged to `compliance_results` table for audit and analytics.
+
+---
+
+## Preflight Clarification (Pre-response HITL)
+
+### Purpose
+
+Pauses the pipeline **before** the AI generates a response to collect missing context from the user. When enabled on a skill, the main LLM receives a `request_clarification` meta-tool and calls it only when the user's query is genuinely ambiguous — after reviewing all documents, conversation history, system prompt, and category prompts.
+
+### Type
+
+**Meta-tool** — Injected by the system at request time. Not visible in Admin > Tools and not DB-managed. Enabled via skill-level `preflightClarification` configuration and the global `preflightEnabled` toggle.
+
+### Key Difference from Compliance Checker HITL
+
+| Aspect | Preflight Clarification | Compliance Checker HITL |
+|--------|------------------------|------------------------|
+| **Timing** | Before response generation | After response generation |
+| **Trigger** | Query ambiguous given full context | Response fails compliance checks |
+| **Questions** | LLM generates from query context | LLM generates from response failures |
+| **Outcome** | Answer injected as LLM context; response generated with it | User retries, accepts, or flags the response |
+
+### Decision Flow
+
+```
+User message + RAG context assembled
+        ↓
+Main LLM receives: documents + prompts + history + message
+        ↓
+┌──────────────────────────────────────────────┐
+│ Is preflight enabled for matched skill?      │
+│   NO  → Skip, generate response directly     │
+│   YES ↓                                      │
+│ LLM decides: call request_clarification?     │
+│   NO  → Generate response directly           │
+│   YES → Show HITL dialog (2–4 options)       │
+└──────────────────────────────────────────────┘
+        ↓ (if dialog shown)
+User responds → answer injected as tool result
+        ↓
+LLM generates response with clarification in context
+```
+
+### Why the LLM Makes Fewer Mistakes
+
+Because the model sees the full RAG context before deciding, it can reason: *"The documents include a Retirement Benefits Policy that covers this. No clarification needed."* A separate preflight model with only the raw message cannot make that judgment.
+
+### Constraints
+
+- Disabled automatically for **Ollama models** (context budget is too tight for meta-tools)
+- Requires **global** `preflightEnabled = true` (Admin > Compliance) **and** per-skill opt-in
+- At most one clarification question per response cycle
+
+### Configuration
+
+Configured at the skill level. See **[Skills System — Preflight Clarification](SKILLS.md#preflight-clarification-pre-response-hitl)** for the full field reference and example skill config.
+
+**Global settings (Admin > Compliance):**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `preflightEnabled` | false | Master switch — must be enabled for any skill to use preflight |
+| `preflightDefaultTimeoutMs` | 300000 | Default user wait time (5 min, max 15 min) |
+| `preflightMaxQuestions` | 2 | Max questions per request (1–4) |
+| `preflightSkipOnFollowUp` | true | Skip when message is a follow-up |
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/chat/preflight` | Submit user's answer to a preflight clarification question |
 
 ---
 

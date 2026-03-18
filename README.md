@@ -79,6 +79,7 @@ Built with enterprise-grade, open-source technologies:
 - **User Memory** - Recall user-specific facts across conversations
 - **Thread Summarization** - Compress long conversations
 - **Reranking** - BGE cross-encoder (large/base), Cohere API, or local bi-encoder via Transformers.js
+- **Preflight Clarification (HITL)** - Main LLM pauses before responding to ask a focused question when the query is ambiguous; sees full RAG context + conversation history before deciding, so it only asks when genuinely needed
 - **Autonomous Agent** - Multi-step task planning with budget controls and quality checks
 
 ### Collaboration
@@ -110,7 +111,7 @@ Built with enterprise-grade, open-source technologies:
 - **Image Generation** - DALL-E 3 and Gemini Imagen integration
 - **Diagram Generation** - Mermaid flowcharts, sequences, mindmaps
 - **Translation** - Multi-provider translation (OpenAI, Gemini, Mistral)
-- **Compliance Checker** - Response validation with weighted scoring and HITL clarification
+- **Compliance Checker** - Post-response validation with weighted scoring and HITL clarification when response quality falls below threshold
 
 ### Autonomous Agent (Beta)
 - **Task Planning** - Decompose complex requests into multi-step plans
