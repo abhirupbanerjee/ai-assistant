@@ -1000,7 +1000,7 @@ function AdminPageContent() {
         />
 
         {/* Main Content */}
-        <main className="flex-1 p-4 md:p-6 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 md:p-6 overflow-auto">
         {error && (
           <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg flex items-center gap-3">
             <AlertCircle size={20} />

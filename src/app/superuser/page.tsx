@@ -609,7 +609,7 @@ function SuperUserPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 h-16">
         <div className="h-full px-4 flex items-center">
@@ -629,7 +629,7 @@ function SuperUserPageContent() {
       </header>
 
       {/* Main Layout with Sidebar */}
-      <div className="flex">
+      <div className="flex flex-1 min-h-0">
         {/* Sidebar Navigation */}
         <SuperuserSidebarMenu
           activeTab={activeTab}
@@ -639,7 +639,7 @@ function SuperUserPageContent() {
         />
 
         {/* Main Content */}
-        <main className="flex-1 p-4 md:p-6 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 md:p-6 overflow-auto">
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
               <p className="text-red-600">{error}</p>
