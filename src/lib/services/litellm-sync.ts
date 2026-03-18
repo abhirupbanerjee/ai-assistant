@@ -68,6 +68,13 @@ export async function syncModelToLiteLLM(model: {
     return true; // Treat as success — already in YAML
   }
 
+  // Skip Fireworks models — DB model IDs (e.g. "fireworks/minimax-m2p5") don't match
+  // the LiteLLM format ("fireworks_ai/accounts/fireworks/models/minimax-m2p5").
+  // Fireworks models are defined in litellm_config.yaml.
+  if (model.providerId === 'fireworks') {
+    return true; // Treat as success — already in YAML
+  }
+
   // Build litellm_params based on provider
   const litellmParams: Record<string, string> = {
     model: `${providerConfig.prefix}${model.id}`,
