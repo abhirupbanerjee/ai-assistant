@@ -32,7 +32,7 @@ function mapRowToProvider(row: LLMProviderRow): LLMProvider {
     name: row.name,
     apiKey: row.api_key,
     apiBase: row.api_base,
-    enabled: row.enabled === 1,
+    enabled: !!row.enabled,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

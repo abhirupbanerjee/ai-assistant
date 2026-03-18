@@ -43,17 +43,24 @@ export default function ModelSelector({ threadId, disabled }: ModelSelectorProps
 
   // Load thread model when thread changes
   const loadThreadModel = useCallback(async () => {
-    if (!threadId) return;
-
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/threads/${threadId}/model`);
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableModels(data.availableModels || []);
-        setSelectedModel(data.selectedModel);
-        setEffectiveModel(data.effectiveModel || '');
-        setGlobalDefault(data.globalDefault || '');
+      if (!threadId) {
+        // No thread yet (welcome screen) — just load the available model list
+        const response = await fetch('/api/models');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableModels(data.models || []);
+        }
+      } else {
+        const response = await fetch(`/api/threads/${threadId}/model`);
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableModels(data.availableModels || []);
+          setSelectedModel(data.selectedModel);
+          setEffectiveModel(data.effectiveModel || '');
+          setGlobalDefault(data.globalDefault || '');
+        }
       }
     } catch (error) {
       console.error('Failed to load thread model:', error);
@@ -100,7 +107,15 @@ export default function ModelSelector({ threadId, disabled }: ModelSelectorProps
   // Get display name for the current model
   const getCurrentModelDisplay = () => {
     if (isLoading) return 'Loading...';
-    if (!effectiveModel) return 'Model';
+    if (!effectiveModel) {
+      // No thread yet — show the default model name if available
+      const defaultModel = availableModels.find((m) => m.isDefault);
+      if (defaultModel) {
+        const name = defaultModel.displayName || defaultModel.id;
+        return name.length > 20 ? name.substring(0, 17) + '...' : name;
+      }
+      return 'Model';
+    }
 
     const model = availableModels.find((m) => m.id === effectiveModel);
     if (model) {
@@ -116,9 +131,6 @@ export default function ModelSelector({ threadId, disabled }: ModelSelectorProps
 
   // Check if using non-default model
   const isNonDefault = selectedModel !== null;
-
-  // Don't render if no threadId or still loading initially
-  if (!threadId) return null;
 
   return (
     <div className="relative" ref={dropdownRef}>

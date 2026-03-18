@@ -127,6 +127,11 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
 
       if (!res.ok) throw new Error('Failed to save settings');
 
+      const data = await res.json();
+      const savedSettings = data.settings;
+      setSettings(savedSettings);
+      setEditedProviders((savedSettings.providers as OcrProviderConfig[]).map((p: OcrProviderConfig) => ({ ...p })));
+
       // Clear credential inputs after save
       setMistralApiKeyInput('');
       setAzureDiEndpointInput('');
@@ -136,7 +141,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
       setSuccess('Document processing settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
 
-      // Refresh settings to get updated availability
+      // Refresh availability status (editedProviders already set from save response above)
       fetchSettings();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');

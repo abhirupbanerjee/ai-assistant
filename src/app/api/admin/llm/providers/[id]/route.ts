@@ -25,7 +25,7 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
-    if (!user?.isAdmin) {
+    if (user?.role !== 'admin' && user?.role !== 'superuser') {
       return NextResponse.json<ApiError>(
         { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }
