@@ -84,8 +84,10 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
   const [editedMaxOutput, setEditedMaxOutput] = useState<number>(0);
+  const [editingMaxOutputError, setEditingMaxOutputError] = useState<string | null>(null);
   const [editingMaxInput, setEditingMaxInput] = useState<string | null>(null);
   const [editedMaxInput, setEditedMaxInput] = useState<number>(0);
+  const [editingMaxInputError, setEditingMaxInputError] = useState<string | null>(null);
 
   // Get Details state
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
@@ -255,23 +257,27 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const handleEditMaxOutput = async (modelId: string) => {
-    if (editedMaxOutput < 100 || editedMaxOutput > 100000) {
-      setError('Max output tokens must be between 100 and 100,000');
+    if (editedMaxOutput < 100 || editedMaxOutput > 2000000) {
+      setEditingMaxOutputError('Must be between 100 and 2,000,000');
       return;
     }
+    setEditingMaxOutputError(null);
     try {
       const res = await fetch(`/api/admin/llm/models/${modelId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ maxOutputTokens: editedMaxOutput }),
       });
-      if (!res.ok) throw new Error('Failed to update max output tokens');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error || `Failed (${res.status})`);
+      }
       await fetchModels();
       setEditingMaxOutput(null);
       setEditedMaxOutput(0);
       showSuccess('Max output tokens updated');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update max output tokens');
+      setEditingMaxOutputError(err instanceof Error ? err.message : 'Failed to update');
     }
   };
 
@@ -294,6 +300,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         body: JSON.stringify({ [field]: !current }),
       });
       if (!res.ok) throw new Error('Failed to update capability');
+      await fetchModels(); // sync with DB state
       showSuccess(`${field === 'toolCapable' ? 'Tools' : 'Vision'} ${!current ? 'enabled' : 'disabled'}`);
     } catch (err) {
       // Revert on failure
@@ -303,23 +310,27 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const handleEditMaxInput = async (modelId: string) => {
-    if (editedMaxInput < 1000 || editedMaxInput > 2000000) {
-      setError('Max input tokens must be between 1,000 and 2,000,000');
+    if (editedMaxInput < 1000 || editedMaxInput > 10000000) {
+      setEditingMaxInputError('Must be between 1,000 and 10,000,000');
       return;
     }
+    setEditingMaxInputError(null);
     try {
       const res = await fetch(`/api/admin/llm/models/${modelId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ maxInputTokens: editedMaxInput }),
       });
-      if (!res.ok) throw new Error('Failed to update max input tokens');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error || `Failed (${res.status})`);
+      }
       await fetchModels();
       setEditingMaxInput(null);
       setEditedMaxInput(0);
       showSuccess('Max input tokens updated');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update max input tokens');
+      setEditingMaxInputError(err instanceof Error ? err.message : 'Failed to update');
     }
   };
 
@@ -362,12 +373,16 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const handleApplyDetails = async (modelId: string, data: DetailsResult) => {
     setDetailsPreview(prev => prev ? { ...prev, applyError: undefined } : prev);
     try {
-      const updates: Record<string, unknown> = {
-        toolCapable: data.toolCapable,
-        visionCapable: data.visionCapable,
-      };
+      // Only apply token limits from Get Details — tool/vision capabilities are
+      // managed manually via the toggle buttons to avoid overwriting admin settings.
+      const updates: Record<string, unknown> = {};
       if (data.maxInputTokens !== null) updates.maxInputTokens = data.maxInputTokens;
       if (data.maxOutputTokens !== null) updates.maxOutputTokens = data.maxOutputTokens;
+
+      if (Object.keys(updates).length === 0) {
+        setDetailsPreview(null);
+        return;
+      }
 
       const res = await fetch(`/api/admin/llm/models/${modelId}`, {
         method: 'PUT',
@@ -380,7 +395,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       }
       await fetchModels();
       setDetailsPreview(null);
-      showSuccess('Model details applied');
+      showSuccess('Token limits applied');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to apply details';
       setDetailsPreview(prev => prev ? { ...prev, applyError: msg } : prev);
@@ -564,11 +579,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         {/* Max Input — inline edit */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {editingMaxInput === model.id ? (
-                            <div className="flex items-center gap-1">
-                              <input type="number" value={editedMaxInput} onChange={(e) => setEditedMaxInput(parseInt(e.target.value) || 0)}
-                                className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500" min={1000} max={2000000} autoFocus />
-                              <button onClick={() => handleEditMaxInput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
-                              <button onClick={() => { setEditingMaxInput(null); setEditedMaxInput(0); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <input type="number" value={editedMaxInput} onChange={(e) => { setEditedMaxInput(parseInt(e.target.value) || 0); setEditingMaxInputError(null); }}
+                                  className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingMaxInputError ? 'border-red-400' : ''}`} min={1000} max={10000000} autoFocus />
+                                <button onClick={() => handleEditMaxInput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
+                                <button onClick={() => { setEditingMaxInput(null); setEditedMaxInput(0); setEditingMaxInputError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                              </div>
+                              {editingMaxInputError && <p className="text-xs text-red-600 mt-0.5">{editingMaxInputError}</p>}
                             </div>
                           ) : (
                             <button
@@ -585,11 +603,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         {/* Max Output — inline edit */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {editingMaxOutput === model.id ? (
-                            <div className="flex items-center gap-1">
-                              <input type="number" value={editedMaxOutput} onChange={(e) => setEditedMaxOutput(parseInt(e.target.value) || 0)}
-                                className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500" min={100} max={100000} autoFocus />
-                              <button onClick={() => handleEditMaxOutput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
-                              <button onClick={() => { setEditingMaxOutput(null); setEditedMaxOutput(0); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <input type="number" value={editedMaxOutput} onChange={(e) => { setEditedMaxOutput(parseInt(e.target.value) || 0); setEditingMaxOutputError(null); }}
+                                  className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingMaxOutputError ? 'border-red-400' : ''}`} min={100} max={2000000} autoFocus />
+                                <button onClick={() => handleEditMaxOutput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
+                                <button onClick={() => { setEditingMaxOutput(null); setEditedMaxOutput(0); setEditingMaxOutputError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                              </div>
+                              {editingMaxOutputError && <p className="text-xs text-red-600 mt-0.5">{editingMaxOutputError}</p>}
                             </div>
                           ) : (
                             <button
@@ -701,15 +722,20 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                   <span className="text-xs text-gray-500 capitalize">{detailsPreview.data.confidence} confidence</span>
                                 </div>
                                 <div className="flex items-center gap-4 text-sm text-gray-700">
-                                  <span>Tools: <strong>{detailsPreview.data.toolCapable ? '✓' : '✗'}</strong></span>
-                                  <span>Vision: <strong>{detailsPreview.data.visionCapable ? '✓' : '✗'}</strong></span>
-                                  {detailsPreview.data.maxInputTokens && (
+                                  <span className="text-gray-400">Tools: {detailsPreview.data.toolCapable ? '✓' : '✗'}</span>
+                                  <span className="text-gray-400">Vision: {detailsPreview.data.visionCapable ? '✓' : '✗'}</span>
+                                  {detailsPreview.data.maxInputTokens ? (
                                     <span>Context: <strong>{(detailsPreview.data.maxInputTokens / 1000).toFixed(0)}K</strong></span>
-                                  )}
-                                  {detailsPreview.data.maxOutputTokens && (
+                                  ) : null}
+                                  {detailsPreview.data.maxOutputTokens ? (
                                     <span>Max Output: <strong>{(detailsPreview.data.maxOutputTokens / 1000).toFixed(0)}K</strong></span>
-                                  )}
+                                  ) : null}
                                 </div>
+                                {(detailsPreview.data.maxInputTokens || detailsPreview.data.maxOutputTokens) ? (
+                                  <p className="text-xs text-gray-400 mt-0.5">Apply will update token limits only. Toggle tools/vision manually.</p>
+                                ) : (
+                                  <p className="text-xs text-gray-400 mt-0.5">No token limits found. Toggle tools/vision manually.</p>
+                                )}
                                 {detailsPreview.data.sources.length > 0 && (
                                   <div className="text-xs text-gray-400 mt-1 truncate max-w-lg">
                                     Source: {detailsPreview.data.sources[0]}
@@ -720,8 +746,11 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                 )}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <Button onClick={() => handleApplyDetails(model.id, detailsPreview.data)}>
-                                  Apply Changes
+                                <Button
+                                  onClick={() => handleApplyDetails(model.id, detailsPreview.data)}
+                                  disabled={!detailsPreview.data.maxInputTokens && !detailsPreview.data.maxOutputTokens}
+                                >
+                                  Apply Token Limits
                                 </Button>
                                 <Button variant="secondary" onClick={() => setDetailsPreview(null)}>
                                   Dismiss
