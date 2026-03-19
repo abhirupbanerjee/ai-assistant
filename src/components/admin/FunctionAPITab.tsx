@@ -326,6 +326,13 @@ function FunctionAPIFormModal({
       return;
     }
 
+    if (formData.categoryIds.length === 0) {
+      const confirmed = window.confirm(
+        'No categories selected. This API will not be accessible in any chat until at least one category is assigned. Save anyway?'
+      );
+      if (!confirmed) return;
+    }
+
     setSaving(true);
     try {
       await onSave(formData);
@@ -693,7 +700,7 @@ export default function FunctionAPITab({
     setTimeout(() => setSuccess(null), 3000);
     setShowForm(false);
     setEditingConfig(null);
-    fetchData();
+    await fetchData();
   };
 
   if (loading) {

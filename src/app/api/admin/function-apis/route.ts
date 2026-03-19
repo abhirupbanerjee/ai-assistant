@@ -144,7 +144,12 @@ export async function POST(request: NextRequest) {
     console.error('Failed to create function API:', error);
 
     // Handle duplicate name error
-    if (error instanceof Error && error.message.includes('UNIQUE constraint')) {
+    if (
+      error instanceof Error && (
+        error.message.includes('UNIQUE constraint') ||
+        error.message.includes('duplicate key value violates unique constraint')
+      )
+    ) {
       return NextResponse.json(
         { error: 'A function API with this name already exists' },
         { status: 400 }
