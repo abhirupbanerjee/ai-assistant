@@ -271,6 +271,13 @@ export async function POST(request: NextRequest) {
           summaryContext = formatSummaryForContext(existingSummary.summary);
         }
 
+        if (memoryContext) {
+          send({ type: 'operation_log', category: 'memory', message: 'Loading user memory' });
+        }
+        if (summaryContext) {
+          send({ type: 'operation_log', category: 'memory', message: 'Loading conversation summary' });
+        }
+
         // Get user uploads - separate images from documents
         const uploadDetails = await getUploadDetails(user.id, threadId);
 

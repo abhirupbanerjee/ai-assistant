@@ -37,6 +37,20 @@ export interface SkillInfo {
 }
 
 /**
+ * Operation log category for backend event tracking
+ */
+export type OperationCategory = 'rag' | 'llm' | 'tool' | 'memory';
+
+/**
+ * Operation log entry for the unified Operations section in ProcessingIndicator
+ */
+export interface OperationLogEntry {
+  category: OperationCategory;
+  message: string;
+  timestamp: number;
+}
+
+/**
  * Tool execution state for UI tracking
  */
 export interface ToolExecutionState {
@@ -141,7 +155,10 @@ export type StreamEvent =
   | { type: 'hitl_preflight'; data: PreflightClarificationEvent }
 
   // LLM fallback events
-  | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string };
+  | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string }
+
+  // Backend operation log (RAG steps, LLM switches, memory loading) for Operations UI section
+  | { type: 'operation_log'; category: OperationCategory; message: string };
 
 /**
  * Stream error codes
@@ -270,6 +287,7 @@ export interface ProcessingDetails {
   skills: SkillInfo[];
   toolsAvailable: string[];
   toolsExecuted: ToolExecutionState[];
+  operationLog: OperationLogEntry[]; // Chronological backend operation log (RAG, LLM, MEMORY, TOOL)
   userUploads: UploadExtractionState[]; // User upload extraction status
   truncationWarnings: ContextTruncationWarning[]; // Warnings for truncated user docs
   isExpanded: boolean; // UI state for collapse/expand

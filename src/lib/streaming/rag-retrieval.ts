@@ -184,6 +184,7 @@ export async function performRAGRetrieval(
   const additionalEmbeddings = allQueryEmbeddings.slice(1);
 
   // Build context from documents
+  send?.({ type: 'operation_log', category: 'rag', message: 'Searching vector database' });
   const { globalChunks, userChunks, userDocTruncations } = await buildContext(
     primaryEmbedding,
     userDocPaths,
@@ -205,12 +206,17 @@ export async function performRAGRetrieval(
     if (lastAssistantMsg?.sources) {
       boostDocuments = lastAssistantMsg.sources.map(s => s.documentName);
       logger.debug('Follow-up detected, boosting documents', { boostDocuments });
+      send?.({ type: 'operation_log', category: 'rag', message: 'Boosting results from prior conversation' });
     }
   }
 
   // Apply reranking with boost for follow-up context
+  send?.({ type: 'operation_log', category: 'rag', message: 'Reranking search results' });
   const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
   // User uploads bypass threshold - user explicitly added these docs for this conversation
+  if (userChunks.length > 0) {
+    send?.({ type: 'operation_log', category: 'rag', message: 'Ranking user documents' });
+  }
   const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true, boostDocuments });
 
   // Emit truncation warnings for documents with content cut off

@@ -15,6 +15,7 @@ import type {
   StreamEvent,
   StreamPhase,
   ToolExecutionState,
+  OperationLogEntry,
   UploadExtractionState,
   ProcessingDetails,
   Source,
@@ -136,6 +137,33 @@ export interface UseStreamingChatReturn {
   skipTask: (taskId: number, reason?: string) => Promise<boolean>;
 }
 
+// ============ Tool Action Messages ============
+
+const TOOL_ACTION_MESSAGES: Record<string, string> = {
+  web_search: 'Searching online',
+  doc_gen: 'Generating document',
+  chart_gen: 'Creating chart',
+  image_gen: 'Generating image',
+  diagram_gen: 'Generating diagram using Mermaid',
+  data_source: 'Querying data source',
+  translation: 'Translating content',
+  load_testing: 'Running load test',
+  security_scan: 'Running security scan',
+  ssl_scan: 'Checking SSL/TLS',
+  dns_scan: 'Scanning DNS records',
+  cookie_audit: 'Auditing cookies',
+  redirect_audit: 'Checking redirects',
+  website_analysis: 'Analysing website',
+  code_analysis: 'Analysing code',
+  podcast_gen: 'Generating podcast',
+  pptx_gen: 'Creating presentation',
+  xlsx_gen: 'Generating spreadsheet',
+  get_file_content: 'Reading file contents',
+  get_repo_contents: 'Fetching repository',
+  list_issues: 'Listing issues',
+  list_pull_requests: 'Listing pull requests',
+};
+
 // ============ Initial State ============
 
 const initialProcessingDetails: ProcessingDetails = {
@@ -143,6 +171,7 @@ const initialProcessingDetails: ProcessingDetails = {
   skills: [],
   toolsAvailable: [],
   toolsExecuted: [],
+  operationLog: [],
   userUploads: [],
   truncationWarnings: [],
   isExpanded: false,
@@ -234,23 +263,29 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
-      case 'tool_start':
-        setState(prev => {
-          const newTool: ToolExecutionState = {
-            name: event.name,
-            displayName: event.displayName,
-            status: 'running',
-            startTime: Date.now(),
-          };
-          return {
-            ...prev,
-            processingDetails: {
-              ...prev.processingDetails,
-              toolsExecuted: [...prev.processingDetails.toolsExecuted, newTool],
-            },
-          };
-        });
+      case 'tool_start': {
+        const toolStartTime = Date.now();
+        const newTool: ToolExecutionState = {
+          name: event.name,
+          displayName: event.displayName,
+          status: 'running',
+          startTime: toolStartTime,
+        };
+        const toolLogEntry: OperationLogEntry = {
+          category: 'tool',
+          message: TOOL_ACTION_MESSAGES[event.name] ?? event.displayName,
+          timestamp: toolStartTime,
+        };
+        setState(prev => ({
+          ...prev,
+          processingDetails: {
+            ...prev.processingDetails,
+            toolsExecuted: [...prev.processingDetails.toolsExecuted, newTool],
+            operationLog: [...prev.processingDetails.operationLog, toolLogEntry],
+          },
+        }));
         break;
+      }
 
       case 'tool_end':
         setState(prev => ({
@@ -512,10 +547,45 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
-      case 'model_switch':
+      case 'operation_log':
+        setState(prev => ({
+          ...prev,
+          processingDetails: {
+            ...prev.processingDetails,
+            operationLog: [...prev.processingDetails.operationLog, {
+              category: event.category,
+              message: event.message,
+              timestamp: Date.now(),
+            }],
+          },
+        }));
+        break;
+
+      case 'model_switch': {
         // Handle LLM model switch (fallback or capability requirement)
         onModelSwitch?.(event.originalModel, event.newModel, event.reason, event.message);
+        const LLM_REASON_MESSAGES: Record<string, string> = {
+          rate_limit: 'Rate limit reached, switching to fallback model',
+          quota_exceeded: 'Quota exceeded, switching to fallback model',
+          model_unavailable: 'Model unavailable, switching to fallback',
+          api_error: 'API error, retrying with fallback model',
+          auth_error: 'Authentication error, switching to fallback',
+          vision_required: 'Switching to vision-capable model',
+          tools_required: 'Switching to tool-capable model',
+        };
+        setState(prev => ({
+          ...prev,
+          processingDetails: {
+            ...prev.processingDetails,
+            operationLog: [...prev.processingDetails.operationLog, {
+              category: 'llm' as const,
+              message: LLM_REASON_MESSAGES[event.reason] ?? event.message,
+              timestamp: Date.now(),
+            }],
+          },
+        }));
         break;
+      }
 
       case 'chunk':
         // Use RAF batching for smooth updates

@@ -30,7 +30,7 @@ import {
   AlertCircle,
   AlertTriangle,
 } from 'lucide-react';
-import type { ProcessingDetails, StreamPhase, ToolExecutionState, UploadExtractionState, ContextTruncationWarning } from '@/types';
+import type { ProcessingDetails, StreamPhase, ToolExecutionState, OperationLogEntry, UploadExtractionState, ContextTruncationWarning } from '@/types';
 
 interface ProcessingIndicatorProps {
   details: ProcessingDetails;
@@ -311,57 +311,55 @@ export default function ProcessingIndicator({
             </div>
           )}
 
-          {/* Tools Available Section */}
-          {details.toolsAvailable.length > 0 && (
+          {/* Operations — unified chronological log (RAG, MEMORY, LLM, TOOL) */}
+          {((details.operationLog?.length ?? 0) > 0 || details.toolsExecuted.length > 0) && (
             <div className="mb-3">
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Tools Available
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {details.toolsAvailable.map((tool, i) => (
-                  <span
-                    key={i}
-                    className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded"
-                  >
-                    {tool}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Tools Executed Section */}
-          {details.toolsExecuted.length > 0 && (
-            <div className="mb-3">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Tool Execution
+                Operations
               </h4>
               <div className="space-y-1.5">
-                {details.toolsExecuted.map((tool, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      {getToolStatusIcon(tool.status)}
-                      <span className={tool.status === 'error' ? 'text-red-600' : 'text-gray-700'}>
-                        {tool.displayName}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {tool.duration && (
-                        <span className="text-xs text-gray-400">
-                          {formatDuration(tool.duration)}
-                        </span>
-                      )}
-                      {tool.error && (
-                        <span className="text-xs text-red-500 max-w-[200px] truncate" title={tool.error}>
-                          {tool.error}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                {[
+                  ...(details.operationLog ?? []).map(e => ({ ...e, _kind: 'log' as const })),
+                  ...details.toolsExecuted.map(t => ({
+                    ...t,
+                    _kind: 'tool' as const,
+                    category: 'tool' as const,
+                    timestamp: t.startTime ?? 0,
+                  })),
+                ]
+                  .sort((a, b) => a.timestamp - b.timestamp)
+                  .map((item, i) => {
+                    const badgeColor =
+                      item.category === 'rag' ? 'bg-blue-100 text-blue-700' :
+                      item.category === 'llm' ? 'bg-amber-100 text-amber-700' :
+                      item.category === 'memory' ? 'bg-purple-100 text-purple-700' :
+                      'bg-green-100 text-green-700';
+
+                    return (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${badgeColor}`}>
+                            {item.category.toUpperCase()}
+                          </span>
+                          {item._kind === 'tool' && getToolStatusIcon((item as ToolExecutionState & { _kind: 'tool'; category: 'tool'; timestamp: number }).status)}
+                          <span className={item._kind === 'tool' && (item as ToolExecutionState & { _kind: 'tool'; category: 'tool'; timestamp: number }).status === 'error' ? 'text-red-600' : 'text-gray-700'}>
+                            {item._kind === 'tool'
+                              ? (item as ToolExecutionState & { _kind: 'tool'; category: 'tool'; timestamp: number }).displayName
+                              : (item as OperationLogEntry & { _kind: 'log' }).message}
+                          </span>
+                        </div>
+                        {item._kind === 'tool' && (() => {
+                          const t = item as ToolExecutionState & { _kind: 'tool'; category: 'tool'; timestamp: number };
+                          return (t.duration || t.error) ? (
+                            <div className="flex items-center gap-2">
+                              {t.duration && <span className="text-gray-400">{formatDuration(t.duration)}</span>}
+                              {t.error && <span className="text-red-500 max-w-[200px] truncate" title={t.error}>{t.error}</span>}
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}
