@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { isThinkTagModel } from '@/lib/services/model-discovery';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
@@ -302,11 +303,64 @@ const OLLAMA_ALLOWED_TOOLS = new Set([
   'pptx_gen',      // Local PowerPoint generation via pptx lib
 ]);
 
+// ============ Think-tag parsing ============
+
+/** Returns how many trailing chars of `s` could be the beginning of `tag` */
+function findPartialSuffix(s: string, tag: string): number {
+  for (let len = Math.min(tag.length - 1, s.length); len > 0; len--) {
+    if (tag.startsWith(s.slice(-len))) return len;
+  }
+  return 0;
+}
+
+/**
+ * Statefully splits a raw LLM chunk into visible content and thinking content.
+ * Handles <think>…</think> blocks that may span chunk boundaries.
+ * Mutates `state` in place to carry context across calls.
+ */
+function parseThinkChunk(
+  raw: string,
+  state: { inThink: boolean; tagBuf: string },
+): { visible: string; thinking: string } {
+  let input = state.tagBuf + raw;
+  state.tagBuf = '';
+  let visible = '';
+  let thinking = '';
+
+  while (input.length > 0) {
+    const tag = state.inThink ? '</think>' : '<think>';
+    const idx = input.indexOf(tag);
+    const partial = findPartialSuffix(input, tag);
+
+    if (idx !== -1) {
+      const before = input.slice(0, idx);
+      state.inThink ? (thinking += before) : (visible += before);
+      input = input.slice(idx + tag.length);
+      state.inThink = !state.inThink;
+      // Skip optional leading newline after </think>
+      if (!state.inThink && input.startsWith('\n')) input = input.slice(1);
+    } else if (partial > 0) {
+      const safe = input.slice(0, input.length - partial);
+      state.inThink ? (thinking += safe) : (visible += safe);
+      state.tagBuf = input.slice(-partial);
+      break;
+    } else {
+      state.inThink ? (thinking += input) : (visible += input);
+      break;
+    }
+  }
+
+  return { visible, thinking };
+}
+
+// ============ Streaming completion ============
+
 async function streamOneCompletion(
   openai: OpenAI,
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
   onChunk?: (text: string) => void,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined }> {
+  onThinkingChunk?: (text: string) => void,
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null }> {
   const controller = new AbortController();
 
   // Ollama models get a longer first-chunk timeout for CPU cold-start
@@ -328,6 +382,9 @@ async function streamOneCompletion(
   };
 
   let content = '';
+  let thinkingContent = '';
+  const thinkState = { inThink: false, tagBuf: '' };
+  const thinkModel = isThinkTagModel(params.model ?? '');
   const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 
   try {
@@ -343,8 +400,14 @@ async function streamOneCompletion(
       if (!delta) continue;
 
       if (delta.content) {
-        content += delta.content;
-        onChunk?.(delta.content);
+        if (thinkModel) {
+          const { visible, thinking } = parseThinkChunk(delta.content, thinkState);
+          if (thinking) { thinkingContent += thinking; onThinkingChunk?.(thinking); }
+          if (visible)  { content += visible;           onChunk?.(visible); }
+        } else {
+          content += delta.content;
+          onChunk?.(delta.content);
+        }
       }
 
       if (delta.tool_calls) {
@@ -383,7 +446,7 @@ async function streamOneCompletion(
         }))
       : undefined;
 
-  return { content: content || null, tool_calls };
+  return { content: content || null, tool_calls, thinkingContent: thinkingContent || null };
 }
 
 export async function generateResponseWithTools(
@@ -671,7 +734,7 @@ export async function generateResponseWithTools(
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
-  let responseMessage = await streamOneCompletion(openai, completionParams, callbacks?.onChunk);
+  let responseMessage = await streamOneCompletion(openai, completionParams, callbacks?.onChunk, callbacks?.onThinkingChunk);
 
   // Tool call loop (max iterations to prevent runaway)
   let iterations = 0;
@@ -926,6 +989,7 @@ export async function generateResponseWithTools(
         tool_choice: toolChoiceAppliedByRouting ? 'auto' : completionParams.tool_choice,
       },
       callbacks?.onChunk,
+      callbacks?.onThinkingChunk,
     );
   }
 
@@ -962,6 +1026,7 @@ export async function generateResponseWithTools(
         tool_choice: 'none',
       },
       callbacks?.onChunk,
+      callbacks?.onThinkingChunk,
     );
 
     // Update responseMessage with the summary

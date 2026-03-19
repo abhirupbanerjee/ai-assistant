@@ -66,6 +66,8 @@ export interface StreamingState {
   phase: StreamPhase | null;
   /** Accumulated content from chunks */
   currentContent: string;
+  /** Accumulated thinking/reasoning content from think-tag models */
+  currentThinkingContent: string;
   /** Processing details for progressive disclosure */
   processingDetails: ProcessingDetails;
   /** RAG sources received */
@@ -103,7 +105,7 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata, thinkingContent?: string) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
@@ -150,6 +152,7 @@ const initialState: StreamingState = {
   isStreaming: false,
   phase: null,
   currentContent: '',
+  currentThinkingContent: '',
   processingDetails: initialProcessingDetails,
   sources: [],
   visualizations: [],
@@ -181,6 +184,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
   // Refs for chunk batching and race condition prevention
   const contentBufferRef = useRef('');
+  const thinkingBufferRef = useRef('');
   const rafRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageVersionRef = useRef(0); // Prevents stale updates from aborted streams
@@ -527,6 +531,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }
         break;
 
+      case 'thinking_chunk':
+        thinkingBufferRef.current += event.content;
+        setState(prev => ({ ...prev, currentThinkingContent: thinkingBufferRef.current }));
+        break;
+
       case 'done': {
         // Final flush of any remaining content
         if (rafRef.current) {
@@ -537,6 +546,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         // onComplete inside a setState updater (would fire twice in React strict mode)
         const doneState = stateRef.current;
         const finalContent = contentBufferRef.current || doneState.currentContent;
+        const finalThinking = thinkingBufferRef.current || doneState.currentThinkingContent;
         const metadata = (event.model || event.totalMs || event.completionTokens) ? {
           model: event.model,
           totalMs: event.totalMs,
@@ -556,7 +566,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             phase: 'complete',
           },
         }));
-        onComplete?.(event.messageId, finalContent, doneState.sources, doneState.visualizations, doneState.documents, doneState.images, doneState.diagrams, doneState.podcasts, metadata);
+        onComplete?.(event.messageId, finalContent, doneState.sources, doneState.visualizations, doneState.documents, doneState.images, doneState.diagrams, doneState.podcasts, metadata, finalThinking || undefined);
         break;
       }
 
@@ -589,6 +599,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
     // Reset state for new message
     contentBufferRef.current = '';
+    thinkingBufferRef.current = '';
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = undefined;
@@ -736,6 +747,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const reset = useCallback(() => {
     abort();
     contentBufferRef.current = '';
+    thinkingBufferRef.current = '';
     setState(initialState);
   }, [abort]);
 

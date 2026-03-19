@@ -151,6 +151,23 @@ export function getDefaultOutputTokens(provider: string): number {
 
 // ============ Capability Detection ============
 
+/**
+ * Returns true for models that embed reasoning inside <think>…</think> blocks
+ * (Qwen3, QwQ, DeepSeek-R1). These need special streaming parsing.
+ */
+export function isThinkTagModel(modelId: string): boolean {
+  let id = modelId.toLowerCase();
+  // Strip single-segment prefixes (ollama-, ollama/, litellm/)
+  id = id.replace(/^(ollama[-/]|litellm\/)/, '');
+  // For path-style IDs (fireworks, together, openrouter, etc.)
+  // e.g. "accounts/fireworks/models/qwen3-235b-a22b" → "qwen3-235b-a22b"
+  const lastSlash = id.lastIndexOf('/');
+  if (lastSlash !== -1) id = id.slice(lastSlash + 1);
+  // Strip version/tag suffixes (e.g. ":8b", ":latest", "-instruct")
+  id = id.replace(/:.*$/, '');
+  return /^(qwen3|qwq|deepseek-r)/.test(id);
+}
+
 function isToolCapable(modelId: string): boolean {
   // Strip ollama- prefix so "ollama-qwen2.5" matches /^qwen/ patterns
   const id = modelId.toLowerCase().replace(/^ollama-/, '');

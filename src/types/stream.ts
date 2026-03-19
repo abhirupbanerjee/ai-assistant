@@ -111,6 +111,9 @@ export type StreamEvent =
   // Text content chunks
   | { type: 'chunk'; content: string }
 
+  // Thinking/reasoning content from think-tag models (Qwen3, QwQ, DeepSeek-R1)
+  | { type: 'thinking_chunk'; content: string }
+
   // Completion
   | { type: 'done'; messageId: string; threadId: string; model?: string; totalMs?: number; llmMs?: number; ragMs?: number; completionTokens?: number }
 
@@ -280,6 +283,8 @@ export interface ProcessingDetails {
  */
 export interface StreamingCallbacks {
   onChunk?: (text: string) => void;
+  /** Called with reasoning/thinking content from think-tag models (<think>…</think> blocks) */
+  onThinkingChunk?: (text: string) => void;
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint) => void;

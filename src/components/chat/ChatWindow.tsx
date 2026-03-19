@@ -171,7 +171,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     images: GeneratedImageInfo[],
     _diagrams: DiagramHint[],
     podcasts: PodcastHint[],
-    metadata?: MessageMetadata
+    metadata?: MessageMetadata,
+    thinkingContent?: string
   ) => {
     const assistantMessage: Message = {
       id: messageId,
@@ -185,6 +186,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
       timestamp: new Date(),
       metadata,
+      thinkingContent,
     };
     setMessages(prev => {
       // Guard against race condition where loadThread already added this message
@@ -782,7 +784,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         ) : null}
 
         {/* Streaming Content */}
-        {streamingState.isStreaming && streamingState.currentContent && (
+        {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (
           <MessageBubble
             message={{
               id: 'streaming',
@@ -793,6 +795,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               generatedDocuments: streamingState.documents,
               generatedImages: streamingState.images,
               timestamp: new Date(),
+              thinkingContent: streamingState.currentThinkingContent || undefined,
             }}
             isStreaming={true}
           />

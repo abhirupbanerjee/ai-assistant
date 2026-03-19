@@ -58,6 +58,7 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message, isStreaming = false, onRegenerate }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const isUser = message.role === 'user';
 
   // Sort sources by score (highest first) and limit to top sources
@@ -89,6 +90,33 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
             : 'bg-gray-100 text-gray-900'
         }`}
       >
+        {/* Thinking/reasoning block from think-tag models (Qwen3, QwQ, DeepSeek-R1) */}
+        {message.thinkingContent && (
+          <div className="mb-3 rounded-lg border border-gray-200 overflow-hidden text-sm">
+            <button
+              onClick={() => setThinkingExpanded(v => !v)}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <span className="text-purple-400 leading-none">✦</span>
+              <span className="font-medium">Thinking</span>
+              <span className="ml-auto">
+                {thinkingExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </span>
+              {isStreaming && !message.content && (
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+              )}
+            </button>
+            {thinkingExpanded && (
+              <div className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-pre-wrap bg-white border-t border-gray-100 max-h-64 overflow-y-auto leading-relaxed">
+                {message.thinkingContent}
+                {isStreaming && !message.content && (
+                  <span className="inline-block w-1.5 h-3 bg-purple-300 animate-pulse ml-0.5 align-middle" />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="markdown-content">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

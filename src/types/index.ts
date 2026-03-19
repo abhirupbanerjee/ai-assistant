@@ -116,6 +116,8 @@ export interface Message {
   visualizations?: MessageVisualization[]; // Visualizations from data_source tool
   timestamp: Date;
   metadata?: MessageMetadata;  // Session-only: response timing and model info
+  /** Session-only: reasoning content from think-tag models (<think>…</think>), not persisted */
+  thinkingContent?: string;
 }
 
 // Generated document info returned by doc_gen tool

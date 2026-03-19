@@ -452,6 +452,7 @@ export async function POST(request: NextRequest) {
               onChunk: (targetLanguage && targetLanguage !== 'en')
                 ? undefined
                 : (text: string) => send({ type: 'chunk', content: text }),
+              onThinkingChunk: (text: string) => send({ type: 'thinking_chunk', content: text }),
               onToolStart: (name: string, displayName: string) => {
                 send({ type: 'tool_start', name, displayName });
               },
