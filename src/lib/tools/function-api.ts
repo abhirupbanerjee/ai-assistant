@@ -36,16 +36,39 @@ const functionApiConfigSchema = {
 // ===== Helpers =====
 
 /**
- * Build request URL with query parameters
+ * Substitute path parameters (e.g. {owner}) and add remaining args as query params.
+ * Returns { resolvedPath, remainingParams } so callers can use remainingParams as body too.
+ */
+function resolvePathParams(
+  path: string,
+  params: Record<string, unknown>
+): { resolvedPath: string; remainingParams: Record<string, unknown> } {
+  let resolvedPath = path;
+  const remainingParams: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(params)) {
+    if (resolvedPath.includes(`{${key}}`)) {
+      resolvedPath = resolvedPath.replace(`{${key}}`, encodeURIComponent(String(value ?? '')));
+    } else {
+      remainingParams[key] = value;
+    }
+  }
+
+  return { resolvedPath, remainingParams };
+}
+
+/**
+ * Build request URL with path param substitution and query parameters
  */
 function buildRequestUrl(
   baseUrl: string,
   path: string,
   params: Record<string, unknown>
 ): string {
-  const url = new URL(path, baseUrl);
+  const { resolvedPath, remainingParams } = resolvePathParams(path, params);
+  const url = new URL(resolvedPath, baseUrl);
 
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(remainingParams)) {
     if (value !== undefined && value !== null) {
       if (Array.isArray(value)) {
         for (const item of value) {
@@ -178,10 +201,13 @@ async function executeFunction(
   try {
     // Build request URL
     let url: string;
+    let bodyArgs = args;
     if (endpoint.method === 'GET') {
       url = buildRequestUrl(config.baseUrl, endpoint.path, args);
     } else {
-      url = new URL(endpoint.path, config.baseUrl).toString();
+      const { resolvedPath, remainingParams } = resolvePathParams(endpoint.path, args);
+      url = new URL(resolvedPath, config.baseUrl).toString();
+      bodyArgs = remainingParams;
     }
 
     // Build headers
@@ -194,9 +220,9 @@ async function executeFunction(
       signal: AbortSignal.timeout(config.timeoutSeconds * 1000),
     };
 
-    // Add body for POST/PUT requests
-    if (['POST', 'PUT'].includes(endpoint.method) && Object.keys(args).length > 0) {
-      requestOptions.body = JSON.stringify(args);
+    // Add body for POST/PUT requests (excluding path params already substituted)
+    if (['POST', 'PUT'].includes(endpoint.method) && Object.keys(bodyArgs).length > 0) {
+      requestOptions.body = JSON.stringify(bodyArgs);
     }
 
     // Make the request

@@ -103,7 +103,10 @@ export async function POST(
       }
 
       const endpoint = config.endpointMappings[functionToTest];
-      const url = new URL(endpoint.path, config.baseUrl).toString();
+      // Strip path param templates (e.g. {owner}) with a placeholder so the request
+      // reaches the server without a literal-template URL → 404
+      const testPath = endpoint.path.replace(/\{[^}]+\}/g, '_test');
+      const url = new URL(testPath, config.baseUrl).toString();
 
       // Build headers
       const headers = buildAuthHeaders(config);
@@ -116,6 +119,17 @@ export async function POST(
       });
 
       functionsTested.push(functionToTest);
+
+      // 401 means the server is reachable but auth is wrong — treat as connectivity success
+      if (response.status === 401) {
+        await updateFunctionAPITestStatus(id, true);
+        return NextResponse.json({
+          success: true,
+          message: 'Connection successful (authentication required)',
+          functionsTested,
+          latencyMs: Date.now() - startTime,
+        } as FunctionAPITestResult);
+      }
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
