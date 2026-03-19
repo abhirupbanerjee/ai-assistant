@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
   MoreVertical, Trash2, EyeOff, Edit2, Check, FileText, Languages,
@@ -88,6 +88,10 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [editingMaxInput, setEditingMaxInput] = useState<string | null>(null);
   const [editedMaxInput, setEditedMaxInput] = useState<number>(0);
   const [editingMaxInputError, setEditingMaxInputError] = useState<string | null>(null);
+
+  // Inline action errors
+  const [fallbackError, setFallbackError] = useState<{ modelId: string; msg: string } | null>(null);
+  const [toggleError, setToggleError] = useState<{ modelId: string; field: string; msg: string } | null>(null);
 
   // Get Details state
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
@@ -208,6 +212,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       setError(err instanceof Error ? err.message : 'Failed to set default model');
     }
     setActiveModelMenu(null);
+    setMenuAnchor(null);
   };
 
   const handleToggleModel = async (modelId: string, enabled: boolean) => {
@@ -224,18 +229,21 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       setError(err instanceof Error ? err.message : 'Failed to update model');
     }
     setActiveModelMenu(null);
+    setMenuAnchor(null);
   };
 
   const handleDeleteModel = async (modelId: string) => {
     try {
       const res = await fetch(`/api/admin/llm/models/${modelId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to remove model');
+      setDetailsPreview(prev => prev?.modelId === modelId ? null : prev);
       await fetchModels();
       showSuccess('Model removed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove model');
     }
     setActiveModelMenu(null);
+    setMenuAnchor(null);
   };
 
   const handleEditDisplayName = async (modelId: string) => {
@@ -291,6 +299,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   // ============ New Model Capability Actions ============
 
   const handleToggleCapability = async (modelId: string, field: 'toolCapable' | 'visionCapable', current: boolean) => {
+    setToggleError(null);
     // Optimistic update
     setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: !current } : m));
     try {
@@ -299,13 +308,22 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: !current }),
       });
-      if (!res.ok) throw new Error('Failed to update capability');
-      await fetchModels(); // sync with DB state
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        // Revert optimistic update on server error
+        setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: current } : m));
+        setToggleError({ modelId, field, msg: errData.error || `Failed to save (${res.status})` });
+        return;
+      }
+      // Update model state directly from response — avoids a second round-trip and
+      // prevents fetchModels() failures from incorrectly reverting a successful save.
+      const { model: updated } = await res.json() as { model: EnabledModel };
+      setEnabledModels(prev => prev.map(m => m.id === modelId ? updated : m));
       showSuccess(`${field === 'toolCapable' ? 'Tools' : 'Vision'} ${!current ? 'enabled' : 'disabled'}`);
     } catch (err) {
-      // Revert on failure
+      // Revert on network/parse error
       setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: current } : m));
-      setError(err instanceof Error ? err.message : 'Failed to update capability');
+      setToggleError({ modelId, field, msg: err instanceof Error ? err.message : 'Failed to update' });
     }
   };
 
@@ -335,6 +353,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const handleSetFallback = async (modelId: string | null) => {
+    setFallbackError(null);
     try {
       const res = await fetch('/api/admin/settings/llm-fallback', {
         method: 'PUT',
@@ -345,19 +364,37 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
           healthCacheDuration: fallbackSettings?.healthCacheDuration ?? 'hourly',
         }),
       });
-      if (!res.ok) throw new Error('Failed to update fallback model');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        const msg = errData.error || 'Failed to update fallback model';
+        if (modelId) {
+          setFallbackError({ modelId, msg });
+        } else {
+          setError(msg);
+        }
+        setActiveModelMenu(null);
+        setMenuAnchor(null);
+        return;
+      }
       setFallbackModelId(modelId);
       showSuccess(modelId ? 'Fallback model set' : 'Fallback model removed');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update fallback model');
+      const msg = err instanceof Error ? err.message : 'Failed to update fallback model';
+      if (modelId) {
+        setFallbackError({ modelId, msg });
+      } else {
+        setError(msg);
+      }
     }
     setActiveModelMenu(null);
+    setMenuAnchor(null);
   };
 
   const handleGetDetails = async (modelId: string) => {
     setFetchingDetails(modelId);
     setDetailsPreview(null);
     setActiveModelMenu(null);
+    setMenuAnchor(null);
     try {
       const res = await fetch(`/api/admin/llm/models/get-details?id=${encodeURIComponent(modelId)}`, { method: 'POST' });
       const data = await res.json() as DetailsResult;
@@ -515,8 +552,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {enabledModels.filter(m => m.providerEnabled !== false).map(model => (
-                      <>
-                      <tr key={model.id} className={!model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''}>
+                      <React.Fragment key={model.id}>
+                      <tr className={!model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''}>
                         {/* Provider */}
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{getProviderName(model.providerId)}</td>
 
@@ -558,6 +595,9 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           >
                             <Wrench size={11} className="mr-1" />{model.toolCapable ? 'On' : 'Off'}
                           </button>
+                          {toggleError?.modelId === model.id && toggleError.field === 'toolCapable' && (
+                            <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
+                          )}
                         </td>
 
                         {/* Vision toggle */}
@@ -574,6 +614,9 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           >
                             <Eye size={11} className="mr-1" />{model.visionCapable ? 'On' : 'Off'}
                           </button>
+                          {toggleError?.modelId === model.id && toggleError.field === 'visionCapable' && (
+                            <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
+                          )}
                         </td>
 
                         {/* Max Input — inline edit */}
@@ -632,6 +675,9 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Active</span>
                           ) : (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Disabled</span>
+                          )}
+                          {fallbackError?.modelId === model.id && (
+                            <p className="text-xs text-red-500 mt-0.5 max-w-[140px]">{fallbackError.msg}</p>
                           )}
                         </td>
 
@@ -760,7 +806,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           </td>
                         </tr>
                       )}
-                      </>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
