@@ -17,6 +17,7 @@ RULES:
 4. Use descriptive but concise labels
 5. Escape special characters: use "and" instead of "&", avoid parentheses in labels
 6. Do NOT include \`\`\`mermaid or \`\`\` markers
+7. For sequence diagrams: never use activate/deactivate inside alt/else/opt/loop/par blocks — place deactivate after the end keyword instead
 
 NEVER output anything except valid Mermaid code.`;
 
@@ -52,7 +53,8 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
 - Start with: sequenceDiagram
 - Define participants with: participant Name
 - Use ->> for solid arrows, -->> for dashed
-- Use activate/deactivate for lifelines
+- Use activate/deactivate for lifelines in the main linear flow only — NOT inside alt/else/opt/loop/par blocks
+- If a participant is activated before an alt/else block, place its deactivate after the end keyword
 - Use Note over/left of/right of for notes`,
     example: `sequenceDiagram
     participant U as User

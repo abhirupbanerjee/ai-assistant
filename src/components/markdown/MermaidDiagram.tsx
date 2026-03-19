@@ -101,6 +101,37 @@ function sanitizeMindmapCode(code: string): string {
 }
 
 /**
+ * Sanitize sequence diagram code to fix activate/deactivate stack errors.
+ * Mermaid tracks activations as a stack internally — deactivating a participant
+ * that is not currently active (e.g. duplicate deactivate in alt/else branches)
+ * causes "Trying to inactivate an inactive participant".
+ * This function drops any deactivate that would underflow the stack.
+ *
+ * Note: same logic exists in src/lib/diagram-gen/validator.ts (server-side).
+ * Any changes here should be mirrored there.
+ */
+function sanitizeSequenceCode(code: string): string {
+  const activeCount = new Map<string, number>();
+  return code.split('\n').filter(line => {
+    const t = line.trim();
+    const act = t.match(/^activate\s+(\S+)$/);
+    const deact = t.match(/^deactivate\s+(\S+)$/);
+    if (act) {
+      const p = act[1];
+      activeCount.set(p, (activeCount.get(p) ?? 0) + 1);
+      return true;
+    }
+    if (deact) {
+      const p = deact[1];
+      const n = activeCount.get(p) ?? 0;
+      if (n > 0) { activeCount.set(p, n - 1); return true; }
+      return false; // drop: would underflow the activation stack
+    }
+    return true;
+  }).join('\n');
+}
+
+/**
  * Sanitize Mermaid code based on diagram type
  */
 function sanitizeMermaidCode(code: string): string {
@@ -117,6 +148,11 @@ function sanitizeMermaidCode(code: string): string {
       .replace(/<br\s*\/?>/gi, ' ')                        // Remove <br/> and <br> tags
       .replace(/\[([^\]]*?)&([^\]]*?)\]/g, '[$1 and $2]')  // [text & more] -> [text and more]
       .replace(/\{([^}]*?)&([^}]*?)\}/g, '{$1 and $2}');   // {text & more} -> {text and more}
+  }
+
+  // Fix sequence diagram activate/deactivate stack errors
+  if (trimmed.startsWith('sequenceDiagram') || trimmed.toLowerCase().startsWith('sequencediagram')) {
+    return sanitizeSequenceCode(trimmed);
   }
 
   return trimmed;

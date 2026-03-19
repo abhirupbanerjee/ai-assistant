@@ -55,24 +55,17 @@ export async function syncModelToLiteLLM(model: {
     return false;
   }
 
+  // Providers managed via litellm_config.yaml — skip dynamic sync
+  // Ollama: YAML model names (e.g. "qwen2.5:3b") don't match DB IDs (e.g. "ollama-qwen2.5")
+  // Fireworks: LiteLLM format ("fireworks_ai/accounts/fireworks/models/...") differs from DB IDs
+  if (model.providerId === 'ollama' || model.providerId === 'fireworks') {
+    return true;
+  }
+
   const providerConfig = PROVIDER_MAP[model.providerId];
   if (!providerConfig) {
     console.warn(`[LiteLLM Sync] Unknown provider: ${model.providerId}, skipping ${model.id}`);
     return false;
-  }
-
-  // Skip Ollama models — they use YAML-specific model names (e.g. "qwen2.5:3b")
-  // that don't match DB model IDs (e.g. "ollama-qwen2.5"), so syncing them
-  // creates broken duplicates. Ollama models are defined in litellm_config.yaml.
-  if (model.providerId === 'ollama') {
-    return true; // Treat as success — already in YAML
-  }
-
-  // Skip Fireworks models — DB model IDs (e.g. "fireworks/minimax-m2p5") don't match
-  // the LiteLLM format ("fireworks_ai/accounts/fireworks/models/minimax-m2p5").
-  // Fireworks models are defined in litellm_config.yaml.
-  if (model.providerId === 'fireworks') {
-    return true; // Treat as success — already in YAML
   }
 
   // Build litellm_params based on provider
