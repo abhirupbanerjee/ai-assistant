@@ -79,7 +79,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
   const [selectedProviderForDiscovery, setSelectedProviderForDiscovery] = useState<string | null>(null);
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
@@ -691,8 +691,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                   setMenuAnchor(null);
                                 } else {
                                   const rect = e.currentTarget.getBoundingClientRect();
+                                  const MENU_HEIGHT = 250;
+                                  const spaceBelow = window.innerHeight - rect.bottom;
                                   setActiveModelMenu(model.id);
-                                  setMenuAnchor({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                  setMenuAnchor(
+                                    spaceBelow < MENU_HEIGHT
+                                      ? { bottom: window.innerHeight - rect.top + 4, right: window.innerWidth - rect.right }
+                                      : { top: rect.bottom + 4, right: window.innerWidth - rect.right }
+                                  );
                                 }
                               }}
                               className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
@@ -700,7 +706,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             </button>
                             {activeModelMenu === model.id && menuAnchor && (
                               <div
-                                style={{ position: 'fixed', top: menuAnchor.top, right: menuAnchor.right }}
+                                style={{ position: 'fixed', top: menuAnchor.top, bottom: menuAnchor.bottom, right: menuAnchor.right }}
                                 className="w-52 bg-white rounded-lg shadow-lg border z-50">
                                 <button onClick={() => handleGetDetails(model.id)}
                                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">

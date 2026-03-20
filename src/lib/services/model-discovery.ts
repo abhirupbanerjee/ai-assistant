@@ -95,7 +95,6 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5-nano': 1000000,
   'gpt-4o': 128000,
   'gpt-4o-mini': 128000,
-  'gpt-4o-mini-transcribe': 128000,
   'gpt-4-turbo': 128000,
   'gpt-4': 8192,
   'gpt-3.5-turbo': 16385,

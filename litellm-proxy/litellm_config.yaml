@@ -123,16 +123,6 @@ model_list:
       supports_vision: true
       max_input_tokens: 1000000
 
-  # GPT-4o Mini Transcribe - Audio transcription model
-  - model_name: gpt-4o-mini-transcribe
-    litellm_params:
-      model: openai/gpt-4o-mini-transcribe
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_function_calling: true
-      supports_vision: true
-      max_input_tokens: 128000
-
   # ===========================================================================
   # ANTHROPIC CLAUDE MODELS
   # All Claude 4.5/4.6 models support vision and function calling

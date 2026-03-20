@@ -253,6 +253,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }
   console.log('[Kysely] Seeded new Fireworks models');
 
+  // Migration: Remove gpt-4o-mini-transcribe (transcription model, not a chat LLM)
+  await sql`DELETE FROM enabled_models WHERE id = 'gpt-4o-mini-transcribe'`.execute(database);
+  console.log('[Kysely] Removed gpt-4o-mini-transcribe from enabled_models');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy
