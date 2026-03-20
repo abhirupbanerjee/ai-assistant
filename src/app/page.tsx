@@ -264,11 +264,13 @@ function HomeContent() {
               />
             </ErrorBoundary>
           ) : (
-            <WelcomeScreen
-              userRole={userRole || 'user'}
-              brandingName={brandingName}
-              onNewThread={handleNewThreadFromHeader}
-            />
+            <ErrorBoundary moduleName="WelcomeScreen">
+              <WelcomeScreen
+                userRole={userRole || 'user'}
+                brandingName={brandingName}
+                onNewThread={handleNewThreadFromHeader}
+              />
+            </ErrorBoundary>
           )}
         </main>
 
