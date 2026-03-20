@@ -214,6 +214,45 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }
   console.log('[Kysely] Renamed Ollama model IDs to actual model names');
 
+  // Migration: Seed new Fireworks models added to litellm_config.yaml
+  const newFireworksModels = [
+    {
+      id: 'fireworks/deepseek-v3p2',
+      display_name: 'DeepSeek V3.2 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 131072,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/qwen3-vl-30b-a3b-thinking',
+      display_name: 'Qwen3 VL 30B Thinking (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 131072,
+      max_output_tokens: 16384,
+    },
+  ];
+  for (const model of newFireworksModels) {
+    await database
+      .insertInto('enabled_models')
+      .values({
+        id: model.id,
+        provider_id: 'fireworks',
+        display_name: model.display_name,
+        tool_capable: model.tool_capable,
+        vision_capable: model.vision_capable,
+        max_input_tokens: model.max_input_tokens,
+        max_output_tokens: model.max_output_tokens,
+        is_default: 0,
+        enabled: 0,
+        sort_order: 9900,
+      })
+      .onConflict(oc => oc.column('id').doNothing())
+      .execute();
+  }
+  console.log('[Kysely] Seeded new Fireworks models');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

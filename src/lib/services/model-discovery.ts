@@ -536,6 +536,22 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       maxInputTokens: 40960,
       maxOutputTokens: 8192,
     },
+    {
+      id: 'fireworks/deepseek-v3p2',
+      name: 'DeepSeek V3.2',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/qwen3-vl-30b-a3b-thinking',
+      name: 'Qwen3 VL 30B Thinking',
+      toolCapable: true,
+      visionCapable: true,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
   ];
 
   return Promise.all(

@@ -149,13 +149,14 @@ Two providers are intentionally **skipped** from auto-sync and must be defined m
 | Provider | Reason | DB model ID | LiteLLM format needed |
 |----------|--------|------------|----------------------|
 | **Fireworks AI** | ID format mismatch — auto-sync can't reconstruct the full path | `fireworks/minimax-m2p5` | `fireworks_ai/accounts/fireworks/models/minimax-m2p5` |
-| **Ollama** | Model name format collision — DB uses slugified names, Ollama uses tag-style | `ollama-qwen2.5` | `qwen2.5:3b` |
+| **Ollama** | No API key — uses `api_base` instead; DB model IDs match actual Ollama model names | `qwen3:4b` | `ollama/qwen3:4b` + `api_base` |
 
 For both providers the sync function returns `true` (treated as success) since the models are already registered via YAML. Auto-syncing them would create broken duplicate entries with incorrect model paths.
 
 **Requirements:**
 - `LITELLM_MASTER_KEY` env var must be set
 - `OPENAI_BASE_URL` must point to LiteLLM proxy (e.g., `http://litellm:4000/v1`)
+- `LITELLM_ADMIN_URL` (optional but recommended) — set to direct LiteLLM URL (e.g., `http://litellm:4000`) to bypass reverse proxy for the `/model/new` management API. If unset, the admin URL is derived by stripping `/v1` from `OPENAI_BASE_URL`, which fails when routed through nginx.
 
 **Startup logs:**
 ```
@@ -214,12 +215,13 @@ YAML is optional — auto-sync registers the model with LiteLLM. But adding capa
 
 ### Scenario 4: Adding a Fireworks AI Model {#adding-a-fireworks-model}
 
-Fireworks uses a **curated list** (not API discovery) and requires **manual YAML** (not auto-sync). Both files must be updated together:
+Fireworks uses a **curated list** (not API discovery) and requires **manual YAML** (not auto-sync). All three files must be updated:
 
 | What | File | Required? |
 |------|------|-----------|
-| Add to curated model list | `src/lib/services/model-discovery.ts` — `FIREWORKS_MODELS` array | **Yes** |
-| Add to LiteLLM config | `litellm-proxy/litellm_config.yaml` — Fireworks section | **Yes** |
+| Add to curated model list | `src/lib/services/model-discovery.ts` — `FIREWORKS_MODELS` array | **Yes** — drives "Discover" in Admin UI |
+| Add to LiteLLM config | `litellm-proxy/litellm_config.yaml` — Fireworks section | **Yes** — LiteLLM routing |
+| Seed DB row (for existing deployments) | `src/lib/db/kysely.ts` — `runPostgresMigrations()` | **Yes** — makes model appear in Manage Models without requiring Discover flow |
 
 **Step 1** — `src/lib/services/model-discovery.ts`:
 ```typescript
@@ -246,7 +248,27 @@ Fireworks uses a **curated list** (not API discovery) and requires **manual YAML
     max_output_tokens: 16384
 ```
 
-After both edits: restart the stack, then Admin → Settings → LLMs → Discover (Fireworks) → enable the model.
+**Step 3** — `src/lib/db/kysely.ts` (inside `runPostgresMigrations`, before the final log):
+```typescript
+await database
+  .insertInto('enabled_models')
+  .values({
+    id: 'fireworks/your-model-slug',
+    provider_id: 'fireworks',
+    display_name: 'Display Name',
+    tool_capable: 1,
+    vision_capable: 0,
+    max_input_tokens: 131072,
+    max_output_tokens: 16384,
+    is_default: 0,
+    enabled: 0,
+    sort_order: 9900,
+  })
+  .onConflict(oc => oc.column('id').doNothing())
+  .execute();
+```
+
+After all three edits: restart the stack. The model appears immediately in **Admin → Settings → LLMs → Manage Models** (disabled). Enable it, and it shows in the chat model selector. The "Discover Fireworks" flow also works as an alternative to the migration step.
 
 ---
 
