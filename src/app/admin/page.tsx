@@ -247,10 +247,15 @@ interface SystemStats {
   };
 }
 
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['llm', 'rag', 'reranker', 'ocr', 'cache', 'backup'];
+const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
+
 function AdminPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab') as TabType | null;
+  const sectionParam = searchParams.get('section');
+  const agentSectionParam = searchParams.get('agentSection');
   const [activeTab, setActiveTab] = useState<TabType>(tabParam || 'dashboard');
   const [userRole, setUserRole] = useState<'admin' | 'superuser' | 'user'>('admin');
 
@@ -259,9 +264,17 @@ function AdminPageContent() {
   const [documentsSection, setDocumentsSection] = useState<DocumentsSection>('documents');
   const [usersSection, setUsersSection] = useState<UsersSection>('management');
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('system-prompt');
-  const [agentsSection, setAgentsSection] = useState<AgentsSection>('config');
+  const [agentsSection, setAgentsSection] = useState<AgentsSection>(
+    VALID_AGENTS_SECTIONS.includes(agentSectionParam as AgentsSection)
+      ? (agentSectionParam as AgentsSection)
+      : 'config'
+  );
   const [tokensSection, setTokensSection] = useState<TokensSection>('memory');
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(
+    VALID_SETTINGS_SECTIONS.includes(sectionParam as SettingsSection)
+      ? (sectionParam as SettingsSection)
+      : 'llm'
+  );
 
   // Agent Bots state - track selected bot for detail view
   const [selectedAgentBotId, setSelectedAgentBotId] = useState<string | null>(null);
@@ -278,6 +291,20 @@ function AdminPageContent() {
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab);
     router.push(`/admin?tab=${tab}`, { scroll: false });
+  }, [router]);
+
+  // Handle settings section change - updates both state and URL so section survives remounts
+  const handleSettingsChange = useCallback((section: SettingsSection) => {
+    setActiveTab('settings');
+    setSettingsSection(section);
+    router.push(`/admin?tab=settings&section=${section}`, { scroll: false });
+  }, [router]);
+
+  // Handle agents section change - updates both state and URL so section survives remounts
+  const handleAgentsChange = useCallback((section: AgentsSection) => {
+    setActiveTab('agents');
+    setAgentsSection(section);
+    router.push(`/admin?tab=agents&agentSection=${section}`, { scroll: false });
   }, [router]);
 
   const toggleUsersSection = (section: UsersSection) => {
@@ -532,18 +559,28 @@ function AdminPageContent() {
   // Sync URL tab parameter to state (with backward compatibility for legacy URLs)
   useEffect(() => {
     const tab = searchParams.get('tab');
+    const section = searchParams.get('section');
+    const agentSection = searchParams.get('agentSection');
     if (tab) {
       // Handle legacy agent URLs
       if (tab === 'agent') {
         setActiveTab('agents');
         setAgentsSection('config');
-        router.replace('/admin?tab=agents', { scroll: false });
+        router.replace('/admin?tab=agents&agentSection=config', { scroll: false });
       } else if (tab === 'agent-bots') {
         setActiveTab('agents');
         setAgentsSection('bots');
-        router.replace('/admin?tab=agents', { scroll: false });
+        router.replace('/admin?tab=agents&agentSection=bots', { scroll: false });
       } else {
         setActiveTab(tab as TabType);
+      }
+      // Sync settings section from URL
+      if (tab === 'settings' && section && VALID_SETTINGS_SECTIONS.includes(section as SettingsSection)) {
+        setSettingsSection(section as SettingsSection);
+      }
+      // Sync agents section from URL
+      if (tab === 'agents' && agentSection && VALID_AGENTS_SECTIONS.includes(agentSection as AgentsSection)) {
+        setAgentsSection(agentSection as AgentsSection);
       }
     }
   }, [searchParams, router]); // Only depend on searchParams and router
@@ -994,9 +1031,9 @@ function AdminPageContent() {
           onDocumentsChange={setDocumentsSection}
           onUsersChange={setUsersSection}
           onPromptsChange={setPromptsSection}
-          onAgentsChange={setAgentsSection}
+          onAgentsChange={handleAgentsChange}
           onTokensChange={setTokensSection}
-          onSettingsChange={setSettingsSection}
+          onSettingsChange={handleSettingsChange}
         />
 
         {/* Main Content */}
