@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
   MoreVertical, Trash2, EyeOff, Edit2, Check, FileText, Languages,
@@ -80,6 +81,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [selectedProviderForDiscovery, setSelectedProviderForDiscovery] = useState<string | null>(null);
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
@@ -168,6 +170,21 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Close menu on click outside (uses document listener instead of an overlay div
+  // so no DOM element can intercept clicks on the menu items themselves)
+  useEffect(() => {
+    if (!activeModelMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveModelMenu(null);
+        setMenuAnchor(null);
+      }
+    };
+    // Defer by one tick so the click that opened the menu isn't immediately caught
+    const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
+  }, [activeModelMenu]);
 
   // ============ Provider Actions ============
 
@@ -691,7 +708,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                   setMenuAnchor(null);
                                 } else {
                                   const rect = e.currentTarget.getBoundingClientRect();
-                                  const MENU_HEIGHT = 250;
+                                  const MENU_HEIGHT = 320; // 7 items × ~40px + separators
                                   const spaceBelow = window.innerHeight - rect.bottom;
                                   setActiveModelMenu(model.id);
                                   setMenuAnchor(
@@ -704,47 +721,6 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                               className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
                               <MoreVertical size={16} />
                             </button>
-                            {activeModelMenu === model.id && menuAnchor && (
-                              <div
-                                style={{ position: 'fixed', top: menuAnchor.top, bottom: menuAnchor.bottom, right: menuAnchor.right }}
-                                className="w-52 bg-white rounded-lg shadow-lg border z-50">
-                                <button onClick={() => handleGetDetails(model.id)}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                  <Sparkles size={14} className="text-purple-500" />Get Details
-                                </button>
-                                <div className="border-t my-1" />
-                                {!model.isDefault && (
-                                  <button onClick={() => handleSetDefault(model.id)}
-                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                    <Star size={14} />Set as Default
-                                  </button>
-                                )}
-                                {fallbackModelId === model.id ? (
-                                  <button onClick={() => handleSetFallback(null)}
-                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                    <RotateCcw size={14} />Remove Fallback
-                                  </button>
-                                ) : (
-                                  <button onClick={() => handleSetFallback(model.id)}
-                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                    <RotateCcw size={14} />Set as Fallback
-                                  </button>
-                                )}
-                                <div className="border-t my-1" />
-                                <button onClick={() => { setEditingModel(model.id); setEditedDisplayName(model.displayName); setActiveModelMenu(null); }}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                  <Edit2 size={14} />Edit Display Name
-                                </button>
-                                <button onClick={() => handleToggleModel(model.id, !model.enabled)}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                                  {model.enabled ? <><EyeOff size={14} />Disable</> : <><Eye size={14} />Enable</>}
-                                </button>
-                                <button onClick={() => handleDeleteModel(model.id)}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
-                                  <Trash2 size={14} />Remove
-                                </button>
-                              </div>
-                            )}
                           </td>
                         )}
                       </tr>
@@ -920,8 +896,54 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         onModelsAdded={handleModelsAdded}
       />
 
-      {/* Click outside handler for model menu */}
-      {activeModelMenu && <div className="fixed inset-0 z-40" onClick={() => { setActiveModelMenu(null); setMenuAnchor(null); }} />}
+      {/* Model action menu — rendered via portal so it's always above any stacking context */}
+      {activeModelMenu && menuAnchor && (() => {
+        const m = enabledModels.find(mo => mo.id === activeModelMenu);
+        if (!m) return null;
+        return createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: 'fixed', top: menuAnchor.top, bottom: menuAnchor.bottom, right: menuAnchor.right }}
+            className="w-52 bg-white rounded-lg shadow-lg border z-50">
+            <button onClick={() => handleGetDetails(m.id)}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+              <Sparkles size={14} className="text-purple-500" />Get Details
+            </button>
+            <div className="border-t my-1" />
+            {!m.isDefault && (
+              <button onClick={() => handleSetDefault(m.id)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                <Star size={14} />Set as Default
+              </button>
+            )}
+            {fallbackModelId === m.id ? (
+              <button onClick={() => handleSetFallback(null)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                <RotateCcw size={14} />Remove Fallback
+              </button>
+            ) : (
+              <button onClick={() => handleSetFallback(m.id)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                <RotateCcw size={14} />Set as Fallback
+              </button>
+            )}
+            <div className="border-t my-1" />
+            <button onClick={() => { setEditingModel(m.id); setEditedDisplayName(m.displayName); setActiveModelMenu(null); setMenuAnchor(null); }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+              <Edit2 size={14} />Edit Display Name
+            </button>
+            <button onClick={() => handleToggleModel(m.id, !m.enabled)}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+              {m.enabled ? <><EyeOff size={14} />Disable</> : <><Eye size={14} />Enable</>}
+            </button>
+            <button onClick={() => handleDeleteModel(m.id)}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
+              <Trash2 size={14} />Remove
+            </button>
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }
