@@ -338,28 +338,28 @@ model_list:
   # ===========================================================================
   # OLLAMA LOCAL MODELS
   # ===========================================================================
-  - model_name: ollama-llama3.2
+  - model_name: llama3.2:3b
     litellm_params:
       model: ollama/llama3.2:3b
       api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
-  - model_name: ollama-qwen3
+  - model_name: qwen3:4b
     litellm_params:
       model: ollama/qwen3:4b
       api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
-  - model_name: ollama-qwen3-1.7b
+  - model_name: qwen3:1.7b
     litellm_params:
       model: ollama/qwen3:1.7b
       api_base: http://ollama:11434
     model_info:
       supports_function_calling: true
 
-  - model_name: ollama-gpt-oss
+  - model_name: gpt-oss:20b
     litellm_params:
       model: ollama/gpt-oss:20b
       api_base: http://ollama:11434
@@ -439,6 +439,26 @@ model_list:
       max_input_tokens: 40960
       max_output_tokens: 8192
 
+  - model_name: fireworks/deepseek-v3p2
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/deepseek-v3p2
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
+  - model_name: fireworks/qwen3-vl-30b-a3b-thinking
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/qwen3-vl-30b-a3b-thinking
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
   # ===========================================================================
   # EMBEDDING MODELS
   # ===========================================================================
@@ -462,7 +482,7 @@ model_list:
       model: gemini/text-embedding-004
       api_key: os.environ/GEMINI_API_KEY
 
-  - model_name: ollama-mxbai-embed
+  - model_name: mxbai-embed-large
     litellm_params:
       model: ollama/mxbai-embed-large
       api_base: http://ollama:11434

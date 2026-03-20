@@ -27,6 +27,11 @@ const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
  * Returns null if LiteLLM is not configured
  */
 function getLiteLLMProxyUrl(): string | null {
+  // Prefer LITELLM_ADMIN_URL for direct management API access (bypasses reverse proxy)
+  if (process.env.LITELLM_ADMIN_URL) {
+    return process.env.LITELLM_ADMIN_URL.replace(/\/$/, '');
+  }
+
   const baseUrl = process.env.OPENAI_BASE_URL;
   if (!baseUrl) return null;
 
@@ -107,7 +112,7 @@ export async function syncModelToLiteLLM(model: {
 
     return true;
   } catch (err) {
-    console.warn(`[LiteLLM Sync] Error syncing ${model.id}:`, err instanceof Error ? err.message : err);
+    console.warn(`[LiteLLM Sync] Error syncing ${model.id} (url: ${proxyUrl}/model/new):`, err instanceof Error ? err.message : err);
     return false;
   }
 }

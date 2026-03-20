@@ -198,6 +198,22 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS generated_diagrams_json TEXT`.execute(database);
   console.log('[Kysely] Ensured messages.generated_diagrams_json column exists');
 
+  // Migration: Rename Ollama model IDs to match actual Ollama API model names
+  // Old IDs used a display-friendly prefix (ollama-*); new IDs are the actual model names
+  // LiteLLM model_name entries in litellm_config.yaml updated to match
+  const ollamaRenames: Array<{ oldId: string; newId: string }> = [
+    { oldId: 'ollama-llama3.2',   newId: 'llama3.2:3b' },
+    { oldId: 'ollama-qwen3',      newId: 'qwen3:4b' },
+    { oldId: 'ollama-qwen3-1.7b', newId: 'qwen3:1.7b' },
+    { oldId: 'ollama-gpt-oss',    newId: 'gpt-oss:20b' },
+    { oldId: 'ollama-mxbai-embed', newId: 'mxbai-embed-large' },
+  ];
+  for (const { oldId, newId } of ollamaRenames) {
+    await sql`UPDATE enabled_models SET id = ${newId} WHERE id = ${oldId}`.execute(database);
+    await sql`UPDATE threads SET selected_model = ${newId} WHERE selected_model = ${oldId}`.execute(database);
+  }
+  console.log('[Kysely] Renamed Ollama model IDs to actual model names');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy
