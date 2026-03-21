@@ -1198,9 +1198,9 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
     setLimitsSaving(true);
     try {
       const res = await fetch('/api/admin/settings', {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section: 'limits', ...limitsSettings }),
+        body: JSON.stringify({ type: 'limits', settings: limitsSettings }),
       });
       if (!res.ok) throw new Error('Failed to save');
       setSuccess('Tool call limits saved');
