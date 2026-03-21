@@ -61,6 +61,24 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const isUser = message.role === 'user';
 
+  // Extract <think>…</think> blocks from content as fallback for historical messages
+  // (thinkingContent is session-only and not persisted to DB)
+  const { displayContent, effectiveThinking } = useMemo(() => {
+    if (message.thinkingContent) {
+      return { displayContent: message.content, effectiveThinking: message.thinkingContent };
+    }
+    const thinkRegex = /<think>([\s\S]*?)<\/think>\n?/g;
+    let extracted = '';
+    const cleaned = message.content.replace(thinkRegex, (_, inner: string) => {
+      extracted += (extracted ? '\n\n' : '') + inner;
+      return '';
+    });
+    return {
+      displayContent: extracted ? cleaned.trimStart() : message.content,
+      effectiveThinking: extracted || undefined,
+    };
+  }, [message.content, message.thinkingContent]);
+
   // Sort sources by score (highest first) and limit to top sources
   const sortedSources = useMemo(() => {
     if (!message.sources) return [];
@@ -91,7 +109,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
         }`}
       >
         {/* Thinking/reasoning block from think-tag models (Qwen3, QwQ, DeepSeek-R1) */}
-        {message.thinkingContent && (
+        {effectiveThinking && (
           <div className="mb-3 rounded-lg border border-gray-200 overflow-hidden text-sm">
             <button
               onClick={() => setThinkingExpanded(v => !v)}
@@ -108,7 +126,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
             </button>
             {thinkingExpanded && (
               <div className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-pre-wrap bg-white border-t border-gray-100 max-h-64 overflow-y-auto leading-relaxed">
-                {message.thinkingContent}
+                {effectiveThinking}
                 {isStreaming && !message.content && (
                   <span className="inline-block w-1.5 h-3 bg-purple-300 animate-pulse ml-0.5 align-middle" />
                 )}
@@ -122,7 +140,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
             remarkPlugins={[remarkGfm]}
             components={MarkdownComponents}
           >
-            {message.content}
+            {displayContent}
           </ReactMarkdown>
           {isStreaming && (
             <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5 align-middle" />
