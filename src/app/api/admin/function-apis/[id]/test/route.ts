@@ -89,30 +89,42 @@ export async function POST(
     let sampleResponse: unknown = null;
 
     try {
-      // Get the first function to test, or the specified one
+      const headers = buildAuthHeaders(config);
+      const timeout = AbortSignal.timeout(config.timeoutSeconds * 1000);
+
+      // ── Step 1: Connectivity check ─────────────────────────────────────────
+      // Hit the base URL (no auth) to confirm the server is reachable at all.
+      const connectivityResponse = await fetch(config.baseUrl, {
+        method: 'GET',
+        signal: timeout,
+      });
+      // Any HTTP response (even 404/401) means the server is up.
+      // Only network-level errors (ENOTFOUND, timeout, etc.) reach the catch block.
+
+      // ── Step 2: Auth check ─────────────────────────────────────────────────
+      // Use the first configured endpoint with placeholder values for path params.
+      // Most REST APIs (including GitHub) validate auth before routing, so:
+      //   401 → bad token
+      //   404 → token is valid, path just doesn't exist with placeholder values
+      //   200 → full success
       const functionNames = Object.keys(config.endpointMappings);
       const functionToTest = testFunctionName || functionNames[0];
 
       if (!functionToTest || !config.endpointMappings[functionToTest]) {
-        await updateFunctionAPITestStatus(id, false, 'No endpoints configured');
+        // Server is up but no endpoints configured to test auth
+        await updateFunctionAPITestStatus(id, true);
         return NextResponse.json({
-          success: false,
-          message: 'No endpoints configured to test',
+          success: true,
+          message: `Server reachable (HTTP ${connectivityResponse.status}). No endpoints configured for auth check.`,
           latencyMs: Date.now() - startTime,
         } as FunctionAPITestResult);
       }
 
       const endpoint = config.endpointMappings[functionToTest];
-      // Strip path param templates (e.g. {owner}) with a placeholder so the request
-      // reaches the server without a literal-template URL → 404
       const testPath = endpoint.path.replace(/\{[^}]+\}/g, '_test');
       const url = new URL(testPath, config.baseUrl).toString();
 
-      // Build headers
-      const headers = buildAuthHeaders(config);
-
-      // Make test request
-      const response = await fetch(url, {
+      const authResponse = await fetch(url, {
         method: endpoint.method,
         headers,
         signal: AbortSignal.timeout(config.timeoutSeconds * 1000),
@@ -120,39 +132,62 @@ export async function POST(
 
       functionsTested.push(functionToTest);
 
-      // 401 means the server is reachable but auth is wrong — treat as connectivity success
-      if (response.status === 401) {
+      // Bad auth
+      if (authResponse.status === 401) {
+        const errorText = await authResponse.text().catch(() => '');
+        const errorMessage = `Authentication failed: invalid or missing credentials. ${errorText.substring(0, 200)}`;
+        await updateFunctionAPITestStatus(id, false, errorMessage);
+        return NextResponse.json({
+          success: false,
+          message: 'Server is reachable but authentication failed (401). Check your token.',
+          functionsTested,
+          latencyMs: Date.now() - startTime,
+        } as FunctionAPITestResult);
+      }
+
+      // Forbidden — auth format accepted but insufficient scope
+      if (authResponse.status === 403) {
+        const errorText = await authResponse.text().catch(() => '');
+        const errorMessage = `Forbidden (403): token accepted but may lack required permissions. ${errorText.substring(0, 200)}`;
+        await updateFunctionAPITestStatus(id, false, errorMessage);
+        return NextResponse.json({
+          success: false,
+          message: 'Server reachable, token accepted, but access is forbidden (403). Check token scopes/permissions.',
+          functionsTested,
+          latencyMs: Date.now() - startTime,
+        } as FunctionAPITestResult);
+      }
+
+      // 404 with placeholder path params is expected — auth passed
+      if (authResponse.status === 404) {
         await updateFunctionAPITestStatus(id, true);
         return NextResponse.json({
           success: true,
-          message: 'Connection successful (authentication required)',
+          message: 'Server reachable and authentication successful. (404 expected — endpoint requires real parameter values.)',
           functionsTested,
           latencyMs: Date.now() - startTime,
         } as FunctionAPITestResult);
       }
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        const errorMessage = `HTTP ${response.status}: ${response.statusText}. ${errorText.substring(0, 200)}`;
-
+      if (!authResponse.ok) {
+        const errorText = await authResponse.text().catch(() => 'Unknown error');
+        const errorMessage = `HTTP ${authResponse.status}: ${authResponse.statusText}. ${errorText.substring(0, 200)}`;
         await updateFunctionAPITestStatus(id, false, errorMessage);
-
         return NextResponse.json({
           success: false,
-          message: `API returned error: ${response.status} ${response.statusText}`,
+          message: `API returned error: ${authResponse.status} ${authResponse.statusText}`,
           functionsTested,
           latencyMs: Date.now() - startTime,
         } as FunctionAPITestResult);
       }
 
-      // Try to parse response
+      // 200 — full success, capture sample response
       try {
-        sampleResponse = await response.json();
+        sampleResponse = await authResponse.json();
       } catch {
-        sampleResponse = await response.text();
+        sampleResponse = await authResponse.text();
       }
 
-      // Success - update status
       await updateFunctionAPITestStatus(id, true);
 
       return NextResponse.json({
