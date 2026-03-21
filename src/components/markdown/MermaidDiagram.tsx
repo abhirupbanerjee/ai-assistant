@@ -147,7 +147,8 @@ function sanitizeMermaidCode(code: string): string {
     return trimmed
       .replace(/<br\s*\/?>/gi, ' ')                        // Remove <br/> and <br> tags
       .replace(/\[([^\]]*?)&([^\]]*?)\]/g, '[$1 and $2]')  // [text & more] -> [text and more]
-      .replace(/\{([^}]*?)&([^}]*?)\}/g, '{$1 and $2}');   // {text & more} -> {text and more}
+      .replace(/\{([^}]*?)&([^}]*?)\}/g, '{$1 and $2}')    // {text & more} -> {text and more}
+      .replace(/\[\/([^\]"]*)\]/g, '["/\$1"]');             // [/api/path] -> ["/api/path"] (prevent parallelogram misparse)
   }
 
   // Fix sequence diagram activate/deactivate stack errors

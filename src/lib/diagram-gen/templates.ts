@@ -38,7 +38,8 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
 - Use flowchart {DIRECTION} as the first line
 - Use [Box] for rectangles, {Decision} for diamonds, ([Rounded]) for stadium shapes
 - Use --> for arrows, -->|Label| for labeled arrows
-- Keep max 12-15 nodes`,
+- Keep max 12-15 nodes
+- If a label contains a URL path or forward slash, wrap it in quotes: ["/api/users"] not [/api/users]`,
     example: `flowchart TD
     A[Start] --> B{Is valid?}
     B -->|Yes| C[Process]

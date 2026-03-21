@@ -153,6 +153,14 @@ export function sanitizeMermaidCode(code: string): string {
   // Replace & with "and"
   sanitized = sanitized.replace(/\s&\s/g, ' and ');
 
+  // Fix flowchart/graph node labels with URL paths (prevent parallelogram shape misparse).
+  // e.g., A[/api/auth/*] → A["/api/auth/*"]
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  if (sanitized.trim().startsWith('flowchart') || sanitized.trim().startsWith('graph')) {
+    sanitized = sanitized.replace(/\[\/([^\]"]*)\]/g, '["/\$1"]');
+  }
+
   // Fix common mindmap issues - nested parentheses in root
   sanitized = sanitized.replace(
     /root\(\(([^)]*)\(([^)]+)\)([^)]*)\)\)/g,
