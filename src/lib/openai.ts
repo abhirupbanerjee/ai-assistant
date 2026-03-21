@@ -10,7 +10,6 @@ import { resolveToolRouting } from './tool-routing';
 import { resolveSkills, determineToolChoice } from './skills/resolver';
 import { toolsLogger as logger } from './logger';
 import {
-  MAX_TOOL_CALL_ITERATIONS,
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
   getEmbeddingModelById,
 } from './constants';
@@ -737,16 +736,21 @@ export async function generateResponseWithTools(
   let responseMessage = await streamOneCompletion(openai, completionParams, callbacks?.onChunk, callbacks?.onThinkingChunk);
 
   // Tool call loop (max iterations to prevent runaway)
+  // Load tool call limits from DB (defaults: 50 total, 10 per tool)
+  const { maxTotalToolCalls, maxPerToolCalls } = await getLimitsSettings();
+
   let iterations = 0;
+  let totalToolCalls = 0;
+  const toolCallCounts = new Map<string, number>();
   let terminalToolSucceeded = false;
   let terminalToolResult: { toolName: string; parsedResult: Record<string, unknown> } | null = null;
 
   // Collect tool execution results for compliance checking
   const toolExecutionResults: ToolExecutionRecord[] = [];
 
-  while (responseMessage.tool_calls && iterations < MAX_TOOL_CALL_ITERATIONS && !terminalToolSucceeded) {
+  while (responseMessage.tool_calls && totalToolCalls < maxTotalToolCalls && !terminalToolSucceeded) {
     iterations++;
-    logger.debug(`Tool call iteration ${iterations}/${MAX_TOOL_CALL_ITERATIONS}`);
+    logger.debug(`Tool call iteration ${iterations}, total calls ${totalToolCalls}/${maxTotalToolCalls}`);
 
     // Add assistant's tool call message
     messages.push({
@@ -758,6 +762,21 @@ export async function generateResponseWithTools(
     // Execute each tool call
     for (const toolCall of responseMessage.tool_calls) {
       const toolName = toolCall.function.name;
+
+      // Per-tool and total call limit checks (skip meta-tools)
+      if (toolName !== 'request_clarification') {
+        const toolCount = toolCallCounts.get(toolName) ?? 0;
+        if (toolCount >= maxPerToolCalls) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: `Tool limit reached: ${toolName} has been called ${toolCount} times (max ${maxPerToolCalls} per session). Use a different approach.`,
+          });
+          continue;
+        }
+        totalToolCalls++;
+        toolCallCounts.set(toolName, toolCount + 1);
+      }
 
       // Intercept request_clarification meta-tool — pause stream, show HITL UI, resume with answer
       if (toolName === 'request_clarification') {
@@ -993,8 +1012,30 @@ export async function generateResponseWithTools(
     );
   }
 
-  if (iterations >= MAX_TOOL_CALL_ITERATIONS && responseMessage.tool_calls) {
-    logger.warn('Max tool call iterations reached');
+  if (totalToolCalls >= maxTotalToolCalls && responseMessage.tool_calls) {
+    logger.warn('[Tools] Max tool call iterations reached');
+
+    const finalMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      ...messages,
+      {
+        role: 'user' as const,
+        content: 'You have reached the maximum number of tool calls. Based on all the information gathered so far, please provide a complete and helpful response to the original question.',
+      },
+    ];
+
+    responseMessage = await streamOneCompletion(
+      openai,
+      {
+        model: completionParams.model,
+        messages: finalMessages,
+        max_tokens: completionParams.max_tokens,
+        temperature: completionParams.temperature,
+        tools: completionParams.tools,
+        tool_choice: 'none',
+      },
+      callbacks?.onChunk,
+      callbacks?.onThinkingChunk,
+    );
   }
 
   // Generate LLM summary for terminal tool success

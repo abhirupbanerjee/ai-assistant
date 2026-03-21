@@ -69,9 +69,6 @@ export const LOCAL_RERANKER_MAX_TOKENS = 512;
 
 // ============ Tool Constants ============
 
-/** Maximum tool call iterations to prevent runaway loops */
-export const MAX_TOOL_CALL_ITERATIONS = 10;
-
 /**
  * Check if a model supports tool/function calling
  * Re-exported from config-loader for convenience

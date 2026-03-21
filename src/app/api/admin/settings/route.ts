@@ -1135,19 +1135,38 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'limits': {
-        const { conversationHistoryMessages } = settings;
+        const { conversationHistoryMessages, maxTotalToolCalls, maxPerToolCalls } = settings;
+        const limitsUpdate: Record<string, number> = {};
 
-        // Validate conversationHistoryMessages
-        if (typeof conversationHistoryMessages !== 'number' || conversationHistoryMessages < 3 || conversationHistoryMessages > 50) {
-          return NextResponse.json<ApiError>(
-            { error: 'Conversation history messages must be between 3 and 50', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
+        if (conversationHistoryMessages !== undefined) {
+          if (typeof conversationHistoryMessages !== 'number' || conversationHistoryMessages < 3 || conversationHistoryMessages > 50) {
+            return NextResponse.json<ApiError>(
+              { error: 'Conversation history messages must be between 3 and 50', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          limitsUpdate.conversationHistoryMessages = conversationHistoryMessages;
+        }
+        if (maxTotalToolCalls !== undefined) {
+          if (typeof maxTotalToolCalls !== 'number' || maxTotalToolCalls < 5 || maxTotalToolCalls > 200) {
+            return NextResponse.json<ApiError>(
+              { error: 'Max total tool calls must be between 5 and 200', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          limitsUpdate.maxTotalToolCalls = maxTotalToolCalls;
+        }
+        if (maxPerToolCalls !== undefined) {
+          if (typeof maxPerToolCalls !== 'number' || maxPerToolCalls < 1 || maxPerToolCalls > 50) {
+            return NextResponse.json<ApiError>(
+              { error: 'Max per-tool calls must be between 1 and 50', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          limitsUpdate.maxPerToolCalls = maxPerToolCalls;
         }
 
-        result = await setLimitsSettings({
-          conversationHistoryMessages,
-        }, user.email);
+        result = await setLimitsSettings(limitsUpdate, user.email);
         break;
       }
 

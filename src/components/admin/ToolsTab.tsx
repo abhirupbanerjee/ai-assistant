@@ -1137,6 +1137,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Tool call limits accordion
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const [limitsSettings, setLimitsSettings] = useState({ maxTotalToolCalls: 50, maxPerToolCalls: 10 });
+  const [limitsSaving, setLimitsSaving] = useState(false);
+
   // Expanded tool state
   const [expandedTool, setExpandedTool] = useState<string | null>(null);
   const [editedConfig, setEditedConfig] = useState<Record<string, unknown>>({});
@@ -1172,6 +1177,40 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       setLoading(false);
     }
   }, []);
+
+  // Fetch tool call limits from settings
+  useEffect(() => {
+    if (readOnly || isSuperuser) return;
+    fetch('/api/admin/settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.limits) {
+          setLimitsSettings({
+            maxTotalToolCalls: data.limits.maxTotalToolCalls ?? 50,
+            maxPerToolCalls: data.limits.maxPerToolCalls ?? 10,
+          });
+        }
+      })
+      .catch(() => {/* ignore */});
+  }, [readOnly, isSuperuser]);
+
+  const handleSaveLimits = async () => {
+    setLimitsSaving(true);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section: 'limits', ...limitsSettings }),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      setSuccess('Tool call limits saved');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch {
+      setError('Failed to save tool call limits');
+    } finally {
+      setLimitsSaving(false);
+    }
+  };
 
   // Fetch tools for superuser mode
   const fetchSuperuserTools = useCallback(async () => {
@@ -1683,6 +1722,72 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
               )}
             </div>
           </div>
+
+      {/* Tool Call Limits Accordion — admin mode only */}
+      {!readOnly && !isSuperuser && (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <button
+            onClick={() => setLimitsOpen(prev => !prev)}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-2 rounded-lg bg-blue-100">
+                <Gauge size={24} className="text-blue-600" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold text-gray-900">Tool Call Limits</h3>
+                <p className="text-sm text-gray-500">
+                  Max total: {limitsSettings.maxTotalToolCalls} calls · Per-tool max: {limitsSettings.maxPerToolCalls} calls
+                </p>
+              </div>
+            </div>
+            {limitsOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+          </button>
+
+          {limitsOpen && (
+            <div className="border-t border-gray-200 px-6 py-4 space-y-4">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Max Total Tool Calls
+                    <span className="ml-1 text-gray-400 font-normal">(5–200)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={200}
+                    value={limitsSettings.maxTotalToolCalls}
+                    onChange={e => setLimitsSettings(prev => ({ ...prev, maxTotalToolCalls: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Combined limit across all tools per chat</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Per-Tool Max Calls
+                    <span className="ml-1 text-gray-400 font-normal">(1–50)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={limitsSettings.maxPerToolCalls}
+                    onChange={e => setLimitsSettings(prev => ({ ...prev, maxPerToolCalls: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">e.g. web_search can be called max N times per chat</p>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={handleSaveLimits} disabled={limitsSaving}>
+                  {limitsSaving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
+                  Save Limits
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tools List - Superuser Mode */}
       {isSuperuser && (

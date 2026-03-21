@@ -223,6 +223,8 @@ export interface LlmFallbackSettings {
 
 export interface LimitsSettings {
   conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
+  maxTotalToolCalls: number;            // Total tool calls per chat transaction (default: 50)
+  maxPerToolCalls: number;              // Max calls for any single tool type (default: 10)
 }
 
 /**
@@ -745,6 +747,8 @@ export function getLimitsSettings(): LimitsSettings {
   const config = loadConfig();
   return {
     conversationHistoryMessages: config.limits?.conversationHistoryMessages ?? 5,
+    maxTotalToolCalls: 50,
+    maxPerToolCalls: 10,
   };
 }
 
