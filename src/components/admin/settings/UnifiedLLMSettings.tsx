@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
@@ -81,7 +81,6 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [selectedProviderForDiscovery, setSelectedProviderForDiscovery] = useState<string | null>(null);
   const [activeModelMenu, setActiveModelMenu] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editingMaxOutput, setEditingMaxOutput] = useState<string | null>(null);
@@ -170,21 +169,6 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // Close menu on click outside (uses document listener instead of an overlay div
-  // so no DOM element can intercept clicks on the menu items themselves)
-  useEffect(() => {
-    if (!activeModelMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setActiveModelMenu(null);
-        setMenuAnchor(null);
-      }
-    };
-    // Defer by one tick so the click that opened the menu isn't immediately caught
-    const timer = setTimeout(() => document.addEventListener('click', handler), 0);
-    return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
-  }, [activeModelMenu]);
 
   // ============ Provider Actions ============
 
@@ -896,15 +880,20 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         onModelsAdded={handleModelsAdded}
       />
 
-      {/* Model action menu — rendered via portal so it's always above any stacking context */}
+      {/* Model action menu — portal into document.body to escape stacking contexts */}
       {activeModelMenu && menuAnchor && (() => {
         const m = enabledModels.find(mo => mo.id === activeModelMenu);
         if (!m) return null;
         return createPortal(
-          <div
-            ref={menuRef}
-            style={{ position: 'fixed', top: menuAnchor.top, bottom: menuAnchor.bottom, right: menuAnchor.right }}
-            className="w-52 bg-white rounded-lg shadow-lg border z-50">
+          <>
+            {/* Backdrop: captures outside clicks; unmounts with menu so no post-close scroll lock */}
+            <div
+              className="fixed inset-0 z-[49]"
+              onClick={() => { setActiveModelMenu(null); setMenuAnchor(null); }}
+            />
+            <div
+            style={{ position: 'fixed', top: menuAnchor.top, bottom: menuAnchor.bottom, right: menuAnchor.right, maxHeight: '80vh', overflowY: 'auto' }}
+            className="w-52 bg-white rounded-lg shadow-lg border z-[50]">
             <button onClick={() => handleGetDetails(m.id)}
               className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
               <Sparkles size={14} className="text-purple-500" />Get Details
@@ -940,7 +929,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
               className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
               <Trash2 size={14} />Remove
             </button>
-          </div>,
+          </div>
+          </>,
           document.body
         );
       })()}
