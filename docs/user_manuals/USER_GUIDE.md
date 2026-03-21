@@ -59,6 +59,7 @@ As a user, you can:
 3. Choose your authentication method:
    - **Microsoft** - Use your organization's Microsoft account
    - **Google** - Use your Google account
+   - **Email / Password** - Use credentials if set up by your admin
 4. Complete the authentication flow
 5. You'll be redirected to the chat interface
 

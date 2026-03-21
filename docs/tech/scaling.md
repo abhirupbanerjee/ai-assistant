@@ -12,7 +12,7 @@ The current production configuration supports **~100-150 concurrent users** with
 
 | Parameter | Value | Environment Variable |
 |-----------|-------|---------------------|
-| Provider | PostgreSQL | `DATABASE_PROVIDER=postgres` |
+| Provider | PostgreSQL | `DATABASE_URL=postgresql://...` |
 | Pool Max | 20 | `DATABASE_POOL_MAX` |
 | Pool Idle Timeout | 30,000ms | `DATABASE_POOL_IDLE_TIMEOUT` |
 | Pool Connection Timeout | 10,000ms | `DATABASE_POOL_CONNECTION_TIMEOUT` |
@@ -77,12 +77,14 @@ Supports: ~100-150 concurrent users with mixed workload
 
 **Use Case:** Development, personal use, small teams
 
+> **Note:** SQLite was removed in March 2026. PostgreSQL is required for all deployments. For small teams, a pool of 10 connections has negligible overhead.
+
 | Dimension | Options | Recommended |
 |-----------|---------|-------------|
-| Database | SQLite, PostgreSQL | **SQLite** |
-| Pool Size | N/A | N/A |
+| Database | PostgreSQL | **PostgreSQL** (pool=10) |
+| Pool Size | 5-15 | **10** |
 | Instances | 1 | **1** |
-| Redis | Optional | **Skip** |
+| Redis | Optional | **Optional** |
 | Vector Store | Chroma, Qdrant | **Chroma** |
 | Infrastructure | Single server | **Single Docker Compose** |
 
@@ -90,8 +92,8 @@ Supports: ~100-150 concurrent users with mixed workload
 
 ```bash
 # .env
-DATABASE_PROVIDER=sqlite
-SQLITE_DB_PATH=./data/policybot.db
+DATABASE_URL=postgresql://policybot:password@localhost:5432/policybot
+DATABASE_POOL_MAX=10
 VECTOR_STORE_PROVIDER=chromadb
 # Redis optional - omit REDIS_URL for in-process caching
 ```
@@ -99,14 +101,8 @@ VECTOR_STORE_PROVIDER=chromadb
 **Docker Compose:**
 
 ```bash
-docker compose --profile chromadb up -d
+docker compose --profile postgres --profile chromadb up -d
 ```
-
-**Why SQLite:**
-- Zero operational overhead
-- Single file backup (`cp data/policybot.db backup.db`)
-- WAL mode handles concurrent reads well
-- No network latency
 
 **Architecture:**
 
@@ -126,8 +122,8 @@ docker compose --profile chromadb up -d
 │         ├────────────────┐                                   │
 │         ▼                ▼                                   │
 │  ┌─────────────┐  ┌─────────────┐                            │
-│  │   SQLite    │  │  ChromaDB   │                            │
-│  │ (WAL mode)  │  │  (vectors)  │                            │
+│  │ PostgreSQL  │  │  ChromaDB   │                            │
+│  │ (pool=10)   │  │  (vectors)  │                            │
 │  └─────────────┘  └─────────────┘                            │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
@@ -143,7 +139,7 @@ docker compose --profile chromadb up -d
 
 | Dimension | Options | Recommended |
 |-----------|---------|-------------|
-| Database | SQLite (stretched), PostgreSQL | **PostgreSQL** |
+| Database | PostgreSQL | **PostgreSQL** |
 | Pool Size | 15-30 | **20-25** |
 | Instances | 1-2 | **1** (2 for HA) |
 | Redis | Optional, Recommended | **Yes** |

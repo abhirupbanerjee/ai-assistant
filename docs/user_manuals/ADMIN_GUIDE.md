@@ -18,10 +18,11 @@ This guide explains how to use the Admin Dashboard to manage all aspects of Poli
 10. [Task Planner Templates](#10-task-planner-templates)
 11. [Data Sources](#11-data-sources)
 12. [Workspaces](#12-workspaces)
-13. [Settings](#13-settings)
-14. [System Management](#14-system-management)
-15. [Troubleshooting](#15-troubleshooting)
-16. [Quick Reference](#16-quick-reference)
+13. [Agent Bots](#13-agent-bots)
+14. [Settings](#14-settings)
+15. [System Management](#15-system-management)
+16. [Troubleshooting](#16-troubleshooting)
+17. [Quick Reference](#17-quick-reference)
 
 ---
 
@@ -84,7 +85,7 @@ The dashboard displays system component status:
 
 | Component | Description |
 |-----------|-------------|
-| **Database** | Primary database connection status (SQLite or PostgreSQL) |
+| **Database** | PostgreSQL connection status and pool stats |
 | **Vector Store** | Vector store connection status (ChromaDB or Qdrant) |
 | **LLM Proxy** | LiteLLM proxy connection |
 | **OCR Service** | Document processing pipeline |
@@ -108,7 +109,8 @@ Widgets showing recent system activity:
 | **Prompts** | System prompt, category prompts, acronyms, skills |
 | **Tools** | Tool management, dependencies, and routing |
 | **Workspaces** | Embed and standalone chatbot instances |
-| **Settings** | LLM, RAG, reranker, memory, and system configuration |
+| **Agent Bots** | Programmatic API bots (API keys, jobs, analytics, versions) |
+| **Settings** | LLM, RAG, reranker, memory, agent, and system configuration |
 
 ### Dashboard Submenu
 
@@ -150,16 +152,18 @@ Widgets showing recent system activity:
 
 | Section | Purpose |
 |---------|---------|
-| **LLM** | Model selection, temperature, max tokens |
+| **LLM** | Model selection, temperature, max tokens, tool call limits |
 | **RAG** | Retrieval settings, chunk size, similarity threshold |
 | **RAG Tuning** | Interactive RAG parameter testing |
+| **RAG Testing** | Built-in retrieval test suite with result scoring |
 | **Reranker** | Enable/configure BGE, Cohere, or local reranking with priority fallback |
 | **Memory** | User memory extraction settings |
 | **Summarization** | Thread summarization settings |
 | **Limits** | Conversation history, upload limits |
+| **Agent** | Autonomous agent budget, quality threshold, timeout settings |
 | **Superuser** | Superuser quota and permissions |
 | **Backup** | Database backup and restore |
-| **Branding** | Bot name, icon, accent color |
+| **Branding** | Bot name, icon, accent color, PWA settings |
 | **Cache** | Cache TTL and management |
 
 ---
@@ -1320,7 +1324,79 @@ Superusers can create and manage workspaces within their assigned categories:
 
 ---
 
-## 13. Settings
+## 13. Agent Bots
+
+Expose Policy Bot capabilities as a REST API for external systems, CI/CD pipelines, or third-party apps.
+
+### What are Agent Bots?
+
+Agent Bots are API-accessible chatbot instances. Instead of a user interacting via the browser, an external system POSTs a message and polls for the response. Each bot has its own:
+- System prompt and category access
+- Enabled tool set
+- LLM model and temperature settings
+- API keys for callers
+- Job history and analytics
+
+### Creating an Agent Bot
+
+1. Navigate to **Admin** → **Agent Bots**
+2. Click **New Agent Bot**
+3. Configure:
+   - **Name** - Display name
+   - **Slug** - URL identifier (e.g., `hr-bot`)
+   - **Description** - Purpose
+   - **System Prompt** - AI instructions for this bot
+   - **Categories** - Document categories this bot can access
+   - **Tools** - Enabled tools (web search, doc gen, etc.)
+   - **LLM Config** - Model, temperature, max tokens
+4. Click **Create**
+
+### Managing API Keys
+
+1. Open the agent bot
+2. Click **API Keys** → **Generate New Key**
+3. Copy the key immediately (not shown again)
+4. Assign a name to the key (e.g., "CI/CD Pipeline", "Mobile App")
+
+### Invoking an Agent Bot
+
+```bash
+# Submit a job
+curl -X POST https://your-domain.com/api/agent-bots/hr-bot/invoke \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the leave policy?"}'
+
+# Response: { "jobId": "abc123", "status": "pending" }
+
+# Poll for completion
+curl https://your-domain.com/api/agent-bots/hr-bot/jobs/abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Download output file (if generated)
+curl https://your-domain.com/api/agent-bots/hr-bot/jobs/abc123/outputs/output1/download \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -o report.pdf
+```
+
+### Bot Versions
+
+1. Open the agent bot → **Versions** tab
+2. Click **Save Version** to snapshot the current config
+3. Click any version to restore it
+4. Use versioning before making significant prompt changes
+
+### Analytics
+
+The Analytics tab shows per-bot usage:
+- Total jobs submitted and completed
+- Success / failure rates
+- Token consumption and cost
+- Average job duration
+
+---
+
+## 14. Settings
 
 Configure system-wide settings.
 
@@ -1474,7 +1550,7 @@ Configure Policy Bot as an installable Progressive Web App.
 
 ---
 
-## 14. System Management
+## 15. System Management
 
 Administrative functions for system maintenance.
 
@@ -1595,7 +1671,7 @@ View system activity:
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 ### Common Issues
 
@@ -1750,7 +1826,7 @@ For issues not covered here:
 
 ---
 
-## 16. Quick Reference
+## 17. Quick Reference
 
 ### Keyboard Shortcuts
 

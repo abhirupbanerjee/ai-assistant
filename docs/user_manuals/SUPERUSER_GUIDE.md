@@ -56,7 +56,7 @@ This allows a superuser to manage their department's categories while also havin
 | Access subscribed categories | ✅ | ✅ | ✅ |
 | Create/delete users | ❌ | ❌ | ✅ |
 | Manage all categories | ❌ | ❌ | ✅ |
-| System settings & backups | ❌ | ❌ | ✅ |
+| System settings & backups | ❌ | ✅ (own categories) | ✅ |
 
 ### How to Get Superuser Access
 
@@ -601,9 +601,40 @@ The RAG Tuning section allows you to interactively test how different retrieval 
 6. Compare different parameter combinations
 7. Save optimal settings
 
-### Backup (Read-Only)
+### Backup
 
-View backup information for your assigned categories. Full backup/restore operations are managed by Admins.
+Export threads and messages from your assigned categories as a JSON backup file.
+
+**What is included:**
+- All threads that belong to your assigned categories
+- All messages within those threads
+- Category metadata (name, slug, ID)
+
+**How to backup:**
+
+1. Navigate to **Settings → Backup**
+2. Click **Download Backup**
+3. A JSON file is downloaded: `threads-backup-YYYY-MM-DD.json`
+
+**Backup file format:**
+```json
+{
+  "exportedAt": "2026-03-21T12:00:00.000Z",
+  "exportedBy": "you@example.com",
+  "version": "1.0",
+  "categories": [{ "id": 1, "name": "HR Policies", "slug": "hr-policies" }],
+  "threads": [
+    {
+      "id": "abc123",
+      "title": "Leave policy question",
+      "categories": [...],
+      "messages": [{ "role": "user", "content": "..." }, ...]
+    }
+  ]
+}
+```
+
+> **Note:** This export covers **threads and messages only** for your assigned categories. Full system backup (including documents, users, and settings) is performed by Admins.
 
 ---
 

@@ -65,7 +65,13 @@ Detailed guides for specific features and capabilities.
 
 | Document | Description | Key Topics |
 |----------|-------------|------------|
-| [features/AUTONOMOUS_MODE_INTEGRATION.md](features/AUTONOMOUS_MODE_INTEGRATION.md) | Autonomous mode integration | Autonomous agent capabilities, configuration |
+| [features/AUTONOMOUS_MODE_INTEGRATION.md](features/AUTONOMOUS_MODE_INTEGRATION.md) | Autonomous mode integration | Agent pipeline, budget tracking, streaming events, pause/resume/stop |
+
+### Agent Bots (Programmatic API)
+
+| Document | Description | Key Topics |
+|----------|-------------|------------|
+| [API/API_SPECIFICATION.md](API/API_SPECIFICATION.md) | Agent Bot API reference | `/api/agent-bots/{slug}/invoke`, async job polling, file uploads, output downloads, API key management |
 
 ---
 
@@ -108,8 +114,10 @@ Guides for different user roles and workflows.
 - Task planner templates
 - Data sources (APIs, CSV)
 - Workspaces (embed and standalone)
-- Settings (LLM, RAG, reranker, memory, PWA)
-- System management and backup/restore
+- Agent Bots (programmatic API, API key management, job analytics)
+- RAG Testing (built-in retrieval test suite)
+- Settings (LLM, RAG, reranker, memory, PWA, agent)
+- System management, backup/restore, and LLM discovery
 
 ### Superusers
 
@@ -225,8 +233,10 @@ Quick reference for feature availability by user role.
 | **Tool Routing** | ❌ | ❌ | ✅ |
 | **Data Sources** | ❌ | ✅ (assigned) | ✅ (all) |
 | **Workspaces** | ❌ | ✅ (assigned) | ✅ (all) |
+| **Agent Bots (API)** | ❌ | ❌ | ✅ |
+| **RAG Testing** | ❌ | ❌ | ✅ |
 | **System Settings** | ❌ | ❌ | ✅ |
-| **Backup/Restore** | ❌ | ❌ | ✅ |
+| **Backup/Restore** | ❌ | ✅ (own org) | ✅ (all) |
 
 ---
 
@@ -234,7 +244,7 @@ Quick reference for feature availability by user role.
 
 | Technology | Documentation |
 |------------|---------------|
-| **Next.js 15** | [tech/SOLUTION.md § Technology Stack](tech/SOLUTION.md#technology-stack) |
+| **Next.js 16** | [tech/SOLUTION.md § Technology Stack](tech/SOLUTION.md#technology-stack) |
 | **PostgreSQL** (database) | [tech/DATABASE.md](tech/DATABASE.md), [tech/DB-techstack.md](tech/DB-techstack.md) |
 | **ChromaDB** (default vector store) | [tech/DATABASE.md](tech/DATABASE.md) |
 | **Qdrant** (optional vector store) | [tech/DATABASE.md](tech/DATABASE.md), [tech/INFRASTRUCTURE.md § Selection Guide](tech/INFRASTRUCTURE.md#infrastructure-selection-guide) |
@@ -252,17 +262,23 @@ Documentation for third-party API integrations.
 
 | Service | Purpose | Documentation |
 |---------|---------|---------------|
-| **OpenAI** | LLM, embeddings, transcription | [tech/SOLUTION.md](tech/SOLUTION.md), [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
-| **Mistral** | Alternative LLM provider | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Google Gemini** | Alternative LLM provider | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Ollama** | Local LLM inference | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Azure AD** | Enterprise authentication | [tech/auth.md § Microsoft Azure AD](tech/auth.md#microsoft-azure-ad) |
+| **OpenAI** | GPT-4.1/5.x, embeddings, Whisper | [tech/SOLUTION.md](tech/SOLUTION.md), [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
+| **Anthropic** | Claude Sonnet/Haiku/Opus 4.5, 1M context | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Mistral** | Mistral Large 3, Small 3.2, OCR | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Google Gemini** | Gemini 2.5 Pro/Flash, Thinking | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **DeepSeek** | DeepSeek Reasoner (R1), Chat | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Fireworks AI** | Open-source models (dev/test) | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Ollama** | Local LLM inference (air-gapped) | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Azure AD** | Enterprise SSO | [tech/auth.md § Microsoft Azure AD](tech/auth.md#microsoft-azure-ad) |
 | **Google OAuth** | Google sign-in | [tech/auth.md § Google OAuth](tech/auth.md#google-oauth) |
-| **Tavily** | Web search | [features/Tools.md § Web Search](features/Tools.md#web-search-tool) |
+| **Tavily** | Web search, URL extraction | [features/Tools.md § Web Search](features/Tools.md#web-search-tool) |
 | **Supadata** | YouTube transcript extraction | [features/Tools.md § YouTube](features/Tools.md#youtube-tool) |
-| **Cohere** | Search result reranking | [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
-| **SendGrid** | Email notifications | [features/Tools.md § Email Tool](features/Tools.md#email-tool) |
+| **Cohere** | API-based reranking | [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
+| **SendGrid** | Email notifications for thread sharing | [features/Tools.md § Email Tool](features/Tools.md#email-tool) |
 | **Azure Document Intelligence** | Enhanced OCR for Office docs | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **SonarCloud** | Static code quality analysis | [features/Tools.md](features/Tools.md) |
+| **Google PageSpeed** | Website performance analysis | [features/Tools.md](features/Tools.md) |
+| **k6 Cloud** | Cloud load testing | [features/Tools.md](features/Tools.md) |
 
 ---
 
@@ -284,6 +300,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.1** | March 2026 | Agent Bots (programmatic API), Fireworks AI + DeepSeek + Anthropic providers, Thinking Models (`<think>` processing), 8+ new tools (SonarCloud, PageSpeed, SSL/DNS/Cookie/Redirect scan, k6 load test, security scan, dependency analysis), Next.js 16, configurable tool call limits |
 | **3.0** | March 2026 | PostgreSQL-only (SQLite removed), Kysely ORM, async database access, `src/lib/db/utils.ts` for pure utilities |
 | **2.9** | February 2025 | PostgreSQL + Qdrant support, Docker Compose profile-based service selection, Infrastructure dashboard (Admin → Dashboard → Infrastructure), MAX_UPLOAD_SIZE for large backup restores, scalability guide |
 | **2.8** | February 2025 | Vision capability handling: runtime strategy detection (vision-and-ocr, ocr-only, none), `/api/config/capabilities` endpoint, FileUpload warnings |
@@ -330,4 +347,4 @@ When updating documentation:
 
 ---
 
-*Last updated: March 2026 (v3.0)*
+*Last updated: March 2026 (v3.1)*

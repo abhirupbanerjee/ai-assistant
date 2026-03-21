@@ -14,7 +14,7 @@ This document describes the key configuration components that control how the AI
 2. [Starter Prompts](#2-starter-prompts)
 3. [Category Prompts](#3-category-prompts)
 4. [Skills](#4-skills) - Including tool association for keyword skills
-5. [Tools](#5-tools) - Overview of all 9 tools with references to Tools.md
+5. [Tools](#5-tools) - Overview of all 23+ tools with references to Tools.md
 6. [Data Sources](#6-data-sources)
 7. [Function APIs](#7-function-apis)
 8. [Memory](#8-memory) - Memory extraction and thread summarization
@@ -29,11 +29,11 @@ This document describes the key configuration components that control how the AI
 **What it is:** The foundational instructions sent to the AI for every conversation. Defines core behavior, constraints, and response guidelines.
 
 ### Storage
-- **Primary:** SQLite `settings` table with key `'system-prompt'`
-- **Fallback:** `config/system-prompt.md` file (loaded if SQLite value is missing/outdated)
+- **Primary:** PostgreSQL `settings` table with key `'system-prompt'`
+- **Fallback:** `config/system-prompt.md` file (loaded if DB value is missing/outdated)
 
 ### Key Features
-- Auto-sync: When `system-prompt.md` file changes (detected via hash), SQLite entry is cleared and new file content is used
+- Auto-sync: When `system-prompt.md` file changes (detected via hash), DB entry is cleared and new file content is used
 - Maximum combined length with category addendum: **8,000 characters**
 - Admin-only access via `/api/admin/system-prompt`
 
@@ -254,6 +254,22 @@ interface SkillsSettings {
 | **youtube** | Autonomous | Extract YouTube video transcripts | Supadata API key (optional) |
 | **share_thread** | UI | Share conversation threads via secure links | None |
 | **send_email** | Internal | Send email notifications via SendGrid | SendGrid API key |
+| **image_gen** | Autonomous | Generate images via DALL-E or Gemini Imagen | None (uses LLM provider) |
+| **diagram_gen** | Autonomous | Generate diagrams (Mermaid, PlantUML) | None |
+| **translation** | Autonomous | Translate content to specified language | None |
+| **ssl_scan** | Autonomous | Analyze SSL/TLS certificate and configuration | None |
+| **dns_scan** | Autonomous | DNS record enumeration and analysis | None |
+| **cookie_audit** | Autonomous | Audit website cookies for compliance | None |
+| **redirect_audit** | Autonomous | Trace HTTP redirect chains | None |
+| **pagespeed** | Autonomous | PageSpeed Insights performance analysis | PAGESPEED_API_KEY (optional) |
+| **sonarcloud** | Autonomous | SonarCloud code quality and security scan | SONARCLOUD_TOKEN |
+| **loadtest** | Autonomous | k6 load testing | k6 installed or K6_CLOUD_API_TOKEN |
+| **security_scan** | Autonomous | Web security headers and vulnerability scan | None |
+| **dependencies** | Autonomous | Dependency vulnerability analysis | None |
+| **pptx_gen** | Processor | Generate PowerPoint presentations | None |
+| **xlsx_gen** | Processor | Generate Excel spreadsheets | None |
+
+> **Full Documentation:** See [Tools.md](Tools.md) for complete configuration details, OpenAI schemas, and usage examples.
 
 ### Storage
 - **Table:** `tool_configs` - Global tool configurations

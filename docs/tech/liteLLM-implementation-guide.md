@@ -12,13 +12,13 @@ Policy Bot uses a **hybrid architecture**: core chat services route through Lite
 
 | Service | Policy Bot Feature | Routes Through | Provider(s) | Notes |
 |---------|-------------------|----------------|-------------|-------|
-| **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, Ollama | Primary conversation engine |
+| **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, DeepSeek, Fireworks AI, Ollama | Primary conversation engine |
 | **Embeddings** | Document indexing, search | ✅ LiteLLM | OpenAI | `text-embedding-3-large` default |
-| **Diagram Generation** | `diagram_gen` tool | ✅ LiteLLM | OpenAI, Gemini, Mistral | Generates Mermaid syntax |
-| **Summarization** | Message compression | ✅ LiteLLM | OpenAI, Gemini, Mistral | Long conversation handling |
-| **Memory Extraction** | User fact storage | ✅ LiteLLM | OpenAI, Gemini, Mistral | Per-category memory |
-| **Prompt Optimization** | Query refinement | ✅ LiteLLM | OpenAI, Gemini, Mistral | Pre-RAG processing |
-| **Compliance Checks** | HITL clarification | ✅ LiteLLM | OpenAI, Gemini, Mistral | Skill compliance |
+| **Diagram Generation** | `diagram_gen` tool | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Generates Mermaid syntax |
+| **Summarization** | Message compression | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, DeepSeek | Long conversation handling |
+| **Memory Extraction** | User fact storage | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Per-category memory |
+| **Prompt Optimization** | Query refinement | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Pre-RAG processing |
+| **Compliance Checks** | HITL clarification | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Skill compliance |
 | **Translation** | Multi-language support | ✅ LiteLLM / ❌ Direct | OpenAI (proxy), Gemini/Mistral (direct) | Provider-dependent |
 | **Audio Transcription** | Voice input | ❌ Direct | OpenAI Whisper | Not available via LiteLLM |
 | **Image Generation** | `image_gen` tool | ❌ Direct | OpenAI DALL-E, Gemini Imagen | Specialized APIs |
@@ -85,6 +85,11 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 - **gemini-2.5-pro** - Google Flagship Reasoning (1M context)
 - **gemini-2.5-flash** - Google Balanced (1M context)
 - **gemini-2.5-flash-lite** - Google Cost-Effective (1M context)
+- **claude-opus-4-6** - Anthropic Flagship
+- **claude-sonnet-4-6** - Anthropic Balanced
+- **deepseek-chat** - DeepSeek V3 (cost-effective)
+- **deepseek-reasoner** - DeepSeek R1 (thinking model)
+- **fw/kimi-k2-instruct** - Fireworks Kimi K2 (dev/test)
 - **ollama-llama3.2** - Local (no API cost)
 - **ollama-qwen2.5** - Local with excellent reasoning
 
@@ -102,13 +107,13 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 ┌─────────────────────────────────────────────────────────────────┐
 │                    LiteLLM Proxy (Port 4000)                    │
 │                    Docker Compose Service                        │
-└─────────┬───────────┬───────────┬───────────┬───────────────────┘
-          │           │           │           │
-          ▼           ▼           ▼           ▼
-     ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
-     │ OpenAI │  │ Azure  │  │Mistral │  │ Ollama │
-     │        │  │ OpenAI │  │        │  │(Local) │
-     └────────┘  └────────┘  └────────┘  └────────┘
+└─────┬───────┬──────┬──────┬──────┬──────┬──────┬──────────────┘
+      │       │      │      │      │      │      │
+      ▼       ▼      ▼      ▼      ▼      ▼      ▼
+  ┌──────┐ ┌──────┐ ┌─────┐ ┌─────┐ ┌──────┐ ┌──────┐ ┌──────┐
+  │OpenAI│ │Azure │ │Mistr│ │Gemini│ │Anthro│ │DeepSk│ │Ollama│
+  │      │ │OpenAI│ │  al │ │      │ │ pic  │ │      │ │(Loc.)│
+  └──────┘ └──────┘ └─────┘ └─────┘ └──────┘ └──────┘ └──────┘
 ```
 
 ---
@@ -174,6 +179,21 @@ MISTRAL_API_KEY=...
 GEMINI_API_KEY=...
 
 # ===================
+# Anthropic
+# ===================
+ANTHROPIC_API_KEY=...
+
+# ===================
+# DeepSeek
+# ===================
+DEEPSEEK_API_KEY=...
+
+# ===================
+# Fireworks AI (dev/test open-source models)
+# ===================
+FIREWORKS_AI_API_KEY=fw-...
+
+# ===================
 # Ollama (Local)
 # ===================
 OLLAMA_API_BASE=http://host.docker.internal:11434
@@ -189,8 +209,8 @@ Create `litellm_config.yaml`:
 ```yaml
 # =============================================================================
 # LITELLM PROXY CONFIGURATION
-# Multi-provider setup: OpenAI, Azure, Mistral, Ollama
-# Updated: December 2025
+# Multi-provider setup: OpenAI, Azure, Mistral, Gemini, Anthropic, DeepSeek, Fireworks AI, Ollama
+# Updated: March 2026
 # =============================================================================
 
 model_list:

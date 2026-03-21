@@ -175,16 +175,27 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Rate limiting | `workspace_rate_limits` | `compat/workspaces.ts` |
 | Analytics rollup | `workspace_analytics` | `compat/workspace-sessions.ts` |
 
+### Agent Bots (Programmatic API)
+
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Create agent bot | `agent_bots` | `compat/agent-bots.ts` |
+| Manage API keys | `agent_bot_api_keys` | `compat/agent-bots.ts` |
+| Invoke bot / track jobs | `agent_bot_jobs`, `agent_bot_job_files`, `agent_bot_job_outputs` | `compat/agent-bots.ts` |
+| Bot version history | `agent_bot_versions`, `agent_bot_version_categories`, `agent_bot_version_skills`, `agent_bot_version_tools` | `compat/agent-bots.ts` |
+| Usage analytics | `agent_bot_usage` | `compat/agent-bots.ts` |
+| Load test results | `load_test_results` | `compat/load-testing.ts` |
+
 ### Backup & Migration
 
 | Operation | Table(s) | Access Module |
 |-----------|----------|---------------|
-| Export all data | All 45+ tables | `compat/backup-async.ts` |
-| Import all data | All 45+ tables | `compat/backup-async.ts` |
+| Export all data | All 60 tables | `compat/backup-async.ts` |
+| Import all data | All 60 tables | `compat/backup-async.ts` |
 
 ---
 
-## Complete Table Inventory (45 Tables)
+## Complete Table Inventory (60 Tables)
 
 | Table | Category | Purpose |
 |-------|----------|---------|
@@ -237,6 +248,17 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | `workspace_outputs` | Workspace | Generated files |
 | `workspace_rate_limits` | Workspace | IP rate limiting |
 | `workspace_analytics` | Workspace | Daily analytics |
+| `agent_bots` | Agent Bots | Bot definitions and config |
+| `agent_bot_api_keys` | Agent Bots | API keys for bot access |
+| `agent_bot_jobs` | Agent Bots | Invocation job tracking |
+| `agent_bot_job_files` | Agent Bots | Files attached to jobs |
+| `agent_bot_job_outputs` | Agent Bots | Output files from jobs |
+| `agent_bot_versions` | Agent Bots | Bot version snapshots |
+| `agent_bot_version_categories` | Agent Bots | Version-category mapping |
+| `agent_bot_version_skills` | Agent Bots | Version-skill mapping |
+| `agent_bot_version_tools` | Agent Bots | Version-tool mapping |
+| `agent_bot_usage` | Agent Bots | Usage analytics per bot |
+| `load_test_results` | Testing | k6 load test result records |
 
 ---
 

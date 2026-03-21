@@ -14,7 +14,7 @@ Policy Bot solves this by providing:
 |-------------|----------------|
 | **Data Sovereignty** | All data remains on your infrastructure—databases, vector stores, and files never leave your control |
 | **Open Source** | Polyform NonCommercial licensed, fully auditable code with no proprietary dependencies |
-| **Interoperability** | Switch AI providers freely (OpenAI, Anthropic, Mistral, Gemini, DeepSeek, or local Ollama) |
+| **Interoperability** | Switch AI providers freely (OpenAI, Anthropic, Mistral, Gemini, DeepSeek, Fireworks, or local Ollama) |
 | **No Lock-In** | Standard PostgreSQL database, portable vector stores, exportable configurations |
 | **Zero ML Complexity** | Admin dashboard handles all AI configuration—no data scientists required |
 | **Enterprise Security** | Role-based access, department isolation, audit trails, SSO integration |
@@ -40,26 +40,28 @@ Deploy across ministries, departments, and public-facing services:
 
 Built with enterprise-grade, open-source technologies:
 
-- **Next.js** - Modern React framework with server-side rendering
-- **PostgreSQL** - Battle-tested relational database via Kysely ORM
-- **ChromaDB/Qdrant** - Open-source vector databases for semantic search
+- **Next.js 16** - Modern React 19 framework with server-side rendering and App Router
+- **PostgreSQL** - Battle-tested relational database via Kysely ORM (SQLite fully removed)
+- **ChromaDB / Qdrant** - Open-source vector databases for semantic search
 - **LiteLLM** - Unified gateway to 100+ LLM providers
 - **Redis** - High-performance caching and session management
 - **Traefik** - Production-ready reverse proxy with automatic TLS
+- **Ollama** - Local LLM inference for air-gapped / sensitive deployments
 
 ## Capabilities
 
 ### Core Features
 - **RAG-Powered Q&A** - Natural language queries with source citations
-- **Multi-Provider LLM** - OpenAI, Anthropic Claude, DeepSeek, Mistral, Gemini, Ollama via LiteLLM
+- **Multi-Provider LLM** - OpenAI, Anthropic Claude, DeepSeek, Mistral, Gemini, Fireworks AI, Ollama via LiteLLM
 - **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
+- **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking)
 - **Voice Input** - Whisper transcription for audio questions
 - **Streaming Responses** - Real-time chat with typing indicators
 - **Artifacts Panel** - Right sidebar showing uploads, generated content, web/YouTube sources
 
 ### Document Management
 - **Category Organization** - Documents grouped by department (HR, Finance, IT, etc.)
-- **Multi-Format Upload** - PDF, DOCX, XLSX, PPTX, images (up to 50MB)
+- **Multi-Format Upload** - PDF, DOCX, XLSX, PPTX, images (up to 500MB, configurable)
 - **Text Content Upload** - Paste text directly, bypasses OCR
 - **Thread Uploads** - PDF, TXT, PNG, JPG, WebP files per conversation
 - **Web URL Extraction** - Extract web page content via Tavily
@@ -76,6 +78,7 @@ Built with enterprise-grade, open-source technologies:
 - **Prompts System** - Global and category-specific AI instructions
 - **Skills System** - Modular behaviors triggered by category/keyword/always-on
 - **Tool Routing** - Pattern-based forced tool invocation for reliable behavior
+- **Configurable Limits** - Per-category tool call and maximum token limits
 - **User Memory** - Recall user-specific facts across conversations
 - **Thread Summarization** - Compress long conversations
 - **Reranking** - BGE cross-encoder (large/base), Cohere API, or local bi-encoder via Transformers.js
@@ -100,7 +103,7 @@ Built with enterprise-grade, open-source technologies:
 ### Tools
 - **Web Search** - Tavily integration for current information
 - **Data Sources** - Query external APIs and CSV files
-- **Function APIs** - OpenAI-style function calling
+- **Function APIs** - OpenAI-style function calling with custom schemas
 - **Chart Generation** - Visualize data in responses
 - **Task Planning** - Multi-step workflow execution with templates
 - **YouTube** - Extract and query video transcripts
@@ -111,7 +114,29 @@ Built with enterprise-grade, open-source technologies:
 - **Image Generation** - DALL-E 3 and Gemini Imagen integration
 - **Diagram Generation** - Mermaid flowcharts, sequences, mindmaps
 - **Translation** - Multi-provider translation (OpenAI, Gemini, Mistral)
+- **Email** - Send emails via SendGrid
 - **Compliance Checker** - Post-response validation with weighted scoring and HITL clarification when response quality falls below threshold
+- **Code Quality** - SonarCloud integration for static code analysis
+- **PageSpeed** - Google PageSpeed Insights website performance analysis
+- **SSL Scan** - SSL/TLS certificate validation and expiry checks
+- **DNS Scan** - DNS record inspection and diagnostics
+- **Cookie Audit** - Cookie compliance and privacy scanning
+- **Redirect Audit** - URL redirect chain analysis
+- **Load Testing** - k6 Cloud load test execution and reporting
+- **Security Scan** - Automated security vulnerability scanning
+- **Dependency Analysis** - Project dependency inspection and vulnerability checks
+
+### Agent Bots (API)
+Expose your AI capabilities as a programmatic API for external systems, apps, and CI/CD pipelines:
+
+- **API Key Management** - Per-bot API keys with scope control
+- **Async Job Queue** - Submit jobs, poll status, download outputs
+- **Version History** - Snapshot and rollback bot configurations
+- **Analytics** - Per-bot usage and performance tracking
+- **File Uploads** - Attach files to bot job submissions
+- **Multiple Output Types** - Text, documents, spreadsheets, presentations, audio
+
+> Configure agent bots via Admin > Agent Bots. Invoke externally via `POST /api/agent-bots/[slug]/invoke`.
 
 ### Autonomous Agent (Beta)
 - **Task Planning** - Decompose complex requests into multi-step plans
@@ -130,6 +155,12 @@ Built with enterprise-grade, open-source technologies:
 - **Cross-Platform** - Works on Windows, macOS, Linux, iOS, Android
 - **Offline Page** - Friendly offline message (online connection required for functionality)
 
+### Operations
+- **Backup & Restore** - Full database backup and restore via Admin and SuperUser dashboards
+- **RAG Testing** - Built-in retrieval test suite with result scoring (Admin > RAG Testing)
+- **LLM Discovery** - Auto-discover available models from LiteLLM proxy
+- **Reranker Status** - Monitor local reranker model download and readiness
+
 ## Directory Structure
 
 ```
@@ -137,11 +168,13 @@ policy-bot/
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/                # REST API endpoints
-│   │   │   ├── chat/           # RAG chat (streaming + non-streaming)
-│   │   │   ├── threads/        # Thread CRUD + file uploads
-│   │   │   ├── admin/          # Admin endpoints (documents, users, categories, settings)
-│   │   │   ├── superuser/      # SuperUser endpoints
-│   │   │   ├── user/           # User endpoints
+│   │   │   ├── chat/           # RAG chat (streaming + HITL)
+│   │   │   ├── threads/        # Thread CRUD + file uploads + sharing
+│   │   │   ├── admin/          # Admin endpoints (documents, users, categories, settings, agent-bots)
+│   │   │   ├── superuser/      # SuperUser endpoints (global scope)
+│   │   │   ├── user/           # User-scoped endpoints
+│   │   │   ├── autonomous/     # Autonomous agent plan control (pause/resume/stop)
+│   │   │   ├── agent-bots/     # Public agent bot invocation API
 │   │   │   └── w/[slug]/       # Workspace API endpoints
 │   │   ├── admin/              # Admin dashboard UI
 │   │   ├── superuser/          # SuperUser dashboard UI
@@ -154,9 +187,14 @@ policy-bot/
 │   │   ├── workspace/          # Workspace components (embed + standalone)
 │   │   └── ui/                 # Shared UI components
 │   ├── lib/                    # Core libraries
-│   │   ├── db/                 # Database layer — PostgreSQL via Kysely (users, categories, documents, config)
-│   │   ├── tools/              # Tool implementations (web search, charts, data sources)
+│   │   ├── db/                 # Database layer — PostgreSQL via Kysely
+│   │   │   ├── compat/         # 31 async modules (all DB access goes here)
+│   │   │   ├── schema/         # PostgreSQL schema + LiteLLM DB init SQL
+│   │   │   ├── kysely.ts       # Kysely instance factory (Postgres-only)
+│   │   │   └── db-types.ts     # TypeScript types for all tables
+│   │   ├── tools/              # 23+ tool implementations
 │   │   ├── agent/              # Autonomous agent (planner, executor, checker, summarizer)
+│   │   ├── agent-bots/         # Agent bot job runner and output management
 │   │   ├── image-gen/          # Image generation (DALL-E, Gemini Imagen)
 │   │   ├── diagram-gen/        # Diagram generation (Mermaid)
 │   │   ├── translation/        # Multi-provider translation
@@ -172,27 +210,33 @@ policy-bot/
 │   │   └── skills.ts           # Skills system
 │   └── types/                  # TypeScript definitions
 ├── docs/                       # Comprehensive documentation
-│   ├── API/                    # API specifications
-│   │   └── API_SPECIFICATION.md # Full REST API reference
-│   ├── features/               # Feature documentation
-│   │   ├── Tools.md            # Tool system documentation
-│   │   ├── PROMPTS.md          # Prompts system guide
-│   │   ├── SKILLS.md           # Skills system guide (includes tool routing)
-│   │   ├── PWA.md              # Progressive Web App guide
-│   │   └── AUTONOMOUS_MODE_INTEGRATION.md # Autonomous mode
-│   ├── tech/                   # Technical architecture
-│   │   ├── SOLUTION.md         # Architecture and design decisions
-│   │   ├── DATABASE.md         # Complete PostgreSQL/ChromaDB/Redis schema
-│   │   ├── INFRASTRUCTURE.md   # Deployment and operations
-│   │   ├── Bot-Config-architecture.md # Configuration architecture
-│   │   └── UI_WIREFRAMES.md    # Interface designs
-│   └── user_manuals/           # User, Admin, SuperUser guides
-│       ├── USER_GUIDE.md       # End user guide
-│       ├── ADMIN_GUIDE.md      # Admin dashboard guide
-│       └── SUPERUSER_GUIDE.md  # Superuser guide
+│   ├── API/
+│   │   └── API_SPECIFICATION.md        # Full REST API reference
+│   ├── features/
+│   │   ├── Tools.md                    # Tool system documentation
+│   │   ├── PROMPTS.md                  # Prompts system guide
+│   │   ├── SKILLS.md                   # Skills system guide (includes tool routing)
+│   │   ├── PWA.md                      # Progressive Web App guide
+│   │   └── AUTONOMOUS_MODE_INTEGRATION.md
+│   ├── tech/
+│   │   ├── SOLUTION.md                 # Architecture and design decisions
+│   │   ├── DATABASE.md                 # PostgreSQL/ChromaDB/Redis schema
+│   │   ├── DB-techstack.md             # Database technical stack
+│   │   ├── INFRASTRUCTURE.md           # Deployment and operations
+│   │   ├── scaling.md                  # Scaling guide (1–500+ users)
+│   │   ├── auth.md                     # Authentication architecture
+│   │   ├── addLLM.md                   # Adding new LLM providers
+│   │   ├── liteLLM-implementation-guide.md
+│   │   ├── fresh-vm-setup.md           # Fresh VM deployment guide
+│   │   ├── Bot-Config-architecture.md  # Configuration architecture
+│   │   └── UI_WIREFRAMES.md            # Interface designs
+│   └── user_manuals/
+│       ├── USER_GUIDE.md
+│       ├── ADMIN_GUIDE.md
+│       └── SUPERUSER_GUIDE.md
 ├── litellm-proxy/              # LiteLLM configuration
 ├── docker-compose.yml          # Production stack
-├── docker-compose.dev.yml      # Development stack
+├── docker-compose.local.yml    # Local development stack (Postgres + Qdrant + Redis + LiteLLM)
 └── Dockerfile                  # Multi-stage build
 ```
 
@@ -203,12 +247,12 @@ policy-bot/
 cp .env.example .env.local
 # Configure OPENAI_API_KEY, ADMIN_EMAILS, DATABASE_URL, VECTOR_STORE_PROVIDER
 
-# PostgreSQL + ChromaDB (default)
-docker compose -f docker-compose.dev.yml up -d
+# PostgreSQL + Qdrant + Redis + LiteLLM
+docker compose -f docker-compose.local.yml up -d
 npm install && npm run dev
 
-# Or PostgreSQL + Qdrant
-docker compose -f docker-compose.dev.yml --profile qdrant up -d
+# Or with ChromaDB
+docker compose -f docker-compose.local.yml --profile chromadb up -d
 npm install && npm run dev
 ```
 
@@ -221,6 +265,9 @@ docker compose --profile chromadb up -d --build
 
 # PostgreSQL + Qdrant (recommended for 100+ users)
 docker compose --profile qdrant up -d --build
+
+# Add Ollama for local LLM inference
+docker compose --profile qdrant --profile ollama up -d --build
 ```
 
 ## Scaling Guide
@@ -253,10 +300,11 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 | **Traefik** | Reverse proxy + TLS (ports 80, 443) | Default |
 | **Next.js** | Application (port 3000) | Default |
 | **Redis** | Cache + sessions (port 6379) | Default |
-| **PostgreSQL** | Relational database (port 5432) | Default |
+| **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
 | **ChromaDB** | Vector database (port 8000) | `--profile chromadb` |
-| **Qdrant** | Vector database (port 6333) | `--profile qdrant` |
+| **Qdrant** | Vector database (ports 6333/6334) | `--profile qdrant` |
 | **LiteLLM** | Multi-provider LLM gateway (port 4000) | `--profile litellm` |
+| **Ollama** | Local LLM inference | `--profile ollama` |
 
 ## External API Keys & Licenses
 
@@ -270,7 +318,7 @@ Policy Bot integrates with several external services. All are optional except LL
 | **Anthropic** | [console.anthropic.com](https://console.anthropic.com/) | Claude Sonnet/Haiku/Opus 4.5, 1M context | N/A |
 | **DeepSeek** | [platform.deepseek.com](https://platform.deepseek.com/) | DeepSeek Reasoner, Chat (no vision) | Ollama (local models) |
 | **Mistral** | [console.mistral.ai](https://console.mistral.ai/api-keys) | Mistral Large 3, Small 3.2, vision, OCR | Ollama (local models) |
-| **Google Gemini** | [ai.google.dev](https://ai.google.dev/) | Gemini 2.5 Pro/Flash, 1M context | Ollama (local models) |
+| **Google Gemini** | [ai.google.dev](https://ai.google.dev/) | Gemini 2.5 Pro/Flash, 1M context, Thinking | Ollama (local models) |
 | **Ollama** | [ollama.ai](https://ollama.ai) | Local models (Llama, Qwen, Mistral, Phi) | N/A (is the local option) |
 | **Fireworks AI** | [fireworks.ai](https://fireworks.ai/account/api-keys) | Open-source models: MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 (dev/test) | Ollama (local models) |
 
@@ -331,6 +379,9 @@ Choose provider tier based on data sensitivity and task complexity:
 | **Tavily** | [tavily.com](https://tavily.com) | Web search, URL content extraction | None (web features disabled) |
 | **Supadata** | [supadata.ai](https://supadata.ai) | YouTube transcript extraction | `youtube-transcript` npm (may be blocked) |
 | **SendGrid** | [sendgrid.com](https://app.sendgrid.com/settings/api_keys) | Email notifications for thread sharing | None (email features disabled) |
+| **SonarCloud** | [sonarcloud.io](https://sonarcloud.io) | Static code quality analysis | None |
+| **Google PageSpeed** | [developers.google.com/speed/docs/insights/v5/get-started](https://developers.google.com/speed/docs/insights/v5/get-started) | Website performance analysis | None |
+| **k6 Cloud** | [app.k6.io](https://app.k6.io) | Cloud load testing | None |
 
 ### Data Source Encryption (Recommended)
 
@@ -342,20 +393,25 @@ Choose provider tier based on data sensitivity and task complexity:
 
 ```bash
 # Required (pick at least one LLM)
-OPENAI_API_KEY=sk-...          # GPT-4.1, GPT-5.x models
-ANTHROPIC_API_KEY=sk-ant-...   # Claude Sonnet/Haiku/Opus 4.5
-DEEPSEEK_API_KEY=sk-...        # DeepSeek Reasoner, Chat
-GEMINI_API_KEY=...             # Gemini 2.5 Pro/Flash
-MISTRAL_API_KEY=...            # Mistral Large 3, Small 3.2
+OPENAI_API_KEY=sk-...              # GPT-4.1, GPT-5.x models
+ANTHROPIC_API_KEY=sk-ant-...       # Claude Sonnet/Haiku/Opus 4.5
+DEEPSEEK_API_KEY=sk-...            # DeepSeek Reasoner, Chat
+GEMINI_API_KEY=...                 # Gemini 2.5 Pro/Flash, Thinking
+MISTRAL_API_KEY=...                # Mistral Large 3, Small 3.2
+FIREWORKS_AI_API_KEY=...           # Fireworks open-source models (dev/test)
+OLLAMA_API_BASE=http://localhost:11434  # Local Ollama (or host.docker.internal)
 
 # Production Auth (at least one)
 AZURE_AD_CLIENT_ID=...
 GOOGLE_CLIENT_ID=...
 
 # Optional Enhancements
-COHERE_API_KEY=...             # Or use local BGE reranker
-TAVILY_API_KEY=...             # For web search
-AZURE_DI_ENDPOINT=...          # For Office docs
+COHERE_API_KEY=...                 # Or use local BGE reranker
+TAVILY_API_KEY=...                 # For web search
+AZURE_DI_ENDPOINT=...              # For Office docs
+PAGESPEED_API_KEY=...              # For PageSpeed analysis
+SONARCLOUD_TOKEN=...               # For code quality analysis
+K6_CLOUD_API_TOKEN=...             # For load testing
 
 # Admin-Configured (via UI)
 # - SendGrid API key (Admin > Tools > Email)

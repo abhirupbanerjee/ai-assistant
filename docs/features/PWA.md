@@ -692,4 +692,4 @@ Configure PWA appearance:
 
 ---
 
-*Last updated: February 2026 (v1.1)*
+*Last updated: March 2026 (v1.2)*

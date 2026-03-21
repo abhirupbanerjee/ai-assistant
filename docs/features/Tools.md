@@ -24,11 +24,19 @@ This document describes the AI tools system that extends the bot's capabilities 
 16. [Compliance Checker Tool](#compliance-checker-tool)
 17. [Preflight Clarification (Pre-response HITL)](#preflight-clarification-pre-response-hitl)
 18. [SSL Scan Tool](#ssl-scan-tool)
-19. [Tool Routing](#tool-routing)
-20. [Tool Configuration](#tool-configuration)
-21. [Category-Level Overrides](#category-level-overrides)
-22. [Creating a New Tool](#creating-a-new-tool)
-23. [API Reference](#api-reference)
+19. [DNS Scan Tool](#dns-scan-tool)
+20. [Cookie Audit Tool](#cookie-audit-tool)
+21. [Redirect Audit Tool](#redirect-audit-tool)
+22. [PageSpeed Tool](#pagespeed-tool)
+23. [SonarCloud Tool](#sonarcloud-tool)
+24. [Load Test Tool](#load-test-tool)
+25. [Security Scan Tool](#security-scan-tool)
+26. [Dependency Analysis Tool](#dependency-analysis-tool)
+27. [Tool Routing](#tool-routing)
+28. [Tool Configuration](#tool-configuration)
+29. [Category-Level Overrides](#category-level-overrides)
+30. [Creating a New Tool](#creating-a-new-tool)
+31. [API Reference](#api-reference)
 
 ---
 
@@ -71,11 +79,25 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 - `pptx_gen` - Generate PowerPoint presentations with multiple slide types
 - `xlsx_gen` - Generate Excel spreadsheets with formulas and styling
 - `podcast_gen` - Generate audio podcasts using Text-to-Speech
+- `image_gen` - Generate images using DALL-E 3 or Gemini Imagen
+- `diagram_gen` - Generate Mermaid diagrams (flowcharts, sequences, mindmaps)
+- `translation` - Translate text using OpenAI, Gemini, or Mistral
 - `data_source` - Query external APIs and CSV data with visualization
 - `chart_gen` - Generate charts from LLM-constructed data
 - `function_api` - Dynamic function calling with OpenAI-format schemas
 - `task_planner` - Manage multi-step task plans for complex operations
 - `youtube` - Extract transcripts from YouTube videos
+- `share_thread` - Create shareable links for conversations
+- `send_email` - Send emails via SendGrid
+- `ssl_scan` - Validate SSL/TLS certificates and expiry
+- `dns_scan` - Inspect DNS records and diagnose issues
+- `cookie_audit` - Audit website cookie compliance and privacy
+- `redirect_audit` - Analyze URL redirect chains
+- `pagespeed` - Google PageSpeed Insights website performance
+- `sonarcloud` - SonarCloud static code quality analysis
+- `loadtest` - k6 Cloud load test execution and reporting
+- `security_scan` - Automated security vulnerability scanning
+- `dependencies` - Project dependency inspection and vulnerability checks
 
 **Meta-tools (injected by the system, not DB-managed):**
 - `request_clarification` - Pre-response HITL; injected when a skill has preflight clarification enabled. The LLM calls this to ask the user a focused question before generating its answer. See [Preflight Clarification](#preflight-clarification-pre-response-hitl).
@@ -2417,6 +2439,206 @@ interface SslScanConfig {
 - Results are cached for 6 hours to avoid hitting rate limits
 - The free SSL Labs tier allows ~25 new scans/hour globally; during peak times the API returns HTTP 529 ("Running at full capacity") and the tool falls back to the direct TLS check
 - Registered email is sent as a request header on every SSL Labs API call (v4 requirement)
+
+---
+
+## DNS Scan Tool
+
+### Purpose
+
+Inspects DNS records for a domain and reports configuration issues, missing records, and security posture (SPF, DMARC, DNSSEC).
+
+### Configuration
+
+Enable via Admin → Tools → DNS Scan. No API key required — uses public DNS resolvers.
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `a_records` | IPv4 address records |
+| `mx_records` | Mail exchange records |
+| `spf` | SPF record status (missing, valid, misconfigured) |
+| `dmarc` | DMARC policy |
+| `dnssec` | DNSSEC validation status |
+| `issues` | Detected DNS configuration problems |
+
+---
+
+## Cookie Audit Tool
+
+### Purpose
+
+Audits a website for cookie compliance — identifies tracking cookies, checks for consent banners, and flags GDPR/ePrivacy concerns.
+
+### Configuration
+
+Enable via Admin → Tools → Cookie Audit. No API key required.
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `total_cookies` | Number of cookies set by the page |
+| `tracking_cookies` | Third-party tracking cookies detected |
+| `session_cookies` | Session-only cookies |
+| `consent_banner` | Whether a consent banner was detected |
+| `issues` | Compliance issues found |
+
+---
+
+## Redirect Audit Tool
+
+### Purpose
+
+Follows and reports URL redirect chains — identifies redirect loops, unnecessary hops, and mixed HTTP/HTTPS redirects.
+
+### Configuration
+
+Enable via Admin → Tools → Redirect Audit. No API key required.
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `chain` | Full list of redirect URLs in order |
+| `hops` | Number of redirects |
+| `final_url` | Resolved destination URL |
+| `final_status` | HTTP status of the final URL |
+| `issues` | Mixed-content or loop problems |
+
+---
+
+## PageSpeed Tool
+
+### Purpose
+
+Runs Google PageSpeed Insights analysis on a URL and returns Core Web Vitals, performance score, and actionable recommendations.
+
+### API Key
+
+Requires `PAGESPEED_API_KEY` environment variable (Google API key with PageSpeed Insights API enabled).
+
+### Configuration
+
+```typescript
+interface PageSpeedConfig {
+  apiKey: string;       // Google PageSpeed Insights API key
+  strategy: 'mobile' | 'desktop';  // Default: desktop
+}
+```
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `performance_score` | 0–100 overall performance score |
+| `lcp` | Largest Contentful Paint (seconds) |
+| `fid` | First Input Delay (ms) |
+| `cls` | Cumulative Layout Shift |
+| `fcp` | First Contentful Paint |
+| `ttfb` | Time to First Byte |
+| `opportunities` | Top recommendations with estimated savings |
+
+---
+
+## SonarCloud Tool
+
+### Purpose
+
+Runs static code quality analysis on a GitHub/GitLab project via SonarCloud and returns bugs, vulnerabilities, code smells, and coverage.
+
+### API Key
+
+Requires `SONARCLOUD_TOKEN` and `SONARCLOUD_ORGANIZATION` environment variables.
+
+### Configuration
+
+```typescript
+interface SonarCloudConfig {
+  token: string;          // SonarCloud API token
+  organization: string;   // SonarCloud organization key
+}
+```
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `bugs` | Number of detected bugs |
+| `vulnerabilities` | Security vulnerabilities |
+| `code_smells` | Maintainability issues |
+| `coverage` | Code coverage percentage |
+| `duplications` | Duplication ratio |
+| `quality_gate` | Overall pass/fail quality gate status |
+
+---
+
+## Load Test Tool
+
+### Purpose
+
+Triggers and reports k6 Cloud load tests for API endpoints or web pages.
+
+### API Key
+
+Requires `K6_CLOUD_API_TOKEN` environment variable.
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `vus` | Virtual users simulated |
+| `duration` | Test duration |
+| `p95_response_time` | 95th percentile response time (ms) |
+| `error_rate` | Percentage of failed requests |
+| `throughput` | Requests per second |
+| `passed` | Whether performance thresholds were met |
+
+---
+
+## Security Scan Tool
+
+### Purpose
+
+Automated security scanning that checks for common web vulnerabilities including open ports, outdated TLS, missing security headers, and exposed sensitive files.
+
+### Configuration
+
+Enable via Admin → Tools → Security Scan. No external API key required for basic scanning.
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `open_ports` | Discovered open ports |
+| `missing_headers` | Missing security response headers (CSP, HSTS, etc.) |
+| `tls_issues` | TLS/SSL configuration problems |
+| `exposed_files` | Sensitive files accessible publicly |
+| `vulnerabilities` | Detected CVEs or misconfigurations |
+| `risk_score` | Aggregate risk score (0–100) |
+
+---
+
+## Dependency Analysis Tool
+
+### Purpose
+
+Inspects a project's dependency manifest (package.json, requirements.txt, etc.) for outdated packages and known CVEs.
+
+### Configuration
+
+Enable via Admin → Tools → Dependencies. No external API key required.
+
+### Output
+
+| Field | Description |
+|-------|-------------|
+| `total_dependencies` | Total number of dependencies |
+| `outdated` | Packages with newer versions available |
+| `vulnerable` | Packages with known CVEs |
+| `critical_vulnerabilities` | CVEs with CVSS score ≥ 9.0 |
+| `recommendations` | Suggested upgrade actions |
 
 ---
 

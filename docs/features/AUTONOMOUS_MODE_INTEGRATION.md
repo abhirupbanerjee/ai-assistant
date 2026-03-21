@@ -408,6 +408,19 @@ The Admin panel (`/admin` → Settings → Autonomous Agent) provides configurat
 | Max Stream Duration | 300s | 60-600s | Maximum streaming session length (app-level) |
 | Tool Timeout | 60s | 30-300s | Timeout for individual tool executions |
 
+### Tool Call Limits (Admin → Tools Tab)
+
+Configurable limits applied to all tool-enabled chat sessions (both normal and autonomous mode):
+
+**Location:** Admin → Tools → Tool Call Limits (accordion)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Max Total Tool Calls** | 50 | Maximum cumulative tool calls across all tools in a single session |
+| **Max Per-Tool Calls** | 10 | Maximum times any single tool can be called within one session |
+
+When limits are reached, the LLM receives a final prompt instructing it to synthesize all gathered information into a complete response. This prevents runaway tool loops while ensuring users still get a useful answer.
+
 **Important:**
 - For processing large batches (20+ items), increase **Max Stream Duration** to 480-600s
 - **Max Stream Duration** must be less than Traefik's timeout (1800s)
@@ -790,11 +803,18 @@ All core functionality has been implemented:
 
 ---
 
-**Last Updated:** 2026-01-11
+**Last Updated:** 2026-03-21
 **Implementation Time:** ~22-24 hours
-**Version:** 1.3 (Execution Controls & Streaming Config)
+**Version:** 1.4 (Configurable Tool Call Limits)
 
 ### Changelog
+
+#### v1.4 (2026-03-21)
+- **Configurable Tool Call Limits**: Per-session tool call caps now admin-configurable from Admin → Tools tab
+  - Max Total Tool Calls (default: 50) — total cap across all tools
+  - Max Per-Tool Calls (default: 10) — cap per individual tool
+  - When limit reached, LLM synthesizes all gathered info into a final response
+- Replaced hard-coded `MAX_TOOL_CALL_ITERATIONS` constant with DB-backed settings
 
 #### v1.3 (2026-01-11)
 - **Execution Controls**: Added pause/resume/stop/skip functionality for autonomous plans

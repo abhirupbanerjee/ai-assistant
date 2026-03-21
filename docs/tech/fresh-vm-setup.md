@@ -223,16 +223,10 @@ ACME_EMAIL=admin@example.com
 # DATABASE CONFIGURATION
 # =============================================================================
 
-# Database provider: sqlite (simple) or postgres (scalable)
-DATABASE_PROVIDER=sqlite
-
-# SQLite path (only if DATABASE_PROVIDER=sqlite)
-SQLITE_DB_PATH=/app/data/policybot.db
-
-# PostgreSQL settings (only if DATABASE_PROVIDER=postgres)
-# POSTGRES_USER=policybot
-# POSTGRES_PASSWORD=your-strong-password-here
-# POSTGRES_DB=policybot
+# PostgreSQL (required — SQLite removed March 2026)
+POSTGRES_USER=policybot
+POSTGRES_PASSWORD=your-strong-password-here
+POSTGRES_DB=policybot
 
 # =============================================================================
 # VECTOR STORE CONFIGURATION
@@ -353,19 +347,22 @@ Policy Bot uses Docker Compose profiles to select services:
 |---------|---------|----------|
 | `chromadb` | ChromaDB vector store | Default, development |
 | `qdrant` | Qdrant vector store | Production, large scale |
-| `postgres` | PostgreSQL database | Production, 50+ users |
+| `postgres` | PostgreSQL database | Required (all deployments) |
+| `ollama` | Ollama local LLM | Optional, local inference |
+
+> **Note:** PostgreSQL is required for all deployments. SQLite support was removed in March 2026.
 
 **Deployment combinations:**
 
 ```bash
-# Small deployment (SQLite + ChromaDB) - recommended for <50 users
-docker compose --profile chromadb up -d
-
-# Medium deployment (PostgreSQL + ChromaDB) - 50-100 users
+# Standard deployment (PostgreSQL + ChromaDB)
 docker compose --profile postgres --profile chromadb up -d
 
-# Large deployment (PostgreSQL + Qdrant) - 100+ users
+# Production deployment (PostgreSQL + Qdrant)
 docker compose --profile postgres --profile qdrant up -d
+
+# With local LLM inference (optional)
+docker compose --profile postgres --profile chromadb --profile ollama up -d
 ```
 
 ---
@@ -375,10 +372,10 @@ docker compose --profile postgres --profile qdrant up -d
 ### 1. Build and Start
 
 ```bash
-# For small deployment (SQLite + ChromaDB)
-docker compose --profile chromadb up -d --build
+# Standard deployment (PostgreSQL + ChromaDB)
+docker compose --profile postgres --profile chromadb up -d --build
 
-# For production deployment (PostgreSQL + Qdrant)
+# Production deployment (PostgreSQL + Qdrant)
 docker compose --profile postgres --profile qdrant up -d --build
 ```
 

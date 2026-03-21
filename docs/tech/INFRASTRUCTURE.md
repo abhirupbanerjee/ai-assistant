@@ -147,11 +147,14 @@ Global documents are indexed into ALL category collections.
 ### Local Development (.env.local)
 
 ```env
-# OpenAI
+# LLM Providers (pick at least one)
 OPENAI_API_KEY=sk-your-api-key-here
-
-# Mistral (Optional - for advanced PDF OCR)
+ANTHROPIC_API_KEY=sk-ant-your-key
+GEMINI_API_KEY=your-gemini-key
 MISTRAL_API_KEY=your-mistral-api-key
+DEEPSEEK_API_KEY=your-deepseek-key
+FIREWORKS_AI_API_KEY=fw_your-key  # dev/test only
+OLLAMA_API_BASE=http://localhost:11434
 
 # Tavily (Optional - for web search)
 TAVILY_API_KEY=your-tavily-api-key
@@ -274,6 +277,9 @@ Vector Store (choose one):
 
 Database:
   --profile postgres    → PostgreSQL (always required)
+
+Local LLM Inference (optional):
+  --profile ollama      → Ollama     (set OLLAMA_API_BASE=http://ollama:11434)
 
 Always-on services (no profile needed):
   traefik, app, redis, litellm
@@ -445,10 +451,10 @@ cp .env.example .env.local
 # Edit .env.local with your OpenAI API key
 
 # 4. Start infrastructure services
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.local.yml up -d
 
 # 5. Wait for services to be healthy
-docker compose -f docker-compose.dev.yml ps
+docker compose -f docker-compose.local.yml ps
 
 # 6. Start development server
 npm run dev
@@ -461,17 +467,17 @@ npm run dev
 
 ```bash
 # View service logs
-docker compose -f docker-compose.dev.yml logs -f chroma
-docker compose -f docker-compose.dev.yml logs -f redis
+docker compose -f docker-compose.local.yml logs -f chroma
+docker compose -f docker-compose.local.yml logs -f redis
 
 # Restart services
-docker compose -f docker-compose.dev.yml restart
+docker compose -f docker-compose.local.yml restart
 
 # Stop services
-docker compose -f docker-compose.dev.yml down
+docker compose -f docker-compose.local.yml down
 
 # Stop and remove volumes (clean slate)
-docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.local.yml down -v
 ```
 
 ---

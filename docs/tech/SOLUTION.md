@@ -20,7 +20,7 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         NEXT.JS 15 APPLICATION                          │
+│                         NEXT.JS 16 APPLICATION                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
 │  │   Chat UI   │  │  Admin UI   │  │ Super User  │  │    Auth     │     │
 │  │  (React)    │  │  (React)    │  │     UI      │  │ (NextAuth)  │     │
@@ -49,19 +49,26 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 │                       LITELLM PROXY                                     │
 │           (Multi-Provider LLM Gateway - OpenAI Compatible)              │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  Model Routing: openai/*, mistral/*, gemini/*, ollama/*          │   │
+│  │  Model Routing: openai/*, mistral/*, gemini/*, ollama/*, fw/*    │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
            │
-           ├────────────────────┬────────────────────┬────────────────────┐
-           ▼                    ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   OPENAI API    │  │   MISTRAL AI    │  │  GOOGLE GEMINI  │  │  OLLAMA (Local) │
-│  gpt-4.1 (V)    │  │ mistral-large-3 │  │ gemini-2.5-pro  │  │   llama3.2      │
-│  gpt-4.1-mini(V)│  │   (V)           │  │   (V)           │  │   qwen2.5       │
-│  gpt-4.1-nano(V)│  │ mistral-small   │  │ gemini-2.5-flash│  │   phi4          │
-└─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘
-                     (V) = Vision/Multimodal capable
+           ├──────────────┬──────────────┬──────────────┬──────────────┬────────────┐
+           ▼              ▼              ▼              ▼              ▼            ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────────┐
+│  OPENAI API  │ │  ANTHROPIC   │ │  MISTRAL AI  │ │GOOGLE GEMINI │ │ DEEPSEEK │ │FIREWORKS AI  │
+│ gpt-4.1 (V)  │ │ Claude (V)   │ │ large-3 (V)  │ │gemini-2.5(V) │ │ R1 (🧠)  │ │ MiniMax M2.5 │
+│ gpt-4.1-mini │ │ Sonnet 4.5   │ │ small-3.2(V) │ │ 2.5-flash(V) │ │ chat     │ │ Kimi K2.5    │
+│ gpt-4.1-nano │ │ Haiku 4.5    │ │ Mistral OCR  │ │ gemini embed │ │          │ │ Qwen3        │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────┘ └──────────────┘
+
+┌─────────────────┐
+│  OLLAMA (Local) │
+│   llama3.2      │
+│   qwen2.5       │
+│   phi4          │
+└─────────────────┘
+(V) = Vision/Multimodal  (🧠) = Thinking/Extended reasoning
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -83,24 +90,28 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Frontend | Next.js 15, React 19, Tailwind CSS | UI Framework |
+| Frontend | Next.js 16, React 19, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
-| Database | PostgreSQL (Kysely ORM) | Metadata storage |
+| Database | PostgreSQL (Kysely ORM) | Metadata storage — SQLite removed March 2026 |
 | LLM Gateway | LiteLLM Proxy | Multi-provider LLM abstraction (OpenAI-compatible API) |
 | LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision |
-| LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision support |
-| LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision |
-| LLM - Local | Ollama (llama3.2, qwen2.5, phi4) | Self-hosted models, no API cost |
-| Embeddings | OpenAI text-embedding-3-large | Vector embeddings (3072d) |
+| LLM - Anthropic | Claude Sonnet 4.5, Haiku 4.5, Opus 4.5 | 1M context, vision, tool calling |
+| LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision + thinking support |
+| LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision + OCR |
+| LLM - DeepSeek | deepseek-reasoner, deepseek-chat | Reasoning models with `<think>` token support |
+| LLM - Fireworks | MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 | Open-source models (dev/test environments) |
+| LLM - Local | Ollama (llama3.2, qwen2.5, phi4) | Self-hosted models, no API cost, air-gapped deployments |
+| Thinking Models | DeepSeek R1, Claude 3.7+, Gemini Thinking | Native `<think>` token processing for extended reasoning |
+| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), BGE-M3 (local) | Vector embeddings |
 | Transcription | OpenAI whisper-1 | Voice-to-text |
 | OCR | Azure Document Intelligence, Mistral OCR | PDF/image text extraction |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
 | Data Sources | API + CSV integration | External data querying with visualization |
 | Function APIs | OpenAI-format schemas | Dynamic function calling to external services |
-| Reranking | Cohere API, Transformers.js | Chunk reranking for improved relevance |
-| Vector DB | ChromaDB | Category-based document embeddings storage |
+| Reranking | Cohere API, Transformers.js (BGE) | Chunk reranking for improved relevance |
+| Vector DB | ChromaDB (default) or Qdrant | Category-based document embeddings storage |
 | Cache | Redis 7 | Query caching (RAG + Tavily), sessions |
-| Auth | NextAuth + Azure AD + Google | Multi-provider SSO |
+| Auth | NextAuth.js v4 + Azure AD + Google + Credentials | Multi-provider SSO + email/password |
 | Storage | Local Filesystem | Thread messages, uploaded PDFs |
 | Reverse Proxy | Traefik v3.6.1 | TLS termination, Let's Encrypt SSL |
 | Deployment | Docker Compose | Container orchestration |
@@ -335,7 +346,8 @@ File Upload
     │
     ▼
 ┌─────────────────────────────────────┐
-│ Store in ChromaDB                   │
+│ Store in Vector Store               │
+│ (ChromaDB or Qdrant)                │
 │ - Global: ALL category collections  │
 │ - Category: Specific collections    │
 └─────────────────────────────────────┘
@@ -373,7 +385,8 @@ Text Content
     │
     ▼
 ┌─────────────────────────────────────┐
-│ Store in ChromaDB                   │
+│ Store in Vector Store               │
+│ (ChromaDB or Qdrant)                │
 │ - Global: ALL category collections  │
 │ - Category: Specific collections    │
 └─────────────────────────────────────┘
@@ -800,8 +813,9 @@ User Access
     ▼
 ┌─────────────────┐
 │ Show Sign-In    │
-│ (Azure AD or    │
-│  Google OAuth)  │
+│ (Azure AD,      │
+│  Google OAuth,  │
+│  or Credentials)│
 └─────────────────┘
     │
     ▼
@@ -1082,7 +1096,43 @@ pwa_background_color TEXT DEFAULT '#ffffff'
 
 ---
 
-### 15. Autonomous Agent System (Beta)
+### 15. Thinking Models
+
+Policy Bot natively processes extended reasoning tokens (`<think>`) emitted by reasoning-capable models:
+
+```
+LLM Response Stream
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    THINKING TOKEN PIPELINE                       │
+│                                                                 │
+│  Streaming chunk arrives                                        │
+│          │                                                       │
+│          ├── Contains <think>...</think> ─────▶ Strip & hide   │
+│          │   (reasoning process)                from user UI   │
+│          │                                                       │
+│          └── Regular content ─────────────────▶ Stream to UI  │
+│                                                                 │
+│  Final response: clean text without reasoning tokens            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Supported Models:**
+| Provider | Models | Thinking Token Format |
+|----------|--------|----------------------|
+| DeepSeek | deepseek-reasoner (R1) | `<think>...</think>` |
+| Anthropic | claude-3-7-sonnet (extended thinking) | `<think>...</think>` |
+| Google | gemini-2.5-pro/flash (thinking) | `<think>...</think>` |
+
+**Behavior:**
+- Reasoning tokens are stripped before display but may be logged for debugging
+- Users see clean final answers without the internal chain-of-thought
+- Enable by selecting a thinking-capable model in Admin > Settings > LLM
+
+---
+
+### 17. Autonomous Agent System (Beta)
 
 The Autonomous Agent enables multi-step task execution with planning, execution, quality checking, and summarization. This feature is currently in **beta**.
 
@@ -1210,7 +1260,7 @@ The agent streams progress updates to the UI:
 
 ---
 
-### 16. Content Generation
+### 18. Content Generation
 
 Policy Bot includes tools for generating images, diagrams, and translations.
 
@@ -1367,6 +1417,78 @@ getThreadContext(threadId)
 
 ---
 
+## Agent Bots (Programmatic API)
+
+Agent Bots expose Policy Bot capabilities as a REST API for external systems, CI/CD pipelines, and third-party integrations.
+
+### Architecture
+
+```
+External System
+    │
+    ▼ POST /api/agent-bots/{slug}/invoke
+    │   Headers: Authorization: Bearer {api-key}
+    │   Body: { message, files[] }
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    AGENT BOT PIPELINE                            │
+│                                                                 │
+│  ┌───────────────┐    ┌───────────────┐    ┌───────────────┐   │
+│  │ API Key Auth  │───▶│  Job Queue    │───▶│  Executor     │   │
+│  │ + Rate Limit  │    │  (async)      │    │  (RAG + Tools)│   │
+│  └───────────────┘    └───────────────┘    └───────────────┘   │
+│                                │                │              │
+│                                ▼                ▼              │
+│                       ┌───────────────┐  ┌───────────────┐    │
+│                       │ Job Status    │  │ Output Files  │    │
+│                       │ (poll/check)  │  │ (download URL)│    │
+│                       └───────────────┘  └───────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **API Keys** | Per-bot keys with scoped permissions |
+| **Async Jobs** | Submit and poll — no blocking waits |
+| **File Attachments** | Upload files with job submission |
+| **Output Downloads** | Download generated files via signed URL |
+| **Version History** | Snapshot bot config, rollback on demand |
+| **Analytics** | Per-bot usage, tokens, success rates |
+
+### API Flow
+
+```
+1. POST /api/agent-bots/{slug}/invoke
+   → Returns { jobId, status: 'pending' }
+
+2. GET /api/agent-bots/{slug}/jobs/{jobId}
+   → Poll until status = 'completed' | 'failed'
+
+3. GET /api/agent-bots/{slug}/jobs/{jobId}/outputs/{outputId}/download
+   → Download generated file
+```
+
+### Configuration
+
+Manage agent bots via Admin → Agent Bots:
+- Create bot with slug, system prompt, category access, and tool set
+- Generate API keys for external callers
+- View job history and analytics
+- Manage bot versions
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `agent_bots` | Bot configuration (slug, prompt, categories) |
+| `agent_bot_api_keys` | API key management |
+| `agent_bot_jobs` | Async job queue and status |
+| `agent_bot_versions` | Config version snapshots |
+
+---
+
 ## User Roles & Permissions
 
 ### Admin Users
@@ -1408,7 +1530,7 @@ getThreadContext(threadId)
 5. Backend checks if thread has uploaded document
 6. RAG pipeline:
    a. Embed query using text-embedding-3-large
-   b. Search ChromaDB collections for subscribed categories
+   b. Search Vector Store collections (ChromaDB/Qdrant) for subscribed categories
    c. Include global documents from all category searches
    d. If reranker enabled, re-score chunks with BGE/Cohere (priority fallback)
    e. If user doc exists, extract and include relevant text
@@ -1440,7 +1562,7 @@ Admin can upload documents via two methods: file upload or text content paste.
    a. Extract text (Mistral OCR or Azure DI)
    b. Chunk text with current settings
    c. Create embeddings
-   d. Store in appropriate ChromaDB collections
+   d. Store in appropriate Vector Store collections (ChromaDB/Qdrant)
 10. Update document status to "ready"
 ```
 
@@ -1494,10 +1616,11 @@ Admin/Super User manages subscriptions:
   - Accessed via Kysely ORM for type-safe async queries
 - **Tables**: users, categories, documents, user_subscriptions, super_user_categories, document_categories, settings
 
-### 2. Category-Based ChromaDB Collections
-- Each category gets its own ChromaDB collection
+### 2. Category-Based Vector Store Collections
+- Each category gets its own collection in ChromaDB or Qdrant
 - Collection naming: `policy_{category_slug}`
 - Global documents indexed into all category collections
+- Switch vector stores via `VECTOR_STORE_PROVIDER` env var
 - Enables fine-grained access control
 
 ### 3. Three-Tier Role System
@@ -1615,7 +1738,7 @@ Admin/Super User manages subscriptions:
 | Tavily results | Configurable (1 day default) | Redis |
 | Reranker results | Configurable (1 hour default) | Redis |
 | Sessions | 24 hours | Redis |
-| Embeddings | Permanent | ChromaDB |
+| Embeddings | Permanent | ChromaDB / Qdrant |
 
 ### Batch Processing
 - Document embeddings created in batch (100 chunks at a time)

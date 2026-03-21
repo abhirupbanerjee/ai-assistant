@@ -94,17 +94,21 @@ PostgreSQL stores all structured metadata with ACID transactions. The database i
 
 ### Complete Schema Definition
 
+> **PostgreSQL only.** SQLite was removed in March 2026. The full DDL lives in `src/lib/db/schema/postgres.sql` and is applied automatically by Kysely migrations on first startup.
+>
+> Below is an abridged representative sample of the core tables. See the SQL file for the complete, authoritative schema.
+
 ```sql
 -- ============ Users & Roles ============
 
 CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   name TEXT,
   role TEXT NOT NULL CHECK (role IN ('admin', 'superuser', 'user')),
   added_by TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -113,90 +117,71 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 -- ============ Categories ============
 
 CREATE TABLE IF NOT EXISTS categories (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT UNIQUE NOT NULL,
   slug TEXT UNIQUE NOT NULL,
   description TEXT,
   created_by TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug);
 
 -- Super user category assignments (many-to-many)
 CREATE TABLE IF NOT EXISTS super_user_categories (
-  user_id INTEGER NOT NULL,
-  category_id INTEGER NOT NULL,
-  assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  assigned_at TIMESTAMPTZ DEFAULT NOW(),
   assigned_by TEXT NOT NULL,
-  PRIMARY KEY (user_id, category_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+  PRIMARY KEY (user_id, category_id)
 );
 
 -- User category subscriptions (many-to-many)
 CREATE TABLE IF NOT EXISTS user_subscriptions (
-  user_id INTEGER NOT NULL,
-  category_id INTEGER NOT NULL,
-  is_active INTEGER DEFAULT 1,
-  subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  is_active BOOLEAN DEFAULT TRUE,
+  subscribed_at TIMESTAMPTZ DEFAULT NOW(),
   subscribed_by TEXT NOT NULL,
-  PRIMARY KEY (user_id, category_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+  PRIMARY KEY (user_id, category_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user ON user_subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_subscriptions_category ON user_subscriptions(category_id);
 
 -- ============ Documents ============
 
 CREATE TABLE IF NOT EXISTS documents (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_size INTEGER NOT NULL,
-  is_global INTEGER DEFAULT 0,
+  file_size BIGINT NOT NULL,
+  is_global BOOLEAN DEFAULT FALSE,
   chunk_count INTEGER DEFAULT 0,
   status TEXT NOT NULL CHECK (status IN ('processing', 'ready', 'error')),
   error_message TEXT,
   uploaded_by TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
-CREATE INDEX IF NOT EXISTS idx_documents_is_global ON documents(is_global);
 
 -- Document to category mapping (many-to-many)
 CREATE TABLE IF NOT EXISTS document_categories (
-  document_id INTEGER NOT NULL,
-  category_id INTEGER,
-  PRIMARY KEY (document_id, category_id),
-  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+  document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+  PRIMARY KEY (document_id, category_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_document_categories_doc ON document_categories(document_id);
-CREATE INDEX IF NOT EXISTS idx_document_categories_cat ON document_categories(category_id);
 
 -- ============ Threads & Messages ============
 
 CREATE TABLE IF NOT EXISTS threads (
   id TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id);
-CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);
 
 -- Thread category selection (many-to-many)
 CREATE TABLE IF NOT EXISTS thread_categories (
-  thread_id TEXT NOT NULL,
-  category_id INTEGER NOT NULL,
+  thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
   PRIMARY KEY (thread_id, category_id),
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
@@ -1631,6 +1616,71 @@ Daily analytics rollup for workspace usage.
 | unique_visitors | INTEGER | Unique visitor count |
 | avg_response_time_ms | INTEGER | Average response latency |
 | total_tokens_used | INTEGER | Total tokens consumed |
+
+### agent_bots
+
+Agent bot configuration for programmatic API access.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| slug | TEXT | URL-friendly identifier (unique) |
+| name | TEXT | Display name |
+| description | TEXT | Bot purpose |
+| system_prompt | TEXT | AI instructions |
+| categories_json | TEXT | JSON: accessible category IDs |
+| tools_json | TEXT | JSON: enabled tool names |
+| llm_config_json | TEXT | JSON: model, temperature, etc. |
+| is_active | BOOLEAN | Enable/disable |
+| created_by | TEXT | Admin user email |
+| created_at | TIMESTAMPTZ | Creation timestamp |
+| updated_at | TIMESTAMPTZ | Last update timestamp |
+
+### agent_bot_api_keys
+
+API keys for agent bot external callers.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| bot_id | TEXT | FK to agent_bots.id |
+| key_hash | TEXT | Hashed API key (never stored plain) |
+| key_prefix | TEXT | First 8 chars for display |
+| name | TEXT | Key label |
+| is_active | BOOLEAN | Enable/disable |
+| created_at | TIMESTAMPTZ | Creation timestamp |
+| last_used_at | TIMESTAMPTZ | Last API call |
+
+### agent_bot_jobs
+
+Async job queue for agent bot invocations.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| bot_id | TEXT | FK to agent_bots.id |
+| status | TEXT | `pending`, `running`, `completed`, `failed` |
+| input_message | TEXT | User message payload |
+| input_files_json | TEXT | JSON: uploaded file paths |
+| output_text | TEXT | Final text response |
+| output_files_json | TEXT | JSON: generated output file URLs |
+| error_message | TEXT | Failure reason |
+| tokens_used | INTEGER | Total tokens consumed |
+| created_at | TIMESTAMPTZ | Job submission time |
+| completed_at | TIMESTAMPTZ | Job completion time |
+
+### agent_bot_versions
+
+Version snapshots of bot configuration.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| bot_id | TEXT | FK to agent_bots.id |
+| version_number | INTEGER | Incrementing version |
+| config_snapshot_json | TEXT | Full bot config at this version |
+| created_by | TEXT | Admin who saved version |
+| created_at | TIMESTAMPTZ | Snapshot timestamp |
 
 ---
 

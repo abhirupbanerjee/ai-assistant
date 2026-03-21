@@ -8,7 +8,7 @@ This document provides comprehensive coverage of Policy Bot's authentication sys
 
 1. [Overview](#overview)
 2. [Authentication Providers](#authentication-providers)
-   - [Microsoft Azure ADmailabhirupbanerjee@](#microsoft-azure-ad)
+   - [Microsoft Azure AD](#microsoft-azure-ad)
    - [Google OAuth](#google-oauth)
    - [Credentials Authentication](#credentials-authentication)
 3. [Environment Configuration](#environment-configuration)
