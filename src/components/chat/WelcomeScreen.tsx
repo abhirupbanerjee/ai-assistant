@@ -2,49 +2,31 @@
 
 import { useState } from 'react';
 import {
-  MessageSquarePlus,
-  FolderOpen,
   Zap,
   Globe,
   Bot,
-  Users,
-  Wrench,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
-  FileUp,
-  FolderSync,
-  Link,
-  Youtube,
   BarChart3,
   Languages,
   Image,
   Map,
   MessageCircle,
-  GanttChart,
   ClipboardList,
-  Landmark,
   Settings,
   Sparkles,
-  Database,
   DollarSign,
   FileText,
   GitBranch,
   Target,
   FolderKanban,
-  ShieldAlert,
-  Calculator,
-  Wallet,
   GraduationCap,
   Headphones,
   Plug,
   X,
   Activity,
   Code2,
-  Table2,
   LayoutTemplate,
-  Flag,
-  Palette,
   Crosshair,
   Download,
   Loader2,
@@ -54,9 +36,16 @@ import {
   Server,
   Cookie,
   ArrowRightLeft,
+  Package,
+  Building2,
+  FileCode,
+  Github,
+  Search,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
+
+// ============ Interfaces ============
 
 interface WelcomeScreenProps {
   userRole: 'user' | 'superuser' | 'admin';
@@ -64,87 +53,58 @@ interface WelcomeScreenProps {
   onNewThread?: () => void;
 }
 
-interface SubItem {
-  icon: React.ReactNode;
-  label: string;
-  description: string;
-}
-
-interface ActionCard {
-  id: string;
-  icon: React.ReactNode;
-  title: string;
-  shortDescription: string;
-  expandedContent: {
-    description: string;
-    bullets: string[];
-    subItems?: SubItem[];
-  };
-  actionButton?: {
-    label: string;
-    route?: string;     // Explicit route (admin-only cards)
-    routeTab?: string;  // Tab ID for role-aware routing
-  };
-  minRole: 'user' | 'superuser' | 'admin';
-  colorClass: string;
-  iconBgClass: string;
-}
-
 interface ServiceCard {
   id: string;
   icon: React.ReactNode;
   title: string;
-  code: string;
   description: string;
-  tier: 1 | 2 | 3 | 4 | 5;
-  isSubService?: boolean;
+  tier: 1 | 2 | 3 | 4 | 5 | 6;
   minRole: 'user' | 'superuser' | 'admin';
   colorClass: string;
   iconBgClass: string;
-  // Action type determines what happens when service is clicked
   actionType: 'modal' | 'category' | 'route' | 'message' | 'choice';
-  categorySlug?: string;      // For 'category' type - creates thread with this category
-  route?: string;             // For 'route' type - explicit route (admin-only)
-  routeTab?: string;          // For 'route' type - tab ID for role-aware routing
-  message?: string;           // For 'message' type - shows this info message
-  choiceOptions?: {           // For 'choice' type - shows modal with options
+  categorySlug?: string;
+  route?: string;
+  routeTab?: string;
+  message?: string;
+  choiceOptions?: {
     label: string;
     description: string;
     route?: string;
     routeTab?: string;
   }[];
-  // Extended service information
-  category: string;           // Category name(s) or "—" for cross-category
-  samplePrompt: string;       // Example prompt demonstrating magic word usage
-  magicWords: string[];       // Keywords that trigger this service
-  defaultLLM: string;         // Primary LLM (e.g., "Claude Haiku")
-  fallbackLLM: string;        // Fallback LLM (e.g., "Claude Sonnet")
+  category: string;
+  samplePrompt: string;
+  magicWords: string[];
+  defaultLLM: string;
+  fallbackLLM: string;
 }
 
-interface MagicWord {
-  id: string;
-  icon: React.ReactNode;
+interface ToolEntry {
+  name: string;
   description: string;
   keywords: string[];
-  linkedServiceCode: string;  // Service code (e.g., "DGaaS")
-  linkedServiceName: string;  // Service name (e.g., "Diagram")
 }
+
+interface SetupRow {
+  num: number;
+  phase: string;
+  component: string;
+  purpose: string;
+  options: string[];
+}
+
+// ============ Constants ============
 
 const ROLE_HIERARCHY = { user: 0, superuser: 1, admin: 2 };
 
-function canAccess(
-  userRole: 'user' | 'superuser' | 'admin',
-  minRole: 'user' | 'superuser' | 'admin'
-): boolean {
-  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[minRole];
-}
-
 const TIER_COLORS = {
-  1: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700' },
+  1: { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   badge: 'bg-blue-100 text-blue-700' },
   2: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' },
-  3: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
-  4: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
-  5: { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
+  3: { bg: 'bg-amber-50',  border: 'border-amber-200',  text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-700' },
+  4: { bg: 'bg-emerald-50',border: 'border-emerald-200',text: 'text-emerald-700',badge: 'bg-emerald-100 text-emerald-700' },
+  5: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' },
+  6: { bg: 'bg-cyan-50',   border: 'border-cyan-200',   text: 'text-cyan-700',   badge: 'bg-cyan-100 text-cyan-700' },
 };
 
 const TIER_NAMES = {
@@ -152,7 +112,8 @@ const TIER_NAMES = {
   2: 'Planning',
   3: 'Domain Specific',
   4: 'Integration & Automation',
-  5: 'Developer Tools',
+  5: 'Enterprise Architecture',
+  6: 'Cyber Tools',
 };
 
 // Platform introduction content (from README.md)
@@ -188,6 +149,13 @@ Policy Bot solves this by providing:
   ],
 };
 
+function canAccess(
+  userRole: 'user' | 'superuser' | 'admin',
+  minRole: 'user' | 'superuser' | 'admin'
+): boolean {
+  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[minRole];
+}
+
 function RoleTag({ role }: { role: 'user' | 'superuser' | 'admin' }) {
   const config = {
     user: { label: 'All Users', className: 'bg-gray-100 text-gray-600' },
@@ -208,17 +176,22 @@ export default function WelcomeScreen({
   onNewThread,
 }: WelcomeScreenProps) {
   const router = useRouter();
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'setup' | 'services' | 'magicwords'>('services');
+  const [collapsedTiers, setCollapsedTiers] = useState<Set<number>>(new Set());
+  const [activeTab, setActiveTab] = useState<'capabilities' | 'tools' | 'setup'>('capabilities');
   const [selectedService, setSelectedService] = useState<ServiceCard | null>(null);
   const [showMessageModal, setShowMessageModal] = useState<string | null>(null);
   const [showChoiceModal, setShowChoiceModal] = useState<ServiceCard | null>(null);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const toggleCard = (id: string) => {
-    setExpandedCard(expandedCard === id ? null : id);
+  const toggleTier = (tier: number) => {
+    setCollapsedTiers(prev => {
+      const next = new Set(prev);
+      next.has(tier) ? next.delete(tier) : next.add(tier);
+      return next;
+    });
   };
 
   // Get role-aware route: admins go to /admin, superusers go to /superuser
@@ -239,22 +212,18 @@ export default function WelcomeScreen({
 
     switch (service.actionType) {
       case 'modal':
-        // Open new thread modal (existing behavior)
         onNewThread?.();
         break;
 
       case 'category':
-        // Create thread with pre-selected category
         if (service.categorySlug) {
           setIsCreatingThread(true);
           try {
-            // First get the category ID from the slug
             const catResponse = await fetch('/api/user/categories');
             if (catResponse.ok) {
               const { categories } = await catResponse.json();
               const category = categories.find((c: { slug: string }) => c.slug === service.categorySlug);
               if (category) {
-                // Create thread with this category
                 const response = await fetch('/api/threads', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -264,11 +233,9 @@ export default function WelcomeScreen({
                   }),
                 });
                 if (response.ok) {
-                  // Refresh to show the new thread
                   window.location.reload();
                 }
               } else {
-                // Category not found, fall back to regular thread
                 onNewThread?.();
               }
             }
@@ -304,7 +271,8 @@ export default function WelcomeScreen({
     }
   };
 
-  // Export helper functions
+  // ============ Export Functions ============
+
   const buildExportContent = () => {
     return {
       title: PLATFORM_INTRO.title,
@@ -315,14 +283,13 @@ export default function WelcomeScreen({
         supportedLLMs: PLATFORM_INTRO.supportedLLMs,
         aiCapabilities: PLATFORM_INTRO.aiCapabilities,
       },
-      services: ([1, 2, 3, 4, 5] as const).map((tier) => ({
+      services: ([1, 2, 3, 4, 5, 6] as const).map((tier) => ({
         tier,
         tierName: TIER_NAMES[tier],
         items: serviceCards
           .filter((s) => s.tier === tier)
           .map((s) => ({
             name: s.title,
-            code: s.code,
             description: s.description,
             category: s.category,
             samplePrompt: s.samplePrompt,
@@ -332,18 +299,17 @@ export default function WelcomeScreen({
             minRole: s.minRole,
           })),
       })),
-      setup: setupCards.map((card) => ({
-        id: card.id,
-        title: card.title,
-        description: card.expandedContent.description,
-        bullets: card.expandedContent.bullets,
-        minRole: card.minRole,
+      tools: toolsList.map((t) => ({
+        name: t.name,
+        description: t.description,
+        keywords: t.keywords,
       })),
-      magicWords: magicWords.map((mw) => ({
-        description: mw.description,
-        keywords: mw.keywords,
-        linkedService: mw.linkedServiceName,
-        linkedServiceCode: mw.linkedServiceCode,
+      setup: setupRows.map((r) => ({
+        num: r.num,
+        phase: r.phase,
+        component: r.component,
+        purpose: r.purpose,
+        options: r.options,
       })),
     };
   };
@@ -351,7 +317,6 @@ export default function WelcomeScreen({
   const buildMarkdown = (content: ReturnType<typeof buildExportContent>) => {
     const lines: string[] = [];
 
-    // Title
     lines.push(`# ${content.title}`);
     lines.push('');
     lines.push(`*Generated: ${new Date().toLocaleDateString()}*`);
@@ -359,13 +324,11 @@ export default function WelcomeScreen({
     lines.push(`> ${content.introduction.tagline}`);
     lines.push('');
 
-    // Why Policy Bot
     lines.push('## Why Policy Bot?');
     lines.push('');
     lines.push(content.introduction.whyPolicyBot);
     lines.push('');
 
-    // Supported LLMs
     lines.push('## Supported LLMs');
     lines.push('');
     lines.push('| Provider | Models |');
@@ -375,7 +338,6 @@ export default function WelcomeScreen({
     });
     lines.push('');
 
-    // AI Capabilities
     lines.push('## AI Capabilities');
     lines.push('');
     lines.push('| Capability | Details |');
@@ -387,15 +349,14 @@ export default function WelcomeScreen({
     lines.push('---');
     lines.push('');
 
-    // Services
-    lines.push('## Services');
+    lines.push('## Capabilities');
     lines.push('');
     content.services.forEach((tier) => {
       if (tier.items.length === 0) return;
       lines.push(`### Tier ${tier.tier} — ${tier.tierName}`);
       lines.push('');
       tier.items.forEach((service) => {
-        lines.push(`#### ${service.name} (${service.code})`);
+        lines.push(`#### ${service.name}`);
         lines.push('');
         const categoryText = service.category === '—'
           ? '*This service works across all categories using magic words*'
@@ -406,7 +367,7 @@ export default function WelcomeScreen({
         const magicWordsText = service.magicWords.length > 0
           ? service.magicWords.join(', ')
           : '—';
-        lines.push(`- **Magic Words:** ${magicWordsText}`);
+        lines.push(`- **Keywords:** ${magicWordsText}`);
         lines.push(`- **Default LLM:** ${service.defaultLLM} | **Fallback:** ${service.fallbackLLM}`);
         lines.push(`- **Access Level:** ${service.minRole === 'user' ? 'All Users' : service.minRole}`);
         lines.push('');
@@ -415,31 +376,25 @@ export default function WelcomeScreen({
     lines.push('---');
     lines.push('');
 
-    // Setup Guide
-    lines.push('## Setup Guide');
+    lines.push('## Tools Reference');
     lines.push('');
-    content.setup.forEach((card) => {
-      lines.push(`### ${card.title}`);
-      lines.push('');
-      lines.push(card.description);
-      lines.push('');
-      card.bullets.forEach((bullet) => {
-        lines.push(`- ${bullet}`);
-      });
-      lines.push(`- **Access Level:** ${card.minRole === 'user' ? 'All Users' : card.minRole}`);
-      lines.push('');
+    lines.push('| Tool | Description | Keywords |');
+    lines.push('|------|-------------|----------|');
+    content.tools.forEach((tool) => {
+      const keywords = tool.keywords.length > 0 ? tool.keywords.join(', ') : '—';
+      lines.push(`| ${tool.name} | ${tool.description} | ${keywords} |`);
     });
+    lines.push('');
     lines.push('---');
     lines.push('');
 
-    // Magic Words Reference
-    lines.push('## Magic Words Reference');
+    lines.push('## Setup and Onboarding');
     lines.push('');
-    lines.push('| What to do | Keywords | Linked Service |');
-    lines.push('|------------|----------|----------------|');
-    content.magicWords.forEach((mw) => {
-      const keywords = mw.keywords.join(', ');
-      lines.push(`| ${mw.description} | ${keywords} | ${mw.linkedService} (${mw.linkedServiceCode}) |`);
+    lines.push('| # | Phase | Component | Purpose | Options |');
+    lines.push('|---|-------|-----------|---------|---------|');
+    content.setup.forEach((row) => {
+      const options = row.options.join('; ');
+      lines.push(`| ${row.num} | ${row.phase} | ${row.component} | ${row.purpose} | ${options} |`);
     });
     lines.push('');
 
@@ -481,7 +436,6 @@ export default function WelcomeScreen({
       } else if (format === 'md') {
         downloadFile(buildMarkdown(content), 'platform-guide.md', 'text/markdown');
       } else {
-        // DOCX requires server-side generation
         const markdownContent = buildMarkdown(content);
         const response = await fetch('/api/welcome/export', {
           method: 'POST',
@@ -505,217 +459,269 @@ export default function WelcomeScreen({
     }
   };
 
-  // Setup the Platform cards
-  const setupCards: ActionCard[] = [
+  // ============ Setup and Onboarding Data ============
+
+  const setupRows: SetupRow[] = [
     {
-      id: 'chat',
-      icon: <MessageSquarePlus size={24} />,
-      title: 'Chat',
-      shortDescription: 'Ask questions about your documents',
-      expandedContent: {
-        description: 'Begin a conversation with the AI assistant.',
-        bullets: [
-          'Select a category to focus your questions',
-          'Upload PDFs (up to 5MB) for analysis',
-          'Use voice input or paste URLs',
-          'Get answers from your document library',
-        ],
-      },
-      actionButton: undefined,
-      minRole: 'user',
-      colorClass: 'border-blue-200 hover:border-blue-300',
-      iconBgClass: 'bg-blue-100 text-blue-600',
+      num: 1,
+      phase: 'Setup',
+      component: 'Environment Setup',
+      purpose: 'Configure core infrastructure, secrets, and deployment stack',
+      options: [
+        'Copy .env.example → .env.local',
+        'Set: ADMIN_EMAILS, DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET',
+        'Choose DB: sqlite (up to ~50 users) or postgresql (50+ users)',
+        'Choose vector store: chromadb (up to ~100K chunks) or qdrant (100K+ chunks)',
+        'Run: docker compose --profile qdrant up -d --build',
+      ],
     },
     {
-      id: 'category',
-      icon: <FolderOpen size={24} />,
-      title: 'Categories',
-      shortDescription: 'Organize knowledge into domains',
-      expandedContent: {
-        description:
-          'Create topic areas to organize your knowledge base. Each category can have its own documents and user access controls.',
-        bullets: [
-          'Create domains like HR Policies, Legal, Finance',
-          'Control user access per category',
-          'Add category-specific AI behaviors',
-        ],
-      },
-      actionButton: {
-        label: 'Manage Categories',
-        routeTab: 'categories',
-      },
-      minRole: 'superuser',
-      colorClass: 'border-purple-200 hover:border-purple-300',
-      iconBgClass: 'bg-purple-100 text-purple-600',
+      num: 2,
+      phase: 'Setup',
+      component: 'Web Settings',
+      purpose: 'Configure authentication, access control, and deployment',
+      options: [
+        'Auth modes: Azure AD, Google OAuth, Email/Password (credentials)',
+        'Access control: allowlist (DB users only) or domain (email domain)',
+        'Credentials login: enable/disable system-wide; set minimum password length (default: 8)',
+        'First admin: set ADMIN_EMAILS + CREDENTIALS_ADMIN_PASSWORD in .env',
+        'Base URL for reverse proxy (Traefik)',
+      ],
     },
     {
-      id: 'knowledge',
-      icon: <Database size={24} />,
-      title: 'Knowledge',
-      shortDescription: 'Add documents to train the AI',
-      expandedContent: {
-        description:
-          'Upload various document types to build your knowledge base. The AI uses this content to answer questions.',
-        bullets: [
-          'Multiple upload methods supported',
-          'Automatic text extraction and indexing',
-          'Supports PDFs, DOCX, TXT and more',
-        ],
-        subItems: [
-          {
-            icon: <FileUp size={16} className="text-blue-600" />,
-            label: 'File Upload',
-            description: 'Upload PDFs, DOCX, TXT files',
-          },
-          {
-            icon: <FolderSync size={16} className="text-purple-600" />,
-            label: 'Folder Sync',
-            description: 'Sync from Google Drive, OneDrive',
-          },
-          {
-            icon: <Link size={16} className="text-green-600" />,
-            label: 'Web URLs',
-            description: 'Scrape content from websites',
-          },
-          {
-            icon: <Youtube size={16} className="text-red-600" />,
-            label: 'YouTube',
-            description: 'Extract video transcripts',
-          },
-        ],
-      },
-      actionButton: {
-        label: 'Add Documents',
-        routeTab: 'documents',
-      },
-      minRole: 'superuser',
-      colorClass: 'border-indigo-200 hover:border-indigo-300',
-      iconBgClass: 'bg-indigo-100 text-indigo-600',
+      num: 3,
+      phase: 'AI Config',
+      component: 'LLM Models',
+      purpose: 'Add AI language models via LiteLLM proxy',
+      options: [
+        'OpenAI: GPT-4.1, GPT-4.1-mini, GPT-4.1-nano, o3, o4-mini',
+        'Anthropic: Claude Sonnet 4.5, Haiku 3.5 (1M context)',
+        'Google: Gemini 2.5 Pro, Flash, Flash-Lite, Thinking',
+        'Mistral: Large 3, Small 3.2, Vision, OCR',
+        'DeepSeek: Reasoner (R1), Chat',
+        'Fireworks AI: MiniMax M2.5, Kimi K2.5 (dev/test only)',
+        'Ollama: local models (air-gapped / sensitive data)',
+        'Data sensitivity rule: Use Ollama for government-sensitive or classified data; Cloud LLMs for public/non-sensitive only',
+      ],
     },
     {
-      id: 'users',
-      icon: <Users size={24} />,
-      title: 'Users',
-      shortDescription: 'Control access and permissions',
-      expandedContent: {
-        description:
-          'Add users and assign them to categories they can access.',
-        bullets: [
-          'Add users by email',
-          'Assign roles: User, Superuser, Admin',
-          'Subscribe users to specific categories',
-          'Superusers can manage their assigned categories',
-        ],
-      },
-      actionButton: {
-        label: 'Manage Users',
-        route: '/admin?tab=users',
-      },
-      minRole: 'admin',
-      colorClass: 'border-emerald-200 hover:border-emerald-300',
-      iconBgClass: 'bg-emerald-100 text-emerald-600',
+      num: 4,
+      phase: 'AI Config',
+      component: 'RAG Configuration',
+      purpose: 'Enable retrieval-augmented generation for knowledge base',
+      options: [
+        'Vector store: ChromaDB or Qdrant',
+        'Embedding model: text-embedding-3-large (default)',
+        'Chunking: Recursive (configurable size/overlap) or Semantic (content-aware)',
+        'Top K results: number of documents to retrieve',
+        'Similarity threshold: minimum relevance score',
+        'RAG Tuning: interactive parameter testing panel (Admin → Settings → RAG Tuning)',
+      ],
     },
     {
-      id: 'tools',
-      icon: <Wrench size={24} />,
-      title: 'Tools',
-      shortDescription: 'Enable AI capabilities',
-      expandedContent: {
-        description:
-          'Configure tools that the AI can use to enhance responses and generate content.',
-        bullets: [
-          'Web search for real-time information',
-          'Chart and graph generation',
-          'Document creation (PDF, DOCX)',
-          'Image generation',
-          'Podcast creation',
-          'Translation services',
-        ],
-      },
-      actionButton: {
-        label: 'Manage Tools',
-        routeTab: 'tools',
-      },
-      minRole: 'superuser',
-      colorClass: 'border-slate-200 hover:border-slate-300',
-      iconBgClass: 'bg-slate-100 text-slate-600',
+      num: 5,
+      phase: 'AI Config',
+      component: 'Reranker',
+      purpose: 'Improve search relevance and retrieval quality',
+      options: [
+        'BGE Large cross-encoder (~670MB, auto-download)',
+        'BGE Base cross-encoder (~220MB)',
+        'Cohere API (requires API key)',
+        'Local bi-encoder via Transformers.js (~90MB)',
+        'Priority fallback: BGE Large → Cohere → BGE Base → Local',
+        'Configure: Admin → Settings → Reranker',
+      ],
     },
     {
-      id: 'skills',
-      icon: <Zap size={24} />,
-      title: 'Skills',
-      shortDescription: 'Define custom AI behaviors',
-      expandedContent: {
-        description: 'Configure how the AI responds to different queries.',
-        bullets: [
-          'Always-on skills (apply to every prompt)',
-          'Category-specific skills',
-          'Keyword-triggered behaviors',
-        ],
-      },
-      actionButton: {
-        label: 'Manage Skills',
-        routeTab: 'skills',
-      },
-      minRole: 'superuser',
-      colorClass: 'border-amber-200 hover:border-amber-300',
-      iconBgClass: 'bg-amber-100 text-amber-600',
+      num: 6,
+      phase: 'AI Config',
+      component: 'Chunking & Extraction',
+      purpose: 'Control how documents are segmented and parsed',
+      options: [
+        'Chunking — Recursive: default; configurable chunk size and overlap',
+        'Chunking — Semantic: content-aware boundary detection',
+        'Extraction — Basic: built-in pdf-parser (no API key needed)',
+        'Extraction — Azure Document Intelligence: enhanced OCR for PDF, DOCX, XLSX, PPTX with layout preservation',
+        'Extraction — Mistral OCR: vision-based PDF/image OCR with layout understanding',
+        'Vision strategy auto-detected: vision-and-ocr / vision-only / ocr-only / none',
+      ],
     },
     {
-      id: 'chatbot',
-      icon: <Globe size={24} />,
-      title: 'Workspaces',
-      shortDescription: 'Embed on external websites',
-      expandedContent: {
-        description: 'Deploy a branded chat widget on any website.',
-        bullets: [
-          'Custom branding (colors, logo, greeting)',
-          'Domain whitelisting for security',
-          'Rate limiting per session/day',
-          'No authentication required for visitors',
-        ],
-      },
-      actionButton: {
-        label: 'Create Workspace',
-        routeTab: 'workspaces',
-      },
-      minRole: 'superuser',
-      colorClass: 'border-green-200 hover:border-green-300',
-      iconBgClass: 'bg-green-100 text-green-600',
+      num: 7,
+      phase: 'Content',
+      component: 'Categories',
+      purpose: 'Organise knowledge base by department or domain',
+      options: [
+        'Create: Name, Slug (auto-generated), Description, Icon',
+        'Access: Public (all authenticated users) or Private (subscribed users only)',
+        'Default subscription: auto-subscribe new users',
+        'Assign Superusers to manage the category',
+        'Deleting a category permanently removes all associated documents',
+      ],
     },
     {
-      id: 'agent',
-      icon: <Bot size={24} />,
-      title: 'Agents',
-      shortDescription: 'API for external systems',
-      expandedContent: {
-        description: 'Build API-accessible bots for system integrations.',
-        bullets: [
-          'Define input schemas & output formats',
-          'Versioned configurations',
-          'API keys with rate limiting',
-          'Webhook support for async processing',
-          'Output: Text, JSON, PDF, DOCX, Images...',
-        ],
-      },
-      actionButton: {
-        label: 'Create Agent',
-        routeTab: 'agent-bots',
-      },
-      minRole: 'superuser',
-      colorClass: 'border-cyan-200 hover:border-cyan-300',
-      iconBgClass: 'bg-cyan-100 text-cyan-600',
+      num: 8,
+      phase: 'Content',
+      component: 'Prompts',
+      purpose: 'Configure AI behaviour at global and category level',
+      options: [
+        'Global System Prompt (Admin → Prompts → Global): applies to all conversations; define AI role, personality, response format; variables: {category}, {user_name}, {date}; keep under 1,000 tokens',
+        'Category Addendum (Admin → Prompts → [category]): appended to global prompt; add department context, key document references; keep under 500 tokens',
+        'Starter Prompts: 4–6 clickable suggested questions shown on new chat; one prompt per line; configured per category',
+        'Acronyms: format ACRONYM = Full Expansion (one per line); auto-appended to system prompt during retrieval',
+        'Prompt Injection Order: Global Prompt → Category Addendum → Skills → User Memory → Conversation History → User Message',
+      ],
+    },
+    {
+      num: 9,
+      phase: 'Content',
+      component: 'Documents',
+      purpose: 'Upload content to the knowledge base',
+      options: [
+        'Formats: PDF, DOCX, XLSX, PPTX, images (up to 50MB per file)',
+        'Text content upload: paste directly, bypasses OCR',
+        'Web URL extraction via Tavily (up to 5 URLs per batch)',
+        'YouTube transcript extraction via Supadata (1 per request)',
+        'Global documents: available across all categories',
+        'Processing pipeline: Uploaded → Processing (extract + chunk) → Embedding → Ready',
+        'Actions: View chunks, Reprocess, Move category, Delete',
+      ],
+    },
+    {
+      num: 10,
+      phase: 'Access',
+      component: 'Users',
+      purpose: 'Add users and control access to categories',
+      options: [
+        'Roles: Admin (full system) → Superuser (assigned categories) → User (subscribed categories)',
+        'Create: email, name, password, role, category subscriptions',
+        'Superuser hybrid model: manages assigned categories (full) + subscribed categories (read-only)',
+        'Visual indicators: orange badges = managed categories; blue badges = subscribed categories',
+        'Bulk operations: activate/deactivate, add/remove from category, export',
+        'Deactivate (preserves data) vs Delete (removes account and data)',
+        'Per-user memory: context retention across sessions (Admin → Settings → Memory)',
+      ],
+    },
+    {
+      num: 11,
+      phase: 'Behaviour',
+      component: 'Tools',
+      purpose: 'Enable AI capabilities and integrations',
+      options: [
+        'Search & Data: Web Search (Tavily), Data Source Query (REST APIs and CSV), Function APIs',
+        'Generation: Doc Gen (PDF/DOCX/MD), Chart Gen, Presentation Gen, Spreadsheet Gen, Image Gen, Diagram Gen, Podcast Gen',
+        'Utilities: Translation, YouTube Transcript, Thread Sharing, Email (SendGrid)',
+        'Security / Dev: PageSpeed, SSL Scan, DNS Scan, Cookie Audit, Redirect Audit, Load Testing, Security Scan, Code Quality (SonarCloud)',
+        'Compliance Checker: pass threshold (default 80), warn threshold (default 50), HITL enable',
+        'Tool Call Limits: Max Total Tool Calls (default: 50), Max Per-Tool Calls (default: 10); category overrides supported',
+      ],
+    },
+    {
+      num: 12,
+      phase: 'Behaviour',
+      component: 'Skills & Tool Routing',
+      purpose: 'Define modular AI behaviours triggered by context, with deterministic tool invocation',
+      options: [
+        'Trigger Types: Always-On (every conversation), Category-Triggered, Keyword-Triggered',
+        'Priority tiers: Core 1–9 (Admin), High 10–99 (Admin), Medium 100–499, Low 500+',
+        'Tool Routing: Force Mode — Required / Preferred / Suggested; attach specific tool to keyword match',
+        'Default Routes: chart_gen (chart, graph, plot), doc_gen (generate report, create pdf), web_search (search the web)',
+        'Test panel: enter test message → view matched rules and resulting tool_choice',
+      ],
+    },
+    {
+      num: 13,
+      phase: 'Deployment',
+      component: 'Workspaces',
+      purpose: 'Create embeddable and standalone chatbot instances for external or department-specific deployment',
+      options: [
+        'Types: Embed (external websites, no auth required) or Standalone (full chat with thread history)',
+        'Config: Name, Categories, Greeting, Branding (color, logo), LLM Override, Feature toggles',
+        'Embed URL: /e/{slug} | Standalone URL: /{slug}',
+        'Embed script: <script src=".../embed/workspace.js" data-workspace-id="{slug}"></script>',
+        'Analytics per workspace: Sessions, Messages, Unique Visitors, Avg Response Time',
+        'Superuser scope: manage workspaces within assigned categories only',
+      ],
+    },
+    {
+      num: 14,
+      phase: 'Conversation',
+      component: 'Threads, Model, Chat & Artifacts',
+      purpose: 'Create and manage conversations with full control over model, input mode, and output display',
+      options: [
+        'Create thread; select one or more categories (multi-category supported)',
+        'Upload files per thread: PDF, DOCX, XLSX, PPTX, PNG, JPG, WebP (up to 50MB)',
+        'Share threads via secure links with configurable expiry (7 / 30 / 90 days / never)',
+        'Model selection: global default → per-workspace override → per-thread override',
+        'Chat input: Text, Voice (Whisper transcription)',
+        'Artifacts panel: uploaded files, generated content (docs, charts, presentations, images, diagrams), web sources',
+      ],
+    },
+    {
+      num: 15,
+      phase: 'Agents',
+      component: 'Autonomous Mode & Agent Bots',
+      purpose: 'Enable multi-step AI agent pipelines and expose Policy Bot as a programmatic REST API',
+      options: [
+        'Autonomous Mode: Plan → Execute → Check → Summarize pipeline',
+        'Budget Controls: Max Duration 30min, Max LLM Calls 500, Max Tokens 2M, Max Web Searches 100',
+        'In-Chat Controls: Pause, Resume, Skip, Stop, Abort',
+        'Agent Bots: create bot with name, slug, system prompt, categories, tools, LLM config',
+        'API key management: generate keys per bot; POST /api/agent-bots/{slug}/invoke → returns jobId',
+        'Bot versioning: snapshot config before major changes; restore any version',
+      ],
+    },
+    {
+      num: 16,
+      phase: 'Operations',
+      component: 'Dashboard & Analytics',
+      purpose: 'Monitor system health, usage, and performance',
+      options: [
+        'Dashboard: Total Users, Active Users, Total Documents, Total Categories, Processing Queue, Error Count',
+        'System Health: Database (PostgreSQL), Vector Store (ChromaDB/Qdrant), LLM Proxy, OCR Service',
+        'Analytics submenus: User Statistics, Document Statistics, Query Statistics, System Health, Infrastructure',
+        'System Management: Backup/Restore, DB Migration, Database Maintenance, Processing Queue, System Logs',
+        'LLM Discovery: auto-detect and validate available models from proxy',
+      ],
     },
   ];
 
-  // Services organized by tiers
+  // ============ Tools Data ============
+
+  const toolsList: ToolEntry[] = [
+    { name: 'Web Search', description: 'Searches the web for current information', keywords: ['search the web', 'look up online', 'find online', 'latest news', 'current information'] },
+    { name: 'Document Generation', description: 'Generates formatted reports — PDF, DOCX, Markdown', keywords: ['generate report', 'create pdf', 'docx', 'word document', 'formal document'] },
+    { name: 'Chart Generator', description: 'Generates interactive bar, pie, line, radar, and scatter charts from data', keywords: ['chart', 'graph', 'plot', 'bar chart', 'pie chart', 'line graph', 'histogram'] },
+    { name: 'Diagram Generator', description: 'Generates Mermaid diagrams — flowcharts, mindmaps, sequences, ER, class, architecture', keywords: ['flowchart', 'workflow', 'sequence diagram', 'mindmap', 'architecture diagram', 'gantt chart', 'class diagram', 'ER diagram', 'state diagram'] },
+    { name: 'Spreadsheet Generator', description: 'Generates Excel spreadsheets (.xlsx)', keywords: ['create spreadsheet', 'make excel', 'xlsx', 'excel file', 'export to excel'] },
+    { name: 'Presentation Generator', description: 'Generates PowerPoint presentations (.pptx)', keywords: ['create presentation', 'make slides', 'slide deck', 'powerpoint', 'pptx'] },
+    { name: 'Image Generation', description: 'Generates infographics and images (DALL-E 3 / Gemini)', keywords: ['infographic', 'image', 'roadmap infographic'] },
+    { name: 'Translation', description: 'Translates documents and responses across languages', keywords: [] },
+    { name: 'Podcast Generator', description: 'Generates audio podcasts via text-to-speech', keywords: [] },
+    { name: 'Website Analysis', description: 'Analyses website performance, accessibility and SEO via Google Lighthouse', keywords: ['analyse website', 'analyze website'] },
+    { name: 'Code Analysis', description: 'Analyses code quality via SonarCloud — bugs, vulnerabilities, code smells', keywords: ['analyse code', 'analyze code'] },
+    { name: 'Load Testing', description: 'Runs load tests against web endpoints using k6 Cloud', keywords: ['load test'] },
+    { name: 'Security Scan', description: 'Scans website security headers — CSP, HSTS, X-Frame-Options, cookies', keywords: ['security scan'] },
+    { name: 'SSL Scan', description: 'Analyses SSL/TLS certificate configuration and grades cipher strength', keywords: ['ssl scan', 'tls scan', 'certificate check'] },
+    { name: 'DNS Scan', description: 'Checks SPF, DMARC, DKIM and DNSSEC records for email security', keywords: ['dns scan', 'dns security', 'spf check', 'dmarc check'] },
+    { name: 'Cookie Audit', description: 'Inspects cookies for missing HttpOnly, Secure, SameSite flags', keywords: ['cookie audit', 'cookie security', 'cookie scan'] },
+    { name: 'Redirect Audit', description: 'Analyses HTTP redirect chains for security and SEO issues', keywords: ['redirect audit', 'redirect chain', 'redirect scan'] },
+    { name: 'WCAG Accessibility Audit', description: 'Detailed WCAG 2.1 accessibility audit mapped to conformance levels (A/AA/AAA)', keywords: ['wcag audit', 'accessibility audit', 'a11y audit'] },
+    { name: 'Data Source', description: 'Retrieves data from REST APIs and CSV/Excel uploads with query and filter', keywords: [] },
+    { name: 'Function API', description: 'Custom function execution for integrations via OpenAI-style schemas', keywords: [] },
+    { name: 'YouTube', description: 'Extracts transcripts from YouTube video URLs', keywords: [] },
+    { name: 'Share Thread', description: 'Shares conversation threads with expiry and download controls', keywords: [] },
+    { name: 'Send Email', description: 'Sends emails via SendGrid integration', keywords: [] },
+  ];
+
+  // ============ Service Cards ============
+
   const serviceCards: ServiceCard[] = [
-    // Tier 1 — Reporting & Visualisation Services
+    // ── Tier 1 — Reporting & Visualisation ──
     {
       id: 'report-generator',
       icon: <FileText size={24} />,
       title: 'Report Generator as a Service',
-      code: 'RGaaS',
       description: 'Generate structured formatted reports from AI analysis and document content. Output: DOCX, PDF, PPTX, XLSX',
       tier: 1,
       minRole: 'user',
@@ -732,8 +738,7 @@ export default function WelcomeScreen({
       id: 'diagram',
       icon: <GitBranch size={24} />,
       title: 'Diagram as a Service',
-      code: 'DGaaS',
-      description: 'Generate technical and conceptual diagrams — flowcharts, architecture, process, sequence, mind maps, ERDs, state and class diagrams',
+      description: 'Generate technical and conceptual diagrams — flowcharts, process flows, sequence, mind maps, ERDs, state and class diagrams',
       tier: 1,
       minRole: 'user',
       colorClass: 'border-blue-200 hover:border-blue-300 hover:shadow-md',
@@ -741,7 +746,7 @@ export default function WelcomeScreen({
       actionType: 'modal',
       category: '—',
       samplePrompt: 'Create a **flowchart** showing the typical e-government service delivery process — from citizen request to resolution.',
-      magicWords: ['flowchart', 'workflow', 'sequence diagram', 'architecture diagram', 'mindmap', 'state diagram', 'class diagram', 'ER diagram'],
+      magicWords: ['flowchart', 'workflow', 'sequence diagram', 'interaction diagram', 'message flow', 'mindmap', 'mind map', 'state diagram', 'state machine', 'lifecycle', 'class diagram', 'er diagram', 'entity relationship', 'wireframe', 'mockup'],
       defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
@@ -749,7 +754,6 @@ export default function WelcomeScreen({
       id: 'graph',
       icon: <BarChart3 size={24} />,
       title: 'Graph as a Service',
-      code: 'GRaaS',
       description: 'Generate data-driven charts from structured inputs or natural language — bar, line, area, stacked, pie, donut, radar, treemap, scatter, waterfall',
       tier: 1,
       minRole: 'user',
@@ -766,7 +770,6 @@ export default function WelcomeScreen({
       id: 'infographic',
       icon: <Image size={24} />,
       title: 'Infographic as a Service',
-      code: 'IGaaS',
       description: 'Auto-generate branded visual summary documents from policy and government content. Output: JPG/SVG',
       tier: 1,
       minRole: 'user',
@@ -775,26 +778,25 @@ export default function WelcomeScreen({
       actionType: 'modal',
       category: 'Grenada Digital Strategy',
       samplePrompt: 'Create an **infographic** summarising the top 5 benefits of AI adoption in public sector organisations based on current research.',
-      magicWords: ['roadmap infographic'],
+      magicWords: ['infographic', 'image', 'roadmap infographic'],
       defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
-    // Tier 2 — Planning Services
+
+    // ── Tier 2 — Planning ──
     {
-      id: 'roadmap',
-      icon: <Map size={24} />,
-      title: 'Roadmap as a Service',
-      code: 'RMaaS',
-      description: 'AI-assisted initiative and milestone planning with timeline generation. Output: PPTX, DOCX',
+      id: 'project-management',
+      icon: <FolderKanban size={24} />,
+      title: 'Project Management as a Service',
+      description: 'Integrated AI project planning with phases, milestones, dependencies and resource tracking',
       tier: 2,
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
-      actionType: 'category',
-      categorySlug: 'grenada-digital-strategy',
-      category: 'Grenada Digital Strategy',
-      samplePrompt: 'Build a 3-year digital transformation **roadmap** for a small island government — covering foundation, build and scale phases with estimated budgets.',
-      magicWords: ['roadmap'],
+      actionType: 'modal',
+      category: '—',
+      samplePrompt: 'Create a full **project plan** for implementing a citizen e-portal.',
+      magicWords: ['project plan', 'implementation plan', 'project schedule'],
       defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
@@ -802,7 +804,6 @@ export default function WelcomeScreen({
       id: 'strategy',
       icon: <Target size={24} />,
       title: 'Strategy as a Service',
-      code: 'STaaS',
       description: 'AI-assisted strategic plan development with objective mapping, KPIs and outcome tracking. Output: DOCX',
       tier: 2,
       minRole: 'user',
@@ -817,82 +818,44 @@ export default function WelcomeScreen({
       fallbackLLM: 'Claude Sonnet',
     },
     {
-      id: 'project-management',
-      icon: <FolderKanban size={24} />,
-      title: 'Project Management as a Service',
-      code: 'PMaaS',
-      description: 'Integrated AI project planning',
+      id: 'roadmap',
+      icon: <Map size={24} />,
+      title: 'Roadmap as a Service',
+      description: 'AI-assisted initiative and milestone planning with timeline generation. Output: PPTX, DOCX',
       tier: 2,
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
-      actionType: 'modal',
-      category: '—',
-      samplePrompt: 'Create a full **project plan** for implementing a citizen e-portal.',
-      magicWords: ['project plan', 'implementation plan', 'project schedule'],
+      actionType: 'category',
+      categorySlug: 'grenada-digital-strategy',
+      category: 'Grenada Digital Strategy',
+      samplePrompt: 'Build a 3-year digital transformation **roadmap** for a small island government — covering foundation, build and scale phases with estimated budgets.',
+      magicWords: ['roadmap'],
       defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
     {
-      id: 'gantt',
-      icon: <GanttChart size={24} />,
-      title: 'Gantt Charts',
-      code: 'GTaaS',
-      description: 'Build project timelines and schedules from natural language descriptions',
+      id: 'work-package-generator',
+      icon: <Package size={24} />,
+      title: 'Work Package Generator',
+      description: 'Generate structured work packages with scope, deliverables, timelines and resource requirements from project briefs',
       tier: 2,
-      isSubService: true,
       minRole: 'user',
       colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
       iconBgClass: 'bg-purple-100 text-purple-600',
       actionType: 'modal',
       category: '—',
-      samplePrompt: 'Create a **Gantt chart** for a 6-month digital ID system rollout — cover planning, development, testing and launch phases.',
-      magicWords: ['gantt chart', 'timeline', 'milestones', 'delivery plan'],
-      defaultLLM: 'Deepseek chat',
+      samplePrompt: 'Create a **work package** for implementing a new digital identity verification system — include scope, deliverables, milestones, and resource requirements.',
+      magicWords: ['work package', 'work breakdown', 'work package generator'],
+      defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
-    {
-      id: 'raid',
-      icon: <ShieldAlert size={24} />,
-      title: 'RAID Logs',
-      code: 'RAIDaaS',
-      description: 'AI-generated Risk, Assumption, Issue and Dependency registers',
-      tier: 2,
-      isSubService: true,
-      minRole: 'user',
-      colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
-      iconBgClass: 'bg-purple-100 text-purple-600',
-      actionType: 'modal',
-      category: '—',
-      samplePrompt: 'Create a **RAID log** for a cloud migration project in a government agency — include risks around data sovereignty, vendor lock-in and staff readiness.',
-      magicWords: ['RAID log', 'RAID plan', 'risks assumptions issues dependencies', 'RAID register'],
-      defaultLLM: 'GPT-4.1 mini',
-      fallbackLLM: 'GPT-4.1',
-    },
-    {
-      id: 'raci',
-      icon: <Users size={24} />,
-      title: 'RACI Matrix',
-      code: 'RACIaaS',
-      description: 'Auto-generate Responsibility Assignment matrices from project or policy descriptions',
-      tier: 2,
-      isSubService: true,
-      minRole: 'user',
-      colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
-      iconBgClass: 'bg-purple-100 text-purple-600',
-      actionType: 'modal',
-      category: '—',
-      samplePrompt: 'Create a **RACI matrix** for a government policy review process — roles should include Minister, policy team, legal team and department heads.',
-      magicWords: ['RACI', 'RACI matrix', 'responsibility matrix', 'roles and responsibilities'],
-      defaultLLM: 'GPT-4.1 mini',
-      fallbackLLM: 'GPT-4.1',
-    },
-    // Tier 3 — Domain Specific Services
+
+    // ── Tier 3 — Domain Specific ──
     {
       id: 'citizen-feedback',
       icon: <MessageCircle size={24} />,
       title: 'Citizen Feedback Analyser',
-      code: 'CFaaS',
       description: 'AI analysis of citizen feedback at scale — sentiment, themes, priority issues. Output: DOCX, XLSX',
       tier: 3,
       minRole: 'user',
@@ -910,7 +873,6 @@ export default function WelcomeScreen({
       id: 'survey',
       icon: <ClipboardList size={24} />,
       title: 'Citizen Survey Analyser',
-      code: 'SVaaS',
       description: 'Process and summarise structured and unstructured survey responses with insight extraction. Output: XLSX, DOCX',
       tier: 3,
       minRole: 'user',
@@ -928,7 +890,6 @@ export default function WelcomeScreen({
       id: 'compensation',
       icon: <DollarSign size={24} />,
       title: 'Pay Grade & Compensation Review',
-      code: 'PCaaS',
       description: 'Benchmark and analyse compensation structures, grade bands and pay equity. Output: XLSX, DOCX',
       tier: 3,
       minRole: 'user',
@@ -943,46 +904,9 @@ export default function WelcomeScreen({
       fallbackLLM: 'Claude Sonnet',
     },
     {
-      id: 'service-simplification',
-      icon: <LayoutTemplate size={24} />,
-      title: 'Service Simplification as a Service',
-      code: 'SSaaS',
-      description: 'AI-assisted service redesign and simplification for improved citizen experience',
-      tier: 3,
-      minRole: 'user',
-      colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
-      iconBgClass: 'bg-amber-100 text-amber-600',
-      actionType: 'category',
-      categorySlug: 'gea',
-      category: 'GEA',
-      samplePrompt: '**Service simplify**: Identify the top 3 government services that could be simplified or digitised based on EA policy standards and best practices.',
-      magicWords: ['Service simplify'],
-      defaultLLM: 'Claude Haiku',
-      fallbackLLM: 'Claude Sonnet',
-    },
-    {
-      id: 'branding',
-      icon: <Palette size={24} />,
-      title: 'Branding as a Service',
-      code: 'BaaS',
-      description: 'AI-powered brand consistency analysis and guideline generation for government communications',
-      tier: 3,
-      minRole: 'user',
-      colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
-      iconBgClass: 'bg-amber-100 text-amber-600',
-      actionType: 'category',
-      categorySlug: 'branding-guidelines',
-      category: 'Branding guidelines',
-      samplePrompt: 'Evaluate the current **branding** assets against the branding guidelines — provide a scored assessment with recommendations.',
-      magicWords: ['Branding', 'assess branding', 'evaluate branding', 'review branding'],
-      defaultLLM: 'GPT-4.1 mini',
-      fallbackLLM: 'GPT-4.1',
-    },
-    {
       id: 'training',
       icon: <GraduationCap size={24} />,
-      title: 'Capacity Development & Training as a Service',
-      code: 'CDaaS',
+      title: 'Change Support',
       description: 'AI-powered onboarding and training via conversational chatbots grounded in SOPs and organisational documents',
       tier: 3,
       minRole: 'user',
@@ -1000,7 +924,6 @@ export default function WelcomeScreen({
       id: 'customer-support',
       icon: <Headphones size={24} />,
       title: 'Citizen & Customer Support as a Service',
-      code: 'CCSaaS',
       description: 'Embeddable AI chatbots scoped to an entity\'s documents, services and policies for always-on public support',
       tier: 3,
       minRole: 'superuser',
@@ -1019,7 +942,6 @@ export default function WelcomeScreen({
       id: 'translation',
       icon: <Languages size={24} />,
       title: 'Translation as a Service',
-      code: 'TLaaS',
       description: 'Multi-language AI translation of documents, responses and live communications for multilingual environments. Output: DOCX',
       tier: 3,
       minRole: 'user',
@@ -1029,16 +951,16 @@ export default function WelcomeScreen({
       message: 'Access Translation via chat input: Click the + button and select Translate',
       category: '—',
       samplePrompt: 'Translate the following government policy excerpt into Spanish, then provide a plain-language English summary for a public audience: [paste text here]',
-      magicWords: [],
+      magicWords: ['translate', 'translation', 'translate to', 'multilingual'],
       defaultLLM: '-',
       fallbackLLM: '-',
     },
-    // Tier 4 — Integration & Automation Services
+
+    // ── Tier 4 — Integration & Automation ──
     {
       id: 'chatbot-service',
       icon: <Globe size={24} />,
       title: 'ChatBot as a Service',
-      code: 'CBaaS',
       description: 'Deploy embeddable or standalone AI chat widgets scoped to specific document categories with custom branding',
       tier: 4,
       minRole: 'superuser',
@@ -1056,7 +978,6 @@ export default function WelcomeScreen({
       id: 'agent-bot',
       icon: <Bot size={24} />,
       title: 'Agent Bot as a Service',
-      code: 'ABaaS',
       description: 'Build fully configurable AI agents with defined input/output schemas exposed via REST API with API key auth and webhook callbacks',
       tier: 4,
       minRole: 'admin',
@@ -1074,7 +995,6 @@ export default function WelcomeScreen({
       id: 'data-integration',
       icon: <Plug size={24} />,
       title: 'Data Integration as a Service',
-      code: 'DIaaS',
       description: 'Connect AI to external data sources — REST APIs with OpenAPI import and CSV/Excel uploads — with query, filter and aggregation',
       tier: 4,
       minRole: 'superuser',
@@ -1091,14 +1011,81 @@ export default function WelcomeScreen({
       defaultLLM: 'Claude Haiku',
       fallbackLLM: 'Claude Sonnet',
     },
-    // Tier 5 — Developer Tools
+
+    // ── Tier 5 — Enterprise Architecture ──
+    {
+      id: 'architecture-diagram',
+      icon: <Building2 size={24} />,
+      title: 'Architecture Diagram as a Service',
+      description: 'Generate enterprise architecture diagrams — solution architecture, system context, integration maps, and component diagrams aligned to EA frameworks',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-indigo-200 hover:border-indigo-300 hover:shadow-md',
+      iconBgClass: 'bg-indigo-100 text-indigo-600',
+      actionType: 'modal',
+      category: '—',
+      samplePrompt: 'Create a **solution architecture diagram** for a government digital services platform — show key components, integrations, and data flows.',
+      magicWords: ['architecture', 'system architecture', 'solution architecture', 'component diagram', 'conceptual', 'logical', 'technical'],
+      defaultLLM: 'Claude Haiku',
+      fallbackLLM: 'Claude Sonnet',
+    },
+    {
+      id: 'api-specification',
+      icon: <FileCode size={24} />,
+      title: 'API Specification as a Service',
+      description: 'Generate OpenAPI/Swagger specifications, REST API documentation, and integration contracts from natural language descriptions',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-indigo-200 hover:border-indigo-300 hover:shadow-md',
+      iconBgClass: 'bg-indigo-100 text-indigo-600',
+      actionType: 'modal',
+      category: '—',
+      samplePrompt: 'Generate an **OpenAPI specification** for a citizen e-services API — include endpoints for service discovery, application submission, and status tracking.',
+      magicWords: ['api specification', 'openapi', 'swagger', 'api design', 'api spec', 'api contract'],
+      defaultLLM: 'Claude Sonnet',
+      fallbackLLM: 'Claude Haiku',
+    },
+    {
+      id: 'service-simplification',
+      icon: <LayoutTemplate size={24} />,
+      title: 'Service Simplification as a Service',
+      description: 'AI-assisted service redesign and simplification for improved citizen experience',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-indigo-200 hover:border-indigo-300 hover:shadow-md',
+      iconBgClass: 'bg-indigo-100 text-indigo-600',
+      actionType: 'category',
+      categorySlug: 'gea',
+      category: 'GEA',
+      samplePrompt: '**Service simplify**: Identify the top 3 government services that could be simplified or digitised based on EA policy standards and best practices.',
+      magicWords: ['Service simplify'],
+      defaultLLM: 'Claude Haiku',
+      fallbackLLM: 'Claude Sonnet',
+    },
+    {
+      id: 'github-integrator',
+      icon: <Github size={24} />,
+      title: 'GitHub Integrator',
+      description: 'Connect GitHub repositories to AI analysis — review pull requests, analyse code quality, generate documentation and audit repository health',
+      tier: 5,
+      minRole: 'user',
+      colorClass: 'border-indigo-200 hover:border-indigo-300 hover:shadow-md',
+      iconBgClass: 'bg-indigo-100 text-indigo-600',
+      actionType: 'modal',
+      category: '—',
+      samplePrompt: 'Connect to my **GitHub repository** and analyse the code quality — identify key issues, outdated dependencies, and security vulnerabilities.',
+      magicWords: ['github', 'github repository', 'github analysis', 'github integration'],
+      defaultLLM: 'Claude Sonnet',
+      fallbackLLM: 'Claude Haiku',
+    },
+
+    // ── Tier 6 — Cyber Tools ──
     {
       id: 'website-analyser',
       icon: <Activity size={24} />,
       title: 'Website Analyser as a Service',
-      code: 'WAaaS',
       description: 'Analyse website performance, accessibility, SEO and best practices using Google Lighthouse. Returns Core Web Vitals metrics and recommendations',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
@@ -1114,9 +1101,8 @@ export default function WelcomeScreen({
       id: 'code-analyser',
       icon: <Code2 size={24} />,
       title: 'Code Analyser as a Service',
-      code: 'CAaaS',
       description: 'Analyse code quality using SonarCloud. Identify bugs, vulnerabilities, code smells and security hotspots with actionable quality ratings',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
@@ -1132,9 +1118,8 @@ export default function WelcomeScreen({
       id: 'gap-spotter',
       icon: <Crosshair size={24} />,
       title: 'GapSpotter as a Service',
-      code: 'GSaaS',
       description: 'Helps cyber sec consultant review cyber policy and audit documents to check alignment with ISO, NIST standards',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
@@ -1150,9 +1135,8 @@ export default function WelcomeScreen({
       id: 'load-testing',
       icon: <Gauge size={24} />,
       title: 'Load Testing as a Service',
-      code: 'LTaaS',
       description: 'Run load tests against web endpoints using k6 Cloud with Grafana dashboards. Measures response times (p50/p95/p99), throughput and error rates under configurable concurrent user loads',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
@@ -1168,9 +1152,8 @@ export default function WelcomeScreen({
       id: 'security-scan',
       icon: <ShieldCheck size={24} />,
       title: 'Security Scan as a Service',
-      code: 'ScaaS',
       description: 'Scan website security headers and configuration using Mozilla HTTP Observatory. Tests CSP, HSTS, X-Frame-Options, cookies, CORS and other security controls with letter-grade ratings and remediation advice',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
       colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
       iconBgClass: 'bg-cyan-100 text-cyan-600',
@@ -1186,12 +1169,11 @@ export default function WelcomeScreen({
       id: 'ssl-scan',
       icon: <Lock size={24} />,
       title: 'SSL Scan as a Service',
-      code: 'SSLaaS',
       description: 'Analyse SSL/TLS configuration using SSL Labs — grades TLS protocol, certificate expiry, cipher strength, and checks for known vulnerabilities (Heartbleed, POODLE, BEAST)',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
-      colorClass: 'border-green-200 hover:border-green-300 hover:shadow-md',
-      iconBgClass: 'bg-green-100 text-green-600',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
       actionType: 'category',
       categorySlug: 'cyber',
       category: 'Cyber',
@@ -1204,12 +1186,11 @@ export default function WelcomeScreen({
       id: 'dns-scan',
       icon: <Server size={24} />,
       title: 'DNS Security Scan',
-      code: 'DNSaaS',
       description: 'Check email authentication and DNS security records — SPF, DMARC, DKIM, and DNSSEC — to assess phishing and email spoofing risk',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
-      colorClass: 'border-purple-200 hover:border-purple-300 hover:shadow-md',
-      iconBgClass: 'bg-purple-100 text-purple-600',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
       actionType: 'category',
       categorySlug: 'cyber',
       category: 'Cyber',
@@ -1222,12 +1203,11 @@ export default function WelcomeScreen({
       id: 'cookie-audit',
       icon: <Cookie size={24} />,
       title: 'Cookie Security Audit',
-      code: 'CKaaS',
       description: 'Inspect website cookies for missing security flags — HttpOnly, Secure, SameSite — to identify XSS and CSRF risks',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
-      colorClass: 'border-amber-200 hover:border-amber-300 hover:shadow-md',
-      iconBgClass: 'bg-amber-100 text-amber-600',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
       actionType: 'category',
       categorySlug: 'cyber',
       category: 'Cyber',
@@ -1240,12 +1220,11 @@ export default function WelcomeScreen({
       id: 'redirect-audit',
       icon: <ArrowRightLeft size={24} />,
       title: 'Redirect Chain Audit',
-      code: 'RDaaS',
       description: 'Analyse HTTP redirect chain — checks HTTP to HTTPS upgrade, mixed content hops, redirect loops, and excessive redirects that hurt SEO',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
-      colorClass: 'border-rose-200 hover:border-rose-300 hover:shadow-md',
-      iconBgClass: 'bg-rose-100 text-rose-600',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
       actionType: 'category',
       categorySlug: 'cyber',
       category: 'Cyber',
@@ -1258,12 +1237,11 @@ export default function WelcomeScreen({
       id: 'wcag-audit',
       icon: <Activity size={24} />,
       title: 'WCAG Accessibility Audit',
-      code: 'WCaaS',
       description: 'Detailed WCAG 2.1 accessibility audit — maps Lighthouse violations to specific WCAG criteria and conformance levels (A/AA/AAA)',
-      tier: 5,
+      tier: 6,
       minRole: 'user',
-      colorClass: 'border-teal-200 hover:border-teal-300 hover:shadow-md',
-      iconBgClass: 'bg-teal-100 text-teal-600',
+      colorClass: 'border-cyan-200 hover:border-cyan-300 hover:shadow-md',
+      iconBgClass: 'bg-cyan-100 text-cyan-600',
       actionType: 'category',
       categorySlug: 'cyber',
       category: 'Cyber',
@@ -1274,193 +1252,49 @@ export default function WelcomeScreen({
     },
   ];
 
-  const visibleSetupCards = setupCards.filter((card) =>
-    canAccess(userRole, card.minRole)
-  );
+  // ============ Search ============
 
-  // Magic Words data
-  const magicWords: MagicWord[] = [
-    {
-      id: 'charts',
-      icon: <BarChart3 size={20} />,
-      description: 'Create a pie chart, bar graph, or data visualization',
-      keywords: ['pie', 'bar', 'radar', 'stacked bar', 'chart', 'graph'],
-      linkedServiceCode: 'GRaaS',
-      linkedServiceName: 'Graph',
-    },
-    {
-      id: 'flowchart',
-      icon: <GitBranch size={20} />,
-      description: 'Create a flowchart or process diagram',
-      keywords: ['flowchart', 'workflow', 'sequence diagram', 'mindmap', 'ER diagram'],
-      linkedServiceCode: 'DGaaS',
-      linkedServiceName: 'Diagram',
-    },
-    {
-      id: 'architecture',
-      icon: <Landmark size={20} />,
-      description: 'Create an architecture or system diagram',
-      keywords: ['architecture diagram', 'system architecture', 'solution architecture', 'component diagram', 'state diagram', 'class diagram'],
-      linkedServiceCode: 'DGaaS',
-      linkedServiceName: 'Diagram',
-    },
-    {
-      id: 'timeline',
-      icon: <GanttChart size={20} />,
-      description: 'Create a project timeline or Gantt chart',
-      keywords: ['gantt chart', 'timeline', 'milestones', 'delivery plan', 'project schedule'],
-      linkedServiceCode: 'GTaaS',
-      linkedServiceName: 'Gantt Charts',
-    },
-    {
-      id: 'projectplan',
-      icon: <FolderKanban size={20} />,
-      description: 'Create a project plan or implementation plan',
-      keywords: ['project plan', 'implementation plan', 'project phases'],
-      linkedServiceCode: 'PMaaS',
-      linkedServiceName: 'Project Management',
-    },
-    {
-      id: 'raci',
-      icon: <Users size={20} />,
-      description: 'Create a RACI responsibility matrix',
-      keywords: ['RACI', 'RACI matrix', 'responsibility matrix', 'roles and responsibilities'],
-      linkedServiceCode: 'RACIaaS',
-      linkedServiceName: 'RACI Matrix',
-    },
-    {
-      id: 'raid',
-      icon: <ClipboardList size={20} />,
-      description: 'Create a RAID log (Risks, Assumptions, Issues, Dependencies)',
-      keywords: ['RAID log', 'RAID plan', 'risks assumptions issues dependencies', 'RAID register'],
-      linkedServiceCode: 'RAIDaaS',
-      linkedServiceName: 'RAID Logs',
-    },
-    {
-      id: 'roadmap',
-      icon: <Map size={20} />,
-      description: 'Create a strategic roadmap',
-      keywords: ['roadmap', 'roadmap infographic'],
-      linkedServiceCode: 'RMaaS',
-      linkedServiceName: 'Roadmap',
-    },
-    {
-      id: 'strategy',
-      icon: <Target size={20} />,
-      description: 'Develop a strategy document',
-      keywords: ['strategy'],
-      linkedServiceCode: 'STaaS',
-      linkedServiceName: 'Strategy',
-    },
-    {
-      id: 'report',
-      icon: <FileText size={20} />,
-      description: 'Generate a report in DOCX, PDF, PPTX or Excel',
-      keywords: ['create report', 'DOCX', 'PPTX', 'PDF', 'Excel'],
-      linkedServiceCode: 'RGaaS',
-      linkedServiceName: 'Report Generator',
-    },
-    {
-      id: 'survey',
-      icon: <ClipboardList size={20} />,
-      description: 'Analyse citizen survey data',
-      keywords: ['Caribbean AI survey', 'citizen survey', 'citizen survey 2025', 'citizen survey 2026'],
-      linkedServiceCode: 'SVaaS',
-      linkedServiceName: 'Citizen Survey Analyser',
-    },
-    {
-      id: 'feedback',
-      icon: <MessageCircle size={20} />,
-      description: 'Analyse citizen feedback and complaints',
-      keywords: ['citizen feedback', 'service feedback', 'complaints', 'grievances', 'satisfaction', 'ratings'],
-      linkedServiceCode: 'CFaaS',
-      linkedServiceName: 'Citizen Feedback Analyser',
-    },
-    {
-      id: 'compensation',
-      icon: <DollarSign size={20} />,
-      description: 'Run a compensation or salary review',
-      keywords: ['compensation review', 'salary review', 'pay review', 'benchmark salaries'],
-      linkedServiceCode: 'PCaaS',
-      linkedServiceName: 'Pay Grade & Compensation Review',
-    },
-    {
-      id: 'branding',
-      icon: <Palette size={20} />,
-      description: 'Analyse branding compliance',
-      keywords: ['Branding', 'assess branding', 'evaluate branding', 'review branding'],
-      linkedServiceCode: 'BaaS',
-      linkedServiceName: 'Branding',
-    },
-    {
-      id: 'change',
-      icon: <GraduationCap size={20} />,
-      description: 'Access change management and training resources',
-      keywords: ['change readiness', 'stakeholder impact', 'role clarity', 'change execution'],
-      linkedServiceCode: 'CDaaS',
-      linkedServiceName: 'Capacity Development & Training',
-    },
-    {
-      id: 'simplify',
-      icon: <LayoutTemplate size={20} />,
-      description: 'Simplify government services',
-      keywords: ['Service simplify'],
-      linkedServiceCode: 'SSaaS',
-      linkedServiceName: 'Service Simplification',
-    },
-    {
-      id: 'website',
-      icon: <Activity size={20} />,
-      description: 'Analyse website performance and accessibility',
-      keywords: ['analyse website', 'analyze website'],
-      linkedServiceCode: 'WAaaS',
-      linkedServiceName: 'Website Analyser',
-    },
-    {
-      id: 'code',
-      icon: <Code2 size={20} />,
-      description: 'Analyse code quality and security',
-      keywords: ['analyse code', 'analyze code'],
-      linkedServiceCode: 'CAaaS',
-      linkedServiceName: 'Code Analyser',
-    },
-    {
-      id: 'gapspotter',
-      icon: <Crosshair size={20} />,
-      description: 'Review documents against ISO/NIST standards',
-      keywords: ['gap spotter'],
-      linkedServiceCode: 'GSaaS',
-      linkedServiceName: 'GapSpotter',
-    },
-    {
-      id: 'loadtest',
-      icon: <Gauge size={20} />,
-      description: 'Run load tests on web endpoints',
-      keywords: ['load test'],
-      linkedServiceCode: 'LTaaS',
-      linkedServiceName: 'Load Testing',
-    },
-    {
-      id: 'securityscan',
-      icon: <ShieldCheck size={20} />,
-      description: 'Scan website security headers',
-      keywords: ['security scan'],
-      linkedServiceCode: 'ScaaS',
-      linkedServiceName: 'Security Scan',
-    },
-    {
-      id: 'ird',
-      icon: <Headphones size={20} />,
-      description: 'Get IRD tax information',
-      keywords: ['IRD tax flow for [tax type]'],
-      linkedServiceCode: 'CCSaaS',
-      linkedServiceName: 'Citizen & Customer Support',
-    },
-  ];
+  const q = searchQuery.toLowerCase().trim();
+  const isSearching = q.length > 0;
+
+  const searchCapabilities = isSearching
+    ? serviceCards.filter(
+        (s) =>
+          canAccess(userRole, s.minRole) &&
+          (s.title.toLowerCase().includes(q) ||
+            s.description.toLowerCase().includes(q) ||
+            TIER_NAMES[s.tier].toLowerCase().includes(q))
+      )
+    : [];
+
+  const searchTools =
+    isSearching && (userRole === 'admin' || userRole === 'superuser')
+      ? toolsList.filter(
+          (t) =>
+            t.name.toLowerCase().includes(q) ||
+            t.description.toLowerCase().includes(q) ||
+            t.keywords.join(' ').toLowerCase().includes(q)
+        )
+      : [];
+
+  const searchSetup =
+    isSearching && userRole === 'admin'
+      ? setupRows.filter(
+          (r) =>
+            r.component.toLowerCase().includes(q) ||
+            r.purpose.toLowerCase().includes(q) ||
+            r.options.join(' ').toLowerCase().includes(q)
+        )
+      : [];
+
+  const totalSearchResults = searchCapabilities.length + searchTools.length + searchSetup.length;
+
+  // ============ Render ============
 
   return (
     <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 overflow-y-auto">
       <div className="max-w-4xl w-full">
+
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
@@ -1515,487 +1349,580 @@ export default function WelcomeScreen({
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex justify-center mb-6">
-          <div className="inline-flex bg-gray-100 rounded-lg p-1">
+        {/* Search Bar */}
+        <div className="relative max-w-md mx-auto mb-6">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search capabilities, tools, setup..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          />
+          {searchQuery && (
             <button
-              onClick={() => setActiveTab('services')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                activeTab === 'services'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >
-              <span className="flex items-center gap-2">
-                <Sparkles size={16} />
-                Services
-              </span>
+              <X size={14} />
             </button>
-            <button
-              onClick={() => setActiveTab('setup')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                activeTab === 'setup'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <Settings size={16} />
-                Setup
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveTab('magicwords')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                activeTab === 'magicwords'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <Zap size={16} />
-                Magic Words
-              </span>
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* Tab Content */}
-        {activeTab === 'services' && (
+        {/* ── Search Results ── */}
+        {isSearching ? (
           <div className="space-y-6">
-            {/* Services organized by Tier */}
-            {([1, 2, 3, 4, 5] as const).map((tier) => {
-              const tierServices = serviceCards.filter(
-                (s) => s.tier === tier && canAccess(userRole, s.minRole)
-              );
-              if (tierServices.length === 0) return null;
-
-              const colors = TIER_COLORS[tier];
-              return (
-                <div key={tier} className="space-y-3">
-                  {/* Tier Header */}
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colors.badge}`}>
-                      Tier {tier}
-                    </span>
-                    <span className={`text-sm font-medium ${colors.text}`}>
-                      {TIER_NAMES[tier]}
-                    </span>
-                  </div>
-                  {/* Tier Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {tierServices.map((card) => (
-                      <div
-                        key={card.id}
-                        onClick={() => setSelectedService(card)}
-                        className={`bg-white rounded-xl border-2 ${card.colorClass} p-4 cursor-pointer transition-all duration-200 min-h-[120px]`}
-                      >
-                        <div className="flex flex-col h-full">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className={`p-2 rounded-lg ${card.iconBgClass}`}>
-                              {card.icon}
-                            </div>
-                            <RoleTag role={card.minRole} />
-                          </div>
-                          <h3 className="font-medium text-gray-900 text-sm mb-1 line-clamp-2">
-                            {card.isSubService && '— '}{card.title}
-                          </h3>
-                          <p className="text-xs text-gray-500 line-clamp-2 mt-auto">
-                            {card.code}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Service Modal */}
-        {selectedService && (
-          <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setSelectedService(null)}
-          >
-            <div
-              className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-100 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${selectedService.iconBgClass}`}>
-                    {selectedService.icon}
-                  </div>
+            {totalSearchResults === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Search size={32} className="mx-auto mb-3 opacity-40" />
+                <p className="text-sm">No results for &ldquo;{searchQuery}&rdquo;</p>
+              </div>
+            ) : (
+              <>
+                {/* Capabilities results */}
+                {searchCapabilities.length > 0 && (
                   <div>
-                    <h3 className="font-semibold text-gray-900">{selectedService.title}</h3>
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-mono ${TIER_COLORS[selectedService.tier].badge}`}>
-                      {selectedService.code}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedService(null)}
-                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X size={20} className="text-gray-500" />
-                </button>
-              </div>
-
-              {/* Modal Body - Scrollable Table */}
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <table className="w-full text-sm">
-                  <tbody>
-                    <tr className="border-b border-gray-100">
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top w-32">Category</td>
-                      <td className="py-3 text-gray-900">
-                        {selectedService.category === '—' ? (
-                          <span className="text-gray-500 italic">This service works across all categories using magic words</span>
-                        ) : (
-                          selectedService.category
-                        )}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-gray-100">
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Description</td>
-                      <td className="py-3 text-gray-700">{selectedService.description}</td>
-                    </tr>
-                    <tr className="border-b border-gray-100">
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Sample Prompt</td>
-                      <td className="py-3">
-                        <div className="bg-gray-50 rounded-lg p-3 text-gray-700 text-sm">
-                          <span
-                            dangerouslySetInnerHTML={{
-                              __html: selectedService.samplePrompt
-                                .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-blue-600 font-semibold">$1</strong>')
-                            }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                    <tr className="border-b border-gray-100">
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Magic Words</td>
-                      <td className="py-3">
-                        {selectedService.magicWords.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedService.magicWords.map((word, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full"
-                              >
-                                {word}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-gray-100">
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Default LLM</td>
-                      <td className="py-3">
-                        <span className="inline-flex px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded">
-                          {selectedService.defaultLLM}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr className="border-b border-gray-100">
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Fallback LLM</td>
-                      <td className="py-3">
-                        <span className="inline-flex px-2 py-1 text-xs font-medium bg-amber-50 text-amber-700 rounded">
-                          {selectedService.fallbackLLM}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Access Level</td>
-                      <td className="py-3">
-                        <RoleTag role={selectedService.minRole} />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Message Modal */}
-        {showMessageModal && (
-          <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowMessageModal(null)}
-          >
-            <div
-              className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-auto p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-blue-100">
-                  <MessageCircle size={24} className="text-blue-600" />
-                </div>
-                <h3 className="font-semibold text-gray-900">Information</h3>
-              </div>
-              <p className="text-gray-700 mb-4">{showMessageModal}</p>
-              <Button
-                onClick={() => setShowMessageModal(null)}
-                className="w-full"
-              >
-                Got it
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Choice Modal */}
-        {showChoiceModal && (
-          <div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowChoiceModal(null)}
-          >
-            <div
-              className="bg-white rounded-xl shadow-xl w-full max-w-md mx-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${showChoiceModal.iconBgClass}`}>
-                    {showChoiceModal.icon}
-                  </div>
-                  <h3 className="font-semibold text-gray-900">{showChoiceModal.title}</h3>
-                </div>
-                <button
-                  onClick={() => setShowChoiceModal(null)}
-                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X size={20} className="text-gray-500" />
-                </button>
-              </div>
-              <div className="p-4 space-y-3">
-                <p className="text-sm text-gray-600 mb-4">Choose how you want to proceed:</p>
-                {showChoiceModal.choiceOptions?.map((option, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      setShowChoiceModal(null);
-                      router.push(resolveRoute({ route: option.route, routeTab: option.routeTab }));
-                    }}
-                    className="w-full p-4 text-left border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all"
-                  >
-                    <div className="font-medium text-gray-900">{option.label}</div>
-                    <div className="text-sm text-gray-600">{option.description}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'setup' && (
-          <div className="space-y-4">
-            {/* Setup Cards - Using flex wrap to prevent grid stretching */}
-            <div className="flex flex-wrap gap-4">
-              {visibleSetupCards.map((card) => {
-                const isExpanded = expandedCard === card.id;
-
-                return (
-                  <div
-                    key={card.id}
-                    className={`bg-white rounded-xl border-2 ${card.colorClass} transition-all duration-200 cursor-pointer w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.67rem)]`}
-                    onClick={() => toggleCard(card.id)}
-                  >
-                    <div className="p-4">
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`shrink-0 p-2 rounded-xl ${card.iconBgClass}`}
-                        >
-                          {card.icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-semibold text-gray-900">
-                              {card.title}
-                            </h3>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <RoleTag role={card.minRole} />
-                              {isExpanded ? (
-                                <ChevronUp size={18} className="text-gray-400" />
-                              ) : (
-                                <ChevronDown
-                                  size={18}
-                                  className="text-gray-400"
-                                />
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-sm text-gray-500 mt-0.5">
-                            {card.shortDescription}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Expanded content */}
-                      {isExpanded && (
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                          <p className="text-sm text-gray-700 mb-3">
-                            {card.expandedContent.description}
-                          </p>
-                          <ul className="space-y-1.5 mb-4">
-                            {card.expandedContent.bullets.map((bullet, idx) => (
-                              <li
-                                key={idx}
-                                className="text-sm text-gray-600 flex items-start gap-2"
-                              >
-                                <span className="text-gray-400 mt-1">•</span>
-                                {bullet}
-                              </li>
-                            ))}
-                          </ul>
-
-                          {/* Sub-items */}
-                          {card.expandedContent.subItems && (
-                            <div className="grid grid-cols-2 gap-2 mb-4">
-                              {card.expandedContent.subItems.map(
-                                (subItem, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"
-                                  >
-                                    <div className="shrink-0">
-                                      {subItem.icon}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <div className="text-xs font-medium text-gray-700">
-                                        {subItem.label}
-                                      </div>
-                                      <div className="text-xs text-gray-500 truncate">
-                                        {subItem.description}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              )}
-                            </div>
-                          )}
-
-                          {/* Action button */}
-                          {card.actionButton && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(resolveRoute(card.actionButton!));
-                              }}
-                              className="flex items-center gap-1.5"
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Capabilities</span>
+                      <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{searchCapabilities.length}</span>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                            <th className="text-left px-4 py-2.5 font-medium">Service</th>
+                            <th className="text-left px-4 py-2.5 font-medium hidden sm:table-cell">Tier</th>
+                            <th className="text-left px-4 py-2.5 font-medium hidden md:table-cell">Description</th>
+                            <th className="text-right px-4 py-2.5 font-medium">Access</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchCapabilities.map((card, idx) => (
+                            <tr
+                              key={card.id}
+                              onClick={() => setSelectedService(card)}
+                              className={`cursor-pointer hover:bg-gray-50 transition-colors ${idx < searchCapabilities.length - 1 ? 'border-b border-gray-100' : ''}`}
                             >
-                              {card.actionButton.label}
-                              <ExternalLink size={14} />
-                            </Button>
-                          )}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <span className={`p-1.5 rounded-lg shrink-0 ${card.iconBgClass}`}>{card.icon}</span>
+                                  <span className="font-medium text-gray-900">{card.title}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 hidden sm:table-cell">
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${TIER_COLORS[card.tier].badge}`}>
+                                  {TIER_NAMES[card.tier]}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-gray-500 hidden md:table-cell text-xs">{card.description}</td>
+                              <td className="px-4 py-3 text-right"><RoleTag role={card.minRole} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
+                {/* Tools results */}
+                {searchTools.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tools</span>
+                      <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{searchTools.length}</span>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                            <th className="text-left px-4 py-2.5 font-medium">Tool</th>
+                            <th className="text-left px-4 py-2.5 font-medium hidden sm:table-cell">Description</th>
+                            <th className="text-left px-4 py-2.5 font-medium">Keywords</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchTools.map((tool, idx) => (
+                            <tr key={tool.name} className={`${idx < searchTools.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                              <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{tool.name}</td>
+                              <td className="px-4 py-3 text-gray-500 hidden sm:table-cell text-xs">{tool.description}</td>
+                              <td className="px-4 py-3">
+                                {tool.keywords.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {tool.keywords.slice(0, 3).map((kw, i) => (
+                                      <span key={i} className="inline-flex px-1.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full">{kw}</span>
+                                    ))}
+                                    {tool.keywords.length > 3 && <span className="text-xs text-gray-400">+{tool.keywords.length - 3}</span>}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic">UI-triggered</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Setup results */}
+                {searchSetup.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Setup and Onboarding</span>
+                      <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{searchSetup.length}</span>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                            <th className="text-left px-4 py-2.5 font-medium w-8">#</th>
+                            <th className="text-left px-4 py-2.5 font-medium">Phase</th>
+                            <th className="text-left px-4 py-2.5 font-medium">Component</th>
+                            <th className="text-left px-4 py-2.5 font-medium hidden sm:table-cell">Purpose</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchSetup.map((row, idx) => (
+                            <tr key={row.num} className={`${idx < searchSetup.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                              <td className="px-4 py-3 text-gray-400 text-xs">{row.num}</td>
+                              <td className="px-4 py-3">
+                                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{row.phase}</span>
+                              </td>
+                              <td className="px-4 py-3 font-medium text-gray-900">{row.component}</td>
+                              <td className="px-4 py-3 text-gray-500 hidden sm:table-cell text-xs">{row.purpose}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* ── Tab Navigation ── */}
+            <div className="flex justify-center mb-6">
+              <div className="inline-flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab('capabilities')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    activeTab === 'capabilities'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={16} />
+                    Capabilities
+                  </span>
+                </button>
+
+                {(userRole === 'admin' || userRole === 'superuser') && (
+                  <button
+                    onClick={() => setActiveTab('tools')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                      activeTab === 'tools'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Zap size={16} />
+                      Tools
+                    </span>
+                  </button>
+                )}
+
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => setActiveTab('setup')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                      activeTab === 'setup'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Settings size={16} />
+                      Setup and Onboarding
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* ── Capabilities Tab ── */}
+            {activeTab === 'capabilities' && (
+              <div className="space-y-3">
+                {([1, 2, 3, 4, 5, 6] as const).map((tier) => {
+                  const tierServices = serviceCards.filter(
+                    (s) => s.tier === tier && canAccess(userRole, s.minRole)
+                  );
+                  if (tierServices.length === 0) return null;
+
+                  const colors = TIER_COLORS[tier];
+                  const isCollapsed = collapsedTiers.has(tier);
+
+                  return (
+                    <div key={tier} className="space-y-2">
+                      {/* Collapsible tier header */}
+                      <button
+                        onClick={() => toggleTier(tier)}
+                        className="flex items-center gap-2 w-full text-left py-1.5 group"
+                      >
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colors.badge}`}>
+                          Tier {tier}
+                        </span>
+                        <span className={`text-sm font-semibold ${colors.text} flex-1`}>
+                          {TIER_NAMES[tier]}
+                        </span>
+                        <span className={`${colors.text} opacity-60 group-hover:opacity-100 transition-opacity`}>
+                          {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                        </span>
+                      </button>
+
+                      {/* Tier table */}
+                      {!isCollapsed && (
+                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                                <th className="text-left px-4 py-2.5 font-medium">Service</th>
+                                <th className="text-left px-4 py-2.5 font-medium hidden md:table-cell">Description</th>
+                                <th className="text-right px-4 py-2.5 font-medium">Access</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tierServices.map((card, idx) => (
+                                <tr
+                                  key={card.id}
+                                  onClick={() => setSelectedService(card)}
+                                  className={`cursor-pointer hover:bg-gray-50 transition-colors ${
+                                    idx < tierServices.length - 1 ? 'border-b border-gray-100' : ''
+                                  }`}
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2.5">
+                                      <span className={`p-1.5 rounded-lg shrink-0 ${card.iconBgClass}`}>
+                                        {card.icon}
+                                      </span>
+                                      <span className="font-medium text-gray-900">{card.title}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-500 hidden md:table-cell text-xs">
+                                    {card.description}
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <RoleTag role={card.minRole} />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Regular user info section */}
-            {userRole === 'user' && (
-              <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <h3 className="font-medium text-gray-700 mb-2">How It Works</h3>
-                <p className="text-sm text-gray-600">
-                  Your administrator has set up knowledge categories with
-                  documents you can query. Select a category when starting a new
-                  thread to get focused answers from relevant documents.
-                </p>
+                  );
+                })}
               </div>
             )}
-          </div>
+
+            {/* ── Tools Tab ── */}
+            {activeTab === 'tools' && (userRole === 'admin' || userRole === 'superuser') && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                        <th className="text-left px-4 py-3 font-semibold">Tool</th>
+                        <th className="text-left px-4 py-3 font-semibold hidden sm:table-cell">Description</th>
+                        <th className="text-left px-4 py-3 font-semibold">Keywords</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {toolsList.map((tool) => (
+                        <tr key={tool.name} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                            {tool.name}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
+                            {tool.description}
+                          </td>
+                          <td className="px-4 py-3">
+                            {tool.keywords.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {tool.keywords.map((kw, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full"
+                                  >
+                                    {kw}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">UI-triggered</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── Setup and Onboarding Tab ── */}
+            {activeTab === 'setup' && userRole === 'admin' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                        <th className="px-4 py-3 text-left font-semibold w-8">#</th>
+                        <th className="px-4 py-3 text-left font-semibold w-24">Phase</th>
+                        <th className="px-4 py-3 text-left font-semibold w-44">Component</th>
+                        <th className="px-4 py-3 text-left font-semibold hidden sm:table-cell">Purpose</th>
+                        <th className="px-4 py-3 text-left font-semibold">Options / Output</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {setupRows.map((row, idx) => (
+                        <tr
+                          key={row.num}
+                          className={`border-b border-gray-100 align-top ${idx % 2 === 0 ? '' : 'bg-gray-50/40'}`}
+                        >
+                          <td className="px-4 py-3 text-gray-400 text-xs">{row.num}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">
+                              {row.phase}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-gray-900">{row.component}</td>
+                          <td className="px-4 py-3 text-gray-600 hidden sm:table-cell text-xs">{row.purpose}</td>
+                          <td className="px-4 py-3">
+                            <ul className="space-y-1">
+                              {row.options.map((opt, i) => (
+                                <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
+                                  <span className="text-gray-300 mt-0.5 shrink-0">—</span>
+                                  <span>{opt}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
-        {activeTab === 'magicwords' && (
-          <div className="space-y-4">
-            {/* Header */}
-            <div className="text-center mb-4">
-              <p className="text-sm text-gray-600">
-                Use these keywords in your prompts to trigger special features
-              </p>
+      </div>
+
+      {/* ── Service Detail Modal ── */}
+      {selectedService && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedService(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${selectedService.iconBgClass}`}>
+                  {selectedService.icon}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">{selectedService.title}</h3>
+                  <span className={`inline-flex px-2 py-0.5 rounded text-xs ${TIER_COLORS[selectedService.tier].badge}`}>
+                    {TIER_NAMES[selectedService.tier]}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedService(null)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
             </div>
 
-            {/* Magic Words Table */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-12"></th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      What do you want to do?
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Try these magic words
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Linked Service
-                    </th>
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top w-32">Category</td>
+                    <td className="py-3 text-gray-900">
+                      {selectedService.category === '—' ? (
+                        <span className="text-gray-500 italic">This service works across all categories using keywords</span>
+                      ) : (
+                        selectedService.category
+                      )}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {magicWords.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="p-1.5 rounded-lg bg-gray-100 text-gray-600 inline-flex">
-                          {item.icon}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {item.description}
-                      </td>
-                      <td className="px-4 py-3">
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Description</td>
+                    <td className="py-3 text-gray-700">{selectedService.description}</td>
+                  </tr>
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Sample Prompt</td>
+                    <td className="py-3">
+                      <div className="bg-gray-50 rounded-lg p-3 text-gray-700 text-sm">
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: selectedService.samplePrompt
+                              .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-blue-600 font-semibold">$1</strong>')
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Keywords</td>
+                    <td className="py-3">
+                      {selectedService.magicWords.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {item.keywords.map((keyword, idx) => (
+                          {selectedService.magicWords.map((word, idx) => (
                             <span
                               key={idx}
                               className="inline-flex px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full"
                             >
-                              {keyword}
+                              {word}
                             </span>
                           ))}
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-900 font-medium">
-                            {item.linkedServiceName}
-                          </span>
-                          <span className="text-xs text-gray-500 font-mono">
-                            ({item.linkedServiceCode})
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Default LLM</td>
+                    <td className="py-3">
+                      <span className="inline-flex px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded">
+                        {selectedService.defaultLLM}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-gray-100">
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Fallback LLM</td>
+                    <td className="py-3">
+                      <span className="inline-flex px-2 py-1 text-xs font-medium bg-amber-50 text-amber-700 rounded">
+                        {selectedService.fallbackLLM}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 pr-4 text-gray-500 font-medium whitespace-nowrap align-top">Access Level</td>
+                    <td className="py-3">
+                      <RoleTag role={selectedService.minRole} />
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Footer Note */}
-            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">Last updated:</span> 27 Feb 2026
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                This guide gives you a headstart to working with the system.
-              </p>
+            {/* Modal Footer — Action Button */}
+            <div className="p-4 border-t border-gray-100 shrink-0">
+              <Button
+                onClick={() => handleServiceAction(selectedService)}
+                disabled={isCreatingThread}
+                className="w-full"
+              >
+                {isCreatingThread ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    Opening...
+                  </span>
+                ) : (
+                  'Get Started'
+                )}
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ── Message Modal ── */}
+      {showMessageModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowMessageModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-blue-100">
+                <MessageCircle size={24} className="text-blue-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900">Information</h3>
+            </div>
+            <p className="text-gray-700 mb-4">{showMessageModal}</p>
+            <Button
+              onClick={() => setShowMessageModal(null)}
+              className="w-full"
+            >
+              Got it
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Choice Modal ── */}
+      {showChoiceModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowChoiceModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-md mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${showChoiceModal.iconBgClass}`}>
+                  {showChoiceModal.icon}
+                </div>
+                <h3 className="font-semibold text-gray-900">{showChoiceModal.title}</h3>
+              </div>
+              <button
+                onClick={() => setShowChoiceModal(null)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-gray-600 mb-4">Choose how you want to proceed:</p>
+              {showChoiceModal.choiceOptions?.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    setShowChoiceModal(null);
+                    router.push(resolveRoute({ route: option.route, routeTab: option.routeTab }));
+                  }}
+                  className="w-full p-4 text-left border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all"
+                >
+                  <div className="font-medium text-gray-900">{option.label}</div>
+                  <div className="text-sm text-gray-600">{option.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
