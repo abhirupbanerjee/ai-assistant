@@ -34,6 +34,7 @@ export interface CrawlResult {
   success: boolean;
   pages: CrawlPageResult[];
   totalPages: number;
+  creditsUsed?: number;
   error?: string;
 }
 
@@ -107,6 +108,8 @@ export async function extractWebContent(urls: string[]): Promise<ExtractResult[]
       body: JSON.stringify({
         urls: validUrls,
         extract_depth: 'advanced',
+        format: 'markdown',
+        include_usage: true,
       }),
     });
 
@@ -216,7 +219,9 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
     max_depth: options?.maxDepth ?? 2,
     max_breadth: options?.maxBreadth ?? 20,
     extract_depth: options?.extractDepth ?? 'advanced',
-    format: options?.format ?? 'text',
+    format: options?.format ?? 'markdown',
+    allow_external: false,   // only crawl pages within the target domain
+    include_usage: true,     // get actual credit usage in response
   };
 
   // Add optional path filters if provided
@@ -260,6 +265,11 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
 
     const data = await response.json();
 
+    // Debug: log raw response when results are empty
+    if (!data.results || data.results.length === 0) {
+      console.log('Tavily Crawl: Empty results for', url, '- response keys:', Object.keys(data));
+    }
+
     // Process results from Tavily Crawl API
     // Response format: { base_url, results: [{ url, raw_content }], response_time }
     const pages: CrawlPageResult[] = [];
@@ -280,13 +290,15 @@ export async function crawlWebsite(url: string, options?: CrawlOptions): Promise
       }
     }
 
-    console.log('Tavily Crawl: Completed crawl of', url, '- found', pages.length, 'pages');
+    const actualCredits = data.usage?.credits;
+    console.log('Tavily Crawl: Completed crawl of', url, '- found', pages.length, 'pages', actualCredits != null ? `(${actualCredits} credits)` : '');
 
     return {
       baseUrl: data.base_url || url,
       success: true,
       pages,
       totalPages: pages.length,
+      creditsUsed: actualCredits,
     };
   } catch (error) {
     console.error('Tavily Crawl error:', error);
@@ -317,6 +329,7 @@ export interface MapResult {
   pdfUrls: string[];        // URLs ending in .pdf
   webUrls: string[];        // Non-PDF URLs (web pages)
   totalUrls: number;
+  creditsUsed?: number;
   error?: string;
 }
 
@@ -367,6 +380,8 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
     limit: options?.limit ?? 100,
     max_depth: options?.maxDepth ?? 3,
     max_breadth: options?.maxBreadth ?? 50,
+    allow_external: false,   // only map pages within the target domain
+    include_usage: true,     // get actual credit usage in response
   };
 
   // Add optional path filters if provided
@@ -422,7 +437,8 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
       }
     }
 
-    console.log('Tavily Map: Completed map of', url, '- found', urls.length, 'URLs (', pdfUrls.length, 'PDFs)');
+    const actualCredits = data.usage?.credits;
+    console.log('Tavily Map: Completed map of', url, '- found', urls.length, 'URLs (', pdfUrls.length, 'PDFs)', actualCredits != null ? `(${actualCredits} credits)` : '');
 
     return {
       baseUrl: data.base_url || url,
@@ -431,6 +447,7 @@ export async function mapWebsite(url: string, options?: MapOptions): Promise<Map
       pdfUrls,
       webUrls,
       totalUrls: urls.length,
+      creditsUsed: actualCredits,
     };
   } catch (error) {
     console.error('Tavily Map error:', error);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save, Link2, FolderOpen, Clock, ChevronRight } from 'lucide-react';
+import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save, FolderOpen, Clock, ChevronRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -37,6 +37,29 @@ interface CrawlInfo {
   pdfCount?: number;
   pdfsIngested?: number;
   pdfsFailed?: number;
+}
+
+interface WebEntry {
+  id: string;
+  url: string;
+  mode: 'page' | 'crawl';
+  crawlLimit: number;
+  crawlPathFilter: string;
+  crawlExcludeFilter: string;
+}
+
+interface WebsitePreviewEntry {
+  url: string;
+  mode: 'page' | 'crawl';
+  estimatedPages: number;
+  pdfCount: number;
+  estimatedCredits: number;
+}
+
+interface WebsitePreviewResult {
+  entries: WebsitePreviewEntry[];
+  totals: { estimatedPages: number; pdfCount: number; estimatedCredits: number };
+  pdfWarning: boolean;
 }
 
 interface FolderSync {
@@ -114,24 +137,24 @@ export default function DocumentsManagement({ documentsSection: initialSection }
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'urls' | 'crawl' | 'youtube' | 'folder'>('file');
+  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'websites' | 'youtube' | 'folder'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTextName, setUploadTextName] = useState('');
   const [uploadTextContent, setUploadTextContent] = useState('');
   const [uploadCategoryIds, setUploadCategoryIds] = useState<number[]>([]);
   const [uploadIsGlobal, setUploadIsGlobal] = useState(false);
-  const [uploadUrls, setUploadUrls] = useState<string[]>(['', '', '', '', '']);
   const [uploadYoutubeUrl, setUploadYoutubeUrl] = useState('');
   const [uploadUrlName, setUploadUrlName] = useState('');
   const [urlIngestionResults, setUrlIngestionResults] = useState<UrlIngestionResult[] | null>(null);
 
-  // Crawl state (for Crawl Site tab)
-  const [crawlUrl, setCrawlUrl] = useState('');
-  const [crawlLimit, setCrawlLimit] = useState<number>(25);
-  const [crawlPathFilter, setCrawlPathFilter] = useState('');
-  const [crawlExcludeFilter, setCrawlExcludeFilter] = useState('');
+  // Websites mode state (unified single-page + crawl)
+  const [webEntries, setWebEntries] = useState<WebEntry[]>([
+    { id: crypto.randomUUID(), url: '', mode: 'page', crawlLimit: 25, crawlPathFilter: '', crawlExcludeFilter: '' },
+  ]);
+  const [includePdfs, setIncludePdfs] = useState(true);
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
-  const [includePdfs, setIncludePdfs] = useState(true);  // Include PDF files in crawl
+  const [websitePreview, setWebsitePreview] = useState<WebsitePreviewResult | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   // Folder upload state
   const [folderFiles, setFolderFiles] = useState<FolderUploadFile[]>([]);
@@ -209,8 +232,66 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url);
   };
 
-  const getValidWebUrls = (): string[] => {
-    return uploadUrls.filter(url => url.trim() && isValidUrl(url.trim()));
+  const getValidWebEntries = (): WebEntry[] => {
+    return webEntries.filter(e => e.url.trim() && isValidUrl(e.url.trim()));
+  };
+
+  const detectUrlMode = (url: string): 'page' | 'crawl' => {
+    try {
+      const u = new URL(url);
+      const path = u.pathname.replace(/\/+$/, '');
+      if (path === '' || (path.split('/').length <= 2 && !/\.[a-z]{2,5}$/i.test(path))) {
+        return 'crawl';
+      }
+    } catch { /* invalid URL */ }
+    return 'page';
+  };
+
+  const addWebEntry = () => {
+    setWebEntries(prev => [
+      ...prev,
+      { id: crypto.randomUUID(), url: '', mode: 'page', crawlLimit: 25, crawlPathFilter: '', crawlExcludeFilter: '' },
+    ]);
+  };
+
+  const removeWebEntry = (id: string) => {
+    setWebEntries(prev => prev.filter(e => e.id !== id));
+  };
+
+  const updateWebEntry = (id: string, updates: Partial<WebEntry>) => {
+    setWebEntries(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+  };
+
+  const handleWebsitePreview = async () => {
+    const validEntries = getValidWebEntries();
+    if (validEntries.length === 0) return;
+    setPreviewing(true);
+    setWebsitePreview(null);
+    try {
+      const res = await fetch('/api/admin/documents/url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entries: validEntries.map(e => ({
+            url: e.url.trim(),
+            mode: e.mode,
+            crawlOptions: e.mode === 'crawl' ? { limit: e.crawlLimit } : undefined,
+          })),
+          dryRun: true,
+          includePdfs,
+          categoryIds: uploadCategoryIds,
+          isGlobal: uploadIsGlobal,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.preview) setWebsitePreview(data.preview);
+      }
+    } catch (err) {
+      console.error('Preview failed:', err);
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const fuzzyMatch = (pattern: string, text: string): number => {
@@ -331,17 +412,14 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     setUploadCategoryIds([]);
     setUploadIsGlobal(false);
     setUploadMode('file');
-    setUploadUrls(['', '', '', '', '']);
     setUploadYoutubeUrl('');
     setUploadUrlName('');
     setUrlIngestionResults(null);
-    // Reset crawl state
-    setCrawlLimit(25);
-    setCrawlUrl('');
-    setCrawlPathFilter('');
-    setCrawlExcludeFilter('');
-    setCrawlInfo(null);
+    // Reset websites state
+    setWebEntries([{ id: crypto.randomUUID(), url: '', mode: 'page', crawlLimit: 25, crawlPathFilter: '', crawlExcludeFilter: '' }]);
     setIncludePdfs(true);
+    setCrawlInfo(null);
+    setWebsitePreview(null);
     // Reset folder state
     setFolderFiles([]);
     setFolderName('');
@@ -353,8 +431,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   const handleUploadConfirm = async () => {
     if (uploadMode === 'file' && !uploadFile) return;
     if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
-    if (uploadMode === 'urls' && getValidWebUrls().length === 0) return;
-    if (uploadMode === 'crawl' && !crawlUrl.trim()) return;
+    if (uploadMode === 'websites' && getValidWebEntries().length === 0) return;
     if (uploadMode === 'youtube' && (!uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))) return;
     if (uploadMode === 'folder' && folderFiles.length === 0) return;
 
@@ -387,46 +464,31 @@ export default function DocumentsManagement({ documentsSection: initialSection }
             isGlobal: uploadIsGlobal,
           }),
         });
-      } else if (uploadMode === 'urls') {
-        // Extract mode (single pages)
-        const webUrls = getValidWebUrls();
-        setUploadProgress('Extracting content...');
-        response = await fetch('/api/admin/documents/url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            urls: webUrls,
-            categoryIds: uploadCategoryIds,
-            isGlobal: uploadIsGlobal,
-          }),
-        });
-      } else if (uploadMode === 'crawl') {
-        // Crawl mode
-        setUploadProgress('Crawling website...');
-
-        // Parse path filters
-        const selectPaths = crawlPathFilter
-          .split('\n')
-          .map(p => p.trim())
-          .filter(p => p.length > 0);
-        const excludePaths = crawlExcludeFilter
-          .split('\n')
-          .map(p => p.trim())
-          .filter(p => p.length > 0);
+      } else if (uploadMode === 'websites') {
+        const validEntries = getValidWebEntries();
+        const hasCrawl = validEntries.some(e => e.mode === 'crawl');
+        setUploadProgress(hasCrawl ? 'Crawling websites...' : 'Extracting content...');
 
         response = await fetch('/api/admin/documents/url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            crawlUrl: crawlUrl.trim(),
-            crawlOptions: {
-              limit: crawlLimit,
-              selectPaths: selectPaths.length > 0 ? selectPaths : undefined,
-              excludePaths: excludePaths.length > 0 ? excludePaths : undefined,
-            },
-            categoryIds: uploadCategoryIds,
-            isGlobal: uploadIsGlobal,
+            entries: validEntries.map(e => ({
+              url: e.url.trim(),
+              mode: e.mode,
+              crawlOptions: e.mode === 'crawl' ? {
+                limit: e.crawlLimit,
+                selectPaths: e.crawlPathFilter.split('\n').map(p => p.trim()).filter(Boolean).length > 0
+                  ? e.crawlPathFilter.split('\n').map(p => p.trim()).filter(Boolean)
+                  : undefined,
+                excludePaths: e.crawlExcludeFilter.split('\n').map(p => p.trim()).filter(Boolean).length > 0
+                  ? e.crawlExcludeFilter.split('\n').map(p => p.trim()).filter(Boolean)
+                  : undefined,
+              } : undefined,
+            })),
             includePdfs,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
           }),
         });
       } else if (uploadMode === 'youtube') {
@@ -471,7 +533,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
 
       const data = await response.json();
 
-      if (uploadMode === 'urls' || uploadMode === 'crawl' || uploadMode === 'youtube') {
+      if (uploadMode === 'websites' || uploadMode === 'youtube') {
         if (data.results) {
           setUrlIngestionResults(data.results);
         }
@@ -494,7 +556,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
       }
 
       await loadDocuments();
-      if (uploadMode !== 'urls' && uploadMode !== 'crawl' && uploadMode !== 'youtube' && uploadMode !== 'folder') {
+      if (uploadMode !== 'websites' && uploadMode !== 'youtube' && uploadMode !== 'folder') {
         setShowUploadModal(false);
         resetUploadForm();
       }
@@ -1554,26 +1616,15 @@ export default function DocumentsManagement({ documentsSection: initialSection }
             Text
           </button>
           <button
-            onClick={() => setUploadMode('urls')}
+            onClick={() => setUploadMode('websites')}
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              uploadMode === 'urls'
+              uploadMode === 'websites'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <Globe size={16} className="inline mr-2" />
-            URLs
-          </button>
-          <button
-            onClick={() => setUploadMode('crawl')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              uploadMode === 'crawl'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Link2 size={16} className="inline mr-2" />
-            Crawl Site
+            Websites
           </button>
           <button
             onClick={() => setUploadMode('youtube')}
@@ -1677,82 +1728,13 @@ export default function DocumentsManagement({ documentsSection: initialSection }
           )}
 
           {/* URLs Mode - Extract single pages */}
-          {uploadMode === 'urls' && (
+          {/* Websites Mode - unified single page + crawl */}
+          {uploadMode === 'websites' && (
             <>
-              {/* URL Ingestion Results */}
+              {/* Results */}
               {urlIngestionResults && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {urlIngestionResults.map((result, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex items-start gap-2 text-sm ${
-                          result.success ? 'text-green-700' : 'text-red-700'
-                        }`}
-                      >
-                        {result.success ? (
-                          <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
-                        ) : (
-                          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate">{result.url}</p>
-                          {result.success ? (
-                            <p className="text-xs text-green-600">{result.filename}</p>
-                          ) : (
-                            <p className="text-xs text-red-600">{result.error}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setUrlIngestionResults(null)}
-                    className="mt-2 text-xs text-blue-600 hover:underline"
-                  >
-                    Clear results
-                  </button>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Web URLs (up to 5 - saves API credits)
-                </label>
-                <div className="space-y-2">
-                  {uploadUrls.map((url, index) => (
-                    <input
-                      key={index}
-                      type="url"
-                      value={url}
-                      onChange={(e) => {
-                        const newUrls = [...uploadUrls];
-                        newUrls[index] = e.target.value;
-                        setUploadUrls(newUrls);
-                      }}
-                      placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                        url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
-                </p>
-              </div>
-            </>
-          )}
-
-          {/* Crawl Site Mode - Crawl entire website */}
-          {uploadMode === 'crawl' && (
-            <>
-              {/* Crawl Results */}
-              {urlIngestionResults && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Crawl Results</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Results</h4>
                   {crawlInfo && (
                     <div className="text-xs text-gray-600 mb-2 p-2 bg-blue-50 rounded">
                       <p>Base URL: {crawlInfo.baseUrl}</p>
@@ -1789,10 +1771,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setUrlIngestionResults(null);
-                      setCrawlInfo(null);
-                    }}
+                    onClick={() => { setUrlIngestionResults(null); setCrawlInfo(null); setWebsitePreview(null); }}
                     className="mt-2 text-xs text-blue-600 hover:underline"
                   >
                     Clear results
@@ -1800,109 +1779,155 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 </div>
               )}
 
-              {/* Base URL input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Website URL
-                </label>
-                <input
-                  type="url"
-                  value={crawlUrl}
-                  onChange={(e) => setCrawlUrl(e.target.value)}
-                  placeholder="https://example.com/docs"
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
-                    crawlUrl && !isValidUrl(crawlUrl) ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter a base URL to crawl and extract content from multiple pages
-                </p>
+              {/* URL Entries */}
+              <div className="space-y-3">
+                {webEntries.map((entry, index) => (
+                  <div key={entry.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="url"
+                        value={entry.url}
+                        onChange={(e) => {
+                          const url = e.target.value;
+                          updateWebEntry(entry.id, { url });
+                        }}
+                        onBlur={(e) => {
+                          const url = e.target.value.trim();
+                          if (url && isValidUrl(url)) {
+                            updateWebEntry(entry.id, { mode: detectUrlMode(url) });
+                          }
+                        }}
+                        placeholder={index === 0 ? 'https://example.com/page or https://example.com/' : '(optional)'}
+                        className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                          entry.url && !isValidUrl(entry.url) ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                      />
+                      {webEntries.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeWebEntry(entry.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Mode toggle */}
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`mode-${entry.id}`}
+                          checked={entry.mode === 'page'}
+                          onChange={() => updateWebEntry(entry.id, { mode: 'page' })}
+                          className="text-blue-600"
+                        />
+                        <span className="text-xs text-gray-700">Single page</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`mode-${entry.id}`}
+                          checked={entry.mode === 'crawl'}
+                          onChange={() => updateWebEntry(entry.id, { mode: 'crawl' })}
+                          className="text-blue-600"
+                        />
+                        <span className="text-xs text-gray-700">Crawl whole site</span>
+                      </label>
+                    </div>
+
+                    {/* Crawl options */}
+                    {entry.mode === 'crawl' && (
+                      <div className="mt-2 pl-2 border-l-2 border-blue-200 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-600 whitespace-nowrap">Max pages:</label>
+                          <select
+                            value={entry.crawlLimit}
+                            onChange={(e) => updateWebEntry(entry.id, { crawlLimit: Number(e.target.value) })}
+                            className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value={10}>10 (~1 credit)</option>
+                            <option value={25}>25 (~3 credits)</option>
+                            <option value={50}>50 (~5 credits)</option>
+                            <option value={100}>100 (~10 credits)</option>
+                          </select>
+                        </div>
+                        <details>
+                          <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">Path filters (advanced)</summary>
+                          <div className="mt-1 space-y-1">
+                            <textarea
+                              value={entry.crawlPathFilter}
+                              onChange={(e) => updateWebEntry(entry.id, { crawlPathFilter: e.target.value })}
+                              placeholder={"/docs/.*\n/guide/.*"}
+                              rows={2}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                            <textarea
+                              value={entry.crawlExcludeFilter}
+                              onChange={(e) => updateWebEntry(entry.id, { crawlExcludeFilter: e.target.value })}
+                              placeholder={"/api/.*\n/admin/.*"}
+                              rows={2}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </details>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
 
-              {/* Max Pages Selector */}
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Maximum Pages
-                </label>
-                <select
-                  value={crawlLimit}
-                  onChange={(e) => setCrawlLimit(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value={10}>10 pages (~1 credit)</option>
-                  <option value={25}>25 pages (~3 credits)</option>
-                  <option value={50}>50 pages (~5 credits)</option>
-                  <option value={100}>100 pages (~10 credits)</option>
-                </select>
-              </div>
+              <button
+                type="button"
+                onClick={addWebEntry}
+                className="mt-2 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
+              >
+                <span className="text-lg leading-none">+</span> Add URL
+              </button>
 
-              {/* PDF Option */}
-              <div className="mt-4 flex items-center gap-2">
+              {/* Include PDFs */}
+              <div className="mt-3 flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="includePdfs"
+                  id="includePdfsWebsites"
                   checked={includePdfs}
                   onChange={(e) => setIncludePdfs(e.target.checked)}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <label htmlFor="includePdfs" className="text-sm font-medium text-gray-700">
-                  Include PDF documents
+                <label htmlFor="includePdfsWebsites" className="text-sm text-gray-700">
+                  Include PDF documents found during crawl
                 </label>
-                <span className="text-xs text-gray-500">
-                  (discovers and downloads PDFs)
-                </span>
               </div>
 
-              {/* Optional Path Filters */}
-              <details className="mt-4">
-                <summary className="text-sm font-medium text-gray-700 cursor-pointer hover:text-gray-900">
-                  Advanced: Path Filters
-                </summary>
-                <div className="mt-2 space-y-3 pl-2 border-l-2 border-gray-200">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Include paths (regex, one per line)
-                    </label>
-                    <textarea
-                      value={crawlPathFilter}
-                      onChange={(e) => setCrawlPathFilter(e.target.value)}
-                      placeholder={"/docs/.*\n/guide/.*"}
-                      rows={2}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Exclude paths (regex, one per line)
-                    </label>
-                    <textarea
-                      value={crawlExcludeFilter}
-                      onChange={(e) => setCrawlExcludeFilter(e.target.value)}
-                      placeholder={"/api/.*\n/admin/.*"}
-                      rows={2}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </details>
+              {/* Preview & Estimate */}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={handleWebsitePreview}
+                  disabled={previewing || getValidWebEntries().filter(e => e.mode === 'crawl').length === 0}
+                  className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {previewing ? <Spinner size="sm" /> : <Globe size={14} />}
+                  Preview &amp; Estimate (~1 credit per crawl entry)
+                </button>
 
-              {/* Credit Usage Warning */}
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>Credit Usage:</strong> Crawling uses ~1 Tavily credit per 10 pages.
-                  With {crawlLimit} pages limit, expect up to {Math.ceil(crawlLimit / 10)} credits.
-                  {includePdfs && ' Additional credits used for PDF discovery.'}
-                </p>
-              </div>
-
-              {/* Note about crawl */}
-              <div className="mt-3 p-2 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="text-xs text-gray-600">
-                  <strong>Note:</strong> Crawl discovers and extracts content from multiple web pages.
-                  {includePdfs
-                    ? ' PDFs found on the site will be downloaded and processed separately.'
-                    : ' Enable "Include PDF documents" to capture PDFs from the site.'}
-                </p>
+                {websitePreview && (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
+                    {websitePreview.entries.filter(e => e.mode === 'crawl').map((e, i) => (
+                      <p key={i}>{e.url}: ~{e.estimatedPages} pages, {e.pdfCount} PDFs</p>
+                    ))}
+                    <p className="font-medium pt-1 border-t border-blue-200">
+                      Total: ~{websitePreview.totals.estimatedPages} pages, {websitePreview.totals.pdfCount} PDFs, ~{websitePreview.totals.estimatedCredits} credits
+                    </p>
+                    {websitePreview.pdfWarning && (
+                      <div className="mt-1 p-2 bg-yellow-50 border border-yellow-300 rounded text-yellow-800">
+                        ⚠ {websitePreview.totals.pdfCount} PDFs detected. Each will be extracted using your configured provider.
+                        To skip PDFs, uncheck &quot;Include PDF documents&quot; above.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -2224,10 +2249,8 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 ? !uploadFile
                 : uploadMode === 'text'
                 ? (!uploadTextName.trim() || !uploadTextContent.trim())
-                : uploadMode === 'urls'
-                ? getValidWebUrls().length === 0
-                : uploadMode === 'crawl'
-                ? !crawlUrl.trim() || !isValidUrl(crawlUrl)
+                : uploadMode === 'websites'
+                ? getValidWebEntries().length === 0
                 : uploadMode === 'youtube'
                 ? !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim())
                 : folderFiles.length === 0

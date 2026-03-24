@@ -1049,8 +1049,8 @@ export async function ingestCrawledSite(
         }
       }
 
-      // Map API credits: ~1 credit per 10 URLs discovered
-      estimatedCredits += Math.ceil(mapResult.totalUrls / 10);
+      // Use actual credits from API if available, otherwise estimate
+      estimatedCredits += mapResult.creditsUsed ?? Math.ceil(mapResult.totalUrls / 10);
     }
   }
 
@@ -1086,6 +1086,39 @@ export async function ingestCrawledSite(
       error: crawlResult.error || 'Failed to crawl website',
       estimatedCredits: 0,
     };
+  }
+
+  // Fallback: if crawl returned 0 pages, try Map + Extract approach
+  if (crawlResult.success && crawlResult.pages.length === 0) {
+    console.log('[Ingest] Crawl returned 0 pages, trying Map+Extract fallback:', url);
+    const mapFallback = await mapWebsite(url, {
+      limit: options?.crawlOptions?.limit ?? 50,
+      maxDepth: options?.crawlOptions?.maxDepth,
+      selectPaths: options?.crawlOptions?.selectPaths,
+      excludePaths: options?.crawlOptions?.excludePaths,
+    });
+
+    if (mapFallback.success && mapFallback.webUrls.length > 0) {
+      const urlLimit = options?.crawlOptions?.limit ?? 50;
+      const urlsToExtract = mapFallback.webUrls.slice(0, urlLimit);
+      estimatedCredits += mapFallback.creditsUsed ?? Math.ceil(mapFallback.totalUrls / 10);
+      console.log('[Ingest] Map fallback found', urlsToExtract.length, 'URLs to extract');
+
+      const BATCH = 5;
+      for (let i = 0; i < urlsToExtract.length; i += BATCH) {
+        const batch = urlsToExtract.slice(i, i + BATCH);
+        const extractResults = await extractWebContent(batch);
+        for (const ex of extractResults) {
+          crawlResult.pages.push(
+            ex.success && ex.content
+              ? { url: ex.url, content: ex.content }
+              : { url: ex.url, error: ex.error || 'No content extracted' }
+          );
+        }
+      }
+      (crawlResult as { totalPages: number }).totalPages = crawlResult.pages.length;
+      console.log('[Ingest] Map+Extract result:', crawlResult.pages.filter(p => p.content).length, 'pages with content');
+    }
   }
 
   // Ingest each crawled page as a separate document
@@ -1126,8 +1159,8 @@ export async function ingestCrawledSite(
     }
   }
 
-  // Calculate estimated credits (1 credit per 10 pages for crawl)
-  estimatedCredits += Math.ceil(crawlResult.totalPages / 10);
+  // Use actual credits from API if available, otherwise estimate
+  estimatedCredits += crawlResult.creditsUsed ?? Math.ceil(crawlResult.totalPages / 10);
 
   const totalPagesFound = crawlResult.totalPages + pdfCount;
 
