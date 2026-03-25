@@ -5,7 +5,8 @@
  * Global documents are indexed into ALL category collections.
  */
 
-import { ChromaClient, Collection, Metadata, IncludeEnum } from 'chromadb';
+import { ChromaClient, Metadata, IncludeEnum } from 'chromadb';
+type Collection = Awaited<ReturnType<ChromaClient['getOrCreateCollection']>>;
 import type { ChunkMetadata } from '@/types';
 
 // Legacy collection name for backward compatibility
