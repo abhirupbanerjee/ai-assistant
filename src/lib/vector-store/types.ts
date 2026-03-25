@@ -2,7 +2,7 @@
  * Vector Store Abstraction Layer - Type Definitions
  *
  * Provides a unified interface for different vector store backends
- * (ChromaDB, Qdrant, etc.) to enable provider switching via configuration.
+ * (Qdrant) for vector similarity search.
  */
 
 import type { ChunkMetadata } from '@/types';

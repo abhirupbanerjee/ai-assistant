@@ -2285,7 +2285,7 @@ curl -X GET https://policybot.abhirup.app/api/admin/stats \
     threads: number;
     messages: number;
   };
-  chromadb: {
+  vectorStore: {
     collections: number;
     totalVectors: number;
   };
@@ -3829,7 +3829,7 @@ Delete a category created by this super user.
 
 **Constraints**:
 - Can only delete categories you created
-- Deletes all documents, subscriptions, and ChromaDB data for the category
+- Deletes all documents, subscriptions, and vector store data for the category
 
 **Example Request**:
 

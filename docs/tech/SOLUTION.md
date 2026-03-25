@@ -40,8 +40,8 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            ▼            ▼            ▼            ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │    DATABASE     │ │  VECTOR STORE   │ │     REDIS       │ │   FILESYSTEM    │
-│  PostgreSQL     │ │ChromaDB(default)│ │  Cache/Session  │ │  Threads/Docs   │
-│  (Kysely ORM)   │ │   or Qdrant     │ │                 │ │                 │
+│  PostgreSQL     │ │     Qdrant      │ │  Cache/Session  │ │  Threads/Docs   │
+│  (Kysely ORM)   │ │                 │ │                 │ │                 │
 └─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
            │
            ▼
@@ -109,7 +109,7 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 | Data Sources | API + CSV integration | External data querying with visualization |
 | Function APIs | OpenAI-format schemas | Dynamic function calling to external services |
 | Reranking | Cohere API, Transformers.js (BGE) | Chunk reranking for improved relevance |
-| Vector DB | ChromaDB (default) or Qdrant | Category-based document embeddings storage |
+| Vector DB | Qdrant | Category-based document embeddings storage |
 | Cache | Redis 7 | Query caching (RAG + Tavily), sessions |
 | Auth | NextAuth.js v4 + Azure AD + Google + Credentials | Multi-provider SSO + email/password |
 | Storage | Local Filesystem | Thread messages, uploaded PDFs |
@@ -122,7 +122,7 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 
 ### 1. Category System
 
-Documents are organized into categories, each with its own ChromaDB collection:
+Documents are organized into categories, each with its own Qdrant collection:
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -130,7 +130,7 @@ Documents are organized into categories, each with its own ChromaDB collection:
 │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐│
 │  │   HR Category   │  │ Finance Category│  │ IT Category  ││
 │  │  ─────────────  │  │  ─────────────  │  │ ──────────── ││
-│  │ ChromaDB:       │  │ ChromaDB:       │  │ ChromaDB:    ││
+│  │ Qdrant:         │  │ Qdrant:         │  │ Qdrant:      ││
 │  │ policy_hr       │  │ policy_finance  │  │ policy_it    ││
 │  │                 │  │                 │  │              ││
 │  │ Docs:           │  │ Docs:           │  │ Docs:        ││
@@ -347,7 +347,7 @@ File Upload
     ▼
 ┌─────────────────────────────────────┐
 │ Store in Vector Store               │
-│ (ChromaDB or Qdrant)                │
+│ (Qdrant)                            │
 │ - Global: ALL category collections  │
 │ - Category: Specific collections    │
 └─────────────────────────────────────┘
@@ -386,7 +386,7 @@ Text Content
     ▼
 ┌─────────────────────────────────────┐
 │ Store in Vector Store               │
-│ (ChromaDB or Qdrant)                │
+│ (Qdrant)                            │
 │ - Global: ALL category collections  │
 │ - Category: Specific collections    │
 └─────────────────────────────────────┘
@@ -1530,7 +1530,7 @@ Manage agent bots via Admin → Agent Bots:
 5. Backend checks if thread has uploaded document
 6. RAG pipeline:
    a. Embed query using text-embedding-3-large
-   b. Search Vector Store collections (ChromaDB/Qdrant) for subscribed categories
+   b. Search Qdrant collections for subscribed categories
    c. Include global documents from all category searches
    d. If reranker enabled, re-score chunks with BGE/Cohere (priority fallback)
    e. If user doc exists, extract and include relevant text
@@ -1562,7 +1562,7 @@ Admin can upload documents via two methods: file upload or text content paste.
    a. Extract text (Mistral OCR or Azure DI)
    b. Chunk text with current settings
    c. Create embeddings
-   d. Store in appropriate Vector Store collections (ChromaDB/Qdrant)
+   d. Store in appropriate Qdrant collections
 10. Update document status to "ready"
 ```
 
@@ -1583,7 +1583,7 @@ Admin can upload documents via two methods: file upload or text content paste.
 9. Triggers direct text ingestion (bypasses OCR):
    a. Chunk text directly
    b. Create embeddings
-   c. Store in appropriate ChromaDB collections
+   c. Store in appropriate Qdrant collections
 10. Update document status to "ready"
 ```
 
@@ -1617,10 +1617,9 @@ Admin/Super User manages subscriptions:
 - **Tables**: users, categories, documents, user_subscriptions, super_user_categories, document_categories, settings
 
 ### 2. Category-Based Vector Store Collections
-- Each category gets its own collection in ChromaDB or Qdrant
+- Each category gets its own collection in Qdrant
 - Collection naming: `policy_{category_slug}`
 - Global documents indexed into all category collections
-- Switch vector stores via `VECTOR_STORE_PROVIDER` env var
 - Enables fine-grained access control
 
 ### 3. Three-Tier Role System
@@ -1631,7 +1630,7 @@ Admin/Super User manages subscriptions:
 
 ### 4. Storage Strategy
 - **PostgreSQL**: Primary store for all structured metadata — users, categories, documents, settings, threads
-- **ChromaDB / Qdrant**: Vector embeddings for semantic search
+- **Qdrant**: Vector embeddings for semantic search
 - **Redis**: Fast caching and session management
 - **Filesystem**: Generated files (images, PDFs, DOCX) and thread uploads
 
@@ -1738,7 +1737,7 @@ Admin/Super User manages subscriptions:
 | Tavily results | Configurable (1 day default) | Redis |
 | Reranker results | Configurable (1 hour default) | Redis |
 | Sessions | 24 hours | Redis |
-| Embeddings | Permanent | ChromaDB / Qdrant |
+| Embeddings | Permanent | Qdrant |
 
 ### Batch Processing
 - Document embeddings created in batch (100 chunks at a time)
@@ -1746,7 +1745,7 @@ Admin/Super User manages subscriptions:
 
 ### Database Indexing
 - PostgreSQL indexes on frequently queried columns
-- ChromaDB HNSW index for vector search
+- Qdrant HNSW index for vector search
 
 ### Lazy Loading
 - Thread history loaded on demand
@@ -1767,7 +1766,7 @@ Admin/Super User manages subscriptions:
 2. **Horizontal Scaling**: Move thread storage to shared database
 3. **CDN**: Static asset caching via Cloudflare
 4. **Queue Processing**: Background job queue for document ingestion
-5. **Multi-Region**: Replicate ChromaDB for geographic distribution
+5. **Multi-Region**: Replicate Qdrant for geographic distribution
 
 ---
 
@@ -1790,6 +1789,6 @@ Admin/Super User manages subscriptions:
 Recommended additions for production:
 - Request logging with correlation IDs
 - LLM API usage tracking (via LiteLLM metrics)
-- ChromaDB query latency metrics
+- Qdrant query latency metrics
 - Error rate dashboards
 - PostgreSQL query performance monitoring

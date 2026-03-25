@@ -4,7 +4,7 @@
  * GET /api/admin/stats
  * Returns system statistics for the admin dashboard:
  * - Database stats (users, threads, documents)
- * - ChromaDB stats (collections, vector counts)
+ * - Vector store stats (collections, vector counts)
  * - File storage stats (disk usage)
  * - Recent activity
  *
@@ -19,7 +19,7 @@ import {
   getRecentActivity,
   getDatabaseStatsForCategories,
   getRecentActivityForCategories,
-  getChromaStats,
+  getVectorStats,
   getFileStorageStats,
 } from '@/lib/monitoring';
 import { getUserId } from '@/lib/users';
@@ -58,10 +58,10 @@ export async function GET() {
       const superUserData = await getSuperUserWithAssignments(userId);
       const categoryIds = superUserData?.assignedCategories.map(c => c.categoryId) || [];
 
-      // Get filtered database stats and global system stats (ChromaDB, Storage)
-      const [database, chroma, storage, recentActivity] = await Promise.all([
+      // Get filtered database stats and global system stats
+      const [database, vectorStore, storage, recentActivity] = await Promise.all([
         getDatabaseStatsForCategories(categoryIds),
-        getChromaStats(),
+        getVectorStats(),
         getFileStorageStats(),
         getRecentActivityForCategories(categoryIds, 10),
       ]);
@@ -69,7 +69,7 @@ export async function GET() {
       return NextResponse.json({
         timestamp: new Date().toISOString(),
         database,
-        chroma,
+        vectorStore,
         storage,
         recentActivity,
         // Include info about the scope for UI display

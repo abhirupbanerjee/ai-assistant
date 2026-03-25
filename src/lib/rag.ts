@@ -87,7 +87,7 @@ function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
 /**
  * Build context from knowledge base documents
  *
- * Retrieves relevant document chunks from ChromaDB using vector similarity search.
+ * Retrieves relevant document chunks from the vector store using similarity search.
  * Supports multi-category search, query expansion, and user document processing.
  *
  * @param queryEmbedding - Primary query embedding vector (3072 dimensions for text-embedding-3-large)

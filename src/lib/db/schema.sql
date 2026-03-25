@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
 -- ============ Categories ============
 
--- Document categories (each maps to a ChromaDB collection)
+-- Document categories (each maps to a vector store collection)
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT UNIQUE NOT NULL,

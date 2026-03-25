@@ -86,7 +86,7 @@ The dashboard displays system component status:
 | Component | Description |
 |-----------|-------------|
 | **Database** | PostgreSQL connection status and pool stats |
-| **Vector Store** | Vector store connection status (ChromaDB or Qdrant) |
+| **Vector Store** | Qdrant vector store connection status |
 | **LLM Proxy** | LiteLLM proxy connection |
 | **OCR Service** | Document processing pipeline |
 
@@ -1603,8 +1603,7 @@ Policy Bot supports two database backends and two vector store backends. Choose 
 
 | Option | Scale | Memory | Setup |
 |--------|-------|--------|-------|
-| **ChromaDB** (default) | Up to ~100K chunks | Lower | `--profile chromadb` |
-| **Qdrant** | 100K+ chunks | ~512MB | `--profile qdrant` |
+| **Qdrant** | All scales | ~512MB | `--profile qdrant` |
 
 #### Enabling PostgreSQL
 
@@ -1621,7 +1620,7 @@ POSTGRES_DB=policybot
 Then start with the postgres profile:
 
 ```bash
-docker compose --profile postgres --profile <chromadb|qdrant> up -d --build
+docker compose --profile postgres --profile qdrant up -d --build
 ```
 
 The app waits for PostgreSQL to be healthy before starting. An idempotent schema migration runs automatically on first connection — no manual SQL steps required.
@@ -1630,7 +1629,7 @@ The app waits for PostgreSQL to be healthy before starting. An idempotent schema
 
 1. Create a full backup: **Settings → Backup → Create Backup** (include Database + Files + Config)
 2. Update `.env`: set `DATABASE_PROVIDER=postgres`, `DATABASE_URL`, and Postgres credentials
-3. Restart containers with the postgres profile: `docker compose --profile postgres --profile <chromadb|qdrant> up -d --build`
+3. Restart containers with the postgres profile: `docker compose --profile postgres --profile qdrant up -d --build`
 4. Restore the backup: **Settings → Restore → Upload Backup**
 5. Verify data integrity via the Dashboard statistics cards
 

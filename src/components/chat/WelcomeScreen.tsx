@@ -471,7 +471,7 @@ export default function WelcomeScreen({
         'Copy .env.example → .env.local',
         'Set: ADMIN_EMAILS, DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET',
         'Choose DB: sqlite (up to ~50 users) or postgresql (50+ users)',
-        'Choose vector store: chromadb (up to ~100K chunks) or qdrant (100K+ chunks)',
+        'Vector store: Qdrant (high-performance vector similarity search)',
         'Run: docker compose --profile qdrant up -d --build',
       ],
     },
@@ -510,7 +510,7 @@ export default function WelcomeScreen({
       component: 'RAG Configuration',
       purpose: 'Enable retrieval-augmented generation for knowledge base',
       options: [
-        'Vector store: ChromaDB or Qdrant',
+        'Vector store: Qdrant',
         'Embedding model: text-embedding-3-large (default)',
         'Chunking: Recursive (configurable size/overlap) or Semantic (content-aware)',
         'Top K results: number of documents to retrieve',
@@ -678,7 +678,7 @@ export default function WelcomeScreen({
       purpose: 'Monitor system health, usage, and performance',
       options: [
         'Dashboard: Total Users, Active Users, Total Documents, Total Categories, Processing Queue, Error Count',
-        'System Health: Database (PostgreSQL), Vector Store (ChromaDB/Qdrant), LLM Proxy, OCR Service',
+        'System Health: Database (PostgreSQL), Vector Store (Qdrant), LLM Proxy, OCR Service',
         'Analytics submenus: User Statistics, Document Statistics, Query Statistics, System Health, Infrastructure',
         'System Management: Backup/Restore, DB Migration, Database Maintenance, Processing Queue, System Logs',
         'LLM Discovery: auto-detect and validate available models from proxy',

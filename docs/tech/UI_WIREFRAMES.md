@@ -351,7 +351,7 @@ The admin dashboard uses a tabbed interface with seven sections: Dashboard, Docu
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘                 │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐   │
-│  │  ChromaDB Status                                                        │   │
+│  │  Vector Store Status                                                     │   │
 │  │  ─────────────────────────────────────────────────────────────────────  │   │
 │  │  Collections: 4    │    Total Vectors: 217    │    Status: ● Connected  │   │
 │  └─────────────────────────────────────────────────────────────────────────┘   │
@@ -600,7 +600,7 @@ Subscribers = Number of users subscribed to this category
 │  │                                                           │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                  │
-│  Note: A new ChromaDB collection will be created.               │
+│  Note: A new Qdrant collection will be created.                 │
 │                                                                  │
 │                                    [Cancel]  [Create Category]   │
 └─────────────────────────────────────────────────────────────────┘

@@ -13,7 +13,7 @@ Policy Bot supports pluggable database and vector store backends, selected at de
 | Component | Options | Selection Method |
 |-----------|---------|-----------------|
 | **Database** | PostgreSQL | `--profile postgres` Docker profile |
-| **Vector Store** | ChromaDB or Qdrant | `VECTOR_STORE_PROVIDER` env var + Docker profile |
+| **Vector Store** | Qdrant | `VECTOR_STORE_PROVIDER` env var + Docker profile |
 
 > **Important:** Always use explicit `--profile` flags — do not rely on `COMPOSE_PROFILES` env var (unreliable across Docker versions).
 
@@ -55,17 +55,16 @@ In addition to database and vector store, choose the LLM provider tier based on 
 │         ▼              ▼              ▼              ▼                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
 │  │  DATABASE   │ │VECTOR STORE │ │    REDIS    │ │   LITELLM   │        │
-│  │ PostgreSQL  │ │ ChromaDB or │ │  Port 6379  │ │  Port 4000  │        │
-│  │  Port 5432  │ │   Qdrant    │ │  (internal) │ │  (internal) │        │
-│  │             │ │ Port 8000*  │ │             │ │             │        │
+│  │ PostgreSQL  │ │   Qdrant    │ │  Port 6379  │ │  Port 4000  │        │
+│  │  Port 5432  │ │  Port 6333  │ │  (internal) │ │  (internal) │        │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘        │
 │  * optional containers, via Docker profiles                              │
 │         │              │              │              │                   │
 │         ▼              ▼              ▼              │                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │                   │
-│  │data/postgres│ │ data/chroma │ │ data/redis  │    │                   │
-│  │  (volume)   │ │ or data/    │ │  (volume)   │    │                   │
-│  │             │ │   qdrant    │ └─────────────┘    │                   │
+│  │data/postgres│ │ data/qdrant │ │ data/redis  │    │                   │
+│  │  (volume)   │ │  (volume)   │ │  (volume)   │    │                   │
+│  │             │ │             │ └─────────────┘    │                   │
 │  └─────────────┘ └─────────────┘                    │                   │
 │         │                                           │                   │
 │         ▼                                           ▼                   │
@@ -106,9 +105,9 @@ Policy Bot stores all structured metadata in PostgreSQL via the Kysely ORM:
 - Schema auto-initialised on first start via Kysely migrations
 - Connection pooling (max 20 connections, configurable)
 
-### Vector Store (ChromaDB or Qdrant)
+### Vector Store (Qdrant)
 
-Stores document embeddings for semantic search. The provider is selected via `VECTOR_STORE_PROVIDER` env var. Both use the same collection naming pattern:
+Stores document embeddings for semantic search. Collections use the naming pattern `policy_{slug}`:
 
 | Collection Pattern | Purpose |
 |-------------------|---------|
@@ -118,24 +117,16 @@ Stores document embeddings for semantic search. The provider is selected via `VE
 
 Global documents are indexed into ALL category collections.
 
-**ChromaDB** (`VECTOR_STORE_PROVIDER=chromadb`):
-- Container: `policy-bot-chroma` (port 8000 internal)
-- Data at `data/chroma/`
-- Best for: development, <100K document chunks
-
-**Qdrant** (`VECTOR_STORE_PROVIDER=qdrant`):
 - Container: `policy-bot-qdrant` (port 6333 internal)
 - Data at `data/qdrant/`
 - Memory limit: 512MB (configurable in docker-compose)
-- Best for: production, large document libraries, >100K chunks
 
 ### Filesystem
 
 | Path | Purpose |
 |------|---------|
 | `data/postgres/` | PostgreSQL data directory |
-| `data/chroma/` | ChromaDB vector data (if using ChromaDB) |
-| `data/qdrant/` | Qdrant vector data (if using Qdrant) |
+| `data/qdrant/` | Qdrant vector data |
 | `data/app/global-docs/` | Admin-uploaded policy PDFs |
 | `data/app/threads/{userId}/{threadId}/uploads/` | User-uploaded PDFs |
 | `data/app/threads/{userId}/{threadId}/outputs/` | AI-generated files |
@@ -169,11 +160,8 @@ LITELLM_MASTER_KEY=sk-litellm-master-change-this
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
 
-# Vector store provider: chromadb | qdrant (default: chromadb)
-VECTOR_STORE_PROVIDER=chromadb
-CHROMA_HOST=localhost
-CHROMA_PORT=8000
-# Qdrant (if VECTOR_STORE_PROVIDER=qdrant)
+# Vector store provider
+VECTOR_STORE_PROVIDER=qdrant
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 
@@ -219,11 +207,8 @@ POSTGRES_USER=policybot
 POSTGRES_PASSWORD=your-strong-password
 POSTGRES_DB=policybot
 
-# Vector store provider: chromadb | qdrant
-# Must match the --profile flag used with docker compose
+# Vector store provider
 VECTOR_STORE_PROVIDER=qdrant
-CHROMA_HOST=chroma
-CHROMA_PORT=8000
 QDRANT_HOST=qdrant
 QDRANT_PORT=6333
 
@@ -271,8 +256,7 @@ ACME_EMAIL=admin@example.com
 ### Profile Reference
 
 ```
-Vector Store (choose one):
-  --profile chromadb    → ChromaDB   (set VECTOR_STORE_PROVIDER=chromadb)
+Vector Store:
   --profile qdrant      → Qdrant     (set VECTOR_STORE_PROVIDER=qdrant)
 
 Database:
@@ -288,10 +272,7 @@ Always-on services (no profile needed):
 ### Startup Command Examples
 
 ```bash
-# PostgreSQL + ChromaDB
-docker compose --profile postgres --profile chromadb up -d
-
-# PostgreSQL + Qdrant (production recommended)
+# PostgreSQL + Qdrant
 docker compose --profile postgres --profile qdrant up -d
 ```
 
@@ -300,9 +281,6 @@ docker compose --profile postgres --profile qdrant up -d
 ```bash
 # Must include same profiles to stop profile-controlled containers
 docker compose --profile postgres --profile qdrant down
-
-# Stop ALL (useful when unsure which profiles are active)
-docker compose --profile postgres --profile chromadb --profile qdrant down
 ```
 
 > **Note:** `COMPOSE_PROFILES` env var is not reliable across Docker versions. Always pass `--profile` flags explicitly on the command line.
@@ -375,46 +353,13 @@ Before deploying, choose the right combination of database and vector store for 
 
 PostgreSQL is the sole database backend. It provides connection pooling, high concurrency, and supports managed database services for HA/replication.
 
-### Choosing a Vector Store
+### Vector Store
 
-| Factor | ChromaDB | Qdrant |
-|--------|----------|--------|
-| Document chunks | Up to ~100K | 100K+ |
-| Memory usage | Lower | ~512MB baseline |
-| Advanced filtering | Basic | Advanced (payload filters) |
-| Scalability | Single node | Cluster-ready |
-| Setup | Very easy | Easy |
-| Best for | Dev, small-medium libraries | Production, large libraries |
+Qdrant is the vector store for all deployments. It provides advanced payload filtering, cluster-ready scalability, and handles large document libraries efficiently.
 
-**Use ChromaDB when:** Getting started, <100K document chunks, minimal overhead preferred.
-
-**Use Qdrant when:** Large document libraries, need advanced metadata filtering, high-throughput search, or future cluster deployment.
-
-### Recommended Combinations
-
-| Scenario | Vector Store | Command |
-|----------|--------------|---------|
-| Development / Small org | ChromaDB | `--profile postgres --profile chromadb` |
-| Medium org (50–200 users) | ChromaDB | `--profile postgres --profile chromadb` |
-| Large org (200+ users) | Qdrant | `--profile postgres --profile qdrant` |
-| High-volume RAG | Qdrant | `--profile postgres --profile qdrant` |
-
-### Migration Path (Switching Vector Store)
-
-Migrating vector stores is done via the Admin UI backup/restore flow:
-
-1. Go to **Admin → Backup** → Create full backup on the current system
-2. Update `VECTOR_STORE_PROVIDER` in `.env`
-3. Bring up new containers with updated profiles
-4. Go to **Admin → Restore** → Upload backup and restore
-5. Re-index documents (use the re-embed option in restore)
-
-### Scalability Signals
-
-**When to move from ChromaDB → Qdrant:**
-- Similarity search response time >2 seconds
-- High memory usage on the chroma container
-- Collections growing beyond 100K chunks
+| Scenario | Command |
+|----------|---------|
+| All deployments | `--profile postgres --profile qdrant` |
 
 ### Tuning for Large Deployments
 
@@ -467,7 +412,7 @@ npm run dev
 
 ```bash
 # View service logs
-docker compose -f docker-compose.local.yml logs -f chroma
+docker compose -f docker-compose.local.yml logs -f qdrant
 docker compose -f docker-compose.local.yml logs -f redis
 
 # Restart services
@@ -536,7 +481,7 @@ cp .env.example .env
 # Edit .env — set required values:
 # - OPENAI_API_KEY
 # - NEXTAUTH_SECRET (generate with: openssl rand -base64 32)
-# - VECTOR_STORE_PROVIDER=qdrant (or chromadb)
+# - VECTOR_STORE_PROVIDER=qdrant
 # - POSTGRES_PASSWORD
 # - DOMAIN=your-domain.com
 # - ACME_EMAIL=admin@example.com
@@ -597,8 +542,7 @@ docker compose logs -f
 docker exec policy-bot-postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
 
 # Vector store data size
-du -sh data/chroma/   # if using ChromaDB
-du -sh data/qdrant/   # if using Qdrant
+du -sh data/qdrant/
 ```
 
 ### Backup
@@ -621,11 +565,11 @@ docker run --rm \
   -v $BACKUP_DIR:/backup \
   alpine tar czvf /backup/app-data-$DATE.tar.gz -C /data .
 
-# Backup ChromaDB
+# Backup Qdrant
 docker run --rm \
-  -v policy-bot-chroma-data:/data \
+  -v policy-bot-qdrant-data:/data \
   -v $BACKUP_DIR:/backup \
-  alpine tar czvf /backup/chroma-$DATE.tar.gz -C /data .
+  alpine tar czvf /backup/qdrant-$DATE.tar.gz -C /data .
 
 # Backup Redis
 docker run --rm \
@@ -666,11 +610,11 @@ docker run --rm \
   -v $BACKUP_DIR:/backup \
   alpine sh -c "rm -rf /data/* && tar xzvf /backup/app-data-$DATE.tar.gz -C /data"
 
-# Restore ChromaDB
+# Restore Qdrant
 docker run --rm \
-  -v policy-bot-chroma-data:/data \
+  -v policy-bot-qdrant-data:/data \
   -v $BACKUP_DIR:/backup \
-  alpine sh -c "rm -rf /data/* && tar xzvf /backup/chroma-$DATE.tar.gz -C /data"
+  alpine sh -c "rm -rf /data/* && tar xzvf /backup/qdrant-$DATE.tar.gz -C /data"
 
 # Restore Redis
 docker run --rm \
@@ -902,7 +846,6 @@ Policy Bot's PWA implementation has intentional limitations:
 | App | `/api/auth/session` | 200 OK | Always |
 | Redis | `redis-cli ping` | PONG | Always |
 | LiteLLM | `http://litellm:4000/health/liveliness` | 200 OK | Always |
-| ChromaDB | `http://chroma:8000/api/v1/heartbeat` | 200 OK | `--profile chromadb` |
 | Qdrant | `http://qdrant:6333/readyz` | 200 OK | `--profile qdrant` |
 | PostgreSQL | `pg_isready -U policybot` | accepting | `--profile postgres` (always) |
 
@@ -935,18 +878,11 @@ else
   echo "✗ LiteLLM: unhealthy"
 fi
 
-# ChromaDB (uncomment if VECTOR_STORE_PROVIDER=chromadb)
-# if docker exec policy-bot-chroma curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null; then
-#   echo "✓ ChromaDB: healthy"
-# else
-#   echo "✗ ChromaDB: unhealthy"
-# fi
-
-# Qdrant (uncomment if VECTOR_STORE_PROVIDER=qdrant)
-# if docker exec policy-bot-qdrant curl -sf http://localhost:6333/readyz > /dev/null; then
-#   echo "✓ Qdrant: healthy"
-# else
-#   echo "✗ Qdrant: unhealthy"
+# Qdrant
+if docker exec policy-bot-qdrant curl -sf http://localhost:6333/readyz > /dev/null; then
+  echo "✓ Qdrant: healthy"
+else
+  echo "✗ Qdrant: unhealthy"
 # fi
 
 # PostgreSQL (always active)
@@ -1001,7 +937,7 @@ fi
 - [ ] Review user allowlist regularly
 - [ ] Monitor database storage size (`du -sh data/app/` or PostgreSQL `pg_database_size`)
 - [ ] PostgreSQL: auto-vacuumed (no manual action needed)
-- [ ] Monitor vector store data size (`du -sh data/chroma/` or `data/qdrant/`)
+- [ ] Monitor vector store data size (`du -sh data/qdrant/`)
 
 ---
 
@@ -1020,19 +956,6 @@ dig policybot.abhirup.app
 
 # Check Let's Encrypt rate limits
 # https://letsencrypt.org/docs/rate-limits/
-```
-
-#### ChromaDB Connection Failed
-
-```bash
-# Check if running (requires --profile chromadb)
-docker compose --profile chromadb ps chroma
-
-# Check logs
-docker compose --profile chromadb logs chroma
-
-# Test connection from app container
-docker exec policy-bot-app curl http://chroma:8000/api/v1/heartbeat
 ```
 
 #### Qdrant Connection Failed
@@ -1117,7 +1040,6 @@ sudo swapon /swapfile
 |-----------|--------------|-------|
 | PostgreSQL data | 50–500 MB | `data/postgres/` |
 | Global documents | 100 MB – 1 GB | `data/app/global-docs/` |
-| ChromaDB vectors | 50–500 MB | `data/chroma/` |
 | Qdrant vectors | 100 MB – 2 GB | `data/qdrant/` |
 | Redis cache | 10–100 MB | Sessions + RAG cache |
 | Thread data | 50 MB – 500 MB | Uploads and outputs |
@@ -1126,7 +1048,6 @@ sudo swapon /swapfile
 
 | Provider | Additional RAM |
 |----------|---------------|
-| ChromaDB | ~100–300 MB |
 | Qdrant | ~512 MB (hard limit in docker-compose) |
 | PostgreSQL | ~100–256 MB |
 

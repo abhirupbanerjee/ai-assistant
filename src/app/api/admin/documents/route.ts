@@ -24,7 +24,7 @@ export async function GET() {
     }
 
     const documents = await listGlobalDocuments();
-    // Calculate total chunks from SQLite data instead of querying legacy ChromaDB collection
+    // Calculate total chunks from database data
     const totalChunks = documents.reduce((sum, doc) => sum + doc.chunkCount, 0);
 
     return NextResponse.json<AdminDocumentsResponse>({

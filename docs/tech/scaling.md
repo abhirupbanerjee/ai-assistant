@@ -85,7 +85,7 @@ Supports: ~100-150 concurrent users with mixed workload
 | Pool Size | 5-15 | **10** |
 | Instances | 1 | **1** |
 | Redis | Optional | **Optional** |
-| Vector Store | Chroma, Qdrant | **Chroma** |
+| Vector Store | Qdrant | **Qdrant** |
 | Infrastructure | Single server | **Single Docker Compose** |
 
 **Configuration:**
@@ -94,14 +94,14 @@ Supports: ~100-150 concurrent users with mixed workload
 # .env
 DATABASE_URL=postgresql://policybot:password@localhost:5432/policybot
 DATABASE_POOL_MAX=10
-VECTOR_STORE_PROVIDER=chromadb
+VECTOR_STORE_PROVIDER=qdrant
 # Redis optional - omit REDIS_URL for in-process caching
 ```
 
 **Docker Compose:**
 
 ```bash
-docker compose --profile postgres --profile chromadb up -d
+docker compose --profile postgres --profile qdrant up -d
 ```
 
 **Architecture:**
@@ -122,7 +122,7 @@ docker compose --profile postgres --profile chromadb up -d
 │         ├────────────────┐                                   │
 │         ▼                ▼                                   │
 │  ┌─────────────┐  ┌─────────────┐                            │
-│  │ PostgreSQL  │  │  ChromaDB   │                            │
+│  │ PostgreSQL  │  │   Qdrant    │                            │
 │  │ (pool=10)   │  │  (vectors)  │                            │
 │  └─────────────┘  └─────────────┘                            │
 │                                                              │
@@ -143,7 +143,7 @@ docker compose --profile postgres --profile chromadb up -d
 | Pool Size | 15-30 | **20-25** |
 | Instances | 1-2 | **1** (2 for HA) |
 | Redis | Optional, Recommended | **Yes** |
-| Vector Store | Chroma, Qdrant | **Chroma** or **Qdrant** |
+| Vector Store | Qdrant | **Qdrant** |
 | Infrastructure | Single server + managed DB | **Single server** |
 
 **Configuration:**
@@ -156,13 +156,13 @@ DATABASE_POOL_MAX=25
 DATABASE_POOL_IDLE_TIMEOUT=30000
 DATABASE_POOL_CONNECTION_TIMEOUT=10000
 REDIS_URL=redis://localhost:6379
-VECTOR_STORE_PROVIDER=chromadb
+VECTOR_STORE_PROVIDER=qdrant
 ```
 
 **Docker Compose:**
 
 ```bash
-docker compose --profile postgres --profile chromadb up -d
+docker compose --profile postgres --profile qdrant up -d
 ```
 
 **Why PostgreSQL at this tier:**
@@ -189,7 +189,7 @@ docker compose --profile postgres --profile chromadb up -d
 │         ├────────────────┬────────────────┐                  │
 │         ▼                ▼                ▼                  │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │ PostgreSQL  │  │    Redis    │  │  ChromaDB   │          │
+│  │ PostgreSQL  │  │    Redis    │  │   Qdrant    │          │
 │  │ Pool: 25    │  │   (cache)   │  │  (vectors)  │          │
 │  └─────────────┘  └─────────────┘  └─────────────┘          │
 │                                                              │
@@ -210,7 +210,7 @@ docker compose --profile postgres --profile chromadb up -d
 | Pool Size | 25-50 | **30-40** |
 | Instances | 2-3 | **2-3** |
 | Redis | Required | **Yes (dedicated)** |
-| Vector Store | Chroma, Qdrant | **Qdrant** |
+| Vector Store | Qdrant | **Qdrant** |
 | Infrastructure | Cluster | **Docker Swarm or K8s** |
 | Load Balancer | Traefik, nginx | **Traefik** |
 
@@ -491,8 +491,8 @@ spec:
 
 | Tier | Users | Database | Pool | Instances | Redis | Vector Store | Est. Cost |
 |------|-------|----------|------|-----------|-------|--------------|-----------|
-| 1 | 1-25 | SQLite | N/A | 1 | No | Chroma | $20-50 |
-| 2 | 26-100 | PostgreSQL | 25 | 1-2 | Yes | Chroma/Qdrant | $100-200 |
+| 1 | 1-25 | PostgreSQL | 10 | 1 | No | Qdrant | $20-50 |
+| 2 | 26-100 | PostgreSQL | 25 | 1-2 | Yes | Qdrant | $100-200 |
 | 3 | 100-250 | PostgreSQL | 40 | 2-3 | Dedicated | Qdrant | $300-600 |
 | 4 | 250-500 | PostgreSQL HA | 50 | 4-5 | Cluster | Qdrant Cluster | $800-1500 |
 | 5 | 500+ | PgBouncer+PG | 50×N | 8+ | Cluster | Qdrant Cluster | $2000+ |
@@ -570,7 +570,7 @@ With 3 instances: 88 / 3 = ~30 per instance
 | `DATABASE_POOL_IDLE_TIMEOUT` | `30000` | Idle connection timeout (ms) | 2+ |
 | `DATABASE_POOL_CONNECTION_TIMEOUT` | `10000` | Connection acquire timeout (ms) | 2+ |
 | `REDIS_URL` | - | Redis connection string | 2+ |
-| `VECTOR_STORE_PROVIDER` | `chromadb` | Vector store backend | All |
+| `VECTOR_STORE_PROVIDER` | `qdrant` | Vector store backend | All |
 | `QDRANT_HOST` | `localhost` | Qdrant server host | 3+ |
 | `LITELLM_MASTER_KEY` | - | LiteLLM authentication | 4+ |
 

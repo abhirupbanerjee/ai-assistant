@@ -204,7 +204,7 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // 4. Delete ChromaDB collection for this category
+    // 4. Delete vector store collection for this category
     const store = await getVectorStore();
     const collNames = getCollectionNames();
     await store.deleteCollection(collNames.forCategory(category.slug));

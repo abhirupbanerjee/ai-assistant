@@ -3,7 +3,7 @@
  *
  * Provides system statistics for admin dashboard:
  * - Database statistics (users, threads, documents)
- * - Vector store collection stats (ChromaDB or Qdrant)
+ * - Vector store collection stats (Qdrant)
  * - File storage usage
  */
 
@@ -63,8 +63,6 @@ export interface VectorStoreStats {
   globalCollectionCount: number;
 }
 
-// Backward compatibility alias
-export type ChromaStats = VectorStoreStats;
 
 export interface FileStorageStats {
   globalDocsDir: {
@@ -94,8 +92,6 @@ export interface SystemStats {
   database: DatabaseStats;
   vectorStore: VectorStoreStats;
   storage: FileStorageStats;
-  /** @deprecated Use vectorStore instead */
-  chroma?: VectorStoreStats;
 }
 
 // ============ Database Statistics ============
@@ -232,8 +228,6 @@ export async function getVectorStats(): Promise<VectorStoreStats> {
   }
 }
 
-// Backward compatibility alias
-export const getChromaStats = getVectorStats;
 
 // ============ File Storage Statistics ============
 
@@ -341,8 +335,6 @@ export async function getSystemStats(): Promise<SystemStats> {
     database,
     vectorStore,
     storage,
-    // Backward compatibility
-    chroma: vectorStore,
   };
 }
 

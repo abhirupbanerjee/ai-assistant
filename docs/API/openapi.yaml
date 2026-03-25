@@ -2380,7 +2380,7 @@ paths:
                         type: integer
                       messages:
                         type: integer
-                  chromadb:
+                  vectorStore:
                     type: object
                     properties:
                       collections:
@@ -3070,7 +3070,7 @@ paths:
       tags:
         - Super User - Categories
       summary: Delete category
-      description: Delete a category created by this super user. Also deletes all documents and ChromaDB data.
+      description: Delete a category created by this super user. Also deletes all documents and vector store data.
       operationId: deleteSuperuserCategory
       parameters:
         - name: categoryId

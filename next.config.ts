@@ -43,7 +43,6 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: [
     'pdf-parse',
-    'chromadb',
     '@xenova/transformers',
     'onnxruntime-node',
     'pdfkit',

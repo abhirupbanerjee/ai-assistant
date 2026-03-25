@@ -10,10 +10,10 @@ import type { VectorStoreClient, VectorQueryResult, CollectionNameHelpers } from
 import type { ChunkMetadata } from '@/types';
 import { getEmbeddingSettings } from '../db/compat/config';
 
-// Collection naming conventions (matching ChromaDB pattern)
+// Collection naming conventions
 const CATEGORY_PREFIX = 'category_';
 const GLOBAL_COLLECTION = 'global_documents';
-const LEGACY_COLLECTION = process.env.CHROMA_COLLECTION_NAME || 'organizational_documents';
+const LEGACY_COLLECTION = 'organizational_documents';
 
 // Default vector size (used as fallback)
 const DEFAULT_VECTOR_SIZE = 3072;

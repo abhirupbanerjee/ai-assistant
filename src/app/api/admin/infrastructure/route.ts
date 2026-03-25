@@ -4,7 +4,7 @@
  * GET /api/admin/infrastructure
  * Returns infrastructure configuration and health status:
  * - Database provider (SQLite/PostgreSQL) with connection status
- * - Vector store provider (ChromaDB/Qdrant) with connection status
+ * - Vector store provider (Qdrant) with connection status
  * - Build-time configuration info
  */
 
@@ -27,7 +27,7 @@ interface DatabaseInfo {
 }
 
 interface VectorStoreInfo {
-  provider: 'chromadb' | 'qdrant';
+  provider: 'qdrant';
   connected: boolean;
   host?: string;
   collections: number;
@@ -104,15 +104,9 @@ export async function GET() {
       }
 
       // Add host info
-      if (vsProvider === 'chromadb') {
-        const host = process.env.CHROMA_HOST || 'localhost';
-        const port = process.env.CHROMA_PORT || '8000';
-        vsInfo.host = `${host}:${port}`;
-      } else {
-        const host = process.env.QDRANT_HOST || 'localhost';
-        const port = process.env.QDRANT_PORT || '6333';
-        vsInfo.host = `${host}:${port}`;
-      }
+      const host = process.env.QDRANT_HOST || 'localhost';
+      const port = process.env.QDRANT_PORT || '6333';
+      vsInfo.host = `${host}:${port}`;
 
       if (health.error) {
         vsInfo.error = health.error;

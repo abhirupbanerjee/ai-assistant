@@ -8,7 +8,7 @@ This document provides detailed schema definitions, column descriptions, and dat
 
 **Storage Components:**
 - **Database** (PostgreSQL): Structured metadata
-- **Vector Store** (ChromaDB or Qdrant): Embeddings for semantic search
+- **Vector Store** (Qdrant): Embeddings for semantic search
 - **Redis**: Caching and session management
 - **Filesystem**: PDF files and uploads
 
@@ -841,7 +841,7 @@ Primary user table with role-based access control.
 
 ### categories
 
-Document categories, each mapping to a ChromaDB collection.
+Document categories, each mapping to a Qdrant collection.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -892,7 +892,7 @@ Metadata for global policy documents.
 | filepath | TEXT | Path relative to global-docs/ |
 | file_size | INTEGER | File size in bytes |
 | is_global | INTEGER | 1=indexed in all categories |
-| chunk_count | INTEGER | Number of chunks in ChromaDB |
+| chunk_count | INTEGER | Number of chunks in Qdrant |
 | status | TEXT | `processing`, `ready`, or `error` |
 | error_message | TEXT | Error details if status='error' |
 | uploaded_by | TEXT | Admin email who uploaded |
@@ -1953,16 +1953,14 @@ export interface WorkspaceAnalytics {
 
 ---
 
-## 4. Vector Store Schema (ChromaDB / Qdrant)
-
-Both providers use the same collection naming convention and document schema. The active provider is selected via `VECTOR_STORE_PROVIDER`.
+## 4. Vector Store Schema (Qdrant)
 
 ### Category-Based Collections
 
 Each category has its own collection with the naming pattern `policy_{category_slug}`:
 
 ```
-Collections (both ChromaDB and Qdrant use same naming):
+Collections:
 ├── policy_hr           ← HR category documents
 ├── policy_finance      ← Finance category documents
 ├── policy_it           ← IT category documents
@@ -1971,7 +1969,7 @@ Collections (both ChromaDB and Qdrant use same naming):
 
 **Global Documents**: When `is_global=1`, document chunks are indexed into ALL category collections.
 
-### Chunk Document Schema (Both Providers)
+### Chunk Document Schema
 
 ```typescript
 interface VectorDocument {
@@ -1986,17 +1984,6 @@ interface VectorDocument {
     source: 'global' | 'user';  // Document source type
     threadId?: string;       // Only for user uploads
     userId?: number;         // Only for user uploads
-  }
-}
-```
-
-### ChromaDB Configuration
-
-```typescript
-{
-  name: "policy_{slug}",
-  metadata: {
-    "hnsw:space": "cosine"  // Cosine similarity for text embeddings
   }
 }
 ```
@@ -2030,7 +2017,7 @@ interface VectorDocument {
 const categoryCollections = getUserCategorySlugs(userId);
 
 for (const slug of categoryCollections) {
-  const collection = await chromaClient.getCollection(`policy_${slug}`);
+  const collection = await qdrantClient.getCollection(`policy_${slug}`);
   const results = await collection.query({
     queryEmbeddings: [queryEmbedding],
     nResults: 5,
@@ -2224,7 +2211,7 @@ Admin/Super User File Upload
     │
     ▼
 ┌─────────────────────────────────┐
-│ Store in ChromaDB:              │
+│ Store in Qdrant:                │
 │ - Global: ALL policy_* colls   │
 │ - Category: specific colls     │
 └─────────────────────────────────┘
@@ -2281,7 +2268,7 @@ Admin/Super User Text Upload
     │
     ▼
 ┌─────────────────────────────────┐
-│ Store in ChromaDB:              │
+│ Store in Qdrant:                │
 │ - Global: ALL policy_* colls   │
 │ - Category: specific colls     │
 └─────────────────────────────────┘
@@ -2362,24 +2349,16 @@ User Query
 | messages | idx_messages_thread | Get thread's messages |
 | storage_alerts | idx_storage_alerts_pending | Find unacknowledged alerts |
 
-### ChromaDB Index
+### Qdrant Index
 
-ChromaDB maintains HNSW (Hierarchical Navigable Small World) index for fast ANN search:
-
-```typescript
-{
-  "hnsw:space": "cosine",
-  "hnsw:construction_ef": 200,
-  "hnsw:search_ef": 100
-}
-```
+Qdrant maintains HNSW (Hierarchical Navigable Small World) index for fast ANN search with cosine distance metric configured per-collection.
 
 ### Query Optimization Tips
 
 1. Use `getUserWithSubscriptions()` for single query with JOINs
 2. Batch embedding creation during ingestion (100 chunks/batch)
 3. Enable Redis caching for frequently asked questions
-4. Limit ChromaDB query results to top 5-10 per collection
+4. Limit Qdrant query results to top 5-10 per collection
 
 ---
 
@@ -2395,16 +2374,16 @@ docker exec policy-bot-postgres pg_dump -U policybot policybot > data/backup-$(d
 docker exec -i policy-bot-postgres psql -U policybot policybot < data/backup-20241202.sql
 ```
 
-### ChromaDB Backup
+### Qdrant Backup
 
 ```bash
-# Backup ChromaDB volume
-docker run --rm -v policy-bot_chroma_data:/data -v $(pwd):/backup \
-  alpine tar czvf /backup/chroma-backup.tar.gz -C /data .
+# Backup Qdrant volume
+docker run --rm -v policy-bot_qdrant_data:/data -v $(pwd):/backup \
+  alpine tar czvf /backup/qdrant-backup.tar.gz -C /data .
 
 # Restore
-docker run --rm -v policy-bot_chroma_data:/data -v $(pwd):/backup \
-  alpine tar xzvf /backup/chroma-backup.tar.gz -C /data
+docker run --rm -v policy-bot_qdrant_data:/data -v $(pwd):/backup \
+  alpine tar xzvf /backup/qdrant-backup.tar.gz -C /data
 ```
 
 ### Redis Backup
@@ -2431,9 +2410,9 @@ tar -czvf $BACKUP_DIR/global-docs.tar.gz data/global-docs/
 # Threads (optional - large)
 tar -czvf $BACKUP_DIR/threads.tar.gz data/threads/
 
-# ChromaDB
-docker run --rm -v policy-bot_chroma_data:/data -v $BACKUP_DIR:/backup \
-  alpine tar czvf /backup/chroma.tar.gz -C /data .
+# Qdrant
+docker run --rm -v policy-bot_qdrant_data:/data -v $BACKUP_DIR:/backup \
+  alpine tar czvf /backup/qdrant.tar.gz -C /data .
 ```
 
 ---
@@ -2452,10 +2431,10 @@ docker run --rm -v policy-bot_chroma_data:/data -v $BACKUP_DIR:/backup \
 
 | Event | Action |
 |-------|--------|
-| Document uploaded | Insert documents, document_categories, ChromaDB chunks |
-| Document deleted | Remove from documents, document_categories, ChromaDB |
-| Categories changed | Update document_categories, reindex in ChromaDB |
-| Re-ingested | Delete old ChromaDB chunks, create new ones |
+| Document uploaded | Insert documents, document_categories, Qdrant chunks |
+| Document deleted | Remove from documents, document_categories, Qdrant |
+| Categories changed | Update document_categories, reindex in Qdrant |
+| Re-ingested | Delete old Qdrant chunks, create new ones |
 
 ### Thread Data
 

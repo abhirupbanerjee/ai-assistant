@@ -22,7 +22,7 @@ interface DatabaseInfo {
 }
 
 interface VectorStoreInfo {
-  provider: 'chromadb' | 'qdrant';
+  provider: 'qdrant';
   connected: boolean;
   host?: string;
   collections: number;
@@ -68,7 +68,6 @@ export default function InfrastructureStatus() {
     const names: Record<string, string> = {
       sqlite: 'SQLite',
       postgres: 'PostgreSQL',
-      chromadb: 'ChromaDB',
       qdrant: 'Qdrant',
     };
     return names[provider] || provider;
@@ -78,7 +77,6 @@ export default function InfrastructureStatus() {
     const descriptions: Record<string, string> = {
       sqlite: 'File-based database for single-server deployments',
       postgres: 'Production-grade database with connection pooling',
-      chromadb: 'Open-source vector database for embeddings',
       qdrant: 'High-performance vector similarity search engine',
     };
     return descriptions[provider] || '';

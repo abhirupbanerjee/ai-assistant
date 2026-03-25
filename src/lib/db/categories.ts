@@ -2,7 +2,7 @@
  * Category Database Operations
  *
  * CRUD operations for document categories
- * Each category maps to a ChromaDB collection
+ * Each category maps to a vector store collection
  */
 
 import { execute, queryAll, queryOne, transaction } from './index';
@@ -419,7 +419,7 @@ export function getDocumentIdsForCategory(categoryId: number): number[] {
 
 /**
  * Delete a category with full cleanup of all related data
- * This is a database-only operation - file/ChromaDB cleanup must be done separately
+ * This is a database-only operation - file/vector store cleanup must be done separately
  * Returns document IDs that were associated with this category for external cleanup
  */
 export function deleteCategoryWithRelatedData(categoryId: number): { documentIds: number[]; deleted: boolean } {

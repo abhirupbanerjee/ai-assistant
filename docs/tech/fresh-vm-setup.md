@@ -232,16 +232,12 @@ POSTGRES_DB=policybot
 # VECTOR STORE CONFIGURATION
 # =============================================================================
 
-# Vector store provider: chromadb (default) or qdrant (production)
-VECTOR_STORE_PROVIDER=chromadb
+# Vector store provider
+VECTOR_STORE_PROVIDER=qdrant
 
-# ChromaDB settings
-CHROMA_HOST=chroma
-CHROMA_PORT=8000
-
-# Qdrant settings (only if VECTOR_STORE_PROVIDER=qdrant)
-# QDRANT_HOST=qdrant
-# QDRANT_PORT=6333
+# Qdrant settings
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
 
 # =============================================================================
 # AUTHENTICATION
@@ -345,8 +341,7 @@ Policy Bot uses Docker Compose profiles to select services:
 
 | Profile | Service | Use Case |
 |---------|---------|----------|
-| `chromadb` | ChromaDB vector store | Default, development |
-| `qdrant` | Qdrant vector store | Production, large scale |
+| `qdrant` | Qdrant vector store | All deployments |
 | `postgres` | PostgreSQL database | Required (all deployments) |
 | `ollama` | Ollama local LLM | Optional, local inference |
 
@@ -355,14 +350,11 @@ Policy Bot uses Docker Compose profiles to select services:
 **Deployment combinations:**
 
 ```bash
-# Standard deployment (PostgreSQL + ChromaDB)
-docker compose --profile postgres --profile chromadb up -d
-
-# Production deployment (PostgreSQL + Qdrant)
+# Standard deployment (PostgreSQL + Qdrant)
 docker compose --profile postgres --profile qdrant up -d
 
 # With local LLM inference (optional)
-docker compose --profile postgres --profile chromadb --profile ollama up -d
+docker compose --profile postgres --profile qdrant --profile ollama up -d
 ```
 
 ---
@@ -372,10 +364,7 @@ docker compose --profile postgres --profile chromadb --profile ollama up -d
 ### 1. Build and Start
 
 ```bash
-# Standard deployment (PostgreSQL + ChromaDB)
-docker compose --profile postgres --profile chromadb up -d --build
-
-# Production deployment (PostgreSQL + Qdrant)
+# Build and start (PostgreSQL + Qdrant)
 docker compose --profile postgres --profile qdrant up -d --build
 ```
 
@@ -401,7 +390,7 @@ Expected output:
 ```
 NAME                    STATUS                   PORTS
 policy-bot-app          Up (healthy)             0.0.0.0:3000->3000/tcp
-policy-bot-chroma       Up (healthy)             8000/tcp
+policy-bot-qdrant       Up (healthy)             6333/tcp
 policy-bot-litellm      Up (healthy)             4000/tcp
 policy-bot-redis        Up (healthy)             6379/tcp
 policy-bot-traefik      Up                       0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
@@ -529,10 +518,7 @@ docker compose exec litellm curl -s http://localhost:4000/health
 docker compose exec redis redis-cli ping
 # Expected: PONG
 
-# ChromaDB (if using)
-docker compose exec chroma curl -s http://localhost:8000/api/v1/heartbeat
-
-# Qdrant (if using)
+# Qdrant
 docker compose exec qdrant curl -s http://localhost:6333/readyz
 
 # PostgreSQL (if using)
@@ -644,10 +630,10 @@ docker compose up -d --build app
 ### Vector Store Issues
 
 ```bash
-# ChromaDB reset (WARNING: deletes all vectors)
-docker compose stop chroma
-sudo rm -rf ./data/chroma/*
-docker compose up -d chroma
+# Qdrant reset (WARNING: deletes all vectors)
+docker compose stop qdrant
+sudo rm -rf ./data/qdrant/*
+docker compose up -d qdrant
 
 # Qdrant health check
 docker compose exec qdrant curl http://localhost:6333/readyz
@@ -694,8 +680,8 @@ docker compose exec postgres pg_dump -U policybot policybot > ./backups/$(date +
 git pull origin main
 
 # Rebuild and restart
-docker compose --profile chromadb down
-docker compose --profile chromadb up -d --build
+docker compose --profile postgres --profile qdrant down
+docker compose --profile postgres --profile qdrant up -d --build
 
 # Check logs for issues
 docker compose logs -f app
@@ -761,8 +747,8 @@ echo | openssl s_client -servername policybot.example.com -connect policybot.exa
 
 | Users | Database | Vector Store | RAM | Command |
 |-------|----------|--------------|-----|---------|
-| 1-25 | SQLite | ChromaDB | 4GB | `--profile chromadb` |
-| 26-100 | PostgreSQL | ChromaDB | 8GB | `--profile postgres --profile chromadb` |
+| 1-25 | PostgreSQL | Qdrant | 4GB | `--profile postgres --profile qdrant` |
+| 26-100 | PostgreSQL | Qdrant | 8GB | `--profile postgres --profile qdrant` |
 | 100-250 | PostgreSQL | Qdrant | 16GB | `--profile postgres --profile qdrant` |
 | 250+ | External PostgreSQL | Qdrant Cluster | 32GB+ | Custom infrastructure |
 
@@ -774,10 +760,10 @@ echo | openssl s_client -servername policybot.example.com -connect policybot.exa
 
 ```bash
 # Start services
-docker compose --profile chromadb up -d
+docker compose --profile postgres --profile qdrant up -d
 
 # Stop services
-docker compose --profile chromadb down
+docker compose --profile postgres --profile qdrant down
 
 # View logs
 docker compose logs -f app
@@ -799,9 +785,8 @@ docker compose ps
 
 | Path | Description |
 |------|-------------|
-| `./data/app/` | SQLite database, uploads |
+| `./data/app/` | Application data, uploads |
 | `./data/transformers_cache/` | BGE reranker models (~670MB) |
-| `./data/chroma/` | ChromaDB vectors |
 | `./data/qdrant/` | Qdrant vectors |
 | `./data/postgres/` | PostgreSQL data |
 | `./data/redis/` | Redis persistence |

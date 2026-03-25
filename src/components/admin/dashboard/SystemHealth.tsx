@@ -5,7 +5,7 @@ import { Database, HardDrive, Server, RefreshCw, CheckCircle, XCircle } from 'lu
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
-interface ChromaStats {
+interface VectorStoreStats {
   connected: boolean;
   collections: { name: string; documentCount: number }[];
   totalVectors: number;
@@ -18,7 +18,7 @@ interface StorageStats {
 }
 
 interface SystemStats {
-  chroma: ChromaStats;
+  vectorStore: VectorStoreStats;
   storage: StorageStats;
 }
 
@@ -47,7 +47,7 @@ export default function SystemHealth() {
     fetchStats();
   }, [fetchStats]);
 
-  const chromaStats = stats?.chroma;
+  const vectorStats = stats?.vectorStore;
   const storageStats = stats?.storage;
 
   const formatSize = (sizeMB: number) => {
@@ -66,14 +66,14 @@ export default function SystemHealth() {
         </div>
       )}
 
-      {/* ChromaDB Status */}
+      {/* Vector Store Status */}
       <div className="bg-white rounded-lg border shadow-sm">
         <div className="px-6 py-4 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Database className="text-blue-600" size={20} />
               <div>
-                <h2 className="font-semibold text-gray-900">Vector Database (ChromaDB)</h2>
+                <h2 className="font-semibold text-gray-900">Vector Database (Qdrant)</h2>
                 <p className="text-sm text-gray-500">Vector store health and statistics</p>
               </div>
             </div>
@@ -88,11 +88,11 @@ export default function SystemHealth() {
           <div className="px-6 py-12 flex justify-center">
             <Spinner size="lg" />
           </div>
-        ) : chromaStats ? (
+        ) : vectorStats ? (
           <div className="p-6">
             {/* Connection Status */}
             <div className="flex items-center gap-3 mb-6">
-              {chromaStats.connected ? (
+              {vectorStats.connected ? (
                 <>
                   <CheckCircle size={24} className="text-green-500" />
                   <span className="text-lg font-medium text-green-700">Connected</span>
@@ -108,28 +108,28 @@ export default function SystemHealth() {
             {/* Summary */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-2xl font-bold text-blue-900">{chromaStats.collections.length}</p>
+                <p className="text-2xl font-bold text-blue-900">{vectorStats.collections.length}</p>
                 <p className="text-sm text-blue-700">Collections</p>
               </div>
               <div className="bg-purple-50 rounded-lg p-4">
-                <p className="text-2xl font-bold text-purple-900">{chromaStats.totalVectors.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-purple-900">{vectorStats.totalVectors.toLocaleString()}</p>
                 <p className="text-sm text-purple-700">Total Vectors</p>
               </div>
             </div>
 
             {/* Collections Table */}
-            {chromaStats.collections.length > 0 && (() => {
+            {vectorStats.collections.length > 0 && (() => {
               const displayedCollections = showAllCollections
-                ? chromaStats.collections
-                : chromaStats.collections.slice(0, 5);
-              const hasMore = chromaStats.collections.length > 5;
+                ? vectorStats.collections
+                : vectorStats.collections.slice(0, 5);
+              const hasMore = vectorStats.collections.length > 5;
 
               return (
                 <div className="border-t pt-4">
                   <h3 className="text-sm font-medium text-gray-900 mb-3">
                     Collections
                     {hasMore && !showAllCollections && (
-                      <span className="text-gray-400 font-normal"> (showing 5 of {chromaStats.collections.length})</span>
+                      <span className="text-gray-400 font-normal"> (showing 5 of {vectorStats.collections.length})</span>
                     )}
                   </h3>
                   <div className="overflow-x-auto">
@@ -157,7 +157,7 @@ export default function SystemHealth() {
                     >
                       {showAllCollections
                         ? 'Show less'
-                        : `Show all ${chromaStats.collections.length} collections`}
+                        : `Show all ${vectorStats.collections.length} collections`}
                     </button>
                   )}
                 </div>

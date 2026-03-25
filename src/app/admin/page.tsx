@@ -231,7 +231,7 @@ interface SystemStats {
     threads: { total: number; totalMessages: number; totalUploads: number };
     documents: { total: number; globalDocuments: number; categoryDocuments: number; totalChunks: number; byStatus: { processing: number; ready: number; error: number } };
   };
-  chroma: {
+  vectorStore: {
     connected: boolean;
     collections: { name: string; documentCount: number }[];
     totalVectors: number;

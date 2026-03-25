@@ -4,7 +4,7 @@
  *
  * Reindexes all documents from SQLite into the configured vector store.
  * Use this when:
- * - Switching from ChromaDB to Qdrant (or vice versa)
+ * - Recovering from vector store data loss
  * - Recovering from vector store data loss
  * - Changing embedding model (requires re-embedding)
  *

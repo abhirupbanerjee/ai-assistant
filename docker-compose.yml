@@ -7,21 +7,16 @@
 #
 # PROFILES: Use profiles to select which services to run:
 #
-#   Vector Store (choose one):
-#     --profile chromadb    → ChromaDB (default, set VECTOR_STORE_PROVIDER=chromadb)
-#     --profile qdrant      → Qdrant (set VECTOR_STORE_PROVIDER=qdrant)
+#   Vector Store:
+#     --profile qdrant      → Qdrant vector store
 #
-#   Database (choose one):
-#     (no profile)          → SQLite (default, set DATABASE_PROVIDER=sqlite)
-#     --profile postgres    → PostgreSQL (set DATABASE_PROVIDER=postgres)
+#   Database:
+#     --profile postgres    → PostgreSQL
 #
 #   Local LLM:
 #     --profile ollama      → Ollama (set OLLAMA_API_BASE=http://ollama:11434)
 #
 # EXAMPLES:
-#   SQLite + ChromaDB:     docker compose --profile chromadb up -d
-#   SQLite + Qdrant:       docker compose --profile qdrant up -d
-#   PostgreSQL + ChromaDB: docker compose --profile postgres --profile chromadb up -d
 #   PostgreSQL + Qdrant:   docker compose --profile postgres --profile qdrant up -d
 #   PostgreSQL + Qdrant + Ollama: docker compose --profile postgres --profile qdrant --profile ollama up -d
 #

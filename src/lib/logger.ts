@@ -108,7 +108,7 @@ export const logger = {
    * Create a child logger with a prefix for a specific module
    * Useful for identifying log sources in large applications
    *
-   * @param module - Module name to prefix logs with (e.g., 'RAG', 'ChromaDB')
+   * @param module - Module name to prefix logs with (e.g., 'RAG', 'Qdrant')
    */
   child(module: string) {
     const prefix = `[${module}]`;
@@ -127,7 +127,6 @@ export const logger = {
 
 // Pre-configured child loggers for common modules
 export const ragLogger = logger.child('RAG');
-export const chromaLogger = logger.child('ChromaDB');
 export const toolsLogger = logger.child('Tools');
 export const ingestLogger = logger.child('Ingest');
 export const rerankerLogger = logger.child('Reranker');

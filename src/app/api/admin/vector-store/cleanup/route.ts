@@ -1,12 +1,10 @@
 /**
  * Admin API - Vector Store Cleanup
  *
- * POST /api/admin/chroma/cleanup - Delete orphaned vector store collections
+ * POST /api/admin/vector-store/cleanup - Delete orphaned vector store collections
  *
  * Query params:
  *   dryRun=true - Preview what would be deleted without actually deleting
- *
- * Note: Route path kept as /chroma for backward compatibility
  */
 
 import { NextRequest, NextResponse } from 'next/server';

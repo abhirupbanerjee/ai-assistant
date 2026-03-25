@@ -20,7 +20,7 @@ Technical architecture and system design documentation.
 | Document | Description | Key Topics |
 |----------|-------------|------------|
 | [tech/SOLUTION.md](tech/SOLUTION.md) | Complete system architecture, RAG pipeline, design decisions | System overview, RAG pipeline, category system, authentication, tool routing, PWA architecture |
-| [tech/DATABASE.md](tech/DATABASE.md) | PostgreSQL schema, ChromaDB/Qdrant collections, Redis patterns, Kysely ORM | Database tables, relationships, vector storage, caching strategy |
+| [tech/DATABASE.md](tech/DATABASE.md) | PostgreSQL schema, Qdrant collections, Redis patterns, Kysely ORM | Database tables, relationships, vector storage, caching strategy |
 | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) | Docker deployment, profile-based provider selection, scalability guide, backup/restore, PWA deployment | Container orchestration, environment configuration, infrastructure selection, operations, health checks |
 | [tech/auth.md](tech/auth.md) | Authentication system setup and configuration | Microsoft OAuth, Google OAuth, credentials login, access control, user management, Auth.js migration |
 | [tech/Bot-Config-architecture.md](tech/Bot-Config-architecture.md) | Configuration architecture and settings management | Configuration layers, settings hierarchy |
@@ -246,8 +246,7 @@ Quick reference for feature availability by user role.
 |------------|---------------|
 | **Next.js 16** | [tech/SOLUTION.md § Technology Stack](tech/SOLUTION.md#technology-stack) |
 | **PostgreSQL** (database) | [tech/DATABASE.md](tech/DATABASE.md), [tech/DB-techstack.md](tech/DB-techstack.md) |
-| **ChromaDB** (default vector store) | [tech/DATABASE.md](tech/DATABASE.md) |
-| **Qdrant** (optional vector store) | [tech/DATABASE.md](tech/DATABASE.md), [tech/INFRASTRUCTURE.md § Selection Guide](tech/INFRASTRUCTURE.md#infrastructure-selection-guide) |
+| **Qdrant** (vector store) | [tech/DATABASE.md](tech/DATABASE.md), [tech/INFRASTRUCTURE.md § Selection Guide](tech/INFRASTRUCTURE.md#infrastructure-selection-guide) |
 | **Redis** | [tech/DATABASE.md](tech/DATABASE.md) |
 | **Kysely** (DB abstraction) | [tech/DATABASE.md § Abstraction Layer](tech/DATABASE.md#database-abstraction-layer-kysely) |
 | **LiteLLM** | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
@@ -311,7 +310,7 @@ This documentation index tracks major documentation updates.
 | **2.3** | December 2024 | Added workspaces (embed and standalone modes), analytics |
 | **2.2** | November 2024 | Added task planner templates, data sources, function APIs |
 | **2.1** | October 2024 | Added skills system, tool routing, user memory |
-| **2.0** | September 2024 | Major refactor: category system, ChromaDB, Redis, multi-provider LLM |
+| **2.0** | September 2024 | Major refactor: category system, vector store, Redis, multi-provider LLM |
 | **1.0** | August 2024 | Initial release |
 
 ---

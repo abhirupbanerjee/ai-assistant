@@ -601,7 +601,7 @@ export async function getThreadCategoryIds(threadId: string): Promise<number[]> 
 }
 
 /**
- * Get category slugs for a thread (for ChromaDB queries)
+ * Get category slugs for a thread (for vector store queries)
  */
 export async function getThreadCategorySlugsForQuery(threadId: string): Promise<string[]> {
   return await getThreadCategorySlugs(threadId);

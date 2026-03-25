@@ -42,7 +42,7 @@ Built with enterprise-grade, open-source technologies:
 
 - **Next.js 16** - Modern React 19 framework with server-side rendering and App Router
 - **PostgreSQL** - Battle-tested relational database via Kysely ORM (SQLite fully removed)
-- **ChromaDB / Qdrant** - Open-source vector databases for semantic search
+- **Qdrant** - Open-source vector database for semantic search
 - **LiteLLM** - Unified gateway to 100+ LLM providers
 - **Redis** - High-performance caching and session management
 - **Traefik** - Production-ready reverse proxy with automatic TLS
@@ -204,7 +204,6 @@ policy-bot/
 │   │   ├── data-sources/       # External API and CSV data sources
 │   │   ├── workspace/          # Workspace utilities (embed/standalone)
 │   │   ├── rag.ts              # RAG pipeline
-│   │   ├── chroma.ts           # ChromaDB client
 │   │   ├── redis.ts            # Redis caching
 │   │   ├── ingest.ts           # Document ingestion
 │   │   └── skills.ts           # Skills system
@@ -220,7 +219,7 @@ policy-bot/
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md
 │   ├── tech/
 │   │   ├── SOLUTION.md                 # Architecture and design decisions
-│   │   ├── DATABASE.md                 # PostgreSQL/ChromaDB/Redis schema
+│   │   ├── DATABASE.md                 # PostgreSQL/Qdrant/Redis schema
 │   │   ├── DB-techstack.md             # Database technical stack
 │   │   ├── INFRASTRUCTURE.md           # Deployment and operations
 │   │   ├── scaling.md                  # Scaling guide (1–500+ users)
@@ -251,19 +250,13 @@ cp .env.example .env.local
 docker compose -f docker-compose.local.yml up -d
 npm install && npm run dev
 
-# Or with ChromaDB
-docker compose -f docker-compose.local.yml --profile chromadb up -d
-npm install && npm run dev
 ```
 
 ### Production
 ```bash
 # Configure .env with auth providers and domain
 
-# PostgreSQL + ChromaDB (default)
-docker compose --profile chromadb up -d --build
-
-# PostgreSQL + Qdrant (recommended for 100+ users)
+# PostgreSQL + Qdrant
 docker compose --profile qdrant up -d --build
 
 # Add Ollama for local LLM inference
@@ -276,8 +269,8 @@ Choose your configuration based on concurrent user count:
 
 | Users | Database | Pool | Vector Store | Redis | Instances | Est. Cost |
 |-------|----------|------|--------------|-------|-----------|-----------|
-| **1-25** | PostgreSQL | 15 | ChromaDB | Optional | 1 | $20-50/mo |
-| **26-100** | PostgreSQL | 25 | ChromaDB/Qdrant | Yes | 1-2 | $100-200/mo |
+| **1-25** | PostgreSQL | 15 | Qdrant | Optional | 1 | $20-50/mo |
+| **26-100** | PostgreSQL | 25 | Qdrant | Yes | 1-2 | $100-200/mo |
 | **100-250** | PostgreSQL | 40 | Qdrant | Dedicated | 2-3 | $300-600/mo |
 | **250-500** | PostgreSQL HA | 50 | Qdrant Cluster | Cluster | 4-5 | $800-1500/mo |
 | **500+** | PgBouncer+PG | 50×N | Qdrant Cluster | Cluster | 8+ | $2000+/mo |
@@ -288,7 +281,7 @@ Choose your configuration based on concurrent user count:
 DATABASE_POOL_MAX=20                      # Default, adjust per tier
 
 # Vector store selection
-VECTOR_STORE_PROVIDER=qdrant              # chromadb | qdrant
+VECTOR_STORE_PROVIDER=qdrant
 ```
 
 See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, configuration examples, and migration guides.
@@ -301,7 +294,6 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 | **Next.js** | Application (port 3000) | Default |
 | **Redis** | Cache + sessions (port 6379) | Default |
 | **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
-| **ChromaDB** | Vector database (port 8000) | `--profile chromadb` |
 | **Qdrant** | Vector database (ports 6333/6334) | `--profile qdrant` |
 | **LiteLLM** | Multi-provider LLM gateway (port 4000) | `--profile litellm` |
 | **Ollama** | Local LLM inference | `--profile ollama` |
