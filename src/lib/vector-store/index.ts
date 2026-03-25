@@ -1,9 +1,8 @@
 /**
  * Vector Store Factory
  *
- * Provides a unified interface for vector store operations with support for
- * multiple backends (ChromaDB, Qdrant). Provider is selected via environment
- * variable and cached for the lifetime of the process.
+ * Provides a unified interface for vector store operations using Qdrant.
+ * Client is cached for the lifetime of the process.
  */
 
 import type {
@@ -13,54 +12,35 @@ import type {
   VectorStoreHealthResult,
   VectorStoreStats,
 } from './types';
-import { ChromaDBVectorStore, chromadbCollectionNames } from './chromadb-adapter';
 import { QdrantVectorStore, qdrantCollectionNames } from './qdrant';
 
 // Cached instances
 let vectorStore: VectorStoreClient | null = null;
-let currentProvider: VectorStoreProvider | null = null;
 let connectionPromise: Promise<VectorStoreClient> | null = null;
 
 /**
  * Get the configured vector store provider from environment
  */
 export function getVectorStoreProvider(): VectorStoreProvider {
-  const provider = process.env.VECTOR_STORE_PROVIDER || 'chromadb';
-  if (provider === 'chromadb' || provider === 'qdrant') {
-    return provider;
-  }
-  console.warn(`[VectorStore] Unknown provider "${provider}", defaulting to chromadb`);
-  return 'chromadb';
+  return 'qdrant';
 }
 
 /**
  * Get or create the vector store client singleton
- *
- * This function handles connection initialization and caching.
- * The client is created on first call and reused for subsequent calls.
  */
 export async function getVectorStore(): Promise<VectorStoreClient> {
-  // Return existing connected client
   if (vectorStore) {
     return vectorStore;
   }
 
-  // Return existing connection promise to prevent race conditions
   if (connectionPromise) {
     return connectionPromise;
   }
 
-  // Create new connection promise
   connectionPromise = (async () => {
-    currentProvider = getVectorStoreProvider();
-
-    const store = currentProvider === 'qdrant'
-      ? new QdrantVectorStore()
-      : new ChromaDBVectorStore();
-
+    const store = new QdrantVectorStore();
     await store.connect();
-    console.log(`[VectorStore] Ready (provider: ${currentProvider})`);
-
+    console.log('[VectorStore] Ready (provider: qdrant)');
     vectorStore = store;
     return store;
   })();
@@ -69,25 +49,23 @@ export async function getVectorStore(): Promise<VectorStoreClient> {
 }
 
 /**
- * Get the collection name helpers for the current provider
+ * Get the collection name helpers
  */
 export function getCollectionNames(): CollectionNameHelpers {
-  const provider = currentProvider || getVectorStoreProvider();
-  return provider === 'qdrant' ? qdrantCollectionNames : chromadbCollectionNames;
+  return qdrantCollectionNames;
 }
 
 /**
  * Check the health of the vector store
  */
 export async function checkVectorStoreHealth(): Promise<VectorStoreHealthResult> {
-  const provider = currentProvider || getVectorStoreProvider();
   try {
     const store = await getVectorStore();
     const healthy = await store.healthCheck();
-    return { provider, healthy };
+    return { provider: 'qdrant', healthy };
   } catch (error) {
     return {
-      provider,
+      provider: 'qdrant',
       healthy: false,
       error: error instanceof Error ? error.message : String(error),
     };
@@ -98,7 +76,6 @@ export async function checkVectorStoreHealth(): Promise<VectorStoreHealthResult>
  * Get statistics about the vector store
  */
 export async function getVectorStoreStats(): Promise<VectorStoreStats> {
-  const provider = currentProvider || getVectorStoreProvider();
   const store = await getVectorStore();
 
   const collectionNames = await store.listCollections();
@@ -112,7 +89,7 @@ export async function getVectorStoreStats(): Promise<VectorStoreStats> {
   const totalVectors = collections.reduce((sum, c) => sum + c.count, 0);
 
   return {
-    provider,
+    provider: 'qdrant',
     collections,
     totalVectors,
   };
@@ -120,8 +97,6 @@ export async function getVectorStoreStats(): Promise<VectorStoreStats> {
 
 /**
  * Reset the vector store connection (for testing or reconfiguration)
- *
- * Note: This does NOT change the provider - that requires a restart
  */
 export async function resetVectorStoreConnection(): Promise<void> {
   if (vectorStore) {
@@ -134,5 +109,4 @@ export async function resetVectorStoreConnection(): Promise<void> {
 
 // Re-export types and helpers
 export * from './types';
-export { chromadbCollectionNames } from './chromadb-adapter';
 export { qdrantCollectionNames } from './qdrant';

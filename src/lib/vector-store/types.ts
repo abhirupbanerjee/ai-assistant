@@ -7,7 +7,7 @@
 
 import type { ChunkMetadata } from '@/types';
 
-export type VectorStoreProvider = 'chromadb' | 'qdrant';
+export type VectorStoreProvider = 'qdrant';
 
 /**
  * Standardized query result format across all vector store providers

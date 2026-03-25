@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt
 
 COPY package.json package-lock.json ./
 # Install ALL dependencies (including devDependencies needed for build)
-# --legacy-peer-deps: chromadb has optional peer dep on openai@^4, but we use v6
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder

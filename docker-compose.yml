@@ -64,8 +64,6 @@ services:
     environment:
       - NODE_ENV=production
       # Vector Store Configuration
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       # Database Configuration
@@ -99,7 +97,6 @@ services:
       - ./data/app:/app/data
       - ./config:/app/config:ro
       - ./data/transformers_cache:/tmp/transformers_cache  # Persist BGE reranker models (~670MB)
-    # Note: Vector store (chroma/qdrant) dependencies are handled via profiles.
     # PostgreSQL: waits for healthy status when the postgres profile is active.
     depends_on:
       redis:
@@ -113,24 +110,7 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
-  # ChromaDB Vector Store (use when VECTOR_STORE_PROVIDER=chromadb)
-  # Start with: docker compose --profile chromadb up -d
-  chroma:
-    image: chromadb/chroma:1.5.5
-    container_name: policy-bot-chroma
-    profiles:
-      - chromadb
-    volumes:
-      - ./data/chroma:/data
-    environment:
-      - ANONYMIZED_TELEMETRY=false
-      - ALLOW_RESET=false
-      - IS_PERSISTENT=TRUE
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
-
-  # Qdrant Vector Store (use when VECTOR_STORE_PROVIDER=qdrant)
+  # Qdrant Vector Store
   # Start with: docker compose --profile qdrant up -d
   qdrant:
     image: qdrant/qdrant:v1.17.0
