@@ -11,6 +11,7 @@
  */
 
 import { getActiveModels } from '../db/compat/enabled-models';
+import { getApiKey } from '../provider-helpers';
 
 // Provider ID → LiteLLM model prefix and API key env var
 const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
@@ -78,7 +79,10 @@ export async function syncModelToLiteLLM(model: {
     model: `${providerConfig.prefix}${model.id}`,
   };
 
-  litellmParams.api_key = `os.environ/${providerConfig.envKey}`;
+  // Use actual API key from app DB/env — LiteLLM does NOT resolve
+  // os.environ/ references for models registered via /model/new (DB path)
+  const apiKey = await getApiKey(model.providerId);
+  litellmParams.api_key = apiKey ?? `os.environ/${providerConfig.envKey}`;
 
   const payload = {
     model_name: model.id,
@@ -102,8 +106,29 @@ export async function syncModelToLiteLLM(model: {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      // Don't warn on "already exists" type errors
+      // Model already exists in LiteLLM DB — update it with current API key
       if (res.status === 400 && text.includes('already exists')) {
+        try {
+          const updateRes = await fetch(`${proxyUrl}/model/update`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${masterKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model_name: model.id,
+              litellm_params: litellmParams,
+            }),
+          });
+          if (!updateRes.ok) {
+            const updateText = await updateRes.text().catch(() => '');
+            console.warn(`[LiteLLM Sync] Failed to update ${model.id}: ${updateRes.status} ${updateText}`);
+            return false;
+          }
+        } catch (updateErr) {
+          console.warn(`[LiteLLM Sync] Error updating ${model.id}:`, updateErr instanceof Error ? updateErr.message : updateErr);
+          return false;
+        }
         return true;
       }
       console.warn(`[LiteLLM Sync] Failed to register ${model.id}: ${res.status} ${text}`);
