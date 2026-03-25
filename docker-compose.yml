@@ -116,7 +116,7 @@ services:
   # ChromaDB Vector Store (use when VECTOR_STORE_PROVIDER=chromadb)
   # Start with: docker compose --profile chromadb up -d
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.5
     container_name: policy-bot-chroma
     profiles:
       - chromadb
@@ -133,7 +133,7 @@ services:
   # Qdrant Vector Store (use when VECTOR_STORE_PROVIDER=qdrant)
   # Start with: docker compose --profile qdrant up -d
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.17.0
     container_name: policy-bot-qdrant
     profiles:
       - qdrant
@@ -198,7 +198,7 @@ services:
   # Ollama Local LLM Server (optional - use for local model inference)
   # Start with: docker compose --profile ollama up -d
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.18.2
     container_name: policy-bot-ollama
     profiles:
       - ollama

@@ -50,7 +50,7 @@ services:
 
   # Qdrant Vector Store
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.17.0
     container_name: policy-bot-qdrant-local
     restart: unless-stopped
     ports:
@@ -125,7 +125,7 @@ services:
   # Ollama Local LLM Server
   # Start with: docker compose -f docker-compose.local.yml --profile ollama up -d
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.18.2
     container_name: policy-bot-ollama-local
     profiles:
       - ollama
