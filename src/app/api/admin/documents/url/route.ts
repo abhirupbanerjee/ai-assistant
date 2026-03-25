@@ -78,6 +78,7 @@ interface UrlIngestionResponse {
       estimatedPages: number;
       pdfCount: number;
       estimatedCredits: number;
+      siteBlocked: boolean;  // map returned 0 — site likely blocks automated discovery
     }>;
     totals: {
       estimatedPages: number;
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
           try {
             new URL(entry.url);
           } catch {
-            previewEntries.push({ url: entry.url, mode: entry.mode, estimatedPages: 0, pdfCount: 0, estimatedCredits: 0 });
+            previewEntries.push({ url: entry.url, mode: entry.mode, estimatedPages: 0, pdfCount: 0, estimatedCredits: 0, siteBlocked: false });
             continue;
           }
 
@@ -188,13 +189,14 @@ export async function POST(request: NextRequest) {
             const pageLimit = entry.crawlOptions?.limit ?? 50;
             const pages = Math.min(mapResult.webUrls.length, pageLimit);
             const pdfs = mapResult.pdfUrls.length;
-            const credits = Math.ceil(mapResult.totalUrls / 10);
-            previewEntries.push({ url: entry.url, mode: 'crawl', estimatedPages: pages, pdfCount: pdfs, estimatedCredits: credits });
+            const credits = mapResult.creditsUsed ?? Math.ceil(Math.max(mapResult.totalUrls, 1) / 10);
+            const siteBlocked = mapResult.success && mapResult.totalUrls === 0;
+            previewEntries.push({ url: entry.url, mode: 'crawl', estimatedPages: pages, pdfCount: pdfs, estimatedCredits: credits, siteBlocked });
             totalPages += pages;
             totalPdfs += pdfs;
             totalCredits += credits;
           } else {
-            previewEntries.push({ url: entry.url, mode: 'page', estimatedPages: 1, pdfCount: 0, estimatedCredits: 0 });
+            previewEntries.push({ url: entry.url, mode: 'page', estimatedPages: 1, pdfCount: 0, estimatedCredits: 0, siteBlocked: false });
             totalPages += 1;
           }
         }

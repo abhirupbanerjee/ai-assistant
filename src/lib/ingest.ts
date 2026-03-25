@@ -1118,6 +1118,21 @@ export async function ingestCrawledSite(
       }
       (crawlResult as { totalPages: number }).totalPages = crawlResult.pages.length;
       console.log('[Ingest] Map+Extract result:', crawlResult.pages.filter(p => p.content).length, 'pages with content');
+    } else {
+      // Last resort: Map also returned 0 URLs (site blocks automated discovery).
+      // Try extracting the base URL directly — the Extract API fetches pages
+      // directly and may succeed where Crawl/Map are blocked.
+      console.log('[Ingest] Map returned 0 URLs, attempting direct Extract on base URL:', url);
+      const directResults = await extractWebContent([url]);
+      for (const ex of directResults) {
+        crawlResult.pages.push(
+          ex.success && ex.content
+            ? { url: ex.url, content: ex.content }
+            : { url: ex.url, error: ex.error || 'No content extracted' }
+        );
+      }
+      (crawlResult as { totalPages: number }).totalPages = crawlResult.pages.length;
+      console.log('[Ingest] Direct Extract result:', crawlResult.pages.filter(p => p.content).length, 'pages with content');
     }
   }
 

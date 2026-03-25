@@ -54,6 +54,7 @@ interface WebsitePreviewEntry {
   estimatedPages: number;
   pdfCount: number;
   estimatedCredits: number;
+  siteBlocked: boolean;
 }
 
 interface WebsitePreviewResult {
@@ -1915,10 +1916,26 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 {websitePreview && (
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1">
                     {websitePreview.entries.filter(e => e.mode === 'crawl').map((e, i) => (
-                      <p key={i}>{e.url}: ~{e.estimatedPages} pages, {e.pdfCount} PDFs</p>
+                      <div key={i}>
+                        {e.siteBlocked ? (
+                          <div className="p-2 bg-orange-50 border border-orange-300 rounded text-orange-800 space-y-1">
+                            <p className="font-medium">⚠ {e.url}: site blocked automated discovery</p>
+                            <p>The site is blocking the Map API so page count cannot be estimated. Processing will still attempt a direct extraction of the homepage as a fallback.</p>
+                            <p className="font-medium mt-1">To extract specific pages individually:</p>
+                            <ul className="list-disc list-inside space-y-0.5 ml-1">
+                              <li>Switch this entry to <strong>Single page</strong> to fetch only the homepage directly</li>
+                              <li>Use <strong>+ Add URL</strong> to add each specific page URL you want, each set to <strong>Single page</strong> mode</li>
+                            </ul>
+                          </div>
+                        ) : (
+                          <p>{e.url}: ~{e.estimatedPages} pages, {e.pdfCount} PDFs</p>
+                        )}
+                      </div>
                     ))}
                     <p className="font-medium pt-1 border-t border-blue-200">
-                      Total: ~{websitePreview.totals.estimatedPages} pages, {websitePreview.totals.pdfCount} PDFs, ~{websitePreview.totals.estimatedCredits} credits
+                      {websitePreview.totals.estimatedPages > 0
+                        ? `~${websitePreview.totals.estimatedPages} pages, ${websitePreview.totals.pdfCount} PDFs, ~${websitePreview.totals.estimatedCredits} credits`
+                        : `~${websitePreview.totals.estimatedCredits} credits used for preview scan`}
                     </p>
                     {websitePreview.pdfWarning && (
                       <div className="mt-1 p-2 bg-yellow-50 border border-yellow-300 rounded text-yellow-800">
