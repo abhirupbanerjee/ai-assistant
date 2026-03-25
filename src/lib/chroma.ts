@@ -139,8 +139,10 @@ export async function deleteCategoryCollection(categorySlug: string): Promise<vo
 export async function listCategoryCollections(): Promise<string[]> {
   const chromaClient = await getChromaClient();
   const collections = await chromaClient.listCollections();
-  // ChromaDB returns array of collection names as strings
-  return (collections as string[])
+  const names = collections.map((c: { name: string } | string) =>
+    typeof c === 'string' ? c : c.name
+  );
+  return names
     .filter(collectionNames.isCategory)
     .map(collectionNames.toSlug);
 }
