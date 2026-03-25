@@ -95,6 +95,19 @@ export async function syncModelToLiteLLM(model: {
   };
 
   try {
+    // Delete any stale entry first (from previous YAML-stored or broken syncs)
+    // This ensures we always create a fresh entry with the correct API key
+    try {
+      await fetch(`${proxyUrl}/model/delete`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${masterKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: model.id }),
+      });
+    } catch { /* ignore — entry may not exist */ }
+
     const res = await fetch(`${proxyUrl}/model/new`, {
       method: 'POST',
       headers: {
@@ -106,31 +119,6 @@ export async function syncModelToLiteLLM(model: {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      // Model already exists in LiteLLM DB — update it with current API key
-      if (res.status === 400 && text.includes('already exists')) {
-        try {
-          const updateRes = await fetch(`${proxyUrl}/model/update`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${masterKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model_name: model.id,
-              litellm_params: litellmParams,
-            }),
-          });
-          if (!updateRes.ok) {
-            const updateText = await updateRes.text().catch(() => '');
-            console.warn(`[LiteLLM Sync] Failed to update ${model.id}: ${updateRes.status} ${updateText}`);
-            return false;
-          }
-        } catch (updateErr) {
-          console.warn(`[LiteLLM Sync] Error updating ${model.id}:`, updateErr instanceof Error ? updateErr.message : updateErr);
-          return false;
-        }
-        return true;
-      }
       console.warn(`[LiteLLM Sync] Failed to register ${model.id}: ${res.status} ${text}`);
       return false;
     }

@@ -89,7 +89,7 @@ services:
 
   # LiteLLM Proxy
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:v1.82.3-stable.patch.2
     container_name: policy-bot-litellm-local
     restart: unless-stopped
     ports:
