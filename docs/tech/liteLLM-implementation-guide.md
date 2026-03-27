@@ -6,7 +6,7 @@
 
 ## LLM Service Routing Overview
 
-Policy Bot uses a **hybrid architecture**: core chat services route through LiteLLM proxy for unified model management, while specialized services (images, audio, OCR) call provider APIs directly for capabilities not available through the proxy.
+Policy Bot uses a **hybrid architecture**: core chat services route through LiteLLM proxy for unified model management, while specialized services (images, audio, document processing) call provider APIs directly or use local parsers for capabilities not available through the proxy.
 
 ### Service Routing Table
 
@@ -23,7 +23,7 @@ Policy Bot uses a **hybrid architecture**: core chat services route through Lite
 | **Audio Transcription** | Voice input | ❌ Direct | OpenAI Whisper | Not available via LiteLLM |
 | **Image Generation** | `image_gen` tool | ❌ Direct | OpenAI DALL-E, Gemini Imagen | Specialized APIs |
 | **Podcast Generation** | `podcast_gen` tool | ❌ Direct | OpenAI TTS, Gemini TTS | Multi-voice audio synthesis |
-| **OCR** | PDF/image text extraction | ❌ Direct | Mistral OCR | Document processing |
+| **Document Processing** | Document text extraction | ❌ Direct | mammoth/exceljs/officeparser (local), Mistral OCR, Azure DI, pdf-parse | Tiered fallback: local parsers first, then API providers |
 | **Reranking** | Search result scoring | ❌ Direct | Cohere | Not an LLM service |
 | **PPTX Generation** | `pptx_gen` tool | N/A | None | Template-based (no LLM) |
 | **XLSX Generation** | `xlsx_gen` tool | N/A | None | ExcelJS-based (no LLM) |

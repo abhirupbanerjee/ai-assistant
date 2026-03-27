@@ -339,10 +339,10 @@ Choose provider tier based on data sensitivity and task complexity:
 
 | Service | Get Key | Purpose | Local Alternative |
 |---------|---------|---------|-------------------|
-| **Azure Document Intelligence** | [Azure Portal](https://portal.azure.com) → Cognitive Services | Enhanced Office docs (DOCX, XLSX, PPTX) with layout preservation | Basic text extraction (included) |
+| **Azure Document Intelligence** | [Azure Portal](https://portal.azure.com) → Cognitive Services | Enterprise document processing with layout preservation (all formats) | Local parsers (included) |
 | **Mistral OCR** | [console.mistral.ai](https://console.mistral.ai/api-keys) | Vision-based PDF/image OCR with layout understanding | pdf-parse (included) |
 
-> **Local PDF Processing:** Policy Bot includes `pdf-parse` for basic PDF text extraction. No API key required.
+> **Built-in Local Parsers (no API key required):** Policy Bot includes local document processing that runs automatically before API providers: `mammoth` (DOCX), `exceljs` (XLSX), `officeparser` (PPTX), and `pdf-parse` (PDF). API providers above are only needed for enhanced extraction (layout preservation, handwriting, scanned documents).
 
 ### RAG Enhancements (Optional)
 

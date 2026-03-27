@@ -1171,7 +1171,7 @@ When images are uploaded, the system checks capabilities at runtime:
 
 The capability checker (`src/lib/config-capability-checker.ts`) uses:
 - `enabled_models.vision_capable` from database (authoritative source)
-- OCR settings from admin config (Mistral OCR or Azure DI)
+- OCR settings from admin config (Mistral OCR or Azure DI for images)
 
 ---
 
@@ -1252,7 +1252,7 @@ This is expected. With `store_model_in_db: false`, LiteLLM's in-memory store is 
 #### Vision/image upload not working
 
 1. Check model has `visionCapable: true` in database
-2. Verify OCR is configured (Admin > Settings > OCR):
+2. Verify OCR is configured (Admin > Settings > Document Processing):
    - Mistral OCR requires `MISTRAL_API_KEY` or admin-configured key
    - Azure DI requires endpoint + key configured
 3. Check `/api/config/capabilities` response:
@@ -1376,7 +1376,7 @@ Besides chat models, the system uses specialized models for various features. AP
 | **Transcription** | whisper-1 | Hardcoded | `src/lib/openai.ts` |
 | **Image Generation** | DALL-E 3, Gemini Imagen | tool_config | `src/lib/image-gen/` |
 | **Translation** | gpt-4.1-mini, gemini-2.5-flash | tool_config | `src/lib/translation/` |
-| **Document OCR** | Mistral OCR, Azure DI | Settings → Doc Processing | `src/lib/document-extractor.ts` |
+| **Document Processing** | mammoth, exceljs, officeparser (local); Mistral OCR, Azure DI (API); pdf-parse (local) | Settings → Doc Processing | `src/lib/document-extractor.ts` |
 | **Reranker** | BGE Large/Base, Cohere, Local | Settings → Reranker | `src/lib/reranker.ts` |
 
 ### Using Centralized API Keys

@@ -2198,11 +2198,12 @@ Admin/Super User File Upload
                            for each selected category
     │
     ▼
-┌─────────────────┐
-│ Extract text    │
-│ (Azure DI or    │
-│  Mistral OCR)   │
-└─────────────────┘
+┌──────────────────────────────────────────┐
+│ Extract text (tiered fallback):          │
+│  Tier 0.5: mammoth/exceljs/officeparser │
+│  Tier 1+:  Mistral OCR / Azure DI /     │
+│            pdf-parse (configurable)      │
+└──────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────┐

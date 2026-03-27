@@ -104,7 +104,7 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 | Thinking Models | DeepSeek R1, Claude 3.7+, Gemini Thinking | Native `<think>` token processing for extended reasoning |
 | Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), BGE-M3 (local) | Vector embeddings |
 | Transcription | OpenAI whisper-1 | Voice-to-text |
-| OCR | Azure Document Intelligence, Mistral OCR | PDF/image text extraction |
+| Document Processing | mammoth, exceljs, officeparser (local); Azure DI, Mistral OCR (API); pdf-parse (local) | Text extraction from documents and images |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
 | Data Sources | API + CSV integration | External data querying with visualization |
 | Function APIs | OpenAI-format schemas | Dynamic function calling to external services |
@@ -314,16 +314,19 @@ interface ImageCapabilities {
 
 Documents are ingested with category assignments. Two ingestion paths are supported:
 
-#### File Upload (PDF, DOCX, Images)
+#### File Upload (PDF, DOCX, XLSX, PPTX, Images)
 ```
 File Upload
     │
     ▼
-┌─────────────────┐
-│ Extract Text    │
-│ (Mistral OCR or │
-│  Azure DI)      │
-└─────────────────┘
+┌──────────────────────────────────────────┐
+│ Extract Text (tiered fallback):          │
+│  Tier 0:   Plain text → direct read      │
+│  Tier 0.5: Office → mammoth/exceljs/     │
+│            officeparser (local, no API)   │
+│  Tier 1+:  Mistral OCR, Azure DI,       │
+│            pdf-parse (configurable order) │
+└──────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────┐
@@ -1559,7 +1562,7 @@ Admin can upload documents via two methods: file upload or text content paste.
 7. Saves to global-docs folder
 8. Creates database document record
 9. Triggers ingestion pipeline:
-   a. Extract text (Mistral OCR or Azure DI)
+   a. Extract text (tiered: local parsers first, then API providers)
    b. Chunk text with current settings
    c. Create embeddings
    d. Store in appropriate Qdrant collections

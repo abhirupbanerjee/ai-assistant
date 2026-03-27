@@ -1,7 +1,16 @@
 /**
  * Unified document extraction with tiered fallback strategy
  *
- * Processing Order: Mistral OCR -> Azure Document Intelligence -> pdf-parse -> Error
+ * Processing Order:
+ *   Tier 0:   Plain text (.txt, .md, .json) — direct UTF-8 read
+ *   Tier 0.5: Office docs — local parsers (no API key needed):
+ *             - DOCX → mammoth
+ *             - XLSX → exceljs
+ *             - PPTX → officeparser
+ *   Tier 1+:  API-based providers (configurable order in admin settings):
+ *             - Mistral OCR (PDF + images)
+ *             - Azure Document Intelligence (all formats)
+ *             - pdf-parse (PDF only, local fallback)
  */
 
 import { extractTextWithMistral } from './mistral-ocr';
@@ -155,14 +164,14 @@ export function getMimeTypeFromFilename(filename: string): string {
 // ============================================
 
 /**
- * Extract text from document using configurable provider priority
+ * Extract text from document using tiered extraction strategy
  *
- * Provider order and enabled state are configured via admin settings.
- * Default order: Mistral OCR -> Azure DI -> pdf-parse
- *
- * - Mistral OCR: PDF and images only
- * - Azure DI: All formats (PDF, Office, images)
- * - pdf-parse: PDF only (final fallback)
+ * Tier 0:   Plain text files — direct read (no processing)
+ * Tier 0.5: Office docs — local parsers: mammoth (DOCX), exceljs (XLSX), officeparser (PPTX)
+ * Tier 1+:  API-based providers (configurable order in admin settings):
+ *           - Mistral OCR: PDF and images only
+ *           - Azure DI: All formats (PDF, Office, images)
+ *           - pdf-parse: PDF only (local fallback)
  */
 export async function extractText(
   buffer: Buffer,

@@ -263,7 +263,8 @@ The right side of the chat interface shows the **Artifacts Panel**, which organi
 
 ### Tips for Document Uploads
 
-- Upload PDFs for best text extraction
+- Supported formats: PDF, DOCX, XLSX, PPTX, TXT, MD, JSON, and images (PNG, JPG, WEBP, GIF)
+- Office documents (DOCX, XLSX, PPTX) are processed locally — no external API needed
 - Use images when you need visual analysis (requires vision model)
 - Keep file names descriptive
 - Upload before asking questions about the content

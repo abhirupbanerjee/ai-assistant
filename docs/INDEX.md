@@ -274,7 +274,7 @@ Documentation for third-party API integrations.
 | **Supadata** | YouTube transcript extraction | [features/Tools.md § YouTube](features/Tools.md#youtube-tool) |
 | **Cohere** | API-based reranking | [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
 | **SendGrid** | Email notifications for thread sharing | [features/Tools.md § Email Tool](features/Tools.md#email-tool) |
-| **Azure Document Intelligence** | Enhanced OCR for Office docs | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Azure Document Intelligence** | API-based document processing (all formats) | [tech/SOLUTION.md](tech/SOLUTION.md) |
 | **SonarCloud** | Static code quality analysis | [features/Tools.md](features/Tools.md) |
 | **Google PageSpeed** | Website performance analysis | [features/Tools.md](features/Tools.md) |
 | **k6 Cloud** | Cloud load testing | [features/Tools.md](features/Tools.md) |

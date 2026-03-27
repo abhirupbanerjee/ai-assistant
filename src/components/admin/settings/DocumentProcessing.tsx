@@ -27,19 +27,19 @@ interface OcrSettings {
 const PROVIDER_INFO: Record<string, { label: string; description: string; formats: string; envVars: string }> = {
   'mistral': {
     label: 'Mistral OCR',
-    description: 'AI-powered OCR for PDFs and images',
+    description: 'AI-powered vision OCR for PDFs and images (API-based)',
     formats: 'PDF, PNG, JPG, WEBP, GIF',
     envVars: 'MISTRAL_API_KEY',
   },
   'azure-di': {
     label: 'Azure Document Intelligence',
-    description: 'Enterprise OCR for all document formats',
+    description: 'Enterprise document processing for all formats (API-based)',
     formats: 'PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF',
     envVars: 'AZURE_DI_ENDPOINT, AZURE_DI_KEY',
   },
   'pdf-parse': {
     label: 'PDF Parse',
-    description: 'Free local PDF text extraction (no API key required)',
+    description: 'Local PDF text extraction (no API key required)',
     formats: 'PDF only',
     envVars: 'None',
   },
@@ -190,7 +190,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
           <div>
             <h2 className="font-semibold text-gray-900">Document Processing</h2>
             <p className="text-sm text-gray-500">
-              {readOnly ? 'Current OCR provider configuration (view only).' : 'Configure OCR providers and their priority order for document text extraction'}
+              {readOnly ? 'Current document processing configuration (view only).' : 'Configure document processing providers and their priority order for text extraction'}
             </p>
           </div>
           {!readOnly && (
@@ -388,9 +388,9 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
           {/* Info note */}
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Providers are tried in order. Configure API keys above or via environment variables.
+              <strong>Note:</strong> API-based providers are tried in priority order. Configure API keys above or via environment variables.
               Mistral OCR will also use the key from LLM Settings &gt; Providers if available.
-              Plain text files (.txt, .md) are handled directly without OCR.
+              Plain text files (.txt, .md, .json) are handled directly without any processing.
             </p>
           </div>
 

@@ -418,14 +418,22 @@ Global documents are available to all categories:
 
 ### Document Processing
 
-After upload, documents are processed:
+After upload, documents are processed using a tiered extraction strategy:
 
 | Stage | Description |
 |-------|-------------|
 | **Uploaded** | File received |
-| **Processing** | Text extraction and chunking |
+| **Processing** | Text extraction (local parsers first, then API providers) and chunking |
 | **Embedding** | Vector embeddings generated |
 | **Ready** | Searchable in chat |
+
+**Built-in local parsers** (always active, no configuration needed):
+- **mammoth** — DOCX text extraction
+- **exceljs** — XLSX spreadsheet extraction
+- **officeparser** — PPTX slide extraction
+- **pdf-parse** — PDF text extraction
+
+If local parsers fail, the system falls back to configured API providers (Mistral OCR, Azure Document Intelligence).
 
 ### Managing Documents
 
@@ -443,7 +451,7 @@ If a document shows Error status:
 2. Common issues:
    - Unsupported format
    - Corrupted file
-   - OCR failure
+   - Document extraction failure (check logs for specific parser used)
    - File too large
 3. Options:
    - Fix and re-upload
@@ -1469,7 +1477,7 @@ The system automatically determines image handling based on model and OCR config
 
 **To enable full image support:**
 1. Configure a vision-capable model (see table above)
-2. Enable at least one OCR provider in **Settings > OCR**:
+2. Enable at least one OCR provider in **Settings > Document Processing**:
    - **Mistral OCR**: Requires Mistral API key
    - **Azure Document Intelligence**: Requires endpoint + API key
 
