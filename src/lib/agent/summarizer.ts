@@ -52,60 +52,60 @@ export async function generateSummary(
  * Build summary prompt
  */
 function buildSummaryPrompt(plan: AgentPlan): string {
-  let prompt = `Using the task results below, create a consolidated response that directly answers the user's original request.
+  let prompt = `Compile ALL task outputs below into a single, comprehensive response that answers the user's original request.
 
-**Plan:** ${plan.title}
 **Original Request:** ${plan.original_request}
 
-**Task Results:**
+**Completed Outputs:**
 `;
 
-  // Add all completed task results
+  // Add only completed task results — no status emojis or confidence scores
   for (const task of plan.tasks) {
-    const statusEmoji =
-      task.status === 'done'
-        ? '✓'
-        : task.status === 'skipped'
-          ? '⊘'
-          : task.status === 'needs_review'
-            ? '⚠'
-            : '✗';
-
-    prompt += `\n${statusEmoji} Task ${task.id}: ${task.description}\n`;
-
     if (task.status === 'done' && task.result) {
-      prompt += `  Result: ${task.result}\n`;
-      if (task.confidence_score !== undefined) {
-        prompt += `  Confidence: ${task.confidence_score}%\n`;
+      prompt += `\n--- ${task.description} ---\n${task.result}\n`;
+    } else if (task.status === 'needs_review' && task.result) {
+      // Include needs_review results too — they may have useful content
+      prompt += `\n--- ${task.description} ---\n${task.result}\n`;
+    }
+  }
+
+  // Collect generated files separately for clear listing
+  const generatedFiles: string[] = [];
+  for (const task of plan.tasks) {
+    if (task.result) {
+      const fileMatches = task.result.match(/(?:Download|URL): (https?:\/\/[^\s]+)/g);
+      if (fileMatches) {
+        generatedFiles.push(...fileMatches);
       }
-    } else if (task.status === 'skipped' && task.error) {
-      prompt += `  Skipped: ${task.error}\n`;
-    } else if (task.status === 'needs_review') {
-      prompt += `  Needs Review: ${task.review_notes || 'Low confidence'}\n`;
-      if (task.result) {
-        prompt += `  Result: ${task.result.substring(0, 200)}...\n`;
+      if (task.result.includes('generated:')) {
+        const genMatch = task.result.match(/(?:Document|Spreadsheet|Presentation|Image|Diagram|Podcast) generated: (.+?)(?:\n|$)/);
+        if (genMatch) {
+          generatedFiles.push(genMatch[0].trim());
+        }
       }
     }
   }
 
-  // Add statistics
-  if (plan.stats) {
-    prompt += `\n**Statistics:**
-- Total Tasks: ${plan.stats.total_tasks}
-- Completed: ${plan.stats.completed_tasks}
-- Failed/Skipped: ${plan.stats.failed_tasks + plan.stats.skipped_tasks}
-- Needs Review: ${plan.stats.needs_review_tasks}
-- Average Confidence: ${plan.stats.average_confidence.toFixed(1)}%
-`;
+  if (generatedFiles.length > 0) {
+    prompt += `\n**Generated Files:**\n${generatedFiles.map(f => `- ${f}`).join('\n')}\n`;
+  }
+
+  // Note gaps from failures without mentioning task IDs or error details
+  const failedTypes = plan.tasks
+    .filter(t => t.status === 'skipped' || t.status === 'failed')
+    .map(t => t.type);
+  if (failedTypes.length > 0) {
+    const uniqueTypes = [...new Set(failedTypes)];
+    prompt += `\n**Note:** Some outputs were unavailable: ${uniqueTypes.join(', ')}\n`;
   }
 
   prompt += `\n**Instructions:**
-1. Answer the user's original request directly using the task results above
-2. Present findings, data, and content — NOT a description of what tasks did
-3. Include all important details: data points, URLs, file links, analysis results
-4. Structure the response logically (headings, bullet points, tables as appropriate)
-5. If any tasks produced downloadable files, list them with links
-6. Only briefly note failed/skipped tasks at the end if the user should be aware`;
+1. Present this as YOUR direct answer to the user — not a report about tasks
+2. Include ALL findings, data, analysis, and insights from the outputs above
+3. Structure with headings, bullet points, and tables as appropriate
+4. List all generated files with download links at the end
+5. Do NOT mention task IDs, confidence scores, or execution status
+6. If some outputs are missing, note gaps naturally (e.g., "Diagram generation was unavailable") — do not mention error messages or task numbers`;
 
   return prompt;
 }

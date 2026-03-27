@@ -42,6 +42,14 @@ interface EnabledModel {
 
 const MODEL_KEYS = ['plannerModel', 'executorModel', 'checkerModel', 'summarizerModel'] as const;
 
+/** Role-specific hints for recommended models */
+const MODEL_ROLE_HINTS: Record<typeof MODEL_KEYS[number], string> = {
+  plannerModel: 'Recommended: claude-sonnet-4-6 (best instruction following) or gemini-2.5-pro (strong reasoning)',
+  executorModel: 'Recommended: fireworks/minimax-m2p5 (best agentic quality/cost). Premium: gpt-4.1',
+  checkerModel: 'Recommended: gpt-4.1-mini (sufficient for quality evaluation)',
+  summarizerModel: 'Recommended: gpt-4.1-mini or same as executor',
+};
+
 const DEFAULT_SUMMARIZER_PROMPT = `You are a content consolidation agent. You compile task results into a single, cohesive response that directly answers the user's original request.
 
 Key principles:
@@ -372,6 +380,9 @@ export default function AgentSettingsTab() {
                         </select>
                         <span className="text-xs text-gray-400 mt-1 block">
                           Provider: {currentModel.provider}
+                        </span>
+                        <span className="text-xs text-blue-500 mt-0.5 block">
+                          {MODEL_ROLE_HINTS[modelKey]}
                         </span>
                       </div>
                       <div>

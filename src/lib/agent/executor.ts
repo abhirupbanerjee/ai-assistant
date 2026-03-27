@@ -252,14 +252,40 @@ async function performTaskExecution(
   callbacks?: ExecutorCallbacks
 ): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
   // Detect if this task requires a tool
-  const toolType = detectToolForTask(task);
+  // On retry with fallback strategy, skip tool detection and use LLM instead
+  const isRetryWithFallback = task.retry_count && task.retry_count > 0 &&
+    (task.retry_strategy === 'fallback_ascii_diagram' || task.retry_strategy === 'fallback_text_description');
+
+  const toolType = isRetryWithFallback ? null : detectToolForTask(task);
 
   if (toolType) {
     return executeToolForTask(task, plan, modelConfig, toolType, callbacks);
   }
 
   // Default: LLM-based execution
-  const prompt = buildExecutionPrompt(task, plan);
+  let prompt = buildExecutionPrompt(task, plan);
+
+  // Handle retry strategies that augment the prompt
+  if (task.retry_count && task.retry_count > 0 && task.retry_strategy) {
+    if (task.retry_strategy === 'fallback_ascii_diagram') {
+      prompt += '\n\n**FALLBACK: Generate an ASCII/text-based diagram instead of Mermaid. Use box-drawing characters or simple text layout.**';
+    } else if (task.retry_strategy === 'fallback_text_description') {
+      prompt += '\n\n**FALLBACK: Instead of generating an image, provide a detailed textual description of the visual with key data points and layout.**';
+    } else if (task.retry_strategy === 'expand_web_search') {
+      // Prepend web search results to provide additional context
+      try {
+        const searchResult = await executeWebSearchTool(
+          { ...task, target: task.target || task.description } as AgentTask,
+          callbacks
+        );
+        prompt += `\n\n**Additional web search context (added on retry):**\n${searchResult}`;
+      } catch {
+        prompt += '\n\n**Note: Web search augmentation was attempted but failed. Use available context to improve the response.**';
+      }
+    } else if (task.retry_strategy === 'more_specific_prompt') {
+      prompt += `\n\n**Be more specific and detailed. Expected output: ${task.expected_output || task.description}**`;
+    }
+  }
 
   // Resolve skills for this plan's category context
   const skillPrompt = await resolveSkillsForPlan(plan, task.description);
@@ -817,6 +843,7 @@ ${originalRequest ? `**Original Request:** ${originalRequest}\n` : ''}
 - Type: ${task.type}
 - Target: ${task.target}
 - Description: ${task.description}
+${task.expected_output ? `- Expected Output: ${task.expected_output}\n` : ''}
 `;
 
   // Add results from dependent tasks
@@ -830,11 +857,17 @@ ${originalRequest ? `**Original Request:** ${originalRequest}\n` : ''}
     }
   }
 
+  // Add retry context if this is a retry attempt
+  if (task.retry_count && task.retry_count > 0 && task.retry_context) {
+    prompt += `\n**RETRY — Previous attempt feedback:**\n${task.retry_context}\nAddress this feedback in your response.\n`;
+  }
+
   prompt += `\n**Instructions:**
 Execute the task based on the type:
 - **analyze**: Examine and interpret the information
 - **search**: Find relevant information (explain what you would search for)
 - **compare**: Compare the items and highlight key differences
+- **synthesize**: Consolidate findings from multiple completed tasks — identify cross-cutting themes, patterns, and unified insights
 - **generate**: Create the requested content
 - **summarize**: Provide a concise summary
 - **extract**: Pull out the specific information requested

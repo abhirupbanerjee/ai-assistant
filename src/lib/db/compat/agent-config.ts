@@ -91,37 +91,62 @@ export async function getAgentModelConfigs(): Promise<StoredAgentModelConfigs> {
   const defaultModel = getDefaultLLMModel();
   const presets = getModelPresetsFromConfig();
 
-  // Build default configs
-  const geminiModel =
-    presets['gemini-2.5-flash']
-      ? 'gemini-2.5-flash'
-      : Object.keys(presets).find((id) => id.includes('gemini')) || defaultModel;
+  // Build default configs with role-optimized model selection
+  // Planner: prefer claude-sonnet-4-6 (best instruction following + JSON reliability)
+  // Executor: prefer fireworks/minimax-m2p5 (80.2% SWE-bench, built for agentic workloads)
+  // Checker/Summarizer: prefer gpt-4.1-mini (sufficient for classification/summary)
+  const plannerModel =
+    presets['claude-sonnet-4-6']
+      ? 'claude-sonnet-4-6'
+      : presets['gemini-2.5-pro']
+        ? 'gemini-2.5-pro'
+        : presets['gemini-2.5-flash']
+          ? 'gemini-2.5-flash'
+          : defaultModel;
 
-  const geminiProvider = presets[geminiModel]?.provider || 'gemini';
-  const defaultProvider = presets[defaultModel]?.provider || 'openai';
+  const executorModel =
+    presets['fireworks/minimax-m2p5']
+      ? 'fireworks/minimax-m2p5'
+      : presets['fireworks/deepseek-v3p2']
+        ? 'fireworks/deepseek-v3p2'
+        : presets['fireworks/kimi-k2p5']
+          ? 'fireworks/kimi-k2p5'
+          : defaultModel;
+
+  const checkerModel =
+    presets['gpt-4.1-mini']
+      ? 'gpt-4.1-mini'
+      : defaultModel;
+
+  const mapProvider = (model: string): 'openai' | 'gemini' | 'mistral' => {
+    const provider = presets[model]?.provider;
+    if (provider === 'gemini' || provider === 'google') return 'gemini';
+    if (provider === 'mistral') return 'mistral';
+    return 'openai'; // OpenAI, Anthropic, Fireworks all route through LiteLLM
+  };
 
   const defaultConfigs: StoredAgentModelConfigs = {
     planner: {
-      provider: geminiProvider as 'openai' | 'gemini' | 'mistral',
-      model: geminiModel,
+      provider: mapProvider(plannerModel),
+      model: plannerModel,
       temperature: 0.3,
       max_tokens: 8192,
     },
     executor: {
-      provider: defaultProvider as 'openai' | 'gemini' | 'mistral',
-      model: defaultModel,
+      provider: mapProvider(executorModel),
+      model: executorModel,
       temperature: 0.4,
       max_tokens: 4096,
     },
     checker: {
-      provider: defaultProvider as 'openai' | 'gemini' | 'mistral',
-      model: defaultModel,
+      provider: mapProvider(checkerModel),
+      model: checkerModel,
       temperature: 0.2,
       max_tokens: 2048,
     },
     summarizer: {
-      provider: defaultProvider as 'openai' | 'gemini' | 'mistral',
-      model: defaultModel,
+      provider: mapProvider(checkerModel),
+      model: checkerModel,
       temperature: 0.5,
       max_tokens: 4096,
     },

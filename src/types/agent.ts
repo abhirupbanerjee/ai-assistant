@@ -81,6 +81,7 @@ export interface AgentTask {
   type: string;
   target: string;
   description: string;
+  expected_output?: string;
   status: AgentTaskStatus;
   priority: number;
   dependencies: number[];
@@ -96,6 +97,12 @@ export interface AgentTask {
   llm_calls?: number;
   started_at?: string;
   completed_at?: string;
+  // Retry support (Phase 2.6c)
+  retry_count?: number;
+  retry_context?: string;
+  retry_strategy?: string;
+  // Execution hints (Phase 2.6e — stored, not acted on until Phase 3.5)
+  execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
 }
 
 export interface AgentConfig {
@@ -169,6 +176,7 @@ export interface CheckerResult {
   confidence_score: number; // 0-100
   notes: string;
   tokens_used?: number;
+  retry_suggestion?: string; // Alternative approach for retry (Phase 2.6c)
 }
 
 // ============ Budget Status Types ============
@@ -220,8 +228,10 @@ export interface PlannerResponse {
     type: string;
     target: string;
     description: string;
+    expected_output?: string;
     priority?: number;
     dependencies?: number[];
+    execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
   }>;
   context?: Record<string, unknown>;
 }

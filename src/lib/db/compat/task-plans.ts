@@ -371,7 +371,7 @@ export async function createAutonomousPlan(
   threadId: string,
   userId: string,
   title: string,
-  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[] }[],
+  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; execution_hint?: string; retry_count?: number }[],
   options: {
     categorySlug?: string;
     budget?: Record<string, unknown>;
@@ -390,6 +390,9 @@ export async function createAutonomousPlan(
     dependencies: t.dependencies || [],
     priority: 1,
     state_history: [],
+    ...(t.expected_output ? { expected_output: t.expected_output } : {}),
+    ...(t.execution_hint ? { execution_hint: t.execution_hint } : {}),
+    retry_count: t.retry_count ?? 0,
   }));
 
   const tasksJson = JSON.stringify({ tasks: fullTasks });
@@ -484,6 +487,9 @@ export async function transitionTaskState(
     review_notes?: string;
     tokens_used?: number;
     llm_calls?: number;
+    retry_count?: number;
+    retry_context?: string;
+    retry_strategy?: string;
   }
 ): Promise<void> {
   const db = await getDb();
@@ -528,6 +534,9 @@ export async function transitionTaskState(
   if (extras?.review_notes !== undefined) task.review_notes = extras.review_notes;
   if (extras?.tokens_used !== undefined) task.tokens_used = extras.tokens_used;
   if (extras?.llm_calls !== undefined) task.llm_calls = extras.llm_calls;
+  if (extras?.retry_count !== undefined) task.retry_count = extras.retry_count;
+  if (extras?.retry_context !== undefined) task.retry_context = extras.retry_context;
+  if (extras?.retry_strategy !== undefined) task.retry_strategy = extras.retry_strategy;
 
   // Calculate updated stats
   const stats = {

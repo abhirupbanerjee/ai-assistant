@@ -187,6 +187,14 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
+        onTaskSummary: (task: AgentTask, summary: string) => {
+          sendEvent({
+            type: 'agent_task_summary',
+            task_id: task.id,
+            summary,
+          });
+        },
+
         // Tool execution callbacks for streaming artifacts
         onToolStart: (name: string, displayName: string) => {
           sendEvent({

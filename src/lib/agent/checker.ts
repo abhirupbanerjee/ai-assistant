@@ -244,12 +244,12 @@ export async function checkTaskQuality(
   result: string,
   modelConfig: AgentModelConfig
 ): Promise<CheckerResult> {
-  // Auto-approve summarize tasks (as per plan requirements)
-  if (task.type === 'summarize') {
+  // Auto-approve summarize and synthesize tasks (inherently subjective)
+  if (task.type === 'summarize' || task.type === 'synthesize') {
     return {
       status: 'approved',
       confidence_score: 100,
-      notes: 'Summary tasks auto-approved',
+      notes: `${task.type} tasks auto-approved`,
       tokens_used: 0,
     };
   }
@@ -258,7 +258,12 @@ export async function checkTaskQuality(
   const toolType = detectToolForTask(task);
   if (toolType) {
     console.log(`[Checker] Tool detected (${toolType}) - using simple verification`);
-    return verifyToolOutput(toolType, result);
+    const toolResult = verifyToolOutput(toolType, result);
+    // Add retry suggestion if tool verification failed
+    if (toolResult.status === 'needs_review') {
+      toolResult.retry_suggestion = suggestRetryStrategy(task, result, toolResult.confidence_score);
+    }
+    return toolResult;
   }
 
   // Get confidence threshold from settings
@@ -305,12 +310,13 @@ export async function checkTaskQuality(
       };
     }
 
-    // Needs review if < threshold
+    // Needs review if < threshold — suggest retry strategy
     return {
       status: 'needs_review',
       confidence_score: confidence,
       notes: notes || `Confidence ${confidence}% below threshold ${threshold}%`,
       tokens_used: response.tokens_used,
+      retry_suggestion: suggestRetryStrategy(task, result, confidence),
     };
   } catch (error) {
     // NEVER auto-approve on error
@@ -320,6 +326,7 @@ export async function checkTaskQuality(
       confidence_score: 0,
       notes: `Checker error: ${error instanceof Error ? error.message : String(error)}`,
       tokens_used: 0,
+      retry_suggestion: suggestRetryStrategy(task, result, 0),
     };
   }
 }
@@ -334,12 +341,13 @@ function buildEvaluationPrompt(task: AgentTask, result: string, threshold: numbe
 - Type: ${task.type}
 - Target: ${task.target}
 - Description: ${task.description}
+${task.expected_output ? `- Expected Output: ${task.expected_output}` : ''}
 
 **Task Result:**
 ${result || '(No result provided)'}
 
 **Evaluation Criteria:**
-- Completeness: Does the result fully address the task?
+- Completeness: Does the result fully address the task?${task.expected_output ? ` Does it match the expected output?` : ''}
 - Accuracy: Is the information correct and reliable?
 - Relevance: Is the result relevant to the task target?
 - Quality: Is the result well-structured and clear?
@@ -353,6 +361,45 @@ Respond with JSON only:
   "confidence": 85,
   "notes": "Brief explanation of the confidence score"
 }`;
+}
+
+/**
+ * Suggest a retry strategy based on the failure mode
+ * Called when checker returns needs_review to guide the executor's retry attempt
+ */
+function suggestRetryStrategy(task: AgentTask, result: string, confidence: number): string | undefined {
+  const resultLC = result.toLowerCase();
+  const taskType = task.type.toLowerCase();
+
+  // Tool failures — suggest fallback approaches
+  if (taskType === 'diagram' || taskType === 'diagram_gen') {
+    if (resultLC.includes('failed') || resultLC.includes('error')) {
+      return 'fallback_ascii_diagram';
+    }
+  }
+  if (taskType === 'image' || taskType === 'image_gen') {
+    if (resultLC.includes('failed') || resultLC.includes('error')) {
+      return 'fallback_text_description';
+    }
+  }
+
+  // Missing data — suggest web search augmentation
+  if (resultLC.includes('no information') || resultLC.includes('not found') ||
+      resultLC.includes('insufficient data') || resultLC.includes('no data available')) {
+    return 'expand_web_search';
+  }
+
+  // Shallow analysis — suggest web search for more context
+  if ((taskType === 'analyze' || taskType === 'compare') && confidence < 50) {
+    return 'expand_web_search';
+  }
+
+  // Generic/empty result — suggest more specific prompt
+  if (result.length < 100 || resultLC.includes('i cannot') || resultLC.includes('i don\'t have')) {
+    return 'more_specific_prompt';
+  }
+
+  return undefined;
 }
 
 /**

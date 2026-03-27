@@ -44,6 +44,7 @@ export interface OrchestratorCallbacks {
   onTaskStarted?: (task: AgentTask) => void;
   onTaskChecking?: (task: AgentTask) => void; // When checker validates task result
   onTaskCompleted?: (task: AgentTask, result: ExecutionResult) => void;
+  onTaskSummary?: (task: AgentTask, summary: string) => void; // Brief output summary after each task
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (event: StreamEvent) => void;
@@ -279,6 +280,27 @@ async function executeTasksInOrder(
     const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === nextTask.id) || nextTask;
     callbacks?.onTaskCompleted?.(updatedTask, result);
 
+    // Emit per-task output summary for user feedback
+    const taskSummary = generateTaskOutputSummary(updatedTask, result);
+    callbacks?.onTaskSummary?.(updatedTask, taskSummary);
+
+    // === Retry Logic ===
+    // If checker flagged for review and we haven't retried yet, retry with feedback
+    if (result.needsReview && (updatedTask.retry_count || 0) < 1) {
+      const retrySuggestion = (result as any).retry_suggestion || 'more_specific_prompt';
+      console.log(`[Orchestrator] Task ${nextTask.id} needs review — retrying with strategy: ${retrySuggestion}`);
+
+      // Transition task back to pending with retry context
+      await transitionTaskState(plan.id, nextTask.id, 'pending', {
+        retry_count: (updatedTask.retry_count || 0) + 1,
+        retry_context: updatedTask.review_notes || `Low confidence (${result.confidence}%). ${result.result?.substring(0, 200) || ''}`,
+        retry_strategy: retrySuggestion,
+      });
+
+      callbacks?.onTaskSummary?.(updatedTask, `Retrying with alternative approach: ${retrySuggestion}`);
+      continue; // Re-enter the loop — task will be picked up again
+    }
+
     // === Control Signal Checks ===
     // Check for pause/stop signals AFTER task completion
     const controlStatus = await getPlanControlStatus(plan.id);
@@ -319,9 +341,9 @@ async function executeTasksInOrder(
         // Task was skipped due to error - continue with next task
         console.warn(`[Orchestrator] Task ${nextTask.id} skipped: ${result.error}`);
       } else if (result.needsReview) {
-        // Task needs review but execution continues
+        // Task needs review and retry exhausted — execution continues
         console.warn(
-          `[Orchestrator] Task ${nextTask.id} needs review (confidence: ${result.confidence}%)`
+          `[Orchestrator] Task ${nextTask.id} needs review (confidence: ${result.confidence}%) — retry exhausted`
         );
       } else {
         // Unexpected error
@@ -453,6 +475,57 @@ function calculatePlanStats(plan: AgentPlan): {
 }
 
 /**
+ * Generate a brief human-readable summary of task output
+ */
+function generateTaskOutputSummary(task: AgentTask, result: ExecutionResult): string {
+  if (result.skipped) {
+    return `Skipped: ${result.error || 'Unknown error'}`;
+  }
+  if (result.needsReview) {
+    return `Needs review (${result.confidence || 0}% confidence)`;
+  }
+  if (!result.success) {
+    return `Failed: ${result.error || 'Unknown error'}`;
+  }
+
+  const resultText = result.result || task.result || '';
+  const taskType = task.type.toLowerCase();
+
+  // Tool outputs — extract key info
+  if (resultText.includes('Document generated:')) {
+    const match = resultText.match(/Document generated: (.+)/);
+    return match ? `Generated: ${match[1]}` : 'Document generated';
+  }
+  if (resultText.includes('Image generated:')) {
+    return `Image generated (${task.target})`;
+  }
+  if (resultText.includes('Spreadsheet generated:')) {
+    const match = resultText.match(/Spreadsheet generated: (.+)/);
+    return match ? `Generated: ${match[1]}` : 'Spreadsheet generated';
+  }
+  if (resultText.includes('Presentation generated:')) {
+    const match = resultText.match(/Presentation generated: (.+)/);
+    return match ? `Generated: ${match[1]}` : 'Presentation generated';
+  }
+  if (resultText.includes('Diagram generated:')) {
+    return `Diagram created: ${task.target}`;
+  }
+  if (resultText.includes('Podcast generated:')) {
+    return `Podcast generated: ${task.target}`;
+  }
+
+  // Search results
+  if (taskType === 'search') {
+    const match = resultText.match(/Found (\d+) results/);
+    return match ? `Found ${match[1]} results for "${task.target.substring(0, 50)}"` : 'Search completed';
+  }
+
+  // LLM tasks — first 150 chars
+  const preview = resultText.substring(0, 150).replace(/\n/g, ' ').trim();
+  return preview.length >= 150 ? `${preview}...` : preview || 'Completed';
+}
+
+/**
  * Create and execute autonomous plan from user request
  *
  * @param userRequest - The user's autonomous mode request
@@ -507,6 +580,9 @@ export async function createAndExecuteAutonomousPlan(
         type: t.type,
         target: t.target,
         dependencies: t.dependencies,
+        expected_output: t.expected_output,
+        execution_hint: t.execution_hint,
+        retry_count: 0,
       })),
       {
         categorySlug: planConfig.categorySlug,
