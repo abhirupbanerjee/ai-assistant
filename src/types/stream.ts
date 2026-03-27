@@ -21,9 +21,10 @@ export type StreamPhase =
   | 'clarifying_question' // Pre-flight: waiting for user clarification
   | 'tools'       // Executing tool calls
   | 'generating'  // Streaming LLM response
-  | 'agent_planning'   // Autonomous mode: Creating task plan
-  | 'agent_executing'  // Autonomous mode: Executing tasks
-  | 'agent_summarizing' // Autonomous mode: Generating summary
+  | 'agent_planning'   // Agent mode: Creating task plan
+  | 'agent_executing'  // Agent mode: Executing tasks
+  | 'agent_checking'   // Agent mode: Quality checking task
+  | 'agent_summarizing' // Agent mode: Generating summary
   | 'complete';   // All done
 
 // ============ Skill & Tool Tracking ============

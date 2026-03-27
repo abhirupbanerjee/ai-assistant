@@ -362,19 +362,19 @@ function findNextExecutableTask(tasks: AgentTask[]): AgentTask | null {
     return null;
   }
 
-  // Find first pending task with all dependencies satisfied
-  for (const task of pendingTasks) {
-    const allDepsCompleted = task.dependencies.every((depId) => {
+  // Find pending tasks with all dependencies satisfied, sorted by priority (highest first)
+  const readyTasks = pendingTasks.filter((task) => {
+    return task.dependencies.every((depId) => {
       const dep = tasks.find((t) => t.id === depId);
       return dep && completedStatuses.includes(dep.status);
     });
+  });
 
-    if (allDepsCompleted) {
-      return task;
-    }
-  }
+  if (readyTasks.length === 0) return null;
 
-  return null;
+  // Sort by priority descending (higher priority = runs first)
+  readyTasks.sort((a, b) => (b.priority || 1) - (a.priority || 1));
+  return readyTasks[0];
 }
 
 /**

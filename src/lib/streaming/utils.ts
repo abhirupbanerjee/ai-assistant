@@ -72,8 +72,9 @@ const PHASE_MESSAGES: Record<StreamPhase, string> = {
   clarifying_question: 'Waiting for your input...',
   tools: 'Processing tools...',
   generating: 'Generating response...',
-  agent_planning: 'Creating autonomous task plan...',
-  agent_executing: 'Executing autonomous tasks...',
+  agent_planning: 'Creating task plan...',
+  agent_executing: 'Executing tasks...',
+  agent_checking: 'Checking task quality...',
   agent_summarizing: 'Generating summary...',
   complete: 'Complete',
 };

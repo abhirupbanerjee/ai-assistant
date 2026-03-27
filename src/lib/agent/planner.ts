@@ -173,18 +173,32 @@ ${context.categoryContext}
 5. Each task should be specific and measurable
 6. Use dependencies to define execution order (task IDs)
 7. Ensure no circular dependencies
+8. **Priority (1-10):** Assign meaningful priorities to tasks:
+   - **10**: Critical — must run first (e.g., extract user-provided data)
+   - **7-9**: High — important tasks like analysis, search
+   - **4-6**: Medium — generation, comparison
+   - **1-3**: Low — summaries, final assembly
+   When multiple tasks have no dependency ordering between them, priority determines which runs first.
 
 **Task Types:**
+
+*Core types (LLM-based):*
 - **extract**: Pull out specific information from the user's provided data - USE THIS FIRST if user provided data
 - **analyze**: Examine and interpret information (LLM-based analysis)
-- **search**: Find information - ONLY use target "web search" if user needs external information not in their message
+- **search**: Find information via web search - ONLY if user needs external information not in their message
 - **compare**: Compare multiple items or options
-- **generate**: Create new content - TRIGGERS TOOLS based on target:
-  - Target contains "document", "report", "Word", "PDF", "docx" → Creates downloadable Word/PDF document
-  - Target contains "infographic", "image", "visual", "diagram", "chart" → Creates AI-generated image
-  - Otherwise → LLM text generation
+- **generate**: Generic LLM text generation (use specific types below when a tool output is needed)
 - **summarize**: Condense information into a summary
 - **validate**: Check correctness or compliance
+
+*Tool types (trigger specialized tools — use these instead of "generate" when applicable):*
+- **document**: Generate a downloadable Word/PDF document (report, memo, brief, letter)
+- **image**: Generate an AI image or infographic (visual, illustration, graphic)
+- **chart**: Generate a data chart or graph (bar chart, line chart, pie chart, plot)
+- **spreadsheet**: Generate an Excel/XLSX file (data export, tabular data)
+- **presentation**: Generate a PowerPoint/PPTX slide deck
+- **podcast**: Generate an audio podcast from content
+- **diagram**: Generate a diagram (flowchart, architecture, process flow, mindmap, mermaid)
 
 **Example 1: User provides data in message**
 User: "Analyze these SOEs and create a report: SOE-001 ABC Corp, SOE-002 XYZ Inc, SOE-003 DEF Ltd"
@@ -198,7 +212,7 @@ Correct response:
       "type": "extract",
       "target": "SOE list from user message",
       "description": "Extract the SOE list provided by the user: SOE-001 ABC Corp, SOE-002 XYZ Inc, SOE-003 DEF Ltd",
-      "priority": 1,
+      "priority": 10,
       "dependencies": []
     },
     {
@@ -206,15 +220,15 @@ Correct response:
       "type": "analyze",
       "target": "SOE assessment",
       "description": "Analyze each SOE based on the extracted information",
-      "priority": 1,
+      "priority": 7,
       "dependencies": [1]
     },
     {
       "id": 3,
-      "type": "generate",
+      "type": "document",
       "target": "Word document report",
       "description": "Generate a Word document with the SOE analysis report",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [2]
     }
   ]
@@ -233,7 +247,7 @@ Correct response (creates per-item tasks):
       "type": "extract",
       "target": "SOE list from conversation",
       "description": "Extract the 3 SOEs from conversation: T&TEC, WASA, NGC",
-      "priority": 1,
+      "priority": 10,
       "dependencies": []
     },
     {
@@ -241,15 +255,15 @@ Correct response (creates per-item tasks):
       "type": "analyze",
       "target": "T&TEC assessment",
       "description": "Analyze T&TEC (Trinidad and Tobago Electricity Commission)",
-      "priority": 1,
+      "priority": 8,
       "dependencies": [1]
     },
     {
       "id": 3,
-      "type": "generate",
+      "type": "document",
       "target": "Word document report for T&TEC",
       "description": "Generate Word document assessment report for T&TEC",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [2]
     },
     {
@@ -257,15 +271,15 @@ Correct response (creates per-item tasks):
       "type": "analyze",
       "target": "WASA assessment",
       "description": "Analyze WASA (Water and Sewerage Authority)",
-      "priority": 1,
+      "priority": 8,
       "dependencies": [1]
     },
     {
       "id": 5,
-      "type": "generate",
+      "type": "document",
       "target": "Word document report for WASA",
       "description": "Generate Word document assessment report for WASA",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [4]
     },
     {
@@ -273,15 +287,15 @@ Correct response (creates per-item tasks):
       "type": "analyze",
       "target": "NGC assessment",
       "description": "Analyze NGC (National Gas Company)",
-      "priority": 1,
+      "priority": 8,
       "dependencies": [1]
     },
     {
       "id": 7,
-      "type": "generate",
+      "type": "document",
       "target": "Word document report for NGC",
       "description": "Generate Word document assessment report for NGC",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [6]
     }
   ]
@@ -299,7 +313,7 @@ Correct response (search THEN analyze THEN generate):
       "type": "search",
       "target": "web search financial services compliance regulations 2024",
       "description": "Search the web for latest compliance regulations",
-      "priority": 1,
+      "priority": 9,
       "dependencies": []
     },
     {
@@ -307,15 +321,15 @@ Correct response (search THEN analyze THEN generate):
       "type": "analyze",
       "target": "compliance regulations analysis",
       "description": "Analyze search results and extract key compliance requirements, deadlines, and implications",
-      "priority": 1,
+      "priority": 7,
       "dependencies": [1]
     },
     {
       "id": 3,
-      "type": "generate",
+      "type": "document",
       "target": "Word document summary report",
       "description": "Generate a summary report document with the analyzed compliance findings",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [2]
     }
   ]
@@ -333,7 +347,7 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "extract",
       "target": "SOE list from user message",
       "description": "Extract the 3 SOEs: T&TEC, WASA, NGC",
-      "priority": 1,
+      "priority": 10,
       "dependencies": []
     },
     {
@@ -341,7 +355,7 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "search",
       "target": "web search T&TEC Trinidad assessment data",
       "description": "Search for T&TEC company information and performance data",
-      "priority": 1,
+      "priority": 9,
       "dependencies": [1]
     },
     {
@@ -349,15 +363,15 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "analyze",
       "target": "T&TEC assessment",
       "description": "Analyze T&TEC search results - extract key metrics, performance indicators, and insights",
-      "priority": 1,
+      "priority": 7,
       "dependencies": [2]
     },
     {
       "id": 4,
-      "type": "generate",
+      "type": "image",
       "target": "infographic for T&TEC",
       "description": "Create infographic visualizing T&TEC assessment findings",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [3]
     },
     {
@@ -365,7 +379,7 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "search",
       "target": "web search WASA Trinidad assessment data",
       "description": "Search for WASA company information and performance data",
-      "priority": 1,
+      "priority": 9,
       "dependencies": [1]
     },
     {
@@ -373,15 +387,15 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "analyze",
       "target": "WASA assessment",
       "description": "Analyze WASA search results - extract key metrics, performance indicators, and insights",
-      "priority": 1,
+      "priority": 7,
       "dependencies": [5]
     },
     {
       "id": 7,
-      "type": "generate",
+      "type": "image",
       "target": "infographic for WASA",
       "description": "Create infographic visualizing WASA assessment findings",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [6]
     },
     {
@@ -389,7 +403,7 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "search",
       "target": "web search NGC Trinidad assessment data",
       "description": "Search for NGC company information and performance data",
-      "priority": 1,
+      "priority": 9,
       "dependencies": [1]
     },
     {
@@ -397,21 +411,21 @@ Correct response (per-item: search → analyze → multiple outputs):
       "type": "analyze",
       "target": "NGC assessment",
       "description": "Analyze NGC search results - extract key metrics, performance indicators, and insights",
-      "priority": 1,
+      "priority": 7,
       "dependencies": [8]
     },
     {
       "id": 10,
-      "type": "generate",
+      "type": "image",
       "target": "infographic for NGC",
       "description": "Create infographic visualizing NGC assessment findings",
-      "priority": 1,
+      "priority": 5,
       "dependencies": [9]
     }
   ]
 }
 
-CRITICAL: In Example 4, note that each infographic (ids 4, 7, 10) depends on its ANALYZE task (ids 3, 6, 9), NOT on the search task. This ensures the image is generated from processed analysis, not raw search URLs.
+CRITICAL: In Example 4, note that each "image" task (ids 4, 7, 10) depends on its ANALYZE task (ids 3, 6, 9), NOT on the search task. This ensures the output is generated from processed analysis, not raw search URLs. Use explicit tool types (document, image, chart, spreadsheet, presentation, podcast, diagram) instead of "generate" when a specific tool output is needed.
 
 Respond with JSON only.`;
 
@@ -426,7 +440,7 @@ const PLANNER_SYSTEM_PROMPT = `You are an expert task planner. You break down co
 Key principles:
 - Create clear, specific tasks
 - Define proper dependencies (no circular references)
-- Use appropriate task types
+- Use appropriate task types — use explicit tool types (document, image, chart, spreadsheet, presentation, podcast, diagram) when a specific output format is needed
 - Look for data in BOTH the user message AND recent conversation history
 - For per-item requests ("for each", "individual", "separate"): create separate tasks per item (up to 50 tasks)
 - For consolidated requests: keep plans concise (3-10 tasks)

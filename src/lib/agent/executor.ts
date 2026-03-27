@@ -18,6 +18,9 @@ import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/co
 import { documentGenerationTool } from '../tools/docgen';
 import { imageGenTool } from '../tools/image-gen';
 import { tavilyWebSearch } from '../tools/tavily';
+import { xlsxGenTool } from '../tools/xlsx-gen';
+import { pptxGenTool } from '../tools/pptx-gen';
+import { diagramGenTool } from '../tools/diagram-gen';
 import { runWithContextAsync } from '../request-context';
 import { resolveSkills } from '../skills/resolver';
 import { getCategoryBySlug } from '../db/compat/categories';
@@ -56,45 +59,49 @@ async function resolveSkillsForPlan(plan: AgentPlan, taskDescription: string): P
 
 // ============ Tool Detection ============
 
+type ExecutorToolType = 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen' | 'xlsx_gen' | 'pptx_gen' | 'podcast_gen' | 'diagram_gen';
+
+const TOOL_REGISTRY: Record<ExecutorToolType, { explicitTypes: string[]; keywords: string[] }> = {
+  doc_gen:     { explicitTypes: ['document', 'doc_gen', 'generate_document'], keywords: ['document', 'report', 'word', 'docx', 'pdf', 'memo', 'letter', 'brief'] },
+  image_gen:   { explicitTypes: ['image', 'image_gen', 'generate_image'], keywords: ['image', 'infographic', 'visual', 'picture', 'graphic', 'illustration', 'draw'] },
+  chart_gen:   { explicitTypes: ['chart', 'chart_gen', 'generate_chart'], keywords: ['chart', 'graph', 'bar chart', 'line chart', 'pie chart', 'plot'] },
+  xlsx_gen:    { explicitTypes: ['xlsx', 'xlsx_gen', 'spreadsheet'], keywords: ['spreadsheet', 'excel', 'xlsx', 'data export', 'table export'] },
+  pptx_gen:    { explicitTypes: ['pptx', 'pptx_gen', 'presentation'], keywords: ['presentation', 'slides', 'powerpoint', 'pptx', 'deck'] },
+  podcast_gen: { explicitTypes: ['podcast', 'podcast_gen'], keywords: ['podcast', 'audio', 'narrate', 'voice', 'listen'] },
+  diagram_gen: { explicitTypes: ['diagram', 'diagram_gen'], keywords: ['diagram', 'flowchart', 'architecture', 'process flow', 'mindmap', 'mermaid'] },
+  web_search:  { explicitTypes: ['search', 'web_search'], keywords: ['search', 'web', 'internet', 'online', 'lookup', 'research'] },
+};
+
 /**
  * Detect which tool (if any) should be used for this task
- * Priority order: explicit type match > keyword match with scoring
+ * Priority order: explicit type match > keyword scoring for "generate" type > fallback search
  */
-function detectToolForTask(task: AgentTask): 'doc_gen' | 'image_gen' | 'web_search' | null {
+function detectToolForTask(task: AgentTask): ExecutorToolType | null {
   const typeLC = task.type.toLowerCase();
-  const targetLC = task.target.toLowerCase();
-  const descLC = task.description.toLowerCase();
-  const combinedText = `${targetLC} ${descLC}`;
+  const combinedText = `${task.target.toLowerCase()} ${task.description.toLowerCase()}`;
 
-  // Explicit type mappings (highest priority)
-  if (typeLC === 'document' || typeLC === 'doc_gen' || typeLC === 'generate_document') {
-    return 'doc_gen';
-  }
-  if (typeLC === 'image' || typeLC === 'image_gen' || typeLC === 'generate_image') {
-    return 'image_gen';
-  }
-  if (typeLC === 'search' || typeLC === 'web_search') {
-    return 'web_search';
-  }
-
-  // Keyword-based detection for generic "generate" type
-  if (typeLC === 'generate') {
-    // Score-based detection to handle ambiguous cases
-    const docKeywords = ['document', 'report', 'word', 'docx', 'pdf', 'file', 'export', 'download', 'memo', 'letter'];
-    const imageKeywords = ['image', 'infographic', 'visual', 'diagram', 'chart', 'picture', 'graphic', 'illustration', 'draw'];
-
-    const docScore = docKeywords.filter(kw => combinedText.includes(kw)).length;
-    const imageScore = imageKeywords.filter(kw => combinedText.includes(kw)).length;
-
-    // Require at least one keyword match, prefer higher score
-    if (docScore > 0 || imageScore > 0) {
-      return docScore >= imageScore ? 'doc_gen' : 'image_gen';
+  // 1. Explicit type match (highest priority)
+  for (const [tool, config] of Object.entries(TOOL_REGISTRY)) {
+    if (config.explicitTypes.includes(typeLC)) {
+      return tool as ExecutorToolType;
     }
   }
 
-  // Fallback search detection
-  const searchKeywords = ['search', 'web', 'internet', 'online', 'lookup', 'find'];
-  if (searchKeywords.some(kw => combinedText.includes(kw))) {
+  // 2. Keyword scoring for generic "generate" type
+  if (typeLC === 'generate') {
+    const scores: Partial<Record<ExecutorToolType, number>> = {};
+    for (const [tool, config] of Object.entries(TOOL_REGISTRY)) {
+      if (tool === 'web_search') continue; // search is not a generation tool
+      const score = config.keywords.filter(kw => combinedText.includes(kw)).length;
+      if (score > 0) scores[tool as ExecutorToolType] = score;
+    }
+    if (Object.keys(scores).length > 0) {
+      return Object.entries(scores).sort(([, a], [, b]) => b - a)[0][0] as ExecutorToolType;
+    }
+  }
+
+  // 3. Fallback search detection
+  if (TOOL_REGISTRY.web_search.keywords.some(kw => combinedText.includes(kw))) {
     return 'web_search';
   }
 
@@ -286,16 +293,21 @@ async function executeToolForTask(
   task: AgentTask,
   plan: AgentPlan,
   modelConfig: AgentModelConfig,
-  toolType: 'doc_gen' | 'image_gen' | 'web_search',
+  toolType: ExecutorToolType,
   callbacks?: ExecutorCallbacks
 ): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
   const startTime = Date.now();
 
   // Get display name for the tool
-  const toolDisplayNames: Record<string, string> = {
+  const toolDisplayNames: Record<ExecutorToolType, string> = {
     doc_gen: 'Document Generation',
     image_gen: 'Image Generation',
     web_search: 'Web Search',
+    chart_gen: 'Chart Generation',
+    xlsx_gen: 'Spreadsheet Generation',
+    pptx_gen: 'Presentation Generation',
+    podcast_gen: 'Podcast Generation',
+    diagram_gen: 'Diagram Generation',
   };
 
   const displayName = toolDisplayNames[toolType];
@@ -310,6 +322,22 @@ async function executeToolForTask(
         break;
       case 'image_gen':
         result = await executeImageGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'chart_gen':
+        // Charts are visual artifacts — route through image generation with chart context
+        result = await executeImageGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'xlsx_gen':
+        result = await executeXlsxGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'pptx_gen':
+        result = await executePptxGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'podcast_gen':
+        result = await executePodcastGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'diagram_gen':
+        result = await executeDiagramGenTool(task, plan, modelConfig, callbacks);
         break;
       case 'web_search':
         result = await executeWebSearchTool(task, callbacks);
@@ -540,6 +568,160 @@ async function executeWebSearchTool(
 }
 
 /**
+ * Execute spreadsheet generation tool
+ */
+async function executeXlsxGenTool(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  // Use LLM to generate structured spreadsheet data from task context
+  const depContext = buildDependencyContext(task, plan);
+  const prompt = `Generate spreadsheet data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "sheets": [{ "name": "...", "headers": [...], "rows": [[...], ...] }] }`;
+  const executorModel = getModelForRole('executor', modelConfig);
+  const response = await generateWithModel(executorModel, prompt, { temperature: 0.3 });
+
+  try {
+    const data = JSON.parse(response.content);
+    const threadId = (plan as any).thread_id || (plan as any).threadId;
+    const userId = (plan as any).user_id || (plan as any).userId;
+
+    const result = await runWithContextAsync(
+      { threadId, userId },
+      () => xlsxGenTool.execute(data)
+    );
+
+    const parsed = JSON.parse(result);
+    if (parsed.success && parsed.document) {
+      callbacks?.onArtifact?.({ type: 'artifact', subtype: 'document', data: parsed.document });
+      return `Spreadsheet generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`;
+    }
+    return `Spreadsheet generation failed: ${parsed.error || 'Unknown error'}`;
+  } catch {
+    return `Spreadsheet generation failed: could not parse structured data from LLM response`;
+  }
+}
+
+/**
+ * Execute presentation generation tool
+ */
+async function executePptxGenTool(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  const depContext = buildDependencyContext(task, plan);
+  const prompt = `Generate presentation slide data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "slides": [{ "title": "...", "content": "...", "notes": "..." }] }`;
+  const executorModel = getModelForRole('executor', modelConfig);
+  const response = await generateWithModel(executorModel, prompt, { temperature: 0.4 });
+
+  try {
+    const data = JSON.parse(response.content);
+    const threadId = (plan as any).thread_id || (plan as any).threadId;
+    const userId = (plan as any).user_id || (plan as any).userId;
+
+    const result = await runWithContextAsync(
+      { threadId, userId },
+      () => pptxGenTool.execute(data)
+    );
+
+    const parsed = JSON.parse(result);
+    if (parsed.success && parsed.document) {
+      callbacks?.onArtifact?.({ type: 'artifact', subtype: 'document', data: parsed.document });
+      return `Presentation generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`;
+    }
+    return `Presentation generation failed: ${parsed.error || 'Unknown error'}`;
+  } catch {
+    return `Presentation generation failed: could not parse structured data from LLM response`;
+  }
+}
+
+/**
+ * Execute podcast generation tool
+ */
+async function executePodcastGenTool(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  const depContext = buildDependencyContext(task, plan);
+  const prompt = `Write a podcast script for: ${task.description}\n\n${depContext}\n\nWrite a natural, conversational script suitable for text-to-speech narration. 2-5 minutes length.`;
+  const executorModel = getModelForRole('executor', modelConfig);
+  const response = await generateWithModel(executorModel, prompt, { temperature: 0.5 });
+
+  try {
+    const { generatePodcast } = await import('../tools/podcast-gen');
+    const result = await generatePodcast({
+      topic: task.target || `${plan.title} - Podcast`,
+      content: response.content,
+    });
+
+    if (result.success && result.podcastHint) {
+      callbacks?.onArtifact?.({ type: 'artifact', subtype: 'podcast', data: result.podcastHint });
+      return `Podcast generated: ${result.podcastHint.filename || 'podcast.mp3'}`;
+    }
+    return `Podcast generation failed: ${result.message || 'Unknown error'}`;
+  } catch (error) {
+    return `Podcast generation failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/**
+ * Execute diagram generation tool
+ */
+async function executeDiagramGenTool(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  const depContext = buildDependencyContext(task, plan);
+  const prompt = `Generate a Mermaid diagram definition for: ${task.description}\n\n${depContext}\n\nRespond with valid Mermaid syntax only (no markdown fences).`;
+  const executorModel = getModelForRole('executor', modelConfig);
+  const response = await generateWithModel(executorModel, prompt, { temperature: 0.3 });
+
+  try {
+    const threadId = (plan as any).thread_id || (plan as any).threadId;
+    const userId = (plan as any).user_id || (plan as any).userId;
+
+    const result = await runWithContextAsync(
+      { threadId, userId },
+      () => diagramGenTool.execute({
+        mermaidCode: response.content.replace(/```mermaid\n?/g, '').replace(/```\n?/g, '').trim(),
+        title: task.target || task.description.substring(0, 50),
+      })
+    );
+
+    const parsed = JSON.parse(result);
+    if (parsed.success && parsed.diagram) {
+      callbacks?.onArtifact?.({ type: 'artifact', subtype: 'diagram', data: parsed.diagram });
+      return `Diagram generated: ${parsed.diagram.title || 'diagram'}`;
+    }
+    return `Diagram generation failed: ${parsed.error || 'Unknown error'}`;
+  } catch (error) {
+    return `Diagram generation failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/**
+ * Build dependency context string for tool execution prompts
+ */
+function buildDependencyContext(task: AgentTask, plan: AgentPlan): string {
+  if (task.dependencies.length === 0) return '';
+  let context = '**Context from previous tasks:**\n';
+  for (const depId of task.dependencies) {
+    const dep = plan.tasks.find(t => t.id === depId);
+    if (dep && dep.result) {
+      context += `\n--- Task ${depId}: ${dep.description} ---\n${dep.result.substring(0, 3000)}\n`;
+    }
+  }
+  return context;
+}
+
+/**
  * Build prompt for document content generation
  */
 function buildDocContentPrompt(task: AgentTask, plan: AgentPlan): string {
@@ -591,7 +773,7 @@ function buildImagePrompt(task: AgentTask, plan: AgentPlan): string {
     for (const depId of task.dependencies) {
       const dep = plan.tasks.find((t) => t.id === depId);
       if (dep && dep.result) {
-        depResults.push(dep.result.substring(0, 300));
+        depResults.push(dep.result.substring(0, 1500));
       }
     }
     if (depResults.length > 0) {
@@ -643,7 +825,7 @@ ${originalRequest ? `**Original Request:** ${originalRequest}\n` : ''}
     for (const depId of task.dependencies) {
       const dep = plan.tasks.find((t) => t.id === depId);
       if (dep && dep.result) {
-        prompt += `- Task ${depId}: ${dep.description}\n  Result: ${dep.result.substring(0, 200)}...\n`;
+        prompt += `- Task ${depId}: ${dep.description}\n  Result: ${dep.result.substring(0, 3000)}...\n`;
       }
     }
   }

@@ -642,6 +642,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             onPause={() => pausePlan()}
             onResume={() => resumePlan()}
             onStop={() => stopPlan()}
+            autonomousPlan={streamingState.autonomousPlan}
+            onSkipTask={(taskId) => skipTask(taskId)}
           />
         )}
 
@@ -763,25 +765,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           />
         )}
 
-        {/* Autonomous Task List - Show streaming plan or restored plan */}
-        {streamingState.autonomousPlan ? (
-          <div className="mb-4">
-            <AutonomousTaskList
-              plan={streamingState.autonomousPlan}
-              toolsExecuted={streamingState.processingDetails.toolsExecuted}
-              isPaused={streamingState.isPaused}
-              isStopped={streamingState.isStopped}
-              onSkipTask={(taskId) => skipTask(taskId)}
-            />
-          </div>
-        ) : restoredPlan ? (
+        {/* Restored plan from previous session (read-only, collapsed) */}
+        {!streamingState.autonomousPlan && restoredPlan && (
           <div className="mb-4">
             <AutonomousTaskList
               plan={restoredPlan}
               isExpanded={false}
             />
           </div>
-        ) : null}
+        )}
 
         {/* Streaming Content */}
         {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (

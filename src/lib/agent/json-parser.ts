@@ -29,7 +29,10 @@ export const PLANNER_RESPONSE_SCHEMA = {
           id: { type: 'integer', minimum: 1 },
           type: {
             type: 'string',
-            enum: ['analyze', 'search', 'compare', 'generate', 'summarize', 'extract', 'validate'],
+            enum: [
+              'analyze', 'search', 'compare', 'generate', 'summarize', 'extract', 'validate',
+              'document', 'image', 'chart', 'spreadsheet', 'presentation', 'podcast', 'diagram',
+            ],
           },
           target: { type: 'string', minLength: 1 },
           description: { type: 'string', minLength: 1 },

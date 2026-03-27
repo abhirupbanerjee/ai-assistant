@@ -200,7 +200,7 @@ export function detectStuckPlan(tasks: AgentTask[]): StuckPlanResult {
  * Get tasks that are ready to execute (no pending dependencies)
  */
 export function getReadyTasks(tasks: AgentTask[]): AgentTask[] {
-  const completedStatuses = ['done', 'skipped'];
+  const completedStatuses = ['done', 'skipped', 'needs_review'];
 
   return tasks.filter(task => {
     // Only consider pending tasks

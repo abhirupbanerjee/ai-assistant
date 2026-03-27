@@ -372,10 +372,16 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'agent_plan_created':
-        // Initialize autonomous plan with tasks from the event
+        // Initialize autonomous plan with tasks and set phase
         setState(prev => ({
           ...prev,
           activePlanId: event.plan_id,
+          phase: 'agent_planning',
+          processingDetails: {
+            ...prev.processingDetails,
+            phase: 'agent_planning',
+            statusMessage: `Plan ready: ${event.title} (${event.task_count} tasks)`,
+          },
           autonomousPlan: {
             planId: event.plan_id,
             title: event.title,
@@ -395,11 +401,16 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'agent_task_started':
-        // Update task to running status
+        // Update task to running status and set executing phase
         setState(prev => {
           if (!prev.autonomousPlan) return prev;
           return {
             ...prev,
+            phase: 'agent_executing',
+            processingDetails: {
+              ...prev.processingDetails,
+              phase: 'agent_executing',
+            },
             autonomousPlan: {
               ...prev.autonomousPlan,
               tasks: prev.autonomousPlan.tasks.map(task =>
@@ -412,12 +423,20 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         });
         break;
 
-      case 'agent_task_completed':
+      case 'agent_task_completed': {
         // Update task to completed status with result and checker notes
+        // Also append a progressive summary to chat content
         setState(prev => {
           if (!prev.autonomousPlan) return prev;
+          const completedTask = prev.autonomousPlan.tasks.find(t => t.id === event.task_id);
+          const desc = completedTask?.description || `Task ${event.task_id}`;
+          // Build progressive update for chat content
+          const statusIcon = event.status === 'done' ? '\u2705' : event.status === 'skipped' ? '\u23ed\ufe0f' : '\u26a0\ufe0f';
+          const resultPreview = event.result ? `\n> ${event.result.substring(0, 300)}${event.result.length > 300 ? '...' : ''}` : '';
+          const progressUpdate = `${statusIcon} **${desc}**${resultPreview}\n\n`;
           return {
             ...prev,
+            currentContent: (prev.currentContent || '') + progressUpdate,
             autonomousPlan: {
               ...prev.autonomousPlan,
               tasks: prev.autonomousPlan.tasks.map(task =>
@@ -435,18 +454,31 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           };
         });
         break;
+      }
 
       case 'agent_plan_summary':
-        // Handle autonomous mode summary - set the content and stats
+        // Handle autonomous mode summary - append to progressive updates
         if (event.summary) {
-          contentBufferRef.current = event.summary;
-          setState(prev => ({
-            ...prev,
-            currentContent: event.summary,
-            autonomousPlan: prev.autonomousPlan
-              ? { ...prev.autonomousPlan, stats: event.stats }
-              : null,
-          }));
+          setState(prev => {
+            const summarySection = `---\n\n**Summary**\n\n${event.summary}`;
+            const fullContent = prev.currentContent
+              ? `${prev.currentContent}${summarySection}`
+              : event.summary;
+            contentBufferRef.current = fullContent;
+            return {
+              ...prev,
+              currentContent: fullContent,
+              phase: 'agent_summarizing',
+              processingDetails: {
+                ...prev.processingDetails,
+                phase: 'agent_summarizing',
+                statusMessage: 'Summarizing results...',
+              },
+              autonomousPlan: prev.autonomousPlan
+                ? { ...prev.autonomousPlan, stats: event.stats }
+                : null,
+            };
+          });
         }
         break;
 
@@ -495,11 +527,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'agent_resumed':
-        // Handle plan resumed
+        // Handle plan resumed — do not set isStreaming: true here,
+        // the SSE connection is still active (resume happens within the same stream)
         setState(prev => ({
           ...prev,
           isPaused: false,
-          isStreaming: true,
         }));
         break;
 
@@ -629,6 +661,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           isStreaming: false,
           phase: 'complete',
           currentContent: finalContent,
+          autonomousPlan: null,
           preflightEvent: null,
           hitlEvent: null,
           processingDetails: {
@@ -750,6 +783,14 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           // Ignore comments (keep-alive) and empty lines
         }
       }
+
+      // Safety: if stream closed without explicit 'done' event, ensure bar is dismissed
+      setState(prev => prev.isStreaming ? {
+        ...prev,
+        isStreaming: false,
+        phase: 'complete',
+        processingDetails: { ...prev.processingDetails, phase: 'complete' },
+      } : prev);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         // User aborted, reset state
@@ -788,11 +829,12 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     setState(prev => ({
       ...prev,
       isStreaming: false,
+      autonomousPlan: null,
       preflightEvent: null,
       hitlEvent: null,
       processingDetails: {
         ...prev.processingDetails,
-        currentPhase: 'complete',
+        phase: 'complete',
         toolsExecuted: prev.processingDetails.toolsExecuted, // Keep tool history for reference
       },
     }));

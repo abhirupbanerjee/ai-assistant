@@ -22,44 +22,48 @@ const DEFAULT_CONFIDENCE_THRESHOLD = 80;
  * Detect which tool (if any) was used for this task
  * Same logic as executor.ts for consistency
  */
-function detectToolForTask(task: AgentTask): 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen' | null {
+type CheckerToolType = 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen' | 'xlsx_gen' | 'pptx_gen' | 'podcast_gen' | 'diagram_gen';
+
+function detectToolForTask(task: AgentTask): CheckerToolType | null {
   const typeLC = task.type.toLowerCase();
-  const targetLC = task.target.toLowerCase();
-  const descLC = task.description.toLowerCase();
-  const combinedText = `${targetLC} ${descLC}`;
+  const combinedText = `${task.target.toLowerCase()} ${task.description.toLowerCase()}`;
 
   // Explicit type mappings
-  if (typeLC === 'document' || typeLC === 'doc_gen' || typeLC === 'generate_document') {
-    return 'doc_gen';
-  }
-  if (typeLC === 'image' || typeLC === 'image_gen' || typeLC === 'generate_image') {
-    return 'image_gen';
-  }
-  if (typeLC === 'chart' || typeLC === 'chart_gen' || typeLC === 'generate_chart') {
-    return 'chart_gen';
-  }
-  if (typeLC === 'search' || typeLC === 'web_search') {
-    return 'web_search';
-  }
+  const explicitMap: Record<string, CheckerToolType> = {
+    document: 'doc_gen', doc_gen: 'doc_gen', generate_document: 'doc_gen',
+    image: 'image_gen', image_gen: 'image_gen', generate_image: 'image_gen',
+    chart: 'chart_gen', chart_gen: 'chart_gen', generate_chart: 'chart_gen',
+    xlsx: 'xlsx_gen', xlsx_gen: 'xlsx_gen', spreadsheet: 'xlsx_gen',
+    pptx: 'pptx_gen', pptx_gen: 'pptx_gen', presentation: 'pptx_gen',
+    podcast: 'podcast_gen', podcast_gen: 'podcast_gen',
+    diagram: 'diagram_gen', diagram_gen: 'diagram_gen',
+    search: 'web_search', web_search: 'web_search',
+  };
+  if (explicitMap[typeLC]) return explicitMap[typeLC];
 
-  // Keyword-based detection for generic "generate" type
+  // Keyword scoring for "generate" type
   if (typeLC === 'generate') {
-    const docKeywords = ['document', 'report', 'word', 'docx', 'pdf', 'file', 'export', 'download', 'memo', 'letter'];
-    const imageKeywords = ['image', 'infographic', 'visual', 'picture', 'graphic', 'illustration', 'draw'];
-    const chartKeywords = ['chart', 'graph', 'diagram', 'visualization'];
-
-    const docScore = docKeywords.filter(kw => combinedText.includes(kw)).length;
-    const imageScore = imageKeywords.filter(kw => combinedText.includes(kw)).length;
-    const chartScore = chartKeywords.filter(kw => combinedText.includes(kw)).length;
-
-    if (docScore > 0 && docScore >= imageScore && docScore >= chartScore) return 'doc_gen';
-    if (imageScore > 0 && imageScore > docScore && imageScore >= chartScore) return 'image_gen';
-    if (chartScore > 0 && chartScore > docScore && chartScore > imageScore) return 'chart_gen';
+    const toolKeywords: Record<CheckerToolType, string[]> = {
+      doc_gen: ['document', 'report', 'word', 'docx', 'pdf', 'memo', 'letter'],
+      image_gen: ['image', 'infographic', 'visual', 'picture', 'graphic', 'illustration'],
+      chart_gen: ['chart', 'graph', 'visualization', 'plot'],
+      xlsx_gen: ['spreadsheet', 'excel', 'xlsx', 'data export'],
+      pptx_gen: ['presentation', 'slides', 'powerpoint', 'pptx', 'deck'],
+      podcast_gen: ['podcast', 'audio', 'narrate', 'voice'],
+      diagram_gen: ['diagram', 'flowchart', 'architecture', 'mindmap', 'mermaid'],
+      web_search: [],
+    };
+    let bestTool: CheckerToolType | null = null;
+    let bestScore = 0;
+    for (const [tool, keywords] of Object.entries(toolKeywords)) {
+      const score = keywords.filter(kw => combinedText.includes(kw)).length;
+      if (score > bestScore) { bestScore = score; bestTool = tool as CheckerToolType; }
+    }
+    if (bestTool) return bestTool;
   }
 
   // Fallback search detection
-  const searchKeywords = ['search', 'web', 'internet', 'online', 'lookup', 'find'];
-  if (searchKeywords.some(kw => combinedText.includes(kw))) {
+  if (['search', 'web', 'internet', 'online', 'lookup'].some(kw => combinedText.includes(kw))) {
     return 'web_search';
   }
 
@@ -71,7 +75,7 @@ function detectToolForTask(task: AgentTask): 'doc_gen' | 'image_gen' | 'web_sear
  * Simply checks if the tool produced valid output - no confidence scoring for tools
  */
 function verifyToolOutput(
-  toolType: 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen',
+  toolType: CheckerToolType,
   result: string
 ): CheckerResult {
   const resultLC = result.toLowerCase();
@@ -179,6 +183,42 @@ function verifyToolOutput(
         notes: hasFailed ? 'Web search failed' : 'Web search status unclear',
         tokens_used: 0,
       };
+    }
+
+    case 'xlsx_gen': {
+      const hasFile = resultLC.includes('spreadsheet generated') || resultLC.includes('.xlsx');
+      const hasFailed = resultLC.includes('failed') || resultLC.includes('error');
+      if (hasFile && !hasFailed) {
+        return { status: 'approved', confidence_score: 100, notes: 'Spreadsheet generated successfully', tokens_used: 0 };
+      }
+      return { status: 'needs_review', confidence_score: 0, notes: hasFailed ? 'Spreadsheet generation failed' : 'No spreadsheet output detected', tokens_used: 0 };
+    }
+
+    case 'pptx_gen': {
+      const hasFile = resultLC.includes('presentation generated') || resultLC.includes('.pptx');
+      const hasFailed = resultLC.includes('failed') || resultLC.includes('error');
+      if (hasFile && !hasFailed) {
+        return { status: 'approved', confidence_score: 100, notes: 'Presentation generated successfully', tokens_used: 0 };
+      }
+      return { status: 'needs_review', confidence_score: 0, notes: hasFailed ? 'Presentation generation failed' : 'No presentation output detected', tokens_used: 0 };
+    }
+
+    case 'podcast_gen': {
+      const hasFile = resultLC.includes('podcast generated') || resultLC.includes('.mp3');
+      const hasFailed = resultLC.includes('failed') || resultLC.includes('error');
+      if (hasFile && !hasFailed) {
+        return { status: 'approved', confidence_score: 100, notes: 'Podcast generated successfully', tokens_used: 0 };
+      }
+      return { status: 'needs_review', confidence_score: 0, notes: hasFailed ? 'Podcast generation failed' : 'No podcast output detected', tokens_used: 0 };
+    }
+
+    case 'diagram_gen': {
+      const hasDiagram = resultLC.includes('diagram generated') || resultLC.includes('mermaid');
+      const hasFailed = resultLC.includes('failed') || resultLC.includes('error');
+      if (hasDiagram && !hasFailed) {
+        return { status: 'approved', confidence_score: 100, notes: 'Diagram generated successfully', tokens_used: 0 };
+      }
+      return { status: 'needs_review', confidence_score: 0, notes: hasFailed ? 'Diagram generation failed' : 'No diagram output detected', tokens_used: 0 };
     }
 
     default:
