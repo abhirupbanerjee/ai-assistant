@@ -684,7 +684,7 @@ function GenericToolConfig({
   onChange: (config: Record<string, unknown>) => void;
   disabled: boolean;
 }) {
-  const properties = (schema as { properties?: Record<string, { type: string; title?: string; description?: string; enum?: string[]; default?: unknown }> }).properties || {};
+  const properties = (schema as { properties?: Record<string, { type: string; title?: string; description?: string; enum?: string[]; default?: unknown; minimum?: number; maximum?: number }> }).properties || {};
 
   return (
     <div className="space-y-4">
@@ -718,13 +718,26 @@ function GenericToolConfig({
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
           ) : prop.type === 'number' ? (
-            <input
-              type="number"
-              value={(config[key] as number) ?? (prop.default as number) ?? 0}
-              onChange={(e) => onChange({ ...config, [key]: parseInt(e.target.value) })}
-              disabled={disabled}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
+            <>
+              <input
+                type="number"
+                min={prop.minimum}
+                max={prop.maximum}
+                value={(config[key] as number) ?? (prop.default as number) ?? 0}
+                onChange={(e) => onChange({ ...config, [key]: parseInt(e.target.value) })}
+                disabled={disabled}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+              {(prop.minimum !== undefined || prop.maximum !== undefined) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {prop.minimum !== undefined && prop.maximum !== undefined
+                    ? `Between ${prop.minimum} and ${prop.maximum}`
+                    : prop.minimum !== undefined
+                      ? `Minimum: ${prop.minimum}`
+                      : `Maximum: ${prop.maximum}`}
+                </p>
+              )}
+            </>
           ) : (
             <input
               type="text"

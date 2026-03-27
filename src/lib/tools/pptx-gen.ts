@@ -24,11 +24,11 @@ import { isImageGenEnabled } from '../image-gen/provider-factory';
 
 // ============ Constants ============
 
-/** Maximum slides per presentation */
-const MAX_SLIDES = 12;
+/** Absolute maximum slides an admin can configure */
+const ABSOLUTE_MAX_SLIDES = 50;
 
-/** Maximum image slides per presentation */
-const MAX_IMAGE_SLIDES = 3;
+/** Absolute maximum image slides an admin can configure */
+const ABSOLUTE_MAX_IMAGE_SLIDES = 50;
 
 /** Maximum payload size in MB */
 const MAX_PAYLOAD_MB = 5;
@@ -37,8 +37,8 @@ const MAX_PAYLOAD_MB = 5;
 
 export const PPTX_GEN_DEFAULTS: PptxGenConfig = {
   defaultTheme: 'corporate',
-  maxSlides: MAX_SLIDES,
-  maxImageSlides: MAX_IMAGE_SLIDES,
+  maxSlides: 12,
+  maxImageSlides: 3,
   enableImageGeneration: true,
   branding: {
     enabled: false,
@@ -63,7 +63,7 @@ const pptxGenConfigSchema = {
       title: 'Max Slides',
       description: 'Maximum slides per presentation',
       minimum: 5,
-      maximum: 12,
+      maximum: 50,
       default: 12,
     },
     maxImageSlides: {
@@ -71,7 +71,7 @@ const pptxGenConfigSchema = {
       title: 'Max Image Slides',
       description: 'Maximum AI-generated image slides per presentation',
       minimum: 0,
-      maximum: 3,
+      maximum: 50,
       default: 3,
     },
     enableImageGeneration: {
@@ -99,15 +99,15 @@ function validatePptxGenConfig(config: Record<string, unknown>): ValidationResul
 
   if (config.maxSlides !== undefined) {
     const max = config.maxSlides as number;
-    if (typeof max !== 'number' || max < 5 || max > MAX_SLIDES) {
-      errors.push(`maxSlides must be between 5 and ${MAX_SLIDES}`);
+    if (typeof max !== 'number' || max < 5 || max > ABSOLUTE_MAX_SLIDES) {
+      errors.push(`maxSlides must be between 5 and ${ABSOLUTE_MAX_SLIDES}`);
     }
   }
 
   if (config.maxImageSlides !== undefined) {
     const max = config.maxImageSlides as number;
-    if (typeof max !== 'number' || max < 0 || max > MAX_IMAGE_SLIDES) {
-      errors.push(`maxImageSlides must be between 0 and ${MAX_IMAGE_SLIDES}`);
+    if (typeof max !== 'number' || max < 0 || max > ABSOLUTE_MAX_IMAGE_SLIDES) {
+      errors.push(`maxImageSlides must be between 0 and ${ABSOLUTE_MAX_IMAGE_SLIDES}`);
     }
   }
 
@@ -142,11 +142,7 @@ export const pptxGenTool: ToolDefinition = {
       name: 'pptx_gen',
       description: `Generate a PowerPoint presentation (.pptx) with professional styling.
 
-LIMITS - DO NOT EXCEED:
-- Maximum 12 slides total
-- Maximum 3 image slides
-
-If user requests exceed limits, inform them and offer alternatives.
+Slide and image limits are configured by the administrator. If the request exceeds limits, you will receive an error with the current configured limits.
 
 Available slide types:
 - title: Opening slide with title and subtitle
@@ -169,7 +165,7 @@ Available themes: corporate, modern, minimal, bold`,
           },
           slides: {
             type: 'array',
-            description: 'Array of slide definitions (5-12 recommended)',
+            description: 'Array of slide definitions',
             items: {
               type: 'object',
               properties: {
@@ -264,48 +260,7 @@ Available themes: corporate, modern, minimal, bold`,
         } as PptxGenResponse);
       }
 
-      // Step 1: Validate inputs
-      if (!args.slides || args.slides.length === 0) {
-        return JSON.stringify({
-          success: false,
-          error: 'At least one slide is required',
-          errorCode: 'INVALID_INPUT',
-        } as PptxGenResponse);
-      }
-
-      // Validate slide limit
-      if (args.slides.length > MAX_SLIDES) {
-        return JSON.stringify({
-          success: false,
-          error: `Slide limit exceeded: ${args.slides.length} slides, maximum is ${MAX_SLIDES}`,
-          errorCode: 'LIMIT_EXCEEDED',
-          suggestion: `Reduce the number of slides to ${MAX_SLIDES} or fewer`,
-        } as PptxGenResponse);
-      }
-
-      // Validate image slide limit
-      const imageSlides = args.slides.filter((s) => s.type === 'image');
-      if (imageSlides.length > MAX_IMAGE_SLIDES) {
-        return JSON.stringify({
-          success: false,
-          error: `Image slide limit exceeded: ${imageSlides.length} image slides, maximum is ${MAX_IMAGE_SLIDES}`,
-          errorCode: 'LIMIT_EXCEEDED',
-          suggestion: `Reduce image slides to ${MAX_IMAGE_SLIDES} or fewer, or use content slides instead`,
-        } as PptxGenResponse);
-      }
-
-      // Step 2: Check memory
-      const memCheck = checkMemoryForPptx(args.slides);
-      if (!memCheck.canProceed) {
-        console.warn('[PptxGen] Memory check failed:', memCheck.reason);
-        return JSON.stringify({
-          success: false,
-          error: memCheck.reason,
-          errorCode: 'MEMORY_LIMIT',
-        } as PptxGenResponse);
-      }
-
-      // Get tool configuration
+      // Step 1: Get tool configuration (needed for limit checks)
       const toolConfig = await getToolConfig('pptx_gen');
       const config = (toolConfig?.config as Partial<PptxGenConfig>) || {};
       const organizationName = config.branding?.organizationName || '';
@@ -316,6 +271,51 @@ Available themes: corporate, modern, minimal, bold`,
           success: false,
           error: 'Presentation generation is currently disabled',
           errorCode: 'TOOL_DISABLED',
+        } as PptxGenResponse);
+      }
+
+      // Use admin-configured limits, falling back to defaults
+      const maxSlides = config.maxSlides ?? PPTX_GEN_DEFAULTS.maxSlides;
+      const maxImageSlides = config.maxImageSlides ?? PPTX_GEN_DEFAULTS.maxImageSlides;
+
+      // Step 2: Validate inputs
+      if (!args.slides || args.slides.length === 0) {
+        return JSON.stringify({
+          success: false,
+          error: 'At least one slide is required',
+          errorCode: 'INVALID_INPUT',
+        } as PptxGenResponse);
+      }
+
+      // Validate slide limit
+      if (args.slides.length > maxSlides) {
+        return JSON.stringify({
+          success: false,
+          error: `Slide limit exceeded: ${args.slides.length} slides, maximum is ${maxSlides}`,
+          errorCode: 'LIMIT_EXCEEDED',
+          suggestion: `Reduce the number of slides to ${maxSlides} or fewer`,
+        } as PptxGenResponse);
+      }
+
+      // Validate image slide limit
+      const imageSlides = args.slides.filter((s) => s.type === 'image');
+      if (imageSlides.length > maxImageSlides) {
+        return JSON.stringify({
+          success: false,
+          error: `Image slide limit exceeded: ${imageSlides.length} image slides, maximum is ${maxImageSlides}`,
+          errorCode: 'LIMIT_EXCEEDED',
+          suggestion: `Reduce image slides to ${maxImageSlides} or fewer, or use content slides instead`,
+        } as PptxGenResponse);
+      }
+
+      // Step 3: Check memory
+      const memCheck = checkMemoryForPptx(args.slides);
+      if (!memCheck.canProceed) {
+        console.warn('[PptxGen] Memory check failed:', memCheck.reason);
+        return JSON.stringify({
+          success: false,
+          error: memCheck.reason,
+          errorCode: 'MEMORY_LIMIT',
         } as PptxGenResponse);
       }
 
