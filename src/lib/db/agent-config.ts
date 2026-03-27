@@ -144,7 +144,7 @@ export interface StreamingConfig {
 const DEFAULT_STREAMING_CONFIG: StreamingConfig = {
   keepalive_interval_seconds: 10,
   max_stream_duration_seconds: 300,
-  tool_timeout_seconds: 60,
+  tool_timeout_seconds: 120,
 };
 
 /**

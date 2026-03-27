@@ -4,7 +4,7 @@ import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, Gener
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
-import { getToolDisplayName } from './streaming/utils';
+import { getToolDisplayName, getStreamingConfigMs } from './streaming/utils';
 import { getToolDefinitions, executeTool, REQUEST_CLARIFICATION_TOOL } from './tools';
 import { resolveToolRouting } from './tool-routing';
 import { resolveSkills, determineToolChoice } from './skills/resolver';
@@ -286,7 +286,7 @@ export async function generateResponse(
 // Streaming timeouts — generous to accommodate Ollama model loading
 const FIRST_CHUNK_TIMEOUT_MS = 120_000;        // 2 min: cloud models
 const FIRST_CHUNK_TIMEOUT_OLLAMA_MS = 180_000; // 3 min: Ollama (CPU cold-start)
-const INTER_CHUNK_TIMEOUT_MS = 60_000;         // 1 min: gap between chunks once streaming starts
+// Inter-chunk timeout now loaded from DB via getStreamingConfigMs() (default 120s)
 
 // Ollama per-request context window — overrides server-level OLLAMA_CONTEXT_LENGTH.
 // Default 16384 balances capacity with memory on 4GB+ systems.
@@ -361,6 +361,13 @@ async function streamOneCompletion(
   onThinkingChunk?: (text: string) => void,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null }> {
   const controller = new AbortController();
+  // OpenAI SDK v6+ silently swallows AbortError in its stream iterator
+  // (returns instead of throwing), so we track abort state explicitly
+  let wasAborted = false;
+
+  // Use DB-configurable inter-chunk timeout (default 120s, was hardcoded 60s)
+  const streamingConfig = await getStreamingConfigMs();
+  const interChunkTimeoutMs = streamingConfig.TOOL_TIMEOUT_MS;
 
   // Ollama models get a longer first-chunk timeout for CPU cold-start
   const isOllama = params.model?.startsWith('ollama-') || params.model?.startsWith('ollama/');
@@ -369,6 +376,7 @@ async function streamOneCompletion(
   // Start with first-chunk timeout; reset to inter-chunk on each received chunk
   let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
     logger.warn('LLM streaming timed out waiting for first chunk', { model: params.model });
+    wasAborted = true;
     controller.abort();
   }, firstChunkTimeout);
 
@@ -376,8 +384,9 @@ async function streamOneCompletion(
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
       logger.warn('LLM streaming timed out between chunks', { model: params.model });
+      wasAborted = true;
       controller.abort();
-    }, INTER_CHUNK_TIMEOUT_MS);
+    }, interChunkTimeoutMs);
   };
 
   let content = '';
@@ -424,8 +433,18 @@ async function streamOneCompletion(
         }
       }
     }
+
+    // SDK v6+ swallows AbortError (returns instead of throwing) — detect via flag
+    // Without this check, incomplete tool arguments are silently returned,
+    // causing JSON parse failures and infinite retry loops
+    if (wasAborted) {
+      throw new Error(
+        `LLM streaming timeout (model: ${params.model}). ` +
+        `The model may be unresponsive or unable to handle the requested tool_choice.`
+      );
+    }
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError')) {
       throw new Error(
         `LLM streaming timeout (model: ${params.model}). ` +
         `The model may be unresponsive or unable to handle the requested tool_choice.`
