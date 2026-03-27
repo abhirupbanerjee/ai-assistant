@@ -112,8 +112,10 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
       if (mistralApiKeyInput) {
         settingsToSave.mistralApiKey = mistralApiKeyInput;
       }
-      if (azureDiEndpointInput) {
-        settingsToSave.azureDiEndpoint = azureDiEndpointInput;
+      // Send endpoint if user edited it, or if it exists from settings (always persist the displayed value)
+      const effectiveEndpoint = azureDiEndpointInput || settings?.azureDiEndpoint || '';
+      if (effectiveEndpoint) {
+        settingsToSave.azureDiEndpoint = effectiveEndpoint;
       }
       if (azureDiKeyInput) {
         settingsToSave.azureDiKey = azureDiKeyInput;
@@ -125,7 +127,10 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
         body: JSON.stringify({ type: 'ocr', settings: settingsToSave }),
       });
 
-      if (!res.ok) throw new Error('Failed to save settings');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || 'Failed to save settings');
+      }
 
       const data = await res.json();
       const savedSettings = data.settings;
@@ -331,12 +336,12 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
                             </label>
                             <input
                               type="text"
-                              value={azureDiEndpointInput}
+                              value={azureDiEndpointInput || settings?.azureDiEndpoint || ''}
                               onChange={(e) => {
                                 setAzureDiEndpointInput(e.target.value);
                                 setIsModified(true);
                               }}
-                              placeholder={settings?.azureDiEndpoint || 'https://your-resource.cognitiveservices.azure.com'}
+                              placeholder="https://your-resource.cognitiveservices.azure.com"
                               className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                           </div>
@@ -387,6 +392,28 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
               Mistral OCR will also use the key from LLM Settings &gt; Providers if available.
               Plain text files (.txt, .md) are handled directly without OCR.
             </p>
+          </div>
+
+          {/* Local fallback parsers info */}
+          <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <p className="text-sm font-medium text-gray-700 mb-1">Built-in Local Parsers (always active)</p>
+            <p className="text-xs text-gray-600 mb-2">
+              These run automatically before API-based providers. No configuration needed. If they fail, the document falls through to the providers above.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-600">
+              <div className="flex items-start gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 mt-1 rounded-full bg-green-400 flex-shrink-0" />
+                <span><strong>mammoth</strong> — DOCX text extraction</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 mt-1 rounded-full bg-green-400 flex-shrink-0" />
+                <span><strong>exceljs</strong> — XLSX spreadsheet extraction</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 mt-1 rounded-full bg-green-400 flex-shrink-0" />
+                <span><strong>officeparser</strong> — PPTX slide extraction</span>
+              </div>
+            </div>
           </div>
 
           {/* Last Updated */}

@@ -170,3 +170,26 @@ export async function setAgentModelConfigs(
   await setSetting('agent_model_checker', JSON.stringify(configs.checker), updatedBy);
   await setSetting('agent_model_summarizer', JSON.stringify(configs.summarizer), updatedBy);
 }
+
+// ============================================================================
+// Summarizer System Prompt (configurable)
+// ============================================================================
+
+/**
+ * Get the summarizer system prompt from database, falling back to hardcoded default
+ */
+export async function getSummarizerSystemPrompt(): Promise<string> {
+  const { DEFAULT_SUMMARIZER_SYSTEM_PROMPT } = await import('../../agent/summarizer');
+  const stored = await getSetting('agent_summarizer_system_prompt', '');
+  return stored || DEFAULT_SUMMARIZER_SYSTEM_PROMPT;
+}
+
+/**
+ * Save a custom summarizer system prompt to database
+ */
+export async function setSummarizerSystemPrompt(
+  prompt: string,
+  updatedBy: string
+): Promise<void> {
+  await setSetting('agent_summarizer_system_prompt', prompt, updatedBy);
+}

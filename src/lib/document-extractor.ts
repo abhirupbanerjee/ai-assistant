@@ -7,6 +7,9 @@
 import { extractTextWithMistral } from './mistral-ocr';
 import { extractTextWithAzureDI } from './azure-document-intelligence';
 import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
+import ExcelJS from 'exceljs';
+import { OfficeParser } from 'officeparser';
 import { getOcrSettings } from './db/compat/config';
 import type { OcrProvider } from './db/compat/config';
 import { isProviderConfigured } from '@/lib/provider-helpers';
@@ -24,7 +27,7 @@ export interface ExtractionResult {
   text: string;
   numPages: number;
   pages: ExtractedPage[];
-  provider: 'mistral' | 'azure-di' | 'pdf-parse';
+  provider: 'mistral' | 'azure-di' | 'pdf-parse' | 'mammoth' | 'exceljs' | 'officeparser';
 }
 
 // ============================================
@@ -76,6 +79,18 @@ export function isPDF(mimeType: string): boolean {
 
 export function isImage(mimeType: string): boolean {
   return mimeType.startsWith('image/');
+}
+
+export function isDocx(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.DOCX;
+}
+
+export function isXlsx(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.XLSX;
+}
+
+export function isPptx(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.PPTX;
 }
 
 export function isOfficeDocument(mimeType: string): boolean {
@@ -167,6 +182,51 @@ export async function extractText(
       pages: [{ pageNumber: 1, text }],
       provider: 'pdf-parse', // Use 'pdf-parse' as provider for consistency
     };
+  }
+
+  // TIER 0.5: DOCX files (structured XML, no OCR needed)
+  // mammoth extracts text locally without API keys
+  // Falls through to provider loop (Azure DI) if mammoth fails
+  if (isDocx(mimeType)) {
+    try {
+      console.log(`[Tier 0.5] Attempting mammoth extraction for ${filename}...`);
+      const result = await extractWithMammoth(buffer);
+      console.log(`[Tier 0.5] mammoth succeeded: ${result.text.length} chars`);
+      return result;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`[Tier 0.5] mammoth failed for ${filename}: ${msg}`);
+      errors.push(`mammoth: ${msg}`);
+      // Fall through to provider loop — Azure DI can handle DOCX as backup
+    }
+  }
+
+  // TIER 0.5b: XLSX files (structured data, no OCR needed)
+  if (isXlsx(mimeType)) {
+    try {
+      console.log(`[Tier 0.5] Attempting exceljs extraction for ${filename}...`);
+      const result = await extractWithExcelJS(buffer);
+      console.log(`[Tier 0.5] exceljs succeeded: ${result.text.length} chars`);
+      return result;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`[Tier 0.5] exceljs failed for ${filename}: ${msg}`);
+      errors.push(`exceljs: ${msg}`);
+    }
+  }
+
+  // TIER 0.5c: PPTX files (structured slides, no OCR needed)
+  if (isPptx(mimeType)) {
+    try {
+      console.log(`[Tier 0.5] Attempting officeparser extraction for ${filename}...`);
+      const result = await extractWithOfficeParser(buffer);
+      console.log(`[Tier 0.5] officeparser succeeded: ${result.text.length} chars`);
+      return result;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`[Tier 0.5] officeparser failed for ${filename}: ${msg}`);
+      errors.push(`officeparser: ${msg}`);
+    }
   }
 
   // Load provider priority from admin settings
@@ -299,5 +359,81 @@ async function extractWithPdfParse(buffer: Buffer): Promise<PdfParseResult> {
     text: data.text,
     numPages: data.numpages,
     pages,
+  };
+}
+
+// ============================================
+// mammoth DOCX Extraction
+// ============================================
+
+async function extractWithMammoth(buffer: Buffer): Promise<ExtractionResult> {
+  const result = await mammoth.extractRawText({ buffer });
+  const text = result.value;
+
+  if (!text || text.trim().length === 0) {
+    throw new Error('mammoth extracted empty text from DOCX');
+  }
+
+  return {
+    text,
+    numPages: 1,
+    pages: [{ pageNumber: 1, text }],
+    provider: 'mammoth',
+  };
+}
+
+// ============================================
+// ExcelJS XLSX Extraction
+// ============================================
+
+async function extractWithExcelJS(buffer: Buffer): Promise<ExtractionResult> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  const pages: ExtractedPage[] = [];
+  const allText: string[] = [];
+
+  workbook.eachSheet((sheet, sheetId) => {
+    const rows: string[] = [];
+    sheet.eachRow((row) => {
+      const cells = row.values as (string | number | null | undefined)[];
+      const rowText = cells
+        .slice(1) // exceljs row.values is 1-indexed (index 0 is empty)
+        .filter(v => v != null)
+        .map(v => String(v).trim())
+        .filter(v => v.length > 0)
+        .join('\t');
+      if (rowText) rows.push(rowText);
+    });
+    const sheetText = rows.join('\n');
+    if (sheetText.trim()) {
+      pages.push({ pageNumber: sheetId, text: `[Sheet: ${sheet.name}]\n${sheetText}` });
+      allText.push(`[Sheet: ${sheet.name}]\n${sheetText}`);
+    }
+  });
+
+  const text = allText.join('\n\n');
+  if (!text.trim()) throw new Error('exceljs extracted empty text from XLSX');
+
+  return { text, numPages: pages.length, pages, provider: 'exceljs' };
+}
+
+// ============================================
+// officeparser PPTX Extraction
+// ============================================
+
+async function extractWithOfficeParser(buffer: Buffer): Promise<ExtractionResult> {
+  const ast = await OfficeParser.parseOffice(buffer);
+  const text = ast.toText();
+
+  if (!text || text.trim().length === 0) {
+    throw new Error('officeparser extracted empty text from PPTX');
+  }
+
+  return {
+    text,
+    numPages: 1,
+    pages: [{ pageNumber: 1, text }],
+    provider: 'officeparser',
   };
 }

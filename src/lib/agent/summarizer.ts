@@ -1,12 +1,13 @@
 /**
  * Summarizer Agent
  *
- * Generates final summaries of completed plans
- * Consolidates all task results into a coherent summary
+ * Generates consolidated responses from completed plans
+ * Compiles all task results into a cohesive answer to the user's original request
  */
 
 import type { AgentPlan, AgentModelConfig } from '@/types/agent';
 import { generateWithModel, getModelForRole } from './llm-router';
+import { getSummarizerSystemPrompt } from '@/lib/db/compat/agent-config';
 
 /**
  * Generate summary of completed plan
@@ -25,9 +26,12 @@ export async function generateSummary(
     // Get summarizer model
     const summarizerModel = getModelForRole('summarizer', modelConfig);
 
+    // Load configurable system prompt (falls back to default)
+    const systemPrompt = await getSummarizerSystemPrompt();
+
     // Generate summary
     const response = await generateWithModel(summarizerModel, prompt, {
-      systemPrompt: SUMMARIZER_SYSTEM_PROMPT,
+      systemPrompt,
       temperature: 0.5, // Moderate creativity for natural language
     });
 
@@ -48,7 +52,7 @@ export async function generateSummary(
  * Build summary prompt
  */
 function buildSummaryPrompt(plan: AgentPlan): string {
-  let prompt = `Generate a comprehensive summary of this completed autonomous plan.
+  let prompt = `Using the task results below, create a consolidated response that directly answers the user's original request.
 
 **Plan:** ${plan.title}
 **Original Request:** ${plan.original_request}
@@ -96,13 +100,12 @@ function buildSummaryPrompt(plan: AgentPlan): string {
   }
 
   prompt += `\n**Instructions:**
-1. Summarize what was accomplished
-2. Highlight key findings or results
-3. Note any tasks that need review or failed
-4. Provide actionable next steps if applicable
-5. Keep the summary concise (2-4 paragraphs)
-
-Write in a clear, professional tone.`;
+1. Answer the user's original request directly using the task results above
+2. Present findings, data, and content — NOT a description of what tasks did
+3. Include all important details: data points, URLs, file links, analysis results
+4. Structure the response logically (headings, bullet points, tables as appropriate)
+5. If any tasks produced downloadable files, list them with links
+6. Only briefly note failed/skipped tasks at the end if the user should be aware`;
 
   return prompt;
 }
@@ -144,15 +147,17 @@ function generateFallbackSummary(plan: AgentPlan): string {
 }
 
 /**
- * System prompt for the summarizer agent
+ * Default system prompt for the summarizer agent.
+ * Can be overridden via Admin → Agent Config → Summarizer System Prompt.
  */
-const SUMMARIZER_SYSTEM_PROMPT = `You are a summary generation agent. You create clear, comprehensive summaries of completed task plans.
+export const DEFAULT_SUMMARIZER_SYSTEM_PROMPT = `You are a content consolidation agent. You compile task results into a single, cohesive response that directly answers the user's original request.
 
 Key principles:
-- Synthesize information from multiple tasks
-- Highlight key accomplishments and findings
-- Note any issues or tasks needing review
-- Provide actionable insights
-- Write in a professional, clear style
+- Present the ACTUAL CONTENT and FINDINGS from task results — not commentary about how well the tasks ran
+- Structure the output as if YOU are answering the user's original question directly
+- Include all data, links, files, and key information from task results
+- If tasks produced downloadable files (documents, spreadsheets, images), list them clearly
+- Only mention failed/skipped tasks briefly at the end if relevant
+- Write as a direct answer, not as a plan execution report
 
-Output your summary in markdown format.`;
+Output your response in markdown format.`;

@@ -30,7 +30,11 @@ export async function generateWithModel(
     maxTokens?: number;
   } = {}
 ): Promise<LLMResponse> {
-  const { systemPrompt = '', temperature = modelSpec.temperature, maxTokens = modelSpec.max_tokens || 4096 } = options;
+  const { systemPrompt = '', temperature = modelSpec.temperature, maxTokens: rawMaxTokens = modelSpec.max_tokens || 4096 } = options;
+
+  // Cap max_tokens to prevent API rejection from misconfigured values
+  // 32000 is safe for all supported models (gpt-4.1-mini supports 32768)
+  const maxTokens = Math.min(rawMaxTokens, 32000);
 
   switch (modelSpec.provider) {
     case 'openai':

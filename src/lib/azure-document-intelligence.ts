@@ -50,6 +50,10 @@ async function getAzureDIClient(): Promise<DocumentAnalysisClient> {
       throw new Error('Azure Document Intelligence not configured. Set credentials in Settings > Document Processing or use AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.');
     }
 
+    if (!endpoint.startsWith('https://')) {
+      throw new Error(`Invalid Azure DI endpoint URL: "${endpoint}". Must be an HTTPS URL (e.g., https://your-resource.cognitiveservices.azure.com)`);
+    }
+
     azureDIClient = new DocumentAnalysisClient(
       endpoint,
       new AzureKeyCredential(key)

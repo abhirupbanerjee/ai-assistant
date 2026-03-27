@@ -947,6 +947,9 @@ export {
   getAgentModelConfigs,
   setAgentModelConfigs,
   validateAgentModelConfig,
+  // Summarizer System Prompt
+  getSummarizerSystemPrompt,
+  setSummarizerSystemPrompt,
 } from './agent-config';
 
 // ============ RAG Testing ============

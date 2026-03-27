@@ -1104,6 +1104,13 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        if (azureDiEndpoint && !azureDiEndpoint.startsWith('https://')) {
+          return NextResponse.json<ApiError>(
+            { error: 'Azure DI endpoint must be a valid HTTPS URL (e.g., https://your-resource.cognitiveservices.azure.com)', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
         // Validate Azure DI key (optional)
         if (azureDiKey !== undefined && typeof azureDiKey !== 'string') {
           return NextResponse.json<ApiError>(

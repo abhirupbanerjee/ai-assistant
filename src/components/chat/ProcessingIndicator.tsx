@@ -37,6 +37,11 @@ import {
   SkipForward,
   Eye,
   Image,
+  BarChart3,
+  Table,
+  Presentation,
+  Mic,
+  GitBranch,
 } from 'lucide-react';
 import type { ProcessingDetails, StreamPhase, ToolExecutionState, OperationLogEntry, UploadExtractionState, ContextTruncationWarning } from '@/types';
 import type { AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
@@ -200,16 +205,38 @@ function formatContentLength(length?: number): string {
 function getTaskTypeIcon(type: string) {
   switch (type.toLowerCase()) {
     case 'search':
+    case 'web_search':
       return <Search size={14} className="text-blue-500" />;
     case 'generate':
       return <Sparkles size={14} className="text-purple-500" />;
     case 'analyze':
+    case 'extract':
+    case 'compare':
+    case 'validate':
       return <Eye size={14} className="text-amber-500" />;
     case 'summarize':
       return <FileText size={14} className="text-green-500" />;
+    case 'document':
+    case 'doc_gen':
+      return <FileText size={14} className="text-blue-600" />;
     case 'image':
     case 'image_gen':
       return <Image size={14} className="text-pink-500" />;
+    case 'chart':
+    case 'chart_gen':
+      return <BarChart3 size={14} className="text-indigo-500" />;
+    case 'spreadsheet':
+    case 'xlsx_gen':
+      return <Table size={14} className="text-emerald-600" />;
+    case 'presentation':
+    case 'pptx_gen':
+      return <Presentation size={14} className="text-orange-500" />;
+    case 'podcast':
+    case 'podcast_gen':
+      return <Mic size={14} className="text-red-500" />;
+    case 'diagram':
+    case 'diagram_gen':
+      return <GitBranch size={14} className="text-cyan-500" />;
     default:
       return <Circle size={14} className="text-gray-400" />;
   }

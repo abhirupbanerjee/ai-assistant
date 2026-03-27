@@ -9,7 +9,7 @@ import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
-import AutonomousTaskList from './AutonomousTaskList';
+
 import ShareModal from '@/components/sharing/ShareModal';
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
 import HitlClarificationCard from './HitlClarificationCard';
@@ -79,7 +79,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
-  const [restoredPlan, setRestoredPlan] = useState<AutonomousPlanState | null>(null);
+
   const [chatPreferences, setChatPreferences] = useState<ChatPreferences>(DEFAULT_CHAT_PREFERENCES);
 
   // Expose methods to parent via ref
@@ -285,7 +285,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       setMessages([]);
       setUploads([]);
       setSummaryData(null);
-      setRestoredPlan(null);
     }
   }, [activeThread, resetStreaming]);
 
@@ -397,55 +396,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         })));
         setUploads(data.uploads || []);
 
-        // Restore task plan if available (from autonomous mode)
-        if (data.taskPlan) {
-          const plan = data.taskPlan;
-          // Map DB task status to UI status
-          const mapStatus = (s: string): AutonomousTaskState['status'] => {
-            if (s === 'complete' || s === 'done') return 'done';
-            if (s === 'in_progress' || s === 'running') return 'running';
-            if (s === 'failed') return 'error';
-            if (s === 'skipped') return 'skipped';
-            if (s === 'needs_review') return 'needs_review';
-            return 'pending';
-          };
-
-          const tasks: AutonomousTaskState[] = plan.tasks.map((t: any) => ({
-            id: t.id,
-            description: t.description,
-            type: t.type || 'analyze',
-            status: mapStatus(t.status),
-            confidence: t.confidence_score,
-            result: t.result,
-            checkerNotes: t.review_notes,
-          }));
-
-          // Calculate stats
-          const completedTasks = tasks.filter(t => t.status === 'done').length;
-          const failedTasks = tasks.filter(t => t.status === 'error').length;
-          const skippedTasks = tasks.filter(t => t.status === 'skipped').length;
-          const needsReviewTasks = tasks.filter(t => t.status === 'needs_review').length;
-          const confidences = tasks.filter(t => t.confidence !== undefined).map(t => t.confidence!);
-          const avgConfidence = confidences.length > 0
-            ? confidences.reduce((a, b) => a + b, 0) / confidences.length
-            : 0;
-
-          setRestoredPlan({
-            planId: plan.id,
-            title: plan.title,
-            tasks,
-            stats: {
-              total_tasks: tasks.length,
-              completed_tasks: completedTasks,
-              failed_tasks: failedTasks,
-              skipped_tasks: skippedTasks,
-              needs_review_tasks: needsReviewTasks,
-              average_confidence: avgConfidence,
-            },
-          });
-        } else {
-          setRestoredPlan(null);
-        }
+        // Task plan info is now shown via per-task progressive updates in the chat (Phase 1.4)
       }
     } catch (err) {
       console.error('Failed to load thread:', err);
@@ -765,15 +716,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           />
         )}
 
-        {/* Restored plan from previous session (read-only, collapsed) */}
-        {!streamingState.autonomousPlan && restoredPlan && (
-          <div className="mb-4">
-            <AutonomousTaskList
-              plan={restoredPlan}
-              isExpanded={false}
-            />
-          </div>
-        )}
+        {/* Restored plan info is now shown inline via per-task progressive updates (Phase 1.4) */}
 
         {/* Streaming Content */}
         {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (

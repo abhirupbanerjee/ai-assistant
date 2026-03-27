@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Save } from 'lucide-react';
+import { Save, RotateCcw } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -23,6 +23,7 @@ interface AgentSettings {
   executorModel: AgentModelConfig;
   checkerModel: AgentModelConfig;
   summarizerModel: AgentModelConfig;
+  summarizerSystemPrompt: string;
   streamingKeepaliveInterval: number;
   streamingMaxDuration: number;
   streamingToolTimeout: number;
@@ -40,6 +41,18 @@ interface EnabledModel {
 }
 
 const MODEL_KEYS = ['plannerModel', 'executorModel', 'checkerModel', 'summarizerModel'] as const;
+
+const DEFAULT_SUMMARIZER_PROMPT = `You are a content consolidation agent. You compile task results into a single, cohesive response that directly answers the user's original request.
+
+Key principles:
+- Present the ACTUAL CONTENT and FINDINGS from task results — not commentary about how well the tasks ran
+- Structure the output as if YOU are answering the user's original question directly
+- Include all data, links, files, and key information from task results
+- If tasks produced downloadable files (documents, spreadsheets, images), list them clearly
+- Only mention failed/skipped tasks briefly at the end if relevant
+- Write as a direct answer, not as a plan execution report
+
+Output your response in markdown format.`;
 
 /** Map a provider ID from enabled_models to a valid agent provider value */
 function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' {
@@ -113,6 +126,7 @@ export default function AgentSettingsTab() {
         executorModel: data.executorModel,
         checkerModel: data.checkerModel,
         summarizerModel: data.summarizerModel,
+        summarizerSystemPrompt: data.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
         streamingKeepaliveInterval: data.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: data.streamingMaxDuration ?? 300,
         streamingToolTimeout: data.streamingToolTimeout ?? 60,
@@ -166,6 +180,7 @@ export default function AgentSettingsTab() {
         executorModel: settings.executorModel,
         checkerModel: settings.checkerModel,
         summarizerModel: settings.summarizerModel,
+        summarizerSystemPrompt: settings.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
         streamingKeepaliveInterval: settings.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: settings.streamingMaxDuration ?? 300,
         streamingToolTimeout: settings.streamingToolTimeout ?? 60,
@@ -378,13 +393,53 @@ export default function AgentSettingsTab() {
                           value={currentModel.max_tokens || ''}
                           onChange={(e) => updateModelConfig(modelKey, 'max_tokens', parseInt(e.target.value) || undefined)}
                           placeholder="4096"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                            (currentModel.max_tokens || 0) > 32000 ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
+                          }`}
                         />
+                        {(currentModel.max_tokens || 0) > 32000 && (
+                          <span className="text-xs text-amber-600 mt-1 block">
+                            Will be capped to 32,000 at runtime
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Summarizer System Prompt */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Summarizer System Prompt</h3>
+                  <p className="text-sm text-gray-500">Customize how the agent consolidates task results into a final response</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (editedSettings) {
+                      setEditedSettings({ ...editedSettings, summarizerSystemPrompt: DEFAULT_SUMMARIZER_PROMPT });
+                      setIsModified(true);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <RotateCcw size={12} />
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <textarea
+                value={editedSettings.summarizerSystemPrompt}
+                onChange={(e) => updateSetting('summarizerSystemPrompt', e.target.value)}
+                rows={8}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                placeholder="Enter custom system prompt for the summarizer agent..."
+              />
             </div>
           </div>
 
