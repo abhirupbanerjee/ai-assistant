@@ -49,8 +49,8 @@ const TOOL_CAPABLE_PATTERNS = [
   /^pixtral/,
   // Anthropic Claude
   /^claude/,
-  // DeepSeek
-  /^deepseek/,
+  // DeepSeek (chat only — deepseek-reasoner does not support tool_choice)
+  /^deepseek-chat/,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing

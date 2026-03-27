@@ -7,8 +7,8 @@
  * 2. Parses LiteLLM config to auto-discover available models with metadata.
  *
  * Validation Behavior:
- * - FAIL FAST: If default model is missing, exit with detailed error
- * - WARN ONLY: If other preset models are missing, log warning and continue
+ * - WARN: If default model is missing from YAML (sync may register it)
+ * - WARN: If other preset models are missing from YAML (sync may register them)
  */
 
 import fs from 'fs';
@@ -68,12 +68,10 @@ export function validateLiteLLMConfig(): ValidationResult {
   // Get default model from LLM settings
   const defaultModel = defaults.llm?.model || defaults.defaultPreset;
 
-  // FAIL FAST: Default model missing
+  // Default model missing from YAML — warn only (sync service may register it)
   if (!availableModels.has(defaultModel)) {
-    result.valid = false;
     result.defaultModelMissing = true;
     result.missingModels.push(defaultModel);
-    result.errors.push(formatError('DEFAULT_MODEL_MISSING', yamlPath, defaultModel));
   }
 
   // WARN ONLY: Check preset models
@@ -212,19 +210,7 @@ ${divider}
 export function logMissingModelsWarning(missingModels: string[]): void {
   if (missingModels.length === 0) return;
 
-  console.warn(`
-⚠️  WARNING: Some model presets are not configured in LiteLLM
-────────────────────────────────────────────────────────────
-
-Missing models: ${missingModels.join(', ')}
-
-These models exist in config/defaults.json but not in litellm_config.yaml.
-Users selecting these presets will encounter errors.
-
-To fix: Add missing models to litellm-proxy/litellm_config.yaml
-
-────────────────────────────────────────────────────────────
-`);
+  console.warn(`[LiteLLM Validator] ${missingModels.length} preset model(s) not in YAML (may be registered by auto-sync): ${missingModels.join(', ')}`);
 }
 
 /**
@@ -240,10 +226,9 @@ export function validateLiteLLMOnStartup(): void {
 
   const result = validateLiteLLMConfig();
 
-  // Default model missing — warn but don't exit (LiteLLM sync will register it)
+  // Default model missing from YAML — just log a one-liner (sync registers it)
   if (result.defaultModelMissing) {
     console.warn('[LiteLLM Validator] Default model missing from YAML — will be registered by auto-sync if enabled in DB');
-    console.warn(result.errors[0]);
   }
 
   // WARN ONLY: Other models missing (exclude default which was already checked)

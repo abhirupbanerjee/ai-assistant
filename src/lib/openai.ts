@@ -716,6 +716,12 @@ export async function generateResponseWithTools(
     });
   }
 
+  // Reasoning models (DeepSeek-R1, QwQ, etc.) may not support tool_choice — downgrade to auto
+  if (isThinkTagModel(effectiveModel) && typeof effectiveToolChoice === 'object') {
+    effectiveToolChoice = 'auto' as const;
+    logger.info('Downgraded tool_choice for reasoning model', { model: effectiveModel });
+  }
+
   // Inject request_clarification meta-tool when preflight skill is active.
   // Skipped for Ollama: small models struggle with meta-tools and context is already tight.
   if (enableClarification && modelSupportsTools && !isOllamaModel) {
