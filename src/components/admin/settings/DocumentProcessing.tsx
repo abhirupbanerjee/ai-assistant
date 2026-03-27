@@ -81,6 +81,8 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
 
       setSettings(ocrData);
       setEditedProviders(ocrData.providers.map((p: OcrProviderConfig) => ({ ...p })));
+      // Initialize endpoint input from stored value (not a password — users need to see/edit it)
+      setAzureDiEndpointInput(ocrData.azureDiEndpoint || '');
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -112,10 +114,9 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
       if (mistralApiKeyInput) {
         settingsToSave.mistralApiKey = mistralApiKeyInput;
       }
-      // Send endpoint if user edited it, or if it exists from settings (always persist the displayed value)
-      const effectiveEndpoint = azureDiEndpointInput || settings?.azureDiEndpoint || '';
-      if (effectiveEndpoint) {
-        settingsToSave.azureDiEndpoint = effectiveEndpoint;
+      // Always send the current endpoint value (azureDiEndpointInput is the source of truth)
+      if (azureDiEndpointInput) {
+        settingsToSave.azureDiEndpoint = azureDiEndpointInput;
       }
       if (azureDiKeyInput) {
         settingsToSave.azureDiKey = azureDiKeyInput;
@@ -137,9 +138,8 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
       setSettings(savedSettings);
       setEditedProviders((savedSettings.providers as OcrProviderConfig[]).map((p: OcrProviderConfig) => ({ ...p })));
 
-      // Clear credential inputs after save
+      // Clear password inputs after save (endpoint is refreshed by fetchSettings below)
       setMistralApiKeyInput('');
-      setAzureDiEndpointInput('');
       setAzureDiKeyInput('');
 
       setIsModified(false);
@@ -159,7 +159,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
     if (settings) {
       setEditedProviders(settings.providers.map(p => ({ ...p })));
       setMistralApiKeyInput('');
-      setAzureDiEndpointInput('');
+      setAzureDiEndpointInput(settings.azureDiEndpoint || '');
       setAzureDiKeyInput('');
       setIsModified(false);
     }
@@ -336,7 +336,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
                             </label>
                             <input
                               type="text"
-                              value={azureDiEndpointInput || settings?.azureDiEndpoint || ''}
+                              value={azureDiEndpointInput}
                               onChange={(e) => {
                                 setAzureDiEndpointInput(e.target.value);
                                 setIsModified(true);
