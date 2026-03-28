@@ -141,6 +141,7 @@ export type StreamEvent =
   | { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number; result?: string; checkerNotes?: string }
   | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
   | { type: 'agent_budget_exceeded'; message: string }
+  | { type: 'agent_task_summary'; task_id: number; summary: string }
   | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }
   | { type: 'agent_error'; error: string }
 

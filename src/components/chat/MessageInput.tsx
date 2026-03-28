@@ -26,6 +26,8 @@ interface MessageInputProps {
   // Chat preferences
   preferences: ChatPreferences;
   onPreferencesChange: (preferences: ChatPreferences) => void;
+  // Autonomous mode admin control
+  autonomousAdminDisabled?: boolean;
   // Focus callbacks for sidebar hiding (mobile)
   onFocus?: () => void;
   onBlur?: () => void;
@@ -40,6 +42,7 @@ export default function MessageInput({
   onUrlSourceAdded,
   preferences,
   onPreferencesChange,
+  autonomousAdminDisabled,
   onFocus,
   onBlur,
 }: MessageInputProps) {
@@ -240,6 +243,7 @@ export default function MessageInput({
               onUrlSourceAdded={onUrlSourceAdded}
               mode={mode}
               onModeChange={setMode}
+              autonomousAdminDisabled={autonomousAdminDisabled}
               webSearchEnabled={preferences.webSearchEnabled}
               onWebSearchToggle={handleWebSearchToggle}
               selectedLanguage={preferences.targetLanguage}

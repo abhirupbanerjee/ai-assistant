@@ -953,6 +953,15 @@ export {
   // Planner System Prompt
   getPlannerSystemPrompt,
   setPlannerSystemPrompt,
+  // Executor System Prompt
+  getExecutorSystemPrompt,
+  setExecutorSystemPrompt,
+  // Checker System Prompt
+  getCheckerSystemPrompt,
+  setCheckerSystemPrompt,
+  // Autonomous Mode Toggle
+  getAutonomousModeEnabled,
+  setAutonomousModeEnabled,
 } from './agent-config';
 
 // ============ RAG Testing ============

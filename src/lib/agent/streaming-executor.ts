@@ -10,7 +10,7 @@ import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
 import { getAgentModelConfigs } from '../db/compat/agent-config';
-import { generatePlanIntro, generateIncrementalSummary, generateConclusion } from './summarizer';
+import { generatePlanIntro, generateIncrementalSummary, generateConclusion, regenerateAccumulatedContent } from './summarizer';
 
 /**
  * Result of autonomous execution including collected artifacts
@@ -104,6 +104,17 @@ export async function executeAutonomousWithStreaming(
           // Capture plan ID for return value
           planId = plan.id;
 
+          // Crash recovery: if plan has completed tasks but accumulatedContent is empty,
+          // regenerate from task results already persisted in DB
+          const completedCount = plan.tasks.filter(t => ['done', 'needs_review'].includes(t.status)).length;
+          if (completedCount > 0 && !accumulatedContent) {
+            accumulatedContent = regenerateAccumulatedContent(plan);
+            if (accumulatedContent) {
+              console.log(`[Streaming] Recovered accumulatedContent from ${completedCount} completed tasks`);
+              sendEvent({ type: 'chunk', content: accumulatedContent });
+            }
+          }
+
           sendEvent({
             type: 'agent_plan_created',
             plan_id: plan.id,
@@ -116,19 +127,21 @@ export async function executeAutonomousWithStreaming(
             })),
           });
 
-          // Generate and stream plan intro via progressive summarizer
-          try {
-            const intro = await generatePlanIntro(
-              userRequest, plan.title,
-              plan.tasks.map(t => ({ description: t.description, type: t.type })),
-              modelConfig
-            );
-            if (intro.content) {
-              sendEvent({ type: 'chunk', content: intro.content + '\n\n' });
-              accumulatedContent += intro.content + '\n\n';
+          // Generate and stream plan intro via progressive summarizer (skip if recovering)
+          if (completedCount === 0) {
+            try {
+              const intro = await generatePlanIntro(
+                userRequest, plan.title,
+                plan.tasks.map(t => ({ description: t.description, type: t.type })),
+                modelConfig
+              );
+              if (intro.content) {
+                sendEvent({ type: 'chunk', content: intro.content + '\n\n' });
+                accumulatedContent += intro.content + '\n\n';
+              }
+            } catch (e) {
+              console.error('[Streaming] Plan intro generation failed:', e);
             }
-          } catch (e) {
-            console.error('[Streaming] Plan intro generation failed:', e);
           }
 
           sendEvent({

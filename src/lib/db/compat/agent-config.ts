@@ -241,3 +241,71 @@ export async function setPlannerSystemPrompt(
 ): Promise<void> {
   await setSetting('agent_planner_system_prompt', prompt, updatedBy);
 }
+
+// ============================================================================
+// Executor System Prompt (configurable)
+// ============================================================================
+
+/**
+ * Get the executor system prompt from database, falling back to hardcoded default
+ */
+export async function getExecutorSystemPrompt(): Promise<string> {
+  const { DEFAULT_EXECUTOR_SYSTEM_PROMPT } = await import('../../agent/executor');
+  const stored = await getSetting('agent_executor_system_prompt', '');
+  return stored || DEFAULT_EXECUTOR_SYSTEM_PROMPT;
+}
+
+/**
+ * Save a custom executor system prompt to database
+ */
+export async function setExecutorSystemPrompt(
+  prompt: string,
+  updatedBy: string
+): Promise<void> {
+  await setSetting('agent_executor_system_prompt', prompt, updatedBy);
+}
+
+// ============================================================================
+// Checker System Prompt (configurable)
+// ============================================================================
+
+/**
+ * Get the checker system prompt from database, falling back to hardcoded default
+ */
+export async function getCheckerSystemPrompt(): Promise<string> {
+  const { DEFAULT_CHECKER_SYSTEM_PROMPT } = await import('../../agent/checker');
+  const stored = await getSetting('agent_checker_system_prompt', '');
+  return stored || DEFAULT_CHECKER_SYSTEM_PROMPT;
+}
+
+/**
+ * Save a custom checker system prompt to database
+ */
+export async function setCheckerSystemPrompt(
+  prompt: string,
+  updatedBy: string
+): Promise<void> {
+  await setSetting('agent_checker_system_prompt', prompt, updatedBy);
+}
+
+// ============================================================================
+// Autonomous Mode Toggle (admin-controlled)
+// ============================================================================
+
+/**
+ * Check if autonomous mode is enabled globally
+ */
+export async function getAutonomousModeEnabled(): Promise<boolean> {
+  const val = await getSetting('agent_autonomous_enabled', 'true');
+  return val === 'true';
+}
+
+/**
+ * Enable or disable autonomous mode globally
+ */
+export async function setAutonomousModeEnabled(
+  enabled: boolean,
+  updatedBy: string
+): Promise<void> {
+  await setSetting('agent_autonomous_enabled', String(enabled), updatedBy);
+}

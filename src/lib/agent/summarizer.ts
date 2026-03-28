@@ -269,6 +269,23 @@ Write a brief conclusion (2-4 sentences) that wraps up the response. If there we
   }
 }
 
+// ============ Crash Recovery ============
+
+/**
+ * Regenerate accumulatedContent from completed task results.
+ * Used on resume/recovery when the in-memory content was lost (e.g. after crash).
+ * No extra DB writes — reads from the same tasks_json that transitionTaskState persists.
+ */
+export function regenerateAccumulatedContent(plan: AgentPlan): string {
+  let content = '';
+  for (const task of plan.tasks) {
+    if (['done', 'needs_review'].includes(task.status) && task.result) {
+      content += `**${task.description}**\n\n${task.result.substring(0, 1500)}\n\n`;
+    }
+  }
+  return content;
+}
+
 /**
  * Default system prompt for the summarizer agent.
  * Can be overridden via Admin → Agent Config → Summarizer System Prompt.

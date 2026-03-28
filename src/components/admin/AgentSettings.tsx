@@ -13,6 +13,7 @@ interface AgentModelConfig {
 }
 
 interface AgentSettings {
+  autonomousModeEnabled: boolean;
   budgetMaxLlmCalls: number;
   budgetMaxTokens: number;
   budgetMaxWebSearches: number;
@@ -25,6 +26,8 @@ interface AgentSettings {
   summarizerModel: AgentModelConfig;
   summarizerSystemPrompt: string;
   plannerSystemPrompt: string;
+  executorSystemPrompt: string;
+  checkerSystemPrompt: string;
   streamingKeepaliveInterval: number;
   streamingMaxDuration: number;
   streamingToolTimeout: number;
@@ -89,6 +92,19 @@ Key principles:
 
 Output valid JSON matching the schema provided.`;
 
+const DEFAULT_EXECUTOR_PROMPT = `You are a task execution agent. You complete specific tasks as part of a larger plan.
+
+Key principles:
+- Follow the task type and description precisely
+- Provide clear, actionable results
+- Reference dependent task results when relevant
+- Be concise but thorough
+- If information is missing, explain what's needed
+
+Output your result directly without JSON formatting.`;
+
+const DEFAULT_CHECKER_PROMPT = 'You are a quality checker. Evaluate task results objectively and provide confidence scores.';
+
 /** Map a provider ID from enabled_models to a valid agent provider value */
 function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' {
   switch (providerId) {
@@ -151,6 +167,7 @@ export default function AgentSettingsTab() {
 
       setSettings(data);
       setEditedSettings({
+        autonomousModeEnabled: data.autonomousModeEnabled ?? true,
         budgetMaxLlmCalls: data.budgetMaxLlmCalls,
         budgetMaxTokens: data.budgetMaxTokens,
         budgetMaxWebSearches: data.budgetMaxWebSearches,
@@ -163,6 +180,8 @@ export default function AgentSettingsTab() {
         summarizerModel: data.summarizerModel,
         summarizerSystemPrompt: data.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
         plannerSystemPrompt: data.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
+        executorSystemPrompt: data.executorSystemPrompt ?? DEFAULT_EXECUTOR_PROMPT,
+        checkerSystemPrompt: data.checkerSystemPrompt ?? DEFAULT_CHECKER_PROMPT,
         streamingKeepaliveInterval: data.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: data.streamingMaxDuration ?? 300,
         streamingToolTimeout: data.streamingToolTimeout ?? 60,
@@ -206,6 +225,7 @@ export default function AgentSettingsTab() {
   const handleReset = () => {
     if (settings) {
       setEditedSettings({
+        autonomousModeEnabled: settings.autonomousModeEnabled ?? true,
         budgetMaxLlmCalls: settings.budgetMaxLlmCalls,
         budgetMaxTokens: settings.budgetMaxTokens,
         budgetMaxWebSearches: settings.budgetMaxWebSearches,
@@ -218,6 +238,8 @@ export default function AgentSettingsTab() {
         summarizerModel: settings.summarizerModel,
         summarizerSystemPrompt: settings.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
         plannerSystemPrompt: settings.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
+        executorSystemPrompt: settings.executorSystemPrompt ?? DEFAULT_EXECUTOR_PROMPT,
+        checkerSystemPrompt: settings.checkerSystemPrompt ?? DEFAULT_CHECKER_PROMPT,
         streamingKeepaliveInterval: settings.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: settings.streamingMaxDuration ?? 300,
         streamingToolTimeout: settings.streamingToolTimeout ?? 60,
@@ -300,6 +322,36 @@ export default function AgentSettingsTab() {
         </div>
       ) : editedSettings ? (
         <>
+          {/* Autonomous Mode Toggle */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Enable Autonomous Mode</h3>
+                  <p className="text-sm text-gray-500">When disabled, users cannot activate autonomous mode in chat. Use this to control token costs.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={editedSettings.autonomousModeEnabled}
+                  onClick={() => updateSetting('autonomousModeEnabled', !editedSettings.autonomousModeEnabled)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                    editedSettings.autonomousModeEnabled ? 'bg-purple-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      editedSettings.autonomousModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              {!editedSettings.autonomousModeEnabled && (
+                <p className="text-xs text-amber-600 mt-2">Autonomous mode is currently disabled. Users will see the toggle greyed out with an admin notice.</p>
+              )}
+            </div>
+          </div>
+
           {/* Budget & Limits */}
           <div className="bg-white rounded-lg border shadow-sm">
             <div className="px-6 py-4 border-b">
@@ -512,6 +564,72 @@ export default function AgentSettingsTab() {
                 rows={8}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
                 placeholder="Enter custom system prompt for the summarizer agent..."
+              />
+            </div>
+          </div>
+
+          {/* Executor System Prompt */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Executor System Prompt</h3>
+                  <p className="text-sm text-gray-500">Customize how the agent executes individual tasks</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (editedSettings) {
+                      setEditedSettings({ ...editedSettings, executorSystemPrompt: DEFAULT_EXECUTOR_PROMPT });
+                      setIsModified(true);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <RotateCcw size={12} />
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <textarea
+                value={editedSettings.executorSystemPrompt}
+                onChange={(e) => updateSetting('executorSystemPrompt', e.target.value)}
+                rows={8}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                placeholder="Enter custom system prompt for the executor agent..."
+              />
+            </div>
+          </div>
+
+          {/* Checker System Prompt */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Checker System Prompt</h3>
+                  <p className="text-sm text-gray-500">Customize how the agent evaluates task quality</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (editedSettings) {
+                      setEditedSettings({ ...editedSettings, checkerSystemPrompt: DEFAULT_CHECKER_PROMPT });
+                      setIsModified(true);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <RotateCcw size={12} />
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <textarea
+                value={editedSettings.checkerSystemPrompt}
+                onChange={(e) => updateSetting('checkerSystemPrompt', e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                placeholder="Enter custom system prompt for the checker agent..."
               />
             </div>
           </div>

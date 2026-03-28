@@ -149,6 +149,16 @@ export async function POST(request: NextRequest) {
 
         // ============ AUTONOMOUS MODE BRANCH ============
         if (mode === 'autonomous') {
+          // Server-side check: admin may have disabled autonomous mode
+          const { getAutonomousModeEnabled } = await import('@/lib/db/compat/agent-config');
+          const autonomousEnabled = await getAutonomousModeEnabled();
+          if (!autonomousEnabled) {
+            send({ type: 'error', code: 'FEATURE_DISABLED', message: 'Autonomous mode has been disabled by admin', recoverable: false });
+            cleanup();
+            controller.close();
+            return;
+          }
+
           const { executeAutonomousWithStreaming } = await import('@/lib/agent/streaming-executor');
 
           // Get conversation history and category context

@@ -9,17 +9,21 @@ interface ModeToggleProps {
   mode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
   disabled?: boolean;
+  adminDisabled?: boolean;
 }
 
 export default function ModeToggle({
   mode,
   onModeChange,
   disabled,
+  adminDisabled,
 }: ModeToggleProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const isAutonomous = mode === 'autonomous';
+  const isDisabled = disabled || adminDisabled;
 
   const handleToggle = () => {
+    if (adminDisabled) return;
     onModeChange(isAutonomous ? 'normal' : 'autonomous');
   };
 
@@ -28,14 +32,14 @@ export default function ModeToggle({
       <button
         type="button"
         onClick={handleToggle}
-        disabled={disabled}
+        disabled={isDisabled}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         className={`p-2 rounded-lg transition-colors ${
           isAutonomous
             ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
             : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         <Bot size={20} />
       </button>
@@ -43,7 +47,12 @@ export default function ModeToggle({
       {/* Tooltip */}
       {showTooltip && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
-          {isAutonomous ? (
+          {adminDisabled ? (
+            <>
+              <span className="font-medium text-amber-300">Autonomous mode disabled</span>
+              <p className="text-gray-400 mt-0.5">Contact your administrator to enable it</p>
+            </>
+          ) : isAutonomous ? (
             <>
               <span className="font-medium text-purple-300">Autonomous mode</span>
               <span className="text-gray-300"> enabled</span>

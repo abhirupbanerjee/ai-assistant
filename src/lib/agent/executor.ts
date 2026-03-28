@@ -292,10 +292,14 @@ async function performTaskExecution(
   // Resolve skills for this plan's category context
   const skillPrompt = await resolveSkillsForPlan(plan, task.description);
 
+  // Load configurable system prompt (falls back to default)
+  const { getExecutorSystemPrompt } = await import('../db/compat/agent-config');
+  const basePrompt = await getExecutorSystemPrompt();
+
   // Build system prompt with skills injected
-  let systemPrompt = EXECUTOR_SYSTEM_PROMPT;
+  let systemPrompt = basePrompt;
   if (skillPrompt) {
-    systemPrompt = `${EXECUTOR_SYSTEM_PROMPT}\n\n--- DOMAIN-SPECIFIC GUIDELINES ---\n${skillPrompt}`;
+    systemPrompt = `${basePrompt}\n\n--- DOMAIN-SPECIFIC GUIDELINES ---\n${skillPrompt}`;
   }
 
   // Get executor model
@@ -892,9 +896,10 @@ Provide a clear, actionable result.`;
 }
 
 /**
- * System prompt for the executor agent
+ * Default system prompt for the executor agent.
+ * Can be overridden via Admin → Agent Config → Executor System Prompt.
  */
-const EXECUTOR_SYSTEM_PROMPT = `You are a task execution agent. You complete specific tasks as part of a larger plan.
+export const DEFAULT_EXECUTOR_SYSTEM_PROMPT = `You are a task execution agent. You complete specific tasks as part of a larger plan.
 
 Key principles:
 - Follow the task type and description precisely

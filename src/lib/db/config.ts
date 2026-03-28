@@ -395,6 +395,9 @@ export type SettingKey =
   | 'agent_model_summarizer'
   | 'agent_summarizer_system_prompt'
   | 'agent_planner_system_prompt'
+  | 'agent_executor_system_prompt'
+  | 'agent_checker_system_prompt'
+  | 'agent_autonomous_enabled'
   // Streaming configuration
   | 'streaming_keepalive_interval'
   | 'streaming_max_duration'

@@ -107,11 +107,38 @@ export {
 // Re-export ToolConfig type
 export type { ToolConfig } from '../tool-config';
 
+// ============ In-Memory Settings Cache ============
+
+/** Cache entry with TTL */
+interface CacheEntry {
+  value: string;
+  expiresAt: number;
+}
+
+const settingsCache = new Map<string, CacheEntry>();
+const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Invalidate one key or the entire cache */
+function invalidateSettingsCache(key?: string): void {
+  if (key) settingsCache.delete(key);
+  else settingsCache.clear();
+}
+
 // ============ Core Operations ============
 
 export async function getSetting<T>(key: SettingKey): Promise<T | undefined>;
 export async function getSetting<T>(key: SettingKey, defaultValue: T): Promise<T>;
 export async function getSetting<T>(key: SettingKey, defaultValue?: T): Promise<T | undefined> {
+  // Check cache first
+  const cached = settingsCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) {
+    try {
+      return JSON.parse(cached.value) as T;
+    } catch {
+      return defaultValue;
+    }
+  }
+
   const db = await getDb();
   const row = await db
     .selectFrom('settings')
@@ -120,6 +147,9 @@ export async function getSetting<T>(key: SettingKey, defaultValue?: T): Promise<
     .executeTakeFirst();
 
   if (!row) return defaultValue;
+
+  // Store raw value in cache
+  settingsCache.set(key, { value: row.value, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
 
   try {
     return JSON.parse(row.value) as T;
@@ -145,11 +175,17 @@ export async function setSetting<T>(key: SettingKey, value: T, updatedBy?: strin
       })
     )
     .execute();
+
+  // Invalidate cache after write
+  invalidateSettingsCache(key);
 }
 
 export async function deleteSetting(key: SettingKey): Promise<void> {
   const db = await getDb();
   await db.deleteFrom('settings').where('key', '=', key).execute();
+
+  // Invalidate cache after delete
+  invalidateSettingsCache(key);
 }
 
 export async function getSettingMetadata(

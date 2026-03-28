@@ -266,9 +266,10 @@ export async function checkTaskQuality(
     return toolResult;
   }
 
-  // Get confidence threshold from settings
-  const { getSetting } = await import('../db/config');
-  const threshold = parseInt(getSetting('agent_confidence_threshold', String(DEFAULT_CONFIDENCE_THRESHOLD)), 10);
+  // Get confidence threshold from settings (async compat layer)
+  const { getSetting } = await import('../db/compat/config');
+  const thresholdStr = await getSetting('agent_confidence_threshold', String(DEFAULT_CONFIDENCE_THRESHOLD));
+  const threshold = parseInt(thresholdStr, 10);
 
   // Build evaluation prompt
   const prompt = buildEvaluationPrompt(task, result, threshold);
@@ -277,9 +278,13 @@ export async function checkTaskQuality(
     // Get checker model
     const checkerModel = getModelForRole('checker', modelConfig);
 
+    // Load configurable checker system prompt (falls back to default)
+    const { getCheckerSystemPrompt } = await import('../db/compat/agent-config');
+    const checkerPrompt = await getCheckerSystemPrompt();
+
     // Generate evaluation
     const response = await generateWithModel(checkerModel, prompt, {
-      systemPrompt: 'You are a quality checker. Evaluate task results objectively and provide confidence scores.',
+      systemPrompt: checkerPrompt,
       temperature: 0.2, // Low temperature for consistency
     });
 
@@ -401,6 +406,12 @@ function suggestRetryStrategy(task: AgentTask, result: string, confidence: numbe
 
   return undefined;
 }
+
+/**
+ * Default system prompt for the checker agent.
+ * Can be overridden via Admin → Agent Config → Checker System Prompt.
+ */
+export const DEFAULT_CHECKER_SYSTEM_PROMPT = 'You are a quality checker. Evaluate task results objectively and provide confidence scores.';
 
 /**
  * Batch check multiple tasks (for efficiency)

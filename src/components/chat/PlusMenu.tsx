@@ -24,6 +24,7 @@ interface PlusMenuProps {
   // ModeToggle props
   mode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
+  autonomousAdminDisabled?: boolean;
   // WebSearchToggle props
   webSearchEnabled: boolean;
   onWebSearchToggle: (enabled: boolean) => void;
@@ -44,6 +45,7 @@ export default function PlusMenu({
   onUrlSourceAdded,
   mode,
   onModeChange,
+  autonomousAdminDisabled,
   webSearchEnabled,
   onWebSearchToggle,
   selectedLanguage,
@@ -112,7 +114,7 @@ export default function PlusMenu({
               onUrlSourceAdded={onUrlSourceAdded}
               disabled={disabled}
             />
-            <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} />
+            <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} />
             <WebSearchToggle
               enabled={webSearchEnabled}
               onToggle={onWebSearchToggle}

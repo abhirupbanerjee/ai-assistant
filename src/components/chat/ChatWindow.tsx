@@ -76,6 +76,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
 
   const [chatPreferences, setChatPreferences] = useState<ChatPreferences>(DEFAULT_CHAT_PREFERENCES);
+  const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -262,6 +263,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       urlSources,
     });
   }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, urlSources, onArtifactsChange]);
+
+  // Fetch autonomous mode admin setting on mount
+  useEffect(() => {
+    fetch('/api/settings/autonomous')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && typeof data.enabled === 'boolean') {
+          setAutonomousAdminDisabled(!data.enabled);
+        }
+      })
+      .catch(() => { /* default to enabled */ });
+  }, []);
 
   // Load thread messages when active thread changes
   useEffect(() => {
@@ -782,6 +795,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onUrlSourceAdded={handleUrlSourceAdded}
         preferences={chatPreferences}
         onPreferencesChange={setChatPreferences}
+        autonomousAdminDisabled={autonomousAdminDisabled}
         onFocus={onInputFocus}
         onBlur={onInputBlur}
       />
