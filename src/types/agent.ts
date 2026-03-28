@@ -103,6 +103,8 @@ export interface AgentTask {
   retry_strategy?: string;
   // Execution hints (Phase 2.6e — stored, not acted on until Phase 3.5)
   execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
+  // Skill IDs tagged by planner (Phase 3 — skills gap fix)
+  skill_ids?: number[];
 }
 
 export interface AgentConfig {
@@ -233,6 +235,7 @@ export interface PlannerResponse {
     priority?: number;
     dependencies?: number[];
     execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
+    skill_ids?: number[];
   }>;
   context?: Record<string, unknown>;
 }

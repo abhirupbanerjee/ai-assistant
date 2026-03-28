@@ -46,12 +46,32 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                       LITELLM PROXY                                     │
-│           (Multi-Provider LLM Gateway - OpenAI Compatible)              │
-│  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  Model Routing: openai/*, mistral/*, gemini/*, ollama/*, fw/*    │   │
-│  └──────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+│                    THREE-TIER LLM ARCHITECTURE                          │
+├───────────────────────┬──────────────────────┬──────────────────────────┤
+│   TIER 1: LiteLLM     │  TIER 2: Direct      │  TIER 3: Direct Google  │
+│   Proxy (Port 4000)   │  Provider APIs       │  GenAI SDK              │
+│   Chat, Embeddings,   │  (Non-Chat)          │  (Image/TTS)            │
+│   Transcription       │                      │                         │
+├───────────────────────┼──────────────────────┼──────────────────────────┤
+│ ┌──────────────────┐  │ Fireworks Reranking  │ Gemini Imagen           │
+│ │ OpenAI           │  │  (api.fireworks.ai)  │  (image_gen, REST API)  │
+│ │ Anthropic        │  │                      │                         │
+│ │ Gemini           │  │ Cohere Reranking     │ Gemini TTS              │
+│ │ Mistral          │  │  (cohere API)        │  (podcast_gen,          │
+│ │ DeepSeek         │  │                      │   @google/genai SDK)    │
+│ │ Fireworks*       │  │ Tavily Web Search    │                         │
+│ │ Ollama*          │  │  (tavily.com)        │ DALL-E 3                │
+│ └──────────────────┘  │                      │  (image_gen, OpenAI SDK │
+│                       │ OpenAI TTS           │   no proxy)             │
+│ * YAML-only,          │  (podcast_gen,       │                         │
+│   not dynamic sync    │   api.openai.com)    │                         │
+│                       │                      │                         │
+│ Dynamic sync:         │ Gemini/Mistral       │                         │
+│  OpenAI, Anthropic,   │  (translation,       │                         │
+│  Gemini, Mistral,     │   direct REST)       │                         │
+│  DeepSeek             │                      │                         │
+└───────────────────────┴──────────────────────┴──────────────────────────┘
+
            │
            ├──────────────┬──────────────┬──────────────┬──────────────┬────────────┐
            ▼              ▼              ▼              ▼              ▼            ▼
@@ -69,19 +89,6 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 │   phi4          │
 └─────────────────┘
 (V) = Vision/Multimodal  (🧠) = Thinking/Extended reasoning
-           │
-           ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      EXTERNAL SERVICES                                  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐          │
-│  │ text-embedding- │  │  Tavily API     │  │   whisper-1     │          │
-│  │ 3-large (3072d) │  │  (Web Search)   │  │  (Transcribe)   │          │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
-│  ┌─────────────────┐  ┌─────────────────┐                               │
-│  │  BGE Reranker   │  │   Cohere API    │                               │
-│  │ (Transformers.js│  │   (Reranking)   │                               │
-│  └─────────────────┘  └─────────────────┘                               │
-└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -102,13 +109,13 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 | LLM - Fireworks | MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 | Open-source models (dev/test environments) |
 | LLM - Local | Ollama (llama3.2, qwen2.5, phi4) | Self-hosted models, no API cost, air-gapped deployments |
 | Thinking Models | DeepSeek R1, Claude 3.7+, Gemini Thinking | Native `<think>` token processing for extended reasoning |
-| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), BGE-M3 (local) | Vector embeddings |
-| Transcription | OpenAI whisper-1 | Voice-to-text |
+| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), Gemini text-embedding-004, Fireworks Nomic/Qwen3, Ollama mxbai-embed — all via LiteLLM | Vector embeddings |
+| Transcription | OpenAI Whisper, Mistral Voxtral — via LiteLLM | Voice-to-text |
 | Document Processing | mammoth, exceljs, officeparser (local); Azure DI, Mistral OCR (API); pdf-parse (local) | Text extraction from documents and images |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
 | Data Sources | API + CSV integration | External data querying with visualization |
 | Function APIs | OpenAI-format schemas | Dynamic function calling to external services |
-| Reranking | Cohere API, Transformers.js (BGE) | Chunk reranking for improved relevance |
+| Reranking | BGE cross-encoder (local), Fireworks AI Qwen3 Reranker (direct API), Cohere API, local bi-encoder | Chunk reranking for improved relevance (priority-based fallback) |
 | Vector DB | Qdrant | Category-based document embeddings storage |
 | Cache | Redis 7 | Query caching (RAG + Tavily), sessions |
 | Auth | NextAuth.js v4 + Azure AD + Google + Credentials | Multi-provider SSO + email/password |
@@ -207,9 +214,10 @@ User Query
 **Web Search Integration**: If Tavily is enabled in admin settings, the LLM can automatically trigger web searches using OpenAI function calling. Results are cached separately in Redis with configurable TTL (60 seconds to 1 month).
 
 **Reranker Integration**: When enabled, retrieved chunks are re-scored using priority-based fallback:
-- **BGE Reranker Large** (`Xenova/bge-reranker-large`): Best accuracy cross-encoder (~670MB)
-- **Cohere API** (`rerank-english-v3.0`): Fast, API-based reranking
-- **BGE Reranker Base** (`Xenova/bge-reranker-base`): Smaller cross-encoder (~220MB)
+- **BGE Reranker Large** (`Xenova/bge-reranker-large`): Best accuracy cross-encoder (~670MB, local)
+- **Fireworks AI** (`qwen3-reranker-8b`): Fast API-based reranking via direct HTTP to `api.fireworks.ai/inference/v1/rerank`
+- **Cohere API** (`rerank-english-v3.0`): API-based reranking (requires Cohere key)
+- **BGE Reranker Base** (`Xenova/bge-reranker-base`): Smaller cross-encoder (~220MB, local)
 - **Local Bi-encoder** (`Xenova/all-MiniLM-L6-v2`): Legacy, less accurate (~90MB)
 
 Reranking improves result quality by using cross-encoder models to jointly score query+document pairs, then filtering by minimum score threshold. Providers are tried in priority order with automatic fallback.
@@ -1535,7 +1543,7 @@ Manage agent bots via Admin → Agent Bots:
    a. Embed query using text-embedding-3-large
    b. Search Qdrant collections for subscribed categories
    c. Include global documents from all category searches
-   d. If reranker enabled, re-score chunks with BGE/Cohere (priority fallback)
+   d. If reranker enabled, re-score chunks with BGE/Fireworks/Cohere (priority fallback)
    e. If user doc exists, extract and include relevant text
    f. Build context with conversation history
    g. Generate response with LLM via LiteLLM (function calling enabled)

@@ -13,18 +13,18 @@ Policy Bot uses a **hybrid architecture**: core chat services route through Lite
 | Service | Policy Bot Feature | Routes Through | Provider(s) | Notes |
 |---------|-------------------|----------------|-------------|-------|
 | **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, DeepSeek, Fireworks AI, Ollama | Primary conversation engine |
-| **Embeddings** | Document indexing, search | ✅ LiteLLM | OpenAI | `text-embedding-3-large` default |
+| **Embeddings** | Document indexing, search | ✅ LiteLLM | OpenAI, Mistral, Gemini, Ollama, Fireworks | `text-embedding-3-large` default |
 | **Diagram Generation** | `diagram_gen` tool | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Generates Mermaid syntax |
 | **Summarization** | Message compression | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, DeepSeek | Long conversation handling |
 | **Memory Extraction** | User fact storage | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Per-category memory |
 | **Prompt Optimization** | Query refinement | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Pre-RAG processing |
 | **Compliance Checks** | HITL clarification | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Skill compliance |
 | **Translation** | Multi-language support | ✅ LiteLLM / ❌ Direct | OpenAI (proxy), Gemini/Mistral (direct) | Provider-dependent |
-| **Audio Transcription** | Voice input | ❌ Direct | OpenAI Whisper | Not available via LiteLLM |
+| **Audio Transcription** | Voice input | ✅ LiteLLM | OpenAI Whisper, Mistral Voxtral | `transcribeAudio()` uses `getOpenAI()` client |
 | **Image Generation** | `image_gen` tool | ❌ Direct | OpenAI DALL-E, Gemini Imagen | Specialized APIs |
 | **Podcast Generation** | `podcast_gen` tool | ❌ Direct | OpenAI TTS, Gemini TTS | Multi-voice audio synthesis |
 | **Document Processing** | Document text extraction | ❌ Direct | mammoth/exceljs/officeparser (local), Mistral OCR, Azure DI, pdf-parse | Tiered fallback: local parsers first, then API providers |
-| **Reranking** | Search result scoring | ❌ Direct | Cohere | Not an LLM service |
+| **Reranking** | Search result scoring | ❌ Direct | Fireworks AI | Direct HTTP to `api.fireworks.ai/inference/v1/rerank` |
 | **PPTX Generation** | `pptx_gen` tool | N/A | None | Template-based (no LLM) |
 | **XLSX Generation** | `xlsx_gen` tool | N/A | None | ExcelJS-based (no LLM) |
 | **Chart Generation** | `chart_gen` tool | N/A | None | Client-side rendering |
@@ -43,23 +43,35 @@ Policy Bot uses a **hybrid architecture**: core chat services route through Lite
 |---------|--------|
 | **Image Generation** | DALL-E and Gemini Imagen APIs not supported by LiteLLM proxy |
 | **Podcast TTS** | OpenAI TTS and Gemini TTS are audio generation APIs, not chat completions |
-| **Transcription** | Whisper API uses different endpoint structure (`/audio/transcriptions`) |
 | **OCR** | Mistral OCR is a specialized document API with unique request format |
-| **Reranking** | Cohere reranker is a specialized search API, not a chat model |
+| **Reranking** | Fireworks reranker is a specialized search API (`/inference/v1/rerank`), not a chat model |
+
+> **Note**: Audio transcription (Whisper, Voxtral) routes **through LiteLLM** — `transcribeAudio()` in `openai.ts` uses the same `getOpenAI()` client as chat completions. Both `whisper-1` and `voxtral-mini` are registered in `litellm_config.yaml`.
 
 ### Proxy Detection Logic
 
-```typescript
-// Services detect LiteLLM mode by checking the base URL
-const isUsingProxy = baseUrl.includes('litellm') || baseUrl.includes(':4000');
+The actual detection in `openai.ts` checks for the `OPENAI_BASE_URL` environment variable:
 
-if (isUsingProxy) {
-  // Use LITELLM_MASTER_KEY for authentication
-  // All chat requests route through unified proxy
-} else {
-  // Use provider-specific API keys directly
+```typescript
+// src/lib/openai.ts — getOpenAI()
+async function getOpenAI(): Promise<OpenAI> {
+  if (!openaiClient) {
+    // When OPENAI_BASE_URL is set, route through LiteLLM proxy
+    const apiKey = process.env.OPENAI_BASE_URL
+      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+      : await getApiKey('openai');
+
+    openaiClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: process.env.OPENAI_BASE_URL || undefined,
+      timeout: 300 * 1000,
+    });
+  }
+  return openaiClient;
 }
 ```
+
+When `OPENAI_BASE_URL` points to the LiteLLM container (e.g. `http://litellm:4000/v1`), all chat completions, embeddings, and transcription are routed through a single OpenAI SDK client.
 
 ---
 
@@ -97,24 +109,49 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 
 ## Architecture Overview
 
+PolicyBot uses a **three-tier hybrid architecture**. LiteLLM handles chat, embeddings, and transcription. Specialized services bypass LiteLLM via direct API calls.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Your Application                            │
-│  (OpenAI SDK client pointing to http://localhost:4000)          │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    LiteLLM Proxy (Port 4000)                    │
-│                    Docker Compose Service                        │
-└─────┬───────┬──────┬──────┬──────┬──────┬──────┬──────────────┘
-      │       │      │      │      │      │      │
-      ▼       ▼      ▼      ▼      ▼      ▼      ▼
-  ┌──────┐ ┌──────┐ ┌─────┐ ┌─────┐ ┌──────┐ ┌──────┐ ┌──────┐
-  │OpenAI│ │Azure │ │Mistr│ │Gemini│ │Anthro│ │DeepSk│ │Ollama│
-  │      │ │OpenAI│ │  al │ │      │ │ pic  │ │      │ │(Loc.)│
-  └──────┘ └──────┘ └─────┘ └─────┘ └──────┘ └──────┘ └──────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                         PolicyBot Application                         │
+│              (Next.js — openai.ts, tools, translation)                │
+└──────┬──────────────────────┬──────────────────────┬──────────────────┘
+       │                      │                      │
+   TIER 1                  TIER 2                 TIER 3
+   LiteLLM Proxy           Direct Provider        Direct Google
+   (Chat, Embed,           APIs (Non-Chat)        GenAI SDK
+    Transcription)                                 (Image/TTS)
+       │                      │                      │
+       ▼                      ▼                      ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Port 4000       │  │                  │  │                  │
+│                  │  │ Fireworks AI     │  │ Gemini Imagen    │
+│ ┌──────────────┐ │  │  (reranking)     │  │  (image_gen)     │
+│ │ OpenAI       │ │  │                  │  │  via REST API    │
+│ │ Anthropic    │ │  │ Tavily           │  │                  │
+│ │ Gemini       │ │  │  (web_search)    │  │ Gemini TTS       │
+│ │ Mistral      │ │  │                  │  │  (podcast_gen)   │
+│ │ DeepSeek     │ │  │ Gemini/Mistral   │  │  via @google/    │
+│ │ Fireworks*   │ │  │  (translation)   │  │  genai SDK       │
+│ │ Ollama*      │ │  │                  │  │                  │
+│ └──────────────┘ │  │ OpenAI TTS       │  │ DALL-E 3         │
+│                  │  │  (podcast_gen)   │  │  (image_gen)     │
+│ * YAML-only,     │  │  hardcoded to    │  │  via OpenAI SDK  │
+│   not dynamic    │  │  api.openai.com  │  │  (no proxy)      │
+│   sync           │  │                  │  │                  │
+└──────────────────┘  └──────────────────┘  └──────────────────┘
 ```
+
+### Model Registration: Dynamic vs Static
+
+PolicyBot uses **two registration paths** for LiteLLM models:
+
+| Path | Providers | How |
+|------|-----------|-----|
+| **Dynamic** (via `/model/new` API) | OpenAI, Anthropic, Gemini, Mistral, DeepSeek | `litellm-sync.ts` reads `enabled_models` table and registers via API |
+| **Static** (YAML only) | Fireworks, Ollama, Embeddings, Audio | Defined in `litellm_config.yaml`, skipped by sync service |
+
+> Dynamic models (5 providers) are NOT in the YAML — they are registered at startup by the app. Only Fireworks, Ollama, embedding, and audio models are declared in `litellm_config.yaml`.
 
 ---
 
@@ -125,8 +162,8 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 | **Approach** | LiteLLM Proxy (Docker Compose) |
 | **Chat Completions** | Route through LiteLLM |
 | **Embeddings** | Route through LiteLLM (per-provider config) |
-| **Function Calling** | OpenAI, Claude, Mistral only; warn for others |
-| **Audio (Whisper)** | Abstract through LiteLLM |
+| **Function Calling** | Gated by `toolCapable` flag from `litellm_config.yaml` via DB sync |
+| **Audio Transcription** | Route through LiteLLM (Whisper, Voxtral) |
 | **Deployment** | Docker Compose |
 
 ---
@@ -203,6 +240,8 @@ OLLAMA_API_BASE=http://host.docker.internal:11434
 ---
 
 ## Step 2: LiteLLM Configuration
+
+> **Important**: The reference YAML below is a **complete template** listing all models statically. In actual PolicyBot deployment, chat models for OpenAI, Anthropic, Gemini, Mistral, and DeepSeek are **registered dynamically** via `litellm-sync.ts` (see Architecture Overview above). Only Fireworks, Ollama, embedding, and audio models are declared in the YAML. See the actual config at `litellm-proxy/litellm_config.yaml`.
 
 Create `litellm_config.yaml`:
 
@@ -468,6 +507,8 @@ general_settings:
 
 ## Step 3: Docker Compose
 
+> **Note**: In the actual PolicyBot deployment, LiteLLM runs as part of the full stack in `docker-compose.local.yml` alongside Postgres, Qdrant, and Redis. The standalone example below is for reference.
+
 Create `docker-compose.yml`:
 
 ```yaml
@@ -475,7 +516,7 @@ version: "3.9"
 
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:v1.82.3-stable.patch.2
     container_name: litellm-proxy
     ports:
       - "4000:4000"
@@ -516,24 +557,30 @@ services:
 
 ### Minimal Change Required
 
-**Before (Direct OpenAI):**
-```python
-from openai import OpenAI
+PolicyBot is a Next.js (TypeScript) application. The proxy switch is controlled entirely by environment variables — no code changes needed:
 
-client = OpenAI(api_key="sk-...")
+**Environment (`.env`):**
+```bash
+# Set this to route all chat/embeddings/transcription through LiteLLM
+OPENAI_BASE_URL=http://litellm:4000/v1
+LITELLM_MASTER_KEY=sk-litellm-master-change-this
 ```
 
-**After (Via LiteLLM Proxy):**
-```python
-from openai import OpenAI
+**How it works (`src/lib/openai.ts`):**
+```typescript
+// When OPENAI_BASE_URL is set → uses LiteLLM proxy with LITELLM_MASTER_KEY
+// When OPENAI_BASE_URL is unset → calls OpenAI directly with OPENAI_API_KEY
+const apiKey = process.env.OPENAI_BASE_URL
+  ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
+  : await getApiKey('openai');
 
-client = OpenAI(
-    base_url="http://localhost:4000",
-    api_key="sk-litellm-master-change-this"  # Your LITELLM_MASTER_KEY
-)
+openaiClient = new OpenAI({
+  apiKey: apiKey || undefined,
+  baseURL: process.env.OPENAI_BASE_URL || undefined,
+});
 ```
 
-That's it! All other code stays the same.
+That's it! All other code stays the same — the OpenAI SDK handles the routing transparently.
 
 ---
 
@@ -727,7 +774,7 @@ curl -X POST http://localhost:4000/embeddings \
 
 ## Model Quick Reference
 
-*Updated: December 2025*
+*Updated: March 2026*
 
 ### OpenAI Models
 
@@ -868,6 +915,18 @@ AUDIO_MODEL = "voxtral-small"
 
 ---
 
+## Known Limitations
+
+| # | Limitation | Impact | File |
+|---|-----------|--------|------|
+| 1 | **Static YAML cache never invalidated** | `_parsedModelsCache` in `litellm-validator.ts` is set once and never cleared. `clearLiteLLMCache()` exists but has zero call sites. Runtime model additions invisible until restart. | `litellm-validator.ts:375,456` |
+| 2 | **Claude tool-calling streaming mismatch** | Anthropic models routed through LiteLLM fail tool calling — LiteLLM wraps Anthropic's streaming into OpenAI format, but tool call JSON is malformed. `streamOneCompletion()` parses OpenAI format only. | `openai.ts:421-434` |
+| 3 | **No circuit breaker for chat completions** | If LiteLLM proxy is unreachable, all chat completions fail. Embeddings have a fallback model path, but chat/transcription do not. | `openai.ts` |
+| 4 | **Prefix-based provider detection only** | `getProviderFromModelPath()` defaults to `openai` for unrecognized prefixes. Custom/vLLM models without a prefix will be misidentified. No `deepseek/` prefix exists — DeepSeek models are synced dynamically with prefix by `litellm-sync.ts`. | `litellm-validator.ts:282-294` |
+| 5 | **No TTS or image generation via proxy** | `podcast_gen` and `image_gen` must bypass LiteLLM entirely | `podcast-gen.ts`, `image-gen/` |
+
+---
+
 ## Resources
 
 - **LiteLLM Docs**: https://docs.litellm.ai/docs/
@@ -877,4 +936,4 @@ AUDIO_MODEL = "voxtral-small"
 
 ---
 
-*Last updated: December 2025 - Includes GPT-4.1, Mistral 3, Voxtral, and Ollama tool support updates*
+*Last updated: March 2026 — Corrected architecture (three-tier hybrid), fixed routing table (transcription via LiteLLM, Fireworks reranking, multi-provider embeddings), added dynamic vs static model registration, updated proxy detection logic to match actual code.*

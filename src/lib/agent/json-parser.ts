@@ -41,6 +41,7 @@ export const PLANNER_RESPONSE_SCHEMA = {
           priority: { type: 'integer', minimum: 1, maximum: 10, default: 1 },
           dependencies: { type: 'array', items: { type: 'integer' }, default: [] },
           execution_hint: { type: 'string', enum: ['parallel', 'sequential', 'wave_barrier'] },
+          skill_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, default: [] },
         },
       },
     },

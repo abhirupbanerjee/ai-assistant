@@ -27,6 +27,7 @@ export async function createPlan(
     ragContext?: string;
     conversationHistory?: string;
     categoryContext?: string;
+    skillCatalog?: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null }[];
   },
   modelConfig: AgentModelConfig
 ): Promise<{ tasks: AgentTask[]; title: string; error?: string }> {
@@ -83,6 +84,7 @@ export async function createPlan(
       state_history: [],
       retry_count: 0,
       execution_hint: t.execution_hint,
+      skill_ids: t.skill_ids,
     }));
 
     // Self-reflection: check plan quality for complex plans (≥4 tasks)
@@ -103,6 +105,7 @@ export async function createPlan(
           state_history: [],
           retry_count: 0,
           execution_hint: t.execution_hint,
+          skill_ids: t.skill_ids,
         }));
         console.log(`[Planner] Reflection refined plan: ${tasks.length} → ${finalTasks.length} tasks`);
       }
@@ -210,6 +213,7 @@ function buildPlannerPrompt(
     ragContext?: string;
     conversationHistory?: string;
     categoryContext?: string;
+    skillCatalog?: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null }[];
   }
 ): string {
   let prompt = `Break down this user request into a structured task plan.
@@ -240,6 +244,14 @@ ${context.ragContext.substring(0, 1000)}...
   if (context.categoryContext) {
     prompt += `\n**Category Context:**
 ${context.categoryContext}
+`;
+  }
+
+  if (context.skillCatalog && context.skillCatalog.length > 0) {
+    prompt += `\n**Available Skills (tag applicable skill IDs in each task):**
+${JSON.stringify(context.skillCatalog, null, 2)}
+
+For each task, include a "skill_ids" array with the IDs of skills that should be activated for that task. Only tag skills whose description or keywords are relevant to the specific task. Use an empty array [] if no skills apply.
 `;
   }
 
@@ -658,5 +670,6 @@ Key principles:
 - For multi-item analysis, always include a synthesize or summarize task at the end
 - Include expected_output for each task — a one-line description of what good output looks like
 - Ensure logical execution order
+- If available skills are listed in the context, tag each task with applicable skill IDs by including a "skill_ids" array. Only tag skills whose keywords or description match the specific task. Use an empty array if no skills apply.
 
 Output valid JSON matching the schema provided.`;

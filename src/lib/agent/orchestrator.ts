@@ -50,6 +50,7 @@ export interface OrchestratorCallbacks {
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (event: StreamEvent) => void;
+  onSkillsLoaded?: (skills: { name: string; triggerReason: 'always' | 'category' | 'keyword' }[]) => void;
   onBudgetWarning?: (message: string, percentage: number) => void;
   onBudgetExceeded?: (message: string) => void;
   onError?: (error: string) => void;
@@ -252,6 +253,7 @@ async function executeTasksInOrder(
       onToolEnd: callbacks?.onToolEnd,
       onArtifact: callbacks?.onArtifact,
       onChecking: () => callbacks?.onTaskChecking?.(nextTask),
+      onSkillsLoaded: callbacks?.onSkillsLoaded,
     };
 
     const result = await executeTask(nextTask, currentPlan, modelConfig, executorCallbacks);
@@ -564,9 +566,24 @@ export async function createAndExecuteAutonomousPlan(
     // Phase 1a: Analyzing user request
     callbacks?.onAnalyzing?.();
 
+    // Fetch skill catalog for planner (keyword-triggered skills)
+    let skillCatalog: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null }[] = [];
+    try {
+      const { getSkillCatalogForPlanner } = await import('../db/compat/skills');
+      if (planConfig.categorySlug) {
+        const { getCategoryBySlug } = await import('../db/compat/categories');
+        const category = await getCategoryBySlug(planConfig.categorySlug);
+        skillCatalog = await getSkillCatalogForPlanner(category ? [category.id] : []);
+      } else {
+        skillCatalog = await getSkillCatalogForPlanner([]);
+      }
+    } catch (err) {
+      console.warn('[Orchestrator] Failed to load skill catalog for planner:', err);
+    }
+
     // Phase 1b: Creating task plan
     callbacks?.onPlanning?.();
-    const planResult = await createPlan(userRequest, context, planConfig.modelConfig);
+    const planResult = await createPlan(userRequest, { ...context, skillCatalog }, planConfig.modelConfig);
 
     if (planResult.error || planResult.tasks.length === 0) {
       const error = planResult.error || 'Failed to create plan';
@@ -591,6 +608,7 @@ export async function createAndExecuteAutonomousPlan(
         dependencies: t.dependencies,
         expected_output: t.expected_output,
         execution_hint: t.execution_hint,
+        skill_ids: t.skill_ids,
         retry_count: 0,
       })),
       {

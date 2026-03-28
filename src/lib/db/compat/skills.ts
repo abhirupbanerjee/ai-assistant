@@ -128,6 +128,48 @@ export async function getSkillById(id: number): Promise<SkillWithCategories | nu
   return { ...mapPgSkillRow(row as unknown as PgSkillRow), categories };
 }
 
+export async function getSkillsByIds(ids: number[]): Promise<Skill[]> {
+  if (ids.length === 0) return [];
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('skills')
+    .selectAll()
+    .where('id', 'in', ids)
+    .where('is_active', '=', 1)
+    .execute();
+  return rows.map(r => mapPgSkillRow(r as unknown as PgSkillRow));
+}
+
+export async function getSkillCatalogForPlanner(categoryIds: number[]): Promise<{
+  id: number;
+  name: string;
+  description: string | null;
+  trigger_value: string | null;
+  tool_name: string | null;
+}[]> {
+  const keywordSkills = await getAllSkills({ trigger_type: 'keyword', is_active: true });
+
+  const eligible: Skill[] = [];
+  for (const skill of keywordSkills) {
+    if (!skill.category_restricted) {
+      eligible.push(skill);
+    } else if (categoryIds.length > 0) {
+      const skillCats = await getPgCategoriesForSkill(skill.id);
+      if (skillCats.some(c => categoryIds.includes(c.id))) {
+        eligible.push(skill);
+      }
+    }
+  }
+
+  return eligible.map(s => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    trigger_value: s.trigger_value,
+    tool_name: s.tool_name,
+  }));
+}
+
 export async function getAllSkills(filters?: {
   trigger_type?: TriggerType;
   is_active?: boolean;

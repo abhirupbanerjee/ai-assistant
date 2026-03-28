@@ -55,7 +55,7 @@ Built with enterprise-grade, open-source technologies:
 - **Multi-Provider LLM** - OpenAI, Anthropic Claude, DeepSeek, Mistral, Gemini, Fireworks AI, Ollama via LiteLLM
 - **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
 - **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking)
-- **Voice Input** - Whisper transcription for audio questions
+- **Voice Input** - Whisper and Voxtral transcription for audio questions (via LiteLLM)
 - **Streaming Responses** - Real-time chat with typing indicators
 - **Artifacts Panel** - Right sidebar showing uploads, generated content, web/YouTube sources
 
@@ -81,7 +81,7 @@ Built with enterprise-grade, open-source technologies:
 - **Configurable Limits** - Per-category tool call and maximum token limits
 - **User Memory** - Recall user-specific facts across conversations
 - **Thread Summarization** - Compress long conversations
-- **Reranking** - BGE cross-encoder (large/base), Cohere API, or local bi-encoder via Transformers.js
+- **Reranking** - BGE cross-encoder (large/base), Fireworks AI Qwen3 Reranker, Cohere API, or local bi-encoder via Transformers.js
 - **Preflight Clarification (HITL)** - Main LLM pauses before responding to ask a focused question when the query is ambiguous; sees full RAG context + conversation history before deciding, so it only asks when genuinely needed
 - **Autonomous Agent** - Multi-step task planning with budget controls and quality checks
 
@@ -354,7 +354,8 @@ Choose provider tier based on data sensitivity and task complexity:
 | Provider | Model | Type | Size | API Key |
 |----------|-------|------|------|---------|
 | **BGE Large** | `Xenova/bge-reranker-large` | Cross-encoder | ~670MB | None (local) |
-| **Cohere** | `rerank-english-v3.0` | API | N/A | Required |
+| **Fireworks AI** | `qwen3-reranker-8b` | API (direct HTTP) | N/A | `FIREWORKS_AI_API_KEY` |
+| **Cohere** | `rerank-english-v3.0` | API | N/A | `COHERE_API_KEY` |
 | **BGE Base** | `Xenova/bge-reranker-base` | Cross-encoder | ~220MB | None (local) |
 | **Local** | `Xenova/all-MiniLM-L6-v2` | Bi-encoder | ~90MB | None (local) |
 

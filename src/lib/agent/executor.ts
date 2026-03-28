@@ -33,29 +33,51 @@ import { getCategoryBySlug } from '../db/compat/categories';
  * Resolve skills for the plan's category context
  * Returns the combined skill prompt content to inject into executor prompts
  */
-async function resolveSkillsForPlan(plan: AgentPlan, taskDescription: string): Promise<string> {
-  // Get category slug from plan (handle both naming conventions)
-  const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
-
-  if (!categorySlug) {
-    return '';
+async function resolveSkillsForTask(plan: AgentPlan, task: AgentTask, callbacks?: ExecutorCallbacks): Promise<string> {
+  // Priority 1: Load skills tagged by planner (keyword skills resolved at plan time)
+  if (task.skill_ids && task.skill_ids.length > 0) {
+    try {
+      const { getSkillsByIds } = await import('../db/compat/skills');
+      const skills = await getSkillsByIds(task.skill_ids);
+      if (skills.length > 0) {
+        console.log(`[Executor] Loaded ${skills.length} planner-tagged skills for task ${task.id}:`,
+          skills.map(s => s.name));
+        callbacks?.onSkillsLoaded?.(skills.map(s => ({ name: s.name, triggerReason: 'keyword' as const })));
+        // Combine planner-tagged skills with category-based skills
+        const categoryPrompt = await resolveCategorySkills(plan, task.description, callbacks);
+        const taggedPrompt = skills.map(s => s.prompt_content).join('\n\n');
+        return categoryPrompt ? `${categoryPrompt}\n\n${taggedPrompt}` : taggedPrompt;
+      }
+    } catch (err) {
+      console.warn('[Executor] Failed to load planner-tagged skills:', err);
+    }
   }
 
-  // Look up category ID from slug
+  // Priority 2: Fall back to category-based resolution (always + category triggers)
+  return resolveCategorySkills(plan, task.description, callbacks);
+}
+
+async function resolveCategorySkills(plan: AgentPlan, taskDescription: string, callbacks?: ExecutorCallbacks): Promise<string> {
+  const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
+  if (!categorySlug) return '';
+
   const category = await getCategoryBySlug(categorySlug);
   if (!category) {
     console.log(`[Executor] No category found for slug: ${categorySlug}`);
     return '';
   }
 
-  // Resolve skills for this category
   const resolved = await resolveSkills([category.id], taskDescription);
-
   if (resolved.skills.length > 0) {
-    console.log(`[Executor] Loaded ${resolved.skills.length} skills for category "${categorySlug}":`,
+    console.log(`[Executor] Loaded ${resolved.skills.length} category skills for "${categorySlug}":`,
       resolved.activatedBy);
+    callbacks?.onSkillsLoaded?.(resolved.skills.map(s => ({
+      name: s.name,
+      triggerReason: resolved.activatedBy.always.includes(s.name) ? 'always' as const
+        : resolved.activatedBy.category.includes(s.name) ? 'category' as const
+        : 'keyword' as const,
+    })));
   }
-
   return resolved.combinedPrompt;
 }
 
@@ -117,6 +139,7 @@ export interface ExecutorCallbacks {
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
   onArtifact?: (event: StreamEvent) => void;
   onChecking?: () => void; // When checker validates task result
+  onSkillsLoaded?: (skills: { name: string; triggerReason: 'always' | 'category' | 'keyword' }[]) => void;
 }
 
 /**
@@ -291,7 +314,7 @@ async function performTaskExecution(
   }
 
   // Resolve skills for this plan's category context
-  const skillPrompt = await resolveSkillsForPlan(plan, task.description);
+  const skillPrompt = await resolveSkillsForTask(plan, task, callbacks);
 
   // Load configurable system prompt (falls back to default)
   const basePrompt = await getExecutorSystemPrompt();
@@ -404,7 +427,7 @@ async function executeDocGenTool(
   callbacks?: ExecutorCallbacks
 ): Promise<string> {
   // Resolve skills for this plan's category context
-  const skillPrompt = await resolveSkillsForPlan(plan, task.description);
+  const skillPrompt = await resolveSkillsForTask(plan, task, callbacks);
 
   // Build system prompt with skills injected
   // Skills are CRITICAL for document generation - they define the output structure

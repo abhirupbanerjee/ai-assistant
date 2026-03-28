@@ -100,6 +100,14 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
+        onSkillsLoaded: (skills) => {
+          sendEvent({
+            type: 'context_loaded',
+            skills: skills.map(s => ({ name: s.name, triggerReason: s.triggerReason })),
+            toolsAvailable: [],
+          });
+        },
+
         onPlanCreated: async (plan: AgentPlan) => {
           // Capture plan ID for return value
           planId = plan.id;
