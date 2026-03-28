@@ -175,7 +175,7 @@ function SuperUserPageContent() {
   };
 
   // Settings sidebar section state
-  type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache';
+  type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
   const [exportingHistory, setExportingHistory] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -1032,43 +1032,44 @@ function SuperUserPageContent() {
             {settingsSection === 'reranker' && <RerankerSettingsTab readOnly />}
             {settingsSection === 'ocr' && <DocumentProcessingTab readOnly />}
             {settingsSection === 'cache' && <CacheSettingsTab readOnly />}
-            {/* Chat History Export */}
-            <div className="mt-6 bg-white rounded-lg border shadow-sm">
-              <div className="px-6 py-4 border-b">
-                <div className="flex items-center gap-3">
-                  <MessageSquare className="text-blue-600" size={24} />
-                  <div>
-                    <h2 className="font-semibold text-gray-900">Chat History Export</h2>
-                    <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
+            {settingsSection === 'backup' && (
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="px-6 py-4 border-b">
+                  <div className="flex items-center gap-3">
+                    <Download className="text-blue-600" size={24} />
+                    <div>
+                      <h2 className="font-semibold text-gray-900">Backup</h2>
+                      <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="px-6 py-4">
-                {exportError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800 text-sm">
-                    <AlertTriangle size={16} />
-                    <span>{exportError}</span>
-                  </div>
-                )}
-                <Button
-                  variant="secondary"
-                  onClick={handleExportHistory}
-                  disabled={exportingHistory}
-                >
-                  {exportingHistory ? (
-                    <>
-                      <Loader2 className="animate-spin mr-2" size={16} />
-                      Exporting...
-                    </>
-                  ) : (
-                    <>
-                      <Download size={16} className="mr-2" />
-                      Download Chat History
-                    </>
+                <div className="px-6 py-4">
+                  {exportError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800 text-sm">
+                      <AlertTriangle size={16} />
+                      <span>{exportError}</span>
+                    </div>
                   )}
-                </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleExportHistory}
+                    disabled={exportingHistory}
+                  >
+                    {exportingHistory ? (
+                      <>
+                        <Loader2 className="animate-spin mr-2" size={16} />
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download size={16} className="mr-2" />
+                        Download Chat History
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
         </main>

@@ -25,7 +25,7 @@ import {
 // ============================================================================
 
 type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agent-bots' | 'settings';
-type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache';
+type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -67,6 +67,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'reranker', label: 'Reranker' },
       { id: 'ocr', label: 'Document Processing' },
       { id: 'cache', label: 'Cache' },
+      { id: 'backup', label: 'Backup' },
     ]
   },
 ];

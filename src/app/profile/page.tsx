@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2, Download, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -253,13 +253,13 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Chat History Export Section */}
+        {/* Backup Section */}
         <div className="mt-6 bg-white rounded-lg border shadow-sm">
           <div className="px-6 py-4 border-b">
             <div className="flex items-center gap-3">
-              <MessageSquare className="text-blue-600" size={24} />
+              <Download className="text-blue-600" size={24} />
               <div>
-                <h2 className="font-semibold text-gray-900">Chat History Export</h2>
+                <h2 className="font-semibold text-gray-900">Backup</h2>
                 <p className="text-sm text-gray-500">Download all your conversations as a ZIP of Markdown files</p>
               </div>
             </div>
