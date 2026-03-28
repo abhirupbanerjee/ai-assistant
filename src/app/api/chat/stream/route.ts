@@ -39,6 +39,8 @@ import {
   LlmFallbackError,
   type ModelSwitchEvent,
 } from '@/lib/llm-fallback';
+import { getAutonomousModeEnabled } from '@/lib/db/compat/agent-config';
+import { executeAutonomousWithStreaming } from '@/lib/agent/streaming-executor';
 
 // Route segment config for long-running autonomous tasks
 // 300 seconds = 5 minutes (Vercel Pro max, or adjust based on hosting provider)
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
       const safeClose = () => {
         if (!controllerClosed) {
           controllerClosed = true;
-          try { safeClose(); } catch { /* already closed */ }
+          try { controller.close(); } catch { /* already closed */ }
         }
       };
 
@@ -159,7 +161,6 @@ export async function POST(request: NextRequest) {
         // ============ AUTONOMOUS MODE BRANCH ============
         if (mode === 'autonomous') {
           // Server-side check: admin may have disabled autonomous mode
-          const { getAutonomousModeEnabled } = await import('@/lib/db/compat/agent-config');
           const autonomousEnabled = await getAutonomousModeEnabled();
           if (!autonomousEnabled) {
             send({ type: 'error', code: 'FEATURE_DISABLED', message: 'Autonomous mode has been disabled by admin', recoverable: false });
@@ -167,8 +168,6 @@ export async function POST(request: NextRequest) {
             safeClose();
             return;
           }
-
-          const { executeAutonomousWithStreaming } = await import('@/lib/agent/streaming-executor');
 
           // Get conversation history and category context
           const conversationHistory = await getMessages(user.id, threadId, 50);

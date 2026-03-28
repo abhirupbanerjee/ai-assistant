@@ -29,7 +29,9 @@ import {
   transitionTaskState,
   incrementBudgetUsage,
   getPlanControlStatus,
+  createAutonomousPlan,
 } from '../db/compat/task-plans';
+import { getThreadById } from '../db/compat/threads';
 
 /**
  * Orchestrator callbacks for progress updates
@@ -552,8 +554,7 @@ export async function createAndExecuteAutonomousPlan(
 ): Promise<OrchestratorResult> {
   try {
     // Validate thread exists before creating plan (FK constraint)
-    const { getThread } = await import('../db/compat/threads');
-    const thread = await getThread(planConfig.threadId);
+    const thread = await getThreadById(planConfig.threadId);
     if (!thread) {
       const error = `Thread ${planConfig.threadId} not found — cannot create autonomous plan`;
       callbacks?.onError?.(error);
@@ -578,7 +579,6 @@ export async function createAndExecuteAutonomousPlan(
     }
 
     // Create plan in database
-    const { createAutonomousPlan } = await import('../db/compat/task-plans');
     const planId = await createAutonomousPlan(
       planConfig.threadId,
       planConfig.userId,

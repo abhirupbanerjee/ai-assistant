@@ -12,6 +12,8 @@
 import type { AgentTask, CheckerResult, AgentModelConfig } from '@/types/agent';
 import { generateWithModel, getModelForRole } from './llm-router';
 import { parseCheckerResponse } from './json-parser';
+import { getSetting } from '../db/compat/config';
+import { getCheckerSystemPrompt } from '../db/compat/agent-config';
 
 // Confidence threshold from database settings
 const DEFAULT_CONFIDENCE_THRESHOLD = 80;
@@ -267,7 +269,6 @@ export async function checkTaskQuality(
   }
 
   // Get confidence threshold from settings (async compat layer)
-  const { getSetting } = await import('../db/compat/config');
   const thresholdStr = await getSetting('agent_confidence_threshold', String(DEFAULT_CONFIDENCE_THRESHOLD));
   const threshold = parseInt(thresholdStr, 10);
 
@@ -279,7 +280,6 @@ export async function checkTaskQuality(
     const checkerModel = getModelForRole('checker', modelConfig);
 
     // Load configurable checker system prompt (falls back to default)
-    const { getCheckerSystemPrompt } = await import('../db/compat/agent-config');
     const checkerPrompt = await getCheckerSystemPrompt();
 
     // Generate evaluation

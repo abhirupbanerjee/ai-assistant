@@ -16,6 +16,7 @@ import { generateWithModel, generateWithModelFallback, getModelForRole } from '.
 import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
 import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/compat/task-plans';
+import { getExecutorSystemPrompt } from '../db/compat/agent-config';
 import { documentGenerationTool } from '../tools/docgen';
 import { imageGenTool } from '../tools/image-gen';
 import { tavilyWebSearch } from '../tools/tavily';
@@ -293,7 +294,6 @@ async function performTaskExecution(
   const skillPrompt = await resolveSkillsForPlan(plan, task.description);
 
   // Load configurable system prompt (falls back to default)
-  const { getExecutorSystemPrompt } = await import('../db/compat/agent-config');
   const basePrompt = await getExecutorSystemPrompt();
 
   // Build system prompt with skills injected

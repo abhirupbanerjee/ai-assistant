@@ -11,6 +11,7 @@ import type { AgentTask, AgentModelConfig, PlannerResponse } from '@/types/agent
 import { generateWithModel, getModelForRole } from './llm-router';
 import { parsePlannerResponse } from './json-parser';
 import { validateDependencyGraph } from './dependency-validator';
+import { getPlannerSystemPrompt } from '../db/compat/agent-config';
 
 /**
  * Create a task plan from user request
@@ -36,7 +37,6 @@ export async function createPlan(
     const plannerModel = getModelForRole('planner', modelConfig);
 
     // Load configurable system prompt (falls back to default)
-    const { getPlannerSystemPrompt } = await import('../db/compat/agent-config');
     const systemPrompt = await getPlannerSystemPrompt();
 
     // Generate plan
