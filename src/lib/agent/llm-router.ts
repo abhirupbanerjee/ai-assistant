@@ -203,6 +203,69 @@ async function generateMistral(
 }
 
 /**
+ * Generate with automatic fallback chain on recoverable errors.
+ * Level 1: global default model (getDefaultLLMModel)
+ * Level 2: universal fallback model (getLlmFallbackSettings)
+ */
+export async function generateWithModelFallback(
+  modelSpec: ModelSpec,
+  prompt: string,
+  options: { systemPrompt?: string; temperature?: number; maxTokens?: number } = {}
+): Promise<LLMResponse> {
+  try {
+    return await generateWithModel(modelSpec, prompt, options);
+  } catch (error) {
+    const { isRecoverableApiError, markModelUnhealthy } = await import('../llm-fallback');
+    const reason = isRecoverableApiError(error as Error);
+    if (!reason) throw error; // Non-recoverable — don't retry
+
+    console.warn(`[LLM Router] ${modelSpec.model} failed (${reason}), trying fallback chain...`);
+    await markModelUnhealthy(modelSpec.model);
+
+    // Build fallback chain from configured sources (no hardcoded models)
+    const { getDefaultLLMModel } = await import('../config-loader');
+    const { getLlmFallbackSettings } = await import('../db/compat/config');
+
+    const globalDefault = getDefaultLLMModel();
+    const fallbackSettings = await getLlmFallbackSettings();
+    const universalFallback = fallbackSettings.universalFallback;
+
+    // Deduplicate: skip models that are same as the failed one
+    const fallbackChain: string[] = [];
+    if (globalDefault && globalDefault !== modelSpec.model) {
+      fallbackChain.push(globalDefault);
+    }
+    if (universalFallback && universalFallback !== modelSpec.model && universalFallback !== globalDefault) {
+      fallbackChain.push(universalFallback);
+    }
+
+    for (const fallbackModelId of fallbackChain) {
+      try {
+        const fallbackSpec: ModelSpec = {
+          model: fallbackModelId,
+          provider: 'openai', // All models route through LiteLLM proxy
+          temperature: modelSpec.temperature,
+          max_tokens: modelSpec.max_tokens,
+        };
+        console.log(`[LLM Router] Falling back to ${fallbackModelId}`);
+        return await generateWithModel(fallbackSpec, prompt, options);
+      } catch (fallbackError) {
+        const fallbackReason = isRecoverableApiError(fallbackError as Error);
+        if (fallbackReason) {
+          console.warn(`[LLM Router] ${fallbackModelId} also failed (${fallbackReason})`);
+          await markModelUnhealthy(fallbackModelId);
+          continue; // Try next in chain
+        }
+        throw fallbackError; // Non-recoverable from fallback
+      }
+    }
+
+    // All fallbacks exhausted
+    throw error;
+  }
+}
+
+/**
  * Get model spec for a specific agent role
  */
 export function getModelForRole(role: keyof AgentModelConfig, config: AgentModelConfig): ModelSpec {

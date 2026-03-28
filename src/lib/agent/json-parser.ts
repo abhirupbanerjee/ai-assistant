@@ -140,7 +140,7 @@ export async function parseAndValidateJSON<T>(
 /**
  * Extract JSON from various formats (code blocks, raw JSON, etc.)
  */
-function extractJSON(content: string): { found: boolean; json: string } {
+export function extractJSON(content: string): { found: boolean; json: string } {
   // Try to extract from code block first
   const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (codeBlockMatch) {

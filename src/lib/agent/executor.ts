@@ -12,7 +12,8 @@
 import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig } from '@/types/agent';
 import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
-import { generateWithModel, getModelForRole } from './llm-router';
+import { generateWithModel, generateWithModelFallback, getModelForRole } from './llm-router';
+import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
 import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/compat/task-plans';
 import { documentGenerationTool } from '../tools/docgen';
@@ -222,6 +223,7 @@ export async function executeTask(
         needsReview: true,
         result: result.content,
         confidence: checkResult.confidence_score,
+        retry_suggestion: checkResult.retry_suggestion,
         tokens_used: result.tokens_used,
         llm_calls: result.llm_calls,
       };
@@ -299,8 +301,8 @@ async function performTaskExecution(
   // Get executor model
   const executorModel = getModelForRole('executor', modelConfig);
 
-  // Generate result
-  const response = await generateWithModel(executorModel, prompt, {
+  // Generate result (with fallback chain on recoverable errors)
+  const response = await generateWithModelFallback(executorModel, prompt, {
     systemPrompt,
     temperature: 0.4, // Balanced creativity
   });
@@ -411,7 +413,7 @@ async function executeDocGenTool(
   const contentPrompt = buildDocContentPrompt(task, plan);
   const executorModel = getModelForRole('executor', modelConfig);
 
-  const contentResponse = await generateWithModel(executorModel, contentPrompt, {
+  const contentResponse = await generateWithModelFallback(executorModel, contentPrompt, {
     systemPrompt: docSystemPrompt,
     temperature: 0.4,
   });
@@ -606,10 +608,14 @@ async function executeXlsxGenTool(
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Generate spreadsheet data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "sheets": [{ "name": "...", "headers": [...], "rows": [[...], ...] }] }`;
   const executorModel = getModelForRole('executor', modelConfig);
-  const response = await generateWithModel(executorModel, prompt, { temperature: 0.3 });
+  const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.3 });
 
   try {
-    const data = JSON.parse(response.content);
+    const extracted = extractJSON(response.content);
+    if (!extracted.found) {
+      return `Spreadsheet generation failed: could not find JSON in LLM response`;
+    }
+    const data = JSON.parse(extracted.json);
     const threadId = (plan as any).thread_id || (plan as any).threadId;
     const userId = (plan as any).user_id || (plan as any).userId;
 
@@ -624,8 +630,8 @@ async function executeXlsxGenTool(
       return `Spreadsheet generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`;
     }
     return `Spreadsheet generation failed: ${parsed.error || 'Unknown error'}`;
-  } catch {
-    return `Spreadsheet generation failed: could not parse structured data from LLM response`;
+  } catch (error) {
+    return `Spreadsheet generation failed: ${error instanceof Error ? error.message : 'could not parse structured data from LLM response'}`;
   }
 }
 
@@ -641,10 +647,14 @@ async function executePptxGenTool(
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Generate presentation slide data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "slides": [{ "title": "...", "content": "...", "notes": "..." }] }`;
   const executorModel = getModelForRole('executor', modelConfig);
-  const response = await generateWithModel(executorModel, prompt, { temperature: 0.4 });
+  const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.4 });
 
   try {
-    const data = JSON.parse(response.content);
+    const extracted = extractJSON(response.content);
+    if (!extracted.found) {
+      return `Presentation generation failed: could not find JSON in LLM response`;
+    }
+    const data = JSON.parse(extracted.json);
     const threadId = (plan as any).thread_id || (plan as any).threadId;
     const userId = (plan as any).user_id || (plan as any).userId;
 
@@ -659,8 +669,8 @@ async function executePptxGenTool(
       return `Presentation generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`;
     }
     return `Presentation generation failed: ${parsed.error || 'Unknown error'}`;
-  } catch {
-    return `Presentation generation failed: could not parse structured data from LLM response`;
+  } catch (error) {
+    return `Presentation generation failed: ${error instanceof Error ? error.message : 'could not parse structured data from LLM response'}`;
   }
 }
 
@@ -676,7 +686,7 @@ async function executePodcastGenTool(
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Write a podcast script for: ${task.description}\n\n${depContext}\n\nWrite a natural, conversational script suitable for text-to-speech narration. 2-5 minutes length.`;
   const executorModel = getModelForRole('executor', modelConfig);
-  const response = await generateWithModel(executorModel, prompt, { temperature: 0.5 });
+  const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.5 });
 
   try {
     const { generatePodcast } = await import('../tools/podcast-gen');
@@ -707,7 +717,7 @@ async function executeDiagramGenTool(
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Generate a Mermaid diagram definition for: ${task.description}\n\n${depContext}\n\nRespond with valid Mermaid syntax only (no markdown fences).`;
   const executorModel = getModelForRole('executor', modelConfig);
-  const response = await generateWithModel(executorModel, prompt, { temperature: 0.3 });
+  const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.3 });
 
   try {
     const threadId = (plan as any).thread_id || (plan as any).threadId;

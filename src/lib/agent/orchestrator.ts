@@ -287,7 +287,7 @@ async function executeTasksInOrder(
     // === Retry Logic ===
     // If checker flagged for review and we haven't retried yet, retry with feedback
     if (result.needsReview && (updatedTask.retry_count || 0) < 1) {
-      const retrySuggestion = (result as any).retry_suggestion || 'more_specific_prompt';
+      const retrySuggestion = result.retry_suggestion || 'more_specific_prompt';
       console.log(`[Orchestrator] Task ${nextTask.id} needs review — retrying with strategy: ${retrySuggestion}`);
 
       // Transition task back to pending with retry context

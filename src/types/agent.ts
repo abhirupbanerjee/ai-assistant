@@ -167,6 +167,7 @@ export interface ExecutionResult {
   skipped?: boolean;
   needsReview?: boolean;
   skipReason?: string;
+  retry_suggestion?: string;
   tokens_used?: number;
   llm_calls?: number;
 }
