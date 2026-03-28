@@ -321,7 +321,7 @@ export async function executeAutonomousWithStreaming(
 
           sendEvent({
             type: 'agent_plan_summary',
-            summary: accumulatedContent || summary,
+            summary: '',  // Content already streamed via chunks; don't re-send
             stats,
           });
         },

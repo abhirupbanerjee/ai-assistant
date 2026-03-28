@@ -449,17 +449,15 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       }
 
       case 'agent_plan_summary':
-        // Handle autonomous mode summary - append to progressive updates
-        if (event.summary) {
-          setState(prev => {
-            const summarySection = `---\n\n**Summary**\n\n${event.summary}`;
-            const fullContent = prev.currentContent
-              ? `${prev.currentContent}${summarySection}`
-              : event.summary;
-            contentBufferRef.current = fullContent;
+        // Handle autonomous mode summary — stats only
+        // Content was already streamed progressively via chunk events
+        setState(prev => {
+          // Only use summary as fallback if no content was streamed via chunks
+          if (!prev.currentContent && event.summary) {
+            contentBufferRef.current = event.summary;
             return {
               ...prev,
-              currentContent: fullContent,
+              currentContent: event.summary,
               phase: 'agent_summarizing',
               processingDetails: {
                 ...prev.processingDetails,
@@ -470,8 +468,15 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
                 ? { ...prev.autonomousPlan, stats: event.stats }
                 : null,
             };
-          });
-        }
+          }
+          // Content already built from chunks — just update stats
+          return {
+            ...prev,
+            autonomousPlan: prev.autonomousPlan
+              ? { ...prev.autonomousPlan, stats: event.stats }
+              : null,
+          };
+        });
         break;
 
       case 'agent_budget_warning':
