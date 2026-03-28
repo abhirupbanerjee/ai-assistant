@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { getApiKey } from '@/lib/provider-helpers';
 import type { ApiError } from '@/types';
 
 interface RerankerProviderStatus {
@@ -162,6 +163,57 @@ async function testLocal(): Promise<{ available: boolean; configured: boolean; e
   }
 }
 
+/**
+ * Test Fireworks AI reranker availability
+ */
+async function testFireworks(): Promise<{ available: boolean; configured: boolean; error?: string; latency?: number }> {
+  const apiKey = await getApiKey('fireworks');
+
+  if (!apiKey) {
+    return { available: false, configured: false, error: 'Fireworks API key not configured' };
+  }
+
+  const startTime = Date.now();
+
+  try {
+    const response = await fetch('https://api.fireworks.ai/inference/v1/rerank', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'accounts/fireworks/models/qwen3-reranker-8b',
+        query: 'test',
+        documents: ['test document'],
+        top_n: 1,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const latency = Date.now() - startTime;
+
+    if (response.ok) {
+      return { available: true, configured: true, latency };
+    }
+
+    if (response.status === 401) {
+      return { available: false, configured: true, error: 'Invalid API key' };
+    }
+
+    const errorText = await response.text().catch(() => `HTTP ${response.status}`);
+    return { available: false, configured: true, error: errorText };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+        return { available: false, configured: true, error: 'Connection timeout' };
+      }
+      return { available: false, configured: true, error: error.message };
+    }
+    return { available: false, configured: true, error: 'Unknown error' };
+  }
+}
+
 export async function GET() {
   try {
     const user = await getCurrentUser();
@@ -182,8 +234,9 @@ export async function GET() {
 
     // Test all reranker providers in parallel
     // BGE large and base share the same availability (both use @xenova/transformers pipeline)
-    const [cohereResult, bgeResult, localResult] = await Promise.all([
+    const [cohereResult, fireworksResult, bgeResult, localResult] = await Promise.all([
       testCohere(),
+      testFireworks(),
       testBGE(),
       testLocal(),
     ]);
@@ -198,6 +251,11 @@ export async function GET() {
         provider: 'cohere',
         name: 'Cohere API',
         ...cohereResult,
+      },
+      {
+        provider: 'fireworks',
+        name: 'Fireworks AI (Qwen3 Reranker)',
+        ...fireworksResult,
       },
       {
         provider: 'bge-base',

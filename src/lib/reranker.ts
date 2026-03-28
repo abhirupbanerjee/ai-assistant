@@ -12,6 +12,7 @@
 
 import { getRerankerSettings, type RerankerProvider } from './db/compat/config';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
+import { getApiKey } from './provider-helpers';
 import type { RetrievedChunk } from '@/types';
 
 /**
@@ -103,6 +104,51 @@ async function rerankWithCohere(
     // Fallback to original chunks on error
     return chunks;
   }
+}
+
+/**
+ * Rerank chunks using Fireworks AI API (Qwen3 Reranker)
+ * OpenAI-compatible /v1/rerank endpoint
+ */
+async function rerankWithFireworks(
+  query: string,
+  chunks: RetrievedChunk[],
+  minScore: number
+): Promise<RetrievedChunk[]> {
+  const apiKey = await getApiKey('fireworks');
+  if (!apiKey) {
+    throw new Error('Fireworks API key not configured. Set in Settings > Providers or FIREWORKS_AI_API_KEY environment variable.');
+  }
+
+  const response = await fetch('https://api.fireworks.ai/inference/v1/rerank', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'accounts/fireworks/models/qwen3-reranker-8b',
+      query,
+      documents: chunks.map(c => c.text),
+      top_n: chunks.length,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Fireworks rerank API error: ${response.status} ${response.statusText} ${errorText}`);
+  }
+
+  const data = await response.json() as { results: { index: number; relevance_score: number }[] };
+
+  const rerankedChunks: RetrievedChunk[] = data.results
+    .filter((result) => result.relevance_score >= minScore)
+    .map((result) => ({
+      ...chunks[result.index],
+      score: result.relevance_score,
+    }));
+
+  return rerankedChunks.sort((a, b) => b.score - a.score);
 }
 
 // Lazy-loaded local reranker pipeline
@@ -371,6 +417,9 @@ export async function rerankChunks(
           break;
         case 'cohere':
           rerankedChunks = await rerankWithCohere(query, chunksToRerank, minScore);
+          break;
+        case 'fireworks':
+          rerankedChunks = await rerankWithFireworks(query, chunksToRerank, minScore);
           break;
         case 'local':
           rerankedChunks = await rerankWithLocal(query, chunksToRerank, minScore);

@@ -142,6 +142,19 @@ model_list:
   # ===========================================================================
   # EMBEDDING MODELS
   # ===========================================================================
+
+  # Fireworks AI embeddings
+  - model_name: nomic-ai/nomic-embed-text-v1.5
+    litellm_params:
+      model: fireworks_ai/nomic-ai/nomic-embed-text-v1.5
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+
+  - model_name: fireworks/qwen3-embedding-8b
+    litellm_params:
+      model: fireworks_ai/fireworks/qwen3-embedding-8b
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+
+  # OpenAI embeddings
   - model_name: text-embedding-3-large
     litellm_params:
       model: openai/text-embedding-3-large

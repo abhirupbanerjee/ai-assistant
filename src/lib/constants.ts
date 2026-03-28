@@ -31,7 +31,7 @@ export const EMBEDDING_BATCH_SIZE = 100;
 export interface EmbeddingModelDefinition {
   id: string;
   name: string;
-  provider: 'openai' | 'mistral' | 'gemini' | 'local';
+  provider: 'openai' | 'mistral' | 'gemini' | 'fireworks' | 'local';
   dimensions: number;
   local: boolean;
 }
@@ -46,6 +46,9 @@ export const EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
   { id: 'text-embedding-3-small', name: 'OpenAI Small', provider: 'openai', dimensions: 1536, local: false },
   { id: 'mistral-embed', name: 'Mistral Embed', provider: 'mistral', dimensions: 1024, local: false },
   { id: 'text-embedding-004', name: 'Gemini Embed', provider: 'gemini', dimensions: 768, local: false },
+  // Fireworks AI (OpenAI-compatible, requires FIREWORKS_AI_API_KEY)
+  { id: 'nomic-ai/nomic-embed-text-v1.5', name: 'Nomic Embed v1.5 (Fireworks)', provider: 'fireworks', dimensions: 768, local: false },
+  { id: 'fireworks/qwen3-embedding-8b', name: 'Qwen3 Embedding 8B (Fireworks)', provider: 'fireworks', dimensions: 4096, local: false },
   // Local models (via @xenova/transformers - no API key required)
   { id: 'mxbai-embed-large', name: 'MixedBread Large (Local)', provider: 'local', dimensions: 1024, local: true },
   { id: 'bge-m3', name: 'BGE-M3 (Local)', provider: 'local', dimensions: 1024, local: true },

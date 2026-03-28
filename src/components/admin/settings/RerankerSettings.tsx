@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
 // Provider types matching db/config.ts
-type RerankerProvider = 'bge-large' | 'cohere' | 'bge-base' | 'local';
+type RerankerProvider = 'bge-large' | 'cohere' | 'fireworks' | 'bge-base' | 'local';
 
 interface RerankerProviderConfig {
   provider: RerankerProvider;
@@ -44,6 +44,10 @@ const RERANKER_PROVIDER_INFO: Record<RerankerProvider, { label: string; descript
     label: 'Cohere API',
     description: 'Fast API-based reranking (requires API key)',
   },
+  'fireworks': {
+    label: 'Fireworks AI (Qwen3)',
+    description: 'Cloud API reranking (requires API key)',
+  },
   'bge-base': {
     label: 'BGE Reranker Base',
     description: 'Smaller cross-encoder (~220MB)',
@@ -58,6 +62,7 @@ const RERANKER_PROVIDER_INFO: Record<RerankerProvider, { label: string; descript
 const DEFAULT_PROVIDERS: RerankerProviderConfig[] = [
   { provider: 'bge-large', enabled: true },
   { provider: 'cohere', enabled: true },
+  { provider: 'fireworks', enabled: true },
   { provider: 'bge-base', enabled: true },
   { provider: 'local', enabled: true },
 ];

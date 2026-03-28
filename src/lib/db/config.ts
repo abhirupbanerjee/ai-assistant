@@ -108,7 +108,7 @@ export interface EmbeddingSettings {
   fallbackModel?: string;  // Fallback model if primary fails (default: 'text-embedding-3-large')
 }
 
-export type RerankerProvider = 'bge-large' | 'cohere' | 'bge-base' | 'local';
+export type RerankerProvider = 'bge-large' | 'cohere' | 'fireworks' | 'bge-base' | 'local';
 
 export interface RerankerProviderConfig {
   provider: RerankerProvider;
@@ -129,6 +129,7 @@ export const DEFAULT_RERANKER_SETTINGS: RerankerSettings = {
   providers: [
     { provider: 'bge-large', enabled: true },
     { provider: 'cohere', enabled: true },
+    { provider: 'fireworks', enabled: true },
     { provider: 'bge-base', enabled: true },
     { provider: 'local', enabled: true },
   ],
