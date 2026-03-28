@@ -10,7 +10,6 @@ import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
 
-import ShareModal from '@/components/sharing/ShareModal';
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
 import HitlClarificationCard from './HitlClarificationCard';
 import { useScrollHide } from '@/hooks/useScrollHide';
@@ -29,8 +28,6 @@ interface ChatWindowProps {
   brandingSubtitle?: string;
   globalWelcome?: WelcomeConfig;
   categoryWelcome?: WelcomeConfig;
-  showShareModal?: boolean;
-  onCloseShareModal?: () => void;
   // Callbacks for artifacts data
   onArtifactsChange?: (data: {
     threadId: string | null;
@@ -65,8 +62,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   brandingSubtitle,
   globalWelcome,
   categoryWelcome,
-  showShareModal = false,
-  onCloseShareModal,
   onArtifactsChange,
   onInputFocus,
   onInputBlur,
@@ -791,15 +786,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onBlur={onInputBlur}
       />
 
-      {/* Share Modal */}
-      {activeThread && (
-        <ShareModal
-          isOpen={showShareModal}
-          onClose={() => onCloseShareModal?.()}
-          threadId={activeThread.id}
-          threadTitle={activeThread.title}
-        />
-      )}
     </div>
   );
 });

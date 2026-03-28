@@ -50,10 +50,21 @@ export async function createPlan(
 
     if (!parseResult.success) {
       console.error('[Planner] Parse failed:', parseResult.error);
+      // Fallback: create a single-task plan so execution can still proceed
       return {
-        tasks: [],
-        title: 'Failed to create plan',
-        error: `Failed to parse plan: ${parseResult.error}`,
+        tasks: [{
+          id: 1,
+          type: 'analyze' as const,
+          target: 'user request',
+          description: userRequest.substring(0, 200),
+          expected_output: 'Analysis of the user request',
+          status: 'pending' as const,
+          priority: 1,
+          dependencies: [],
+          state_history: [],
+          retry_count: 0,
+        }],
+        title: 'Analysis Plan',
       };
     }
 

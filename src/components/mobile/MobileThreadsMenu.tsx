@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
-  Share2, Download, Home
+  Download, Home
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -34,14 +34,12 @@ interface MobileThreadsMenuProps {
   onThreadSelect: (thread: Thread | null) => void;
   onThreadCreated: (thread: Thread) => void;
   selectedThreadId?: string | null;
-  onShareThread?: (thread: Thread) => void;
 }
 
 export default function MobileThreadsMenu({
   onThreadSelect,
   onThreadCreated,
   selectedThreadId,
-  onShareThread,
 }: MobileThreadsMenuProps) {
   const { data: session } = useSession();
   const { isThreadsMenuOpen, closeThreadsMenu } = useMobileMenu();
@@ -273,7 +271,7 @@ export default function MobileThreadsMenu({
                         isSelected={selectedThreadId === thread.id}
                         onSelect={() => handleSelectThread(thread)}
                         onTogglePin={(e) => handleTogglePin(thread, e)}
-                        onShare={onShareThread ? () => onShareThread(thread) : undefined}
+
                         onDelete={() => setDeleteThread(thread)}
                         formatDate={formatDate}
                         getCategoryColor={getCategoryColor}
@@ -297,7 +295,7 @@ export default function MobileThreadsMenu({
                         isSelected={selectedThreadId === thread.id}
                         onSelect={() => handleSelectThread(thread)}
                         onTogglePin={(e) => handleTogglePin(thread, e)}
-                        onShare={onShareThread ? () => onShareThread(thread) : undefined}
+
                         onDelete={() => setDeleteThread(thread)}
                         formatDate={formatDate}
                         getCategoryColor={getCategoryColor}
@@ -414,7 +412,6 @@ interface ThreadItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onTogglePin: (e: React.MouseEvent) => void;
-  onShare?: () => void;
   onDelete: () => void;
   formatDate: (date: Date) => string;
   getCategoryColor: (id: number) => { bg: string; text: string; border: string };
@@ -425,7 +422,6 @@ function ThreadItem({
   isSelected,
   onSelect,
   onTogglePin,
-  onShare,
   onDelete,
   formatDate,
   getCategoryColor,
@@ -469,11 +465,6 @@ function ThreadItem({
         >
           <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
         </button>
-        {onShare && (
-          <button onClick={(e) => { e.stopPropagation(); onShare(); }} className="p-1 text-gray-400">
-            <Share2 size={14} />
-          </button>
-        )}
         <a
           href={`/api/threads/${thread.id}/export`}
           download

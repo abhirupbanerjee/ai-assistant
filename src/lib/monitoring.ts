@@ -551,7 +551,7 @@ export async function getRecentActivityForCategories(categoryIds: number[], limi
       sql<number>`(SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id)`.as('messageCount'),
       't.created_at as createdAt',
     ])
-    .distinct()
+    .groupBy(['t.id', 't.title', 'u.email', 't.created_at'])
     .orderBy('t.created_at', 'desc')
     .limit(limit)
     .execute();
@@ -567,7 +567,7 @@ export async function getRecentActivityForCategories(categoryIds: number[], limi
       'd.status',
       'd.created_at as createdAt',
     ])
-    .distinct()
+    .groupBy(['d.id', 'd.filename', 'd.uploaded_by', 'd.status', 'd.created_at'])
     .orderBy('d.created_at', 'desc')
     .limit(limit)
     .execute();
@@ -582,8 +582,9 @@ export async function getRecentActivityForCategories(categoryIds: number[], limi
       'u.email',
       'u.role',
       'u.created_at as createdAt',
+      'us.subscribed_at',
     ])
-    .distinct()
+    .groupBy(['u.id', 'u.email', 'u.role', 'u.created_at', 'us.subscribed_at'])
     .orderBy('us.subscribed_at', 'desc')
     .limit(limit)
     .execute();

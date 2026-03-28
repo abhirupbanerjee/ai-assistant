@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
                 const assistantMessage: Message = {
                   id: assistantMessageId,
                   role: 'assistant',
-                  content: result.summary,
+                  content: result.accumulatedContent || result.summary,
                   generatedDocuments: result.generatedDocuments.length > 0 ? result.generatedDocuments : undefined,
                   generatedImages: result.generatedImages.length > 0 ? result.generatedImages : undefined,
                   timestamp: new Date(),

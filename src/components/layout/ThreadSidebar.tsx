@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen, Star,
-  PanelLeftClose, PanelLeftOpen, Share2, Download, ChevronDown, ChevronRight, Search, X
+  PanelLeftClose, PanelLeftOpen, Download, ChevronDown, ChevronRight, Search, X
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -71,7 +71,6 @@ interface ThreadSidebarProps {
   onThreadSelect?: (thread: Thread | null) => void;
   onThreadCreated?: (thread: Thread) => void;
   selectedThreadId?: string | null;
-  onShareThread?: (thread: Thread) => void;
   hidden?: boolean; // For mobile: hide when input is focused
 }
 
@@ -83,7 +82,6 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   onThreadSelect,
   onThreadCreated,
   selectedThreadId,
-  onShareThread,
   hidden = false,
 }, ref) {
   const { data: session } = useSession();
@@ -610,15 +608,6 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
                       >
                         <Star size={14} className={thread.isPinned ? 'fill-current' : ''} />
                       </button>
-                      {onShareThread && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onShareThread(thread); }}
-                          className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                          title="Share thread"
-                        >
-                          <Share2 size={14} />
-                        </button>
-                      )}
                       <a
                         href={`/api/threads/${thread.id}/export`}
                         download

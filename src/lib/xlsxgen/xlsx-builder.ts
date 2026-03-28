@@ -75,7 +75,7 @@ export class XlsxBuilder {
       const disclaimerRow = worksheet.addRow([this.options.disclaimerConfig.fullText]);
       disclaimerRow.getCell(1).font = {
         italic: true,
-        color: { argb: this.options.disclaimerConfig.color.replace('#', '') },
+        color: { argb: (this.options.disclaimerConfig.color || '#808080').replace('#', '') },
         size: this.options.disclaimerConfig.fontSize,
       };
       // Merge cells across the header width

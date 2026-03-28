@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import ChatWindow, { type ChatWindowRef } from '@/components/chat/ChatWindow';
 import ThreadSidebar, { type ThreadSidebarRef } from '@/components/layout/ThreadSidebar';
-import { useSwipeGesture } from '@/hooks/useSwipeGesture';
+
 import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
@@ -25,8 +25,6 @@ function HomeContent() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareThread, setShareThread] = useState<Thread | null>(null);
   const [threadCount, setThreadCount] = useState(0);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
@@ -88,12 +86,6 @@ function HomeContent() {
     setThreadCount(prev => prev + 1);
   }, []);
 
-  const handleShareThread = useCallback((thread: Thread) => {
-    setShareThread(thread);
-    setActiveThread(thread);
-    setShowShareModal(true);
-  }, []);
-
   const handleArtifactsChange = useCallback((data: {
     threadId: string | null;
     uploads: string[];
@@ -152,29 +144,6 @@ function HomeContent() {
       console.error('Failed to delete URL source:', err);
     }
   }, [artifactsData.threadId]);
-
-  // Swipe gestures for mobile
-  useSwipeGesture({
-    onSwipeRight: () => {
-      if (isMobile) {
-        mobileMenu?.openThreadsMenu();
-      } else {
-        sidebarRef.current?.setCollapsed(false);
-      }
-    },
-    onSwipeLeft: () => {
-      if (isMobile) {
-        // If threads menu is open, close it; otherwise open artifacts
-        if (mobileMenu?.isThreadsMenuOpen) {
-          mobileMenu.closeThreadsMenu();
-        } else if (activeThread) {
-          mobileMenu?.openArtifactsMenu();
-        }
-      } else {
-        sidebarRef.current?.setCollapsed(true);
-      }
-    },
-  });
 
   // Input focus handlers - update mobile menu context
   const handleInputFocus = useCallback(() => {
@@ -242,7 +211,6 @@ function HomeContent() {
             onThreadSelect={handleThreadSelect}
             onThreadCreated={handleThreadCreated}
             selectedThreadId={activeThread?.id}
-            onShareThread={handleShareThread}
           />
         )}
 
@@ -256,8 +224,6 @@ function HomeContent() {
                 onThreadCreated={handleThreadCreated}
                 userSubscriptions={userSubscriptions}
                 brandingName={brandingName}
-                showShareModal={showShareModal}
-                onCloseShareModal={() => setShowShareModal(false)}
                 onArtifactsChange={handleArtifactsChange}
                 onInputFocus={handleInputFocus}
                 onInputBlur={handleInputBlur}
@@ -301,7 +267,6 @@ function HomeContent() {
             onThreadSelect={handleThreadSelect}
             onThreadCreated={handleThreadCreated}
             selectedThreadId={activeThread?.id}
-            onShareThread={handleShareThread}
           />
           <MobileArtifactsMenu
             threadId={artifactsData.threadId}

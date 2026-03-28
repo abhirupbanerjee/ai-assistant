@@ -10,12 +10,14 @@ import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
 import { getAgentModelConfigs } from '../db/compat/agent-config';
+import { generatePlanIntro, generateIncrementalSummary, generateConclusion } from './summarizer';
 
 /**
  * Result of autonomous execution including collected artifacts
  */
 export interface AutonomousExecutionResult {
   summary: string;
+  accumulatedContent: string;
   planId: string;
   generatedDocuments: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
@@ -58,6 +60,7 @@ export async function executeAutonomousWithStreaming(
   const collectedDocuments: GeneratedDocumentInfo[] = [];
   const collectedImages: GeneratedImageInfo[] = [];
   let planId = '';
+  let accumulatedContent = ''; // Progressive response content streamed to user
 
   // Execute autonomous plan with streaming callbacks
   try {
@@ -97,18 +100,9 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
-        onPlanCreated: (plan: AgentPlan) => {
+        onPlanCreated: async (plan: AgentPlan) => {
           // Capture plan ID for return value
           planId = plan.id;
-
-          // Count document generation tasks to estimate output count
-          const generateTasks = plan.tasks.filter(t => t.type === 'generate');
-          const docGenTasks = generateTasks.filter(t =>
-            t.target?.toLowerCase().includes('document') ||
-            t.target?.toLowerCase().includes('report') ||
-            t.target?.toLowerCase().includes('word') ||
-            t.target?.toLowerCase().includes('pdf')
-          );
 
           sendEvent({
             type: 'agent_plan_created',
@@ -122,26 +116,25 @@ export async function executeAutonomousWithStreaming(
             })),
           });
 
-          // Provide informative status message based on plan complexity
-          let statusMessage = `Executing ${plan.tasks.length} tasks...`;
-
-          if (plan.tasks.length > 30) {
-            // Large batch - explain what's happening
-            statusMessage = `Processing large request: ${plan.tasks.length} tasks planned. `;
-            if (docGenTasks.length > 1) {
-              statusMessage += `Will generate ${docGenTasks.length} individual documents. This may take several minutes.`;
-            } else {
-              statusMessage += `This may take several minutes to complete.`;
+          // Generate and stream plan intro via progressive summarizer
+          try {
+            const intro = await generatePlanIntro(
+              userRequest, plan.title,
+              plan.tasks.map(t => ({ description: t.description, type: t.type })),
+              modelConfig
+            );
+            if (intro.content) {
+              sendEvent({ type: 'chunk', content: intro.content + '\n\n' });
+              accumulatedContent += intro.content + '\n\n';
             }
-          } else if (docGenTasks.length > 1) {
-            // Multiple documents
-            statusMessage = `Executing ${plan.tasks.length} tasks to generate ${docGenTasks.length} documents...`;
+          } catch (e) {
+            console.error('[Streaming] Plan intro generation failed:', e);
           }
 
           sendEvent({
             type: 'status',
             phase: 'agent_executing',
-            content: statusMessage,
+            content: `Executing ${plan.tasks.length} tasks...`,
           });
         },
 
@@ -168,7 +161,7 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
-        onTaskCompleted: (task: AgentTask, result: ExecutionResult) => {
+        onTaskCompleted: async (task: AgentTask, result: ExecutionResult) => {
           const status = result.success
             ? 'done'
             : result.skipped
@@ -185,6 +178,23 @@ export async function executeAutonomousWithStreaming(
             result: result.result,           // Executor output text
             checkerNotes: task.review_notes, // Checker's assessment notes
           });
+
+          // Generate and stream incremental summary for completed tasks
+          if ((status === 'done' || status === 'needs_review') && result.result) {
+            try {
+              const section = await generateIncrementalSummary(
+                userRequest, accumulatedContent,
+                { description: task.description, result: result.result, type: task.type },
+                modelConfig
+              );
+              if (section.content) {
+                sendEvent({ type: 'chunk', content: section.content + '\n\n' });
+                accumulatedContent += section.content + '\n\n';
+              }
+            } catch (e) {
+              console.error('[Streaming] Incremental summary failed for task', task.id, e);
+            }
+          }
         },
 
         onTaskSummary: (task: AgentTask, summary: string) => {
@@ -260,7 +270,25 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
-        onPlanCompleted: (plan: AgentPlan, summary: string) => {
+        onPlanCompleted: async (plan: AgentPlan, summary: string) => {
+          // Generate brief conclusion (bulk content already streamed incrementally)
+          const failedTypes = [...new Set(
+            plan.tasks
+              .filter(t => t.status === 'skipped' || t.status === 'failed')
+              .map(t => t.type)
+          )];
+
+          try {
+            const conclusion = await generateConclusion(
+              userRequest, accumulatedContent, failedTypes, modelConfig
+            );
+            if (conclusion.content) {
+              sendEvent({ type: 'chunk', content: '\n---\n\n' + conclusion.content });
+              accumulatedContent += '\n---\n\n' + conclusion.content;
+            }
+          } catch (e) {
+            console.error('[Streaming] Conclusion generation failed:', e);
+          }
 
           // Calculate stats
           const tasksWithConfidence = plan.tasks.filter((t) => t.confidence_score !== undefined);
@@ -273,7 +301,6 @@ export async function executeAutonomousWithStreaming(
             average_confidence: tasksWithConfidence.length > 0
               ? tasksWithConfidence.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / tasksWithConfidence.length
               : 0,
-            // Include token usage stats from budget tracker
             llm_calls: plan.budget_used?.llm_calls || 0,
             tokens_used: plan.budget_used?.tokens_used || 0,
             web_searches: plan.budget_used?.web_searches || 0,
@@ -281,7 +308,7 @@ export async function executeAutonomousWithStreaming(
 
           sendEvent({
             type: 'agent_plan_summary',
-            summary,
+            summary: accumulatedContent || summary,
             stats,
           });
         },
@@ -317,33 +344,33 @@ export async function executeAutonomousWithStreaming(
     if (result.success) {
       // Handle normal completion, paused, or stopped states
       if (result.paused) {
-        // Plan was paused - return partial results
         return {
-          summary: 'Plan paused - resume to continue execution.',
+          summary: accumulatedContent || 'Plan paused - resume to continue execution.',
+          accumulatedContent,
           planId,
           generatedDocuments: collectedDocuments,
           generatedImages: collectedImages,
         };
       } else if (result.stopped) {
-        // Plan was stopped gracefully - return with partial summary
         return {
-          summary: result.summary || 'Plan stopped by user.',
+          summary: accumulatedContent || result.summary || 'Plan stopped by user.',
+          accumulatedContent,
           planId,
           generatedDocuments: collectedDocuments,
           generatedImages: collectedImages,
         };
-      } else if (result.summary) {
-        // Normal completion with summary
+      } else if (accumulatedContent || result.summary) {
         return {
-          summary: result.summary,
+          summary: accumulatedContent || result.summary || '',
+          accumulatedContent,
           planId,
           generatedDocuments: collectedDocuments,
           generatedImages: collectedImages,
         };
       } else {
-        // Success but no summary - shouldn't happen
         return {
           summary: 'Plan completed.',
+          accumulatedContent: '',
           planId,
           generatedDocuments: collectedDocuments,
           generatedImages: collectedImages,

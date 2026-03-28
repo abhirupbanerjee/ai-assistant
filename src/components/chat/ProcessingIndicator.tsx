@@ -478,42 +478,6 @@ export default function ProcessingIndicator({
       {/* Expanded Details */}
       {details.isExpanded && (
         <div className="border-t border-gray-200 px-4 py-3 bg-white">
-          {/* Agent Task List (when in agent mode) */}
-          {autonomousPlan && autonomousPlan.tasks.length > 0 && (
-            <div className="mb-3">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Agent Tasks — {autonomousPlan.title}
-              </h4>
-              <div className="space-y-0">
-                {autonomousPlan.tasks.map((task, index) => (
-                  <AgentTaskItem
-                    key={task.id}
-                    task={task}
-                    isLast={index === autonomousPlan.tasks.length - 1}
-                    onSkip={onSkipTask ? () => onSkipTask(task.id) : undefined}
-                  />
-                ))}
-              </div>
-              {/* Agent stats (when complete) */}
-              {autonomousPlan.stats && (
-                <div className="mt-2 pt-2 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
-                  <div className="text-center p-1.5 bg-green-50 rounded">
-                    <div className="font-medium text-green-700">{autonomousPlan.stats.completed_tasks}</div>
-                    <div className="text-green-600">Done</div>
-                  </div>
-                  <div className="text-center p-1.5 bg-amber-50 rounded">
-                    <div className="font-medium text-amber-700">{autonomousPlan.stats.needs_review_tasks}</div>
-                    <div className="text-amber-600">Review</div>
-                  </div>
-                  <div className="text-center p-1.5 bg-gray-50 rounded">
-                    <div className="font-medium text-gray-700">{autonomousPlan.stats.skipped_tasks}</div>
-                    <div className="text-gray-600">Skipped</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Skills Section */}
           {details.skills.length > 0 && (
             <div className="mb-3">

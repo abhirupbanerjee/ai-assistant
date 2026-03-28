@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Menu,
   X,
@@ -196,6 +196,16 @@ export default function AdminSidebarMenu({
 }: AdminSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
+
+  // Prevent body scroll when mobile drawer is open
+  useEffect(() => {
+    if (isMobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isMobileOpen]);
   const [expandedMenu, setExpandedMenu] = useState<TabType | null>(
     isExpandableMenu(activeTab) ? activeTab : null
   );
@@ -430,14 +440,14 @@ export default function AdminSidebarMenu({
       {/* Mobile Overlay - shown when drawer is open */}
       {isMobileOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/30 z-30"
+          className="md:hidden fixed inset-0 bg-black/50 z-50"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
 
       {/* Mobile Drawer - slides over the icons strip */}
       <div
-        className={`md:hidden fixed top-16 left-0 h-[calc(100vh-64px)] w-64 bg-white shadow-xl z-40 transform transition-transform duration-200 flex flex-col ${
+        className={`md:hidden fixed inset-y-0 left-0 w-full max-w-sm bg-white shadow-xl z-50 transform transition-transform duration-200 ease-out flex flex-col ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

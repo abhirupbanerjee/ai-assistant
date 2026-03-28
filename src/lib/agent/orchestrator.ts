@@ -39,11 +39,11 @@ export interface OrchestratorCallbacks {
   onAnalyzing?: () => void;
   onPlanning?: () => void;
   onPlanReady?: (taskCount: number) => void;
-  // Execution callbacks
-  onPlanCreated?: (plan: AgentPlan) => void;
+  // Execution callbacks (key callbacks support async for progressive streaming)
+  onPlanCreated?: (plan: AgentPlan) => void | Promise<void>;
   onTaskStarted?: (task: AgentTask) => void;
   onTaskChecking?: (task: AgentTask) => void; // When checker validates task result
-  onTaskCompleted?: (task: AgentTask, result: ExecutionResult) => void;
+  onTaskCompleted?: (task: AgentTask, result: ExecutionResult) => void | Promise<void>;
   onTaskSummary?: (task: AgentTask, summary: string) => void; // Brief output summary after each task
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
@@ -52,7 +52,7 @@ export interface OrchestratorCallbacks {
   onBudgetExceeded?: (message: string) => void;
   onError?: (error: string) => void;
   onSummarizing?: () => void; // When generating final summary
-  onPlanCompleted?: (plan: AgentPlan, summary: string) => void;
+  onPlanCompleted?: (plan: AgentPlan, summary: string) => void | Promise<void>;
   // Control callbacks
   onPlanPaused?: (plan: AgentPlan, reason?: string) => void;
   onPlanStopped?: (plan: AgentPlan, reason?: string) => void;
@@ -107,7 +107,7 @@ export async function executeAutonomousPlan(
       };
     }
 
-    callbacks?.onPlanCreated?.(plan);
+    await callbacks?.onPlanCreated?.(plan);
 
     // Phase 2: Execution Loop
     const executionResult = await executeTasksInOrder(plan, modelConfig, budgetTracker, callbacks);
@@ -138,7 +138,7 @@ export async function executeAutonomousPlan(
 
     // Bug fix: Reload plan from database to get fresh data for callback
     const finalPlan = (await getTaskPlan(planId) as unknown as AgentPlan) || plan;
-    callbacks?.onPlanCompleted?.(finalPlan, summaryResult.summary || '');
+    await callbacks?.onPlanCompleted?.(finalPlan, summaryResult.summary || '');
 
     return {
       success: true,
@@ -278,7 +278,7 @@ async function executeTasksInOrder(
     // Bug fix: Reload task from database to get fresh data for callback
     const updatedPlan = await getTaskPlan(plan.id);
     const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === nextTask.id) || nextTask;
-    callbacks?.onTaskCompleted?.(updatedTask, result);
+    await callbacks?.onTaskCompleted?.(updatedTask, result);
 
     // Emit per-task output summary for user feedback
     const taskSummary = generateTaskOutputSummary(updatedTask, result);
@@ -551,6 +551,15 @@ export async function createAndExecuteAutonomousPlan(
   callbacks?: OrchestratorCallbacks
 ): Promise<OrchestratorResult> {
   try {
+    // Validate thread exists before creating plan (FK constraint)
+    const { getThread } = await import('../db/compat/threads');
+    const thread = await getThread(planConfig.threadId);
+    if (!thread) {
+      const error = `Thread ${planConfig.threadId} not found — cannot create autonomous plan`;
+      callbacks?.onError?.(error);
+      return { success: false, error, plan_id: '' };
+    }
+
     // Phase 1a: Analyzing user request
     callbacks?.onAnalyzing?.();
 

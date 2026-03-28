@@ -424,19 +424,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'agent_task_completed': {
-        // Update task to completed status with result and checker notes
-        // Also append a progressive summary to chat content
+        // Update task status in plan state (progressive content is streamed via chunk events)
         setState(prev => {
           if (!prev.autonomousPlan) return prev;
-          const completedTask = prev.autonomousPlan.tasks.find(t => t.id === event.task_id);
-          const desc = completedTask?.description || `Task ${event.task_id}`;
-          // Build progressive update for chat content
-          const statusIcon = event.status === 'done' ? '\u2705' : event.status === 'skipped' ? '\u23ed\ufe0f' : '\u26a0\ufe0f';
-          const resultPreview = event.result ? `\n> ${event.result.substring(0, 300)}${event.result.length > 300 ? '...' : ''}` : '';
-          const progressUpdate = `${statusIcon} **${desc}**${resultPreview}\n\n`;
           return {
             ...prev,
-            currentContent: (prev.currentContent || '') + progressUpdate,
             autonomousPlan: {
               ...prev.autonomousPlan,
               tasks: prev.autonomousPlan.tasks.map(task =>

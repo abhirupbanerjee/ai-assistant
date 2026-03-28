@@ -146,6 +146,129 @@ function generateFallbackSummary(plan: AgentPlan): string {
   return summary;
 }
 
+// ============ Progressive Streaming Summarizer ============
+
+const PROGRESSIVE_SYSTEM_PROMPT = `You are writing a progressive response to the user. Write naturally in first person as if you are the assistant directly answering the user. Use markdown formatting. Do NOT mention tasks, task IDs, confidence scores, or execution internals.`;
+
+/**
+ * Generate a brief intro after the planner creates the task plan.
+ * Streamed to user immediately so they know work has started.
+ */
+export async function generatePlanIntro(
+  originalRequest: string,
+  planTitle: string,
+  tasks: { description: string; type: string }[],
+  modelConfig: AgentModelConfig
+): Promise<{ content: string; tokens_used: number }> {
+  const summarizerModel = getModelForRole('summarizer', modelConfig);
+  const taskList = tasks.map((t, i) => `${i + 1}. ${t.description}`).join('\n');
+
+  const prompt = `The user asked: "${originalRequest}"
+
+I've created a plan called "${planTitle}" with ${tasks.length} steps:
+${taskList}
+
+Write a brief opening (2-3 sentences) explaining what you'll do for the user. Be conversational, first person. Do NOT list every task — just give a high-level overview of the approach.`;
+
+  try {
+    const response = await generateWithModel(summarizerModel, prompt, {
+      systemPrompt: PROGRESSIVE_SYSTEM_PROMPT,
+      temperature: 0.5,
+      maxTokens: 300,
+    });
+    return { content: response.content, tokens_used: response.tokens_used };
+  } catch (error) {
+    console.error('[Summarizer] Plan intro failed:', error);
+    return { content: `I'll work on this for you — I've planned ${tasks.length} steps to address your request.`, tokens_used: 0 };
+  }
+}
+
+/**
+ * Generate an incremental section after each executor task completes.
+ * Builds up the response progressively so the user sees continuous output.
+ */
+export async function generateIncrementalSummary(
+  originalRequest: string,
+  contentSoFar: string,
+  newTask: { description: string; result: string; type: string },
+  modelConfig: AgentModelConfig
+): Promise<{ content: string; tokens_used: number }> {
+  const summarizerModel = getModelForRole('summarizer', modelConfig);
+
+  // For tool outputs (file generation), just report the result directly
+  const isToolOutput = /(?:Document|Spreadsheet|Presentation|Image|Diagram|Podcast) generated:/i.test(newTask.result);
+  if (isToolOutput) {
+    // Extract the file info and return a simple note — no LLM call needed
+    return { content: newTask.result, tokens_used: 0 };
+  }
+
+  // Truncate inputs to avoid huge prompts
+  const truncatedSoFar = contentSoFar.length > 2000 ? '...' + contentSoFar.slice(-2000) : contentSoFar;
+  const truncatedResult = newTask.result.substring(0, 3000);
+
+  const prompt = `Original user request: "${originalRequest}"
+
+What you've written so far:
+${truncatedSoFar || '(nothing yet)'}
+
+A new step just completed — "${newTask.description}":
+${truncatedResult}
+
+Write the NEXT section (1-4 paragraphs) incorporating this new information. Continue naturally from where you left off. Use headings, bullet points, or tables where appropriate. Present the actual findings and content — not commentary about the step.`;
+
+  try {
+    const response = await generateWithModel(summarizerModel, prompt, {
+      systemPrompt: PROGRESSIVE_SYSTEM_PROMPT,
+      temperature: 0.5,
+      maxTokens: 1500,
+    });
+    return { content: response.content, tokens_used: response.tokens_used };
+  } catch (error) {
+    console.error('[Summarizer] Incremental summary failed:', error);
+    // Fallback: return a trimmed version of the raw result
+    const preview = newTask.result.substring(0, 500);
+    return { content: `**${newTask.description}**\n\n${preview}${newTask.result.length > 500 ? '...' : ''}`, tokens_used: 0 };
+  }
+}
+
+/**
+ * Generate a brief conclusion after all tasks complete.
+ * The bulk of content was already streamed incrementally.
+ */
+export async function generateConclusion(
+  originalRequest: string,
+  contentSoFar: string,
+  failedTypes: string[],
+  modelConfig: AgentModelConfig
+): Promise<{ content: string; tokens_used: number }> {
+  const summarizerModel = getModelForRole('summarizer', modelConfig);
+
+  const truncatedContent = contentSoFar.length > 3000 ? '...' + contentSoFar.slice(-3000) : contentSoFar;
+  const gapNote = failedTypes.length > 0
+    ? `\nNote: Some outputs were unavailable (${failedTypes.join(', ')}). Mention this naturally if relevant.`
+    : '';
+
+  const prompt = `Original user request: "${originalRequest}"
+
+Here is the full response written so far:
+${truncatedContent}
+${gapNote}
+
+Write a brief conclusion (2-4 sentences) that wraps up the response. If there were generated files mentioned above, list them clearly at the end. Do NOT repeat the content — just summarize key takeaways and next steps if applicable.`;
+
+  try {
+    const response = await generateWithModel(summarizerModel, prompt, {
+      systemPrompt: PROGRESSIVE_SYSTEM_PROMPT,
+      temperature: 0.5,
+      maxTokens: 500,
+    });
+    return { content: response.content, tokens_used: response.tokens_used };
+  } catch (error) {
+    console.error('[Summarizer] Conclusion failed:', error);
+    return { content: '', tokens_used: 0 };
+  }
+}
+
 /**
  * Default system prompt for the summarizer agent.
  * Can be overridden via Admin → Agent Config → Summarizer System Prompt.

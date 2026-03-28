@@ -606,7 +606,7 @@ async function executeXlsxGenTool(
 ): Promise<string> {
   // Use LLM to generate structured spreadsheet data from task context
   const depContext = buildDependencyContext(task, plan);
-  const prompt = `Generate spreadsheet data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "sheets": [{ "name": "...", "headers": [...], "rows": [[...], ...] }] }`;
+  const prompt = `Generate spreadsheet data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "filename": "...", "sheets": [{ "name": "...", "headers": [...], "rows": [[...], ...] }] }`;
   const executorModel = getModelForRole('executor', modelConfig);
   const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.3 });
 
@@ -616,6 +616,9 @@ async function executeXlsxGenTool(
       return `Spreadsheet generation failed: could not find JSON in LLM response`;
     }
     const data = JSON.parse(extracted.json);
+    // Normalize: LLM may return "title" instead of "filename"
+    if (!data.filename && data.title) data.filename = data.title;
+    if (!data.filename) data.filename = task.target || 'spreadsheet';
     const threadId = (plan as any).thread_id || (plan as any).threadId;
     const userId = (plan as any).user_id || (plan as any).userId;
 
