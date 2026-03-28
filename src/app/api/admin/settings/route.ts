@@ -813,10 +813,10 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate providers array
-        const validProviders = ['bge-large', 'cohere', 'bge-base', 'local'];
-        if (!Array.isArray(providers) || providers.length !== 4) {
+        const validProviders = ['bge-large', 'cohere', 'fireworks', 'bge-base', 'local'];
+        if (!Array.isArray(providers) || providers.length === 0 || providers.length > validProviders.length) {
           return NextResponse.json<ApiError>(
-            { error: 'Providers must be an array with all 4 providers', code: 'VALIDATION_ERROR' },
+            { error: `Providers must be an array with 1-${validProviders.length} providers`, code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
