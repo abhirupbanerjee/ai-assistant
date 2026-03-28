@@ -623,6 +623,26 @@ async function executeXlsxGenTool(
     // Normalize: LLM may return "title" instead of "filename"
     if (!data.filename && data.title) data.filename = data.title;
     if (!data.filename) data.filename = task.target || 'spreadsheet';
+
+    // Validate sheets structure before passing to tool (LLM may return wrong format)
+    if (!Array.isArray(data.sheets)) {
+      // Try to recover: if sheets is an object with a single sheet's data, wrap it
+      if (data.sheets && typeof data.sheets === 'object' && data.sheets.headers) {
+        data.sheets = [{ name: 'Sheet1', ...data.sheets }];
+      } else if (data.headers && Array.isArray(data.rows)) {
+        // LLM returned flat structure instead of sheets array
+        data.sheets = [{ name: 'Sheet1', headers: data.headers, rows: data.rows }];
+      } else {
+        return `Spreadsheet generation failed: LLM returned invalid sheets format (expected array, got ${typeof data.sheets})`;
+      }
+    }
+    // Ensure each sheet has required fields
+    for (const sheet of data.sheets) {
+      if (!sheet.name) sheet.name = 'Sheet1';
+      if (!Array.isArray(sheet.headers)) sheet.headers = [];
+      if (!Array.isArray(sheet.rows)) sheet.rows = [];
+    }
+
     const threadId = (plan as any).thread_id || (plan as any).threadId;
     const userId = (plan as any).user_id || (plan as any).userId;
 

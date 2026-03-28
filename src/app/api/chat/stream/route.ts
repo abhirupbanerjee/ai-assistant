@@ -53,8 +53,17 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let controllerClosed = false;
+      const safeClose = () => {
+        if (!controllerClosed) {
+          controllerClosed = true;
+          try { safeClose(); } catch { /* already closed */ }
+        }
+      };
+
       // Helper to send SSE events
       const send = (event: StreamEvent) => {
+        if (controllerClosed) return;
         try {
           controller.enqueue(encoder.encode(event));
         } catch {
@@ -87,7 +96,7 @@ export async function POST(request: NextRequest) {
         if (!user) {
           send({ type: 'error', code: 'AUTH_ERROR', message: 'Unauthorized', recoverable: false });
           cleanup();
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -104,7 +113,7 @@ export async function POST(request: NextRequest) {
         if (!message || !threadId) {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
           cleanup();
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -112,7 +121,7 @@ export async function POST(request: NextRequest) {
         if (mode !== 'normal' && mode !== 'autonomous') {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Invalid mode', recoverable: false });
           cleanup();
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -121,7 +130,7 @@ export async function POST(request: NextRequest) {
         if (!thread) {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Thread not found', recoverable: false });
           cleanup();
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -155,7 +164,7 @@ export async function POST(request: NextRequest) {
           if (!autonomousEnabled) {
             send({ type: 'error', code: 'FEATURE_DISABLED', message: 'Autonomous mode has been disabled by admin', recoverable: false });
             cleanup();
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -260,7 +269,7 @@ export async function POST(request: NextRequest) {
 
           // Autonomous mode complete - cleanup and return
           cleanup();
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -742,7 +751,7 @@ export async function POST(request: NextRequest) {
         send({ type: 'error', code: 'UNKNOWN_ERROR', message, recoverable: false });
       } finally {
         cleanup();
-        controller.close();
+        safeClose();
       }
     },
   });

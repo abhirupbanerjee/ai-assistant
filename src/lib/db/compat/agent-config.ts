@@ -197,25 +197,75 @@ export async function setAgentModelConfigs(
 }
 
 // ============================================================================
+// Default Prompt Fallbacks (inlined to avoid circular dynamic imports)
+//
+// Canonical defaults live in each agent module (DEFAULT_*_SYSTEM_PROMPT exports).
+// These are copies used ONLY when no DB-stored prompt exists.
+// Inlining them here breaks the circular dependency chain that crashes
+// Turbopack production builds: agent-module → agent-config → agent-module.
+// ============================================================================
+
+const FALLBACK_SUMMARIZER_PROMPT = `You are a content consolidation agent. You compile task results into a single, cohesive response that directly answers the user's original request.
+
+Key principles:
+- Present the ACTUAL CONTENT and FINDINGS from task results — not commentary about how well the tasks ran
+- Structure the output as if YOU are answering the user's original question directly
+- Include all data, links, files, and key information from task results
+- If tasks produced downloadable files (documents, spreadsheets, images), list them clearly
+- Only mention failed/skipped tasks briefly at the end if relevant
+- Write as a direct answer, not as a plan execution report
+
+Output your response in markdown format.`;
+
+const FALLBACK_PLANNER_PROMPT = `You are an expert task planner. You break down complex requests into structured, executable task plans.
+
+Before generating the JSON plan, analyze the request step by step:
+1. DOMAIN: What domain is this? (policy, security, finance, technology, comparison, architecture, code analysis, etc.)
+2. ENTITIES: What specific items/entities are mentioned or implied?
+3. SCOPE: Is this per-item (separate outputs) or consolidated (single output)?
+4. DATA SOURCE: Is data provided by user, in conversation history, in the knowledge base, or does it need web search?
+5. OUTPUTS: What deliverables are expected? (report, chart, presentation, diagram, spreadsheet, etc.)
+6. COMPLEXITY: Simple (≤3 tasks) or complex (requires analysis chains)?
+
+Then generate the JSON plan.
+
+Key principles:
+- Create clear, specific tasks with measurable outcomes
+- Define proper dependencies (no circular references)
+- Use explicit tool types (document, image, chart, spreadsheet, presentation, podcast, diagram) when a specific output format is needed — do NOT use "generate" when a tool type applies
+- Look for data in BOTH the user message AND recent conversation history
+- CRITICAL: Do NOT create search tasks when the user has provided the data in their message. If the user lists items, features, or content, use "extract" to capture it. Web search is ONLY for finding NEW information not in the user's message or conversation history.
+- For per-item requests ("for each", "individual", "separate"): create separate tasks per item (up to 50 tasks)
+- For consolidated requests: keep plans concise (3-10 tasks)
+- For multi-item analysis, always include a synthesize or summarize task at the end
+- Include expected_output for each task — a one-line description of what good output looks like
+- Ensure logical execution order
+
+Output valid JSON matching the schema provided.`;
+
+const FALLBACK_EXECUTOR_PROMPT = `You are a task execution agent. You complete specific tasks as part of a larger plan.
+
+Key principles:
+- Follow the task type and description precisely
+- Provide clear, actionable results
+- Reference dependent task results when relevant
+- Be concise but thorough
+- If information is missing, explain what's needed
+
+Output your result directly without JSON formatting.`;
+
+const FALLBACK_CHECKER_PROMPT = 'You are a quality checker. Evaluate task results objectively and provide confidence scores.';
+
+// ============================================================================
 // Summarizer System Prompt (configurable)
 // ============================================================================
 
-/**
- * Get the summarizer system prompt from database, falling back to hardcoded default
- */
 export async function getSummarizerSystemPrompt(): Promise<string> {
-  const { DEFAULT_SUMMARIZER_SYSTEM_PROMPT } = await import('../../agent/summarizer');
   const stored = await getSetting('agent_summarizer_system_prompt', '');
-  return stored || DEFAULT_SUMMARIZER_SYSTEM_PROMPT;
+  return stored || FALLBACK_SUMMARIZER_PROMPT;
 }
 
-/**
- * Save a custom summarizer system prompt to database
- */
-export async function setSummarizerSystemPrompt(
-  prompt: string,
-  updatedBy: string
-): Promise<void> {
+export async function setSummarizerSystemPrompt(prompt: string, updatedBy: string): Promise<void> {
   await setSetting('agent_summarizer_system_prompt', prompt, updatedBy);
 }
 
@@ -223,22 +273,12 @@ export async function setSummarizerSystemPrompt(
 // Planner System Prompt (configurable)
 // ============================================================================
 
-/**
- * Get the planner system prompt from database, falling back to hardcoded default
- */
 export async function getPlannerSystemPrompt(): Promise<string> {
-  const { DEFAULT_PLANNER_SYSTEM_PROMPT } = await import('../../agent/planner');
   const stored = await getSetting('agent_planner_system_prompt', '');
-  return stored || DEFAULT_PLANNER_SYSTEM_PROMPT;
+  return stored || FALLBACK_PLANNER_PROMPT;
 }
 
-/**
- * Save a custom planner system prompt to database
- */
-export async function setPlannerSystemPrompt(
-  prompt: string,
-  updatedBy: string
-): Promise<void> {
+export async function setPlannerSystemPrompt(prompt: string, updatedBy: string): Promise<void> {
   await setSetting('agent_planner_system_prompt', prompt, updatedBy);
 }
 
@@ -246,22 +286,12 @@ export async function setPlannerSystemPrompt(
 // Executor System Prompt (configurable)
 // ============================================================================
 
-/**
- * Get the executor system prompt from database, falling back to hardcoded default
- */
 export async function getExecutorSystemPrompt(): Promise<string> {
-  const { DEFAULT_EXECUTOR_SYSTEM_PROMPT } = await import('../../agent/executor');
   const stored = await getSetting('agent_executor_system_prompt', '');
-  return stored || DEFAULT_EXECUTOR_SYSTEM_PROMPT;
+  return stored || FALLBACK_EXECUTOR_PROMPT;
 }
 
-/**
- * Save a custom executor system prompt to database
- */
-export async function setExecutorSystemPrompt(
-  prompt: string,
-  updatedBy: string
-): Promise<void> {
+export async function setExecutorSystemPrompt(prompt: string, updatedBy: string): Promise<void> {
   await setSetting('agent_executor_system_prompt', prompt, updatedBy);
 }
 
@@ -269,22 +299,12 @@ export async function setExecutorSystemPrompt(
 // Checker System Prompt (configurable)
 // ============================================================================
 
-/**
- * Get the checker system prompt from database, falling back to hardcoded default
- */
 export async function getCheckerSystemPrompt(): Promise<string> {
-  const { DEFAULT_CHECKER_SYSTEM_PROMPT } = await import('../../agent/checker');
   const stored = await getSetting('agent_checker_system_prompt', '');
-  return stored || DEFAULT_CHECKER_SYSTEM_PROMPT;
+  return stored || FALLBACK_CHECKER_PROMPT;
 }
 
-/**
- * Save a custom checker system prompt to database
- */
-export async function setCheckerSystemPrompt(
-  prompt: string,
-  updatedBy: string
-): Promise<void> {
+export async function setCheckerSystemPrompt(prompt: string, updatedBy: string): Promise<void> {
   await setSetting('agent_checker_system_prompt', prompt, updatedBy);
 }
 
