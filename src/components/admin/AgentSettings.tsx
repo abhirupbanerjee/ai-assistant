@@ -24,6 +24,7 @@ interface AgentSettings {
   checkerModel: AgentModelConfig;
   summarizerModel: AgentModelConfig;
   summarizerSystemPrompt: string;
+  plannerSystemPrompt: string;
   streamingKeepaliveInterval: number;
   streamingMaxDuration: number;
   streamingToolTimeout: number;
@@ -61,6 +62,32 @@ Key principles:
 - Write as a direct answer, not as a plan execution report
 
 Output your response in markdown format.`;
+
+const DEFAULT_PLANNER_PROMPT = `You are an expert task planner. You break down complex requests into structured, executable task plans.
+
+Before generating the JSON plan, analyze the request step by step:
+1. DOMAIN: What domain is this? (policy, security, finance, technology, comparison, architecture, code analysis, etc.)
+2. ENTITIES: What specific items/entities are mentioned or implied?
+3. SCOPE: Is this per-item (separate outputs) or consolidated (single output)?
+4. DATA SOURCE: Is data provided by user, in conversation history, in the knowledge base, or does it need web search?
+5. OUTPUTS: What deliverables are expected? (report, chart, presentation, diagram, spreadsheet, etc.)
+6. COMPLEXITY: Simple (≤3 tasks) or complex (requires analysis chains)?
+
+Then generate the JSON plan.
+
+Key principles:
+- Create clear, specific tasks with measurable outcomes
+- Define proper dependencies (no circular references)
+- Use explicit tool types (document, image, chart, spreadsheet, presentation, podcast, diagram) when a specific output format is needed — do NOT use "generate" when a tool type applies
+- Look for data in BOTH the user message AND recent conversation history
+- CRITICAL: Do NOT create search tasks when the user has provided the data in their message. If the user lists items, features, or content, use "extract" to capture it. Web search is ONLY for finding NEW information not in the user's message or conversation history.
+- For per-item requests ("for each", "individual", "separate"): create separate tasks per item (up to 50 tasks)
+- For consolidated requests: keep plans concise (3-10 tasks)
+- For multi-item analysis, always include a synthesize or summarize task at the end
+- Include expected_output for each task — a one-line description of what good output looks like
+- Ensure logical execution order
+
+Output valid JSON matching the schema provided.`;
 
 /** Map a provider ID from enabled_models to a valid agent provider value */
 function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' {
@@ -135,6 +162,7 @@ export default function AgentSettingsTab() {
         checkerModel: data.checkerModel,
         summarizerModel: data.summarizerModel,
         summarizerSystemPrompt: data.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
+        plannerSystemPrompt: data.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
         streamingKeepaliveInterval: data.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: data.streamingMaxDuration ?? 300,
         streamingToolTimeout: data.streamingToolTimeout ?? 60,
@@ -189,6 +217,7 @@ export default function AgentSettingsTab() {
         checkerModel: settings.checkerModel,
         summarizerModel: settings.summarizerModel,
         summarizerSystemPrompt: settings.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
+        plannerSystemPrompt: settings.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
         streamingKeepaliveInterval: settings.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: settings.streamingMaxDuration ?? 300,
         streamingToolTimeout: settings.streamingToolTimeout ?? 60,
@@ -418,6 +447,39 @@ export default function AgentSettingsTab() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Planner System Prompt */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Planner System Prompt</h3>
+                  <p className="text-sm text-gray-500">Customize how the agent breaks down requests into task plans</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (editedSettings) {
+                      setEditedSettings({ ...editedSettings, plannerSystemPrompt: DEFAULT_PLANNER_PROMPT });
+                      setIsModified(true);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <RotateCcw size={12} />
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <textarea
+                value={editedSettings.plannerSystemPrompt}
+                onChange={(e) => updateSetting('plannerSystemPrompt', e.target.value)}
+                rows={12}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                placeholder="Enter custom system prompt for the planner agent..."
+              />
             </div>
           </div>
 

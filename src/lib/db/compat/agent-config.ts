@@ -218,3 +218,26 @@ export async function setSummarizerSystemPrompt(
 ): Promise<void> {
   await setSetting('agent_summarizer_system_prompt', prompt, updatedBy);
 }
+
+// ============================================================================
+// Planner System Prompt (configurable)
+// ============================================================================
+
+/**
+ * Get the planner system prompt from database, falling back to hardcoded default
+ */
+export async function getPlannerSystemPrompt(): Promise<string> {
+  const { DEFAULT_PLANNER_SYSTEM_PROMPT } = await import('../../agent/planner');
+  const stored = await getSetting('agent_planner_system_prompt', '');
+  return stored || DEFAULT_PLANNER_SYSTEM_PROMPT;
+}
+
+/**
+ * Save a custom planner system prompt to database
+ */
+export async function setPlannerSystemPrompt(
+  prompt: string,
+  updatedBy: string
+): Promise<void> {
+  await setSetting('agent_planner_system_prompt', prompt, updatedBy);
+}

@@ -35,9 +35,13 @@ export async function createPlan(
     // Get planner model
     const plannerModel = getModelForRole('planner', modelConfig);
 
+    // Load configurable system prompt (falls back to default)
+    const { getPlannerSystemPrompt } = await import('../db/compat/agent-config');
+    const systemPrompt = await getPlannerSystemPrompt();
+
     // Generate plan
     const response = await generateWithModel(plannerModel, prompt, {
-      systemPrompt: PLANNER_SYSTEM_PROMPT,
+      systemPrompt,
       temperature: 0.3, // Moderate creativity for planning
     });
 
@@ -153,6 +157,7 @@ ${JSON.stringify(plan, null, 2)}
 5. SEARCH CHAIN: Are search→analyze→output chains properly structured?
 6. SYNTHESIS: For multi-item analysis, is there a final synthesize/compare/summarize task?
 7. REDUNDANCY: Are there duplicate or unnecessary tasks?
+8. UNNECESSARY SEARCH: Are there search tasks when the user already provided the data in their message? User-provided lists/features/content should use "extract" not "search".
 
 If ANY check is FAIL, provide the corrected JSON plan (full plan with title and tasks).
 If ALL checks PASS, respond with: {"reflection": "pass"}`;
@@ -619,7 +624,7 @@ Respond with JSON only.`;
 /**
  * System prompt for the planner agent
  */
-const PLANNER_SYSTEM_PROMPT = `You are an expert task planner. You break down complex requests into structured, executable task plans.
+export const DEFAULT_PLANNER_SYSTEM_PROMPT = `You are an expert task planner. You break down complex requests into structured, executable task plans.
 
 Before generating the JSON plan, analyze the request step by step:
 1. DOMAIN: What domain is this? (policy, security, finance, technology, comparison, architecture, code analysis, etc.)
@@ -636,6 +641,7 @@ Key principles:
 - Define proper dependencies (no circular references)
 - Use explicit tool types (document, image, chart, spreadsheet, presentation, podcast, diagram) when a specific output format is needed — do NOT use "generate" when a tool type applies
 - Look for data in BOTH the user message AND recent conversation history
+- CRITICAL: Do NOT create search tasks when the user has provided the data in their message. If the user lists items, features, or content, use "extract" to capture it. Web search is ONLY for finding NEW information not in the user's message or conversation history.
 - For per-item requests ("for each", "individual", "separate"): create separate tasks per item (up to 50 tasks)
 - For consolidated requests: keep plans concise (3-10 tasks)
 - For multi-item analysis, always include a synthesize or summarize task at the end

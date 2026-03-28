@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt } from '@/lib/db/compat';
+import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt } from '@/lib/db/compat';
 
 export async function GET() {
   try {
@@ -22,6 +22,7 @@ export async function GET() {
     const modelConfigs = await getAgentModelConfigs();
     const streamingConfig = await getStreamingConfig();
     const summarizerSystemPrompt = await getSummarizerSystemPrompt();
+    const plannerSystemPrompt = await getPlannerSystemPrompt();
 
     const settings = {
       budgetMaxLlmCalls: parseInt(await getSetting('agent_budget_max_llm_calls', '500'), 10),
@@ -35,6 +36,7 @@ export async function GET() {
       checkerModel: modelConfigs.checker,
       summarizerModel: modelConfigs.summarizer,
       summarizerSystemPrompt,
+      plannerSystemPrompt,
       // Streaming configuration
       streamingKeepaliveInterval: streamingConfig.keepalive_interval_seconds,
       streamingMaxDuration: streamingConfig.max_stream_duration_seconds,
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
       checkerModel,
       summarizerModel,
       summarizerSystemPrompt,
+      plannerSystemPrompt,
       // Streaming configuration
       streamingKeepaliveInterval,
       streamingMaxDuration,
@@ -187,6 +190,11 @@ export async function POST(request: NextRequest) {
       await setSummarizerSystemPrompt(summarizerSystemPrompt, user.email);
     }
 
+    // Save planner system prompt (if provided)
+    if (typeof plannerSystemPrompt === 'string') {
+      await setPlannerSystemPrompt(plannerSystemPrompt, user.email);
+    }
+
     // Save streaming configuration (if provided)
     if (hasStreamingConfig) {
       const currentStreaming = await getStreamingConfig();
@@ -203,6 +211,7 @@ export async function POST(request: NextRequest) {
     // Get current configs for response
     const finalStreamingConfig = await getStreamingConfig();
     const finalSummarizerPrompt = await getSummarizerSystemPrompt();
+    const finalPlannerPrompt = await getPlannerSystemPrompt();
 
     return NextResponse.json({
       success: true,
@@ -218,6 +227,7 @@ export async function POST(request: NextRequest) {
         checkerModel,
         summarizerModel,
         summarizerSystemPrompt: finalSummarizerPrompt,
+        plannerSystemPrompt: finalPlannerPrompt,
         streamingKeepaliveInterval: finalStreamingConfig.keepalive_interval_seconds,
         streamingMaxDuration: finalStreamingConfig.max_stream_duration_seconds,
         streamingToolTimeout: finalStreamingConfig.tool_timeout_seconds,

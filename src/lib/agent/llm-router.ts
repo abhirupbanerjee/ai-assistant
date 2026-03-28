@@ -77,6 +77,30 @@ async function generateOpenAI(
   }
   messages.push({ role: 'user', content: prompt });
 
+  // Fireworks models require stream=true for max_tokens > 4096
+  const isFireworks = model.startsWith('fireworks/');
+  const needsStreaming = isFireworks && maxTokens > 4096;
+
+  if (needsStreaming) {
+    const stream = await openaiClient.chat.completions.create({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+
+    let content = '';
+    let totalTokens = 0;
+    for await (const chunk of stream) {
+      content += chunk.choices[0]?.delta?.content || '';
+      if (chunk.usage) totalTokens = chunk.usage.total_tokens;
+    }
+
+    return { content, tokens_used: totalTokens, model, provider: 'openai' };
+  }
+
   const response = await openaiClient.chat.completions.create({
     model,
     messages,

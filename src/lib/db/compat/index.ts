@@ -950,6 +950,9 @@ export {
   // Summarizer System Prompt
   getSummarizerSystemPrompt,
   setSummarizerSystemPrompt,
+  // Planner System Prompt
+  getPlannerSystemPrompt,
+  setPlannerSystemPrompt,
 } from './agent-config';
 
 // ============ RAG Testing ============
