@@ -250,6 +250,12 @@ export async function getRerankerSettings(): Promise<RerankerSettings> {
       providers: [{ provider: mapped, enabled: true }, ...DEFAULT_RERANKER_SETTINGS.providers.filter(p => p.provider !== mapped)],
     };
   }
+  // Merge in any new providers added to defaults but missing from saved settings
+  const savedProviderIds = new Set(pg.providers.map(p => p.provider));
+  const missingProviders = DEFAULT_RERANKER_SETTINGS.providers.filter(p => !savedProviderIds.has(p.provider));
+  if (missingProviders.length > 0) {
+    pg.providers = [...pg.providers, ...missingProviders];
+  }
   return pg;
 }
 
