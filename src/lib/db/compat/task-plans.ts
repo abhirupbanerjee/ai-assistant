@@ -43,6 +43,7 @@ interface DbTaskPlanRow {
   resumed_at: string | null;
   stopped_at: string | null;
   stop_reason: string | null;
+  original_request: string | null;
 }
 
 function mapDbToTaskPlan(row: DbTaskPlanRow): TaskPlan {
@@ -66,6 +67,7 @@ function mapDbToTaskPlan(row: DbTaskPlanRow): TaskPlan {
     resumedAt: row.resumed_at || undefined,
     stoppedAt: row.stopped_at || undefined,
     stopReason: row.stop_reason || undefined,
+    originalRequest: row.original_request || undefined,
   };
 }
 
@@ -376,6 +378,7 @@ export async function createAutonomousPlan(
     categorySlug?: string;
     budget?: Record<string, unknown>;
     modelConfig?: Record<string, unknown>;
+    originalRequest?: string;
   } = {}
 ): Promise<string> {
   const id = `plan_${nanoid(12)}`;
@@ -418,6 +421,7 @@ export async function createAutonomousPlan(
       budget_json: budgetJson,
       budget_used_json: budgetUsedJson,
       model_config_json: modelConfigJson,
+      original_request: options.originalRequest || null,
       created_at: now,
       updated_at: now,
     })

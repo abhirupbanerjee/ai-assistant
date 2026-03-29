@@ -24,7 +24,7 @@ In addition to database and vector store, choose the LLM provider tier based on 
 | Provider Tier | Use Case | Data Classification |
 |---|---|---|
 | **Ollama** (Local) | Simple RAG, document lookup, basic Q&A, non-complex queries | ✅ Government-sensitive / classified — data never leaves your network |
-| **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs |
+| **Cloud LLMs** — OpenAI, Claude (direct SDK), Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs (Claude via direct Anthropic SDK, others via LiteLLM) |
 | **Fireworks AI** | Developer testing of open-source models (MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3) | Development / test environments only — not for production sensitive data |
 
 > **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.

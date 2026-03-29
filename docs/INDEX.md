@@ -262,7 +262,7 @@ Documentation for third-party API integrations.
 | Service | Purpose | Documentation |
 |---------|---------|---------------|
 | **OpenAI** | GPT-4.1/5.x, embeddings, Whisper | [tech/SOLUTION.md](tech/SOLUTION.md), [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
-| **Anthropic** | Claude Sonnet/Haiku/Opus 4.5, 1M context | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Anthropic** | Claude Sonnet/Haiku/Opus 4.5+, 1M context — **direct SDK** (bypasses LiteLLM) | [tech/SOLUTION.md](tech/SOLUTION.md) |
 | **Mistral** | Mistral Large 3, Small 3.2, OCR | [tech/SOLUTION.md](tech/SOLUTION.md) |
 | **Google Gemini** | Gemini 2.5 Pro/Flash, Thinking | [tech/SOLUTION.md](tech/SOLUTION.md) |
 | **DeepSeek** | DeepSeek Reasoner (R1), Chat | [tech/SOLUTION.md](tech/SOLUTION.md) |
@@ -299,6 +299,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.2** | March 2026 | **Anthropic Direct SDK** — Claude chat + tool calling bypasses LiteLLM via `@anthropic-ai/sdk` for reliable tool call JSON. LiteLLM cache fix (`clearLiteLLMCache()` after model sync). Stream reset SSE event for clean model fallback. |
 | **3.1** | March 2026 | Agent Bots (programmatic API), Fireworks AI + DeepSeek + Anthropic providers, Thinking Models (`<think>` processing), 8+ new tools (SonarCloud, PageSpeed, SSL/DNS/Cookie/Redirect scan, k6 load test, security scan, dependency analysis), Next.js 16, configurable tool call limits |
 | **3.0** | March 2026 | PostgreSQL-only (SQLite removed), Kysely ORM, async database access, `src/lib/db/utils.ts` for pure utilities |
 | **2.9** | February 2025 | PostgreSQL + Qdrant support, Docker Compose profile-based service selection, Infrastructure dashboard (Admin → Dashboard → Infrastructure), MAX_UPLOAD_SIZE for large backup restores, scalability guide |

@@ -6,13 +6,13 @@
 
 ## LLM Service Routing Overview
 
-Policy Bot uses a **hybrid architecture**: core chat services route through LiteLLM proxy for unified model management, while specialized services (images, audio, document processing) call provider APIs directly or use local parsers for capabilities not available through the proxy.
+Policy Bot uses a **hybrid architecture**: most chat services route through LiteLLM proxy for unified model management, while **Anthropic Claude models bypass LiteLLM entirely** using the `@anthropic-ai/sdk` for direct API access (eliminating tool-calling JSON assembly issues), and specialized services (images, audio, document processing) call provider APIs directly or use local parsers.
 
 ### Service Routing Table
 
 | Service | Policy Bot Feature | Routes Through | Provider(s) | Notes |
 |---------|-------------------|----------------|-------------|-------|
-| **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, DeepSeek, Fireworks AI, Ollama | Primary conversation engine |
+| **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM / ⚡ Anthropic Direct | OpenAI, Gemini, Mistral, DeepSeek, Fireworks AI, Ollama via LiteLLM; **Anthropic Claude via direct SDK** | Claude uses `@anthropic-ai/sdk` for reliable tool calling |
 | **Embeddings** | Document indexing, search | ✅ LiteLLM | OpenAI, Mistral, Gemini, Ollama, Fireworks | `text-embedding-3-large` default |
 | **Diagram Generation** | `diagram_gen` tool | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Generates Mermaid syntax |
 | **Summarization** | Message compression | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic, DeepSeek | Long conversation handling |
@@ -34,6 +34,7 @@ Policy Bot uses a **hybrid architecture**: core chat services route through Lite
 | Symbol | Meaning |
 |--------|---------|
 | ✅ LiteLLM | Routes through LiteLLM proxy (port 4000) |
+| ⚡ Anthropic Direct | Calls Anthropic API directly via `@anthropic-ai/sdk` (bypasses LiteLLM) |
 | ❌ Direct | Calls provider API directly (bypasses LiteLLM) |
 | N/A | No LLM calls required |
 
@@ -41,6 +42,7 @@ Policy Bot uses a **hybrid architecture**: core chat services route through Lite
 
 | Service | Reason |
 |---------|--------|
+| **Anthropic Claude** | LiteLLM's Anthropic→OpenAI streaming translation produces malformed tool-calling JSON. Direct `@anthropic-ai/sdk` provides native, reliable tool call parsing |
 | **Image Generation** | DALL-E and Gemini Imagen APIs not supported by LiteLLM proxy |
 | **Podcast TTS** | OpenAI TTS and Gemini TTS are audio generation APIs, not chat completions |
 | **OCR** | Mistral OCR is a specialized document API with unique request format |
@@ -71,7 +73,25 @@ async function getOpenAI(): Promise<OpenAI> {
 }
 ```
 
-When `OPENAI_BASE_URL` points to the LiteLLM container (e.g. `http://litellm:4000/v1`), all chat completions, embeddings, and transcription are routed through a single OpenAI SDK client.
+When `OPENAI_BASE_URL` points to the LiteLLM container (e.g. `http://litellm:4000/v1`), embeddings, transcription, and non-Claude chat completions are routed through a single OpenAI SDK client.
+
+### Claude Direct SDK Detection
+
+For Anthropic Claude models, `generateResponseWithTools()` bypasses LiteLLM entirely:
+
+```typescript
+// src/lib/openai.ts — isClaudeModel() + routing
+function isClaudeModel(model: string): boolean {
+  return model.startsWith('anthropic/') || model.startsWith('claude-');
+}
+
+// In generateResponseWithTools():
+const useAnthropicDirect = isClaudeModel(effectiveModel);
+const openai = useAnthropicDirect ? null : await getOpenAI();          // LiteLLM path
+const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;  // Direct path
+```
+
+**Why**: LiteLLM translates Anthropic's native streaming into OpenAI-compatible `delta.tool_calls` format, but the tool call JSON assembly is unreliable — producing malformed arguments that fail `executeTool()`. The direct `@anthropic-ai/sdk` receives pre-parsed tool inputs via `stream.finalMessage()`, eliminating this class of errors.
 
 ---
 
@@ -109,37 +129,38 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 
 ## Architecture Overview
 
-PolicyBot uses a **three-tier hybrid architecture**. LiteLLM handles chat, embeddings, and transcription. Specialized services bypass LiteLLM via direct API calls.
+PolicyBot uses a **four-tier hybrid architecture**. LiteLLM handles most chat, embeddings, and transcription. **Anthropic Claude models bypass LiteLLM** via the native `@anthropic-ai/sdk` for reliable tool calling. Specialized services use direct API calls.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
 │                         PolicyBot Application                         │
 │              (Next.js — openai.ts, tools, translation)                │
-└──────┬──────────────────────┬──────────────────────┬──────────────────┘
-       │                      │                      │
-   TIER 1                  TIER 2                 TIER 3
-   LiteLLM Proxy           Direct Provider        Direct Google
-   (Chat, Embed,           APIs (Non-Chat)        GenAI SDK
-    Transcription)                                 (Image/TTS)
-       │                      │                      │
-       ▼                      ▼                      ▼
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  Port 4000       │  │                  │  │                  │
-│                  │  │ Fireworks AI     │  │ Gemini Imagen    │
-│ ┌──────────────┐ │  │  (reranking)     │  │  (image_gen)     │
-│ │ OpenAI       │ │  │                  │  │  via REST API    │
-│ │ Anthropic    │ │  │ Tavily           │  │                  │
-│ │ Gemini       │ │  │  (web_search)    │  │ Gemini TTS       │
-│ │ Mistral      │ │  │                  │  │  (podcast_gen)   │
-│ │ DeepSeek     │ │  │ Gemini/Mistral   │  │  via @google/    │
-│ │ Fireworks*   │ │  │  (translation)   │  │  genai SDK       │
-│ │ Ollama*      │ │  │                  │  │                  │
-│ └──────────────┘ │  │ OpenAI TTS       │  │ DALL-E 3         │
-│                  │  │  (podcast_gen)   │  │  (image_gen)     │
-│ * YAML-only,     │  │  hardcoded to    │  │  via OpenAI SDK  │
-│   not dynamic    │  │  api.openai.com  │  │  (no proxy)      │
-│   sync           │  │                  │  │                  │
-└──────────────────┘  └──────────────────┘  └──────────────────┘
+└──┬──────────────────┬──────────────────┬──────────────────┬───────────┘
+   │                  │                  │                  │
+ TIER 1            TIER 1b            TIER 2             TIER 3
+ LiteLLM Proxy     Anthropic Direct   Direct Provider    Direct Google
+ (Chat, Embed,     SDK (@anthropic-   APIs (Non-Chat)    GenAI SDK
+  Transcription)    ai/sdk)                              (Image/TTS)
+   │                  │                  │                  │
+   ▼                  ▼                  ▼                  ▼
+┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐
+│  Port 4000     │ │ api.anthropic  │ │                │ │                │
+│                │ │ .com           │ │ Fireworks AI   │ │ Gemini Imagen  │
+│ ┌────────────┐ │ │                │ │  (reranking)   │ │  (image_gen)   │
+│ │ OpenAI     │ │ │ Claude chat +  │ │                │ │  via REST API  │
+│ │ Gemini     │ │ │ tool calling   │ │ Tavily         │ │                │
+│ │ Mistral    │ │ │ via native     │ │  (web_search)  │ │ Gemini TTS     │
+│ │ DeepSeek   │ │ │ streaming      │ │                │ │  (podcast_gen) │
+│ │ Fireworks* │ │ │                │ │ Gemini/Mistral │ │  via @google/  │
+│ │ Ollama*    │ │ │ Models:        │ │  (translation) │ │  genai SDK     │
+│ └────────────┘ │ │ claude-opus-*  │ │                │ │                │
+│                │ │ claude-sonnet-*│ │ OpenAI TTS     │ │ DALL-E 3       │
+│ * YAML-only,   │ │ claude-haiku-* │ │  (podcast_gen) │ │  (image_gen)   │
+│   not dynamic  │ │                │ │  hardcoded to  │ │  via OpenAI SDK│
+│   sync         │ │ Why: LiteLLM   │ │  api.openai.com│ │  (no proxy)    │
+│                │ │ breaks tool    │ │                │ │                │
+│                │ │ call JSON      │ │                │ │                │
+└────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘
 ```
 
 ### Model Registration: Dynamic vs Static
@@ -150,8 +171,11 @@ PolicyBot uses **two registration paths** for LiteLLM models:
 |------|-----------|-----|
 | **Dynamic** (via `/model/new` API) | OpenAI, Anthropic, Gemini, Mistral, DeepSeek | `litellm-sync.ts` reads `enabled_models` table and registers via API |
 | **Static** (YAML only) | Fireworks, Ollama, Embeddings, Audio | Defined in `litellm_config.yaml`, skipped by sync service |
+| **Direct SDK** (bypasses LiteLLM) | Anthropic Claude | `isClaudeModel()` in `openai.ts` detects `anthropic/` or `claude-` prefix → routes to `@anthropic-ai/sdk` |
 
 > Dynamic models (5 providers) are NOT in the YAML — they are registered at startup by the app. Only Fireworks, Ollama, embedding, and audio models are declared in `litellm_config.yaml`.
+>
+> **Note**: Anthropic models are still registered dynamically with LiteLLM (for embeddings/non-chat use), but **chat completions with tool calling** bypass LiteLLM entirely via the Anthropic SDK. This is controlled by `isClaudeModel()` in `openai.ts`.
 
 ---
 
@@ -159,8 +183,8 @@ PolicyBot uses **two registration paths** for LiteLLM models:
 
 | Component | Decision |
 |-----------|----------|
-| **Approach** | LiteLLM Proxy (Docker Compose) |
-| **Chat Completions** | Route through LiteLLM |
+| **Approach** | LiteLLM Proxy (Docker Compose) + Anthropic Direct SDK |
+| **Chat Completions** | Route through LiteLLM (except Claude → `@anthropic-ai/sdk` direct) |
 | **Embeddings** | Route through LiteLLM (per-provider config) |
 | **Function Calling** | Gated by `toolCapable` flag from `litellm_config.yaml` via DB sync |
 | **Audio Transcription** | Route through LiteLLM (Whisper, Voxtral) |
@@ -580,7 +604,15 @@ openaiClient = new OpenAI({
 });
 ```
 
-That's it! All other code stays the same — the OpenAI SDK handles the routing transparently.
+For non-Claude models, that's it — the OpenAI SDK handles the routing transparently.
+
+**Claude models** are automatically detected and routed to the Anthropic SDK:
+```typescript
+// Automatic — no env var needed, just ANTHROPIC_API_KEY in DB or env
+// isClaudeModel() detects 'anthropic/' or 'claude-' prefix
+// Uses @anthropic-ai/sdk directly for chat + tool calling
+// Embeddings/transcription still route through LiteLLM
+```
 
 ---
 
@@ -917,13 +949,13 @@ AUDIO_MODEL = "voxtral-small"
 
 ## Known Limitations
 
-| # | Limitation | Impact | File |
-|---|-----------|--------|------|
-| 1 | **Static YAML cache never invalidated** | `_parsedModelsCache` in `litellm-validator.ts` is set once and never cleared. `clearLiteLLMCache()` exists but has zero call sites. Runtime model additions invisible until restart. | `litellm-validator.ts:375,456` |
-| 2 | **Claude tool-calling streaming mismatch** | Anthropic models routed through LiteLLM fail tool calling — LiteLLM wraps Anthropic's streaming into OpenAI format, but tool call JSON is malformed. `streamOneCompletion()` parses OpenAI format only. | `openai.ts:421-434` |
-| 3 | **No circuit breaker for chat completions** | If LiteLLM proxy is unreachable, all chat completions fail. Embeddings have a fallback model path, but chat/transcription do not. | `openai.ts` |
-| 4 | **Prefix-based provider detection only** | `getProviderFromModelPath()` defaults to `openai` for unrecognized prefixes. Custom/vLLM models without a prefix will be misidentified. No `deepseek/` prefix exists — DeepSeek models are synced dynamically with prefix by `litellm-sync.ts`. | `litellm-validator.ts:282-294` |
-| 5 | **No TTS or image generation via proxy** | `podcast_gen` and `image_gen` must bypass LiteLLM entirely | `podcast-gen.ts`, `image-gen/` |
+| # | Limitation | Impact | Status | File |
+|---|-----------|--------|--------|------|
+| 1 | ~~Static YAML cache never invalidated~~ | ~~Runtime model additions invisible until restart~~ | **FIXED** — `clearLiteLLMCache()` now called after `syncAllModelsToLiteLLM()` completes | `litellm-sync.ts` |
+| 2 | ~~Claude tool-calling streaming mismatch~~ | ~~Anthropic models routed through LiteLLM fail tool calling~~ | **FIXED** — Claude models now bypass LiteLLM via `@anthropic-ai/sdk` direct. `isClaudeModel()` routes to `streamAnthropicCompletion()` which receives pre-parsed tool inputs. | `openai.ts` |
+| 3 | **No circuit breaker for chat completions** | If LiteLLM proxy is unreachable, non-Claude chat completions fail. Claude models are unaffected (direct SDK). Embeddings have a fallback model path, but chat/transcription do not. | Open | `openai.ts` |
+| 4 | **Prefix-based provider detection only** | `getProviderFromModelPath()` defaults to `openai` for unrecognized prefixes. Custom/vLLM models without a prefix will be misidentified. No `deepseek/` prefix exists — DeepSeek models are synced dynamically with prefix by `litellm-sync.ts`. | Open | `litellm-validator.ts:282-294` |
+| 5 | **No TTS or image generation via proxy** | `podcast_gen` and `image_gen` must bypass LiteLLM entirely | By design | `podcast-gen.ts`, `image-gen/` |
 
 ---
 
@@ -936,4 +968,4 @@ AUDIO_MODEL = "voxtral-small"
 
 ---
 
-*Last updated: March 2026 — Corrected architecture (three-tier hybrid), fixed routing table (transcription via LiteLLM, Fireworks reranking, multi-provider embeddings), added dynamic vs static model registration, updated proxy detection logic to match actual code.*
+*Last updated: March 2026 — Added Anthropic Direct SDK (Tier 1b) for Claude chat + tool calling, bypassing LiteLLM. Updated architecture to four-tier hybrid. Fixed Known Limitations #1 (cache invalidation) and #2 (Claude tool-calling). Added `isClaudeModel()` detection logic documentation.*

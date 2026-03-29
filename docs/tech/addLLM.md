@@ -113,6 +113,8 @@ Model Configuration Priority:
 
 Models enabled via the Admin UI are **automatically registered with the LiteLLM proxy** — no YAML edits or LiteLLM restarts required.
 
+> **Anthropic Claude Note**: Claude models are still registered with LiteLLM (for non-chat services like embeddings), but **chat completions with tool calling bypass LiteLLM entirely** via the `@anthropic-ai/sdk`. This is automatic — `isClaudeModel()` in `openai.ts` detects models with `anthropic/` or `claude-` prefix and routes them to the Anthropic SDK directly. No additional configuration needed beyond having `ANTHROPIC_API_KEY` set.
+
 ```
 Auto-Sync Flow:
 
@@ -1337,7 +1339,8 @@ This is expected. With `store_model_in_db: false`, LiteLLM's in-memory store is 
 | File | Purpose |
 |------|---------|
 | `litellm-proxy/litellm_config.yaml` | LiteLLM model routing + capabilities (bootstrap config) |
-| `src/lib/services/litellm-sync.ts` | Auto-registers enabled models with LiteLLM proxy via `/model/new` API |
+| `src/lib/services/litellm-sync.ts` | Auto-registers enabled models with LiteLLM proxy via `/model/new` API; clears YAML cache after sync |
+| `src/lib/openai.ts` | `isClaudeModel()` detection, `getAnthropicClient()`, `streamAnthropicCompletion()` — Claude direct SDK path |
 | `src/lib/litellm-validator.ts` | YAML parsing, model discovery, display name generation |
 | `src/lib/config-loader.ts` | Model presets API, fallback defaults |
 | `src/lib/db/config.ts` | `getAvailableModels()` with DB-first priority |

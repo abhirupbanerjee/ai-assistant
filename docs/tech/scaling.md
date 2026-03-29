@@ -318,7 +318,8 @@ LITELLM_MASTER_KEY=sk-your-litellm-key
 
 **Why LiteLLM at this tier:**
 - Load balance across multiple API keys
-- Distribute requests across providers (OpenAI, Azure, Anthropic)
+- Distribute requests across providers (OpenAI, Azure, Gemini, Mistral, DeepSeek)
+  - Note: Anthropic Claude chat bypasses LiteLLM via direct SDK (`@anthropic-ai/sdk`)
 - Rate limit management per provider
 - Spend tracking and virtual keys
 

@@ -257,6 +257,9 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`DELETE FROM enabled_models WHERE id = 'gpt-4o-mini-transcribe'`.execute(database);
   console.log('[Kysely] Removed gpt-4o-mini-transcribe from enabled_models');
 
+  // Migration: Add original_request column to task_plans for keyword skill resolution
+  await sql`ALTER TABLE task_plans ADD COLUMN IF NOT EXISTS original_request TEXT`.execute(database);
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

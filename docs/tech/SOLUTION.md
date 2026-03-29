@@ -46,31 +46,33 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    THREE-TIER LLM ARCHITECTURE                          │
-├───────────────────────┬──────────────────────┬──────────────────────────┤
-│   TIER 1: LiteLLM     │  TIER 2: Direct      │  TIER 3: Direct Google  │
-│   Proxy (Port 4000)   │  Provider APIs       │  GenAI SDK              │
-│   Chat, Embeddings,   │  (Non-Chat)          │  (Image/TTS)            │
-│   Transcription       │                      │                         │
-├───────────────────────┼──────────────────────┼──────────────────────────┤
-│ ┌──────────────────┐  │ Fireworks Reranking  │ Gemini Imagen           │
-│ │ OpenAI           │  │  (api.fireworks.ai)  │  (image_gen, REST API)  │
-│ │ Anthropic        │  │                      │                         │
-│ │ Gemini           │  │ Cohere Reranking     │ Gemini TTS              │
-│ │ Mistral          │  │  (cohere API)        │  (podcast_gen,          │
-│ │ DeepSeek         │  │                      │   @google/genai SDK)    │
-│ │ Fireworks*       │  │ Tavily Web Search    │                         │
-│ │ Ollama*          │  │  (tavily.com)        │ DALL-E 3                │
-│ └──────────────────┘  │                      │  (image_gen, OpenAI SDK │
-│                       │ OpenAI TTS           │   no proxy)             │
-│ * YAML-only,          │  (podcast_gen,       │                         │
-│   not dynamic sync    │   api.openai.com)    │                         │
-│                       │                      │                         │
-│ Dynamic sync:         │ Gemini/Mistral       │                         │
-│  OpenAI, Anthropic,   │  (translation,       │                         │
-│  Gemini, Mistral,     │   direct REST)       │                         │
-│  DeepSeek             │                      │                         │
-└───────────────────────┴──────────────────────┴──────────────────────────┘
+│                    FOUR-TIER LLM ARCHITECTURE                           │
+├──────────────────┬──────────────────┬──────────────────┬────────────────┤
+│  TIER 1: LiteLLM  │ TIER 1b: Claude  │ TIER 2: Direct   │ TIER 3: Direct │
+│  Proxy (Port 4000) │ Direct SDK      │ Provider APIs    │ Google GenAI   │
+│  Chat, Embeddings, │ (@anthropic-    │ (Non-Chat)       │ SDK            │
+│  Transcription     │  ai/sdk)        │                  │ (Image/TTS)    │
+├──────────────────┼──────────────────┼──────────────────┼────────────────┤
+│ ┌──────────────┐ │ Claude chat +    │ Fireworks        │ Gemini Imagen  │
+│ │ OpenAI       │ │ tool calling     │  Reranking       │  (image_gen)   │
+│ │ Gemini       │ │ via native       │  (api.fireworks  │                │
+│ │ Mistral      │ │ streaming        │   .ai)           │ Gemini TTS     │
+│ │ DeepSeek     │ │                  │                  │  (podcast_gen) │
+│ │ Fireworks*   │ │ Why: LiteLLM     │ Fireworks        │                │
+│ │ Ollama*      │ │ breaks tool call │  Reranking       │ DALL-E 3       │
+│ └──────────────┘ │ JSON assembly    │  (api.fireworks  │  (image_gen)   │
+│                  │ for Anthropic    │   .ai)           │                │
+│ * YAML-only,     │ streaming        │                  │                │
+│   not dynamic    │                  │ Tavily Search    │                │
+│   sync           │ Models:          │  (tavily.com)    │                │
+│                  │  claude-opus-*   │                  │                │
+│ Dynamic sync:    │  claude-sonnet-* │ OpenAI TTS       │                │
+│  OpenAI,         │  claude-haiku-*  │  (podcast_gen)   │                │
+│  Anthropic,      │                  │                  │                │
+│  Gemini,         │                  │ Gemini/Mistral   │                │
+│  Mistral,        │                  │  (translation)   │                │
+│  DeepSeek        │                  │                  │                │
+└──────────────────┴──────────────────┴──────────────────┴────────────────┘
 
            │
            ├──────────────┬──────────────┬──────────────┬──────────────┬────────────┐
@@ -100,9 +102,9 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 | Frontend | Next.js 16, React 19, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
 | Database | PostgreSQL (Kysely ORM) | Metadata storage — SQLite removed March 2026 |
-| LLM Gateway | LiteLLM Proxy | Multi-provider LLM abstraction (OpenAI-compatible API) |
-| LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision |
-| LLM - Anthropic | Claude Sonnet 4.5, Haiku 4.5, Opus 4.5 | 1M context, vision, tool calling |
+| LLM Gateway | LiteLLM Proxy + Anthropic Direct SDK | Multi-provider LLM abstraction; Claude bypasses LiteLLM via `@anthropic-ai/sdk` |
+| LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision (via LiteLLM) |
+| LLM - Anthropic | Claude Sonnet 4.6, Haiku 4.5, Opus 4.6 | 1M context, vision, tool calling — **direct SDK** (not LiteLLM) |
 | LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision + thinking support |
 | LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision + OCR |
 | LLM - DeepSeek | deepseek-reasoner, deepseek-chat | Reasoning models with `<think>` token support |

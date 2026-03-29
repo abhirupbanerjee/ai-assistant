@@ -57,8 +57,10 @@ async function resolveSkillsForTask(plan: AgentPlan, task: AgentTask, callbacks?
   // Priority 2: Resolve keyword skills against the original user request (deterministic fallback)
   // The planner may not tag skill_ids, so match keywords against plan.original_request
   // which contains the actual user message (not technical task descriptions)
+  // Handle both snake_case (AgentPlan) and camelCase (TaskPlan) property names
+  const originalRequest = plan.original_request || (plan as any).originalRequest || '';
   const categoryPrompt = await resolveCategorySkills(plan, task.description, callbacks);
-  if (plan.original_request) {
+  if (originalRequest) {
     const keywordPrompt = await resolveKeywordSkillsByUserRequest(plan, callbacks);
     if (keywordPrompt) {
       return categoryPrompt ? `${categoryPrompt}\n\n${keywordPrompt}` : keywordPrompt;
@@ -91,7 +93,9 @@ async function resolveKeywordSkillsByUserRequest(plan: AgentPlan, callbacks?: Ex
   }
 
   // Resolve skills using the original user message (not task description)
-  const resolved = await resolveSkills(categoryIds, plan.original_request);
+  // Handle both snake_case (AgentPlan) and camelCase (TaskPlan) property names
+  const userRequest = plan.original_request || (plan as any).originalRequest || '';
+  const resolved = await resolveSkills(categoryIds, userRequest);
   const keywordSkills = resolved.skills.filter(s =>
     resolved.activatedBy.keyword.includes(s.name)
   );

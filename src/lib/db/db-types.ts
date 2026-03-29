@@ -392,6 +392,7 @@ export interface TaskPlansTable {
   resumed_at: string | null;
   stopped_at: string | null;
   stop_reason: string | null;
+  original_request: string | null;
 }
 
 // ============ Data API Configs ============

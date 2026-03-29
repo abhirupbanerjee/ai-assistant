@@ -280,7 +280,7 @@ REDIS_URL=redis://redis:6379
 # =============================================================================
 
 # Additional LLM providers
-# ANTHROPIC_API_KEY=
+# ANTHROPIC_API_KEY=          # Required for Claude models (uses direct SDK, not LiteLLM)
 # DEEPSEEK_API_KEY=
 # MISTRAL_API_KEY=
 # GEMINI_API_KEY=

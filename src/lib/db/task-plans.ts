@@ -44,6 +44,7 @@ export interface TaskPlan {
   resumedAt?: string;
   stoppedAt?: string;
   stopReason?: string;
+  originalRequest?: string;
 }
 
 export interface TaskPlanStats {

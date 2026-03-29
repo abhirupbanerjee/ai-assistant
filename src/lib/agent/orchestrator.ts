@@ -656,6 +656,7 @@ export async function createAndExecuteAutonomousPlan(
         categorySlug: planConfig.categorySlug,
         budget: planConfig.budget,
         modelConfig: planConfig.modelConfig,
+        originalRequest: userRequest,
       }
     );
 

@@ -43,7 +43,7 @@ Built with enterprise-grade, open-source technologies:
 - **Next.js 16** - Modern React 19 framework with server-side rendering and App Router
 - **PostgreSQL** - Battle-tested relational database via Kysely ORM (SQLite fully removed)
 - **Qdrant** - Open-source vector database for semantic search
-- **LiteLLM** - Unified gateway to 100+ LLM providers
+- **LiteLLM** - Unified gateway to 100+ LLM providers (Claude models use direct Anthropic SDK for reliable tool calling)
 - **Redis** - High-performance caching and session management
 - **Traefik** - Production-ready reverse proxy with automatic TLS
 - **Ollama** - Local LLM inference for air-gapped / sensitive deployments
@@ -52,7 +52,7 @@ Built with enterprise-grade, open-source technologies:
 
 ### Core Features
 - **RAG-Powered Q&A** - Natural language queries with source citations
-- **Multi-Provider LLM** - OpenAI, Anthropic Claude, DeepSeek, Mistral, Gemini, Fireworks AI, Ollama via LiteLLM
+- **Multi-Provider LLM** - OpenAI, Anthropic Claude (direct SDK), DeepSeek, Mistral, Gemini, Fireworks AI, Ollama via LiteLLM
 - **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
 - **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking)
 - **Voice Input** - Whisper and Voxtral transcription for audio questions (via LiteLLM)
