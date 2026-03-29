@@ -567,15 +567,56 @@ export async function createAndExecuteAutonomousPlan(
     callbacks?.onAnalyzing?.();
 
     // Fetch skill catalog for planner (keyword-triggered skills)
-    let skillCatalog: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null }[] = [];
+    let skillCatalog: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null; force_mode: string | null }[] = [];
+    let resolvedSkillContext: {
+      matchedSkills: { id: number; name: string; prompt_summary: string }[];
+      toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
+    } = { matchedSkills: [], toolHints: [] };
+
     try {
       const { getSkillCatalogForPlanner } = await import('../db/compat/skills');
+      let category: { id: number; name: string; slug: string } | null = null;
       if (planConfig.categorySlug) {
         const { getCategoryBySlug } = await import('../db/compat/categories');
-        const category = await getCategoryBySlug(planConfig.categorySlug);
+        category = await getCategoryBySlug(planConfig.categorySlug);
         skillCatalog = await getSkillCatalogForPlanner(category ? [category.id] : []);
       } else {
         skillCatalog = await getSkillCatalogForPlanner([]);
+      }
+      if (skillCatalog.length > 0) {
+        console.log(`[Orchestrator] Loaded ${skillCatalog.length} keyword skills for planner:`,
+          skillCatalog.map(s => `${s.name} (id=${s.id}, keywords="${s.trigger_value}")`));
+      }
+
+      // Pre-resolve skills against user request for routing hints
+      const { resolveSkills } = await import('../skills/resolver');
+      const categoryIds = category ? [category.id] : [];
+      const resolved = await resolveSkills(categoryIds, userRequest);
+
+      const keywordMatched = resolved.skills.filter(s =>
+        resolved.activatedBy.keyword.includes(s.name)
+      );
+      resolvedSkillContext.matchedSkills = keywordMatched.map(s => ({
+        id: s.id,
+        name: s.name,
+        prompt_summary: s.description || s.prompt_content.substring(0, 100),
+      }));
+
+      if (resolved.toolRouting?.matches) {
+        resolvedSkillContext.toolHints = resolved.toolRouting.matches.map(m => ({
+          tool_name: m.toolName,
+          force_mode: m.forceMode,
+          skill_name: m.skillName,
+        }));
+      }
+
+      if (resolvedSkillContext.matchedSkills.length > 0) {
+        console.log(`[Orchestrator] Pre-resolved ${resolvedSkillContext.matchedSkills.length} keyword skills:`,
+          resolvedSkillContext.matchedSkills.map(s => s.name));
+      }
+      if (resolvedSkillContext.toolHints.length > 0) {
+        console.log(`[Orchestrator] Tool routing hints:`,
+          resolvedSkillContext.toolHints.map(h => `${h.skill_name} → ${h.tool_name} (${h.force_mode})`));
       }
     } catch (err) {
       console.warn('[Orchestrator] Failed to load skill catalog for planner:', err);
@@ -583,7 +624,7 @@ export async function createAndExecuteAutonomousPlan(
 
     // Phase 1b: Creating task plan
     callbacks?.onPlanning?.();
-    const planResult = await createPlan(userRequest, { ...context, skillCatalog }, planConfig.modelConfig);
+    const planResult = await createPlan(userRequest, { ...context, skillCatalog, resolvedSkillContext }, planConfig.modelConfig);
 
     if (planResult.error || planResult.tasks.length === 0) {
       const error = planResult.error || 'Failed to create plan';

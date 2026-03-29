@@ -27,7 +27,11 @@ export async function createPlan(
     ragContext?: string;
     conversationHistory?: string;
     categoryContext?: string;
-    skillCatalog?: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null }[];
+    skillCatalog?: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null; force_mode: string | null }[];
+    resolvedSkillContext?: {
+      matchedSkills: { id: number; name: string; prompt_summary: string }[];
+      toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
+    };
   },
   modelConfig: AgentModelConfig
 ): Promise<{ tasks: AgentTask[]; title: string; error?: string }> {
@@ -213,7 +217,11 @@ function buildPlannerPrompt(
     ragContext?: string;
     conversationHistory?: string;
     categoryContext?: string;
-    skillCatalog?: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null }[];
+    skillCatalog?: { id: number; name: string; description: string | null; trigger_value: string | null; tool_name: string | null; force_mode: string | null }[];
+    resolvedSkillContext?: {
+      matchedSkills: { id: number; name: string; prompt_summary: string }[];
+      toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
+    };
   }
 ): string {
   let prompt = `Break down this user request into a structured task plan.
@@ -253,6 +261,23 @@ ${JSON.stringify(context.skillCatalog, null, 2)}
 
 For each task, include a "skill_ids" array with the IDs of skills that should be activated for that task. Only tag skills whose description or keywords are relevant to the specific task. Use an empty array [] if no skills apply.
 `;
+  }
+
+  // Add pre-resolved skill matches and tool routing hints
+  if (context.resolvedSkillContext?.matchedSkills?.length) {
+    prompt += `\n**Skills Matched Against User Request:**\n`;
+    for (const skill of context.resolvedSkillContext.matchedSkills) {
+      prompt += `- "${skill.name}" (ID: ${skill.id}): ${skill.prompt_summary}\n`;
+    }
+    prompt += `\nThese skills matched the user's keywords. Tag their IDs on relevant tasks.\n`;
+  }
+
+  if (context.resolvedSkillContext?.toolHints?.length) {
+    prompt += `\n**Tool Routing from Skills:**\n`;
+    for (const hint of context.resolvedSkillContext.toolHints) {
+      prompt += `- Skill "${hint.skill_name}" routes to tool "${hint.tool_name}" (${hint.force_mode})\n`;
+    }
+    prompt += `\nWhen a skill routes to a specific tool, create tasks with matching types (e.g., "web_search" → "search" type task, "document" → "document" type task). For "required" force mode, you MUST include a task using that tool type.\n`;
   }
 
   prompt += `

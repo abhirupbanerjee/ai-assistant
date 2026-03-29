@@ -146,6 +146,7 @@ export async function getSkillCatalogForPlanner(categoryIds: number[]): Promise<
   description: string | null;
   trigger_value: string | null;
   tool_name: string | null;
+  force_mode: string | null;
 }[]> {
   const keywordSkills = await getAllSkills({ trigger_type: 'keyword', is_active: true });
 
@@ -167,6 +168,7 @@ export async function getSkillCatalogForPlanner(categoryIds: number[]): Promise<
     description: s.description,
     trigger_value: s.trigger_value,
     tool_name: s.tool_name,
+    force_mode: s.force_mode,
   }));
 }
 

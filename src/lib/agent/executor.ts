@@ -12,6 +12,7 @@
 import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig } from '@/types/agent';
 import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { ResolvedSkills } from '../skills/types';
 import { generateWithModel, generateWithModelFallback, getModelForRole } from './llm-router';
 import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
@@ -53,8 +54,68 @@ async function resolveSkillsForTask(plan: AgentPlan, task: AgentTask, callbacks?
     }
   }
 
-  // Priority 2: Fall back to category-based resolution (always + category triggers)
-  return resolveCategorySkills(plan, task.description, callbacks);
+  // Priority 2: Resolve keyword skills against the original user request (deterministic fallback)
+  // The planner may not tag skill_ids, so match keywords against plan.original_request
+  // which contains the actual user message (not technical task descriptions)
+  const categoryPrompt = await resolveCategorySkills(plan, task.description, callbacks);
+  if (plan.original_request) {
+    const keywordPrompt = await resolveKeywordSkillsByUserRequest(plan, callbacks);
+    if (keywordPrompt) {
+      return categoryPrompt ? `${categoryPrompt}\n\n${keywordPrompt}` : keywordPrompt;
+    }
+  }
+
+  return categoryPrompt;
+}
+
+/**
+ * Deterministic keyword skill resolution against the original user request.
+ * This bypasses the planner-tagging approach and directly matches skill keywords
+ * against what the user actually typed (stored in plan.original_request).
+ * Results are cached per plan to avoid redundant resolution across tasks.
+ */
+const keywordSkillCache = new Map<string, string>();
+const toolRoutingCache = new Map<string, ResolvedSkills['toolRouting']>();
+
+async function resolveKeywordSkillsByUserRequest(plan: AgentPlan, callbacks?: ExecutorCallbacks): Promise<string> {
+  // Return cached result if already resolved for this plan
+  if (keywordSkillCache.has(plan.id)) {
+    return keywordSkillCache.get(plan.id)!;
+  }
+
+  const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
+  const categoryIds: number[] = [];
+  if (categorySlug) {
+    const category = await getCategoryBySlug(categorySlug);
+    if (category) categoryIds.push(category.id);
+  }
+
+  // Resolve skills using the original user message (not task description)
+  const resolved = await resolveSkills(categoryIds, plan.original_request);
+  const keywordSkills = resolved.skills.filter(s =>
+    resolved.activatedBy.keyword.includes(s.name)
+  );
+
+  let result = '';
+  if (keywordSkills.length > 0) {
+    console.log(`[Executor] Matched ${keywordSkills.length} keyword skills against user request:`,
+      keywordSkills.map(s => s.name));
+    callbacks?.onSkillsLoaded?.(keywordSkills.map(s => ({
+      name: s.name,
+      triggerReason: 'keyword' as const,
+    })));
+    result = keywordSkills.map(s => s.prompt_content).join('\n\n');
+  }
+
+  // Cache tool routing from resolved skills
+  if (resolved.toolRouting && resolved.toolRouting.matches.length > 0) {
+    toolRoutingCache.set(plan.id, resolved.toolRouting);
+    console.log(`[Executor] Cached tool routing for plan ${plan.id}:`,
+      resolved.toolRouting.matches.map(m => `${m.skillName} → ${m.toolName} (${m.forceMode})`));
+  }
+
+  keywordSkillCache.set(plan.id, result);
+  return result;
 }
 
 async function resolveCategorySkills(plan: AgentPlan, taskDescription: string, callbacks?: ExecutorCallbacks): Promise<string> {
@@ -97,14 +158,47 @@ const TOOL_REGISTRY: Record<ExecutorToolType, { explicitTypes: string[]; keyword
 };
 
 /**
- * Detect which tool (if any) should be used for this task
- * Priority order: explicit type match > keyword scoring for "generate" type > fallback search
+ * Map skill tool_name to executor tool type
  */
-function detectToolForTask(task: AgentTask): ExecutorToolType | null {
+function mapSkillToolToExecutorTool(toolName: string): ExecutorToolType | null {
+  const mapping: Record<string, ExecutorToolType> = {
+    'web_search': 'web_search',
+    'document': 'doc_gen', 'document_gen': 'doc_gen', 'doc_gen': 'doc_gen',
+    'image': 'image_gen', 'image_gen': 'image_gen',
+    'chart': 'chart_gen', 'chart_gen': 'chart_gen',
+    'spreadsheet': 'xlsx_gen', 'xlsx_gen': 'xlsx_gen',
+    'presentation': 'pptx_gen', 'pptx_gen': 'pptx_gen',
+    'podcast': 'podcast_gen', 'podcast_gen': 'podcast_gen',
+    'diagram': 'diagram_gen', 'diagram_gen': 'diagram_gen',
+  };
+  return mapping[toolName.toLowerCase()] || null;
+}
+
+/**
+ * Detect which tool (if any) should be used for this task
+ * Priority order: skill routing > explicit type match > keyword scoring for "generate" type > fallback search
+ */
+function detectToolForTask(task: AgentTask, planId?: string): ExecutorToolType | null {
   const typeLC = task.type.toLowerCase();
   const combinedText = `${task.target.toLowerCase()} ${task.description.toLowerCase()}`;
 
-  // 1. Explicit type match (highest priority)
+  // 0. Skill-based tool routing (highest priority)
+  if (planId && toolRoutingCache.has(planId)) {
+    const routing = toolRoutingCache.get(planId)!;
+    for (const match of routing.matches) {
+      const mappedTool = mapSkillToolToExecutorTool(match.toolName);
+      if (mappedTool && (match.forceMode === 'required' || match.forceMode === 'preferred')) {
+        // Check if this task relates to the routed tool's domain
+        const toolKeywords = TOOL_REGISTRY[mappedTool]?.keywords || [];
+        if (toolKeywords.some(kw => combinedText.includes(kw))) {
+          console.log(`[Executor] Skill routing override: ${match.skillName} → ${mappedTool} (${match.forceMode})`);
+          return mappedTool;
+        }
+      }
+    }
+  }
+
+  // 1. Explicit type match
   for (const [tool, config] of Object.entries(TOOL_REGISTRY)) {
     if (config.explicitTypes.includes(typeLC)) {
       return tool as ExecutorToolType;
@@ -282,7 +376,7 @@ async function performTaskExecution(
   const isRetryWithFallback = task.retry_count && task.retry_count > 0 &&
     (task.retry_strategy === 'fallback_ascii_diagram' || task.retry_strategy === 'fallback_text_description');
 
-  const toolType = isRetryWithFallback ? null : detectToolForTask(task);
+  const toolType = isRetryWithFallback ? null : detectToolForTask(task, plan.id);
 
   if (toolType) {
     return executeToolForTask(task, plan, modelConfig, toolType, callbacks);
