@@ -378,7 +378,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
     }
-  }, [messages, streamingState.currentContent, isScrolledUp, streamingState.isStreaming]);
+  }, [messages, streamingState.currentContent, isScrolledUp, streamingState.isStreaming, streamingState.planApprovalEvent, streamingState.preflightEvent]);
 
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = messagesContainerRef.current;

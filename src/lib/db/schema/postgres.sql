@@ -411,7 +411,7 @@ CREATE TABLE IF NOT EXISTS task_plans (
   category_slug TEXT,
   title TEXT,
   tasks_json TEXT NOT NULL,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled', 'failed')),
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled', 'failed', 'stopped', 'paused')),
   total_tasks INTEGER DEFAULT 0,
   completed_tasks INTEGER DEFAULT 0,
   failed_tasks INTEGER DEFAULT 0,

@@ -594,6 +594,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
       case 'hitl_plan_approval':
         // Autonomous mode — plan approval needed before execution
+        console.log('[HITL] Plan approval event received:', event.data?.planId, 'tasks:', event.data?.tasks?.length);
         setState(prev => ({
           ...prev,
           planApprovalEvent: event.data,

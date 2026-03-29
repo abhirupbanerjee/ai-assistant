@@ -260,6 +260,17 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // Migration: Add original_request column to task_plans for keyword skill resolution
   await sql`ALTER TABLE task_plans ADD COLUMN IF NOT EXISTS original_request TEXT`.execute(database);
 
+  // Migration: Update task_plans status check constraint to include 'stopped' and 'paused'
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE task_plans DROP CONSTRAINT IF EXISTS task_plans_status_check;
+      ALTER TABLE task_plans ADD CONSTRAINT task_plans_status_check
+        CHECK (status IN ('active', 'completed', 'cancelled', 'failed', 'stopped', 'paused'));
+    EXCEPTION WHEN others THEN NULL;
+    END $$
+  `.execute(database);
+  console.log('[Kysely] Updated task_plans status constraint for stopped/paused states');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy
