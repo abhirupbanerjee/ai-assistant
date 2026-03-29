@@ -756,11 +756,17 @@ async function executeGenericTool(
 
   // Extract URL from task target (covers all URL-based tools)
   const urlMatch = task.target.match(/https?:\/\/[^\s,)]+/);
-  let url = urlMatch ? urlMatch[0] : task.target.trim();
+  let url: string;
 
-  // Normalize bare domains — prepend https:// if no protocol
-  if (!url.includes('://')) {
-    url = `https://${url}`;
+  if (urlMatch) {
+    url = urlMatch[0];
+  } else {
+    // Extract domain from target — first token only, strip description text
+    // e.g. "gea.abhirup.app - SSL/TLS Configuration" → "gea.abhirup.app"
+    url = task.target.trim().split(/[\s,]+/)[0];
+    if (!url.includes('://')) {
+      url = `https://${url}`;
+    }
   }
 
   // Build args — URL-based tools get { url }, tool-specific enrichment

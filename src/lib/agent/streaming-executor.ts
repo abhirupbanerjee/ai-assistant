@@ -10,7 +10,9 @@ import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
 import { getAgentModelConfigs } from '../db/compat/agent-config';
+import { getSetting } from '../db/compat/config';
 import { generatePlanIntro, generateIncrementalSummary, generateConclusion, regenerateAccumulatedContent } from './summarizer';
+import { createPlanApprovalResolver } from '../streaming/plan-approval-resolver';
 
 /**
  * Result of autonomous execution including collected artifacts
@@ -56,6 +58,11 @@ export async function executeAutonomousWithStreaming(
     summarizer: modelConfigs.summarizer,
   };
 
+  // Load HITL plan approval settings
+  const hitlEnabled = (await getSetting('agent_hitl_enabled', 'true')) === 'true';
+  const hitlMinTasks = parseInt(await getSetting('agent_hitl_min_tasks', '5'), 10);
+  const hitlTimeoutMs = parseInt(await getSetting('agent_hitl_timeout_seconds', '300'), 10) * 1000;
+
   // Collect artifacts during execution for persistence
   const collectedDocuments: GeneratedDocumentInfo[] = [];
   const collectedImages: GeneratedImageInfo[] = [];
@@ -73,6 +80,9 @@ export async function executeAutonomousWithStreaming(
         categorySlug: planConfig.categorySlug,
         budget: planConfig.budget,
         modelConfig,
+        hitlEnabled,
+        hitlMinTasks,
+        hitlTimeoutMs,
       },
       {
         // Planning phase callbacks - user-friendly progress messages
@@ -99,6 +109,32 @@ export async function executeAutonomousWithStreaming(
             content: `Ready to execute ${taskCount} tasks. You can pause, stop, or skip tasks if needed.`,
           });
         },
+
+        onPlanApprovalNeeded: hitlEnabled ? async (plan: AgentPlan) => {
+          sendEvent({
+            type: 'hitl_plan_approval',
+            data: {
+              planId: plan.id,
+              title: plan.title,
+              tasks: plan.tasks.map(t => ({
+                id: t.id,
+                type: t.type,
+                target: t.target,
+                description: t.description,
+                tool_name: t.tool_name,
+                dependencies: t.dependencies,
+              })),
+              timeoutMs: hitlTimeoutMs,
+            },
+          });
+          sendEvent({
+            type: 'status',
+            phase: 'awaiting_approval',
+            content: 'Waiting for plan approval...',
+          });
+          const result = await createPlanApprovalResolver(plan.id, hitlTimeoutMs);
+          return result ?? { approved: false }; // Timeout = auto-reject
+        } : undefined,
 
         onSkillsLoaded: (skills) => {
           sendEvent({

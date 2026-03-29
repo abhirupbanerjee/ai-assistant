@@ -76,6 +76,7 @@ const PHASE_MESSAGES: Record<StreamPhase, string> = {
   agent_executing: 'Executing tasks...',
   agent_checking: 'Checking task quality...',
   agent_summarizing: 'Generating summary...',
+  awaiting_approval: 'Waiting for plan approval...',
   complete: 'Complete',
 };
 

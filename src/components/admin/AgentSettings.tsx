@@ -28,6 +28,9 @@ interface AgentSettings {
   plannerSystemPrompt: string;
   executorSystemPrompt: string;
   checkerSystemPrompt: string;
+  hitlEnabled: boolean;
+  hitlMinTasks: number;
+  hitlTimeoutSeconds: number;
   streamingKeepaliveInterval: number;
   streamingMaxDuration: number;
   streamingToolTimeout: number;
@@ -182,6 +185,9 @@ export default function AgentSettingsTab() {
         plannerSystemPrompt: data.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
         executorSystemPrompt: data.executorSystemPrompt ?? DEFAULT_EXECUTOR_PROMPT,
         checkerSystemPrompt: data.checkerSystemPrompt ?? DEFAULT_CHECKER_PROMPT,
+        hitlEnabled: data.hitlEnabled ?? true,
+        hitlMinTasks: data.hitlMinTasks ?? 5,
+        hitlTimeoutSeconds: data.hitlTimeoutSeconds ?? 300,
         streamingKeepaliveInterval: data.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: data.streamingMaxDuration ?? 300,
         streamingToolTimeout: data.streamingToolTimeout ?? 60,
@@ -240,6 +246,9 @@ export default function AgentSettingsTab() {
         plannerSystemPrompt: settings.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
         executorSystemPrompt: settings.executorSystemPrompt ?? DEFAULT_EXECUTOR_PROMPT,
         checkerSystemPrompt: settings.checkerSystemPrompt ?? DEFAULT_CHECKER_PROMPT,
+        hitlEnabled: settings.hitlEnabled ?? true,
+        hitlMinTasks: settings.hitlMinTasks ?? 5,
+        hitlTimeoutSeconds: settings.hitlTimeoutSeconds ?? 300,
         streamingKeepaliveInterval: settings.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: settings.streamingMaxDuration ?? 300,
         streamingToolTimeout: settings.streamingToolTimeout ?? 60,
@@ -349,6 +358,65 @@ export default function AgentSettingsTab() {
               {!editedSettings.autonomousModeEnabled && (
                 <p className="text-xs text-amber-600 mt-2">Autonomous mode is currently disabled. Users will see the toggle greyed out with an admin notice.</p>
               )}
+            </div>
+          </div>
+
+          {/* Plan Approval (HITL) */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <h3 className="font-medium text-gray-900">Plan Approval (HITL)</h3>
+              <p className="text-sm text-gray-500">Require human approval before executing autonomous plans</p>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Require plan approval before execution</label>
+                  <p className="text-xs text-gray-500 mt-0.5">When enabled, users must approve the task plan before execution begins</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={editedSettings.hitlEnabled}
+                  onClick={() => updateSetting('hitlEnabled', !editedSettings.hitlEnabled)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+                    editedSettings.hitlEnabled ? 'bg-emerald-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      editedSettings.hitlEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Minimum tasks for approval</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={editedSettings.hitlMinTasks}
+                    onChange={(e) => updateSetting('hitlMinTasks', parseInt(e.target.value) || 1)}
+                    disabled={!editedSettings.hitlEnabled}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Plans with fewer tasks skip approval (1-50)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Approval timeout (seconds)</label>
+                  <input
+                    type="number"
+                    min={30}
+                    max={600}
+                    value={editedSettings.hitlTimeoutSeconds}
+                    onChange={(e) => updateSetting('hitlTimeoutSeconds', parseInt(e.target.value) || 300)}
+                    disabled={!editedSettings.hitlEnabled}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Plans auto-reject if no response within timeout (30-600)</p>
+                </div>
+              </div>
             </div>
           </div>
 

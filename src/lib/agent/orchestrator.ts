@@ -30,6 +30,8 @@ import {
   incrementBudgetUsage,
   getPlanControlStatus,
   createAutonomousPlan,
+  stopPlan,
+  replacePlanTasks,
 } from '../db/compat/task-plans';
 import { getThreadById } from '../db/compat/threads';
 
@@ -56,6 +58,8 @@ export interface OrchestratorCallbacks {
   onError?: (error: string) => void;
   onSummarizing?: () => void; // When generating final summary
   onPlanCompleted?: (plan: AgentPlan, summary: string) => void | Promise<void>;
+  // HITL callbacks
+  onPlanApprovalNeeded?: (plan: AgentPlan) => Promise<{ approved: boolean; feedback?: string }>;
   // Control callbacks
   onPlanPaused?: (plan: AgentPlan, reason?: string) => void;
   onPlanStopped?: (plan: AgentPlan, reason?: string) => void;
@@ -551,6 +555,9 @@ export async function createAndExecuteAutonomousPlan(
     categorySlug?: string;
     budget?: Record<string, unknown>;
     modelConfig: AgentModelConfig;
+    hitlEnabled?: boolean;
+    hitlMinTasks?: number;
+    hitlTimeoutMs?: number;
   },
   callbacks?: OrchestratorCallbacks
 ): Promise<OrchestratorResult> {
@@ -687,6 +694,54 @@ export async function createAndExecuteAutonomousPlan(
 
     // Phase 1c: Plan ready - notify user with task count
     callbacks?.onPlanReady?.(planResult.tasks.length);
+
+    // Phase 1d: HITL plan approval (conditional)
+    const hitlMinTasks = planConfig.hitlMinTasks ?? 5;
+    const shouldRequestApproval = callbacks?.onPlanApprovalNeeded
+      && planConfig.hitlEnabled !== false
+      && planResult.tasks.length >= hitlMinTasks;
+
+    if (shouldRequestApproval) {
+      let approvalAttempts = 0;
+      const MAX_REPLAN_ITERATIONS = 3;
+
+      while (approvalAttempts < MAX_REPLAN_ITERATIONS) {
+        approvalAttempts++;
+        const plan = await getTaskPlan(planId);
+        if (!plan) break;
+
+        const approval = await callbacks.onPlanApprovalNeeded!(plan as unknown as AgentPlan);
+
+        if (!approval.approved) {
+          await stopPlan(planId, 'User rejected plan');
+          callbacks?.onPlanStopped?.(plan as unknown as AgentPlan, 'User rejected plan');
+          return {
+            success: false,
+            error: 'Plan cancelled by user.',
+            plan_id: planId,
+          };
+        }
+
+        if (!approval.feedback) break; // Approved without feedback → proceed
+
+        // Re-plan with user feedback
+        console.log(`[Orchestrator] Re-planning (attempt ${approvalAttempts}) with feedback: ${approval.feedback}`);
+        const revisedResult = await createPlan(
+          userRequest,
+          { ...context, skillCatalog, resolvedSkillContext, availableTools, planningFeedback: approval.feedback },
+          planConfig.modelConfig
+        );
+
+        if (revisedResult.error || revisedResult.tasks.length === 0) {
+          console.warn('[Orchestrator] Re-plan failed, proceeding with current plan');
+          break;
+        }
+
+        await replacePlanTasks(planId, revisedResult.tasks, revisedResult.title);
+        callbacks?.onPlanReady?.(revisedResult.tasks.length);
+        // Loop → show revised plan for approval
+      }
+    }
 
     // Phase 2 & 3: Execute plan
     return await executeAutonomousPlan(planId, planConfig.modelConfig, callbacks);

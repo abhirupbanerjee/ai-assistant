@@ -251,6 +251,7 @@ Key principles:
 - Reference dependent task results when relevant
 - Be concise but thorough
 - If information is missing, explain what's needed
+- Do NOT include conversational follow-ups like "If you want, I can...", "Would you like me to...", "Let me know if...", or similar offers. Your output will be consolidated with other task results — follow-up questions break the final response flow.
 
 Output your result directly without JSON formatting.`;
 

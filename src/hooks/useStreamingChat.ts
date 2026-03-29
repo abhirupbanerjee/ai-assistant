@@ -27,6 +27,7 @@ import type {
   ChatPreferences,
 } from '@/types';
 import type { PreflightClarificationEvent, HitlClarificationEvent } from '@/types/compliance';
+import type { PlanApprovalEvent } from '@/types/stream';
 
 // ============ Types ============
 
@@ -102,6 +103,8 @@ export interface StreamingState {
   preflightEvent: PreflightClarificationEvent | null;
   /** HITL post-response clarification event */
   hitlEvent: HitlClarificationEvent | null;
+  /** HITL plan approval event (autonomous mode) */
+  planApprovalEvent: PlanApprovalEvent | null;
 }
 
 export interface UseStreamingChatOptions {
@@ -198,6 +201,7 @@ const initialState: StreamingState = {
   activePlanId: null,
   preflightEvent: null,
   hitlEvent: null,
+  planApprovalEvent: null,
 };
 
 // ============ Hook ============
@@ -242,6 +246,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           // Clear preflight card when phase moves past clarifying_question
           ...(prev.preflightEvent && event.phase !== 'clarifying_question'
             ? { preflightEvent: null }
+            : {}),
+          // Clear plan approval card when phase moves past awaiting_approval
+          ...(prev.planApprovalEvent && event.phase !== 'awaiting_approval'
+            ? { planApprovalEvent: null }
             : {}),
           processingDetails: {
             ...prev.processingDetails,
@@ -584,6 +592,14 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
+      case 'hitl_plan_approval':
+        // Autonomous mode — plan approval needed before execution
+        setState(prev => ({
+          ...prev,
+          planApprovalEvent: event.data,
+        }));
+        break;
+
       case 'operation_log':
         setState(prev => ({
           ...prev,
@@ -678,6 +694,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           autonomousPlan: null,
           preflightEvent: null,
           hitlEvent: null,
+          planApprovalEvent: null,
           processingDetails: {
             ...prev.processingDetails,
             phase: 'complete',
@@ -695,6 +712,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           errorRecoverable: event.recoverable,
           preflightEvent: null,
           hitlEvent: null,
+          planApprovalEvent: null,
         }));
         onError?.(event.code, event.message, event.recoverable);
         break;
@@ -846,6 +864,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       autonomousPlan: null,
       preflightEvent: null,
       hitlEvent: null,
+      planApprovalEvent: null,
       processingDetails: {
         ...prev.processingDetails,
         phase: 'complete',

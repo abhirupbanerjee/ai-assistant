@@ -33,6 +33,7 @@ export async function createPlan(
       toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
     };
     availableTools?: { name: string; description: string }[];
+    planningFeedback?: string;
   },
   modelConfig: AgentModelConfig
 ): Promise<{ tasks: AgentTask[]; title: string; error?: string }> {
@@ -226,6 +227,7 @@ function buildPlannerPrompt(
       toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
     };
     availableTools?: { name: string; description: string }[];
+    planningFeedback?: string;
   }
 ): string {
   let prompt = `Break down this user request into a structured task plan.
@@ -679,6 +681,10 @@ Correct response (extract from context → per-concern analyze → synthesize �
 }
 
 Respond with JSON only.`;
+
+  if (context.planningFeedback) {
+    prompt += `\n\n**User Feedback on Previous Plan:**\n${context.planningFeedback}\nRevise the plan to address this feedback while keeping the original request intent.\n`;
+  }
 
   return prompt;
 }

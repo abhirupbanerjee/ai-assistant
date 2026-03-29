@@ -25,6 +25,7 @@ export type StreamPhase =
   | 'agent_executing'  // Agent mode: Executing tasks
   | 'agent_checking'   // Agent mode: Quality checking task
   | 'agent_summarizing' // Agent mode: Generating summary
+  | 'awaiting_approval' // Agent mode: Waiting for user plan approval
   | 'complete';   // All done
 
 // ============ Skill & Tool Tracking ============
@@ -91,6 +92,23 @@ export interface AgentPlanStats {
   web_searches?: number;
 }
 
+/**
+ * Plan approval HITL event for autonomous mode
+ */
+export interface PlanApprovalEvent {
+  planId: string;
+  title: string;
+  tasks: Array<{
+    id: number;
+    type: string;
+    target: string;
+    description: string;
+    tool_name?: string;
+    dependencies: number[];
+  }>;
+  timeoutMs: number;
+}
+
 // ============ Stream Events ============
 
 /**
@@ -144,6 +162,9 @@ export type StreamEvent =
   | { type: 'agent_task_summary'; task_id: number; summary: string }
   | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }
   | { type: 'agent_error'; error: string }
+
+  // Autonomous mode HITL — plan approval
+  | { type: 'hitl_plan_approval'; data: PlanApprovalEvent }
 
   // Autonomous mode control events
   | { type: 'agent_paused'; plan_id: string; completed_tasks: number; total_tasks: number; message: string; reason?: string }

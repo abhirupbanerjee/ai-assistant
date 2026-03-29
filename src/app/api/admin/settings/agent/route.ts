@@ -43,6 +43,10 @@ export async function GET() {
       plannerSystemPrompt,
       executorSystemPrompt,
       checkerSystemPrompt,
+      // HITL plan approval
+      hitlEnabled: (await getSetting('agent_hitl_enabled', 'true')) === 'true',
+      hitlMinTasks: parseInt(await getSetting('agent_hitl_min_tasks', '5'), 10),
+      hitlTimeoutSeconds: parseInt(await getSetting('agent_hitl_timeout_seconds', '300'), 10),
       // Streaming configuration
       streamingKeepaliveInterval: streamingConfig.keepalive_interval_seconds,
       streamingMaxDuration: streamingConfig.max_stream_duration_seconds,
@@ -83,6 +87,10 @@ export async function POST(request: NextRequest) {
       plannerSystemPrompt,
       executorSystemPrompt,
       checkerSystemPrompt,
+      // HITL plan approval
+      hitlEnabled,
+      hitlMinTasks,
+      hitlTimeoutSeconds,
       // Streaming configuration
       streamingKeepaliveInterval,
       streamingMaxDuration,
@@ -219,6 +227,17 @@ export async function POST(request: NextRequest) {
       await setAutonomousModeEnabled(autonomousModeEnabled, user.email);
     }
 
+    // Save HITL plan approval settings (if provided)
+    if (typeof hitlEnabled === 'boolean') {
+      await setSetting('agent_hitl_enabled', String(hitlEnabled), user.email);
+    }
+    if (typeof hitlMinTasks === 'number' && hitlMinTasks >= 1 && hitlMinTasks <= 50) {
+      await setSetting('agent_hitl_min_tasks', String(hitlMinTasks), user.email);
+    }
+    if (typeof hitlTimeoutSeconds === 'number' && hitlTimeoutSeconds >= 30 && hitlTimeoutSeconds <= 600) {
+      await setSetting('agent_hitl_timeout_seconds', String(hitlTimeoutSeconds), user.email);
+    }
+
     // Save streaming configuration (if provided)
     if (hasStreamingConfig) {
       const currentStreaming = await getStreamingConfig();
@@ -258,6 +277,9 @@ export async function POST(request: NextRequest) {
         plannerSystemPrompt: finalPlannerPrompt,
         executorSystemPrompt: finalExecutorPrompt,
         checkerSystemPrompt: finalCheckerPrompt,
+        hitlEnabled: (await getSetting('agent_hitl_enabled', 'true')) === 'true',
+        hitlMinTasks: parseInt(await getSetting('agent_hitl_min_tasks', '5'), 10),
+        hitlTimeoutSeconds: parseInt(await getSetting('agent_hitl_timeout_seconds', '300'), 10),
         streamingKeepaliveInterval: finalStreamingConfig.keepalive_interval_seconds,
         streamingMaxDuration: finalStreamingConfig.max_stream_duration_seconds,
         streamingToolTimeout: finalStreamingConfig.tool_timeout_seconds,

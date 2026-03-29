@@ -398,6 +398,10 @@ export type SettingKey =
   | 'agent_executor_system_prompt'
   | 'agent_checker_system_prompt'
   | 'agent_autonomous_enabled'
+  // HITL plan approval
+  | 'agent_hitl_enabled'
+  | 'agent_hitl_min_tasks'
+  | 'agent_hitl_timeout_seconds'
   // Streaming configuration
   | 'streaming_keepalive_interval'
   | 'streaming_max_duration'

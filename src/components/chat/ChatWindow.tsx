@@ -12,6 +12,7 @@ import ProcessingIndicator from './ProcessingIndicator';
 
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
 import HitlClarificationCard from './HitlClarificationCard';
+import PlanApprovalCard from './PlanApprovalCard';
 import { useScrollHide } from '@/hooks/useScrollHide';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 
@@ -603,6 +604,53 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             onStop={() => stopPlan()}
             autonomousPlan={streamingState.autonomousPlan}
             onSkipTask={(taskId) => skipTask(taskId)}
+          />
+        )}
+
+        {/* Plan Approval Card (autonomous mode HITL) */}
+        {streamingState.planApprovalEvent && (
+          <PlanApprovalCard
+            event={streamingState.planApprovalEvent}
+            onApprove={async (feedback) => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+              try {
+                const res = await fetch(`/api/autonomous/${streamingState.planApprovalEvent!.planId}/approve`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ approved: true, feedback }),
+                  signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
+              } catch (e) {
+                clearTimeout(timeoutId);
+                console.error('[PlanApproval] Approve error:', e);
+                setError(e instanceof Error && e.name === 'AbortError'
+                  ? 'Approval submission timed out.'
+                  : 'Failed to submit plan approval.');
+              }
+            }}
+            onReject={async () => {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+              try {
+                const res = await fetch(`/api/autonomous/${streamingState.planApprovalEvent!.planId}/approve`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ approved: false }),
+                  signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
+              } catch (e) {
+                clearTimeout(timeoutId);
+                console.error('[PlanApproval] Reject error:', e);
+                setError(e instanceof Error && e.name === 'AbortError'
+                  ? 'Rejection submission timed out.'
+                  : 'Failed to submit plan rejection.');
+              }
+            }}
           />
         )}
 

@@ -803,6 +803,50 @@ export async function skipTask(planId: string, taskId: number, reason?: string):
 }
 
 /**
+ * Replace all tasks in a plan with new tasks (used for HITL re-planning with feedback)
+ */
+export async function replacePlanTasks(
+  planId: string,
+  newTasks: Array<{
+    id: number;
+    description: string;
+    type: string;
+    target: string;
+    dependencies?: number[];
+    expected_output?: string;
+    execution_hint?: string;
+    skill_ids?: number[];
+    tool_name?: string;
+  }>,
+  newTitle?: string
+): Promise<void> {
+  const fullTasks = newTasks.map(t => ({
+    ...t,
+    status: 'pending',
+    state_history: [],
+    retry_count: 0,
+    priority: t.id, // Use task order as priority
+    dependencies: t.dependencies || [],
+  }));
+
+  const db = await getDb();
+  await db
+    .updateTable('task_plans')
+    .set({
+      tasks_json: JSON.stringify({ tasks: fullTasks }),
+      total_tasks: fullTasks.length,
+      completed_tasks: 0,
+      failed_tasks: 0,
+      ...(newTitle ? { title: newTitle } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .where('id', '=', planId)
+    .execute();
+
+  console.log(`[ReplacePlanTasks] Plan ${planId} updated with ${fullTasks.length} tasks${newTitle ? ` (title: ${newTitle})` : ''}`);
+}
+
+/**
  * Check if a plan is paused
  */
 export async function isPlanPaused(planId: string): Promise<boolean> {

@@ -86,6 +86,8 @@ export default function MessageInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      // On mobile, Enter always inserts a new line (submit via button only)
+      if (isMobile) return;
       // Shift+Enter or Ctrl/Cmd+Enter = new line
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
         return; // Allow default new line behavior
@@ -223,9 +225,9 @@ export default function MessageInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder="Ask a question..."
-          disabled={disabled || isUploading}
+          disabled={isUploading}
           rows={isMobile ? 2 : 1}
-          enterKeyHint="send"
+          enterKeyHint={isMobile ? 'enter' : 'send'}
           className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${
             isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[150px]'
           }`}
@@ -235,7 +237,7 @@ export default function MessageInput({
         <div className="flex items-center justify-between mt-2">
           {/* Left actions: Voice + Plus menu */}
           <div className="flex items-center gap-1">
-            <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
+            <VoiceInput onTranscript={handleVoiceTranscript} />
             <PlusMenu
               threadId={threadId}
               currentUploads={currentUploads}
@@ -250,12 +252,11 @@ export default function MessageInput({
               onLanguageChange={handleLanguageChange}
               selectedTone={preferences.responseTone}
               onToneChange={handleToneChange}
-              disabled={disabled}
             />
           </div>
 
           {/* Center: Model selector */}
-          <ModelSelector threadId={threadId} disabled={disabled} />
+          <ModelSelector threadId={threadId} />
 
           {/* Right action: Send */}
           <button
