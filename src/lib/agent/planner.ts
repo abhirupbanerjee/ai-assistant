@@ -90,6 +90,7 @@ export async function createPlan(
       retry_count: 0,
       execution_hint: t.execution_hint,
       skill_ids: t.skill_ids,
+      tool_name: t.tool_name,
     }));
 
     // Self-reflection: check plan quality for complex plans (≥4 tasks)
@@ -111,6 +112,7 @@ export async function createPlan(
           retry_count: 0,
           execution_hint: t.execution_hint,
           skill_ids: t.skill_ids,
+          tool_name: t.tool_name,
         }));
         console.log(`[Planner] Reflection refined plan: ${tasks.length} → ${finalTasks.length} tasks`);
       }

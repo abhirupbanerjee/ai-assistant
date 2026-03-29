@@ -238,6 +238,7 @@ export interface PlannerResponse {
     dependencies?: number[];
     execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
     skill_ids?: number[];
+    tool_name?: string;
   }>;
   context?: Record<string, unknown>;
 }
