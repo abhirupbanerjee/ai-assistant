@@ -590,6 +590,15 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
+      case 'stream_reset':
+        // Discard partial streamed content from a failed model before fallback retries
+        contentBufferRef.current = '';
+        setState(prev => ({
+          ...prev,
+          currentContent: '',
+        }));
+        break;
+
       case 'model_switch': {
         // Handle LLM model switch (fallback or capability requirement)
         onModelSwitch?.(event.originalModel, event.newModel, event.reason, event.message);

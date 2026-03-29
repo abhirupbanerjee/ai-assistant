@@ -12,6 +12,7 @@
 
 import { getActiveModels } from '../db/compat/enabled-models';
 import { getApiKey } from '../provider-helpers';
+import { clearLiteLLMCache } from '../litellm-validator';
 
 // Provider ID → LiteLLM model prefix and API key env var
 const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
@@ -235,6 +236,9 @@ export async function syncAllModelsToLiteLLM(): Promise<{ synced: number; failed
     if (success) synced++;
     else failed++;
   }
+
+  // Invalidate the parsed-models cache so capability checks pick up newly synced models
+  clearLiteLLMCache();
 
   return { synced, failed };
 }

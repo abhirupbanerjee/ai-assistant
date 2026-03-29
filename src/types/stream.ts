@@ -157,6 +157,7 @@ export type StreamEvent =
   | { type: 'hitl_preflight'; data: PreflightClarificationEvent }
 
   // LLM fallback events
+  | { type: 'stream_reset' }
   | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string }
 
   // Backend operation log (RAG steps, LLM switches, memory loading) for Operations UI section

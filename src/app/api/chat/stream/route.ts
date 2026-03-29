@@ -568,6 +568,8 @@ export async function POST(request: NextRequest) {
                   enableClarification // Inject request_clarification tool when preflight skill active
                 ),
                 onSwitch: (event: ModelSwitchEvent) => {
+                  // Signal client to discard any partial streamed content from the failed model
+                  send({ type: 'stream_reset' });
                   send({
                     type: 'model_switch',
                     originalModel: event.originalModel,
