@@ -622,9 +622,33 @@ export async function createAndExecuteAutonomousPlan(
       console.warn('[Orchestrator] Failed to load skill catalog for planner:', err);
     }
 
+    // Fetch enabled tools dynamically for planner awareness
+    let availableTools: { name: string; description: string }[] = [];
+    try {
+      const { getToolDefinitions } = await import('../tools');
+      const categoryIds = planConfig.categorySlug
+        ? await (async () => {
+            const { getCategoryBySlug } = await import('../db/compat/categories');
+            const cat = await getCategoryBySlug(planConfig.categorySlug!);
+            return cat ? [cat.id] : [];
+          })()
+        : [];
+      const toolDefs = await getToolDefinitions(categoryIds);
+      availableTools = toolDefs.map(t => ({
+        name: t.function.name,
+        description: t.function.description || '',
+      }));
+      if (availableTools.length > 0) {
+        console.log(`[Orchestrator] ${availableTools.length} tools available for planner:`,
+          availableTools.map(t => t.name));
+      }
+    } catch (err) {
+      console.warn('[Orchestrator] Failed to fetch tool definitions for planner:', err);
+    }
+
     // Phase 1b: Creating task plan
     callbacks?.onPlanning?.();
-    const planResult = await createPlan(userRequest, { ...context, skillCatalog, resolvedSkillContext }, planConfig.modelConfig);
+    const planResult = await createPlan(userRequest, { ...context, skillCatalog, resolvedSkillContext, availableTools }, planConfig.modelConfig);
 
     if (planResult.error || planResult.tasks.length === 0) {
       const error = planResult.error || 'Failed to create plan';
@@ -650,6 +674,7 @@ export async function createAndExecuteAutonomousPlan(
         expected_output: t.expected_output,
         execution_hint: t.execution_hint,
         skill_ids: t.skill_ids,
+        tool_name: t.tool_name,
         retry_count: 0,
       })),
       {

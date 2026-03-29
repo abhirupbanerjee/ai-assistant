@@ -27,6 +27,7 @@ import { diagramGenTool } from '../tools/diagram-gen';
 import { runWithContextAsync } from '../request-context';
 import { resolveSkills } from '../skills/resolver';
 import { getCategoryBySlug } from '../db/compat/categories';
+import { AVAILABLE_TOOLS, isToolEnabled } from '../tools';
 
 // ============ Skills Resolution ============
 
@@ -180,13 +181,18 @@ function mapSkillToolToExecutorTool(toolName: string): ExecutorToolType | null {
 
 /**
  * Detect which tool (if any) should be used for this task
- * Priority order: skill routing > explicit type match > keyword scoring for "generate" type > fallback search
+ * Priority order: planner tool_name > skill routing > explicit type match > keyword scoring > fallback search
  */
-function detectToolForTask(task: AgentTask, planId?: string): ExecutorToolType | null {
+function detectToolForTask(task: AgentTask, planId?: string): string | null {
+  // 0. Planner-specified tool_name (highest priority — planner already evaluated)
+  if (task.tool_name && AVAILABLE_TOOLS[task.tool_name]) {
+    return task.tool_name;
+  }
+
   const typeLC = task.type.toLowerCase();
   const combinedText = `${task.target.toLowerCase()} ${task.description.toLowerCase()}`;
 
-  // 0. Skill-based tool routing (highest priority)
+  // 1. Skill-based tool routing (cached from keyword skill resolution)
   if (planId && toolRoutingCache.has(planId)) {
     const routing = toolRoutingCache.get(planId)!;
     for (const match of routing.matches) {
@@ -446,13 +452,13 @@ async function executeToolForTask(
   task: AgentTask,
   plan: AgentPlan,
   modelConfig: AgentModelConfig,
-  toolType: ExecutorToolType,
+  toolType: string,
   callbacks?: ExecutorCallbacks
 ): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
   const startTime = Date.now();
 
-  // Get display name for the tool
-  const toolDisplayNames: Record<ExecutorToolType, string> = {
+  // Get display name for the tool (static map for built-in tools, dynamic for others)
+  const toolDisplayNames: Record<string, string> = {
     doc_gen: 'Document Generation',
     image_gen: 'Image Generation',
     web_search: 'Web Search',
@@ -463,7 +469,9 @@ async function executeToolForTask(
     diagram_gen: 'Diagram Generation',
   };
 
-  const displayName = toolDisplayNames[toolType];
+  const displayName = toolDisplayNames[toolType]
+    || AVAILABLE_TOOLS[toolType]?.displayName
+    || toolType;
   callbacks?.onToolStart?.(toolType, displayName);
 
   try {
@@ -496,7 +504,12 @@ async function executeToolForTask(
         result = await executeWebSearchTool(task, callbacks);
         break;
       default:
-        throw new Error(`Unknown tool type: ${toolType}`);
+        // Generic bridge — handles any AVAILABLE_TOOLS tool
+        if (AVAILABLE_TOOLS[toolType]) {
+          result = await executeGenericTool(task, toolType, callbacks);
+        } else {
+          throw new Error(`Unknown tool type: ${toolType}`);
+        }
     }
 
     const duration = Date.now() - startTime;
@@ -718,6 +731,41 @@ async function executeWebSearchTool(
   } catch {
     return result;
   }
+}
+
+/**
+ * Generic tool bridge — executes any tool from AVAILABLE_TOOLS registry.
+ * The planner already decided which tool to use; this just executes it.
+ * Extracts URL from task target for URL-based tools.
+ */
+async function executeGenericTool(
+  task: AgentTask,
+  toolName: string,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  const enabled = await isToolEnabled(toolName);
+  if (!enabled) {
+    return JSON.stringify({ success: false, errorCode: 'TOOL_DISABLED',
+      message: `Tool "${toolName}" is not enabled` });
+  }
+
+  const tool = AVAILABLE_TOOLS[toolName];
+  if (!tool) {
+    return `Tool "${toolName}" not found in registry`;
+  }
+
+  // Extract URL from task target (covers all URL-based tools)
+  const urlMatch = task.target.match(/https?:\/\/[^\s,)]+/);
+  const url = urlMatch ? urlMatch[0] : task.target;
+
+  // Build args — URL-based tools get { url }, tool-specific enrichment
+  const args: Record<string, unknown> = { url };
+  if (toolName === 'website_analysis') {
+    args.accessibilityAudit = true;
+  }
+
+  console.log(`[Executor] Generic tool bridge: ${toolName}(${url})`);
+  return await tool.execute(args);
 }
 
 /**

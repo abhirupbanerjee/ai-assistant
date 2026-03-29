@@ -253,14 +253,22 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'context_loaded':
-        setState(prev => ({
-          ...prev,
-          processingDetails: {
-            ...prev.processingDetails,
-            skills: event.skills,
-            toolsAvailable: event.toolsAvailable,
-          },
-        }));
+        setState(prev => {
+          const existing = prev.processingDetails.skills || [];
+          const newSkills = event.skills.filter(
+            s => !existing.some(e => e.name === s.name)
+          );
+          return {
+            ...prev,
+            processingDetails: {
+              ...prev.processingDetails,
+              skills: [...existing, ...newSkills],
+              toolsAvailable: event.toolsAvailable.length > 0
+                ? event.toolsAvailable
+                : prev.processingDetails.toolsAvailable,
+            },
+          };
+        });
         break;
 
       case 'tool_start': {

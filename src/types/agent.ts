@@ -105,6 +105,8 @@ export interface AgentTask {
   execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
   // Skill IDs tagged by planner (Phase 3 — skills gap fix)
   skill_ids?: number[];
+  // Tool name from planner — specifies which AVAILABLE_TOOLS tool to execute
+  tool_name?: string;
 }
 
 export interface AgentConfig {

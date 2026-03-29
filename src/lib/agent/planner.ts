@@ -32,6 +32,7 @@ export async function createPlan(
       matchedSkills: { id: number; name: string; prompt_summary: string }[];
       toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
     };
+    availableTools?: { name: string; description: string }[];
   },
   modelConfig: AgentModelConfig
 ): Promise<{ tasks: AgentTask[]; title: string; error?: string }> {
@@ -222,6 +223,7 @@ function buildPlannerPrompt(
       matchedSkills: { id: number; name: string; prompt_summary: string }[];
       toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
     };
+    availableTools?: { name: string; description: string }[];
   }
 ): string {
   let prompt = `Break down this user request into a structured task plan.
@@ -278,6 +280,16 @@ For each task, include a "skill_ids" array with the IDs of skills that should be
       prompt += `- Skill "${hint.skill_name}" routes to tool "${hint.tool_name}" (${hint.force_mode})\n`;
     }
     prompt += `\nWhen a skill routes to a specific tool, create tasks with matching types (e.g., "web_search" → "search" type task, "document" → "document" type task). For "required" force mode, you MUST include a task using that tool type.\n`;
+  }
+
+  // Inject available tools so planner can assign tool_name on tasks
+  if (context.availableTools?.length) {
+    prompt += `\n**Available Tools (set "tool_name" on tasks when applicable):**\n`;
+    for (const tool of context.availableTools) {
+      prompt += `- \`${tool.name}\`: ${tool.description}\n`;
+    }
+    prompt += `\nWhen a task directly maps to one of these tools, include "tool_name": "<name>" in the task JSON. The executor will call the tool automatically. Only set tool_name for tasks that need a specific tool — analytical tasks (analyze, search, compare, summarize) should NOT have tool_name.\n`;
+    prompt += `If a matched skill's prompt mentions specific tool names (e.g., "security_scan(url)"), create separate tasks for each tool with the corresponding tool_name.\n`;
   }
 
   prompt += `

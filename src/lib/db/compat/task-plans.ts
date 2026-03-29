@@ -373,7 +373,7 @@ export async function createAutonomousPlan(
   threadId: string,
   userId: string,
   title: string,
-  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; execution_hint?: string; retry_count?: number }[],
+  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; execution_hint?: string; skill_ids?: number[]; tool_name?: string; retry_count?: number }[],
   options: {
     categorySlug?: string;
     budget?: Record<string, unknown>;
@@ -395,6 +395,8 @@ export async function createAutonomousPlan(
     state_history: [],
     ...(t.expected_output ? { expected_output: t.expected_output } : {}),
     ...(t.execution_hint ? { execution_hint: t.execution_hint } : {}),
+    ...(t.skill_ids?.length ? { skill_ids: t.skill_ids } : {}),
+    ...(t.tool_name ? { tool_name: t.tool_name } : {}),
     retry_count: t.retry_count ?? 0,
   }));
 
