@@ -756,7 +756,12 @@ async function executeGenericTool(
 
   // Extract URL from task target (covers all URL-based tools)
   const urlMatch = task.target.match(/https?:\/\/[^\s,)]+/);
-  const url = urlMatch ? urlMatch[0] : task.target;
+  let url = urlMatch ? urlMatch[0] : task.target.trim();
+
+  // Normalize bare domains — prepend https:// if no protocol
+  if (!url.includes('://')) {
+    url = `https://${url}`;
+  }
 
   // Build args — URL-based tools get { url }, tool-specific enrichment
   const args: Record<string, unknown> = { url };

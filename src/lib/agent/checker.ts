@@ -24,9 +24,14 @@ const DEFAULT_CONFIDENCE_THRESHOLD = 80;
  * Detect which tool (if any) was used for this task
  * Same logic as executor.ts for consistency
  */
-type CheckerToolType = 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen' | 'xlsx_gen' | 'pptx_gen' | 'podcast_gen' | 'diagram_gen';
+type CheckerToolType = string;
 
 function detectToolForTask(task: AgentTask): CheckerToolType | null {
+  // Priority 0: Planner-specified tool_name (source of truth)
+  if (task.tool_name) {
+    return task.tool_name;
+  }
+
   const typeLC = task.type.toLowerCase();
   const combinedText = `${task.target.toLowerCase()} ${task.description.toLowerCase()}`;
 
@@ -223,13 +228,26 @@ function verifyToolOutput(
       return { status: 'needs_review', confidence_score: 0, notes: hasFailed ? 'Diagram generation failed' : 'No diagram output detected', tokens_used: 0 };
     }
 
-    default:
-      return {
-        status: 'needs_review',
-        confidence_score: 0,
-        notes: 'Unknown tool type',
-        tokens_used: 0,
-      };
+    default: {
+      // Generic tool verification — works for any AVAILABLE_TOOLS tool
+      const hasError = resultLC.includes('"success":false') ||
+        resultLC.includes('"success": false') ||
+        resultLC.includes('"errorcode"') ||
+        resultLC.includes('"error_code"');
+      const hasFailed = resultLC.includes('failed to') || resultLC.includes('could not');
+      const hasContent = result.length > 100;
+
+      if (hasContent && !hasError && !hasFailed) {
+        return { status: 'approved', confidence_score: 100,
+          notes: `Tool "${toolType}" executed successfully (${result.length} chars)`, tokens_used: 0 };
+      }
+      if (hasError || hasFailed) {
+        return { status: 'needs_review', confidence_score: 0,
+          notes: `Tool "${toolType}" returned error`, tokens_used: 0 };
+      }
+      return { status: 'needs_review', confidence_score: 0,
+        notes: `Tool "${toolType}" produced insufficient output`, tokens_used: 0 };
+    }
   }
 }
 
