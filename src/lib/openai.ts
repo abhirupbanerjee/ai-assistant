@@ -559,6 +559,8 @@ async function streamAnthropicCompletion(
     if (timeoutId) clearTimeout(timeoutId);
   }
 
+  console.log(`[Anthropic] Stream complete — stop_reason: ${stopReason}, tool_calls: ${toolCalls.length}, model: ${params.model}`);
+
   // Convert Anthropic tool_use blocks to OpenAI-compatible shape
   // so the existing tool execution loop in generateResponseWithTools() works unchanged.
   const openaiToolCalls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined =
@@ -719,6 +721,7 @@ export async function generateResponseWithTools(
 
   // Detect Claude models — bypass LiteLLM, use Anthropic SDK directly
   const useAnthropicDirect = isClaudeModel(effectiveModel);
+  console.log(`[Chat] ${useAnthropicDirect ? 'Using Anthropic SDK directly' : 'Using LiteLLM/OpenAI path'} for model: ${effectiveModel}`);
   const openai = useAnthropicDirect ? null : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
