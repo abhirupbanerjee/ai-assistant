@@ -6,7 +6,7 @@
  * - PostgreSQL: Uses Kysely query builder
  */
 
-import { getDb } from '../kysely';
+import { getDb, transaction } from '../kysely';
 import { nanoid } from 'nanoid';
 import { calculateStats } from '../utils';
 
@@ -461,22 +461,32 @@ export async function incrementBudgetUsage(
   planId: string,
   increment: { llm_calls?: number; tokens_used?: number; web_searches?: number }
 ): Promise<void> {
-  const current = await getBudgetUsage(planId);
-  const updated = {
-    llm_calls: current.llm_calls + (increment.llm_calls || 0),
-    tokens_used: current.tokens_used + (increment.tokens_used || 0),
-    web_searches: current.web_searches + (increment.web_searches || 0),
-  };
+  await transaction(async (trx) => {
+    const row = await trx
+      .selectFrom('task_plans')
+      .select('budget_used_json')
+      .where('id', '=', planId)
+      .forUpdate()
+      .executeTakeFirst();
 
-  const db = await getDb();
-  await db
-    .updateTable('task_plans')
-    .set({
-      budget_used_json: JSON.stringify(updated),
-      updated_at: new Date().toISOString(),
-    })
-    .where('id', '=', planId)
-    .execute();
+    const current = row?.budget_used_json
+      ? JSON.parse(row.budget_used_json)
+      : { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+    const updated = {
+      llm_calls: current.llm_calls + (increment.llm_calls || 0),
+      tokens_used: current.tokens_used + (increment.tokens_used || 0),
+      web_searches: current.web_searches + (increment.web_searches || 0),
+    };
+
+    await trx
+      .updateTable('task_plans')
+      .set({
+        budget_used_json: JSON.stringify(updated),
+        updated_at: new Date().toISOString(),
+      })
+      .where('id', '=', planId)
+      .execute();
+  });
 }
 
 /**
@@ -498,68 +508,70 @@ export async function transitionTaskState(
     retry_strategy?: string;
   }
 ): Promise<void> {
-  const db = await getDb();
-  const planRow = await db
-    .selectFrom('task_plans')
-    .select('tasks_json')
-    .where('id', '=', planId)
-    .executeTakeFirst();
+  await transaction(async (trx) => {
+    const planRow = await trx
+      .selectFrom('task_plans')
+      .select('tasks_json')
+      .where('id', '=', planId)
+      .forUpdate()
+      .executeTakeFirst();
 
-  if (!planRow) throw new Error('Plan not found');
+    if (!planRow) throw new Error('Plan not found');
 
-  const tasksData = JSON.parse(planRow.tasks_json) as { tasks: any[] };
-  const task = tasksData.tasks.find((t) => t.id === taskId);
-  if (!task) throw new Error('Task not found');
+    const tasksData = JSON.parse(planRow.tasks_json) as { tasks: any[] };
+    const task = tasksData.tasks.find((t) => t.id === taskId);
+    if (!task) throw new Error('Task not found');
 
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  // Add state history entry only if status actually changes (idempotency)
-  if (!task.state_history) task.state_history = [];
-  if (task.status !== newStatus) {
-    task.state_history.push({
-      status: newStatus,
-      timestamp: now,
-      details: extras,
-    });
-  }
+    // Add state history entry only if status actually changes (idempotency)
+    if (!task.state_history) task.state_history = [];
+    if (task.status !== newStatus) {
+      task.state_history.push({
+        status: newStatus,
+        timestamp: now,
+        details: extras,
+      });
+    }
 
-  // Update task status
-  task.status = newStatus;
-  if (newStatus === 'running') {
-    task.execution_started_at = now;
-    task.started_at = now;
-  }
-  if (['done', 'failed', 'skipped', 'needs_review'].includes(newStatus)) {
-    task.completed_at = now;
-  }
+    // Update task status
+    task.status = newStatus;
+    if (newStatus === 'running') {
+      task.execution_started_at = now;
+      task.started_at = now;
+    }
+    if (['done', 'failed', 'skipped', 'needs_review'].includes(newStatus)) {
+      task.completed_at = now;
+    }
 
-  // Update task fields
-  if (extras?.result !== undefined) task.result = extras.result;
-  if (extras?.error !== undefined) task.error = extras.error;
-  if (extras?.confidence_score !== undefined) task.confidence_score = extras.confidence_score;
-  if (extras?.review_notes !== undefined) task.review_notes = extras.review_notes;
-  if (extras?.tokens_used !== undefined) task.tokens_used = extras.tokens_used;
-  if (extras?.llm_calls !== undefined) task.llm_calls = extras.llm_calls;
-  if (extras?.retry_count !== undefined) task.retry_count = extras.retry_count;
-  if (extras?.retry_context !== undefined) task.retry_context = extras.retry_context;
-  if (extras?.retry_strategy !== undefined) task.retry_strategy = extras.retry_strategy;
+    // Update task fields
+    if (extras?.result !== undefined) task.result = extras.result;
+    if (extras?.error !== undefined) task.error = extras.error;
+    if (extras?.confidence_score !== undefined) task.confidence_score = extras.confidence_score;
+    if (extras?.review_notes !== undefined) task.review_notes = extras.review_notes;
+    if (extras?.tokens_used !== undefined) task.tokens_used = extras.tokens_used;
+    if (extras?.llm_calls !== undefined) task.llm_calls = extras.llm_calls;
+    if (extras?.retry_count !== undefined) task.retry_count = extras.retry_count;
+    if (extras?.retry_context !== undefined) task.retry_context = extras.retry_context;
+    if (extras?.retry_strategy !== undefined) task.retry_strategy = extras.retry_strategy;
 
-  // Calculate updated stats
-  const stats = {
-    complete: tasksData.tasks.filter((t) => t.status === 'done').length,
-    failed: tasksData.tasks.filter((t) => t.status === 'failed').length,
-  };
+    // Calculate updated stats
+    const stats = {
+      complete: tasksData.tasks.filter((t) => t.status === 'done').length,
+      failed: tasksData.tasks.filter((t) => t.status === 'failed').length,
+    };
 
-  await db
-    .updateTable('task_plans')
-    .set({
-      tasks_json: JSON.stringify(tasksData),
-      updated_at: now,
-      completed_tasks: stats.complete,
-      failed_tasks: stats.failed,
-    })
-    .where('id', '=', planId)
-    .execute();
+    await trx
+      .updateTable('task_plans')
+      .set({
+        tasks_json: JSON.stringify(tasksData),
+        updated_at: now,
+        completed_tasks: stats.complete,
+        failed_tasks: stats.failed,
+      })
+      .where('id', '=', planId)
+      .execute();
+  });
 }
 
 /**
@@ -844,6 +856,66 @@ export async function replacePlanTasks(
     .execute();
 
   console.log(`[ReplacePlanTasks] Plan ${planId} updated with ${fullTasks.length} tasks${newTitle ? ` (title: ${newTitle})` : ''}`);
+}
+
+/**
+ * Replace failed (needs_review) tasks with new replacement tasks.
+ * Uses transaction + FOR UPDATE to prevent concurrent modification.
+ */
+export async function replaceFailedTasks(
+  planId: string,
+  failedTaskIds: number[],
+  newTasks: Array<{
+    id: number;
+    description: string;
+    type: string;
+    target: string;
+    dependencies?: number[];
+    expected_output?: string;
+    execution_hint?: string;
+    skill_ids?: number[];
+    tool_name?: string;
+  }>
+): Promise<void> {
+  await transaction(async (trx) => {
+    const row = await trx
+      .selectFrom('task_plans')
+      .select('tasks_json')
+      .where('id', '=', planId)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
+
+    const data = JSON.parse(row.tasks_json) as { tasks: any[] };
+
+    // Remove failed tasks
+    data.tasks = data.tasks.filter(t => !failedTaskIds.includes(t.id));
+
+    // Offset new task IDs to avoid collision with existing tasks
+    const maxId = Math.max(0, ...data.tasks.map(t => t.id));
+    const fullNewTasks = newTasks.map((t, i) => ({
+      ...t,
+      id: maxId + 1 + i,
+      status: 'pending',
+      dependencies: [],
+      state_history: [],
+      retry_count: 0,
+      priority: 1,
+    }));
+
+    data.tasks.push(...fullNewTasks);
+
+    await trx
+      .updateTable('task_plans')
+      .set({
+        tasks_json: JSON.stringify(data),
+        total_tasks: data.tasks.length,
+        updated_at: new Date().toISOString(),
+      })
+      .where('id', '=', planId)
+      .execute();
+
+    console.log(`[ReplaceFailedTasks] Plan ${planId}: removed ${failedTaskIds.length} failed tasks, added ${fullNewTasks.length} replacement tasks`);
+  });
 }
 
 /**

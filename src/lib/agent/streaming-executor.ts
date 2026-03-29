@@ -195,6 +195,24 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
+        onWaveStarted: (waveNumber: number, taskCount: number, taskIds: number[]) => {
+          sendEvent({
+            type: 'agent_wave_started',
+            wave_number: waveNumber,
+            task_count: taskCount,
+            task_ids: taskIds,
+          });
+        },
+
+        onReplanNeeded: (planId: string, failedTasks: { id: number; description: string; error?: string }[]) => {
+          sendEvent({
+            type: 'agent_replanning',
+            plan_id: planId,
+            failed_task_count: failedTasks.length,
+            message: `Re-planning ${failedTasks.length} failed tasks...`,
+          });
+        },
+
         onTaskStarted: (task: AgentTask) => {
           sendEvent({
             type: 'agent_task_started',
@@ -236,8 +254,8 @@ export async function executeAutonomousWithStreaming(
             checkerNotes: task.review_notes, // Checker's assessment notes
           });
 
-          // Generate and stream incremental summary for completed tasks
-          if ((status === 'done' || status === 'needs_review') && result.result) {
+          // Generate and stream incremental summary for completed tasks (skip needs_review — low-confidence content)
+          if (status === 'done' && result.result) {
             try {
               const section = await generateIncrementalSummary(
                 userRequest, accumulatedContent,

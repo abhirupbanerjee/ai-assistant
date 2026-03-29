@@ -136,7 +136,7 @@ function detectCircularDependencies(tasks: AgentTask[]): number[][] {
 export function detectStuckPlan(tasks: AgentTask[]): StuckPlanResult {
   const pendingTasks = tasks.filter(t => t.status === 'pending');
   const runningTasks = tasks.filter(t => t.status === 'running');
-  const completedStatuses = ['done', 'skipped'];
+  const completedStatuses = ['done', 'skipped', 'needs_review'];
 
   // If nothing is pending or something is running, not stuck
   if (pendingTasks.length === 0 || runningTasks.length > 0) {

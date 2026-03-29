@@ -34,6 +34,7 @@ export async function createPlan(
     };
     availableTools?: { name: string; description: string }[];
     planningFeedback?: string;
+    replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
   },
   modelConfig: AgentModelConfig
 ): Promise<{ tasks: AgentTask[]; title: string; error?: string }> {
@@ -228,6 +229,7 @@ function buildPlannerPrompt(
     };
     availableTools?: { name: string; description: string }[];
     planningFeedback?: string;
+    replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
   }
 ): string {
   let prompt = `Break down this user request into a structured task plan.
@@ -684,6 +686,14 @@ Respond with JSON only.`;
 
   if (context.planningFeedback) {
     prompt += `\n\n**User Feedback on Previous Plan:**\n${context.planningFeedback}\nRevise the plan to address this feedback while keeping the original request intent.\n`;
+  }
+
+  if (context.replanContext && context.replanContext.length > 0) {
+    prompt += `\n\n**Re-Planning Required:**\n${context.replanContext.length} tasks failed quality checks:\n`;
+    prompt += context.replanContext.map(t =>
+      `- Task "${t.description}" (${t.type}): ${t.error || 'Low confidence'}`
+    ).join('\n');
+    prompt += `\n\nCreate improved replacement tasks that address these failures. These tasks must be independently executable (no dependencies on other tasks).\n`;
   }
 
   return prompt;

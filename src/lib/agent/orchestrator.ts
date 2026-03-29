@@ -22,7 +22,7 @@ import { createPlan } from './planner';
 import { executeTask, type ExecutorCallbacks } from './executor';
 import { generateSummary } from './summarizer';
 import { GlobalBudgetTracker } from './budget-tracker';
-import { detectStuckPlan } from './dependency-validator';
+import { detectStuckPlan, getReadyTasks } from './dependency-validator';
 import {
   getTaskPlan,
   updateTaskPlanStatus,
@@ -32,6 +32,7 @@ import {
   createAutonomousPlan,
   stopPlan,
   replacePlanTasks,
+  replaceFailedTasks,
 } from '../db/compat/task-plans';
 import { getThreadById } from '../db/compat/threads';
 
@@ -60,6 +61,10 @@ export interface OrchestratorCallbacks {
   onPlanCompleted?: (plan: AgentPlan, summary: string) => void | Promise<void>;
   // HITL callbacks
   onPlanApprovalNeeded?: (plan: AgentPlan) => Promise<{ approved: boolean; feedback?: string }>;
+  // Wave execution callbacks
+  onWaveStarted?: (waveNumber: number, taskCount: number, taskIds: number[]) => void;
+  // Re-planning callbacks
+  onReplanNeeded?: (planId: string, failedTasks: { id: number; description: string; error?: string }[]) => void;
   // Control callbacks
   onPlanPaused?: (plan: AgentPlan, reason?: string) => void;
   onPlanStopped?: (plan: AgentPlan, reason?: string) => void;
@@ -168,7 +173,11 @@ export async function executeAutonomousPlan(
 }
 
 /**
- * Execute tasks in dependency order
+ * Execute tasks in dependency-driven waves
+ *
+ * Each iteration finds ALL tasks whose dependencies are satisfied (a "wave")
+ * and executes them in parallel via Promise.allSettled. Results are processed
+ * sequentially to maintain event ordering and safe state transitions.
  */
 async function executeTasksInOrder(
   plan: AgentPlan,
@@ -176,162 +185,210 @@ async function executeTasksInOrder(
   budgetTracker: GlobalBudgetTracker,
   callbacks?: OrchestratorCallbacks
 ): Promise<OrchestratorResult> {
-  const maxIterations = 1000; // Safety limit to prevent infinite loops
-  let iteration = 0;
+  const maxWaves = 200; // Safety limit — waves, not individual tasks
+  let waveCount = 0;
+  let checkerFailureCount = 0;
+  const MAX_CHECKER_FAILURES_BEFORE_REPLAN = 3;
 
-  while (iteration < maxIterations) {
-    iteration++;
+  while (waveCount < maxWaves) {
+    waveCount++;
 
-    // Check for budget exceeded BEFORE starting new tasks
+    // 1. Budget check before wave
     const budgetStatus = await budgetTracker.checkBudget();
     if (budgetStatus.exceeded) {
       const errorMsg = `Budget exceeded: ${budgetStatus.message}`;
       callbacks?.onError?.(errorMsg);
       await updateTaskPlanStatus(plan.id, 'failed');
-      return {
-        success: false,
-        error: errorMsg,
-        plan_id: plan.id,
-      };
+      return { success: false, error: errorMsg, plan_id: plan.id };
     }
 
-    // Reload plan to get latest task states
+    // 2. Reload plan for latest task states
     const currentPlan = await getTaskPlan(plan.id);
     if (!currentPlan) {
-      // Bug fix: Mark plan as failed before returning
       callbacks?.onError?.('Plan not found during execution');
       await updateTaskPlanStatus(plan.id, 'failed');
-      return {
-        success: false,
-        error: 'Plan not found during execution',
-        plan_id: plan.id,
-      };
+      return { success: false, error: 'Plan not found during execution', plan_id: plan.id };
     }
 
-    // Find next executable task (all dependencies satisfied)
-    const nextTask = findNextExecutableTask(currentPlan.tasks);
+    // 3. Get all ready tasks (deps satisfied) — the "wave"
+    const wave = getReadyTasks(currentPlan.tasks);
 
-    if (!nextTask) {
-      // No executable task found - check if plan is complete or stuck
+    if (wave.length === 0) {
+      // Check if plan is complete or stuck
       const allCompleted = currentPlan.tasks.every((t) =>
         ['done', 'skipped', 'needs_review'].includes(t.status)
       );
-
       if (allCompleted) {
-        // Plan complete
-        return {
-          success: true,
-          plan_id: plan.id,
-        };
+        return { success: true, plan_id: plan.id };
       }
 
-      // Check if plan is stuck
       const stuckResult = detectStuckPlan(currentPlan.tasks);
       if (stuckResult.isStuck) {
         const errorMsg = `Plan stuck: ${stuckResult.reason}`;
         callbacks?.onError?.(errorMsg);
         await updateTaskPlanStatus(plan.id, 'failed');
-        return {
-          success: false,
-          error: errorMsg,
-          plan_id: plan.id,
-        };
+        return { success: false, error: errorMsg, plan_id: plan.id };
       }
 
-      // No task ready yet, but not stuck - should not happen
       const errorMsg = 'No executable task found but plan not complete or stuck';
       callbacks?.onError?.(errorMsg);
-      return {
-        success: false,
-        error: errorMsg,
-        plan_id: plan.id,
-      };
+      return { success: false, error: errorMsg, plan_id: plan.id };
     }
 
-    // Execute the task
-    callbacks?.onTaskStarted?.(nextTask);
+    // Sort wave by priority (highest first) for consistent ordering
+    wave.sort((a, b) => (b.priority || 1) - (a.priority || 1));
 
-    // Create executor callbacks from orchestrator callbacks
-    const executorCallbacks: ExecutorCallbacks = {
+    // 4. Notify wave and task starts
+    if (wave.length > 1) {
+      callbacks?.onWaveStarted?.(waveCount, wave.length, wave.map(t => t.id));
+    }
+    for (const task of wave) {
+      callbacks?.onTaskStarted?.(task);
+    }
+
+    // 5. Execute wave — parallel if multiple tasks, sequential fast path if single
+    const baseCallbacks: ExecutorCallbacks = {
       onToolStart: callbacks?.onToolStart,
       onToolEnd: callbacks?.onToolEnd,
       onArtifact: callbacks?.onArtifact,
-      onChecking: () => callbacks?.onTaskChecking?.(nextTask),
       onSkillsLoaded: callbacks?.onSkillsLoaded,
     };
 
-    const result = await executeTask(nextTask, currentPlan, modelConfig, executorCallbacks);
+    let waveResults: { task: AgentTask; result: ExecutionResult }[];
 
-    // Update budget usage
-    if (result.tokens_used || result.llm_calls) {
-      await incrementBudgetUsage(plan.id, {
-        llm_calls: result.llm_calls || 0,
-        tokens_used: result.tokens_used || 0,
-      });
+    if (wave.length === 1) {
+      // Single task — no Promise.allSettled overhead
+      const task = wave[0];
+      const cb: ExecutorCallbacks = { ...baseCallbacks, onChecking: () => callbacks?.onTaskChecking?.(task) };
+      const result = await executeTask(task, currentPlan, modelConfig, cb);
+      waveResults = [{ task, result }];
+    } else {
+      // Parallel wave execution
+      console.log(`[Orchestrator] Executing wave ${waveCount}: ${wave.length} tasks in parallel [${wave.map(t => t.id).join(', ')}]`);
+      const settled = await Promise.allSettled(
+        wave.map((task) => {
+          const cb: ExecutorCallbacks = { ...baseCallbacks, onChecking: () => callbacks?.onTaskChecking?.(task) };
+          return executeTask(task, currentPlan, modelConfig, cb)
+            .then((result) => ({ task, result }));
+        })
+      );
+      waveResults = settled.map((s, i) =>
+        s.status === 'fulfilled'
+          ? s.value
+          : {
+              task: wave[i],
+              result: {
+                success: false,
+                error: (s.reason as Error)?.message || 'Task execution failed',
+              } as ExecutionResult,
+            }
+      );
     }
 
-    // Bug fix: Check budget AFTER task completion to catch overages
-    const postTaskBudget = await budgetTracker.checkBudget();
-    if (postTaskBudget.exceeded) {
-      const errorMsg = `Budget exceeded after task ${nextTask.id}: ${postTaskBudget.message}`;
+    // 6. Process results SEQUENTIALLY (budget, events, retries)
+    for (const { task, result } of waveResults) {
+      // Budget usage
+      if (result.tokens_used || result.llm_calls) {
+        await incrementBudgetUsage(plan.id, {
+          llm_calls: result.llm_calls || 0,
+          tokens_used: result.tokens_used || 0,
+        });
+      }
+
+      // Reload task for fresh state after execution
+      const updatedPlan = await getTaskPlan(plan.id);
+      const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === task.id) || task;
+      await callbacks?.onTaskCompleted?.(updatedTask, result);
+
+      // Emit per-task output summary
+      const taskSummary = generateTaskOutputSummary(updatedTask, result);
+      callbacks?.onTaskSummary?.(updatedTask, taskSummary);
+
+      // === Retry Logic ===
+      if (result.needsReview && (updatedTask.retry_count || 0) < 1) {
+        const retrySuggestion = result.retry_suggestion || 'more_specific_prompt';
+        console.log(`[Orchestrator] Task ${task.id} needs review — retrying with strategy: ${retrySuggestion}`);
+        await transitionTaskState(plan.id, task.id, 'pending', {
+          retry_count: (updatedTask.retry_count || 0) + 1,
+          retry_context: updatedTask.review_notes || `Low confidence (${result.confidence}%). ${result.result?.substring(0, 200) || ''}`,
+          retry_strategy: retrySuggestion,
+        });
+        callbacks?.onTaskSummary?.(updatedTask, `Retrying with alternative approach: ${retrySuggestion}`);
+        continue; // Skip error check — task will be retried in next wave
+      }
+
+      // Error handling
+      if (!result.success) {
+        if (result.skipped) {
+          console.warn(`[Orchestrator] Task ${task.id} skipped: ${result.error}`);
+        } else if (result.needsReview) {
+          checkerFailureCount++;
+          console.warn(
+            `[Orchestrator] Task ${task.id} needs review (confidence: ${result.confidence}%) — retry exhausted (${checkerFailureCount} total failures)`
+          );
+        } else {
+          const errorMsg = `Task ${task.id} failed: ${result.error}`;
+          callbacks?.onError?.(errorMsg);
+          return { success: false, error: errorMsg, plan_id: plan.id };
+        }
+      }
+    }
+
+    // 6b. Re-plan trigger — after 3+ checker failures, create replacement tasks
+    if (checkerFailureCount >= MAX_CHECKER_FAILURES_BEFORE_REPLAN) {
+      const budgetCheck = await budgetTracker.checkBudget();
+      if (!budgetCheck.exceeded) {
+        const freshPlan = await getTaskPlan(plan.id);
+        const failedTasks = (freshPlan?.tasks || [])
+          .filter((t: any) => t.status === 'needs_review')
+          .map((t: any) => ({ id: t.id, description: t.description, type: t.type, error: t.review_notes }));
+
+        if (failedTasks.length > 0) {
+          callbacks?.onReplanNeeded?.(plan.id, failedTasks);
+
+          try {
+            const replanResult = await createPlan(
+              freshPlan?.originalRequest || '',
+              { replanContext: failedTasks },
+              modelConfig
+            );
+
+            if (replanResult.tasks.length > 0) {
+              await replaceFailedTasks(plan.id, failedTasks.map(t => t.id), replanResult.tasks);
+              await incrementBudgetUsage(plan.id, { llm_calls: 1, tokens_used: 0 });
+              checkerFailureCount = 0;
+              console.log(`[Orchestrator] Re-planned: replaced ${failedTasks.length} failed tasks with ${replanResult.tasks.length} new tasks`);
+            }
+          } catch (e) {
+            console.error('[Orchestrator] Re-planning failed:', e);
+          }
+        }
+      }
+    }
+
+    // 7. Post-wave budget check
+    const postWaveBudget = await budgetTracker.checkBudget();
+    if (postWaveBudget.exceeded) {
+      const errorMsg = `Budget exceeded after wave ${waveCount}: ${postWaveBudget.message}`;
       callbacks?.onError?.(errorMsg);
       await updateTaskPlanStatus(plan.id, 'failed');
-      return {
-        success: false,
-        error: errorMsg,
-        plan_id: plan.id,
-      };
+      return { success: false, error: errorMsg, plan_id: plan.id };
     }
 
-    // Bug fix: Reload task from database to get fresh data for callback
-    const updatedPlan = await getTaskPlan(plan.id);
-    const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === nextTask.id) || nextTask;
-    await callbacks?.onTaskCompleted?.(updatedTask, result);
-
-    // Emit per-task output summary for user feedback
-    const taskSummary = generateTaskOutputSummary(updatedTask, result);
-    callbacks?.onTaskSummary?.(updatedTask, taskSummary);
-
-    // === Retry Logic ===
-    // If checker flagged for review and we haven't retried yet, retry with feedback
-    if (result.needsReview && (updatedTask.retry_count || 0) < 1) {
-      const retrySuggestion = result.retry_suggestion || 'more_specific_prompt';
-      console.log(`[Orchestrator] Task ${nextTask.id} needs review — retrying with strategy: ${retrySuggestion}`);
-
-      // Transition task back to pending with retry context
-      await transitionTaskState(plan.id, nextTask.id, 'pending', {
-        retry_count: (updatedTask.retry_count || 0) + 1,
-        retry_context: updatedTask.review_notes || `Low confidence (${result.confidence}%). ${result.result?.substring(0, 200) || ''}`,
-        retry_strategy: retrySuggestion,
-      });
-
-      callbacks?.onTaskSummary?.(updatedTask, `Retrying with alternative approach: ${retrySuggestion}`);
-      continue; // Re-enter the loop — task will be picked up again
-    }
-
-    // === Control Signal Checks ===
-    // Check for pause/stop signals AFTER task completion
+    // 8. Control signals — check once per wave
     const controlStatus = await getPlanControlStatus(plan.id);
     if (controlStatus) {
-      // Check pause signal
       if (controlStatus.isPaused) {
         const pausedPlan = (await getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
         callbacks?.onPlanPaused?.(pausedPlan, controlStatus.pauseReason);
-        console.log(`[Orchestrator] Plan ${plan.id} paused after task ${nextTask.id}`);
-        return {
-          success: true,
-          paused: true,
-          plan_id: plan.id,
-        };
+        console.log(`[Orchestrator] Plan ${plan.id} paused after wave ${waveCount}`);
+        return { success: true, paused: true, plan_id: plan.id };
       }
 
-      // Check stop signal (graceful termination)
       if (controlStatus.isStopped) {
         const stoppedPlan = (await getTaskPlan(plan.id) as unknown as AgentPlan) || plan;
         callbacks?.onPlanStopped?.(stoppedPlan, controlStatus.stopReason);
-        console.log(`[Orchestrator] Plan ${plan.id} stopped after task ${nextTask.id}`);
-
-        // Generate partial summary for stopped plan
+        console.log(`[Orchestrator] Plan ${plan.id} stopped after wave ${waveCount}`);
         const summaryResult = await generatePlanSummary(stoppedPlan, modelConfig, budgetTracker);
         return {
           success: true,
@@ -342,69 +399,13 @@ async function executeTasksInOrder(
         };
       }
     }
-
-    // Check for errors or review needed
-    if (!result.success) {
-      if (result.skipped) {
-        // Task was skipped due to error - continue with next task
-        console.warn(`[Orchestrator] Task ${nextTask.id} skipped: ${result.error}`);
-      } else if (result.needsReview) {
-        // Task needs review and retry exhausted — execution continues
-        console.warn(
-          `[Orchestrator] Task ${nextTask.id} needs review (confidence: ${result.confidence}%) — retry exhausted`
-        );
-      } else {
-        // Unexpected error
-        const errorMsg = `Task ${nextTask.id} failed: ${result.error}`;
-        callbacks?.onError?.(errorMsg);
-        return {
-          success: false,
-          error: errorMsg,
-          plan_id: plan.id,
-        };
-      }
-    }
-
-    // Continue to next iteration
   }
 
-  // Safety limit reached
-  const errorMsg = `Execution exceeded maximum iterations (${maxIterations})`;
+  // Safety limit
+  const errorMsg = `Execution exceeded maximum waves (${maxWaves})`;
   callbacks?.onError?.(errorMsg);
   await updateTaskPlanStatus(plan.id, 'failed');
-  return {
-    success: false,
-    error: errorMsg,
-    plan_id: plan.id,
-  };
-}
-
-/**
- * Find next task that can be executed (all dependencies satisfied)
- */
-function findNextExecutableTask(tasks: AgentTask[]): AgentTask | null {
-  const completedStatuses = ['done', 'skipped', 'needs_review'];
-
-  // Find pending tasks
-  const pendingTasks = tasks.filter((t) => t.status === 'pending');
-
-  if (pendingTasks.length === 0) {
-    return null;
-  }
-
-  // Find pending tasks with all dependencies satisfied, sorted by priority (highest first)
-  const readyTasks = pendingTasks.filter((task) => {
-    return task.dependencies.every((depId) => {
-      const dep = tasks.find((t) => t.id === depId);
-      return dep && completedStatuses.includes(dep.status);
-    });
-  });
-
-  if (readyTasks.length === 0) return null;
-
-  // Sort by priority descending (higher priority = runs first)
-  readyTasks.sort((a, b) => (b.priority || 1) - (a.priority || 1));
-  return readyTasks[0];
+  return { success: false, error: errorMsg, plan_id: plan.id };
 }
 
 /**
