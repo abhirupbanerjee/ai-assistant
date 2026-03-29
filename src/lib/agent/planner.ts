@@ -693,7 +693,7 @@ Respond with JSON only.`;
     prompt += context.replanContext.map(t =>
       `- Task "${t.description}" (${t.type}): ${t.error || 'Low confidence'}`
     ).join('\n');
-    prompt += `\n\nCreate improved replacement tasks that address these failures. These tasks must be independently executable (no dependencies on other tasks).\n`;
+    prompt += `\n\nFor each failed task above, provide an improved replacement task with a better approach. Return exactly one replacement per failed task, in the same order. If you need additional supporting tasks, add them after the replacements.\n`;
   }
 
   return prompt;

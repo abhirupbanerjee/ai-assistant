@@ -429,8 +429,31 @@ async function performTaskExecution(
     systemPrompt = `${basePrompt}\n\n--- DOMAIN-SPECIFIC GUIDELINES ---\n${skillPrompt}`;
   }
 
-  // Get executor model
-  const executorModel = getModelForRole('executor', modelConfig);
+  // Get executor model (with escalation on retries)
+  let executorModel = getModelForRole('executor', modelConfig);
+
+  if (task.retry_count && task.retry_count > 0) {
+    try {
+      const { getDefaultLLMModel } = await import('../config-loader');
+      const { getLlmFallbackSettings } = await import('../db/compat/config');
+
+      if (task.retry_count === 1) {
+        const globalDefault = getDefaultLLMModel();
+        if (globalDefault && globalDefault !== executorModel.model) {
+          console.log(`[Executor] Retry 1: escalating to global default ${globalDefault}`);
+          executorModel = { ...executorModel, model: globalDefault };
+        }
+      } else if (task.retry_count >= 2) {
+        const fallbackSettings = await getLlmFallbackSettings();
+        if (fallbackSettings.universalFallback && fallbackSettings.universalFallback !== executorModel.model) {
+          console.log(`[Executor] Retry 2: escalating to fallback ${fallbackSettings.universalFallback}`);
+          executorModel = { ...executorModel, model: fallbackSettings.universalFallback };
+        }
+      }
+    } catch (e) {
+      console.warn('[Executor] Model escalation failed, using default:', e);
+    }
+  }
 
   // Generate result (with fallback chain on recoverable errors)
   const response = await generateWithModelFallback(executorModel, prompt, {

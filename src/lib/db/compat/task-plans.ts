@@ -919,6 +919,88 @@ export async function replaceFailedTasks(
 }
 
 /**
+ * Reset failed tasks in-place with new descriptions from re-planning.
+ * Preserves task IDs so downstream dependencies remain valid.
+ * Maps planner results to failed tasks by index order.
+ */
+export async function resetFailedTasks(
+  planId: string,
+  failedTaskIds: number[],
+  replacementTasks: Array<{
+    description: string;
+    type: string;
+    target?: string;
+    expected_output?: string;
+    tool_name?: string;
+  }>
+): Promise<void> {
+  await transaction(async (trx) => {
+    const row = await trx
+      .selectFrom('task_plans')
+      .select('tasks_json')
+      .where('id', '=', planId)
+      .forUpdate()
+      .executeTakeFirstOrThrow();
+
+    const data = JSON.parse(row.tasks_json) as { tasks: any[] };
+
+    // 1:1 mapping — reset each failed task with planner's improved description
+    for (let i = 0; i < failedTaskIds.length; i++) {
+      const task = data.tasks.find((t: any) => t.id === failedTaskIds[i]);
+      if (!task) continue;
+
+      const replacement = replacementTasks[i];
+      if (replacement) {
+        task.description = replacement.description;
+        task.type = replacement.type;
+        if (replacement.target) task.target = replacement.target;
+        if (replacement.expected_output) task.expected_output = replacement.expected_output;
+        if (replacement.tool_name) task.tool_name = replacement.tool_name;
+      }
+
+      // Reset execution state — fresh start
+      task.status = 'pending';
+      task.retry_count = 0;
+      task.result = null;
+      task.error = null;
+      task.review_notes = null;
+      task.confidence_score = null;
+      task.replan_count = (task.replan_count || 0) + 1;
+      // ID + dependencies preserved
+    }
+
+    // If planner returned extras, add as independent tasks
+    if (replacementTasks.length > failedTaskIds.length) {
+      const maxId = Math.max(0, ...data.tasks.map((t: any) => t.id));
+      for (let i = failedTaskIds.length; i < replacementTasks.length; i++) {
+        data.tasks.push({
+          ...replacementTasks[i],
+          id: maxId + 1 + (i - failedTaskIds.length),
+          status: 'pending',
+          dependencies: [],
+          state_history: [],
+          retry_count: 0,
+          replan_count: 0,
+          priority: 1,
+        });
+      }
+    }
+
+    await trx
+      .updateTable('task_plans')
+      .set({
+        tasks_json: JSON.stringify(data),
+        total_tasks: data.tasks.length,
+        updated_at: new Date().toISOString(),
+      })
+      .where('id', '=', planId)
+      .execute();
+
+    console.log(`[ResetFailedTasks] Plan ${planId}: reset ${failedTaskIds.length} tasks in-place, ${Math.max(0, replacementTasks.length - failedTaskIds.length)} extras added`);
+  });
+}
+
+/**
  * Check if a plan is paused
  */
 export async function isPlanPaused(planId: string): Promise<boolean> {

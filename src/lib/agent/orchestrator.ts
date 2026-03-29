@@ -33,6 +33,7 @@ import {
   stopPlan,
   replacePlanTasks,
   replaceFailedTasks,
+  resetFailedTasks,
 } from '../db/compat/task-plans';
 import { getThreadById } from '../db/compat/threads';
 
@@ -187,8 +188,7 @@ async function executeTasksInOrder(
 ): Promise<OrchestratorResult> {
   const maxWaves = 200; // Safety limit — waves, not individual tasks
   let waveCount = 0;
-  let checkerFailureCount = 0;
-  const MAX_CHECKER_FAILURES_BEFORE_REPLAN = 3;
+  // No fixed threshold — every retry-exhausted task triggers re-planning at wave boundary
 
   while (waveCount < maxWaves) {
     waveCount++;
@@ -305,7 +305,7 @@ async function executeTasksInOrder(
       callbacks?.onTaskSummary?.(updatedTask, taskSummary);
 
       // === Retry Logic ===
-      if (result.needsReview && (updatedTask.retry_count || 0) < 1) {
+      if (result.needsReview && (updatedTask.retry_count || 0) < 2) {
         const retrySuggestion = result.retry_suggestion || 'more_specific_prompt';
         console.log(`[Orchestrator] Task ${task.id} needs review — retrying with strategy: ${retrySuggestion}`);
         await transitionTaskState(plan.id, task.id, 'pending', {
@@ -322,10 +322,13 @@ async function executeTasksInOrder(
         if (result.skipped) {
           console.warn(`[Orchestrator] Task ${task.id} skipped: ${result.error}`);
         } else if (result.needsReview) {
-          checkerFailureCount++;
+          // Retry exhausted — mark as failed so downstream tasks are blocked
           console.warn(
-            `[Orchestrator] Task ${task.id} needs review (confidence: ${result.confidence}%) — retry exhausted (${checkerFailureCount} total failures)`
+            `[Orchestrator] Task ${task.id} retry exhausted (confidence: ${result.confidence}%, retries: ${updatedTask.retry_count || 0})`
           );
+          await transitionTaskState(plan.id, task.id, 'failed', {
+            error: `Retry exhausted: confidence ${result.confidence}% after ${updatedTask.retry_count || 0} retries`,
+          });
         } else {
           const errorMsg = `Task ${task.id} failed: ${result.error}`;
           callbacks?.onError?.(errorMsg);
@@ -334,34 +337,35 @@ async function executeTasksInOrder(
       }
     }
 
-    // 6b. Re-plan trigger — after 3+ checker failures, create replacement tasks
-    if (checkerFailureCount >= MAX_CHECKER_FAILURES_BEFORE_REPLAN) {
+    // 6b. Re-plan: collect ALL retry-exhausted tasks from this wave and re-plan
+    const freshPlan = await getTaskPlan(plan.id);
+    const failedTasks = (freshPlan?.tasks || [])
+      .filter((t: any) =>
+        t.status === 'failed' &&
+        t.error?.startsWith('Retry exhausted') &&
+        (t.replan_count || 0) < 2  // Max 2 re-plans per task (loop guard)
+      )
+      .map((t: any) => ({ id: t.id, description: t.description, type: t.type, error: t.review_notes || t.error }));
+
+    if (failedTasks.length > 0) {
       const budgetCheck = await budgetTracker.checkBudget();
       if (!budgetCheck.exceeded) {
-        const freshPlan = await getTaskPlan(plan.id);
-        const failedTasks = (freshPlan?.tasks || [])
-          .filter((t: any) => t.status === 'needs_review')
-          .map((t: any) => ({ id: t.id, description: t.description, type: t.type, error: t.review_notes }));
+        callbacks?.onReplanNeeded?.(plan.id, failedTasks);
 
-        if (failedTasks.length > 0) {
-          callbacks?.onReplanNeeded?.(plan.id, failedTasks);
+        try {
+          const replanResult = await createPlan(
+            freshPlan?.originalRequest || '',
+            { replanContext: failedTasks },
+            modelConfig
+          );
 
-          try {
-            const replanResult = await createPlan(
-              freshPlan?.originalRequest || '',
-              { replanContext: failedTasks },
-              modelConfig
-            );
-
-            if (replanResult.tasks.length > 0) {
-              await replaceFailedTasks(plan.id, failedTasks.map(t => t.id), replanResult.tasks);
-              await incrementBudgetUsage(plan.id, { llm_calls: 1, tokens_used: 0 });
-              checkerFailureCount = 0;
-              console.log(`[Orchestrator] Re-planned: replaced ${failedTasks.length} failed tasks with ${replanResult.tasks.length} new tasks`);
-            }
-          } catch (e) {
-            console.error('[Orchestrator] Re-planning failed:', e);
+          if (replanResult.tasks.length > 0) {
+            await resetFailedTasks(plan.id, failedTasks.map(t => t.id), replanResult.tasks);
+            await incrementBudgetUsage(plan.id, { llm_calls: 1, tokens_used: 0 });
+            console.log(`[Orchestrator] Re-planned: reset ${failedTasks.length} tasks with improved descriptions`);
           }
+        } catch (e) {
+          console.error('[Orchestrator] Re-planning failed:', e);
         }
       }
     }
