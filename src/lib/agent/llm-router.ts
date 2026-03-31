@@ -8,6 +8,7 @@
 import OpenAI from 'openai';
 import type { ModelSpec, AgentModelConfig } from '@/types/agent';
 import { getApiKey } from '@/lib/provider-helpers';
+import { recordTokenUsage } from '@/lib/token-logger';
 
 let openaiClient: OpenAI | null = null;
 
@@ -36,16 +37,29 @@ export async function generateWithModel(
   // 32000 is safe for all supported models (gpt-4.1-mini supports 32768)
   const maxTokens = Math.min(rawMaxTokens, 32000);
 
+  let response: LLMResponse;
   switch (modelSpec.provider) {
     case 'openai':
-      return generateOpenAI(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateOpenAI(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
     case 'gemini':
-      return generateGemini(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateGemini(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
     case 'mistral':
-      return generateMistral(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateMistral(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
     default:
       throw new Error(`Unknown LLM provider: ${modelSpec.provider}`);
   }
+
+  // Log token usage for all autonomous LLM calls
+  recordTokenUsage({
+    category: 'autonomous',
+    model: response.model,
+    totalTokens: response.tokens_used,
+  });
+
+  return response;
 }
 
 /**

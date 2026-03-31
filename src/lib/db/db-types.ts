@@ -936,6 +936,21 @@ export interface ReindexJobsTable {
   created_by: string;
 }
 
+// ============ Token Usage Log ============
+
+export interface TokenUsageLogTable {
+  id: Generated<number>;
+  user_id: number | null;
+  category: 'chat' | 'autonomous' | 'embeddings' | 'workspace';
+  model: string;
+  total_tokens: number;
+  metadata_json: string | null;
+  created_at: Generated<string>;
+}
+
+export type TokenUsageLog = Selectable<TokenUsageLogTable>;
+export type NewTokenUsageLog = Insertable<TokenUsageLogTable>;
+
 // ============ Complete Database Interface ============
 
 export interface DB {
@@ -1003,4 +1018,6 @@ export interface DB {
   load_test_results: LoadTestResultsTable;
   // Reindex Jobs
   reindex_jobs: ReindexJobsTable;
+  // Token Usage Log
+  token_usage_log: TokenUsageLogTable;
 }

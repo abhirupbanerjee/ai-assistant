@@ -30,6 +30,7 @@ import CategoryPromptsSettings from '@/components/admin/prompts/CategoryPromptsS
 import BrandingSettingsTab from '@/components/admin/BrandingSettings';
 import AgentSettingsTab from '@/components/admin/AgentSettings';
 import TokenLimitsSettingsTab from '@/components/admin/tokens/TokenLimitsSettings';
+import TokenUsageDashboard from '@/components/admin/TokenUsageDashboard';
 
 interface AllowedUser {
   id?: number;
@@ -105,7 +106,7 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'workspaces' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'usage' | 'workspaces' | 'settings';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
@@ -1328,6 +1329,11 @@ function AdminPageContent() {
               )}
             </div>
           </div>
+        )}
+
+        {/* Usage Tab - Token Usage Dashboard */}
+        {activeTab === 'usage' && (
+          <TokenUsageDashboard />
         )}
         </main>
       </div>

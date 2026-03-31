@@ -41,6 +41,7 @@ import {
 import { getWorkspaceCategorySlugs, getCategoryIdsBySlugs } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
 import { generateResponseWithTools } from '@/lib/openai';
+import { recordTokenUsage } from '@/lib/token-logger';
 import {
   createSSEEncoder,
   getSSEHeaders,
@@ -441,6 +442,13 @@ export async function POST(
 
             // Increment session message count for assistant message
             await incrementMessageCount(sessionId);
+
+            // Log token usage for dashboard
+            recordTokenUsage({
+              category: 'workspace',
+              model: workspaceLLMConfig.model || 'unknown',
+              totalTokens: toolResult.totalTokens,
+            });
 
             // Send completion
             send({

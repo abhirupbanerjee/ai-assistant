@@ -21,6 +21,7 @@ import {
   resetLocalEmbedder,
   type LocalEmbeddingModel,
 } from './local-embeddings';
+import { recordTokenUsage } from './token-logger';
 
 // ============ Fallback Tracking ============
 interface FallbackEvent {
@@ -167,6 +168,11 @@ export async function createEmbedding(text: string): Promise<number[]> {
       model,
       input: text,
     });
+    recordTokenUsage({
+      category: 'embeddings',
+      model,
+      totalTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
+    });
     return response.data[0].embedding;
   } catch (error) {
     // If primary model fails and fallback is different, try fallback
@@ -225,6 +231,11 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       input: texts,
     });
     const embeddings = response.data.map(d => d.embedding);
+    recordTokenUsage({
+      category: 'embeddings',
+      model,
+      totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+    });
     // Debug: Log embedding dimensions
     if (embeddings.length > 0) {
       console.log(`[Embedding] Model: ${model}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
@@ -468,7 +479,7 @@ async function streamAnthropicCompletion(
   },
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; stopReason: string | null }> {
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; stopReason: string | null; totalTokens: number }> {
   const controller = new AbortController();
   let wasAborted = false;
 
@@ -494,6 +505,7 @@ async function streamAnthropicCompletion(
   let thinkingContent = '';
   const toolCalls: { id: string; name: string; input: unknown }[] = [];
   let stopReason: string | null = null;
+  let anthropicUsage: { input_tokens?: number; output_tokens?: number } = {};
 
   // Track current tool_use input accumulation for manual assembly
   const toolInputBuffers = new Map<number, { id: string; name: string; json: string }>();
@@ -535,6 +547,7 @@ async function streamAnthropicCompletion(
     }
 
     stopReason = message.stop_reason;
+    anthropicUsage = message.usage || {};
 
     // Extract content blocks from the final message
     for (const block of message.content) {
@@ -572,7 +585,10 @@ async function streamAnthropicCompletion(
         }))
       : undefined;
 
-  return { content: content || null, tool_calls: openaiToolCalls, thinkingContent: thinkingContent || null, stopReason };
+  // Extract token usage from finalMessage
+  const anthropicTokens = (anthropicUsage.input_tokens ?? 0) + (anthropicUsage.output_tokens ?? 0);
+
+  return { content: content || null, tool_calls: openaiToolCalls, thinkingContent: thinkingContent || null, stopReason, totalTokens: anthropicTokens };
 }
 
 // ============ OpenAI Streaming ============
@@ -582,7 +598,7 @@ async function streamOneCompletion(
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null }> {
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; totalTokens: number }> {
   const controller = new AbortController();
   // OpenAI SDK v6+ silently swallows AbortError in its stream iterator
   // (returns instead of throwing), so we track abort state explicitly
@@ -614,18 +630,24 @@ async function streamOneCompletion(
 
   let content = '';
   let thinkingContent = '';
+  let streamTotalTokens = 0;
   const thinkState = { inThink: false, tagBuf: '' };
   const thinkModel = isThinkTagModel(params.model ?? '');
   const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 
   try {
     const stream = await openai.chat.completions.create(
-      { ...params, stream: true },
+      { ...params, stream: true, stream_options: { include_usage: true } },
       { signal: controller.signal },
     );
 
     for await (const chunk of stream) {
       resetTimeout();
+
+      // Capture usage from final chunk (sent when include_usage is true)
+      if (chunk.usage) {
+        streamTotalTokens = chunk.usage.total_tokens;
+      }
 
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
@@ -687,7 +709,7 @@ async function streamOneCompletion(
         }))
       : undefined;
 
-  return { content: content || null, tool_calls, thinkingContent: thinkingContent || null };
+  return { content: content || null, tool_calls, thinkingContent: thinkingContent || null, totalTokens: streamTotalTokens };
 }
 
 export async function generateResponseWithTools(
@@ -713,6 +735,7 @@ export async function generateResponseWithTools(
   cacheKey: string;
   cacheable: boolean;
   toolExecutionResults: ToolExecutionRecord[];
+  totalTokens: number;
 }> {
   const llmSettings = await getLlmSettings();
 
@@ -1023,7 +1046,8 @@ export async function generateResponseWithTools(
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
-  let responseMessage: { content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null };
+  let responseMessage: { content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; totalTokens: number };
+  let accumulatedTokens = 0;
 
   if (useAnthropicDirect && anthropicClient) {
     const anthropicResult = await streamAnthropicCompletion(
@@ -1041,8 +1065,10 @@ export async function generateResponseWithTools(
       callbacks?.onThinkingChunk,
     );
     responseMessage = anthropicResult;
+    accumulatedTokens += anthropicResult.totalTokens;
   } else {
     responseMessage = await streamOneCompletion(openai!, completionParams, callbacks?.onChunk, callbacks?.onThinkingChunk);
+    accumulatedTokens += responseMessage.totalTokens;
   }
 
   // Tool call loop (max iterations to prevent runaway)
@@ -1355,6 +1381,7 @@ export async function generateResponseWithTools(
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
+      accumulatedTokens += responseMessage.totalTokens;
     } else {
       responseMessage = await streamOneCompletion(
         openai!,
@@ -1366,6 +1393,7 @@ export async function generateResponseWithTools(
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
+      accumulatedTokens += responseMessage.totalTokens;
     }
   }
 
@@ -1389,6 +1417,7 @@ export async function generateResponseWithTools(
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
+      accumulatedTokens += responseMessage.totalTokens;
     } else {
       const finalMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         ...messages,
@@ -1407,6 +1436,7 @@ export async function generateResponseWithTools(
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
+      accumulatedTokens += responseMessage.totalTokens;
     }
   }
 
@@ -1433,6 +1463,7 @@ export async function generateResponseWithTools(
         callbacks?.onThinkingChunk,
       );
       responseMessage = summaryResponse;
+      accumulatedTokens += summaryResponse.totalTokens;
     } else {
       // Add the summary request to messages (tool result already present from tool execution)
       const summaryMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -1457,6 +1488,7 @@ export async function generateResponseWithTools(
         callbacks?.onThinkingChunk,
       );
       responseMessage = summaryResponse;
+      accumulatedTokens += summaryResponse.totalTokens;
     }
   }
 
@@ -1467,6 +1499,7 @@ export async function generateResponseWithTools(
     cacheKey: ctx.cache.key,
     cacheable: ctx.cache.isCacheable,
     toolExecutionResults,
+    totalTokens: accumulatedTokens,
   };
 }
 

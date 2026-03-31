@@ -19,6 +19,7 @@ import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, 
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/compat';
 import { runWithContextAsync } from '@/lib/request-context';
 import { generateResponseWithTools } from '@/lib/openai';
+import { recordTokenUsage } from '@/lib/token-logger';
 import {
   createSSEEncoder,
   getSSEHeaders,
@@ -733,6 +734,14 @@ export async function POST(request: NextRequest) {
               }));
               processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(() => {});
             }
+
+            // Log token usage for dashboard
+            recordTokenUsage({
+              userId: dbUser?.id,
+              category: 'chat',
+              model: usedModel,
+              totalTokens: toolResult.totalTokens,
+            });
 
             // Send completion with metadata
             send({

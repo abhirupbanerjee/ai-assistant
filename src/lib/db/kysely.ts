@@ -271,6 +271,24 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Updated task_plans status constraint for stopped/paused states');
 
+  // Migration: Create token_usage_log table for unified token tracking
+  await sql`
+    CREATE TABLE IF NOT EXISTS token_usage_log (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      category TEXT NOT NULL,
+      model TEXT NOT NULL,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_created ON token_usage_log(created_at DESC)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_category ON token_usage_log(category, created_at DESC)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_user ON token_usage_log(user_id, created_at DESC)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_model ON token_usage_log(model, created_at DESC)`.execute(database);
+  console.log('[Kysely] Ensured token_usage_log table exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

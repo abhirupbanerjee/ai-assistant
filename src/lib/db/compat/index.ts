@@ -1013,3 +1013,16 @@ export {
   validateToolsSchema,
   validateEndpointMappings,
 } from './function-api-config';
+
+// ============ Token Usage ============
+export {
+  type TokenUsageCategory,
+  type TokenUsageByUser,
+  type TokenUsageByModel,
+  type DailyTokenUsage,
+  type TokenUsageSummary,
+  type TokenUsageFilters,
+  logTokenUsage,
+  getTokenUsageSummary,
+  getFilterOptions as getTokenUsageFilterOptions,
+} from './token-usage';

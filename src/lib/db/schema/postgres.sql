@@ -1199,3 +1199,20 @@ CREATE TRIGGER ensure_single_default_agent_bot_version
   FOR EACH ROW
   WHEN (NEW.is_default = 1)
   EXECUTE FUNCTION ensure_single_default_agent_bot_version();
+
+-- ============ Token Usage Log ============
+
+CREATE TABLE IF NOT EXISTS token_usage_log (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  category TEXT NOT NULL,
+  model TEXT NOT NULL,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  metadata_json TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_usage_log_created ON token_usage_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_token_usage_log_category ON token_usage_log(category, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_token_usage_log_user ON token_usage_log(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_token_usage_log_model ON token_usage_log(model, created_at DESC);

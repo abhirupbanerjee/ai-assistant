@@ -12,6 +12,7 @@ import {
   Sparkles,
   Bot,
   Coins,
+  BarChart3,
   Layers,
   Database,
   Settings,
@@ -28,7 +29,7 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'workspaces' | 'settings';
+type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'usage' | 'workspaces' | 'settings';
 
 // Section types for expandable menus
 type DocumentsSection = 'documents' | 'acronyms';
@@ -78,6 +79,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
     ]
   },
   { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },
+  { id: 'usage', label: 'Usage', icon: BarChart3, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
