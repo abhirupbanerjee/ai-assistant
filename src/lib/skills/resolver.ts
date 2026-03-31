@@ -45,7 +45,7 @@ function matchesPattern(skill: Skill, message: string): boolean {
   // Default: keyword mode with word boundary matching
   return patterns.some(keyword => {
     const keywordLower = keyword.toLowerCase();
-    const regex = new RegExp(`\\b${escapeRegex(keywordLower)}\\b`, 'i');
+    const regex = new RegExp(`\\b${escapeRegex(keywordLower)}(?:e?s)?\\b`, 'i');
     return regex.test(messageLower);
   });
 }

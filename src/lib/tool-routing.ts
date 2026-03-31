@@ -19,7 +19,7 @@ function matchKeyword(message: string, pattern: string): boolean {
   // Escape regex special characters in the pattern
   const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Create word boundary regex
-  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+  const regex = new RegExp(`\\b${escaped}(?:e?s)?\\b`, 'i');
   return regex.test(message);
 }
 

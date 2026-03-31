@@ -217,13 +217,34 @@ With Tool Association (Required mode):
 | **Preferred** | The LLM must use *some* tool (can choose which) | `tool_choice: "required"` | Multiple tools might apply, LLM should choose |
 | **Suggested** | Hint to LLM, but doesn't force | `tool_choice: "auto"` | Gentle nudge, testing new rules |
 
+#### Important: How Force Modes Actually Work
+
+**Tools array is NOT filtered.** Regardless of which `tool_name` you configure on a skill, OpenAI always receives the **full list** of enabled tools. The force mode only controls the `tool_choice` parameter:
+
+- **Required** — The skill's `tool_name` is sent as the specific forced tool. The LLM **must** call exactly that tool, no alternatives. Use only when the keyword unambiguously indicates tool usage (e.g., `"generate chart"` → chart_gen).
+
+- **Preferred** — The skill's `tool_name` is **ignored at runtime**. The LLM receives `tool_choice: "required"` with all available tools and must call *some* tool, but picks which one. Since the current UI only allows one tool per skill, this mode is functionally "force any tool call" — the configured tool is just a hint in the admin UI.
+
+- **Suggested** — The skill's `tool_name` is **ignored at runtime**. The LLM receives `tool_choice: "auto"` and decides freely whether to call any tool at all.
+
+#### Keyword Matching is Intent-Blind
+
+Keyword triggers match the **presence** of words, not the **intent** behind them. This means:
+
+| User Message | Keyword `"work package"` | Intent | Tool Forced? |
+|---|---|---|---|
+| "generate work package" | Matches | Creation | Appropriate |
+| "review the work package from last response" | Matches | Analysis | Inappropriate |
+
+**Recommendation:** Use `suggested` as the default force mode for most skills. This injects the skill's prompt content (giving the LLM context) while letting the LLM decide whether a tool call is appropriate based on the user's actual intent. Only use `required` when the keyword itself implies the action (e.g., regex `^(create|generate)\s+work package`).
+
 **Force Mode Selection Guide:**
 
-| Force Mode | LLM Flexibility | Use Case |
-|------------|-----------------|----------|
-| **Required** | None - must use specific tool | Critical workflows, deterministic behavior |
-| **Preferred** | Low - must use some tool | General tool encouragement |
-| **Suggested** | High - can opt out | Gentle hints, experimental |
+| Force Mode | LLM Flexibility | Tool Behavior | Recommended For |
+|------------|-----------------|---------------|-----------------|
+| **Required** | None — must use the specific tool | Skill's `tool_name` is forced | Action-specific keywords (e.g., `^generate\s+chart`) |
+| **Preferred** | Low — must use some tool, picks which | Skill's `tool_name` is ignored; LLM chooses from all tools | Multi-tool workflows (note: UI only allows 1 tool per skill) |
+| **Suggested** | High — can skip tools entirely | Skill's `tool_name` is ignored; `tool_choice: "auto"` | **Default choice** — safest for broad keywords like `"work package"` |
 
 #### Tool-Specific Config Options
 

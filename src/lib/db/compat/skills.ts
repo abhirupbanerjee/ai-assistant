@@ -278,7 +278,7 @@ export async function wouldToolSkillMatch(toolName: string, message: string): Pr
     } else {
       const matched = patterns.some(keyword => {
         const escaped = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`\\b${escaped}\\b`, 'i').test(messageLower);
+        return new RegExp(`\\b${escaped}(?:e?s)?\\b`, 'i').test(messageLower);
       });
       if (matched) return true;
     }
