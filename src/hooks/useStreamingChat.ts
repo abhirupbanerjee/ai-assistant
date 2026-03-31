@@ -686,6 +686,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           llmMs: event.llmMs,
           ragMs: event.ragMs,
           completionTokens: event.completionTokens,
+          tokensEstimated: event.tokensEstimated,
         } : undefined;
         setState(prev => ({
           ...prev,

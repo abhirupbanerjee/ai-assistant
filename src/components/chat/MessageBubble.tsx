@@ -33,7 +33,7 @@ function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
       >
         {modelLabel && <span>{modelLabel}</span>}
         {totalSec && <span>{totalSec}</span>}
-        {metadata.completionTokens && <span>~{metadata.completionTokens} tok</span>}
+        {metadata.completionTokens && <span>{metadata.tokensEstimated ? '~' : ''}{metadata.completionTokens} tok</span>}
       </button>
 
       {expanded && (metadata.llmMs || metadata.ragMs) && (

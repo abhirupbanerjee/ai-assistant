@@ -135,6 +135,7 @@ export interface WorkspaceMessage {
   sources_json: string | null;
   latency_ms: number | null;
   tokens_used: number | null;
+  model: string | null;
   created_at: string;
 }
 
@@ -421,5 +422,6 @@ export interface WorkspaceMessageRow {
   sources_json: string | null;
   latency_ms: number | null;
   tokens_used: number | null;
+  model: string | null;
   created_at: string;
 }

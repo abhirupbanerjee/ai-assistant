@@ -46,6 +46,7 @@ function parseMessage(msg: DbMessage): ParsedMessage {
     generatedImages: msg.generated_images_json ? JSON.parse(msg.generated_images_json) : null,
     generatedDiagrams: msg.generated_diagrams_json ? JSON.parse(msg.generated_diagrams_json) : null,
     generatedPodcasts: msg.generated_podcasts_json ? JSON.parse(msg.generated_podcasts_json) : null,
+    metadata: msg.metadata_json ? JSON.parse(msg.metadata_json) : null,
     createdAt: new Date(msg.created_at),
   };
 }
@@ -340,6 +341,7 @@ export async function addMessage(
     generatedImages?: GeneratedImageInfo[];
     generatedDiagrams?: DiagramHint[];
     generatedPodcasts?: PodcastHint[];
+    metadataJson?: string;
   }
 ): Promise<ParsedMessage> {
   const messageId = options?.messageId || uuidv4();
@@ -362,6 +364,7 @@ export async function addMessage(
       generated_images_json: options?.generatedImages ? JSON.stringify(options.generatedImages) : null,
       generated_diagrams_json: options?.generatedDiagrams ? JSON.stringify(options.generatedDiagrams) : null,
       generated_podcasts_json: options?.generatedPodcasts ? JSON.stringify(options.generatedPodcasts) : null,
+      metadata_json: options?.metadataJson || null,
     })
     .execute();
 
@@ -388,6 +391,7 @@ export async function getMessageById(messageId: string): Promise<ParsedMessage |
       'generated_images_json',
       'generated_diagrams_json',
       'generated_podcasts_json',
+      'metadata_json',
       'created_at',
     ])
     .where('id', '=', messageId)
@@ -416,6 +420,7 @@ export async function getMessagesForThread(threadId: string): Promise<ParsedMess
       'generated_images_json',
       'generated_diagrams_json',
       'generated_podcasts_json',
+      'metadata_json',
       'created_at',
     ])
     .where('thread_id', '=', threadId)

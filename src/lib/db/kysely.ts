@@ -289,6 +289,12 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_token_usage_log_model ON token_usage_log(model, created_at DESC)`.execute(database);
   console.log('[Kysely] Ensured token_usage_log table exists');
 
+  // Add metadata_json column to messages table
+  await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS metadata_json TEXT`.execute(database);
+  // Add model column to workspace_messages table
+  await sql`ALTER TABLE workspace_messages ADD COLUMN IF NOT EXISTS model TEXT`.execute(database);
+  console.log('[Kysely] Ensured metadata columns exist');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

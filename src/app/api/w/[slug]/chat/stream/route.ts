@@ -438,6 +438,8 @@ export async function POST(
               content: fullContent,
               sources: workspaceSources,
               latencyMs: Date.now() - new Date(userMessage.created_at).getTime(),
+              tokensUsed: toolResult.totalTokens || undefined,
+              model: workspaceLLMConfig.model || undefined,
             });
 
             // Increment session message count for assistant message
@@ -459,7 +461,8 @@ export async function POST(
               totalMs: Date.now() - requestStart,
               llmMs,
               ragMs,
-              completionTokens: countTokens(fullContent),
+              completionTokens: toolResult.totalTokens || countTokens(fullContent),
+              tokensEstimated: !toolResult.totalTokens,
             });
           }
         );

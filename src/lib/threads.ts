@@ -123,6 +123,7 @@ function toMessage(parsed: ParsedMessage): Message {
     generatedImages: parsed.generatedImages || undefined,
     generatedDiagrams: parsed.generatedDiagrams || undefined,
     generatedPodcasts: parsed.generatedPodcasts || undefined,
+    metadata: parsed.metadata || undefined,
     timestamp: parsed.createdAt,
   };
 }
@@ -374,6 +375,7 @@ export async function addMessage(
     generatedImages: message.generatedImages,
     generatedDiagrams: message.generatedDiagrams,
     generatedPodcasts: message.generatedPodcasts,
+    metadataJson: message.metadata ? JSON.stringify(message.metadata) : undefined,
   });
 
   // Update title if this is the first user message and title is default

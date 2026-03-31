@@ -694,7 +694,7 @@ export async function POST(request: NextRequest) {
             }
 
             // ============ Save & Cleanup ============
-            // Save assistant message (without processing metadata)
+            const completionTokens = toolResult.totalTokens || countTokens(fullContent);
             const assistantMessage: Message = {
               id: assistantMessageId,
               role: 'assistant',
@@ -706,6 +706,14 @@ export async function POST(request: NextRequest) {
               generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
               visualizations: visualizations.length > 0 ? visualizations : undefined,
               timestamp: new Date(),
+              metadata: {
+                model: usedModel,
+                totalMs: Date.now() - requestStart,
+                llmMs,
+                ragMs,
+                completionTokens,
+                tokensEstimated: !toolResult.totalTokens,
+              },
             };
 
             await addMessage(user.id, threadId, assistantMessage);
@@ -752,7 +760,8 @@ export async function POST(request: NextRequest) {
               totalMs: Date.now() - requestStart,
               llmMs,
               ragMs,
-              completionTokens: countTokens(fullContent),
+              completionTokens,
+              tokensEstimated: !toolResult.totalTokens,
             });
           }
         );

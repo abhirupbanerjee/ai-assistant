@@ -32,6 +32,7 @@ function rowToMessage(row: WorkspaceMessageRow): WorkspaceMessage {
     sources_json: row.sources_json,
     latency_ms: row.latency_ms,
     tokens_used: row.tokens_used,
+    model: row.model ?? null,
     created_at: row.created_at,
   };
 }

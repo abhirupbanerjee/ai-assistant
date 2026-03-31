@@ -32,6 +32,7 @@ function rowToMessage(row: WorkspaceMessageRow): WorkspaceMessage {
     sources_json: row.sources_json,
     latency_ms: row.latency_ms,
     tokens_used: row.tokens_used,
+    model: row.model ?? null,
     created_at: row.created_at,
   };
 }
@@ -52,6 +53,7 @@ export async function addMessage(input: {
   sources?: WorkspaceMessageSource[];
   latencyMs?: number;
   tokensUsed?: number;
+  model?: string;
 }): Promise<WorkspaceMessage> {
   const id = uuidv4();
   const db = await getDb();
@@ -68,6 +70,7 @@ export async function addMessage(input: {
       sources_json: input.sources ? JSON.stringify(input.sources) : null,
       latency_ms: input.latencyMs || null,
       tokens_used: input.tokensUsed || null,
+      model: input.model || null,
     })
     .execute();
 

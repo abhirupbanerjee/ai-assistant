@@ -188,6 +188,7 @@ export interface MessagesTable {
   generated_podcasts_json: string | null;
   mode: Generated<string | null>;
   plan_id: string | null;
+  metadata_json: string | null;
 }
 
 export type Message = Selectable<MessagesTable>;
@@ -637,6 +638,7 @@ export interface WorkspaceMessagesTable {
   sources_json: string | null;
   latency_ms: number | null;
   tokens_used: number | null;
+  model: string | null;
   created_at: Generated<string>;
 }
 

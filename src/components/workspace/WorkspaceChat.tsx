@@ -152,12 +152,20 @@ export function WorkspaceChat({
           content: string;
           created_at: string;
           sources_json?: string;
+          model?: string;
+          tokens_used?: number;
+          latency_ms?: number;
         }) => ({
           id: m.id,
           role: m.role,
           content: m.content,
           timestamp: new Date(m.created_at),
           sources: m.sources_json ? JSON.parse(m.sources_json) : undefined,
+          metadata: (m.model || m.tokens_used) ? {
+            model: m.model || undefined,
+            completionTokens: m.tokens_used || undefined,
+            totalMs: m.latency_ms || undefined,
+          } : undefined,
         }));
         setMessages(loadedMessages);
       } catch (err) {

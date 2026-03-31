@@ -97,7 +97,8 @@ export interface MessageMetadata {
   totalMs?: number;          // Total wall-clock time from request to done
   llmMs?: number;            // Time spent inside generateResponseWithTools
   ragMs?: number;            // Time spent inside performRAGRetrieval
-  completionTokens?: number; // Estimated token count of assistant response
+  completionTokens?: number; // Token count of assistant response (real API data when available)
+  tokensEstimated?: boolean; // True when completionTokens is a heuristic estimate
 }
 
 export interface Message {

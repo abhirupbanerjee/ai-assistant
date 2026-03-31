@@ -207,6 +207,7 @@ export function useWorkspaceChat({
                       llmMs: event.llmMs,
                       ragMs: event.ragMs,
                       completionTokens: event.completionTokens,
+                      tokensEstimated: event.tokensEstimated,
                     }
                   : undefined;
                 // Flush any remaining content immediately (not via RAF)

@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS messages (
   generated_diagrams_json TEXT,
   mode TEXT DEFAULT 'normal' CHECK (mode IN ('normal', 'autonomous')),
   plan_id TEXT,
+  metadata_json TEXT,
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
 );
 
@@ -726,6 +727,7 @@ CREATE TABLE IF NOT EXISTS workspace_messages (
   sources_json TEXT,
   latency_ms INTEGER,
   tokens_used INTEGER,
+  model TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
