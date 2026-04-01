@@ -273,7 +273,7 @@ function SuperUserPageContent() {
       ]);
 
       if (usersResponse.status === 403 || docsResponse.status === 403) {
-        router.push('/');
+        router.push('/chat');
         return;
       }
 
@@ -640,7 +640,7 @@ function SuperUserPageContent() {
         <div className="h-full px-4 flex items-center">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/chat')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ArrowLeft size={20} />

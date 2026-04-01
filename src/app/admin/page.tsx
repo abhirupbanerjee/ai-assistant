@@ -389,12 +389,12 @@ function AdminPageContent() {
         setUserRole(data.role || 'user');
         // If user is not admin or superuser, redirect to home
         if (data.role !== 'admin' && data.role !== 'superuser') {
-          router.push('/');
+          router.push('/chat');
           return false;
         }
         return true;
       } else if (response.status === 401) {
-        router.push('/');
+        router.push('/chat');
         return false;
       }
     } catch (error) {
@@ -413,7 +413,7 @@ function AdminPageContent() {
       const response = await fetch('/api/admin/settings');
 
       if (response.status === 403) {
-        router.push('/');
+        router.push('/chat');
         return;
       }
 
@@ -526,7 +526,7 @@ function AdminPageContent() {
       const response = await fetch('/api/admin/stats');
 
       if (response.status === 403) {
-        router.push('/');
+        router.push('/chat');
         return;
       }
 
@@ -999,7 +999,7 @@ function AdminPageContent() {
         <div className="h-full px-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/chat')}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
             >
               <ArrowLeft size={20} />

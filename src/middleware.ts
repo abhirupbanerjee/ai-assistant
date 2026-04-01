@@ -2,6 +2,14 @@ import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
 
 export default async function proxy(req: NextRequest) {
+  // Landing page: authenticated users → /chat, unauthenticated → show landing
+  if (req.nextUrl.pathname === '/') {
+    const token = await getToken({ req });
+    if (token) return NextResponse.redirect(new URL('/chat', req.url));
+    return NextResponse.next();
+  }
+
+  // All other protected routes: require auth
   const token = await getToken({ req });
   if (!token) {
     const signInUrl = new URL('/auth/signin', req.url);
@@ -13,6 +21,6 @@ export default async function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api/auth|api/w/|auth/signin|auth/error|e/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons).*)',
+    '/((?!api/auth|api/w/|api/branding|auth/signin|auth/error|e/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons).*)',
   ],
 };

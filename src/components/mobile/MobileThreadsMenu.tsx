@@ -205,7 +205,7 @@ export default function MobileThreadsMenu({
         headerRight={
           <div className="flex items-center gap-1">
             <Link
-              href="/"
+              href="/chat"
               onClick={closeThreadsMenu}
               className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
               style={{ color: 'var(--accent-color)' }}

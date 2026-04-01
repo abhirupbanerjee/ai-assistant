@@ -21,7 +21,7 @@ export async function GET() {
     name: branding.botName || 'Policy Bot',
     short_name: branding.botName || 'PolicyBot',
     description: 'AI-powered policy assistant',
-    start_url: '/',
+    start_url: '/chat',
     display: 'standalone',
     background_color: pwa.backgroundColor || '#ffffff',
     theme_color: pwa.themeColor || '#2563eb',

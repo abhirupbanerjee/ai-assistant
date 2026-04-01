@@ -218,7 +218,7 @@ export default function SharedThreadPage({ params }: PageProps) {
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Link
-              href="/"
+              href="/chat"
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
             >
               <ArrowLeft size={18} />

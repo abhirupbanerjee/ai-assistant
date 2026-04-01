@@ -17,7 +17,7 @@ function SignInContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [credentialsError, setCredentialsError] = useState('');
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/';
+  const callbackUrl = searchParams.get('callbackUrl') || '/chat';
   const error = searchParams.get('error');
 
   useEffect(() => {

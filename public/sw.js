@@ -1,9 +1,9 @@
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 
 // Force immediate activation - critical for fixing broken SWs
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v4');
+  console.log('[SW] Installing v5');
   self.skipWaiting();
 });
 
