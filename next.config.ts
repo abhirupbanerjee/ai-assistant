@@ -66,7 +66,8 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/(.*)',
+        // Exclude /e/ embed routes (handled above with relaxed frame-ancestors)
+        source: '/((?!e/).*)',
         headers: [
           ...commonSecurityHeaders,
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
