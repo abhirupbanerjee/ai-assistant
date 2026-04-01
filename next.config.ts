@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Prevent CDNs from caching the service worker file
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+        ],
+      },
+      {
         // Prevent Cloudflare (or any CDN) from caching API responses
         source: '/api/:path*',
         headers: [
