@@ -5,9 +5,40 @@ import type { NextConfig } from 'next';
 // Set MAX_UPLOAD_SIZE in .env to override (e.g., MAX_UPLOAD_SIZE=1gb)
 const maxUploadSize = (process.env.MAX_UPLOAD_SIZE || '500mb') as `${number}${'kb' | 'mb' | 'gb'}`;
 
+// Comma-separated list of origins allowed to embed /e/* routes in iframes
+// e.g. ALLOWED_EMBED_ORIGINS=https://gea.abhirup.app,https://other.example.com
+const allowedEmbedOrigins = process.env.ALLOWED_EMBED_ORIGINS
+  ? process.env.ALLOWED_EMBED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : [];
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   async headers() {
+    const commonSecurityHeaders = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
+    ];
+
+    const defaultFrameAncestors = "'self'";
+    const embedFrameAncestors = allowedEmbedOrigins.length > 0
+      ? `'self' ${allowedEmbedOrigins.join(' ')}`
+      : defaultFrameAncestors;
+
+    const buildCsp = (frameAncestors: string) => ({
+      key: 'Content-Security-Policy',
+      value: [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self' https://cloudflareinsights.com",
+        `frame-ancestors ${frameAncestors}`,
+      ].join('; '),
+    });
+
     return [
       {
         // Prevent CDNs from caching the service worker file
@@ -26,25 +57,20 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Embed routes: allow framing from ALLOWED_EMBED_ORIGINS
+        // X-Frame-Options is omitted because it cannot express specific external domains
+        source: '/e/:path*',
+        headers: [
+          ...commonSecurityHeaders,
+          buildCsp(embedFrameAncestors),
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          ...commonSecurityHeaders,
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob:",
-              "font-src 'self' data:",
-              "connect-src 'self' https://cloudflareinsights.com",
-              "frame-ancestors 'self'",
-            ].join('; '),
-          },
+          buildCsp(defaultFrameAncestors),
         ],
       },
     ];
