@@ -239,6 +239,9 @@ function SignInContent() {
         {/* Role Info */}
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-400">Need access? Contact your administrator.</p>
+          <a href="/" className="inline-block mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+            &larr; Back to home
+          </a>
         </div>
       </div>
     </div>
