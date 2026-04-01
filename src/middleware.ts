@@ -1,7 +1,7 @@
 import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
 
-export default async function proxy(req: NextRequest) {
+export default async function middleware(req: NextRequest) {
   // Landing page: authenticated users → /chat, unauthenticated → show landing
   if (req.nextUrl.pathname === '/') {
     const token = await getToken({ req });
