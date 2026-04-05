@@ -555,6 +555,8 @@ export {
   // Capability Queries
   isModelToolCapable,
   isModelVisionCapable,
+  isModelParallelToolCapable,
+  isModelThinkingCapable,
   getToolCapableModelIds,
   // Sort Order
   updateModelSortOrder,

@@ -6,6 +6,7 @@ import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
   MoreVertical, Trash2, EyeOff, Edit2, Check, FileText, Languages,
   Image, Mic, Database, Search, ExternalLink, CheckCircle, RotateCcw, Sparkles, Info,
+  Zap, Brain,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -32,6 +33,8 @@ interface EnabledModel {
   displayName: string;
   toolCapable: boolean;
   visionCapable: boolean;
+  parallelToolCapable: boolean;
+  thinkingCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
   isDefault: boolean;
@@ -46,6 +49,8 @@ interface DetailsResult {
   found: boolean;
   toolCapable: boolean;
   visionCapable: boolean;
+  parallelToolCapable: boolean;
+  thinkingCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
   confidence: 'high' | 'medium' | 'low';
@@ -340,7 +345,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // ============ New Model Capability Actions ============
 
-  const handleToggleCapability = async (modelId: string, field: 'toolCapable' | 'visionCapable', current: boolean) => {
+  const handleToggleCapability = async (modelId: string, field: 'toolCapable' | 'visionCapable' | 'parallelToolCapable' | 'thinkingCapable', current: boolean) => {
     setToggleError(null);
     // Optimistic update
     setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: !current } : m));
@@ -361,7 +366,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       // prevents fetchModels() failures from incorrectly reverting a successful save.
       const { model: updated } = await res.json() as { model: EnabledModel };
       setEnabledModels(prev => prev.map(m => m.id === modelId ? updated : m));
-      showSuccess(`${field === 'toolCapable' ? 'Tools' : 'Vision'} ${!current ? 'enabled' : 'disabled'}`);
+      const labels: Record<string, string> = { toolCapable: 'Tools', visionCapable: 'Vision', parallelToolCapable: 'Parallel', thinkingCapable: 'Thinking' };
+      showSuccess(`${labels[field] || field} ${!current ? 'enabled' : 'disabled'}`);
     } catch (err) {
       // Revert on network/parse error
       setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: current } : m));
@@ -612,6 +618,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tools</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vision</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parallel</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thinking</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Input</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Output</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -688,6 +696,44 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             <Eye size={11} className="mr-1" />{model.visionCapable ? 'On' : 'Off'}
                           </button>
                           {toggleError?.modelId === model.id && toggleError.field === 'visionCapable' && (
+                            <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
+                          )}
+                        </td>
+
+                        {/* Parallel toggle */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => !readOnly && !routeOff && handleToggleCapability(model.id, 'parallelToolCapable', model.parallelToolCapable)}
+                            disabled={readOnly || routeOff}
+                            title={routeOff ? 'Route is disabled' : model.parallelToolCapable ? 'Parallel tool calls enabled — click to disable' : 'Parallel tool calls disabled — click to enable'}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                              model.parallelToolCapable
+                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                            } ${readOnly || routeOff ? 'cursor-default' : 'cursor-pointer'}`}
+                          >
+                            <Zap size={11} className="mr-1" />{model.parallelToolCapable ? 'On' : 'Off'}
+                          </button>
+                          {toggleError?.modelId === model.id && toggleError.field === 'parallelToolCapable' && (
+                            <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
+                          )}
+                        </td>
+
+                        {/* Thinking toggle */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => !readOnly && !routeOff && handleToggleCapability(model.id, 'thinkingCapable', model.thinkingCapable)}
+                            disabled={readOnly || routeOff}
+                            title={routeOff ? 'Route is disabled' : model.thinkingCapable ? 'Thinking/reasoning enabled — click to disable' : 'Thinking/reasoning disabled — click to enable'}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                              model.thinkingCapable
+                                ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                            } ${readOnly || routeOff ? 'cursor-default' : 'cursor-pointer'}`}
+                          >
+                            <Brain size={11} className="mr-1" />{model.thinkingCapable ? 'On' : 'Off'}
+                          </button>
+                          {toggleError?.modelId === model.id && toggleError.field === 'thinkingCapable' && (
                             <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
                           )}
                         </td>
@@ -811,6 +857,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                 <div className="flex items-center gap-4 text-sm text-gray-700">
                                   <span className="text-gray-400">Tools: {detailsPreview.data.toolCapable ? '✓' : '✗'}</span>
                                   <span className="text-gray-400">Vision: {detailsPreview.data.visionCapable ? '✓' : '✗'}</span>
+                                  <span className="text-gray-400">Parallel: {detailsPreview.data.parallelToolCapable ? '✓' : '✗'}</span>
+                                  <span className="text-gray-400">Thinking: {detailsPreview.data.thinkingCapable ? '✓' : '✗'}</span>
                                   {detailsPreview.data.maxInputTokens ? (
                                     <span>Context: <strong>{(detailsPreview.data.maxInputTokens / 1000).toFixed(0)}K</strong></span>
                                   ) : null}

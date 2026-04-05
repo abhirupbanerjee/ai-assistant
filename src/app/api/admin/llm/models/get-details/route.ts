@@ -17,7 +17,7 @@ import { getEnabledModel } from '@/lib/db/compat/enabled-models';
 import { isTavilyConfigured } from '@/lib/tools/tavily';
 import { getWebSearchConfig } from '@/lib/db/compat/tool-config';
 import { callLLMForJson } from '@/lib/llm-utils';
-import { isToolCapable, isVisionCapable, getContextWindow } from '@/lib/services/model-discovery';
+import { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, getContextWindow } from '@/lib/services/model-discovery';
 import type { ApiError } from '@/types';
 
 // POST /api/admin/llm/models/get-details?id=<modelId>
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
             `Model ID: ${id}\n\nWeb search results:\n${snippets}\n\nExtract capabilities for this specific model. If a field is not clearly confirmed, use null for numbers or false for booleans.`,
             {
               systemPrompt:
-                'You are a technical assistant extracting LLM model capability data. Return JSON only with these exact fields: toolCapable (boolean), visionCapable (boolean), maxInputTokens (number or null), maxOutputTokens (number or null), confidence ("high"|"medium"|"low"). Be conservative — only mark true/set values if explicitly confirmed by the sources.',
+                'You are a technical assistant extracting LLM model capability data. Return JSON only with these exact fields: toolCapable (boolean), visionCapable (boolean), parallelToolCapable (boolean - true if the model reliably handles multiple tool calls in a single response), thinkingCapable (boolean - true if the model outputs reasoning/thinking content), maxInputTokens (number or null), maxOutputTokens (number or null), confidence ("high"|"medium"|"low"). Be conservative — only mark true/set values if explicitly confirmed by the sources.',
               maxTokens: 300,
               temperature: 0,
               timeout: 15000,
@@ -96,6 +96,8 @@ export async function POST(request: NextRequest) {
           const parsed = JSON.parse(raw) as {
             toolCapable?: boolean;
             visionCapable?: boolean;
+            parallelToolCapable?: boolean;
+            thinkingCapable?: boolean;
             maxInputTokens?: number | null;
             maxOutputTokens?: number | null;
             confidence?: string;
@@ -105,6 +107,8 @@ export async function POST(request: NextRequest) {
             found: true,
             toolCapable: Boolean(parsed.toolCapable),
             visionCapable: Boolean(parsed.visionCapable),
+            parallelToolCapable: Boolean(parsed.parallelToolCapable),
+            thinkingCapable: Boolean(parsed.thinkingCapable),
             maxInputTokens: typeof parsed.maxInputTokens === 'number' ? parsed.maxInputTokens : null,
             maxOutputTokens: typeof parsed.maxOutputTokens === 'number' ? parsed.maxOutputTokens : null,
             confidence: parsed.confidence || 'medium',
@@ -120,12 +124,16 @@ export async function POST(request: NextRequest) {
     // ── Fallback: pattern matching (read-only, no DB write) ──
     const toolCapable = isToolCapable(id);
     const visionCapable = isVisionCapable(id);
+    const parallelToolCapable = isParallelToolCapable(id);
+    const thinkingCapable = isThinkingCapable(id);
     const maxInputTokens = getContextWindow(id);
 
     return NextResponse.json({
       found: true,
       toolCapable,
       visionCapable,
+      parallelToolCapable,
+      thinkingCapable,
       maxInputTokens,
       maxOutputTokens: null,
       confidence: 'medium',

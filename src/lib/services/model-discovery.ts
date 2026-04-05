@@ -80,6 +80,45 @@ const VISION_CAPABLE_PATTERNS = [
   // Note: DeepSeek does NOT support vision
 ];
 
+// Models known to reliably handle parallel tool calls (multiple tool_calls in one response)
+const PARALLEL_TOOL_CAPABLE_PATTERNS = [
+  // Anthropic Claude — excellent multi-tool support
+  /^claude/,
+  // Google Gemini — full parallel + compositional support
+  /^gemini/,
+  // Mistral Large — trained for parallel and sequential
+  /^mistral-large/,
+  // OpenAI — GPT-4.1 family, GPT-5-nano, GPT-5.2+ (GPT-5 base has ~90% failure rate)
+  /^gpt-4\.1/,
+  /^gpt-5-nano/,
+  /^gpt-5\.2/,
+  /^gpt-5\.3/,
+  /^gpt-5\.4/,
+  // Fireworks-hosted models (MiniMax, Kimi, etc.)
+  /^fireworks\//,
+  /^accounts\/fireworks/,
+];
+// NOT parallel capable (default=0 in DB):
+//   gpt-5 (base) — 90% failure rate on parallel calls
+//   deepseek-chat — weak multi-turn tool calling
+//   ollama models — generally unreliable
+//   o1, o3, o4 — reasoning models, tool_choice restrictions
+
+// Models known to support thinking/reasoning content
+// Used for UI display toggle — shows collapsible "Thinking" block in chat
+const THINKING_CAPABLE_PATTERNS = [
+  // Anthropic Claude — native thinking blocks
+  /^claude/,
+  // Think-tag models — <think>…</think> parsed via parseThinkChunk()
+  /^qwen3/,
+  /^qwq/,
+  /^deepseek-r/,
+  // OpenAI reasoning models
+  /^o1/,
+  /^o3/,
+  /^o4/,
+];
+
 // Known context window sizes
 const CONTEXT_WINDOWS: Record<string, number> = {
   // OpenAI - GPT-5 family (assuming similar to GPT-4.1)
@@ -177,6 +216,16 @@ function isVisionCapable(modelId: string): boolean {
   // Strip ollama- prefix for consistent pattern matching
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return VISION_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
+}
+
+function isParallelToolCapable(modelId: string): boolean {
+  const id = modelId.toLowerCase().replace(/^ollama-/, '');
+  return PARALLEL_TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
+}
+
+function isThinkingCapable(modelId: string): boolean {
+  const id = modelId.toLowerCase().replace(/^ollama-/, '');
+  return THINKING_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
 function getContextWindow(modelId: string): number | null {
@@ -706,4 +755,4 @@ export async function discoverAllModels(): Promise<{
 // ============ Exported Capability Functions ============
 // Used by enabled-models.ts to refresh model capabilities
 
-export { isToolCapable, isVisionCapable, getContextWindow };
+export { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, getContextWindow };

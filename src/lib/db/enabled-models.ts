@@ -15,6 +15,8 @@ export interface EnabledModel {
   displayName: string;
   toolCapable: boolean;
   visionCapable: boolean;
+  parallelToolCapable: boolean;
+  thinkingCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;  // Max tokens for LLM output
   isDefault: boolean;
@@ -31,6 +33,8 @@ interface EnabledModelRow {
   display_name: string;
   tool_capable: number;
   vision_capable: number;
+  parallel_tool_capable: number;
+  thinking_capable: number;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
   is_default: number;
@@ -47,6 +51,8 @@ export interface CreateEnabledModelInput {
   displayName: string;
   toolCapable?: boolean;
   visionCapable?: boolean;
+  parallelToolCapable?: boolean;
+  thinkingCapable?: boolean;
   maxInputTokens?: number;
   maxOutputTokens?: number;
   isDefault?: boolean;
@@ -58,6 +64,8 @@ export interface UpdateEnabledModelInput {
   displayName?: string;
   toolCapable?: boolean;
   visionCapable?: boolean;
+  parallelToolCapable?: boolean;
+  thinkingCapable?: boolean;
   maxInputTokens?: number;
   maxOutputTokens?: number;
   isDefault?: boolean;
@@ -74,6 +82,8 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     displayName: row.display_name,
     toolCapable: row.tool_capable === 1,
     visionCapable: row.vision_capable === 1,
+    parallelToolCapable: row.parallel_tool_capable === 1,
+    thinkingCapable: row.thinking_capable === 1,
     maxInputTokens: row.max_input_tokens,
     maxOutputTokens: row.max_output_tokens,
     isDefault: row.is_default === 1,
@@ -235,6 +245,14 @@ export function updateEnabledModel(id: string, input: UpdateEnabledModelInput): 
   if (input.visionCapable !== undefined) {
     updates.push('vision_capable = ?');
     params.push(input.visionCapable ? 1 : 0);
+  }
+  if (input.parallelToolCapable !== undefined) {
+    updates.push('parallel_tool_capable = ?');
+    params.push(input.parallelToolCapable ? 1 : 0);
+  }
+  if (input.thinkingCapable !== undefined) {
+    updates.push('thinking_capable = ?');
+    params.push(input.thinkingCapable ? 1 : 0);
   }
   if (input.maxInputTokens !== undefined) {
     updates.push('max_input_tokens = ?');

@@ -5,6 +5,7 @@ import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, Gener
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
+import { isModelParallelToolCapable } from './db/compat/enabled-models';
 import { getToolDisplayName, getStreamingConfigMs } from './streaming/utils';
 import { getToolDefinitions, executeTool, REQUEST_CLARIFICATION_TOOL } from './tools';
 import { resolveToolRouting } from './tool-routing';
@@ -1199,6 +1200,9 @@ export async function generateResponseWithTools(
   // Collect tool execution results for compliance checking
   const toolExecutionResults: ToolExecutionRecord[] = [];
 
+  // Check if this model supports parallel tool execution
+  const parallelToolCapable = await isModelParallelToolCapable(effectiveModel);
+
   while (responseMessage.tool_calls && totalToolCalls < maxTotalToolCalls && !terminalToolSucceeded) {
     iterations++;
     logger.debug(`Tool call iteration ${iterations}, total calls ${totalToolCalls}/${maxTotalToolCalls}`);
@@ -1230,202 +1234,120 @@ export async function generateResponseWithTools(
     // Collect tool results for Anthropic (batched into a single 'user' message after all executions)
     const anthropicToolResults: Anthropic.ToolResultBlockParam[] = [];
 
-    // Execute each tool call
-    for (const toolCall of responseMessage.tool_calls) {
-      const toolName = toolCall.function.name;
-
-      // Per-tool and total call limit checks (skip meta-tools)
-      if (toolName !== 'request_clarification') {
-        const toolCount = toolCallCounts.get(toolName) ?? 0;
-        if (toolCount >= maxPerToolCalls) {
-          const limitMsg = `Tool limit reached: ${toolName} has been called ${toolCount} times (max ${maxPerToolCalls} per session). Use a different approach.`;
-          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: limitMsg });
-          if (useAnthropicDirect) {
-            anthropicToolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: limitMsg });
-          }
-          continue;
-        }
-        totalToolCalls++;
-        toolCallCounts.set(toolName, toolCount + 1);
-      }
-
-      // Intercept request_clarification meta-tool — pause stream, show HITL UI, resume with answer
-      if (toolName === 'request_clarification') {
-        let clarificationAnswer = 'No clarification provided, proceed with best interpretation.';
-        if (callbacks?.onClarification) {
-          try {
-            const args = JSON.parse(toolCall.function.arguments) as {
-              question: string;
-              options: string[];
-              allowFreeText?: boolean;
-            };
-            const answer = await callbacks.onClarification(
-              args.question,
-              args.options || [],
-              args.allowFreeText ?? false,
-            );
-            if (answer) clarificationAnswer = answer;
-          } catch (parseErr) {
-            logger.warn('Failed to parse request_clarification arguments', { error: String(parseErr) });
-          }
-        }
-        messages.push({ role: 'tool', tool_call_id: toolCall.id, content: clarificationAnswer });
-        if (useAnthropicDirect) {
-          anthropicToolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: clarificationAnswer });
-        }
-        continue;
-      }
-
-      const displayName = getToolDisplayName(toolName);
-      const startTime = Date.now();
-
-      logger.debug(`Executing tool: ${toolName}`);
-
-      // Notify streaming callback that tool is starting
-      callbacks?.onToolStart?.(toolName, displayName);
-
-      let result: string;
-      let success = true;
-      let errorMsg: string | undefined;
-
+    // ── Helper: process a single tool call result (error detection, artifacts, terminal tools, compliance) ──
+    const processToolResult = (
+      toolName: string,
+      toolCallId: string,
+      result: string,
+      success: boolean,
+      errorMsg: string | undefined,
+      startTime: number,
+    ) => {
+      // Parse result for error detection, artifacts, terminal tool check
       try {
-        // Get skill-level config override if available
-        const configOverride = toolConfigOverrides.get(toolName);
-        result = await executeTool(toolName, toolCall.function.arguments, configOverride);
+        const parsed = JSON.parse(result);
 
-        // Check if result indicates an error
-        try {
-          const parsed = JSON.parse(result);
+        const hasError = parsed.error || parsed.errorCode || parsed.success === false;
+        const errorValue = parsed.error;
 
-          // Handle multiple error formats from different tools:
-          // - { error: string } or { error: { code, message } }
-          // - { errorCode: string }
-          // - { success: false, error: ... }
-          const hasError = parsed.error || parsed.errorCode || parsed.success === false;
-          const errorValue = parsed.error;
-
-          if (hasError) {
-            success = false;
-            // Extract error message from various formats
-            if (typeof errorValue === 'string') {
-              errorMsg = errorValue;
-            } else if (typeof errorValue === 'object' && errorValue?.message) {
-              errorMsg = errorValue.message;
-            } else if (parsed.errorCode) {
-              errorMsg = `Tool error: ${parsed.errorCode}`;
-            } else {
-              errorMsg = 'Tool execution failed';
-            }
+        if (hasError) {
+          success = false;
+          if (typeof errorValue === 'string') {
+            errorMsg = errorValue;
+          } else if (typeof errorValue === 'object' && errorValue?.message) {
+            errorMsg = errorValue.message;
+          } else if (parsed.errorCode) {
+            errorMsg = `Tool error: ${parsed.errorCode}`;
           } else {
-            // Extract artifacts for streaming callbacks (wrapped in try-catch for safety)
-            if (callbacks?.onArtifact) {
-              try {
-                // Check for visualization
-                if (parsed.success && parsed.data && parsed.visualizationHint) {
-                  const viz: MessageVisualization = {
-                    chartType: parsed.visualizationHint.chartType,
-                    data: parsed.data,
-                    xField: parsed.visualizationHint.xField,
-                    yField: parsed.visualizationHint.yField,
-                    yFields: parsed.visualizationHint.yFields,
-                    groupBy: parsed.visualizationHint.groupBy,
-                    title: parsed.chartTitle,
-                    notes: parsed.notes,
-                    seriesMode: parsed.seriesMode,
-                  };
-                  callbacks.onArtifact('visualization', viz);
-                }
-
-                // Check for generated document
-                if (parsed.success && parsed.document) {
-                  const doc: GeneratedDocumentInfo = {
-                    id: parsed.document.id,
-                    filename: parsed.document.filename,
-                    fileType: parsed.document.fileType,
-                    fileSize: parsed.document.fileSize || 0,
-                    fileSizeFormatted: parsed.document.fileSizeFormatted || '',
-                    downloadUrl: parsed.document.downloadUrl,
-                    expiresAt: parsed.document.expiresAt || null,
-                  };
-                  callbacks.onArtifact('document', doc);
-                }
-
-                // Check for generated image
-                if (parsed.success && parsed.imageHint) {
-                  const img: GeneratedImageInfo = {
-                    id: parsed.imageHint.id,
-                    url: parsed.imageHint.url,
-                    thumbnailUrl: parsed.imageHint.thumbnailUrl,
-                    width: parsed.imageHint.width,
-                    height: parsed.imageHint.height,
-                    alt: parsed.imageHint.alt || 'Generated image',
-                    provider: parsed.metadata?.provider,
-                    model: parsed.metadata?.model,
-                  };
-                  callbacks.onArtifact('image', img);
-                }
-
-                // Check for generated diagram
-                if (parsed.success && parsed.diagramHint) {
-                  const diagram: DiagramHint = {
-                    code: parsed.diagramHint.code,
-                    type: parsed.diagramHint.type,
-                    title: parsed.diagramHint.title,
-                  };
-                  callbacks.onArtifact('diagram', diagram);
-                }
-
-                // Check for generated podcast
-                if (parsed.success && parsed.podcastHint) {
-                  callbacks.onArtifact('podcast', parsed.podcastHint);
-                }
-              } catch (artifactError) {
-                // Log artifact callback error but don't fail the tool execution
-                logger.error(`Artifact callback error for tool ${toolName}:`, artifactError);
+            errorMsg = 'Tool execution failed';
+          }
+        } else {
+          // Extract artifacts for streaming callbacks
+          if (callbacks?.onArtifact) {
+            try {
+              if (parsed.success && parsed.data && parsed.visualizationHint) {
+                const viz: MessageVisualization = {
+                  chartType: parsed.visualizationHint.chartType,
+                  data: parsed.data,
+                  xField: parsed.visualizationHint.xField,
+                  yField: parsed.visualizationHint.yField,
+                  yFields: parsed.visualizationHint.yFields,
+                  groupBy: parsed.visualizationHint.groupBy,
+                  title: parsed.chartTitle,
+                  notes: parsed.notes,
+                  seriesMode: parsed.seriesMode,
+                };
+                callbacks.onArtifact('visualization', viz);
               }
-            }
-
-            // Check if this is a terminal tool that succeeded - stop further iterations
-            if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
-              logger.debug(`Terminal tool ${toolName} succeeded, stopping tool loop`);
-              terminalToolSucceeded = true;
-              terminalToolResult = { toolName, parsedResult: parsed };
+              if (parsed.success && parsed.document) {
+                const doc: GeneratedDocumentInfo = {
+                  id: parsed.document.id,
+                  filename: parsed.document.filename,
+                  fileType: parsed.document.fileType,
+                  fileSize: parsed.document.fileSize || 0,
+                  fileSizeFormatted: parsed.document.fileSizeFormatted || '',
+                  downloadUrl: parsed.document.downloadUrl,
+                  expiresAt: parsed.document.expiresAt || null,
+                };
+                callbacks.onArtifact('document', doc);
+              }
+              if (parsed.success && parsed.imageHint) {
+                const img: GeneratedImageInfo = {
+                  id: parsed.imageHint.id,
+                  url: parsed.imageHint.url,
+                  thumbnailUrl: parsed.imageHint.thumbnailUrl,
+                  width: parsed.imageHint.width,
+                  height: parsed.imageHint.height,
+                  alt: parsed.imageHint.alt || 'Generated image',
+                  provider: parsed.metadata?.provider,
+                  model: parsed.metadata?.model,
+                };
+                callbacks.onArtifact('image', img);
+              }
+              if (parsed.success && parsed.diagramHint) {
+                const diagram: DiagramHint = {
+                  code: parsed.diagramHint.code,
+                  type: parsed.diagramHint.type,
+                  title: parsed.diagramHint.title,
+                };
+                callbacks.onArtifact('diagram', diagram);
+              }
+              if (parsed.success && parsed.podcastHint) {
+                callbacks.onArtifact('podcast', parsed.podcastHint);
+              }
+            } catch (artifactError) {
+              logger.error(`Artifact callback error for tool ${toolName}:`, artifactError);
             }
           }
-        } catch (parseError) {
-          // Result is not valid JSON - log warning but don't fail
-          // Plain text results are valid for some tools
-          logger.debug(`Tool ${toolName} returned non-JSON result, treating as text response`);
+
+          // Check if terminal tool succeeded
+          if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
+            logger.debug(`Terminal tool ${toolName} succeeded, stopping tool loop`);
+            terminalToolSucceeded = true;
+            terminalToolResult = { toolName, parsedResult: parsed };
+          }
         }
-      } catch (error) {
-        success = false;
-        errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        result = JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' });
+      } catch {
+        logger.debug(`Tool ${toolName} returned non-JSON result, treating as text response`);
       }
 
       const duration = Date.now() - startTime;
-
-      // Notify streaming callback that tool completed
       callbacks?.onToolEnd?.(toolName, success, duration, errorMsg);
 
-      // Build tool execution record for compliance checking
+      // Build compliance record
       const executionRecord: ToolExecutionRecord = {
         toolName,
         success,
         duration,
         executedAt: new Date().toISOString(),
       };
-
       if (errorMsg) {
         executionRecord.error = errorMsg;
         executionRecord.failureType = 'error' as FailureType;
       }
-
-      // Extract additional info from result for compliance
       try {
         const parsed = JSON.parse(result);
         if (parsed.success !== false) {
-          // Count results (for data_returned check)
           if (Array.isArray(parsed.data)) {
             executionRecord.resultCount = parsed.data.length;
           } else if (parsed.results && Array.isArray(parsed.results)) {
@@ -1433,37 +1355,202 @@ export async function generateResponseWithTools(
           } else if (parsed.data) {
             executionRecord.resultCount = 1;
           }
-
-          // Get artifact URL (for doc_gen, image_gen)
           if (parsed.document?.downloadUrl) {
             executionRecord.artifactUrl = parsed.document.downloadUrl;
           } else if (parsed.imageHint?.url) {
             executionRecord.artifactUrl = parsed.imageHint.url;
           }
-
-          // Get data points (for chart_gen)
           if (parsed.data && Array.isArray(parsed.data)) {
             executionRecord.dataPoints = parsed.data.length;
           }
         } else if (!executionRecord.failureType) {
-          // success: false but no error - likely empty results
           executionRecord.failureType = 'empty' as FailureType;
           executionRecord.resultCount = 0;
         }
       } catch {
-        // Non-JSON result - may be a plain text response
+        // Non-JSON result
       }
-
       toolExecutionResults.push(executionRecord);
 
-      messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+      // Push to message arrays
+      messages.push({ role: 'tool', tool_call_id: toolCallId, content: result });
       if (useAnthropicDirect) {
         anthropicToolResults.push({
           type: 'tool_result',
-          tool_use_id: toolCall.id,
+          tool_use_id: toolCallId,
           content: result,
           ...(success ? {} : { is_error: true }),
         });
+      }
+
+      return { success, errorMsg, duration };
+    };
+
+    // ── Helper: handle request_clarification meta-tool ──
+    const handleClarification = async (toolCall: { id: string; function: { name: string; arguments: string } }) => {
+      let clarificationAnswer = 'No clarification provided, proceed with best interpretation.';
+      if (callbacks?.onClarification) {
+        try {
+          const args = JSON.parse(toolCall.function.arguments) as {
+            question: string;
+            options: string[];
+            allowFreeText?: boolean;
+          };
+          const answer = await callbacks.onClarification(
+            args.question,
+            args.options || [],
+            args.allowFreeText ?? false,
+          );
+          if (answer) clarificationAnswer = answer;
+        } catch (parseErr) {
+          logger.warn('Failed to parse request_clarification arguments', { error: String(parseErr) });
+        }
+      }
+      messages.push({ role: 'tool', tool_call_id: toolCall.id, content: clarificationAnswer });
+      if (useAnthropicDirect) {
+        anthropicToolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: clarificationAnswer });
+      }
+    };
+
+    // ── Execute tool calls: sequential or parallel based on model capability ──
+    const useParallel = parallelToolCapable && responseMessage.tool_calls.length > 1;
+
+    if (!useParallel) {
+      // ── Sequential path (existing behavior) ──
+      for (const toolCall of responseMessage.tool_calls) {
+        const toolName = toolCall.function.name;
+
+        // Per-tool and total call limit checks (skip meta-tools)
+        if (toolName !== 'request_clarification') {
+          const toolCount = toolCallCounts.get(toolName) ?? 0;
+          if (toolCount >= maxPerToolCalls) {
+            const limitMsg = `Tool limit reached: ${toolName} has been called ${toolCount} times (max ${maxPerToolCalls} per session). Use a different approach.`;
+            messages.push({ role: 'tool', tool_call_id: toolCall.id, content: limitMsg });
+            if (useAnthropicDirect) {
+              anthropicToolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: limitMsg });
+            }
+            continue;
+          }
+          totalToolCalls++;
+          toolCallCounts.set(toolName, toolCount + 1);
+        }
+
+        if (toolName === 'request_clarification') {
+          await handleClarification(toolCall);
+          continue;
+        }
+
+        const displayName = getToolDisplayName(toolName);
+        const startTime = Date.now();
+        logger.debug(`Executing tool: ${toolName}`);
+        callbacks?.onToolStart?.(toolName, displayName);
+
+        let result: string;
+        let success = true;
+        let errorMsg: string | undefined;
+
+        try {
+          const configOverride = toolConfigOverrides.get(toolName);
+          result = await executeTool(toolName, toolCall.function.arguments, configOverride);
+        } catch (error) {
+          success = false;
+          errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          result = JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' });
+        }
+
+        processToolResult(toolName, toolCall.id, result, success, errorMsg, startTime);
+      }
+    } else {
+      // ── Parallel path: execute independent tool calls concurrently ──
+      logger.debug(`Parallel tool execution: ${responseMessage.tool_calls.length} calls`);
+
+      // 1. Partition: separate request_clarification (HITL, must be sync) from regular calls
+      const clarificationCalls: typeof responseMessage.tool_calls = [];
+      const regularCalls: typeof responseMessage.tool_calls = [];
+
+      for (const tc of responseMessage.tool_calls) {
+        if (tc.function.name === 'request_clarification') {
+          clarificationCalls.push(tc);
+        } else {
+          regularCalls.push(tc);
+        }
+      }
+
+      // 2. Handle clarification calls first, sequentially (HITL needs user interaction)
+      for (const tc of clarificationCalls) {
+        await handleClarification(tc);
+      }
+
+      // 3. Pre-validate per-tool + total limits atomically for the batch
+      const validCalls: typeof regularCalls = [];
+      for (const tc of regularCalls) {
+        const toolName = tc.function.name;
+        const toolCount = toolCallCounts.get(toolName) ?? 0;
+
+        if (toolCount >= maxPerToolCalls) {
+          const limitMsg = `Tool limit reached: ${toolName} has been called ${toolCount} times (max ${maxPerToolCalls} per session). Use a different approach.`;
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: limitMsg });
+          if (useAnthropicDirect) {
+            anthropicToolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: limitMsg });
+          }
+          continue;
+        }
+
+        if (totalToolCalls >= maxTotalToolCalls) {
+          const limitMsg = `Total tool call limit reached (${maxTotalToolCalls}). Cannot execute more tools.`;
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: limitMsg });
+          if (useAnthropicDirect) {
+            anthropicToolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: limitMsg });
+          }
+          continue;
+        }
+
+        // Reserve the slot
+        totalToolCalls++;
+        toolCallCounts.set(toolName, toolCount + 1);
+        validCalls.push(tc);
+      }
+
+      // 4. Fire all onToolStart callbacks
+      for (const tc of validCalls) {
+        callbacks?.onToolStart?.(tc.function.name, getToolDisplayName(tc.function.name));
+      }
+
+      // 5. Execute all valid calls in parallel (each tracks its own start time)
+      const parallelResults = await Promise.allSettled(
+        validCalls.map(async (tc) => {
+          const startTime = Date.now();
+          const configOverride = toolConfigOverrides.get(tc.function.name);
+          try {
+            const result = await executeTool(tc.function.name, tc.function.arguments, configOverride);
+            return { result, success: true as boolean, errorMsg: undefined as string | undefined, startTime };
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            return {
+              result: JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' }),
+              success: false,
+              errorMsg,
+              startTime,
+            };
+          }
+        })
+      );
+
+      // 6. Process results IN ORIGINAL ORDER (important for message array consistency)
+      for (let i = 0; i < validCalls.length; i++) {
+        const tc = validCalls[i];
+        const toolName = tc.function.name;
+        const settled = parallelResults[i];
+
+        if (settled.status === 'fulfilled') {
+          const { result, success, errorMsg, startTime } = settled.value;
+          processToolResult(toolName, tc.id, result, success, errorMsg, startTime);
+        } else {
+          // Should not happen since we catch inside the map, but handle gracefully
+          const errorMsg = settled.reason instanceof Error ? settled.reason.message : 'Unknown error';
+          const result = JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' });
+          processToolResult(toolName, tc.id, result, false, errorMsg, Date.now());
+        }
       }
     }
 
@@ -1556,10 +1643,12 @@ export async function generateResponseWithTools(
   }
 
   // Generate LLM summary for terminal tool success
-  if (terminalToolSucceeded && terminalToolResult) {
-    const summaryPrompt = getTerminalToolSummaryPrompt(terminalToolResult.toolName);
+  // terminalToolResult is set inside processToolResult closure — TS can't track this
+  const finalTerminalResult = terminalToolResult as { toolName: string; parsedResult: Record<string, unknown> } | null;
+  if (terminalToolSucceeded && finalTerminalResult) {
+    const summaryPrompt = getTerminalToolSummaryPrompt(finalTerminalResult.toolName);
 
-    logger.debug(`Generating summary for terminal tool: ${terminalToolResult.toolName}`);
+    logger.debug(`Generating summary for terminal tool: ${finalTerminalResult.toolName}`);
 
     if (useAnthropicDirect && anthropicClient) {
       anthropicMessages.push({ role: 'user', content: summaryPrompt });

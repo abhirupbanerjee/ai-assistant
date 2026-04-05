@@ -323,6 +323,8 @@ CREATE TABLE IF NOT EXISTS enabled_models (
   display_name TEXT NOT NULL,
   tool_capable INTEGER DEFAULT 0,
   vision_capable INTEGER DEFAULT 0,
+  parallel_tool_capable INTEGER DEFAULT 0,
+  thinking_capable INTEGER DEFAULT 0,
   max_input_tokens INTEGER,
   max_output_tokens INTEGER,
   is_default INTEGER DEFAULT 0,

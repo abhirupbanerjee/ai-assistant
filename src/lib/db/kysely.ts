@@ -305,6 +305,11 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_workspace_sessions_workspace ON workspace_sessions(workspace_id)`.execute(database);
   console.log('[Kysely] Ensured safety net indexes exist');
 
+  // Migration: Add parallel_tool_capable and thinking_capable columns to enabled_models
+  await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS parallel_tool_capable INTEGER DEFAULT 0`.execute(database);
+  await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS thinking_capable INTEGER DEFAULT 0`.execute(database);
+  console.log('[Kysely] Ensured parallel_tool_capable and thinking_capable columns exist');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy
