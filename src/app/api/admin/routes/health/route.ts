@@ -2,7 +2,7 @@
  * Routes Health Check API
  *
  * Returns health status for both LLM routes:
- * - Route 1: LiteLLM proxy health via /health endpoint
+ * - Route 1: LiteLLM proxy health via /health/liveliness endpoint (no auth required)
  * - Route 2: Fireworks AI reachability + Anthropic API key configured
  */
 
@@ -59,7 +59,8 @@ async function checkRoute1Health(): Promise<{ healthy: boolean; latencyMs: numbe
     return { healthy: false, latencyMs: null, error: 'OPENAI_BASE_URL not configured' };
   }
 
-  const healthUrl = baseUrl.replace(/\/v1\/?$/, '') + '/health';
+  // Use /health/liveliness (no auth required) instead of /health (requires LITELLM_MASTER_KEY)
+  const healthUrl = baseUrl.replace(/\/v1\/?$/, '') + '/health/liveliness';
   const start = Date.now();
 
   try {

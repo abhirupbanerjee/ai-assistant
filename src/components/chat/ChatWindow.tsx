@@ -72,6 +72,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [urlSources, setUrlSources] = useState<UrlSource[]>([]);
   const [showSummaryDetails, setShowSummaryDetails] = useState(false);
   const [summaryData, setSummaryData] = useState<ThreadSummary | null>(null);
+  const [archivedMessages, setArchivedMessages] = useState<Message[]>([]);
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
@@ -142,7 +143,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const welcomeContent = getWelcomeContent();
   const [loading, setLoading] = useState(false);
-  const [modelReady, setModelReady] = useState(true);
+  const [modelReady, setModelReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
@@ -289,12 +290,14 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         loadSummaryData(activeThread.id);
       } else {
         setSummaryData(null);
+        setArchivedMessages([]);
       }
     } else {
       setThreadId(null);
       setMessages([]);
       setUploads([]);
       setSummaryData(null);
+      setArchivedMessages([]);
     }
   }, [activeThread, resetStreaming]);
 
@@ -348,15 +351,30 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const loadSummaryData = async (id: string) => {
     try {
-      const response = await fetch(`/api/threads/${id}/summary`);
-      if (response.ok) {
-        const data = await response.json();
+      const [summaryRes, archivedRes] = await Promise.all([
+        fetch(`/api/threads/${id}/summary`),
+        fetch(`/api/threads/${id}/archived`),
+      ]);
+      if (summaryRes.ok) {
+        const data = await summaryRes.json();
         if (data.hasSummary && data.summary) {
           setSummaryData({
             summary: data.summary.summary,
             messagesSummarized: data.summary.messagesSummarized,
             createdAt: data.summary.createdAt,
           });
+        }
+      }
+      if (archivedRes.ok) {
+        const data = await archivedRes.json();
+        if (data.messages?.length > 0) {
+          setArchivedMessages(data.messages.map((m: { id: string; role: string; content: string; sources_json?: string | null; created_at: string }) => ({
+            id: m.id,
+            role: m.role as Message['role'],
+            content: m.content,
+            sources: m.sources_json ? JSON.parse(m.sources_json) : undefined,
+            timestamp: new Date(m.created_at),
+          })));
         }
       }
     } catch (err) {
@@ -539,7 +557,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onScroll={handleMessagesScroll}
         className="flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative"
       >
-        {messages.length === 0 && !loading && (
+        {messages.length === 0 && archivedMessages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">
@@ -562,6 +580,25 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {/* Archived messages (from before summarization) */}
+        {archivedMessages.map((message) => (
+          <MessageBubble
+            key={`archived-${message.id}`}
+            message={message}
+          />
+        ))}
+
+        {/* Summarization divider */}
+        {archivedMessages.length > 0 && summaryData && (
+          <div className="flex items-center gap-3 my-4 px-2">
+            <div className="flex-1 border-t" style={{ borderColor: 'var(--accent-border)' }} />
+            <span className="text-xs text-gray-400 whitespace-nowrap">
+              Summarized for AI context
+            </span>
+            <div className="flex-1 border-t" style={{ borderColor: 'var(--accent-border)' }} />
           </div>
         )}
 

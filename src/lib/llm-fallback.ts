@@ -177,7 +177,8 @@ export async function isLiteLLMProxyHealthy(): Promise<boolean> {
 
   try {
     const baseUrl = process.env.OPENAI_BASE_URL.replace(/\/v1\/?$/, '');
-    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(3000) });
+    // Use /health/liveliness (no auth required) instead of /health (requires LITELLM_MASTER_KEY)
+    const res = await fetch(`${baseUrl}/health/liveliness`, { signal: AbortSignal.timeout(3000) });
     litellmHealthy = res.ok;
   } catch {
     litellmHealthy = false;
