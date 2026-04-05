@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
   MoreVertical, Trash2, EyeOff, Edit2, Check, FileText, Languages,
-  Image, Mic, Database, Search, ExternalLink, CheckCircle, RotateCcw, Sparkles,
+  Image, Mic, Database, Search, ExternalLink, CheckCircle, RotateCcw, Sparkles, Info,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -55,6 +55,13 @@ interface DetailsResult {
 
 type SectionId = 'providers' | 'models' | 'overview';
 
+// ============ Route Classification (mirrors server-side isRoute2Model) ============
+
+const ROUTE_2_PROVIDERS = new Set(['fireworks', 'anthropic']);
+const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
+const isRoute2Model = (id: string) =>
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/');
+
 // ============ Component ============
 
 export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: boolean }) {
@@ -90,6 +97,13 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [editedMaxInput, setEditedMaxInput] = useState<number>(0);
   const [editingMaxInputError, setEditingMaxInputError] = useState<string | null>(null);
 
+  // Routes settings for route-aware gating
+  const [routesSettings, setRoutesSettings] = useState<{
+    route1Enabled: boolean;
+    route2Enabled: boolean;
+    primaryRoute: 'route1' | 'route2';
+  } | null>(null);
+
   // Inline action errors
   const [fallbackError, setFallbackError] = useState<{ modelId: string; msg: string } | null>(null);
   const [toggleError, setToggleError] = useState<{ modelId: string; field: string; msg: string } | null>(null);
@@ -97,6 +111,22 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   // Get Details state
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
   const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult; applyError?: string } | null>(null);
+
+  // ============ Route Gating (derived) ============
+
+  const bothRoutesEnabled = routesSettings?.route1Enabled && routesSettings?.route2Enabled;
+  const route1Disabled = routesSettings ? !routesSettings.route1Enabled : false;
+  const route2Disabled = routesSettings ? !routesSettings.route2Enabled : false;
+
+  const isModelOnDisabledRoute = (modelId: string) => {
+    if (!routesSettings || bothRoutesEnabled) return false;
+    return isRoute2Model(modelId) ? route2Disabled : route1Disabled;
+  };
+
+  const isProviderOnDisabledRoute = (providerId: string) => {
+    if (!routesSettings || bothRoutesEnabled) return false;
+    return isRoute2Provider(providerId) ? route2Disabled : route1Disabled;
+  };
 
   // ============ Helpers ============
 
@@ -154,17 +184,28 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     });
   }, []);
 
+  const fetchRoutesSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings/routes');
+      if (!res.ok) return;
+      const data = await res.json();
+      setRoutesSettings(data.settings);
+    } catch {
+      // Non-critical — degrade gracefully (no gating)
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      await Promise.all([fetchProviders(), fetchModels(), fetchFallbackModelId()]);
+      await Promise.all([fetchProviders(), fetchModels(), fetchFallbackModelId(), fetchRoutesSettings()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
       setIsLoading(false);
     }
-  }, [fetchProviders, fetchModels, fetchFallbackModelId]);
+  }, [fetchProviders, fetchModels, fetchFallbackModelId, fetchRoutesSettings]);
 
   useEffect(() => {
     loadData();
@@ -496,19 +537,45 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         </div>
       )}
 
+      {/* Route gating banner */}
+      {routesSettings && !bothRoutesEnabled && (
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <Info size={18} className="text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-blue-800">
+            <span className="font-medium">
+              {route1Disabled ? 'Route 1 (LiteLLM) is disabled.' : 'Route 2 (Direct Providers) is disabled.'}
+            </span>
+            {' '}Providers and models for the disabled route are view-only. Default and fallback models must be selected from{' '}
+            {route1Disabled ? 'Route 2' : 'Route 1'} models.{' '}
+            <a href="/admin?tab=settings&section=routes" className="text-blue-600 underline hover:text-blue-800">
+              Go to Routes
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* ============ Section 1: Providers ============ */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="providers" title="Providers" subtitle="Configure API keys for LLM providers" />
         {expandedSections.has('providers') && (
           <div className="p-6 space-y-4">
-            {providers.map(provider => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                onUpdate={(updates) => handleProviderUpdate(provider.id, updates)}
-                onTest={() => handleTestProvider(provider.id)}
-              />
-            ))}
+            {providers.map(provider => {
+              const routeDisabled = isProviderOnDisabledRoute(provider.id);
+              return (
+                <div key={provider.id} className={routeDisabled ? 'opacity-50 pointer-events-none' : ''}>
+                  <ProviderCard
+                    provider={provider}
+                    onUpdate={(updates) => handleProviderUpdate(provider.id, updates)}
+                    onTest={() => handleTestProvider(provider.id)}
+                  />
+                  {routeDisabled && (
+                    <p className="text-xs text-gray-400 mt-1 ml-5">
+                      {isRoute2Provider(provider.id) ? 'Route 2' : 'Route 1'} is disabled
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -552,9 +619,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {enabledModels.filter(m => m.providerEnabled !== false).map(model => (
+                    {enabledModels.filter(m => m.providerEnabled !== false).map(model => {
+                      const routeOff = isModelOnDisabledRoute(model.id);
+                      return (
                       <React.Fragment key={model.id}>
-                      <tr className={!model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''}>
+                      <tr className={`${
+                        routeOff ? 'bg-gray-50 opacity-40' :
+                        !model.enabled || model.providerEnabled === false ? 'bg-gray-50 opacity-60' : ''
+                      }`}>
                         {/* Provider */}
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{getProviderName(model.providerId)}</td>
 
@@ -585,14 +657,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         {/* Tools toggle */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           <button
-                            onClick={() => !readOnly && handleToggleCapability(model.id, 'toolCapable', model.toolCapable)}
-                            disabled={readOnly}
-                            title={model.toolCapable ? 'Tool calling enabled — click to disable' : 'Tool calling disabled — click to enable'}
+                            onClick={() => !readOnly && !routeOff && handleToggleCapability(model.id, 'toolCapable', model.toolCapable)}
+                            disabled={readOnly || routeOff}
+                            title={routeOff ? 'Route is disabled' : model.toolCapable ? 'Tool calling enabled — click to disable' : 'Tool calling disabled — click to enable'}
                             className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                               model.toolCapable
                                 ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
                                 : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                            } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                            } ${readOnly || routeOff ? 'cursor-default' : 'cursor-pointer'}`}
                           >
                             <Wrench size={11} className="mr-1" />{model.toolCapable ? 'On' : 'Off'}
                           </button>
@@ -604,14 +676,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         {/* Vision toggle */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           <button
-                            onClick={() => !readOnly && handleToggleCapability(model.id, 'visionCapable', model.visionCapable)}
-                            disabled={readOnly}
-                            title={model.visionCapable ? 'Vision enabled — click to disable' : 'Vision disabled — click to enable'}
+                            onClick={() => !readOnly && !routeOff && handleToggleCapability(model.id, 'visionCapable', model.visionCapable)}
+                            disabled={readOnly || routeOff}
+                            title={routeOff ? 'Route is disabled' : model.visionCapable ? 'Vision enabled — click to disable' : 'Vision disabled — click to enable'}
                             className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                               model.visionCapable
                                 ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                                 : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                            } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                            } ${readOnly || routeOff ? 'cursor-default' : 'cursor-pointer'}`}
                           >
                             <Eye size={11} className="mr-1" />{model.visionCapable ? 'On' : 'Off'}
                           </button>
@@ -634,12 +706,12 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             </div>
                           ) : (
                             <button
-                              onClick={() => !readOnly && (setEditingMaxInput(model.id), setEditedMaxInput(model.maxInputTokens || 128000))}
-                              disabled={readOnly}
-                              className={`text-sm text-gray-600 ${readOnly ? '' : 'hover:text-blue-600 hover:underline'}`}
-                              title={readOnly ? undefined : 'Click to edit'}
+                              onClick={() => !readOnly && !routeOff && (setEditingMaxInput(model.id), setEditedMaxInput(model.maxInputTokens || 128000))}
+                              disabled={readOnly || routeOff}
+                              className={`text-sm text-gray-600 ${readOnly || routeOff ? '' : 'hover:text-blue-600 hover:underline'}`}
+                              title={routeOff ? 'Route is disabled' : readOnly ? undefined : 'Click to edit'}
                             >
-                              {model.maxInputTokens ? `${(model.maxInputTokens / 1000).toFixed(0)}K` : '—'}
+                              {model.maxInputTokens ? `${(model.maxInputTokens / 1000).toFixed(0)}K` : '\u2014'}
                             </button>
                           )}
                         </td>
@@ -658,10 +730,10 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             </div>
                           ) : (
                             <button
-                              onClick={() => !readOnly && (setEditingMaxOutput(model.id), setEditedMaxOutput(model.maxOutputTokens || 16000))}
-                              disabled={readOnly}
-                              className={`text-sm text-gray-600 ${readOnly ? '' : 'hover:text-blue-600 hover:underline'}`}
-                              title={readOnly ? undefined : 'Click to edit'}
+                              onClick={() => !readOnly && !routeOff && (setEditingMaxOutput(model.id), setEditedMaxOutput(model.maxOutputTokens || 16000))}
+                              disabled={readOnly || routeOff}
+                              className={`text-sm text-gray-600 ${readOnly || routeOff ? '' : 'hover:text-blue-600 hover:underline'}`}
+                              title={routeOff ? 'Route is disabled' : readOnly ? undefined : 'Click to edit'}
                             >
                               {model.maxOutputTokens ? `${(model.maxOutputTokens / 1000).toFixed(0)}K` : '—'}
                             </button>
@@ -670,7 +742,10 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
                         {/* Status */}
                         <td className="px-4 py-3 whitespace-nowrap">
-                          {model.providerEnabled === false ? (
+                          {routeOff ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500"
+                              title={`${isRoute2Model(model.id) ? 'Route 2' : 'Route 1'} is disabled`}>Route Off</span>
+                          ) : model.providerEnabled === false ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700" title="Provider is disabled">Provider Off</span>
                           ) : model.enabled ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Active</span>
@@ -773,7 +848,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         </tr>
                       )}
                       </React.Fragment>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               )}
@@ -884,6 +959,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       {activeModelMenu && menuAnchor && (() => {
         const m = enabledModels.find(mo => mo.id === activeModelMenu);
         if (!m) return null;
+        const menuRouteOff = isModelOnDisabledRoute(m.id);
         return createPortal(
           <>
             {/* Backdrop: captures outside clicks; unmounts with menu so no post-close scroll lock */}
@@ -900,10 +976,17 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
             </button>
             <div className="border-t my-1" />
             {!m.isDefault && (
-              <button onClick={() => handleSetDefault(m.id)}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                <Star size={14} />Set as Default
-              </button>
+              menuRouteOff ? (
+                <div className="w-full px-4 py-2 text-left text-sm text-gray-300 flex items-center gap-2 cursor-not-allowed"
+                  title="Model's route is disabled">
+                  <Star size={14} />Set as Default
+                </div>
+              ) : (
+                <button onClick={() => handleSetDefault(m.id)}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                  <Star size={14} />Set as Default
+                </button>
+              )
             )}
             {fallbackModelId === m.id ? (
               <button onClick={() => handleSetFallback(null)}
@@ -911,10 +994,17 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                 <RotateCcw size={14} />Remove Fallback
               </button>
             ) : (
-              <button onClick={() => handleSetFallback(m.id)}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
-                <RotateCcw size={14} />Set as Fallback
-              </button>
+              menuRouteOff ? (
+                <div className="w-full px-4 py-2 text-left text-sm text-gray-300 flex items-center gap-2 cursor-not-allowed"
+                  title="Model's route is disabled">
+                  <RotateCcw size={14} />Set as Fallback
+                </div>
+              ) : (
+                <button onClick={() => handleSetFallback(m.id)}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                  <RotateCcw size={14} />Set as Fallback
+                </button>
+              )
             )}
             <div className="border-t my-1" />
             <button onClick={() => { setEditingModel(m.id); setEditedDisplayName(m.displayName); setActiveModelMenu(null); setMenuAnchor(null); }}

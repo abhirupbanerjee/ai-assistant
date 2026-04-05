@@ -24,6 +24,11 @@ interface RouteHealth {
   };
 }
 
+// ============ Route Classification (mirrors server-side isRoute2Model) ============
+
+const isRoute2Model = (id: string) =>
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/');
+
 // ============ Component ============
 
 export default function RoutesSettingsPanel() {
@@ -35,6 +40,10 @@ export default function RoutesSettingsPanel() {
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Model validation state
+  const [defaultModel, setDefaultModel] = useState<{ id: string; displayName: string } | null>(null);
+  const [fallbackModel, setFallbackModel] = useState<{ id: string; displayName: string } | null>(null);
 
   const isModified = edited && settings && (
     edited.route1Enabled !== settings.route1Enabled ||
@@ -73,10 +82,46 @@ export default function RoutesSettingsPanel() {
     }
   }, []);
 
+  // Fetch default & fallback model info for route-conflict validation
+  const fetchModelValidation = useCallback(async () => {
+    try {
+      const [modelsRes, fbRes] = await Promise.all([
+        fetch('/api/admin/llm/models'),
+        fetch('/api/admin/settings/llm-fallback'),
+      ]);
+
+      let models: Array<{ id: string; displayName: string; isDefault: boolean }> = [];
+      if (modelsRes.ok) {
+        const data = await modelsRes.json();
+        models = data.models || [];
+      }
+
+      const def = models.find(m => m.isDefault);
+      setDefaultModel(def ? { id: def.id, displayName: def.displayName } : null);
+
+      if (fbRes.ok) {
+        const fbData = await fbRes.json();
+        const fbId = fbData.settings?.universalFallback;
+        if (fbId) {
+          const fbModel = models.find(m => m.id === fbId);
+          setFallbackModel(fbModel
+            ? { id: fbModel.id, displayName: fbModel.displayName }
+            : { id: fbId, displayName: fbId }
+          );
+        } else {
+          setFallbackModel(null);
+        }
+      }
+    } catch {
+      // Non-critical — warnings just won't show
+    }
+  }, []);
+
   useEffect(() => {
     fetchSettings();
     checkHealth();
-  }, [fetchSettings, checkHealth]);
+    fetchModelValidation();
+  }, [fetchSettings, checkHealth, fetchModelValidation]);
 
   // Save handler
   const handleSave = useCallback(async () => {
@@ -120,6 +165,21 @@ export default function RoutesSettingsPanel() {
   const route2IsPrimary = edited.primaryRoute === 'route2';
   const onlyOneEnabled = edited.route1Enabled !== edited.route2Enabled;
 
+  // Model route-conflict validation (uses edited for real-time feedback)
+  const defaultModelInvalid = defaultModel && (() => {
+    const isR2 = isRoute2Model(defaultModel.id);
+    if (isR2 && !edited.route2Enabled) return { model: defaultModel, route: 'Route 2' };
+    if (!isR2 && !edited.route1Enabled) return { model: defaultModel, route: 'Route 1' };
+    return null;
+  })();
+
+  const fallbackModelInvalid = fallbackModel && (() => {
+    const isR2 = isRoute2Model(fallbackModel.id);
+    if (isR2 && !edited.route2Enabled) return { model: fallbackModel, route: 'Route 2' };
+    if (!isR2 && !edited.route1Enabled) return { model: fallbackModel, route: 'Route 1' };
+    return null;
+  })();
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -148,6 +208,36 @@ export default function RoutesSettingsPanel() {
           <AlertTriangle size={18} className="text-amber-600 mt-0.5 shrink-0" />
           <div className="text-sm text-amber-800">
             <span className="font-medium">No fallback route.</span> Enable both routes for automatic failover when the primary route is unavailable.
+          </div>
+        </div>
+      )}
+
+      {/* Default model route-conflict warning */}
+      {defaultModelInvalid && (
+        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <AlertTriangle size={18} className="text-red-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-red-800">
+            <span className="font-medium">Default model conflict.</span>{' '}
+            The current default model ({defaultModelInvalid.model.displayName}) belongs to{' '}
+            {defaultModelInvalid.route}, which is disabled. Select a new default from the active route.{' '}
+            <a href="/admin?tab=settings&section=llm" className="text-red-600 underline hover:text-red-800">
+              Go to LLM Settings
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Fallback model route-conflict warning */}
+      {fallbackModelInvalid && (
+        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <AlertTriangle size={18} className="text-red-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-red-800">
+            <span className="font-medium">Fallback model conflict.</span>{' '}
+            The current fallback model ({fallbackModelInvalid.model.displayName}) belongs to{' '}
+            {fallbackModelInvalid.route}, which is disabled. Select a new fallback from the active route.{' '}
+            <a href="/admin?tab=settings&section=llm" className="text-red-600 underline hover:text-red-800">
+              Go to LLM Settings
+            </a>
           </div>
         </div>
       )}
