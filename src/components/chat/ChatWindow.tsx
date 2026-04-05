@@ -368,12 +368,12 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       if (archivedRes.ok) {
         const data = await archivedRes.json();
         if (data.messages?.length > 0) {
-          setArchivedMessages(data.messages.map((m: { id: string; role: string; content: string; sources_json?: string | null; created_at: string }) => ({
+          setArchivedMessages(data.messages.map((m: { id: string; role: string; content: string; sourcesJson?: string | null; createdAt: string }) => ({
             id: m.id,
             role: m.role as Message['role'],
             content: m.content,
-            sources: m.sources_json ? JSON.parse(m.sources_json) : undefined,
-            timestamp: new Date(m.created_at),
+            sources: m.sourcesJson ? JSON.parse(m.sourcesJson) : undefined,
+            timestamp: new Date(m.createdAt),
           })));
         }
       }
