@@ -163,6 +163,17 @@ PolicyBot uses a **four-tier hybrid architecture**. LiteLLM handles most chat, e
 └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘
 ```
 
+### Model Capability Detection
+
+Capabilities are auto-detected via regex patterns in `src/lib/services/model-discovery.ts` and stored in the `enabled_models` table. Admins can override via the LLM Settings UI.
+
+| Capability | DB Column | Detection Function | Used By |
+|------------|-----------|-------------------|---------|
+| Tool calling | `tool_capable` | `isToolCapable(modelId)` | `openai.ts` — whether to send tool definitions |
+| Vision/multimodal | `vision_capable` | `isVisionCapable(modelId)` | `config-capability-checker.ts` — image upload gating |
+| Parallel tool calls | `parallel_tool_capable` | `isParallelToolCapable(modelId)` | `openai.ts` — sequential vs `Promise.allSettled` execution |
+| Thinking/reasoning | `thinking_capable` | `isThinkingCapable(modelId)` | UI — thinking content display |
+
 ### Model Registration: Dynamic vs Static
 
 PolicyBot uses **two registration paths** for LiteLLM models:

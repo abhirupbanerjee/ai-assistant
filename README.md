@@ -53,6 +53,7 @@ Built with enterprise-grade, open-source technologies:
 ### Core Features
 - **RAG-Powered Q&A** - Natural language queries with source citations
 - **Multi-Provider LLM** - OpenAI, Anthropic Claude (direct SDK), DeepSeek, Mistral, Gemini, Fireworks AI, Ollama via LiteLLM
+- **Two-Route Architecture** - Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled for resilience, cost control, and compliance
 - **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
 - **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking)
 - **Voice Input** - Whisper and Voxtral transcription for audio questions (via LiteLLM)
@@ -216,6 +217,7 @@ policy-bot/
 │   │   ├── PROMPTS.md                  # Prompts system guide
 │   │   ├── SKILLS.md                   # Skills system guide (includes tool routing)
 │   │   ├── PWA.md                      # Progressive Web App guide
+│   │   ├── routes.md                   # Two-Route LLM Architecture
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md
 │   ├── tech/
 │   │   ├── SOLUTION.md                 # Architecture and design decisions

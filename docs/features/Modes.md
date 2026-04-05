@@ -8,7 +8,7 @@ Policy Bot supports two operational modes to handle different user requirements:
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
-| Normal Mode | Single-turn response with direct LLM processing | Simple queries, quick answers, straightforward tasks |
+| Normal Mode | Single-turn response with direct LLM processing; parallel tool execution for capable models | Simple queries, quick answers, straightforward tasks |
 | Autonomous Mode | Multi-agent orchestration with Plan-Execute-Check-Summarize loop | Complex tasks requiring multiple steps, research, multi-tool execution |
 
 ### 1.2 When to Use Which Mode
@@ -19,6 +19,8 @@ Policy Bot supports two operational modes to handle different user requirements:
 - Quick factual lookups
 - Single-step tasks that don't require tool usage
 - Time-sensitive queries where speed is priority
+
+> **Tool Execution in Normal Mode:** When the LLM returns multiple tool calls in a single response, models marked `parallel_tool_capable` execute them concurrently (via `Promise.allSettled`), while other models execute sequentially. This is transparent to the user — the LLM's natural multi-round loop still handles dependencies (e.g., search in round 1, doc_gen in round 2). Admin control: toggle per-model in Settings > LLM.
 
 **Use Autonomous Mode When:**
 - Complex multi-step tasks requiring research

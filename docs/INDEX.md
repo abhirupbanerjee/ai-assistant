@@ -61,6 +61,12 @@ Detailed guides for specific features and capabilities.
 |----------|-------------|------------|
 | [features/PWA.md](features/PWA.md) | Progressive Web App guide | Installation (desktop/mobile), capabilities, limitations, browser support, troubleshooting |
 
+### LLM Routing
+
+| Document | Description | Key Topics |
+|----------|-------------|------------|
+| [features/routes.md](features/routes.md) | Two-Route LLM Architecture | Route 1 (LiteLLM) vs Route 2 (Direct), route classification, admin gating, conflict warnings, fallback chain |
+
 ### Advanced Features
 
 | Document | Description | Key Topics |
@@ -162,6 +168,7 @@ Guides for different user roles and workflows.
 
 ### AI Configuration
 
+- [features/routes.md](features/routes.md) - **Two-Route LLM Architecture** (Route 1: LiteLLM, Route 2: Direct SDKs, admin gating, conflict warnings)
 - [features/PROMPTS.md](features/PROMPTS.md) - System and category prompts
 - [features/SKILLS.md](features/SKILLS.md) - Contextual AI behaviors
 - [user_manuals/ADMIN_GUIDE.md § Prompts](user_manuals/ADMIN_GUIDE.md#6-prompts) - Prompt management UI
@@ -299,6 +306,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.3** | April 2026 | **Two-Route LLM Architecture** — Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled. Route-aware model filtering, admin UI gating (view-only for disabled routes), model conflict warnings, cross-route fallback chain, model readiness gating on chat submit. |
 | **3.2** | March 2026 | **Anthropic Direct SDK** — Claude chat + tool calling bypasses LiteLLM via `@anthropic-ai/sdk` for reliable tool call JSON. LiteLLM cache fix (`clearLiteLLMCache()` after model sync). Stream reset SSE event for clean model fallback. |
 | **3.1** | March 2026 | Agent Bots (programmatic API), Fireworks AI + DeepSeek + Anthropic providers, Thinking Models (`<think>` processing), 8+ new tools (SonarCloud, PageSpeed, SSL/DNS/Cookie/Redirect scan, k6 load test, security scan, dependency analysis), Next.js 16, configurable tool call limits |
 | **3.0** | March 2026 | PostgreSQL-only (SQLite removed), Kysely ORM, async database access, `src/lib/db/utils.ts` for pure utilities |
@@ -347,4 +355,4 @@ When updating documentation:
 
 ---
 
-*Last updated: March 2026 (v3.1)*
+*Last updated: April 2026 (v3.3)*

@@ -241,6 +241,19 @@ interface SkillsSettings {
 | **Autonomous** | LLM-triggered via OpenAI function calling | LLM decides when to call |
 | **Processor** | Post-response output processors | Triggered by response content |
 
+### Model Capability Flags
+
+Per-model flags stored in `enabled_models` table, configurable in Admin > Settings > LLM:
+
+| Flag | DB Column | Purpose |
+|------|-----------|---------|
+| **Tools** | `tool_capable` | Enable/disable function calling for this model |
+| **Vision** | `vision_capable` | Enable/disable image/vision processing |
+| **Parallel** | `parallel_tool_capable` | Enable concurrent tool execution (`Promise.allSettled`) instead of sequential |
+| **Thinking** | `thinking_capable` | Identify models with extended reasoning output (thinking blocks, `<think>` tags) |
+
+Defaults are auto-detected by `src/lib/services/model-discovery.ts` when models are added or refreshed.
+
 ### Available Tools Overview
 
 | Tool | Type | Purpose | Prerequisites |

@@ -4970,7 +4970,10 @@ List all enabled models.
     isActive: boolean;
     toolCapable: boolean;
     visionCapable: boolean;
+    parallelToolCapable: boolean;
+    thinkingCapable: boolean;
     maxInputTokens?: number;
+    maxOutputTokens?: number;
     costPer1kInput?: number;
     costPer1kOutput?: number;
     sortOrder: number;
@@ -5001,7 +5004,10 @@ Enable models in batch.
     isActive?: boolean;
     toolCapable?: boolean;
     visionCapable?: boolean;
+    parallelToolCapable?: boolean;
+    thinkingCapable?: boolean;
     maxInputTokens?: number;
+    maxOutputTokens?: number;
     costPer1kInput?: number;
     costPer1kOutput?: number;
     sortOrder?: number;

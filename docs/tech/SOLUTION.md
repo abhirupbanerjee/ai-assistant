@@ -93,6 +93,17 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 (V) = Vision/Multimodal  (🧠) = Thinking/Extended reasoning
 ```
 
+### Two-Route Architecture
+
+The four tiers above are grouped into two independently-togglable routes for operational resilience:
+
+| Route | Tiers | Providers | Connection |
+|-------|-------|-----------|------------|
+| **Route 1** | Tier 1 (LiteLLM) | OpenAI, Gemini, Mistral, DeepSeek, Ollama | Via LiteLLM proxy |
+| **Route 2** | Tier 1b (Claude Direct) + Fireworks chat | Anthropic, Fireworks AI | Native SDK / direct API |
+
+Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). Both routes can be active simultaneously for cross-route failover. See [features/routes.md](../features/routes.md) for full details.
+
 ---
 
 ## Technology Stack
@@ -294,13 +305,24 @@ Image Upload Request
                               Block processing, show error message
 ```
 
-**Capability Detection** (`src/lib/config-capability-checker.ts`):
+**Capability Detection** (`src/lib/config-capability-checker.ts` and `src/lib/services/model-discovery.ts`):
 
 | Function | Purpose |
 |----------|---------|
 | `isVisionCapableModel(modelId)` | Check if model supports vision via `enabled_models` DB |
+| `isModelParallelToolCapable(modelId)` | Check if model supports concurrent tool execution via `enabled_models` DB |
+| `isModelThinkingCapable(modelId)` | Check if model outputs reasoning/thinking content via `enabled_models` DB |
 | `isImageOcrAvailable()` | Check if Mistral or Azure DI OCR is configured |
 | `getImageCapabilities(modelId)` | Return full `ImageCapabilities` object with strategy |
+
+**Model Capability Flags** (stored in `enabled_models` table, togglable in Admin UI):
+
+| Flag | Purpose | Auto-detected |
+|------|---------|---------------|
+| `tool_capable` | Function/tool calling support | Yes, via `TOOL_CAPABLE_PATTERNS` |
+| `vision_capable` | Image/multimodal input support | Yes, via `VISION_CAPABLE_PATTERNS` |
+| `parallel_tool_capable` | Concurrent tool execution (uses `Promise.allSettled`) | Yes, via `PARALLEL_TOOL_CAPABLE_PATTERNS` |
+| `thinking_capable` | Extended reasoning/thinking output | Yes, via `THINKING_CAPABLE_PATTERNS` |
 
 **ImageCapabilities Interface**:
 ```typescript

@@ -56,9 +56,16 @@ When a provider releases a new model **family** (e.g., GPT-6, Gemini 3, o5), you
 // In VISION_CAPABLE_PATTERNS - add if the family supports vision:
 /^gpt-6/,
 /^gemini-3/,
+
+// In PARALLEL_TOOL_CAPABLE_PATTERNS - add if the model reliably handles multiple tool calls in one response:
+/^gpt-6/,
+/^gemini-3/,
+
+// In THINKING_CAPABLE_PATTERNS - add if the model outputs reasoning/thinking content:
+/^o5/,
 ```
 
-Without these patterns, auto-discovered models will appear but may not have correct tool/vision capability flags.
+Without these patterns, auto-discovered models will appear but may not have correct capability flags (tool, vision, parallel, thinking).
 
 ---
 
@@ -73,6 +80,17 @@ Before adding models, choose the provider tier based on data sensitivity and tas
 | **Fireworks AI** | Open-source model testing: MiniMax M2.5, Kimi K2.5, GPT-OSS 20B/120B, Qwen3 4B/8B, Llama 4 Scout | Development / test environments only — not for production sensitive data |
 
 > **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.
+
+### Route Awareness
+
+New models are automatically classified into one of two routes based on their ID prefix:
+
+| Route | Model ID Prefixes | Provider IDs |
+|-------|------------------|--------------|
+| **Route 1** (LiteLLM) | All others | `openai`, `gemini`, `mistral`, `deepseek`, `ollama` |
+| **Route 2** (Direct) | `anthropic/`, `claude-`, `fireworks/` | `anthropic`, `fireworks` |
+
+If you add a new provider, update the route classification in `UnifiedLLMSettings.tsx` (`ROUTE_2_PROVIDERS`, `isRoute2Model`) and the chat API model filters. See [features/routes.md](../features/routes.md) for architecture details.
 
 ---
 
@@ -260,6 +278,8 @@ await database
     display_name: 'Display Name',
     tool_capable: 1,
     vision_capable: 0,
+    parallel_tool_capable: 1,
+    thinking_capable: 0,
     max_input_tokens: 131072,
     max_output_tokens: 16384,
     is_default: 0,
@@ -905,6 +925,10 @@ Model ID: "gpt-4.1-mini"
            ↓
     Check VISION_CAPABLE_PATTERNS → matches /^gpt-4\.1/ → visionCapable: true
            ↓
+    Check PARALLEL_TOOL_CAPABLE_PATTERNS → matches /^gpt-4\.1/ → parallelToolCapable: true
+           ↓
+    Check THINKING_CAPABLE_PATTERNS → no match → thinkingCapable: false
+           ↓
     Check CONTEXT_WINDOWS → matches 'gpt-4.1-mini' → maxInputTokens: 1000000
 ```
 
@@ -980,6 +1004,47 @@ const VISION_CAPABLE_PATTERNS = [
 ```
 
 **Important:** Some providers (like DeepSeek) do not support vision. Do NOT add them to this list.
+
+### PARALLEL_TOOL_CAPABLE_PATTERNS
+
+**Location:** `src/lib/services/model-discovery.ts`
+
+Models matching these patterns will execute **multiple tool calls concurrently** (via `Promise.allSettled`) instead of sequentially:
+
+```typescript
+const PARALLEL_TOOL_CAPABLE_PATTERNS = [
+  /^claude/,              // Anthropic — excellent multi-tool support
+  /^gemini/,              // Google Gemini — full parallel + compositional
+  /^mistral-large/,       // Mistral Large — trained for parallel and sequential
+  /^gpt-4\.1/,            // OpenAI GPT-4.1 family
+  /^gpt-5-nano/,          // GPT-5 Nano
+  /^gpt-5\.2/,            // GPT-5.2+ fixed parallel regression
+  /^gpt-5\.3/,
+  /^gpt-5\.4/,
+  /^fireworks\//,          // Fireworks-hosted models
+  /^accounts\/fireworks/,
+];
+```
+
+**NOT parallel capable (default=false):** GPT-5 (base, ~90% failure rate on parallel calls), DeepSeek-chat, Ollama models, o1/o3/o4 reasoning models.
+
+### THINKING_CAPABLE_PATTERNS
+
+**Location:** `src/lib/services/model-discovery.ts`
+
+Models matching these patterns output **reasoning/thinking content** (native thinking blocks or `<think>` tags):
+
+```typescript
+const THINKING_CAPABLE_PATTERNS = [
+  /^claude/,       // Anthropic native thinking blocks
+  /^qwen3/,        // Qwen3 — <think> tags
+  /^qwq/,          // QwQ — <think> tags
+  /^deepseek-r/,   // DeepSeek-R1 — <think> tags
+  /^o1/,           // OpenAI o1
+  /^o3/,           // OpenAI o3
+  /^o4/,           // OpenAI o4
+];
+```
 
 ### CONTEXT_WINDOWS
 
@@ -1097,6 +1162,10 @@ Token settings are stored in the `enabled_models` table:
 CREATE TABLE enabled_models (
   id TEXT PRIMARY KEY,
   provider_id TEXT NOT NULL,
+  tool_capable INTEGER DEFAULT 0,
+  vision_capable INTEGER DEFAULT 0,
+  parallel_tool_capable INTEGER DEFAULT 0,
+  thinking_capable INTEGER DEFAULT 0,
   max_input_tokens INTEGER,   -- Context window (nullable)
   max_output_tokens INTEGER,  -- Per-model output limit (nullable)
   -- ... other fields
@@ -1351,7 +1420,7 @@ This is expected. With `store_model_in_db: false`, LiteLLM's in-memory store is 
 | Table | Purpose |
 |-------|---------|
 | `llm_providers` | Provider configurations (id, name, api_key, api_base, enabled) |
-| `enabled_models` | Model configurations (id, provider_id, display_name, tool_capable, vision_capable, max_input_tokens, max_output_tokens, is_default, enabled, sort_order) |
+| `enabled_models` | Model configurations (id, provider_id, display_name, tool_capable, vision_capable, parallel_tool_capable, thinking_capable, max_input_tokens, max_output_tokens, is_default, enabled, sort_order) |
 
 ---
 

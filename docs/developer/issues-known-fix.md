@@ -103,6 +103,81 @@ Request → middleware.ts
 
 ---
 
+## 3. LiteLLM Breaks Anthropic Streaming Tool-Call JSON Assembly
+
+**Status:** Fixed — permanent architectural bypass
+**Affected files:** `src/lib/openai.ts`
+**Date discovered:** March 2026
+
+### Problem
+
+When Claude models were routed through LiteLLM, the proxy translated Anthropic's native `tool_use` content blocks into OpenAI-compatible `delta.tool_calls` format during streaming. This JSON assembly was **unreliable** — LiteLLM would produce malformed tool-calling JSON that failed `executeTool()` parsing.
+
+**Symptoms:**
+- `doc_gen`, `xlsx_gen`, and `pptx_gen` tools failed intermittently with JSON parse errors
+- Tool call arguments arrived as broken JSON strings after LiteLLM's chunked reassembly
+- Affected all Claude models (Sonnet, Haiku, Opus) when tool calling was involved
+
+### Root Cause
+
+LiteLLM's streaming format converter reassembles tool input JSON from streamed `delta.tool_calls` chunks. For Anthropic models, this reassembly loses fidelity — partial JSON fragments get concatenated incorrectly, producing unparseable arguments.
+
+### Fix Applied
+
+Claude models now bypass LiteLLM entirely for chat completions, using the `@anthropic-ai/sdk` directly:
+
+1. **Detection:** `isClaudeModel(model)` checks for `anthropic/` or `claude-` prefix
+2. **Routing:** If Claude, `streamAnthropicCompletion()` is called instead of the OpenAI/LiteLLM path
+3. **Key difference:** The direct SDK's `stream.finalMessage()` returns **pre-parsed** `block.input` objects (structured data), not JSON strings from chunked reassembly
+
+```typescript
+// Direct SDK — tool inputs arrive as already-parsed objects
+for (const block of message.content) {
+  if (block.type === 'tool_use') {
+    toolCalls.push({ id: block.id, name: block.name, input: block.input });
+  }
+}
+// Convert to OpenAI-compatible format for downstream executeTool()
+const openaiToolCalls = toolCalls.map(tc => ({
+  id: tc.id, type: 'function' as const,
+  function: { name: tc.name, arguments: JSON.stringify(tc.input) },
+}));
+```
+
+### Architecture Impact
+
+Added **Tier 1b** to the LLM architecture:
+
+| Tier | Path | Providers |
+|------|------|-----------|
+| Tier 1 | LiteLLM Proxy | OpenAI, Gemini, Mistral, DeepSeek, Ollama, Fireworks |
+| **Tier 1b** | **Anthropic Direct SDK** | **Claude (Opus, Sonnet, Haiku)** |
+| Tier 2 | Direct Provider APIs | Fireworks reranking, Tavily, OpenAI TTS |
+| Tier 3 | Google GenAI SDK | Gemini Imagen, TTS |
+
+Claude models are still registered with LiteLLM for non-chat services (embeddings, etc.). Only **chat completions with tool calling** bypass LiteLLM.
+
+### Key Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/lib/openai.ts` | ~129-131 | `isClaudeModel()` — prefix detection |
+| `src/lib/openai.ts` | ~143-152 | `getAnthropicClient()` — singleton SDK client |
+| `src/lib/openai.ts` | ~579-694 | `streamAnthropicCompletion()` — native streaming with pre-parsed tool inputs |
+| `src/lib/openai.ts` | ~856-865 | Routing decision: Anthropic SDK vs LiteLLM |
+| `docs/tech/liteLLM-implementation-guide.md` | ~45, 73-94 | Architectural rationale |
+
+### Related Commits
+
+| Commit | Description |
+|--------|-------------|
+| `bec97c1` | FIX: claude tool call fails intermittently for doc_gen, xlsx_gen, pptx_gen |
+| `9c1c657` | FIX: claude flow to avoid json parse errors 1 |
+| `245c84d` | FIX: claude flow to avoid json parse errors and add logging 2 |
+| `4377874` | FIX: autonomous mode — skills with tool route fix 2 + documentation |
+
+---
+
 ## Contributing to This Document
 
 When you encounter a non-obvious limitation, build issue, or framework constraint:

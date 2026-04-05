@@ -136,7 +136,7 @@ Widgets showing recent system activity:
 
 | Section | Purpose |
 |---------|---------|
-| **Tools Management** | Enable/disable tools, configure API keys |
+| **Tools Management** | Enable/disable tools, configure tool settings |
 | **Dependencies** | Manage tool dependencies and execution order |
 | **Tool Routing** | Keyword/regex patterns to force specific tools |
 
@@ -152,6 +152,7 @@ Widgets showing recent system activity:
 
 | Section | Purpose |
 |---------|---------|
+| **API Keys** | Centralized API key management for all providers (LLM, web search, OCR, reranker) |
 | **LLM** | Model selection, temperature, max tokens, tool call limits |
 | **RAG** | Retrieval settings, chunk size, similarity threshold |
 | **RAG Tuning** | Interactive RAG parameter testing |
@@ -433,7 +434,7 @@ After upload, documents are processed using a tiered extraction strategy:
 - **officeparser** — PPTX slide extraction
 - **pdf-parse** — PDF text extraction
 
-If local parsers fail, the system falls back to configured API providers (Mistral OCR, Azure Document Intelligence).
+If local parsers fail, the system falls back to configured API providers (Mistral OCR, Azure Document Intelligence). OCR provider keys are managed in **Settings → API Keys**.
 
 ### Managing Documents
 
@@ -748,7 +749,7 @@ Override global settings per category:
 
 | Setting | Description |
 |---------|-------------|
-| **API Key** | Tavily API key |
+| **API Key** | Tavily API key (managed in **Settings → API Keys**) |
 | **Default Topic** | general, news, or finance |
 | **Search Depth** | basic or advanced |
 | **Max Results** | Results per query (1-20) |
@@ -1408,6 +1409,60 @@ The Analytics tab shows per-bot usage:
 
 Configure system-wide settings.
 
+### API Keys
+
+The **API Keys** section is the default landing page under Settings. It consolidates all API key configuration in one place, replacing the scattered key inputs that were previously in LLM, Web Search, Document Processing, and Reranker settings.
+
+#### Layout
+
+Keys are organized into four groups:
+
+**LLM Providers** — grouped by routing:
+- **Route 1 (LiteLLM Proxy):** OpenAI, Gemini, Mistral, DeepSeek, Ollama
+- **Route 2 (Direct):** Fireworks AI, Anthropic
+
+Each provider shows capability tags indicating what it supports:
+
+| Provider | Capabilities |
+|----------|-------------|
+| **OpenAI** | LLM, Embeddings, Images, TTS |
+| **Gemini** | LLM, Embeddings, Images, TTS |
+| **Mistral** | LLM, Embeddings |
+| **DeepSeek** | LLM |
+| **Ollama** | LLM (local — enter Base URL instead of API key) |
+| **Fireworks AI** | LLM, Embeddings, Reranker |
+| **Anthropic** | LLM (no embeddings — pair with OpenAI or Fireworks) |
+
+**Web Search** — Tavily API key
+
+**Document Processing** (optional) — Mistral OCR and Azure Document Intelligence keys. Local parsers (pdf-parse, mammoth, exceljs, officeparser) handle PDF, DOCX, XLSX, and PPTX without API keys.
+
+**Reranker** (optional) — Cohere API key. Fireworks AI reranker reuses the LLM Fireworks key. Local rerankers (BGE) work without API keys.
+
+#### Status Badges
+
+Each key row shows where the key comes from:
+
+| Badge | Meaning |
+|-------|---------|
+| **● DB** (green) | Key saved via admin UI |
+| **● ENV** (blue) | Key detected from environment variable (`.env`) |
+| **● LLM** (purple) | Key inherited from an LLM provider (e.g., Mistral OCR using Mistral LLM key) |
+| **○ None** (grey) | Not configured anywhere |
+
+Priority: DB > ENV > LLM provider fallback > None
+
+#### Warnings
+
+- **Red banner** — No LLM provider configured (chat won't work)
+- **Amber banner** — Only Anthropic configured with no embedding provider (cloud embeddings need OpenAI, Gemini, Mistral, or Fireworks; local models work without keys)
+
+#### Notes
+
+- Image generation, podcasts, and translation automatically use OpenAI or Gemini keys — they are not shown on this page.
+- Each provider has a **Test** button to verify the key works.
+- The original settings pages (LLM Providers, Reranker, Document Processing, Web Search) now show read-only key status with a link back to this page.
+
 ### General Settings
 
 | Setting | Description |
@@ -1422,6 +1477,29 @@ Configure system-wide settings.
 | Setting | Description |
 |---------|-------------|
 | **Accent Color** | Primary theme color for the application (users can customize) |
+
+### Routes
+
+The **Routes** section controls which LLM provider paths are active. Policy Bot uses a two-route architecture:
+
+| Route | Providers | Connection |
+|-------|-----------|------------|
+| **Route 1** | OpenAI, Gemini, Mistral, DeepSeek, Ollama | Via LiteLLM proxy |
+| **Route 2** | Anthropic (Claude), Fireworks AI | Direct SDK / API |
+
+| Setting | Description |
+|---------|-------------|
+| **Route 1 toggle** | Enable/disable the LiteLLM proxy route |
+| **Route 2 toggle** | Enable/disable the direct provider route |
+| **Primary route** | Preferred route for fallback ordering |
+
+**Key behaviors:**
+- At least one route must always be enabled
+- Disabling a route removes its models from the chat model selector
+- In **LLM Settings**, disabled-route providers and models appear greyed out (view-only)
+- Red warnings appear if the default or fallback model belongs to a disabled route
+
+See [features/routes.md](../features/routes.md) for technical details.
 
 ### Provider Selection Guidelines
 
@@ -1464,6 +1542,25 @@ The following models support image analysis (multimodal):
 
 When a vision-capable model is configured, users can upload images in their chat threads for analysis.
 
+#### Model Capability Toggles
+
+Each model row in the LLM Settings table has four capability toggles:
+
+| Toggle | Icon | Description | Impact |
+|--------|------|-------------|--------|
+| **Tools** | Wrench | Model supports function/tool calling | Enables tool execution in conversations |
+| **Vision** | Eye | Model supports image/multimodal input | Enables file upload in chat |
+| **Parallel** | Zap | Model handles multiple tool calls concurrently | Tool calls execute in parallel instead of sequentially |
+| **Thinking** | Brain | Model outputs reasoning/thinking content | Identifies models with extended reasoning (e.g., Claude thinking blocks, DeepSeek `<think>` tags) |
+
+Defaults are auto-detected when models are added or refreshed (via "Get Details" or "Refresh Capabilities"). Admins can override any toggle manually.
+
+**Parallel-capable models:** Claude, Gemini, Mistral Large, GPT-4.1, GPT-5-nano, GPT-5.2+, Fireworks-hosted models
+
+**Thinking-capable models:** Claude, Qwen3, QwQ, DeepSeek-R1, o1/o3/o4
+
+> **Note:** When a route is disabled, all toggles for that route's models become read-only (greyed out).
+
 #### Image Processing Strategy
 
 The system automatically determines image handling based on model and OCR configuration:
@@ -1477,9 +1574,10 @@ The system automatically determines image handling based on model and OCR config
 
 **To enable full image support:**
 1. Configure a vision-capable model (see table above)
-2. Enable at least one OCR provider in **Settings > Document Processing**:
+2. Add OCR provider credentials in **Settings → API Keys** (Document Processing section):
    - **Mistral OCR**: Requires Mistral API key
    - **Azure Document Intelligence**: Requires endpoint + API key
+3. Enable the OCR provider in **Settings → Document Processing**
 
 **User Notifications:**
 - Users see a yellow warning when only OCR is available (no visual analysis)
@@ -1517,8 +1615,9 @@ The system automatically determines image handling based on model and OCR config
 | Setting | Description |
 |---------|-------------|
 | **LiteLLM Endpoint** | LLM proxy URL |
-| **Tavily API Key** | Web search API key |
 | **YouTube API Key** | YouTube data API key |
+
+> **Note:** LLM provider keys, Tavily API key, OCR keys, and reranker keys are now managed in **Settings → API Keys**.
 
 ### Progressive Web App (PWA) Settings
 
@@ -1718,7 +1817,7 @@ View system activity:
 **Solutions:**
 1. Check global tool settings
 2. Check category overrides
-3. Verify API keys are valid
+3. Verify API keys in **Settings → API Keys**
 4. Test tool with Test button
 
 #### AI Not Using Skills
@@ -1928,4 +2027,4 @@ When creating a thread:
 
 ---
 
-*Last updated: February 2025 (v2.9 - Added Infrastructure dashboard section, PostgreSQL/Qdrant support notes, backup size limits)*
+*Last updated: April 2026 (v3.0 - Added centralized API Keys settings page, updated key management references across all sections)*

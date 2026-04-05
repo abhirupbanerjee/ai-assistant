@@ -65,6 +65,25 @@ Tool result returned to AI
 AI generates final response using tool results
 ```
 
+### Tool Execution Modes
+
+When the LLM returns multiple tool calls in a single response, execution depends on the model's `parallel_tool_capable` flag (set per-model in Admin > Settings > LLM):
+
+| Mode | Condition | Behavior |
+|------|-----------|----------|
+| **Sequential** | `parallel_tool_capable = false` or single tool call | Tools execute one at a time, each awaiting the previous result |
+| **Parallel** | `parallel_tool_capable = true` and 2+ tool calls | Independent tool calls execute concurrently via `Promise.allSettled()` |
+
+**Parallel-capable models:** Claude, Gemini, Mistral Large, GPT-4.1, GPT-5-nano, GPT-5.2+, Fireworks-hosted models
+
+**Sequential-only models:** GPT-5 (base), DeepSeek, Ollama, o1/o3/o4 reasoning models
+
+**Edge cases in parallel mode:**
+- `request_clarification` (HITL) calls are partitioned out and handled sequentially first
+- Per-tool and total call limits are pre-validated atomically before dispatch
+- Results are processed in original array order for message consistency
+- Terminal tools (doc_gen, image_gen, etc.) still stop the tool loop on success
+
 ---
 
 ## Tool Categories

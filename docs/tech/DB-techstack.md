@@ -95,6 +95,9 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | List enabled models | `enabled_models` | `compat/enabled-models.ts` |
 | Enable/disable model | `enabled_models` | `compat/enabled-models.ts` |
 | Set default model | `enabled_models` | `compat/enabled-models.ts` |
+| Check parallel tool capability | `enabled_models` | `compat/enabled-models.ts` (`isModelParallelToolCapable`) |
+| Check thinking capability | `enabled_models` | `compat/enabled-models.ts` (`isModelThinkingCapable`) |
+| Refresh model capabilities | `enabled_models` | `compat/enabled-models.ts` (`refreshModelCapabilities`) |
 
 ### Tool System
 
@@ -219,7 +222,7 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | `settings` | Config | Key-value settings store |
 | `storage_alerts` | Config | Storage threshold alerts |
 | `llm_providers` | LLM | Provider configurations |
-| `enabled_models` | LLM | Model catalog |
+| `enabled_models` | LLM | Model catalog (tool_capable, vision_capable, parallel_tool_capable, thinking_capable, tokens) |
 | `tool_configs` | Tools | Global tool settings |
 | `tool_config_audit` | Tools | Tool config audit trail |
 | `category_tool_configs` | Tools | Per-category tool overrides |
