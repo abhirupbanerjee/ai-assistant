@@ -23,6 +23,7 @@ import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
+import SpeechSettingsTab from '@/components/admin/settings/SpeechSettings';
 import DashboardPage from '@/components/admin/dashboard/DashboardPage';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
@@ -114,7 +115,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -250,7 +251,7 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'ocr', 'cache', 'backup'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'ocr', 'speech', 'cache', 'backup'];
 const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
 
 function AdminPageContent() {
@@ -1158,6 +1159,9 @@ function AdminPageContent() {
 
               {/* Document Processing (OCR) Section */}
               {settingsSection === 'ocr' && <DocumentProcessingTab />}
+
+              {/* Speech (STT + TTS) Section */}
+              {settingsSection === 'speech' && <SpeechSettingsTab />}
 
               {/* Memory, Summarization, Limits, and Agent sections removed from Settings - content in Tokens and Agent tabs */}
 

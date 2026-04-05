@@ -56,7 +56,8 @@ Built with enterprise-grade, open-source technologies:
 - **Two-Route Architecture** - Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled for resilience, cost control, and compliance
 - **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
 - **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking)
-- **Voice Input** - Whisper and Voxtral transcription for audio questions (via LiteLLM)
+- **Voice Input** - Configurable STT with 4 providers (OpenAI Whisper, Fireworks, Mistral Voxtral, Gemini), route-based fallback, admin-configurable recording limits
+- **Speech Settings** - Unified admin panel for STT/TTS provider management with primary/fallback per route
 - **Streaming Responses** - Real-time chat with typing indicators
 - **Artifacts Panel** - Right sidebar showing uploads, generated content, web/YouTube sources
 

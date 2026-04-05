@@ -37,7 +37,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -92,6 +92,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'rag', label: 'RAG' },
       { id: 'reranker', label: 'Reranker' },
       { id: 'ocr', label: 'Document Processing' },
+      { id: 'speech', label: 'Speech' },
       { id: 'cache', label: 'Cache' },
       { id: 'backup', label: 'Backup' },
     ]

@@ -98,6 +98,12 @@ export {
   type CredentialsAuthSettings,
   type LlmFallbackSettings,
   type RoutesSettings,
+  type SpeechSettings,
+  type SttProvider,
+  type TtsProvider,
+  type SttProviderConfig,
+  type SttRouteConfig,
+  type TtsProviderConfig,
   // Constants
   DEFAULT_PWA_SETTINGS,
   DEFAULT_OCR_SETTINGS,
@@ -165,6 +171,9 @@ export {
   // LLM Routes
   getRoutesSettings,
   setRoutesSettings,
+  // Speech (STT + TTS)
+  getSpeechSettings,
+  setSpeechSettings,
   // Bulk Operations
   getAllSettings,
   // Tool Config (async)

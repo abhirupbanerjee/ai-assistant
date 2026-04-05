@@ -250,6 +250,7 @@ export interface ChatResponse {
 export interface TranscribeResponse {
   text: string;
   duration: number;
+  provider?: string;
 }
 
 export interface ThreadListResponse {

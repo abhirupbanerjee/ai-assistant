@@ -733,19 +733,23 @@ Get compliance checking statistics for analytics.
 
 #### `POST /api/transcribe`
 
-Convert audio to text using OpenAI Whisper.
+Convert audio to text using the configured STT provider (with route-based fallback).
 
 **Authentication**: Required
 **Role**: Any authenticated user
+
+**Provider**: Configurable via Admin > Settings > Speech (OpenAI Whisper, Fireworks, Mistral Voxtral, or Gemini)
 
 **Request**: `multipart/form-data`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `audio` | File | Yes | Audio file (webm, mp3, wav, m4a) |
+| `audio` | File | Yes | Audio file (webm, mp3, wav, m4a, ogg, flac) |
 
 **Constraints**:
-- Max file size: 25MB
+- Max file size: Dynamic based on active provider (OpenAI: 25MB, Gemini: 100MB, Fireworks/Mistral: 1GB)
+
+**Fallback behavior**: If the default route's primary provider fails, tries the route's fallback provider, then the other active route's providers.
 
 **Example Request**:
 
@@ -761,6 +765,7 @@ curl -X POST https://policybot.abhirup.app/api/transcribe \
 {
   text: string;      // Transcribed text
   duration: number;  // Audio duration in seconds
+  provider?: string; // Which STT provider handled the request
 }
 ```
 
@@ -769,8 +774,40 @@ curl -X POST https://policybot.abhirup.app/api/transcribe \
 ```json
 {
   "text": "What is the policy for remote work?",
-  "duration": 3.5
+  "duration": 3.5,
+  "provider": "openai"
 }
+```
+
+#### `GET /api/transcribe/config`
+
+Returns client-safe recording configuration for the VoiceInput component.
+
+**Authentication**: Required
+
+**Response** `200 OK`:
+
+```json
+{
+  "enabled": true,
+  "minDurationSeconds": 3,
+  "maxDurationSeconds": 120
+}
+```
+
+#### `GET /api/admin/settings/speech`
+
+Retrieve speech settings (STT + TTS provider configuration).
+
+**Authentication**: Required (Admin)
+
+#### `PUT /api/admin/settings/speech`
+
+Update speech settings.
+
+**Authentication**: Required (Admin)
+
+**Request body**: Partial `SpeechSettings` object. See `src/lib/db/config.ts` for full schema.
 ```
 
 **Error Responses**:

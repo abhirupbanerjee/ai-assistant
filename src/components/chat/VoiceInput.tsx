@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, Square, Loader2 } from 'lucide-react';
 
 interface VoiceInputProps {
@@ -8,13 +8,51 @@ interface VoiceInputProps {
   disabled?: boolean;
 }
 
+interface SttClientConfig {
+  enabled: boolean;
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
+}
+
+// Module-level cache to avoid re-fetching on every mount
+let cachedConfig: SttClientConfig | null = null;
+let cacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function fetchSttConfig(): Promise<SttClientConfig> {
+  if (cachedConfig && Date.now() - cacheTime < CACHE_TTL) {
+    return cachedConfig;
+  }
+  try {
+    const res = await fetch('/api/transcribe/config');
+    if (res.ok) {
+      const data = await res.json();
+      cachedConfig = data;
+      cacheTime = Date.now();
+      return data;
+    }
+  } catch {
+    // Fall back to defaults
+  }
+  return { enabled: true, minDurationSeconds: 3, maxDurationSeconds: 120 };
+}
+
 export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [sttConfig, setSttConfig] = useState<SttClientConfig | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingTimeRef = useRef(0);
+
+  useEffect(() => {
+    fetchSttConfig().then(setSttConfig);
+  }, []);
+
+  const maxDuration = sttConfig?.maxDurationSeconds ?? 120;
+  const minDuration = sttConfig?.minDurationSeconds ?? 3;
 
   const transcribeAudio = useCallback(async (audioBlob: Blob) => {
     setIsTranscribing(true);
@@ -43,6 +81,33 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
     }
   }, [onTranscript]);
 
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      // Check minimum duration before stopping
+      if (recordingTimeRef.current < minDuration) {
+        // Discard too-short recording
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current = null;
+        chunksRef.current = [];
+        setIsRecording(false);
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        alert(`Recording too short. Minimum ${minDuration} seconds.`);
+        return;
+      }
+
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  }, [isRecording, minDuration]);
+
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -68,37 +133,43 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
+      mediaRecorder.start(1000); // Chunked recording for memory safety
       setIsRecording(true);
       setRecordingTime(0);
+      recordingTimeRef.current = 0;
 
-      // Start timer
+      // Start timer with auto-stop at max duration
       timerRef.current = setInterval(() => {
-        setRecordingTime(t => t + 1);
+        recordingTimeRef.current += 1;
+        setRecordingTime(recordingTimeRef.current);
+        if (recordingTimeRef.current >= maxDuration) {
+          // Auto-stop at max duration
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+          }
+        }
       }, 1000);
     } catch (error) {
       console.error('Failed to start recording:', error);
       alert('Could not access microphone. Please check permissions.');
     }
-  }, [transcribeAudio]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-  }, [isRecording]);
+  }, [transcribeAudio, maxDuration]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Hide if STT is not enabled
+  if (sttConfig && !sttConfig.enabled) {
+    return null;
+  }
 
   if (isTranscribing) {
     return (
@@ -116,7 +187,9 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
         className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
       >
         <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
-        <span className="text-sm font-medium">{formatTime(recordingTime)}</span>
+        <span className="text-sm font-medium">
+          {formatTime(recordingTime)} / {formatTime(maxDuration)}
+        </span>
         <Square size={16} fill="currentColor" />
       </button>
     );

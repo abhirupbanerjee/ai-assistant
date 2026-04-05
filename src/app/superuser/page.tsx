@@ -14,6 +14,7 @@ import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
+import SpeechSettingsTab from '@/components/admin/settings/SpeechSettings';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
 import DocumentsManagement from '@/components/superuser/DocumentsManagement';
@@ -175,7 +176,7 @@ function SuperUserPageContent() {
   };
 
   // Settings sidebar section state
-  type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
+  type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
   const [exportingHistory, setExportingHistory] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -1031,6 +1032,7 @@ function SuperUserPageContent() {
             {settingsSection === 'rag' && <UnifiedRAGSettings readOnly />}
             {settingsSection === 'reranker' && <RerankerSettingsTab readOnly />}
             {settingsSection === 'ocr' && <DocumentProcessingTab readOnly />}
+            {settingsSection === 'speech' && <SpeechSettingsTab readOnly />}
             {settingsSection === 'cache' && <CacheSettingsTab readOnly />}
             {settingsSection === 'backup' && (
               <div className="bg-white rounded-lg border shadow-sm">

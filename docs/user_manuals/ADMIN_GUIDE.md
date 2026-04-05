@@ -165,6 +165,7 @@ Widgets showing recent system activity:
 | **Superuser** | Superuser quota and permissions |
 | **Backup** | Database backup and restore |
 | **Branding** | Bot name, icon, accent color, PWA settings |
+| **Speech** | STT/TTS provider selection, route defaults, recording limits, fallback configuration |
 | **Cache** | Cache TTL and management |
 
 ---
@@ -1462,6 +1463,38 @@ Priority: DB > ENV > LLM provider fallback > None
 - Image generation, podcasts, and translation automatically use OpenAI or Gemini keys — they are not shown on this page.
 - Each provider has a **Test** button to verify the key works.
 - The original settings pages (LLM Providers, Reranker, Document Processing, Web Search) now show read-only key status with a link back to this page.
+
+### Speech Settings
+
+The **Speech** section under Settings manages Speech-to-Text (STT) and Text-to-Speech (TTS) provider configuration. It has two collapsible panels.
+
+#### Speech-to-Text (STT)
+
+Configures which provider handles voice input transcription. Providers are route-bound:
+
+| Provider | Route | Models | Cost |
+|----------|-------|--------|------|
+| **OpenAI Whisper** | Route 1 (LiteLLM) | `whisper-1` | $0.006/min |
+| **Google Gemini** | Route 1 (LiteLLM) | `gemini-2.5-flash`, `gemini-2.5-pro` | ~$0.06/min |
+| **Mistral Voxtral** | Route 1 (LiteLLM) | `voxtral-mini-transcribe-v2` | $0.003/min |
+| **Fireworks AI** | Route 2 (Direct) | `whisper-v3-turbo`, `whisper-v3-large` | $0.001/min |
+
+**Route Defaults**: Each route has a default and fallback STT provider. When the global default route is disabled, the system automatically falls back to the other active route's providers.
+
+**Recording Limits**: Configure minimum (1–60s) and maximum (10–600s, default 120s) recording duration. The client auto-stops recording at the maximum and discards recordings shorter than the minimum.
+
+Route 3 (Ollama) does not support STT.
+
+#### Text-to-Speech (TTS)
+
+Controls which TTS providers are available system-wide. Independent of LLM routes (both use direct API calls).
+
+| Provider | Description |
+|----------|-------------|
+| **OpenAI TTS** | `gpt-4o-mini-tts` — 13 voices, MP3 output |
+| **Google Gemini TTS** | Flash/Pro preview — 30 voices, multi-speaker WAV |
+
+Set a primary and fallback TTS provider. Voice selection, style, and podcast-specific settings remain in **Tools > Podcast Generator**.
 
 ### General Settings
 

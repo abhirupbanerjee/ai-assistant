@@ -31,6 +31,8 @@ import {
   DEFAULT_CREDENTIALS_AUTH_SETTINGS as DEFAULT_CREDENTIALS_AUTH_SETTINGS_VAL,
   getLlmFallbackSettings as getDefaultLlmFallbackSettings,
   DEFAULT_ROUTES_SETTINGS,
+  DEFAULT_SPEECH_SETTINGS,
+  ROUTE_STT_PROVIDERS,
 } from '../config';
 
 import type {
@@ -61,6 +63,12 @@ import type {
   LlmFallbackSettings,
   RoutesSettings,
   RerankerProviderConfig,
+  SpeechSettings,
+  SttProvider,
+  TtsProvider,
+  SttProviderConfig,
+  SttRouteConfig,
+  TtsProviderConfig,
 } from '../config';
 
 import type { ToolConfig } from '../tool-config';
@@ -96,6 +104,13 @@ export type {
   CredentialsAuthSettings,
   LlmFallbackSettings,
   RoutesSettings,
+  SpeechSettings,
+  SttProvider,
+  TtsProvider,
+  SttProviderConfig,
+  SttRouteConfig,
+  TtsProviderConfig,
+  ROUTE_STT_PROVIDERS,
 } from '../config';
 
 // Re-export constants
@@ -690,6 +705,78 @@ export async function setRoutesSettings(
       : 'route3';
   }
   await setSetting('routes-settings', merged, updatedBy);
+  return merged;
+}
+
+// ============ Speech Settings (STT + TTS) ============
+
+export async function getSpeechSettings(): Promise<SpeechSettings> {
+  const raw = await getSetting<Partial<SpeechSettings>>('speech-settings');
+  if (!raw) return DEFAULT_SPEECH_SETTINGS;
+  return {
+    stt: {
+      defaultRoute: raw.stt?.defaultRoute ?? DEFAULT_SPEECH_SETTINGS.stt.defaultRoute,
+      routes: {
+        route1: { ...DEFAULT_SPEECH_SETTINGS.stt.routes.route1, ...(raw.stt?.routes?.route1 || {}) },
+        route2: { ...DEFAULT_SPEECH_SETTINGS.stt.routes.route2, ...(raw.stt?.routes?.route2 || {}) },
+      },
+      providers: {
+        openai:    { ...DEFAULT_SPEECH_SETTINGS.stt.providers.openai,    ...(raw.stt?.providers?.openai || {}) },
+        fireworks: { ...DEFAULT_SPEECH_SETTINGS.stt.providers.fireworks, ...(raw.stt?.providers?.fireworks || {}) },
+        mistral:   { ...DEFAULT_SPEECH_SETTINGS.stt.providers.mistral,   ...(raw.stt?.providers?.mistral || {}) },
+        gemini:    { ...DEFAULT_SPEECH_SETTINGS.stt.providers.gemini,    ...(raw.stt?.providers?.gemini || {}) },
+      },
+      recording: { ...DEFAULT_SPEECH_SETTINGS.stt.recording, ...(raw.stt?.recording || {}) },
+    },
+    tts: {
+      primaryProvider: raw.tts?.primaryProvider ?? DEFAULT_SPEECH_SETTINGS.tts.primaryProvider,
+      fallbackProvider: raw.tts?.fallbackProvider ?? DEFAULT_SPEECH_SETTINGS.tts.fallbackProvider,
+      providers: {
+        openai: { ...DEFAULT_SPEECH_SETTINGS.tts.providers.openai, ...(raw.tts?.providers?.openai || {}) },
+        gemini: { ...DEFAULT_SPEECH_SETTINGS.tts.providers.gemini, ...(raw.tts?.providers?.gemini || {}) },
+      },
+    },
+  };
+}
+
+export async function setSpeechSettings(
+  settings: Partial<SpeechSettings>,
+  updatedBy?: string
+): Promise<SpeechSettings> {
+  const current = await getSpeechSettings();
+  const merged: SpeechSettings = {
+    stt: {
+      defaultRoute: settings.stt?.defaultRoute ?? current.stt.defaultRoute,
+      routes: {
+        route1: { ...current.stt.routes.route1, ...(settings.stt?.routes?.route1 || {}) },
+        route2: { ...current.stt.routes.route2, ...(settings.stt?.routes?.route2 || {}) },
+      },
+      providers: {
+        openai:    { ...current.stt.providers.openai,    ...(settings.stt?.providers?.openai || {}) },
+        fireworks: { ...current.stt.providers.fireworks, ...(settings.stt?.providers?.fireworks || {}) },
+        mistral:   { ...current.stt.providers.mistral,   ...(settings.stt?.providers?.mistral || {}) },
+        gemini:    { ...current.stt.providers.gemini,    ...(settings.stt?.providers?.gemini || {}) },
+      },
+      recording: { ...current.stt.recording, ...(settings.stt?.recording || {}) },
+    },
+    tts: {
+      primaryProvider: settings.tts?.primaryProvider ?? current.tts.primaryProvider,
+      fallbackProvider: settings.tts?.fallbackProvider ?? current.tts.fallbackProvider,
+      providers: {
+        openai: { ...current.tts.providers.openai, ...(settings.tts?.providers?.openai || {}) },
+        gemini: { ...current.tts.providers.gemini, ...(settings.tts?.providers?.gemini || {}) },
+      },
+    },
+  };
+
+  // Clamp recording duration bounds
+  merged.stt.recording.minDurationSeconds = Math.max(1, Math.min(60, merged.stt.recording.minDurationSeconds));
+  merged.stt.recording.maxDurationSeconds = Math.max(10, Math.min(600, merged.stt.recording.maxDurationSeconds));
+  if (merged.stt.recording.minDurationSeconds >= merged.stt.recording.maxDurationSeconds) {
+    merged.stt.recording.minDurationSeconds = Math.min(merged.stt.recording.minDurationSeconds, merged.stt.recording.maxDurationSeconds - 1);
+  }
+
+  await setSetting('speech-settings', merged, updatedBy);
   return merged;
 }
 

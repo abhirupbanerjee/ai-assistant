@@ -433,7 +433,79 @@ export type SettingKey =
   // Backup Schedule
   | 'backup-schedule'
   // LLM Routes
-  | 'routes-settings';
+  | 'routes-settings'
+  // Speech (STT + TTS)
+  | 'speech-settings';
+
+// ============ Speech Settings Types ============
+
+export type SttProvider = 'openai' | 'fireworks' | 'mistral' | 'gemini';
+export type TtsProvider = 'openai' | 'gemini';
+
+/** Which STT providers are reachable on each route */
+export const ROUTE_STT_PROVIDERS: Record<string, SttProvider[]> = {
+  route1: ['openai', 'gemini', 'mistral'],
+  route2: ['fireworks'],
+};
+
+export interface SttRouteConfig {
+  default: SttProvider;
+  fallback: SttProvider | 'none';
+}
+
+export interface SttProviderConfig {
+  enabled: boolean;
+  model: string;
+}
+
+export interface TtsProviderConfig {
+  enabled: boolean;
+}
+
+export interface SpeechSettings {
+  stt: {
+    defaultRoute: 'route1' | 'route2';
+    routes: {
+      route1: SttRouteConfig;
+      route2: SttRouteConfig;
+    };
+    providers: Record<SttProvider, SttProviderConfig>;
+    recording: {
+      minDurationSeconds: number;
+      maxDurationSeconds: number;
+    };
+  };
+  tts: {
+    primaryProvider: TtsProvider;
+    fallbackProvider: TtsProvider | 'none';
+    providers: Record<TtsProvider, TtsProviderConfig>;
+  };
+}
+
+export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
+  stt: {
+    defaultRoute: 'route1',
+    routes: {
+      route1: { default: 'openai', fallback: 'gemini' },
+      route2: { default: 'fireworks', fallback: 'none' },
+    },
+    providers: {
+      openai:    { enabled: true,  model: 'whisper-1' },
+      fireworks: { enabled: false, model: 'whisper-v3-turbo' },
+      mistral:   { enabled: false, model: 'voxtral-mini-transcribe-v2' },
+      gemini:    { enabled: false, model: 'gemini-2.5-flash' },
+    },
+    recording: { minDurationSeconds: 3, maxDurationSeconds: 120 },
+  },
+  tts: {
+    primaryProvider: 'openai',
+    fallbackProvider: 'none',
+    providers: {
+      openai: { enabled: true },
+      gemini: { enabled: false },
+    },
+  },
+};
 
 // ============ Generic Operations ============
 

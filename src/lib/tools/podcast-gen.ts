@@ -692,7 +692,25 @@ export async function generatePodcast(
     };
   }
 
-  // Validate selected provider is enabled
+  // Check Speech settings TTS provider is enabled globally
+  try {
+    const { getSpeechSettings } = await import('@/lib/db/compat/config');
+    const speechSettings = await getSpeechSettings();
+    const ttsProvider = config.activeProvider as 'openai' | 'gemini';
+    if (speechSettings.tts.providers[ttsProvider] && !speechSettings.tts.providers[ttsProvider].enabled) {
+      return {
+        success: false,
+        error: {
+          code: 'PROVIDER_DISABLED',
+          message: `${ttsProvider === 'openai' ? 'OpenAI' : 'Gemini'} TTS is disabled in Speech settings. Enable it in Admin > Settings > Speech.`,
+        },
+      };
+    }
+  } catch {
+    // If speech settings unavailable, fall through to existing checks
+  }
+
+  // Validate selected provider is enabled in podcast config
   if (config.activeProvider === 'openai' && !config.providers.openai.enabled) {
     return {
       success: false,

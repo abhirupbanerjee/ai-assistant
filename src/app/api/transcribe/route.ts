@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { transcribeAudio } from '@/lib/openai';
+import { transcribeAudio, getActiveMaxFileSize } from '@/lib/stt';
 import type { TranscribeResponse, ApiError } from '@/types';
 
-const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // 25MB (Whisper limit)
-const ALLOWED_TYPES = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/mp4'];
+const ALLOWED_TYPES = [
+  'audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav',
+  'audio/m4a', 'audio/mp4', 'audio/ogg', 'audio/flac',
+];
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,15 +31,17 @@ export async function POST(request: NextRequest) {
     // Validate file type
     if (!ALLOWED_TYPES.includes(audioFile.type)) {
       return NextResponse.json<ApiError>(
-        { error: 'Invalid audio format. Supported: webm, mp3, wav, m4a', code: 'INVALID_FILE_TYPE' },
+        { error: 'Invalid audio format. Supported: webm, mp3, wav, m4a, ogg, flac', code: 'INVALID_FILE_TYPE' },
         { status: 400 }
       );
     }
 
-    // Validate file size
-    if (audioFile.size > MAX_AUDIO_SIZE) {
+    // Validate file size (dynamic based on active provider)
+    const maxSize = await getActiveMaxFileSize();
+    if (audioFile.size > maxSize) {
+      const maxMB = Math.round(maxSize / (1024 * 1024));
       return NextResponse.json<ApiError>(
-        { error: 'File too large (max 25MB)', code: 'FILE_TOO_LARGE' },
+        { error: `File too large (max ${maxMB}MB)`, code: 'FILE_TOO_LARGE' },
         { status: 413 }
       );
     }
@@ -46,10 +50,10 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await audioFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Transcribe
-    const { text, duration } = await transcribeAudio(buffer, audioFile.name);
+    // Transcribe with route-based fallback
+    const { text, duration, provider } = await transcribeAudio(buffer, audioFile.name);
 
-    return NextResponse.json<TranscribeResponse>({ text, duration });
+    return NextResponse.json<TranscribeResponse>({ text, duration, provider });
   } catch (error) {
     console.error('Transcription error:', error);
     return NextResponse.json<ApiError>(
