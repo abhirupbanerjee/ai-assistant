@@ -2,31 +2,16 @@
  * LLM Utilities
  *
  * Simple utility functions for LLM calls outside the main chat flow.
- * Used for tasks like clarification generation.
+ * Used for tasks like clarification generation and model detail extraction.
+ *
+ * Uses createInternalCompletion() which provides:
+ * - DB-configured default model (admin UI override)
+ * - Route-aware client selection (Claude direct, Fireworks direct, LiteLLM)
+ * - Route 1 → Route 2 automatic fallback
  */
 
-import OpenAI from 'openai';
-import { getDefaultLLMModel } from './config-loader';
-import { getApiKey } from '@/lib/provider-helpers';
-
-let openaiClient: OpenAI | null = null;
-
-async function getOpenAI(): Promise<OpenAI> {
-  if (!openaiClient) {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const baseURL = process.env.OPENAI_BASE_URL;
-    const apiKey = baseURL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
-
-    openaiClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL,
-    });
-  }
-  return openaiClient;
-}
+import { createInternalCompletion } from './llm-client';
+import { getLlmSettings } from './db/compat/config';
 
 interface CallLLMOptions {
   model?: string;
@@ -40,61 +25,49 @@ interface CallLLMOptions {
 /**
  * Call LLM for JSON output (simple, non-streaming)
  * Used for small tasks like generating clarification questions.
+ *
+ * JSON enforcement is via system prompt (works across all providers
+ * including Anthropic which doesn't support response_format).
  */
 export async function callLLMForJson(
   prompt: string,
   options: CallLLMOptions = {}
 ): Promise<string> {
-  const openai = await getOpenAI();
-
   const {
-    model = getDefaultLLMModel(),
+    model,
     timeout = 5000,
     temperature = 0.3,
     maxTokens = 1000,
     systemPrompt,
   } = options;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const effectiveModel = model || (await getLlmSettings()).model;
 
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
   if (systemPrompt) {
-    messages.push({ role: 'system', content: systemPrompt });
+    // Reinforce JSON-only output in system prompt
+    const jsonHint = systemPrompt.toLowerCase().includes('json')
+      ? systemPrompt
+      : `${systemPrompt}\n\nRespond with valid JSON only.`;
+    messages.push({ role: 'system', content: jsonHint });
+  } else {
+    messages.push({ role: 'system', content: 'Respond with valid JSON only.' });
   }
   messages.push({ role: 'user', content: prompt });
 
-  try {
-    const response = await openai.chat.completions.create(
-      {
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      },
-      {
-        signal: controller.signal,
-      }
-    );
+  const completionPromise = createInternalCompletion({
+    messages,
+    model: effectiveModel,
+    temperature,
+    maxTokens,
+  });
 
-    clearTimeout(timeoutId);
+  // Apply timeout via Promise.race
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`LLM call timed out after ${timeout}ms`)), timeout);
+  });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No content in response');
-    }
-
-    return content;
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`LLM call timed out after ${timeout}ms`);
-    }
-
-    throw error;
-  }
+  return Promise.race([completionPromise, timeoutPromise]);
 }
 
 /**
@@ -104,18 +77,15 @@ export async function callLLMForText(
   prompt: string,
   options: CallLLMOptions = {}
 ): Promise<string> {
-  const openai = await getOpenAI();
-
   const {
-    model = getDefaultLLMModel(),
+    model,
     timeout = 5000,
     temperature = 0.3,
     maxTokens = 1000,
     systemPrompt,
   } = options;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const effectiveModel = model || (await getLlmSettings()).model;
 
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
   if (systemPrompt) {
@@ -123,34 +93,17 @@ export async function callLLMForText(
   }
   messages.push({ role: 'user', content: prompt });
 
-  try {
-    const response = await openai.chat.completions.create(
-      {
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-      },
-      {
-        signal: controller.signal,
-      }
-    );
+  const completionPromise = createInternalCompletion({
+    messages,
+    model: effectiveModel,
+    temperature,
+    maxTokens,
+  });
 
-    clearTimeout(timeoutId);
+  // Apply timeout via Promise.race
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`LLM call timed out after ${timeout}ms`)), timeout);
+  });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No content in response');
-    }
-
-    return content;
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`LLM call timed out after ${timeout}ms`);
-    }
-
-    throw error;
-  }
+  return Promise.race([completionPromise, timeoutPromise]);
 }
