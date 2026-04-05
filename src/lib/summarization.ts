@@ -8,8 +8,7 @@
 import { getDb, transaction } from './db/kysely';
 import { sql } from 'kysely';
 import { getSummarizationSettings, getLlmSettings } from './db/compat/config';
-import OpenAI from 'openai';
-import { getApiKey } from '@/lib/provider-helpers';
+import { createInternalCompletion } from './llm-client';
 
 // ============ Types ============
 
@@ -379,19 +378,8 @@ export async function summarizeThread(threadId: string): Promise<ThreadSummary |
 
   try {
     const llmSettings = await getLlmSettings();
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const baseURL = process.env.OPENAI_BASE_URL || undefined;
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
 
-    const client = new OpenAI({
-      baseURL,
-      apiKey: apiKey || '',
-    });
-
-    const response = await client.chat.completions.create({
+    const summary = await createInternalCompletion({
       model: llmSettings.model,
       messages: [
         {
@@ -404,10 +392,8 @@ export async function summarizeThread(threadId: string): Promise<ThreadSummary |
         },
       ],
       temperature: 0.3,
-      max_tokens: settings.summaryMaxTokens,
+      maxTokens: settings.summaryMaxTokens,
     });
-
-    const summary = response.choices[0]?.message?.content?.trim() || '';
 
     if (!summary) {
       console.error('[Summarization] Empty summary returned');

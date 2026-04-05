@@ -142,6 +142,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const welcomeContent = getWelcomeContent();
   const [loading, setLoading] = useState(false);
+  const [modelReady, setModelReady] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
@@ -837,6 +838,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       <MessageInput
         onSend={sendMessage}
         disabled={loading}
+        modelReady={modelReady}
+        onModelStatusChange={setModelReady}
         threadId={threadId}
         currentUploads={uploads}
         onUploadComplete={handleUploadComplete}

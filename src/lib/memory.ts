@@ -9,8 +9,7 @@ import { sql } from 'kysely';
 import { getDb } from './db/kysely';
 import { getMemorySettings } from './db/compat/config';
 import { getLlmSettings } from './db/compat/config';
-import OpenAI from 'openai';
-import { getApiKey } from '@/lib/provider-helpers';
+import { createInternalCompletion } from './llm-client';
 
 // ============ Types ============
 
@@ -262,22 +261,10 @@ export async function extractFacts(
     .replace('{maxFacts}', String(maxFacts));
 
   try {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const baseURL = process.env.OPENAI_BASE_URL || undefined;
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
-
-    const client = new OpenAI({
-      baseURL,
-      apiKey: apiKey || '',
-    });
-
     // Get memory settings for configurable max tokens
     const memorySettings = await getMemorySettings();
 
-    const response = await client.chat.completions.create({
+    const content = await createInternalCompletion({
       model: llmSettings.model,
       messages: [
         {
@@ -290,10 +277,8 @@ export async function extractFacts(
         },
       ],
       temperature: 0.3,
-      max_tokens: memorySettings.extractionMaxTokens ?? 1000,
-    });
-
-    const content = response.choices[0]?.message?.content?.trim() || '[]';
+      maxTokens: memorySettings.extractionMaxTokens ?? 1000,
+    }) || '[]';
 
     // Parse the response as JSON array
     try {

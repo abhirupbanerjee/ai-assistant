@@ -28,6 +28,8 @@ interface MobileMessageInputProps {
   onUrlSourceAdded?: (source: UrlSourceInfo) => void;
   preferences: ChatPreferences;
   onPreferencesChange: (preferences: ChatPreferences) => void;
+  modelReady?: boolean;
+  onModelStatusChange?: (ready: boolean) => void;
   onFocus?: () => void;
   onBlur?: () => void;
 }
@@ -47,6 +49,8 @@ export default function MobileMessageInput({
   onUrlSourceAdded,
   preferences,
   onPreferencesChange,
+  modelReady = true,
+  onModelStatusChange,
   onFocus,
   onBlur,
 }: MobileMessageInputProps) {
@@ -95,8 +99,10 @@ export default function MobileMessageInput({
     }
   }, [showPrefsMenu]);
 
+  const isSubmitDisabled = disabled || !modelReady;
+
   const handleSubmit = () => {
-    if (message.trim() && !disabled) {
+    if (message.trim() && !isSubmitDisabled) {
       onSend(message.trim(), mode, preferences);
       setMessage('');
       setMode('normal');
@@ -358,7 +364,7 @@ export default function MobileMessageInput({
                 {/* Model selector */}
                 <div className="pt-2 border-t border-gray-100">
                   <div className="text-xs font-medium text-gray-500 mb-2">Model</div>
-                  <ModelSelector threadId={threadId} disabled={disabled} />
+                  <ModelSelector threadId={threadId} disabled={disabled} onModelStatusChange={onModelStatusChange} />
                 </div>
               </div>
             )}
@@ -367,7 +373,7 @@ export default function MobileMessageInput({
           {/* Right: Send */}
           <button
             onClick={handleSubmit}
-            disabled={disabled || !message.trim()}
+            disabled={isSubmitDisabled || !message.trim()}
             className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
             style={{ backgroundColor: 'var(--accent-color)' }}
           >

@@ -28,6 +28,9 @@ interface MessageInputProps {
   onPreferencesChange: (preferences: ChatPreferences) => void;
   // Autonomous mode admin control
   autonomousAdminDisabled?: boolean;
+  // Model readiness — false when no valid model is available for the active route
+  modelReady?: boolean;
+  onModelStatusChange?: (ready: boolean) => void;
   // Focus callbacks for sidebar hiding (mobile)
   onFocus?: () => void;
   onBlur?: () => void;
@@ -43,6 +46,8 @@ export default function MessageInput({
   preferences,
   onPreferencesChange,
   autonomousAdminDisabled,
+  modelReady = true,
+  onModelStatusChange,
   onFocus,
   onBlur,
 }: MessageInputProps) {
@@ -62,8 +67,10 @@ export default function MessageInput({
     }
   }, [message, isMobile]);
 
+  const isSubmitDisabled = disabled || !modelReady;
+
   const handleSubmit = () => {
-    if (message.trim() && !disabled) {
+    if (message.trim() && !isSubmitDisabled) {
       onSend(message.trim(), mode, preferences);
       setMessage('');
       // Reset mode to normal after sending
@@ -256,18 +263,18 @@ export default function MessageInput({
           </div>
 
           {/* Center: Model selector */}
-          <ModelSelector threadId={threadId} />
+          <ModelSelector threadId={threadId} onModelStatusChange={onModelStatusChange} />
 
           {/* Right action: Send */}
           <button
             onClick={handleSubmit}
-            disabled={disabled || !message.trim()}
+            disabled={isSubmitDisabled || !message.trim()}
             className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
             style={{
               backgroundColor: 'var(--accent-color)',
             }}
             onMouseEnter={(e) => {
-              if (!disabled && message.trim()) {
+              if (!isSubmitDisabled && message.trim()) {
                 e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
               }
             }}

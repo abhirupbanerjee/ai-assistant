@@ -30,6 +30,7 @@ import {
   getAgentBotsSettings as getDefaultAgentBotsSettings,
   DEFAULT_CREDENTIALS_AUTH_SETTINGS as DEFAULT_CREDENTIALS_AUTH_SETTINGS_VAL,
   getLlmFallbackSettings as getDefaultLlmFallbackSettings,
+  DEFAULT_ROUTES_SETTINGS,
 } from '../config';
 
 import type {
@@ -58,6 +59,7 @@ import type {
   AgentBotsSettings,
   CredentialsAuthSettings,
   LlmFallbackSettings,
+  RoutesSettings,
   RerankerProviderConfig,
 } from '../config';
 
@@ -93,6 +95,7 @@ export type {
   AgentBotsSettings,
   CredentialsAuthSettings,
   LlmFallbackSettings,
+  RoutesSettings,
 } from '../config';
 
 // Re-export constants
@@ -652,6 +655,32 @@ export async function setLlmFallbackSettings(
   const current = await getLlmFallbackSettings();
   const merged = { ...current, ...settings };
   await setSetting('llm-fallback-settings', merged, updatedBy);
+  return merged;
+}
+
+// ============ LLM Routes Settings ============
+
+export async function getRoutesSettings(): Promise<RoutesSettings> {
+  return await getSetting<RoutesSettings>('routes-settings') ?? DEFAULT_ROUTES_SETTINGS;
+}
+
+export async function setRoutesSettings(
+  settings: Partial<RoutesSettings>,
+  updatedBy?: string
+): Promise<RoutesSettings> {
+  const current = await getRoutesSettings();
+  const merged = { ...current, ...settings };
+  // Ensure at least one route is enabled
+  if (!merged.route1Enabled && !merged.route2Enabled) {
+    merged.route1Enabled = true;
+  }
+  // If primary route is disabled, switch primary to the other
+  if (merged.primaryRoute === 'route1' && !merged.route1Enabled) {
+    merged.primaryRoute = 'route2';
+  } else if (merged.primaryRoute === 'route2' && !merged.route2Enabled) {
+    merged.primaryRoute = 'route1';
+  }
+  await setSetting('routes-settings', merged, updatedBy);
   return merged;
 }
 

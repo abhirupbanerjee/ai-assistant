@@ -4,7 +4,6 @@
  * Supports GPT-4.1 family models for translation.
  */
 
-import OpenAI from 'openai';
 import { toolsLogger as logger } from '../../logger';
 import type {
   TranslationRequest,
@@ -12,7 +11,7 @@ import type {
   ProviderSettings,
 } from '../provider-factory';
 import { SUPPORTED_LANGUAGES, buildTranslationPrompt } from '../provider-factory';
-import { getApiKey } from '@/lib/provider-helpers';
+import { createInternalCompletion } from '@/lib/llm-client';
 
 /**
  * Translate text using OpenAI's GPT models
@@ -87,32 +86,18 @@ export async function translateWithOpenAI(
       textLength: text.length,
     });
 
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const baseURL = process.env.OPENAI_BASE_URL || undefined;
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
-
-    const openai = new OpenAI({
-      baseURL,
-      apiKey: apiKey || '',
-    });
-
     // Calculate max tokens (roughly 2x input for language expansion)
     const maxTokens = Math.min(text.length * 2, 4000);
 
-    const response = await openai.chat.completions.create({
+    const translatedText = await createInternalCompletion({
       model: settings.model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
       ],
       temperature: settings.temperature,
-      max_tokens: maxTokens,
+      maxTokens,
     });
-
-    const translatedText = response.choices[0]?.message?.content || '';
 
     if (!translatedText) {
       throw new Error('No translation returned from OpenAI');

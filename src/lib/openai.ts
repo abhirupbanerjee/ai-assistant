@@ -150,6 +150,37 @@ async function getAnthropicClient(): Promise<Anthropic> {
   return anthropicClient;
 }
 
+// ============ Fireworks Direct Client ============
+
+/**
+ * Check if a model ID refers to a Fireworks AI model.
+ * These models bypass LiteLLM and connect directly to api.fireworks.ai.
+ */
+export function isFireworksModel(model: string): boolean {
+  return model.startsWith('fireworks/');
+}
+
+let fireworksClient: OpenAI | null = null;
+
+async function getFireworksClient(): Promise<OpenAI> {
+  if (!fireworksClient) {
+    const apiKey = await getApiKey('fireworks');
+    fireworksClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: 'https://api.fireworks.ai/inference/v1',
+      timeout: 300 * 1000, // 5 minutes ��� matches LiteLLM/OpenAI/Anthropic timeout
+    });
+  }
+  return fireworksClient;
+}
+
+/**
+ * Check if an embedding model is from Fireworks (routes direct, not via LiteLLM)
+ */
+function isFireworksEmbeddingModel(model: string): boolean {
+  return model.startsWith('fireworks/') || model.startsWith('nomic-ai/');
+}
+
 export async function createEmbedding(text: string): Promise<number[]> {
   const embeddingSettings = await getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
@@ -160,6 +191,18 @@ export async function createEmbedding(text: string): Promise<number[]> {
     // Route to local embeddings if local model
     if (isLocalEmbeddingModel(model)) {
       return await createLocalEmbedding(text, model as LocalEmbeddingModel);
+    }
+
+    // Route Fireworks embedding models directly (bypass LiteLLM)
+    if (isFireworksEmbeddingModel(model)) {
+      const fwClient = await getFireworksClient();
+      const response = await fwClient.embeddings.create({ model, input: text });
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
+      });
+      return response.data[0].embedding;
     }
 
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
@@ -192,6 +235,13 @@ export async function createEmbedding(text: string): Promise<number[]> {
         return await createLocalEmbedding(text, fallbackModel as LocalEmbeddingModel);
       }
 
+      // Route Fireworks fallback models directly
+      if (isFireworksEmbeddingModel(fallbackModel)) {
+        const fwClient = await getFireworksClient();
+        const response = await fwClient.embeddings.create({ model: fallbackModel, input: text });
+        return response.data[0].embedding;
+      }
+
       const openai = await getOpenAI();
       const response = await openai.embeddings.create({
         model: fallbackModel,
@@ -220,6 +270,22 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       const embeddings = await createLocalEmbeddings(texts, model as LocalEmbeddingModel);
       if (embeddings.length > 0) {
         console.log(`[Embedding] Local model dimensions: ${embeddings[0].length}`);
+      }
+      return embeddings;
+    }
+
+    // Route Fireworks embedding models directly (bypass LiteLLM)
+    if (isFireworksEmbeddingModel(model)) {
+      const fwClient = await getFireworksClient();
+      const response = await fwClient.embeddings.create({ model, input: texts });
+      const embeddings = response.data.map(d => d.embedding);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+      });
+      if (embeddings.length > 0) {
+        console.log(`[Embedding] Fireworks direct — Model: ${model}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
       }
       return embeddings;
     }
@@ -257,6 +323,13 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       // Try fallback model
       if (isLocalEmbeddingModel(fallbackModel)) {
         return await createLocalEmbeddings(texts, fallbackModel as LocalEmbeddingModel);
+      }
+
+      // Route Fireworks fallback models directly
+      if (isFireworksEmbeddingModel(fallbackModel)) {
+        const fwClient = await getFireworksClient();
+        const response = await fwClient.embeddings.create({ model: fallbackModel, input: texts });
+        return response.data.map(d => d.embedding);
       }
 
       const openai = await getOpenAI();
@@ -742,10 +815,16 @@ export async function generateResponseWithTools(
   // Use model override if provided, otherwise use default from settings
   const effectiveModel = modelOverride || llmSettings.model;
 
-  // Detect Claude models — bypass LiteLLM, use Anthropic SDK directly
+  // Detect direct-route models — bypass LiteLLM
   const useAnthropicDirect = isClaudeModel(effectiveModel);
-  console.log(`[Chat] ${useAnthropicDirect ? 'Using Anthropic SDK directly' : 'Using LiteLLM/OpenAI path'} for model: ${effectiveModel}`);
-  const openai = useAnthropicDirect ? null : await getOpenAI();
+  const useFireworksDirect = isFireworksModel(effectiveModel);
+  const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
+    : useFireworksDirect ? 'Fireworks AI directly'
+    : 'LiteLLM/OpenAI path';
+  console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
+  const openai = useAnthropicDirect ? null
+    : useFireworksDirect ? await getFireworksClient()
+    : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
   // Check if model supports tools, disable gracefully if not

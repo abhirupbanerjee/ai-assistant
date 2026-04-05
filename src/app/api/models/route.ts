@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getActiveModels } from '@/lib/db/compat/enabled-models';
+import { getRoutesSettings } from '@/lib/db/compat/config';
+import { isRoute2Model } from '@/lib/llm-fallback';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -8,5 +10,13 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const models = await getActiveModels();
-  return NextResponse.json({ models });
+  const routesSettings = await getRoutesSettings();
+
+  // Filter models by active routes
+  const filteredModels = models.filter(m => {
+    if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
+    return routesSettings.route1Enabled;
+  });
+
+  return NextResponse.json({ models: filteredModels });
 }

@@ -5,27 +5,8 @@
  * by removing redundancies with the global system prompt.
  */
 
-import OpenAI from 'openai';
 import { getLlmSettings } from './db/compat/config';
-import { getApiKey } from '@/lib/provider-helpers';
-
-let openaiClient: OpenAI | null = null;
-
-async function getOpenAI(): Promise<OpenAI> {
-  if (!openaiClient) {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
-
-    openaiClient = new OpenAI({
-      apiKey: apiKey || '',
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-    });
-  }
-  return openaiClient;
-}
+import { createInternalCompletion } from './llm-client';
 
 export interface OptimizationResult {
   original: string;
@@ -81,13 +62,12 @@ export async function optimizeCategoryPrompt(
   }
 
   const llmSettings = await getLlmSettings();
-  const openai = await getOpenAI();
 
   const prompt = OPTIMIZATION_PROMPT
     .replace('{globalPrompt}', globalPrompt)
     .replace('{categoryAddendum}', categoryAddendum);
 
-  const response = await openai.chat.completions.create({
+  const content = await createInternalCompletion({
     model: llmSettings.model,
     messages: [
       {
@@ -95,12 +75,10 @@ export async function optimizeCategoryPrompt(
         content: prompt,
       },
     ],
-    max_tokens: llmSettings.promptOptimizationMaxTokens ?? 2000,
-    temperature: 0.3, // Lower temperature for more consistent outputs
+    maxTokens: llmSettings.promptOptimizationMaxTokens ?? 2000,
+    temperature: 0.3,
   });
-
-  const content = response.choices[0].message.content || '';
-  const tokensUsed = response.usage?.total_tokens || 0;
+  const tokensUsed = 0; // Token tracking not available via createInternalCompletion
 
   // Parse the JSON response
   try {

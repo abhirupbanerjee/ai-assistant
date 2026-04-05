@@ -7,7 +7,7 @@
  */
 
 import { getEnabledModel, getActiveModels } from './db/compat/enabled-models';
-import { getLlmFallbackSettings } from './db/compat/config';
+import { getLlmFallbackSettings, getRoutesSettings } from './db/compat/config';
 
 // ============ Types ============
 
@@ -162,6 +162,37 @@ export function isRecoverableApiError(error: Error): FallbackReason | null {
   return null;
 }
 
+// ============ LiteLLM Proxy Health ============
+
+let litellmHealthy = true;
+let lastHealthCheck = 0;
+const HEALTH_CHECK_INTERVAL_MS = 30_000; // 30 seconds
+
+/**
+ * Check if the LiteLLM proxy is healthy (cached, checks at most every 30s)
+ */
+export async function isLiteLLMProxyHealthy(): Promise<boolean> {
+  if (!process.env.OPENAI_BASE_URL) return true; // No proxy configured, assume healthy
+  if (Date.now() - lastHealthCheck < HEALTH_CHECK_INTERVAL_MS) return litellmHealthy;
+
+  try {
+    const baseUrl = process.env.OPENAI_BASE_URL.replace(/\/v1\/?$/, '');
+    const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(3000) });
+    litellmHealthy = res.ok;
+  } catch {
+    litellmHealthy = false;
+  }
+  lastHealthCheck = Date.now();
+  return litellmHealthy;
+}
+
+/**
+ * Check if a model belongs to Route 2 (direct providers, bypasses LiteLLM)
+ */
+export function isRoute2Model(model: string): boolean {
+  return model.startsWith('anthropic/') || model.startsWith('claude-') || model.startsWith('fireworks/');
+}
+
 // ============ Model Resolution ============
 
 /**
@@ -191,6 +222,19 @@ export async function buildModelsToTry(
     if (settings.universalFallback && settings.universalFallback !== selectedModel) {
       models.push(settings.universalFallback);
     }
+
+    // Route-aware: append Route 2 fallback models if Route 2 is enabled
+    // and the selected model is Route 1 (may need Route 2 if LiteLLM goes down mid-request)
+    const routesSettings = await getRoutesSettings();
+    if (routesSettings.route2Enabled && !isRoute2Model(selectedModel!)) {
+      const route2Fallbacks = ['fireworks/minimax-m2p5', 'claude-haiku-4-5-20251001'];
+      for (const fb of route2Fallbacks) {
+        if (!models.includes(fb) && isModelHealthy(fb)) {
+          models.push(fb);
+        }
+      }
+    }
+
     return { models: models.filter(Boolean) };
   }
 
@@ -210,10 +254,24 @@ export async function buildModelsToTry(
     models.push(settings.universalFallback);
   }
 
+  // Route-aware: if primary is Route 1 and unhealthy, prioritize Route 2 models
+  const routesSettings = await getRoutesSettings();
+  if (routesSettings.route2Enabled) {
+    const proxyHealthy = await isLiteLLMProxyHealthy();
+    if (!proxyHealthy || switchReason === 'model_unavailable') {
+      const route2Fallbacks = ['fireworks/minimax-m2p5', 'claude-haiku-4-5-20251001'];
+      for (const fb of route2Fallbacks) {
+        if (!models.includes(fb) && isModelHealthy(fb)) {
+          models.push(fb);
+        }
+      }
+    }
+  }
+
   // Create capability switch event if we're switching due to capability mismatch
-  const capabilitySwitch: ModelSwitchEvent | undefined = selectedModel && settings.universalFallback ? {
+  const capabilitySwitch: ModelSwitchEvent | undefined = selectedModel && models.length > 0 ? {
     originalModel: selectedModel,
-    newModel: settings.universalFallback,
+    newModel: models[0],
     reason: switchReason,
     timestamp: new Date(),
   } : undefined;

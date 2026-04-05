@@ -222,6 +222,22 @@ export interface LlmFallbackSettings {
   healthCacheDuration: 'hourly' | 'daily' | 'disabled';  // How long to remember failed models
 }
 
+/**
+ * LLM Routes Settings
+ * Controls primary/fallback routing between LiteLLM proxy and direct providers
+ */
+export interface RoutesSettings {
+  route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek, Ollama)
+  route2Enabled: boolean;                  // Route 2: Direct providers (Fireworks AI, Claude/Anthropic)
+  primaryRoute: 'route1' | 'route2';       // Which route is primary (other becomes fallback)
+}
+
+export const DEFAULT_ROUTES_SETTINGS: RoutesSettings = {
+  route1Enabled: true,
+  route2Enabled: false,
+  primaryRoute: 'route1',
+};
+
 export interface LimitsSettings {
   conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
   maxTotalToolCalls: number;            // Total tool calls per chat transaction (default: 50)
@@ -413,7 +429,9 @@ export type SettingKey =
   // Credentials Authentication
   | 'credentials-auth-settings'
   // Backup Schedule
-  | 'backup-schedule';
+  | 'backup-schedule'
+  // LLM Routes
+  | 'routes-settings';
 
 // ============ Generic Operations ============
 

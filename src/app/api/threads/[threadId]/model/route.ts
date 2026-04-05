@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth';
 import { getThread } from '@/lib/threads';
 import { updateThreadModel, getEffectiveModelForThread, getThreadById } from '@/lib/db/compat';
 import { getActiveModels, getDefaultModel, getEnabledModel } from '@/lib/db/compat/enabled-models';
+import { getRoutesSettings } from '@/lib/db/compat/config';
+import { isRoute2Model } from '@/lib/llm-fallback';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -39,8 +41,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Get the raw thread data for selected_model field
     const dbThread = await getThreadById(threadId);
 
-    // Get available models (only active/enabled ones)
-    const availableModels = await getActiveModels();
+    // Get available models (only active/enabled ones), filtered by active routes
+    const allModels = await getActiveModels();
+    const routesSettings = await getRoutesSettings();
+    const availableModels = allModels.filter(m => {
+      if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
+      return routesSettings.route1Enabled;
+    });
 
     // Get global default
     const defaultModel = await getDefaultModel();
@@ -49,12 +56,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Get effective model (thread override or global)
     const effectiveModel = await getEffectiveModelForThread(threadId);
 
+    // Check if effective model belongs to a disabled route
+    const effectiveModelValid = effectiveModel
+      ? availableModels.some(m => m.id === effectiveModel)
+      : false;
+
     return NextResponse.json({
       threadId,
-      selectedModel: dbThread?.selected_model || null,  // NULL or specific model ID
-      effectiveModel,                                    // Resolved model ID
-      globalDefault,                                     // For UI display
-      availableModels,                                   // All available models
+      selectedModel: dbThread?.selected_model || null,
+      effectiveModel,
+      effectiveModelValid,
+      globalDefault,
+      availableModels,
     });
   } catch (error) {
     console.error('[API] Error getting thread model:', error);

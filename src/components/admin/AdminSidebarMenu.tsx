@@ -37,7 +37,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -86,6 +86,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
     icon: Settings,
     expandable: true,
     submenu: [
+      { id: 'routes', label: 'Routes' },
       { id: 'llm', label: 'LLM' },
       { id: 'rag', label: 'RAG' },
       { id: 'reranker', label: 'Reranker' },

@@ -17,6 +17,7 @@ import MemorySettingsTab from '@/components/admin/settings/MemorySettings';
 import SummarizationSettingsTab from '@/components/admin/settings/SummarizationSettings';
 import SuperuserSettingsTab from '@/components/admin/settings/SuperuserSettings';
 import CredentialsAuthSettingsTab from '@/components/admin/settings/CredentialsAuthSettings';
+import RoutesSettingsPanel from '@/components/admin/settings/RoutesSettings';
 import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
@@ -112,7 +113,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -248,7 +249,7 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['llm', 'rag', 'reranker', 'ocr', 'cache', 'backup'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['routes', 'llm', 'rag', 'reranker', 'ocr', 'cache', 'backup'];
 const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
 
 function AdminPageContent() {
@@ -1139,6 +1140,8 @@ function AdminPageContent() {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <>
+              {/* Routes Settings Section */}
+              {settingsSection === 'routes' && <RoutesSettingsPanel />}
               {/* LLM Settings Section */}
               {settingsSection === 'llm' && <UnifiedLLMSettings />}
 

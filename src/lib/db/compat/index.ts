@@ -97,6 +97,7 @@ export {
   type AgentBotsSettings,
   type CredentialsAuthSettings,
   type LlmFallbackSettings,
+  type RoutesSettings,
   // Constants
   DEFAULT_PWA_SETTINGS,
   DEFAULT_OCR_SETTINGS,
@@ -161,6 +162,9 @@ export {
   setCredentialsAuthSettings,
   getLlmFallbackSettings,
   setLlmFallbackSettings,
+  // LLM Routes
+  getRoutesSettings,
+  setRoutesSettings,
   // Bulk Operations
   getAllSettings,
   // Tool Config (async)
