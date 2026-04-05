@@ -232,6 +232,14 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       max_input_tokens: 131072,
       max_output_tokens: 16384,
     },
+    {
+      id: 'fireworks/qwen3-coder-480b-a35b-instruct',
+      display_name: 'Qwen3 Coder 480B (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 262144,
+      max_output_tokens: 65536,
+    },
   ];
   for (const model of newFireworksModels) {
     await database
