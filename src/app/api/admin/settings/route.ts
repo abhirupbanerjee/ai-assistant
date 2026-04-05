@@ -137,6 +137,7 @@ export async function GET() {
         // Show masked key if exists in DB or env, empty string otherwise
         apiKey: (tavilySettings.apiKey || process.env.TAVILY_API_KEY) ? '••••••••••••••••••••' : '',
         hasApiKey: !!(tavilySettings.apiKey || process.env.TAVILY_API_KEY),
+        apiKeyFromEnv: !!process.env.TAVILY_API_KEY,
         updatedAt: tavilyMeta?.updatedAt || new Date().toISOString(),
         updatedBy: tavilyMeta?.updatedBy || 'system',
       },
@@ -158,6 +159,7 @@ export async function GET() {
         // Mask key if exists in DB or env, empty string otherwise
         cohereApiKey: (rerankerSettings.cohereApiKey || process.env.COHERE_API_KEY) ? '••••••••' : '',
         hasCohereApiKey: !!(rerankerSettings.cohereApiKey || process.env.COHERE_API_KEY),
+        cohereApiKeyFromEnv: !!process.env.COHERE_API_KEY,
         updatedAt: rerankerMeta?.updatedAt || new Date().toISOString(),
         updatedBy: rerankerMeta?.updatedBy || 'system',
       },
@@ -197,6 +199,8 @@ export async function GET() {
         hasAzureDiCredentials: !!(ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey),
         // Check if Mistral key is available from LLM provider config
         mistralFromLlmProvider: !ocrSettings.mistralApiKey && await isProviderConfigured('mistral'),
+        mistralOcrApiKeyFromEnv: !!process.env.MISTRAL_API_KEY,
+        azureDiFromEnv: !!(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY),
         updatedAt: ocrMeta?.updatedAt || new Date().toISOString(),
         updatedBy: ocrMeta?.updatedBy || 'system',
         providerAvailability: {

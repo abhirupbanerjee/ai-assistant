@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Save, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
+import { Save, ChevronUp, ChevronDown, GripVertical, KeyRound } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -70,7 +70,7 @@ const DEFAULT_PROVIDERS: RerankerProviderConfig[] = [
 export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: boolean }) {
   const [settings, setSettings] = useState<RerankerSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
-  const [cohereApiKeyInput, setCohereApiKeyInput] = useState('');
+  // Cohere API key is now managed in Settings → API Keys
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -155,10 +155,8 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
     try {
       setIsSaving(true);
 
-      // Include Cohere API key if it was entered
       const settingsToSave = {
         ...editedSettings,
-        ...(cohereApiKeyInput ? { cohereApiKey: cohereApiKeyInput } : {}),
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -179,7 +177,6 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
         minRerankerScore: savedSettings.minRerankerScore,
         cacheTTLSeconds: savedSettings.cacheTTLSeconds,
       });
-      setCohereApiKeyInput(''); // Clear the input after save
       setIsModified(false);
       setSuccess('Reranker settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
@@ -202,7 +199,6 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
         minRerankerScore: settings.minRerankerScore,
         cacheTTLSeconds: settings.cacheTTLSeconds,
       });
-      setCohereApiKeyInput('');
       setIsModified(false);
     }
   };
@@ -420,33 +416,28 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
             {isCohereEnabled && (
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-1">Cohere API Key</label>
-                <input
-                  type="password"
-                  value={cohereApiKeyInput}
-                  onChange={(e) => {
-                    setCohereApiKeyInput(e.target.value);
-                    setIsModified(true);
-                  }}
-                  placeholder={settings?.hasCohereApiKey ? '••••••••' : 'Enter Cohere API key'}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="text-sm text-gray-600 mb-2">
                   {settings?.hasCohereApiKey ? (
-                    <span className="text-green-600">API key configured. Enter a new key to update.</span>
+                    <span className="text-green-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                      Configured
+                    </span>
                   ) : (
-                    <>
-                      Get your API key from{' '}
-                      <a
-                        href="https://dashboard.cohere.com/api-keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        dashboard.cohere.com
-                      </a>
-                    </>
+                    <span className="text-gray-400 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                      Not configured
+                    </span>
                   )}
                 </p>
+                <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
+                  <KeyRound size={14} className="text-blue-600 flex-shrink-0" />
+                  <p className="text-xs text-blue-800">
+                    API keys are managed in{' '}
+                    <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
+                      Settings &rarr; API Keys
+                    </a>
+                  </p>
+                </div>
               </div>
             )}
 

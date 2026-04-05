@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, X, Eye, EyeOff, Loader2, Edit2, Save } from 'lucide-react';
+import { Check, X, KeyRound } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 interface LLMProvider {
@@ -20,36 +20,11 @@ interface ProviderCardProps {
 }
 
 export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedApiKey, setEditedApiKey] = useState('');
-  const [editedApiBase, setEditedApiBase] = useState(provider.apiBase || '');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const isOllama = provider.id === 'ollama';
   const isConfigured = provider.apiKeyConfigured || (isOllama && provider.apiBase);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      const updates: { apiKey?: string; apiBase?: string } = {};
-
-      if (isOllama) {
-        updates.apiBase = editedApiBase;
-      } else if (editedApiKey) {
-        updates.apiKey = editedApiKey;
-      }
-
-      await onUpdate(updates);
-      setIsEditing(false);
-      setEditedApiKey('');
-      setTestResult(null);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleTest = async () => {
     setIsTesting(true);
@@ -60,13 +35,6 @@ export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCar
     } finally {
       setIsTesting(false);
     }
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setEditedApiKey('');
-    setEditedApiBase(provider.apiBase || '');
-    setTestResult(null);
   };
 
   const handleToggleEnabled = async () => {
@@ -89,122 +57,63 @@ export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCar
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {isConfigured && !isEditing && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleTest}
-                disabled={isTesting || !provider.enabled}
-                loading={isTesting}
-              >
-                Test
-              </Button>
-            </>
+          {isConfigured && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleTest}
+              disabled={isTesting || !provider.enabled}
+              loading={isTesting}
+            >
+              Test
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Configuration display/edit */}
-      {isEditing ? (
-        <div className="mt-4 space-y-3">
+      {/* Read-only key status */}
+      <div className="mt-3 flex items-center justify-between">
+        <div className="text-sm">
           {isOllama ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                API Base URL
-              </label>
-              <input
-                type="text"
-                value={editedApiBase}
-                onChange={(e) => setEditedApiBase(e.target.value)}
-                placeholder="http://localhost:11434"
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Enter the Ollama server URL (default: http://localhost:11434)
-              </p>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                API Key
-              </label>
-              <div className="relative">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={editedApiKey}
-                  onChange={(e) => setEditedApiKey(e.target.value)}
-                  placeholder={provider.apiKeyConfigured ? '••••••••••••' : 'Enter API key'}
-                  className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              {provider.apiKeyConfigured && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Leave blank to keep existing key. Current: {provider.apiKey}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Save/Cancel buttons */}
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleSave} loading={isSaving}>
-              <Save size={14} className="mr-1" />
-              Save
-            </Button>
-            <Button size="sm" variant="secondary" onClick={handleCancel} disabled={isSaving}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-3 flex items-center justify-between">
-          <div className="text-sm">
-            {isOllama ? (
-              provider.apiBase ? (
-                <span className="text-gray-600">{provider.apiBase}</span>
-              ) : (
-                <span className="text-gray-400">Not configured</span>
-              )
+            provider.apiBase ? (
+              <span className="text-gray-600">{provider.apiBase}</span>
             ) : (
-              provider.apiKeyConfigured ? (
-                <span className="text-gray-600">{provider.apiKey}</span>
-              ) : (
-                <span className="text-gray-400">Not configured</span>
-              )
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsEditing(true)}
-              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
-            >
-              <Edit2 size={14} />
-              {isConfigured ? 'Edit' : isOllama ? 'Configure' : 'Add Key'}
-            </button>
-
-            {isConfigured && (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={provider.enabled}
-                  onChange={handleToggleEnabled}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-600">Enabled</span>
-              </label>
-            )}
-          </div>
+              <span className="text-gray-400">Not configured</span>
+            )
+          ) : (
+            provider.apiKeyConfigured ? (
+              <span className="text-gray-600">{provider.apiKey}</span>
+            ) : (
+              <span className="text-gray-400">Not configured</span>
+            )
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-2">
+          {isConfigured && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={provider.enabled}
+                onChange={handleToggleEnabled}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-600">Enabled</span>
+            </label>
+          )}
+        </div>
+      </div>
+
+      {/* Info tip — manage keys in API Keys page */}
+      <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
+        <KeyRound size={14} className="text-blue-600 flex-shrink-0" />
+        <p className="text-xs text-blue-800">
+          API keys are managed in{' '}
+          <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
+            Settings &rarr; API Keys
+          </a>
+        </p>
+      </div>
 
       {/* Test result */}
       {testResult && (

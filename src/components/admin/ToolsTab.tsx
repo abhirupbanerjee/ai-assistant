@@ -32,6 +32,7 @@ import {
   Server,
   Cookie,
   ArrowRightLeft,
+  KeyRound,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -218,23 +219,39 @@ function WebSearchConfig({
 
   return (
     <div className="space-y-4">
-      {/* API Key - hidden for superusers */}
+      {/* API Key Status - managed in Settings → API Keys */}
       {!hideSensitive && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Tavily API Key
           </label>
-          <input
-            type="password"
-            value={(config.apiKey as string) || ''}
-            onChange={(e) => handleChange('apiKey', e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="tvly-••••••••"
-            disabled={disabled}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Get your API key from <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">tavily.com</a>
+          <p className="text-sm text-gray-600 mb-2">
+            {(config.apiKey as string) && !(config.apiKey as string).includes('••') ? (
+              <span className="text-green-600 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Configured
+              </span>
+            ) : (config.apiKey as string)?.includes('••') ? (
+              <span className="text-green-600 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Configured
+              </span>
+            ) : (
+              <span className="text-gray-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                Not configured
+              </span>
+            )}
           </p>
+          <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
+            <KeyRound size={14} className="text-blue-600 flex-shrink-0" />
+            <p className="text-xs text-blue-800">
+              API keys are managed in{' '}
+              <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
+                Settings &rarr; API Keys
+              </a>
+            </p>
+          </div>
         </div>
       )}
 

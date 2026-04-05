@@ -17,6 +17,7 @@ import MemorySettingsTab from '@/components/admin/settings/MemorySettings';
 import SummarizationSettingsTab from '@/components/admin/settings/SummarizationSettings';
 import SuperuserSettingsTab from '@/components/admin/settings/SuperuserSettings';
 import CredentialsAuthSettingsTab from '@/components/admin/settings/CredentialsAuthSettings';
+import ApiKeysSettings from '@/components/admin/settings/ApiKeysSettings';
 import RoutesSettingsPanel from '@/components/admin/settings/RoutesSettings';
 import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
@@ -113,7 +114,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
+type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -249,7 +250,7 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['routes', 'llm', 'rag', 'reranker', 'ocr', 'cache', 'backup'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'ocr', 'cache', 'backup'];
 const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
 
 function AdminPageContent() {
@@ -275,7 +276,7 @@ function AdminPageContent() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(
     VALID_SETTINGS_SECTIONS.includes(sectionParam as SettingsSection)
       ? (sectionParam as SettingsSection)
-      : 'llm'
+      : 'api-keys'
   );
 
   // Agent Bots state - track selected bot for detail view
@@ -1140,6 +1141,8 @@ function AdminPageContent() {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <>
+              {/* API Keys Section */}
+              {settingsSection === 'api-keys' && <ApiKeysSettings />}
               {/* Routes Settings Section */}
               {settingsSection === 'routes' && <RoutesSettingsPanel />}
               {/* LLM Settings Section */}

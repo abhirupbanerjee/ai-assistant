@@ -39,7 +39,7 @@ function mapRowToProvider(row: LLMProviderRow): LLMProvider {
 }
 
 // Environment variable mapping for auto-seeding
-const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> = {
+export const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> = {
   openai: { apiKey: 'OPENAI_API_KEY' },
   gemini: { apiKey: 'GEMINI_API_KEY' },
   mistral: { apiKey: 'MISTRAL_API_KEY' },

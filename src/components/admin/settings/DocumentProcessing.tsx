@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Save, ChevronUp, ChevronDown } from 'lucide-react';
+import { Save, ChevronUp, ChevronDown, KeyRound } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -49,9 +49,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
   const [settings, setSettings] = useState<OcrSettings | null>(null);
   const [editedProviders, setEditedProviders] = useState<OcrProviderConfig[] | null>(null);
   // Credential inputs
-  const [mistralApiKeyInput, setMistralApiKeyInput] = useState('');
-  const [azureDiEndpointInput, setAzureDiEndpointInput] = useState('');
-  const [azureDiKeyInput, setAzureDiKeyInput] = useState('');
+  // OCR API keys are now managed in Settings → API Keys
   const [isModified, setIsModified] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,8 +79,6 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
 
       setSettings(ocrData);
       setEditedProviders(ocrData.providers.map((p: OcrProviderConfig) => ({ ...p })));
-      // Initialize endpoint input from stored value (not a password — users need to see/edit it)
-      setAzureDiEndpointInput(ocrData.azureDiEndpoint || '');
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -111,16 +107,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
         providers: editedProviders,
       };
 
-      if (mistralApiKeyInput) {
-        settingsToSave.mistralApiKey = mistralApiKeyInput;
-      }
-      // Always send the current endpoint value (azureDiEndpointInput is the source of truth)
-      if (azureDiEndpointInput) {
-        settingsToSave.azureDiEndpoint = azureDiEndpointInput;
-      }
-      if (azureDiKeyInput) {
-        settingsToSave.azureDiKey = azureDiKeyInput;
-      }
+      // OCR API keys are managed in Settings → API Keys
 
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
@@ -138,10 +125,6 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
       setSettings(savedSettings);
       setEditedProviders((savedSettings.providers as OcrProviderConfig[]).map((p: OcrProviderConfig) => ({ ...p })));
 
-      // Clear password inputs after save (endpoint is refreshed by fetchSettings below)
-      setMistralApiKeyInput('');
-      setAzureDiKeyInput('');
-
       setIsModified(false);
       setSuccess('Document processing settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
@@ -158,9 +141,6 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
   const handleReset = () => {
     if (settings) {
       setEditedProviders(settings.providers.map(p => ({ ...p })));
-      setMistralApiKeyInput('');
-      setAzureDiEndpointInput(settings.azureDiEndpoint || '');
-      setAzureDiKeyInput('');
       setIsModified(false);
     }
   };
@@ -289,82 +269,64 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
                         <span><strong>Formats:</strong> {providerInfo.formats}</span>
                       </div>
 
-                      {/* Mistral API Key Input */}
+                      {/* Mistral API Key Status */}
                       {providerConfig.provider === 'mistral' && (
                         <div className="mt-3 pt-3 border-t border-gray-200">
-                          {settings?.mistralFromLlmProvider ? (
-                            <p className="text-xs text-green-600 mb-2">
-                              Using API key from Settings &gt; LLM &gt; Providers &gt; Mistral
-                            </p>
-                          ) : null}
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Mistral API Key {settings?.hasMistralApiKey && <span className="text-green-600">(configured)</span>}
-                          </label>
-                          <input
-                            type="password"
-                            value={mistralApiKeyInput}
-                            onChange={(e) => {
-                              setMistralApiKeyInput(e.target.value);
-                              setIsModified(true);
-                            }}
-                            placeholder={settings?.hasMistralApiKey || settings?.mistralFromLlmProvider ? '••••••••' : 'Enter Mistral API key'}
-                            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="text-sm text-gray-600 mb-2">
                             {settings?.hasMistralApiKey ? (
-                              'Enter a new key to update, or leave blank to keep current key.'
+                              <span className="text-green-600 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                                API key configured
+                              </span>
                             ) : settings?.mistralFromLlmProvider ? (
-                              'Optional: Override the LLM provider key with a different key for OCR.'
+                              <span className="text-purple-600 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block" />
+                                Using LLM provider key
+                              </span>
                             ) : (
-                              <>
-                                Get your API key from{' '}
-                                <a href="https://console.mistral.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                  console.mistral.ai
-                                </a>
-                              </>
+                              <span className="text-gray-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                                Not configured
+                              </span>
                             )}
                           </p>
+                          <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
+                            <KeyRound size={14} className="text-blue-600 flex-shrink-0" />
+                            <p className="text-xs text-blue-800">
+                              API keys are managed in{' '}
+                              <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
+                                Settings &rarr; API Keys
+                              </a>
+                            </p>
+                          </div>
                         </div>
                       )}
 
-                      {/* Azure DI Credentials Input */}
+                      {/* Azure DI Credentials Status */}
                       {providerConfig.provider === 'azure-di' && (
-                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Endpoint URL {settings?.hasAzureDiCredentials && <span className="text-green-600">(configured)</span>}
-                            </label>
-                            <input
-                              type="text"
-                              value={azureDiEndpointInput}
-                              onChange={(e) => {
-                                setAzureDiEndpointInput(e.target.value);
-                                setIsModified(true);
-                              }}
-                              placeholder="https://your-resource.cognitiveservices.azure.com"
-                              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                            <input
-                              type="password"
-                              value={azureDiKeyInput}
-                              onChange={(e) => {
-                                setAzureDiKeyInput(e.target.value);
-                                setIsModified(true);
-                              }}
-                              placeholder={settings?.hasAzureDiCredentials ? '••••••••' : 'Enter Azure DI API key'}
-                              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500">
-                            Get credentials from{' '}
-                            <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                              Azure Portal
-                            </a>
-                            {' '}&gt; Document Intelligence resource
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <p className="text-sm text-gray-600 mb-2">
+                            {settings?.hasAzureDiCredentials ? (
+                              <span className="text-green-600 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                                Credentials configured
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                                Not configured
+                              </span>
+                            )}
                           </p>
+                          <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
+                            <KeyRound size={14} className="text-blue-600 flex-shrink-0" />
+                            <p className="text-xs text-blue-800">
+                              API keys are managed in{' '}
+                              <a href="/admin?tab=settings&section=api-keys" className="text-blue-600 font-medium hover:underline">
+                                Settings &rarr; API Keys
+                              </a>
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>

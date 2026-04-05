@@ -11,6 +11,7 @@ import {
   getAllProviders,
   createProvider,
   maskApiKey,
+  PROVIDER_ENV_KEYS,
   type CreateProviderInput,
 } from '@/lib/db/compat/llm-providers';
 import type { ApiError } from '@/types';
@@ -29,11 +30,16 @@ export async function GET() {
     const providers = await getAllProviders();
 
     // Mask API keys for security
-    const safeProviders = providers.map(p => ({
-      ...p,
-      apiKey: maskApiKey(p.apiKey),
-      apiKeyConfigured: !!p.apiKey,
-    }));
+    const safeProviders = providers.map(p => {
+      const envConfig = PROVIDER_ENV_KEYS[p.id];
+      const envVarName = envConfig?.apiKey ?? envConfig?.apiBase ?? '';
+      return {
+        ...p,
+        apiKey: maskApiKey(p.apiKey),
+        apiKeyConfigured: !!p.apiKey,
+        apiKeyFromEnv: !p.apiKey && !!process.env[envVarName],
+      };
+    });
 
     return NextResponse.json({ providers: safeProviders });
   } catch (error) {
