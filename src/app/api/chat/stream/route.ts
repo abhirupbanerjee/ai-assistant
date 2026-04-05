@@ -44,8 +44,9 @@ import { getAutonomousModeEnabled } from '@/lib/db/compat/agent-config';
 import { executeAutonomousWithStreaming } from '@/lib/agent/streaming-executor';
 
 // Route segment config for long-running autonomous tasks
-// 300 seconds = 5 minutes (Vercel Pro max, or adjust based on hosting provider)
-export const maxDuration = 300;
+// Default 300s (Vercel Pro max). Self-hosted deployments can increase via env var
+// to match proxy timeouts (e.g. Traefik's 1800s for autonomous mode).
+export const maxDuration = parseInt(process.env.STREAM_MAX_DURATION || '300', 10);
 
 export async function POST(request: NextRequest) {
   const encoder = createSSEEncoder();

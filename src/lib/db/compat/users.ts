@@ -211,10 +211,10 @@ export async function replaceSuperUserCategories(
       .where('user_id', '=', userId)
       .execute();
 
-    for (const categoryId of categoryIds) {
+    if (categoryIds.length > 0) {
       await trx
         .insertInto('super_user_categories')
-        .values({ user_id: userId, category_id: categoryId, assigned_by: assignedBy })
+        .values(categoryIds.map(cid => ({ user_id: userId, category_id: cid, assigned_by: assignedBy })))
         .execute();
     }
   });
@@ -381,10 +381,10 @@ export async function createUserWithSubscriptions(
 
     const user = result as DbUser;
 
-    for (const categoryId of categoryIds) {
+    if (categoryIds.length > 0) {
       await trx
         .insertInto('user_subscriptions')
-        .values({ user_id: user.id, category_id: categoryId, subscribed_by: subscribedBy })
+        .values(categoryIds.map(cid => ({ user_id: user.id, category_id: cid, subscribed_by: subscribedBy })))
         .execute();
     }
 
@@ -411,10 +411,10 @@ export async function createSuperUserWithAssignments(
 
     const user = result as DbUser;
 
-    for (const categoryId of categoryIds) {
+    if (categoryIds.length > 0) {
       await trx
         .insertInto('super_user_categories')
-        .values({ user_id: user.id, category_id: categoryId, assigned_by: assignedBy })
+        .values(categoryIds.map(cid => ({ user_id: user.id, category_id: cid, assigned_by: assignedBy })))
         .execute();
     }
 

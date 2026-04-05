@@ -150,17 +150,33 @@ export async function getSkillCatalogForPlanner(categoryIds: number[]): Promise<
 }[]> {
   const keywordSkills = await getAllSkills({ trigger_type: 'keyword', is_active: true });
 
-  const eligible: Skill[] = [];
-  for (const skill of keywordSkills) {
-    if (!skill.category_restricted) {
-      eligible.push(skill);
-    } else if (categoryIds.length > 0) {
-      const skillCats = await getPgCategoriesForSkill(skill.id);
-      if (skillCats.some(c => categoryIds.includes(c.id))) {
-        eligible.push(skill);
-      }
+  // Batch load category mappings for all category-restricted skills (1 query instead of N)
+  const restrictedSkillIds = keywordSkills
+    .filter(s => s.category_restricted)
+    .map(s => s.id);
+
+  const skillCatMap = new Map<number, number[]>();
+  if (restrictedSkillIds.length > 0 && categoryIds.length > 0) {
+    const db = await getDb();
+    const rows = await db
+      .selectFrom('category_skills')
+      .select(['skill_id', 'category_id'])
+      .where('skill_id', 'in', restrictedSkillIds)
+      .execute();
+
+    for (const row of rows) {
+      const existing = skillCatMap.get(row.skill_id as number) || [];
+      existing.push(row.category_id as number);
+      skillCatMap.set(row.skill_id as number, existing);
     }
   }
+
+  const eligible = keywordSkills.filter(skill => {
+    if (!skill.category_restricted) return true;
+    if (categoryIds.length === 0) return false;
+    const skillCats = skillCatMap.get(skill.id) || [];
+    return skillCats.some(cid => categoryIds.includes(cid));
+  });
 
   return eligible.map(s => ({
     id: s.id,

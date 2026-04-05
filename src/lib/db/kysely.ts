@@ -295,6 +295,16 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE workspace_messages ADD COLUMN IF NOT EXISTS model TEXT`.execute(database);
   console.log('[Kysely] Ensured metadata columns exist');
 
+  // Safety net: ensure critical indexes exist (these are in postgres.sql but may be
+  // missing if database was set up without the Docker init script)
+  await sql`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_threads_user ON threads(user_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_workspace_categories_workspace ON workspace_categories(workspace_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_workspace_sessions_workspace ON workspace_sessions(workspace_id)`.execute(database);
+  console.log('[Kysely] Ensured safety net indexes exist');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

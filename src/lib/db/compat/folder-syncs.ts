@@ -264,24 +264,21 @@ export async function createFolderSyncFile(input: CreateFolderSyncFileInput): Pr
  * Batch create folder sync files (more efficient for large folders)
  */
 export async function createFolderSyncFiles(inputs: CreateFolderSyncFileInput[]): Promise<number> {
+  if (inputs.length === 0) return 0;
   return transaction(async (trx) => {
-    let count = 0;
-    for (const input of inputs) {
-      await trx
-        .insertInto('folder_sync_files')
-        .values({
-          folder_sync_id: input.folderSyncId,
-          relative_path: input.relativePath,
-          filename: input.filename,
-          file_size: input.fileSize,
-          file_hash: input.fileHash || null,
-          last_modified: input.lastModified || null,
-          status: 'pending',
-        })
-        .execute();
-      count++;
-    }
-    return count;
+    await trx
+      .insertInto('folder_sync_files')
+      .values(inputs.map(input => ({
+        folder_sync_id: input.folderSyncId,
+        relative_path: input.relativePath,
+        filename: input.filename,
+        file_size: input.fileSize,
+        file_hash: input.fileHash || null,
+        last_modified: input.lastModified || null,
+        status: 'pending' as const,
+      })))
+      .execute();
+    return inputs.length;
   });
 }
 

@@ -49,27 +49,61 @@ export async function getAllDocuments(): Promise<DbDocument[]> {
 }
 
 export async function getAllDocumentsWithCategories(): Promise<DocumentWithCategories[]> {
-  const documents = await getAllDocuments();
   const db = await getDb();
 
-  const result: DocumentWithCategories[] = [];
-  for (const doc of documents) {
-    const categories = await db
-      .selectFrom('categories as c')
-      .innerJoin('document_categories as dc', 'c.id', 'dc.category_id')
-      .select(['c.id', 'c.name', 'c.slug'])
-      .where('dc.document_id', '=', doc.id)
-      .orderBy('c.name')
-      .execute();
+  // Single query: fetch all documents with their categories via LEFT JOIN
+  const rows = await db
+    .selectFrom('documents as d')
+    .leftJoin('document_categories as dc', 'd.id', 'dc.document_id')
+    .leftJoin('categories as c', 'dc.category_id', 'c.id')
+    .select([
+      'd.id',
+      'd.filename',
+      'd.filepath',
+      'd.file_size',
+      'd.is_global',
+      'd.chunk_count',
+      'd.status',
+      'd.error_message',
+      'd.uploaded_by',
+      'd.created_at',
+      'c.id as cat_id',
+      'c.name as cat_name',
+      'c.slug as cat_slug',
+    ])
+    .orderBy('d.created_at', 'desc')
+    .orderBy('c.name')
+    .execute();
 
-    result.push({
-      ...doc,
-      isGlobal: Boolean(doc.is_global),
-      categories: categories as { id: number; name: string; slug: string }[],
-    });
+  // Group rows by document, collecting categories
+  const docMap = new Map<number, DocumentWithCategories>();
+  for (const row of rows) {
+    const docId = row.id as number;
+    if (!docMap.has(docId)) {
+      docMap.set(docId, {
+        id: docId,
+        filename: row.filename as string,
+        filepath: row.filepath as string,
+        file_size: row.file_size as number,
+        chunk_count: row.chunk_count as number,
+        status: row.status as DocumentStatus,
+        error_message: row.error_message as string | null,
+        uploaded_by: (row.uploaded_by || '') as string,
+        created_at: row.created_at as string,
+        isGlobal: Boolean(row.is_global),
+        categories: [],
+      });
+    }
+    if (row.cat_id != null) {
+      docMap.get(docId)!.categories.push({
+        id: row.cat_id as number,
+        name: row.cat_name as string,
+        slug: row.cat_slug as string,
+      });
+    }
   }
 
-  return result;
+  return Array.from(docMap.values());
 }
 
 export async function getDocumentById(id: number): Promise<DbDocument | undefined> {
@@ -142,12 +176,10 @@ export async function createDocument(input: CreateDocumentInput): Promise<DbDocu
 
     // Add category associations
     if (input.categoryIds && input.categoryIds.length > 0) {
-      for (const categoryId of input.categoryIds) {
-        await trx
-          .insertInto('document_categories')
-          .values({ document_id: docId, category_id: categoryId })
-          .execute();
-      }
+      await trx
+        .insertInto('document_categories')
+        .values(input.categoryIds.map(cid => ({ document_id: docId, category_id: cid })))
+        .execute();
     }
 
     return result as DbDocument;
@@ -230,10 +262,10 @@ export async function setDocumentCategories(docId: number, categoryIds: number[]
     await trx.deleteFrom('document_categories').where('document_id', '=', docId).execute();
 
     // Add new categories
-    for (const categoryId of categoryIds) {
+    if (categoryIds.length > 0) {
       await trx
         .insertInto('document_categories')
-        .values({ document_id: docId, category_id: categoryId })
+        .values(categoryIds.map(cid => ({ document_id: docId, category_id: cid })))
         .execute();
     }
   });

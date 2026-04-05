@@ -70,10 +70,10 @@ export async function createThread(
       })
       .execute();
 
-    for (const categoryId of categoryIds) {
+    if (categoryIds.length > 0) {
       await trx
         .insertInto('thread_categories')
-        .values({ thread_id: threadId, category_id: categoryId })
+        .values(categoryIds.map(cid => ({ thread_id: threadId, category_id: cid })))
         .execute();
     }
 
@@ -314,10 +314,10 @@ export async function setThreadCategories(threadId: string, categoryIds: number[
   await transaction(async (trx) => {
     await trx.deleteFrom('thread_categories').where('thread_id', '=', threadId).execute();
 
-    for (const categoryId of categoryIds) {
+    if (categoryIds.length > 0) {
       await trx
         .insertInto('thread_categories')
-        .values({ thread_id: threadId, category_id: categoryId })
+        .values(categoryIds.map(cid => ({ thread_id: threadId, category_id: cid })))
         .execute();
     }
   });

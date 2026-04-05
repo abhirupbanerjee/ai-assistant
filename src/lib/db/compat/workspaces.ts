@@ -122,15 +122,13 @@ export async function listWorkspaces(type?: WorkspaceType): Promise<WorkspaceWit
   }
 
   const rows = await query.execute();
-  const results: WorkspaceWithRelations[] = [];
+  const workspaces = rows.map(row => rowToWorkspace(row));
+  const categoryMap = await getWorkspaceCategoryIdsForMany(workspaces.map(w => w.id));
 
-  for (const row of rows) {
-    const workspace = rowToWorkspace(row);
-    const categoryIds = await getWorkspaceCategoryIds(workspace.id);
-    results.push({ ...workspace, category_ids: categoryIds });
-  }
-
-  return results;
+  return workspaces.map(w => ({
+    ...w,
+    category_ids: categoryMap.get(w.id) || [],
+  }));
 }
 
 /**
@@ -145,15 +143,13 @@ export async function listWorkspacesByCreator(createdBy: string): Promise<Worksp
     .orderBy('created_at', 'desc')
     .execute();
 
-  const results: WorkspaceWithRelations[] = [];
+  const workspaces = rows.map(row => rowToWorkspace(row));
+  const categoryMap = await getWorkspaceCategoryIdsForMany(workspaces.map(w => w.id));
 
-  for (const row of rows) {
-    const workspace = rowToWorkspace(row);
-    const categoryIds = await getWorkspaceCategoryIds(workspace.id);
-    results.push({ ...workspace, category_ids: categoryIds });
-  }
-
-  return results;
+  return workspaces.map(w => ({
+    ...w,
+    category_ids: categoryMap.get(w.id) || [],
+  }));
 }
 
 /**
@@ -209,13 +205,13 @@ export async function listWorkspacesForUser(userId: number): Promise<WorkspaceWi
     .orderBy('w.created_at', 'desc')
     .execute();
 
-  const results: WorkspaceWithRelations[] = [];
-  for (const row of rows) {
-    const workspace = rowToWorkspace(row);
-    const categoryIds = await getWorkspaceCategoryIds(workspace.id);
-    results.push({ ...workspace, category_ids: categoryIds });
-  }
-  return results;
+  const workspaces = rows.map(row => rowToWorkspace(row));
+  const categoryMap = await getWorkspaceCategoryIdsForMany(workspaces.map(w => w.id));
+
+  return workspaces.map(w => ({
+    ...w,
+    category_ids: categoryMap.get(w.id) || [],
+  }));
 }
 
 // ============ Write Operations ============
@@ -271,13 +267,11 @@ export async function createWorkspace(
 
     // Link categories
     if (input.category_ids && input.category_ids.length > 0) {
-      for (const categoryId of input.category_ids) {
-        await trx
-          .insertInto('workspace_categories')
-          .values({ workspace_id: id, category_id: categoryId })
-          .onConflict(oc => oc.doNothing())
-          .execute();
-      }
+      await trx
+        .insertInto('workspace_categories')
+        .values(input.category_ids.map(cid => ({ workspace_id: id, category_id: cid })))
+        .onConflict(oc => oc.doNothing())
+        .execute();
     }
 
     const row = await trx
@@ -342,13 +336,11 @@ export async function updateWorkspace(id: string, updates: UpdateWorkspaceInput)
         .execute();
 
       if (updates.category_ids.length > 0) {
-        for (const categoryId of updates.category_ids) {
-          await trx
-            .insertInto('workspace_categories')
-            .values({ workspace_id: id, category_id: categoryId })
-            .onConflict(oc => oc.doNothing())
-            .execute();
-        }
+        await trx
+          .insertInto('workspace_categories')
+          .values(updates.category_ids.map(cid => ({ workspace_id: id, category_id: cid })))
+          .onConflict(oc => oc.doNothing())
+          .execute();
       }
     }
 
@@ -406,6 +398,30 @@ export async function getWorkspaceCategoryIds(workspaceId: string): Promise<numb
 }
 
 /**
+ * Get category IDs for multiple workspaces in a single query (batch N+1 fix)
+ */
+export async function getWorkspaceCategoryIdsForMany(
+  workspaceIds: string[]
+): Promise<Map<string, number[]>> {
+  if (workspaceIds.length === 0) return new Map();
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('workspace_categories')
+    .select(['workspace_id', 'category_id'])
+    .where('workspace_id', 'in', workspaceIds)
+    .execute();
+
+  const map = new Map<string, number[]>();
+  for (const row of rows) {
+    const wsId = String(row.workspace_id);
+    const existing = map.get(wsId) || [];
+    existing.push(row.category_id as number);
+    map.set(wsId, existing);
+  }
+  return map;
+}
+
+/**
  * Get category slugs linked to a workspace (for RAG queries)
  */
 export async function getWorkspaceCategorySlugs(workspaceId: string): Promise<string[]> {
@@ -431,13 +447,11 @@ export async function setWorkspaceCategories(workspaceId: string, categoryIds: n
       .execute();
 
     if (categoryIds.length > 0) {
-      for (const categoryId of categoryIds) {
-        await trx
-          .insertInto('workspace_categories')
-          .values({ workspace_id: workspaceId, category_id: categoryId })
-          .onConflict(oc => oc.doNothing())
-          .execute();
-      }
+      await trx
+        .insertInto('workspace_categories')
+        .values(categoryIds.map(cid => ({ workspace_id: workspaceId, category_id: cid })))
+        .onConflict(oc => oc.doNothing())
+        .execute();
     }
   });
 }
@@ -584,15 +598,13 @@ export async function searchWorkspaces(query: string, type?: WorkspaceType): Pro
   }
 
   const rows = await q.execute();
-  const results: WorkspaceWithRelations[] = [];
+  const workspaces = rows.map(row => rowToWorkspace(row));
+  const categoryMap = await getWorkspaceCategoryIdsForMany(workspaces.map(w => w.id));
 
-  for (const row of rows) {
-    const workspace = rowToWorkspace(row);
-    const categoryIds = await getWorkspaceCategoryIds(workspace.id);
-    results.push({ ...workspace, category_ids: categoryIds });
-  }
-
-  return results;
+  return workspaces.map(w => ({
+    ...w,
+    category_ids: categoryMap.get(w.id) || [],
+  }));
 }
 
 // ============ Helper Functions ============
