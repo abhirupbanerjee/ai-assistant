@@ -181,6 +181,34 @@ function isFireworksEmbeddingModel(model: string): boolean {
   return model.startsWith('fireworks/') || model.startsWith('nomic-ai/');
 }
 
+/**
+ * Convert internal embedding model ID to Fireworks API format.
+ * Fireworks API expects `accounts/fireworks/models/<name>`.
+ */
+function getFireworksEmbeddingModelId(model: string): string {
+  if (model.startsWith('fireworks/')) {
+    return `accounts/fireworks/models/${model.slice('fireworks/'.length)}`;
+  }
+  if (model.startsWith('nomic-ai/')) {
+    return `accounts/fireworks/models/${model.slice('nomic-ai/'.length)}`;
+  }
+  return model;
+}
+
+/**
+ * Add LiteLLM provider prefix to non-OpenAI embedding model names.
+ * LiteLLM requires prefixes like `gemini/` or `mistral/` to route correctly.
+ * Only applies when using LiteLLM proxy (OPENAI_BASE_URL is set).
+ */
+function getLiteLLMEmbeddingModelId(model: string): string {
+  if (!process.env.OPENAI_BASE_URL) return model;
+  const modelDef = getEmbeddingModelById(model);
+  if (modelDef && modelDef.provider !== 'openai') {
+    return `${modelDef.provider}/${model}`;
+  }
+  return model;
+}
+
 export async function createEmbedding(text: string): Promise<number[]> {
   const embeddingSettings = await getEmbeddingSettings();
   // Use database config, fall back to env var for backward compatibility
@@ -196,7 +224,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
     // Route Fireworks embedding models directly (bypass LiteLLM)
     if (isFireworksEmbeddingModel(model)) {
       const fwClient = await getFireworksClient();
-      const response = await fwClient.embeddings.create({ model, input: text });
+      const fwModel = getFireworksEmbeddingModelId(model);
+      const response = await fwClient.embeddings.create({ model: fwModel, input: text });
       recordTokenUsage({
         category: 'embeddings',
         model,
@@ -207,8 +236,9 @@ export async function createEmbedding(text: string): Promise<number[]> {
 
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
     const openai = await getOpenAI();
+    const litellmModel = getLiteLLMEmbeddingModelId(model);
     const response = await openai.embeddings.create({
-      model,
+      model: litellmModel,
       input: text,
     });
     recordTokenUsage({
@@ -238,13 +268,15 @@ export async function createEmbedding(text: string): Promise<number[]> {
       // Route Fireworks fallback models directly
       if (isFireworksEmbeddingModel(fallbackModel)) {
         const fwClient = await getFireworksClient();
-        const response = await fwClient.embeddings.create({ model: fallbackModel, input: text });
+        const fwModel = getFireworksEmbeddingModelId(fallbackModel);
+        const response = await fwClient.embeddings.create({ model: fwModel, input: text });
         return response.data[0].embedding;
       }
 
       const openai = await getOpenAI();
+      const litellmModel = getLiteLLMEmbeddingModelId(fallbackModel);
       const response = await openai.embeddings.create({
-        model: fallbackModel,
+        model: litellmModel,
         input: text,
       });
       return response.data[0].embedding;
@@ -277,7 +309,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
     // Route Fireworks embedding models directly (bypass LiteLLM)
     if (isFireworksEmbeddingModel(model)) {
       const fwClient = await getFireworksClient();
-      const response = await fwClient.embeddings.create({ model, input: texts });
+      const fwModel = getFireworksEmbeddingModelId(model);
+      const response = await fwClient.embeddings.create({ model: fwModel, input: texts });
       const embeddings = response.data.map(d => d.embedding);
       recordTokenUsage({
         category: 'embeddings',
@@ -285,15 +318,16 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
         totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
       });
       if (embeddings.length > 0) {
-        console.log(`[Embedding] Fireworks direct — Model: ${model}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
+        console.log(`[Embedding] Fireworks direct — Model: ${fwModel}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
       }
       return embeddings;
     }
 
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
     const openai = await getOpenAI();
+    const litellmModel = getLiteLLMEmbeddingModelId(model);
     const response = await openai.embeddings.create({
-      model,
+      model: litellmModel,
       input: texts,
     });
     const embeddings = response.data.map(d => d.embedding);
@@ -328,13 +362,15 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       // Route Fireworks fallback models directly
       if (isFireworksEmbeddingModel(fallbackModel)) {
         const fwClient = await getFireworksClient();
-        const response = await fwClient.embeddings.create({ model: fallbackModel, input: texts });
+        const fwModel = getFireworksEmbeddingModelId(fallbackModel);
+        const response = await fwClient.embeddings.create({ model: fwModel, input: texts });
         return response.data.map(d => d.embedding);
       }
 
       const openai = await getOpenAI();
+      const litellmModel = getLiteLLMEmbeddingModelId(fallbackModel);
       const response = await openai.embeddings.create({
-        model: fallbackModel,
+        model: litellmModel,
         input: texts,
       });
       return response.data.map(d => d.embedding);

@@ -298,9 +298,11 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'embedding',
-          model: embeddingSettings?.model || 'text-embedding-3-large',
-          dimensions: embeddingSettings?.dimensions || 3072,
-          fallbackModel: selectedFallbackModel,
+          settings: {
+            model: embeddingSettings?.model || 'text-embedding-3-large',
+            dimensions: embeddingSettings?.dimensions || 3072,
+            fallbackModel: selectedFallbackModel,
+          },
         }),
       });
 
