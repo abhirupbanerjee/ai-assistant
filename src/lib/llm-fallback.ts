@@ -188,10 +188,17 @@ export async function isLiteLLMProxyHealthy(): Promise<boolean> {
 }
 
 /**
- * Check if a model belongs to Route 2 (direct providers, bypasses LiteLLM)
+ * Check if a model belongs to Route 2 (direct cloud providers, bypasses LiteLLM)
  */
 export function isRoute2Model(model: string): boolean {
   return model.startsWith('anthropic/') || model.startsWith('claude-') || model.startsWith('fireworks/');
+}
+
+/**
+ * Check if a model belongs to Route 3 (local / Ollama direct, air-gapped capable)
+ */
+export function isRoute3Model(model: string): boolean {
+  return model.startsWith('ollama-') || model.startsWith('ollama/');
 }
 
 // ============ Model Resolution ============
@@ -224,14 +231,22 @@ export async function buildModelsToTry(
       models.push(settings.universalFallback);
     }
 
-    // Route-aware: append Route 2 fallback models if Route 2 is enabled
-    // and the selected model is Route 1 (may need Route 2 if LiteLLM goes down mid-request)
+    // Route-aware: append cross-route fallback models if other routes are enabled
     const routesSettings = await getRoutesSettings();
     if (routesSettings.route2Enabled && !isRoute2Model(selectedModel!)) {
       const route2Fallbacks = ['fireworks/minimax-m2p5', 'claude-haiku-4-5-20251001'];
       for (const fb of route2Fallbacks) {
         if (!models.includes(fb) && isModelHealthy(fb)) {
           models.push(fb);
+        }
+      }
+    }
+    if (routesSettings.route3Enabled && !isRoute3Model(selectedModel!)) {
+      const route3Fallbacks = await getActiveModels();
+      for (const m of route3Fallbacks) {
+        if (isRoute3Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
+          models.push(m.id);
+          break; // One Ollama fallback is enough
         }
       }
     }
@@ -255,7 +270,7 @@ export async function buildModelsToTry(
     models.push(settings.universalFallback);
   }
 
-  // Route-aware: if primary is Route 1 and unhealthy, prioritize Route 2 models
+  // Route-aware: if primary is unhealthy, try other routes as fallback
   const routesSettings = await getRoutesSettings();
   if (routesSettings.route2Enabled) {
     const proxyHealthy = await isLiteLLMProxyHealthy();
@@ -265,6 +280,15 @@ export async function buildModelsToTry(
         if (!models.includes(fb) && isModelHealthy(fb)) {
           models.push(fb);
         }
+      }
+    }
+  }
+  if (routesSettings.route3Enabled) {
+    const route3Models = await getActiveModels();
+    for (const m of route3Models) {
+      if (isRoute3Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
+        models.push(m.id);
+        break;
       }
     }
   }

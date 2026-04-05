@@ -79,7 +79,7 @@ import {
   getHistoryForAPI,
   type ConversationContext,
 } from './conversation-context';
-import { getApiKey } from '@/lib/provider-helpers';
+import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -194,6 +194,41 @@ function getFireworksEmbeddingModelId(model: string): string {
     return `accounts/fireworks/models/${model.slice('nomic-ai/'.length)}`;
   }
   return model;
+}
+
+// ============ Ollama Direct Client ============
+
+/**
+ * Check if a model ID refers to an Ollama model.
+ * These models bypass LiteLLM and connect directly to the local Ollama server.
+ */
+export function isOllamaModel(model: string): boolean {
+  return model.startsWith('ollama-') || model.startsWith('ollama/');
+}
+
+/**
+ * Strip provider prefix from model ID for the Ollama API.
+ * e.g. "ollama/llama3.2:3b" → "llama3.2:3b", "ollama-llama3.2" → "llama3.2"
+ */
+function getOllamaModelId(model: string): string {
+  if (model.startsWith('ollama/')) return model.slice('ollama/'.length);
+  if (model.startsWith('ollama-')) return model.slice('ollama-'.length);
+  return model;
+}
+
+let ollamaClient: OpenAI | null = null;
+
+async function getOllamaClient(): Promise<OpenAI> {
+  if (!ollamaClient) {
+    const apiBase = await getApiBase('ollama');
+    const baseURL = ((apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
+    ollamaClient = new OpenAI({
+      apiKey: 'ollama', // Ollama doesn't require a real API key
+      baseURL,
+      timeout: 300 * 1000, // 5 minutes — matches other clients
+    });
+  }
+  return ollamaClient;
 }
 
 /**
@@ -413,15 +448,14 @@ export async function generateResponse(
     content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
   });
 
-  const openai = await getOpenAI();
+  const isOllama = isOllamaModel(llmSettings.model);
+  const openai = isOllama ? await getOllamaClient() : await getOpenAI();
 
   // Get effective max tokens (uses per-model override if configured, otherwise preset default)
   const effectiveMaxTokens = await getEffectiveMaxTokens(llmSettings.model);
 
-  const isOllama = llmSettings.model.startsWith('ollama-') || llmSettings.model.startsWith('ollama/');
-
   const response = await openai.chat.completions.create({
-    model: llmSettings.model,
+    model: isOllama ? getOllamaModelId(llmSettings.model) : llmSettings.model,
     messages,
     max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
@@ -855,12 +889,15 @@ export async function generateResponseWithTools(
   // Detect direct-route models — bypass LiteLLM
   const useAnthropicDirect = isClaudeModel(effectiveModel);
   const useFireworksDirect = isFireworksModel(effectiveModel);
+  const useOllamaDirect = isOllamaModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
+    : useOllamaDirect ? 'Ollama directly'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   const openai = useAnthropicDirect ? null
     : useFireworksDirect ? await getFireworksClient()
+    : useOllamaDirect ? await getOllamaClient()
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
@@ -1114,9 +1151,9 @@ export async function generateResponseWithTools(
 
   // Ollama small models can't reliably handle most tools and the tool definitions
   // consume thousands of tokens. Keep only local-generation tools that don't need external APIs.
-  const isOllamaModel = effectiveModel.startsWith('ollama-') || effectiveModel.startsWith('ollama/');
+  const isOllama = isOllamaModel(effectiveModel);
   let effectiveToolChoice = toolChoice;
-  if (isOllamaModel) {
+  if (isOllama) {
     if (tools?.length) {
       const allowedTools = tools.filter(t => t.function?.name && OLLAMA_ALLOWED_TOOLS.has(t.function.name));
       const strippedCount = tools.length - allowedTools.length;
@@ -1147,18 +1184,18 @@ export async function generateResponseWithTools(
 
   // Inject request_clarification meta-tool when preflight skill is active.
   // Skipped for Ollama: small models struggle with meta-tools and context is already tight.
-  if (enableClarification && modelSupportsTools && !isOllamaModel) {
+  if (enableClarification && modelSupportsTools && !isOllama) {
     tools = [...(tools || []), REQUEST_CLARIFICATION_TOOL];
   }
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
-    model: effectiveModel,
+    model: useOllamaDirect ? getOllamaModelId(effectiveModel) : effectiveModel,
     messages,
     tools,
     tool_choice: tools?.length ? effectiveToolChoice : undefined,
     max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
-    ...(isOllamaModel && { num_ctx: OLLAMA_NUM_CTX }),
+    ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls

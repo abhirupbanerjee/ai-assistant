@@ -661,7 +661,10 @@ export async function setLlmFallbackSettings(
 // ============ LLM Routes Settings ============
 
 export async function getRoutesSettings(): Promise<RoutesSettings> {
-  return await getSetting<RoutesSettings>('routes-settings') ?? DEFAULT_ROUTES_SETTINGS;
+  const raw = await getSetting<RoutesSettings>('routes-settings');
+  if (!raw) return DEFAULT_ROUTES_SETTINGS;
+  // Back-compat: older DB rows may lack route3Enabled
+  return { ...DEFAULT_ROUTES_SETTINGS, ...raw };
 }
 
 export async function setRoutesSettings(
@@ -670,15 +673,21 @@ export async function setRoutesSettings(
 ): Promise<RoutesSettings> {
   const current = await getRoutesSettings();
   const merged = { ...current, ...settings };
+  // Back-compat: ensure route3Enabled exists for older DB rows
+  if (merged.route3Enabled === undefined) merged.route3Enabled = false;
   // Ensure at least one route is enabled
-  if (!merged.route1Enabled && !merged.route2Enabled) {
+  if (!merged.route1Enabled && !merged.route2Enabled && !merged.route3Enabled) {
     merged.route1Enabled = true;
   }
-  // If primary route is disabled, switch primary to the other
-  if (merged.primaryRoute === 'route1' && !merged.route1Enabled) {
-    merged.primaryRoute = 'route2';
-  } else if (merged.primaryRoute === 'route2' && !merged.route2Enabled) {
-    merged.primaryRoute = 'route1';
+  // If primary route is disabled, switch primary to the first enabled route
+  if (
+    (merged.primaryRoute === 'route1' && !merged.route1Enabled) ||
+    (merged.primaryRoute === 'route2' && !merged.route2Enabled) ||
+    (merged.primaryRoute === 'route3' && !merged.route3Enabled)
+  ) {
+    merged.primaryRoute = merged.route1Enabled ? 'route1'
+      : merged.route2Enabled ? 'route2'
+      : 'route3';
   }
   await setSetting('routes-settings', merged, updatedBy);
   return merged;

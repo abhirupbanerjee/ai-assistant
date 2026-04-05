@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Network, Server, Zap, AlertTriangle, CheckCircle2, XCircle,
+  Network, Server, Zap, HardDrive, AlertTriangle, CheckCircle2, XCircle,
   RefreshCw, Shield,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -13,7 +13,8 @@ import Spinner from '@/components/ui/Spinner';
 interface RoutesSettings {
   route1Enabled: boolean;
   route2Enabled: boolean;
-  primaryRoute: 'route1' | 'route2';
+  route3Enabled: boolean;
+  primaryRoute: 'route1' | 'route2' | 'route3';
 }
 
 interface RouteHealth {
@@ -28,6 +29,9 @@ interface RouteHealth {
 
 const isRoute2Model = (id: string) =>
   id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/');
+
+const isRoute3Model = (id: string) =>
+  id.startsWith('ollama-') || id.startsWith('ollama/');
 
 // ============ Component ============
 
@@ -48,6 +52,7 @@ export default function RoutesSettingsPanel() {
   const isModified = edited && settings && (
     edited.route1Enabled !== settings.route1Enabled ||
     edited.route2Enabled !== settings.route2Enabled ||
+    edited.route3Enabled !== settings.route3Enabled ||
     edited.primaryRoute !== settings.primaryRoute
   );
 
@@ -163,20 +168,26 @@ export default function RoutesSettingsPanel() {
 
   const route1IsPrimary = edited.primaryRoute === 'route1';
   const route2IsPrimary = edited.primaryRoute === 'route2';
-  const onlyOneEnabled = edited.route1Enabled !== edited.route2Enabled;
+  const route3IsPrimary = edited.primaryRoute === 'route3';
+  const enabledCount = [edited.route1Enabled, edited.route2Enabled, edited.route3Enabled].filter(Boolean).length;
+  const onlyOneEnabled = enabledCount === 1;
 
   // Model route-conflict validation (uses edited for real-time feedback)
   const defaultModelInvalid = defaultModel && (() => {
     const isR2 = isRoute2Model(defaultModel.id);
+    const isR3 = isRoute3Model(defaultModel.id);
+    if (isR3 && !edited.route3Enabled) return { model: defaultModel, route: 'Route 3' };
     if (isR2 && !edited.route2Enabled) return { model: defaultModel, route: 'Route 2' };
-    if (!isR2 && !edited.route1Enabled) return { model: defaultModel, route: 'Route 1' };
+    if (!isR2 && !isR3 && !edited.route1Enabled) return { model: defaultModel, route: 'Route 1' };
     return null;
   })();
 
   const fallbackModelInvalid = fallbackModel && (() => {
     const isR2 = isRoute2Model(fallbackModel.id);
+    const isR3 = isRoute3Model(fallbackModel.id);
+    if (isR3 && !edited.route3Enabled) return { model: fallbackModel, route: 'Route 3' };
     if (isR2 && !edited.route2Enabled) return { model: fallbackModel, route: 'Route 2' };
-    if (!isR2 && !edited.route1Enabled) return { model: fallbackModel, route: 'Route 1' };
+    if (!isR2 && !isR3 && !edited.route1Enabled) return { model: fallbackModel, route: 'Route 1' };
     return null;
   })();
 
@@ -288,12 +299,12 @@ export default function RoutesSettingsPanel() {
                   setEdited(prev => {
                     if (!prev) return prev;
                     const next = { ...prev, route1Enabled: enabled };
-                    // If disabling, switch primary to route2
+                    // If disabling, switch primary to first available route
                     if (!enabled && prev.primaryRoute === 'route1') {
-                      next.primaryRoute = 'route2';
+                      next.primaryRoute = prev.route2Enabled ? 'route2' : 'route3';
                     }
-                    // Don't allow disabling both
-                    if (!enabled && !prev.route2Enabled) return prev;
+                    // Don't allow disabling all
+                    if (!enabled && !prev.route2Enabled && !prev.route3Enabled) return prev;
                     return next;
                   });
                 }}
@@ -375,9 +386,9 @@ export default function RoutesSettingsPanel() {
                     if (!prev) return prev;
                     const next = { ...prev, route2Enabled: enabled };
                     if (!enabled && prev.primaryRoute === 'route2') {
-                      next.primaryRoute = 'route1';
+                      next.primaryRoute = prev.route1Enabled ? 'route1' : 'route3';
                     }
-                    if (!enabled && !prev.route1Enabled) return prev;
+                    if (!enabled && !prev.route1Enabled && !prev.route3Enabled) return prev;
                     return next;
                   });
                 }}
@@ -405,6 +416,70 @@ export default function RoutesSettingsPanel() {
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
               Requires: <code className="bg-gray-100 px-1 rounded">FIREWORKS_AI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Route 3 Card */}
+      <div className={`border rounded-lg overflow-hidden ${edited.route3Enabled ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+        <div className="px-5 py-4 bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <HardDrive size={20} className="text-emerald-600" />
+            <div>
+              <h3 className="font-medium text-gray-900">Route 3: Local / Ollama</h3>
+              <p className="text-xs text-gray-500">Direct connection to local Ollama server. Air-gapped capable — no external API calls.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Primary badge */}
+            {edited.route3Enabled && route3IsPrimary && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded-full">Primary</span>
+            )}
+            {edited.route3Enabled && !route3IsPrimary && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">Fallback</span>
+            )}
+            {/* Toggle */}
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={edited.route3Enabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setEdited(prev => {
+                    if (!prev) return prev;
+                    const next = { ...prev, route3Enabled: enabled };
+                    if (!enabled && prev.primaryRoute === 'route3') {
+                      next.primaryRoute = prev.route1Enabled ? 'route1' : 'route2';
+                    }
+                    if (!enabled && !prev.route1Enabled && !prev.route2Enabled) return prev;
+                    return next;
+                  });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+        </div>
+        {edited.route3Enabled && (
+          <div className="px-5 py-3 border-t space-y-2">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setEdited(prev => prev ? { ...prev, primaryRoute: 'route3' } : prev)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md transition-colors ${
+                  route3IsPrimary ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <div className={`w-3 h-3 rounded-full border-2 ${route3IsPrimary ? 'border-emerald-600 bg-emerald-600' : 'border-gray-300'}`}>
+                  {route3IsPrimary && <div className="w-1 h-1 bg-white rounded-full m-auto mt-[2px]" />}
+                </div>
+                Set as Primary
+              </button>
+            </div>
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              <Shield size={12} />
+              Providers: <code className="bg-gray-100 px-1 rounded">Ollama</code>
             </div>
           </div>
         )}

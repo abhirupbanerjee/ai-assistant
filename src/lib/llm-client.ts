@@ -2,16 +2,17 @@
  * Internal LLM Client
  *
  * Shared utility for internal services (memory extraction, summarization,
- * prompt optimization, translation) with Route 1 → Route 2 fallback.
+ * prompt optimization, translation) with multi-route fallback.
  *
- * Route 1: LiteLLM proxy (existing)
+ * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
  * Route 2: Fireworks AI direct + Claude (Anthropic) direct
+ * Route 3: Ollama direct (local / air-gapped)
  */
 
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings, getRoutesSettings } from './db/compat/config';
-import { getApiKey } from '@/lib/provider-helpers';
+import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 const FIREWORKS_FALLBACK_MODEL = 'accounts/fireworks/models/minimax-m2p5';
@@ -31,6 +32,7 @@ export interface InternalCompletionOptions {
 let litellmClient: OpenAI | null = null;
 let fireworksClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
+let ollamaClient: OpenAI | null = null;
 
 async function getLiteLLMClient(): Promise<OpenAI> {
   if (!litellmClient) {
@@ -60,6 +62,18 @@ async function getAnthropicClient(): Promise<Anthropic> {
     anthropicClient = new Anthropic({ apiKey: apiKey || undefined });
   }
   return anthropicClient;
+}
+
+async function getOllamaClient(): Promise<OpenAI> {
+  if (!ollamaClient) {
+    const apiBase = await getApiBase('ollama');
+    const baseURL = ((apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
+    ollamaClient = new OpenAI({
+      apiKey: 'ollama',
+      baseURL,
+    });
+  }
+  return ollamaClient;
 }
 
 // ============ Provider Callers ============
@@ -106,11 +120,22 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
   return textBlock?.text?.trim() || '';
 }
 
-// ============ Route Classification ============
-
-function isRoute2Model(model: string): boolean {
-  return model.startsWith('anthropic/') || model.startsWith('claude-') || model.startsWith('fireworks/');
+async function callOllama(model: string, opts: InternalCompletionOptions): Promise<string> {
+  const client = await getOllamaClient();
+  // Strip ollama- or ollama/ prefix for the API call
+  const ollamaModel = model.startsWith('ollama/') ? model.slice('ollama/'.length)
+    : model.startsWith('ollama-') ? model.slice('ollama-'.length)
+    : model;
+  const response = await client.chat.completions.create({
+    model: ollamaModel,
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.3,
+    max_tokens: opts.maxTokens ?? 2000,
+  });
+  return response.choices[0]?.message?.content?.trim() || '';
 }
+
+// ============ Route Classification ============
 
 function isClaudeModel(model: string): boolean {
   return model.startsWith('anthropic/') || model.startsWith('claude-');
@@ -120,13 +145,18 @@ function isFireworksModel(model: string): boolean {
   return model.startsWith('fireworks/');
 }
 
+function isOllamaModel(model: string): boolean {
+  return model.startsWith('ollama-') || model.startsWith('ollama/');
+}
+
 // ============ Main Entry Point ============
 
 /**
  * Create a completion using the configured LLM route with automatic fallback.
  *
  * - Route 2 models (Claude, Fireworks) always go direct.
- * - Route 1 models go via LiteLLM; on failure, fall back to Route 2 if enabled.
+ * - Route 3 models (Ollama) always go direct.
+ * - Route 1 models go via LiteLLM; on failure, fall back to Route 2/3 if enabled.
  */
 export async function createInternalCompletion(opts: InternalCompletionOptions): Promise<string> {
   const model = opts.model || (await getLlmSettings()).model;
@@ -140,20 +170,41 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return callFireworks(model, opts);
   }
 
-  // Route 1 → try LiteLLM, fall back to Route 2 if enabled
+  // Route 3 models → always direct to Ollama
+  if (isOllamaModel(model)) {
+    return callOllama(model, opts);
+  }
+
+  // Route 1 → try LiteLLM, fall back to Route 2/3 if enabled
   try {
     return await callLiteLLM(model, opts);
   } catch (err) {
-    if (!routes.route2Enabled) throw err;
+    const hasRoute2 = routes.route2Enabled;
+    const hasRoute3 = routes.route3Enabled;
+    if (!hasRoute2 && !hasRoute3) throw err;
 
-    console.warn('[llm-client] Route 1 failed, falling back to Route 2:', err instanceof Error ? err.message : err);
+    console.warn('[llm-client] Route 1 failed, trying fallback routes:', err instanceof Error ? err.message : err);
 
-    // Try Fireworks first, then Claude
-    try {
-      return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
-    } catch (fwErr) {
-      console.warn('[llm-client] Fireworks fallback failed, trying Claude:', fwErr instanceof Error ? fwErr.message : fwErr);
-      return await callAnthropic(CLAUDE_FALLBACK_MODEL, opts);
+    // Try Route 2 first (Fireworks → Claude), then Route 3 (Ollama)
+    if (hasRoute2) {
+      try {
+        return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
+      } catch (fwErr) {
+        console.warn('[llm-client] Fireworks fallback failed:', fwErr instanceof Error ? fwErr.message : fwErr);
+        try {
+          return await callAnthropic(CLAUDE_FALLBACK_MODEL, opts);
+        } catch (claudeErr) {
+          console.warn('[llm-client] Claude fallback failed:', claudeErr instanceof Error ? claudeErr.message : claudeErr);
+        }
+      }
     }
+
+    // Route 3 fallback (Ollama) — use default Ollama model
+    if (hasRoute3) {
+      console.warn('[llm-client] Trying Route 3 (Ollama) fallback');
+      return await callOllama('ollama-llama3.2', opts);
+    }
+
+    throw err;
   }
 }

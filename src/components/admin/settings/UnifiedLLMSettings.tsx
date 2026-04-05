@@ -67,6 +67,10 @@ const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
 const isRoute2Model = (id: string) =>
   id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/');
 
+const ROUTE_3_PROVIDERS = new Set(['ollama']);
+const isRoute3Provider = (id: string) => ROUTE_3_PROVIDERS.has(id);
+const isRoute3Model = (id: string) => id.startsWith('ollama-') || id.startsWith('ollama/');
+
 // ============ Component ============
 
 export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: boolean }) {
@@ -106,6 +110,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [routesSettings, setRoutesSettings] = useState<{
     route1Enabled: boolean;
     route2Enabled: boolean;
+    route3Enabled: boolean;
     primaryRoute: 'route1' | 'route2';
   } | null>(null);
 
@@ -119,17 +124,20 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // ============ Route Gating (derived) ============
 
-  const bothRoutesEnabled = routesSettings?.route1Enabled && routesSettings?.route2Enabled;
+  const allRoutesEnabled = routesSettings?.route1Enabled && routesSettings?.route2Enabled && routesSettings?.route3Enabled;
   const route1Disabled = routesSettings ? !routesSettings.route1Enabled : false;
   const route2Disabled = routesSettings ? !routesSettings.route2Enabled : false;
+  const route3Disabled = routesSettings ? !routesSettings.route3Enabled : false;
 
   const isModelOnDisabledRoute = (modelId: string) => {
-    if (!routesSettings || bothRoutesEnabled) return false;
+    if (!routesSettings || allRoutesEnabled) return false;
+    if (isRoute3Model(modelId)) return route3Disabled;
     return isRoute2Model(modelId) ? route2Disabled : route1Disabled;
   };
 
   const isProviderOnDisabledRoute = (providerId: string) => {
-    if (!routesSettings || bothRoutesEnabled) return false;
+    if (!routesSettings || allRoutesEnabled) return false;
+    if (isRoute3Provider(providerId)) return route3Disabled;
     return isRoute2Provider(providerId) ? route2Disabled : route1Disabled;
   };
 
@@ -544,15 +552,19 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       )}
 
       {/* Route gating banner */}
-      {routesSettings && !bothRoutesEnabled && (
+      {routesSettings && !allRoutesEnabled && (
         <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <Info size={18} className="text-blue-600 mt-0.5 shrink-0" />
           <div className="text-sm text-blue-800">
             <span className="font-medium">
-              {route1Disabled ? 'Route 1 (LiteLLM) is disabled.' : 'Route 2 (Direct Providers) is disabled.'}
+              {[
+                route1Disabled && 'Route 1 (LiteLLM)',
+                route2Disabled && 'Route 2 (Direct Providers)',
+                route3Disabled && 'Route 3 (Ollama)',
+              ].filter(Boolean).join(', ')}{' '}
+              {[route1Disabled, route2Disabled, route3Disabled].filter(Boolean).length > 1 ? 'are' : 'is'} disabled.
             </span>
-            {' '}Providers and models for the disabled route are view-only. Default and fallback models must be selected from{' '}
-            {route1Disabled ? 'Route 2' : 'Route 1'} models.{' '}
+            {' '}Providers and models for disabled routes are view-only. Default and fallback models must be selected from enabled routes.{' '}
             <a href="/admin?tab=settings&section=routes" className="text-blue-600 underline hover:text-blue-800">
               Go to Routes
             </a>
@@ -576,7 +588,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                   />
                   {routeDisabled && (
                     <p className="text-xs text-gray-400 mt-1 ml-5">
-                      {isRoute2Provider(provider.id) ? 'Route 2' : 'Route 1'} is disabled
+                      {isRoute3Provider(provider.id) ? 'Route 3' : isRoute2Provider(provider.id) ? 'Route 2' : 'Route 1'} is disabled
                     </p>
                   )}
                 </div>
@@ -790,7 +802,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         <td className="px-4 py-3 whitespace-nowrap">
                           {routeOff ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500"
-                              title={`${isRoute2Model(model.id) ? 'Route 2' : 'Route 1'} is disabled`}>Route Off</span>
+                              title={`${isRoute3Model(model.id) ? 'Route 3' : isRoute2Model(model.id) ? 'Route 2' : 'Route 1'} is disabled`}>Route Off</span>
                           ) : model.providerEnabled === false ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700" title="Provider is disabled">Provider Off</span>
                           ) : model.enabled ? (

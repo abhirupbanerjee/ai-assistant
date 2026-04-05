@@ -227,14 +227,16 @@ export interface LlmFallbackSettings {
  * Controls primary/fallback routing between LiteLLM proxy and direct providers
  */
 export interface RoutesSettings {
-  route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek, Ollama)
+  route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
   route2Enabled: boolean;                  // Route 2: Direct providers (Fireworks AI, Claude/Anthropic)
-  primaryRoute: 'route1' | 'route2';       // Which route is primary (other becomes fallback)
+  route3Enabled: boolean;                  // Route 3: Local / Ollama direct (air-gapped capable)
+  primaryRoute: 'route1' | 'route2' | 'route3';  // Which route is primary (others become fallback)
 }
 
 export const DEFAULT_ROUTES_SETTINGS: RoutesSettings = {
   route1Enabled: true,
   route2Enabled: false,
+  route3Enabled: false,
   primaryRoute: 'route1',
 };
 

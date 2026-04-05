@@ -1,9 +1,10 @@
 /**
  * LLM Routes Settings API
  *
- * Manages primary/fallback routing between LiteLLM proxy and direct providers.
- * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek, Ollama)
+ * Manages primary/fallback routing between LLM infrastructure paths.
+ * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
  * Route 2: Direct providers (Fireworks AI, Claude/Anthropic)
+ * Route 3: Local / Ollama direct (air-gapped capable)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -47,7 +48,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { route1Enabled, route2Enabled, primaryRoute } = body;
+    const { route1Enabled, route2Enabled, route3Enabled, primaryRoute } = body;
 
     // Validate types
     if (route1Enabled !== undefined && typeof route1Enabled !== 'boolean') {
@@ -56,15 +57,19 @@ export async function PUT(request: NextRequest) {
     if (route2Enabled !== undefined && typeof route2Enabled !== 'boolean') {
       return NextResponse.json({ error: 'route2Enabled must be a boolean' }, { status: 400 });
     }
-    if (primaryRoute !== undefined && primaryRoute !== 'route1' && primaryRoute !== 'route2') {
-      return NextResponse.json({ error: 'primaryRoute must be "route1" or "route2"' }, { status: 400 });
+    if (route3Enabled !== undefined && typeof route3Enabled !== 'boolean') {
+      return NextResponse.json({ error: 'route3Enabled must be a boolean' }, { status: 400 });
+    }
+    if (primaryRoute !== undefined && !['route1', 'route2', 'route3'].includes(primaryRoute)) {
+      return NextResponse.json({ error: 'primaryRoute must be "route1", "route2", or "route3"' }, { status: 400 });
     }
 
-    // Cannot disable both
+    // Cannot disable all routes
     const current = await getRoutesSettings();
     const newR1 = route1Enabled ?? current.route1Enabled;
     const newR2 = route2Enabled ?? current.route2Enabled;
-    if (!newR1 && !newR2) {
+    const newR3 = route3Enabled ?? current.route3Enabled;
+    if (!newR1 && !newR2 && !newR3) {
       return NextResponse.json({ error: 'At least one route must be enabled' }, { status: 400 });
     }
 
@@ -72,6 +77,7 @@ export async function PUT(request: NextRequest) {
     const updates: Partial<RoutesSettings> = {};
     if (route1Enabled !== undefined) updates.route1Enabled = route1Enabled;
     if (route2Enabled !== undefined) updates.route2Enabled = route2Enabled;
+    if (route3Enabled !== undefined) updates.route3Enabled = route3Enabled;
     if (primaryRoute !== undefined) updates.primaryRoute = primaryRoute;
 
     const updatedSettings = await setRoutesSettings(updates, user.email);

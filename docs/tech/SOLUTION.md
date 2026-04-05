@@ -59,12 +59,12 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 │ │ Mistral      │ │ streaming        │   .ai)           │ Gemini TTS     │
 │ │ DeepSeek     │ │                  │                  │  (podcast_gen) │
 │ │ Fireworks*   │ │ Why: LiteLLM     │ Fireworks        │                │
-│ │ Ollama*      │ │ breaks tool call │  Reranking       │ DALL-E 3       │
-│ └──────────────┘ │ JSON assembly    │  (api.fireworks  │  (image_gen)   │
-│                  │ for Anthropic    │   .ai)           │                │
-│ * YAML-only,     │ streaming        │                  │                │
-│   not dynamic    │                  │ Tavily Search    │                │
-│   sync           │ Models:          │  (tavily.com)    │                │
+│ └──────────────┘ │ breaks tool call │  Reranking       │ DALL-E 3       │
+│                  │ JSON assembly    │  (api.fireworks  │  (image_gen)   │
+│ * YAML-only,     │ for Anthropic    │   .ai)           │                │
+│   not dynamic    │ streaming        │                  │                │
+│   sync           │                  │ Tavily Search    │                │
+│                  │ Models:          │  (tavily.com)    │                │
 │                  │  claude-opus-*   │                  │                │
 │ Dynamic sync:    │  claude-sonnet-* │ OpenAI TTS       │                │
 │  OpenAI,         │  claude-haiku-*  │  (podcast_gen)   │                │
@@ -85,24 +85,25 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────┘ └──────────────┘
 
 ┌─────────────────┐
-│  OLLAMA (Local) │
+│  OLLAMA (Local) │  ← Route 3: Direct to ollama:11434/v1 (bypasses LiteLLM)
 │   llama3.2      │
-│   qwen2.5       │
-│   phi4          │
+│   qwen3         │
+│   gpt-oss       │
 └─────────────────┘
 (V) = Vision/Multimodal  (🧠) = Thinking/Extended reasoning
 ```
 
-### Two-Route Architecture
+### Three-Route Architecture
 
-The four tiers above are grouped into two independently-togglable routes for operational resilience:
+The four tiers above are grouped into three independently-togglable routes for operational resilience:
 
 | Route | Tiers | Providers | Connection |
 |-------|-------|-----------|------------|
-| **Route 1** | Tier 1 (LiteLLM) | OpenAI, Gemini, Mistral, DeepSeek, Ollama | Via LiteLLM proxy |
+| **Route 1** | Tier 1 (LiteLLM) | OpenAI, Gemini, Mistral, DeepSeek | Via LiteLLM proxy |
 | **Route 2** | Tier 1b (Claude Direct) + Fireworks chat | Anthropic, Fireworks AI | Native SDK / direct API |
+| **Route 3** | Local / Ollama | Ollama | OpenAI SDK → ollama:11434/v1 direct |
 
-Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). Both routes can be active simultaneously for cross-route failover. See [features/routes.md](../features/routes.md) for full details.
+Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). All three routes can be active simultaneously for cross-route failover. For air-gapped deployments, enable only Route 3. See [features/routes.md](../features/routes.md) and [features/air-gapped-deployment.md](../features/air-gapped-deployment.md) for full details.
 
 ---
 
@@ -113,16 +114,16 @@ Admins toggle routes via **Settings > Routes**. Disabling a route removes its mo
 | Frontend | Next.js 16, React 19, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
 | Database | PostgreSQL (Kysely ORM) | Metadata storage — SQLite removed March 2026 |
-| LLM Gateway | LiteLLM Proxy + Anthropic Direct SDK | Multi-provider LLM abstraction; Claude bypasses LiteLLM via `@anthropic-ai/sdk` |
+| LLM Gateway | LiteLLM Proxy + Anthropic Direct SDK + Ollama Direct | Three-route architecture; Claude and Ollama bypass LiteLLM |
 | LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision (via LiteLLM) |
 | LLM - Anthropic | Claude Sonnet 4.6, Haiku 4.5, Opus 4.6 | 1M context, vision, tool calling — **direct SDK** (not LiteLLM) |
 | LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision + thinking support |
 | LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision + OCR |
 | LLM - DeepSeek | deepseek-reasoner, deepseek-chat | Reasoning models with `<think>` token support |
 | LLM - Fireworks | MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 | Open-source models (dev/test environments) |
-| LLM - Local | Ollama (llama3.2, qwen2.5, phi4) | Self-hosted models, no API cost, air-gapped deployments |
+| LLM - Local | Ollama (llama3.2, qwen3, gpt-oss) | Self-hosted models via Route 3 (direct), no API cost, air-gapped deployments |
 | Thinking Models | DeepSeek R1, Claude 3.7+, Gemini Thinking | Native `<think>` token processing for extended reasoning |
-| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), Gemini text-embedding-004, Fireworks Nomic/Qwen3, Ollama mxbai-embed — all via LiteLLM | Vector embeddings |
+| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), Gemini text-embedding-004, Fireworks Nomic/Qwen3 — via LiteLLM; Local: mxbai-embed-large, bge-m3 (transformers.js) | Vector embeddings |
 | Transcription | OpenAI Whisper, Mistral Voxtral — via LiteLLM | Voice-to-text |
 | Document Processing | mammoth, exceljs, officeparser (local); Azure DI, Mistral OCR (API); pdf-parse (local) | Text extraction from documents and images |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
@@ -1570,7 +1571,7 @@ Manage agent bots via Admin → Agent Bots:
    d. If reranker enabled, re-score chunks with BGE/Fireworks/Cohere (priority fallback)
    e. If user doc exists, extract and include relevant text
    f. Build context with conversation history
-   g. Generate response with LLM via LiteLLM (function calling enabled)
+   g. Generate response with LLM via active route (function calling enabled)
    h. If needed, call Tavily for web search
 7. Cache response
 8. Save message to thread

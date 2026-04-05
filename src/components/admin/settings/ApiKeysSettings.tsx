@@ -58,8 +58,9 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   anthropic: ['LLM'],
 };
 
-const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral', 'deepseek', 'ollama'];
+const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral', 'deepseek'];
 const ROUTE_2_PROVIDERS = ['fireworks', 'anthropic'];
+const ROUTE_3_PROVIDERS = ['ollama'];
 const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks'];
 
 // ============================================================================
@@ -613,6 +614,7 @@ export default function ApiKeysSettings() {
 
   const route1Providers = providers.filter((p) => ROUTE_1_PROVIDERS.includes(p.id));
   const route2Providers = providers.filter((p) => ROUTE_2_PROVIDERS.includes(p.id));
+  const route3Providers = providers.filter((p) => ROUTE_3_PROVIDERS.includes(p.id));
 
   return (
     <div className="space-y-6">
@@ -695,12 +697,22 @@ export default function ApiKeysSettings() {
         </div>
 
         {/* Route 2 */}
-        <div className="mb-3">
+        <div className="mb-4">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
             Route 2 — Direct Providers
           </div>
           <div className="divide-y divide-gray-100">
             {route2Providers.map(renderProviderRow)}
+          </div>
+        </div>
+
+        {/* Route 3 */}
+        <div className="mb-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
+            Route 3 — Local / Ollama
+          </div>
+          <div className="divide-y divide-gray-100">
+            {route3Providers.map(renderProviderRow)}
           </div>
         </div>
 
