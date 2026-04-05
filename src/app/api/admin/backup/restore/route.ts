@@ -10,7 +10,7 @@ import type { ApiError } from '@/types';
 
 // Route segment config for large backup file uploads (up to 500MB)
 export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 minutes timeout for large restores
+export const maxDuration = 1800; // 30 minutes — must be static literal (Next.js 16 requirement)
 
 /**
  * POST /api/admin/backup/restore

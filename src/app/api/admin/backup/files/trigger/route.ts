@@ -9,7 +9,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { runScheduledBackup } from '@/lib/services/backup-scheduler';
 import type { ApiError } from '@/types';
 
-export const maxDuration = 300; // 5 minutes
+export const maxDuration = 1800; // 30 minutes — must be static literal (Next.js 16 requirement)
 
 export async function POST() {
   try {
