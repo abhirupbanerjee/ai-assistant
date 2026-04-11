@@ -140,7 +140,8 @@ async function executeDiagramGen(args: DiagramGenToolArgs): Promise<string> {
   if (!result.success || !result.code) {
     const response: DiagramGenResponse = {
       success: false,
-      message: result.error?.message || 'Failed to generate diagram',
+      message: result.error?.message ||
+        'Diagram generation failed. Describe this using formatted text, a bullet-point outline, or ASCII art instead.',
       error: result.error,
     };
     return JSON.stringify(response);
@@ -174,7 +175,7 @@ export const diagramGenTool: ToolDefinition = {
   name: 'diagram_gen',
   displayName: 'Diagram Generator',
   description:
-    'Generate interactive diagrams (flowcharts, mindmaps, sequence, architecture, etc.) using Mermaid syntax',
+    'Generate interactive diagrams (flowcharts, mindmaps, sequence, architecture, gantt, timeline, block, quadrant, C4, ER, class, state, journey, pie) using Mermaid syntax',
   category: 'autonomous',
 
   definition: {
@@ -189,12 +190,19 @@ Choose the right type:
 - mindmap: brainstorming, topic breakdowns, hierarchical concepts
 - c4-context: high-level system architecture showing users, systems, and external dependencies
 - c4-container: internal architecture showing containers (web app, API, DB) inside a system
+- c4-component: internal components within a single container (services, modules)
+- c4-dynamic: runtime message flow with numbered steps between containers
+- c4-deployment: infrastructure deployment topology (cloud nodes, VPCs, servers)
 - gantt: project timelines, task schedules, sprint planning
+- timeline: chronological event sequences grouped by time period (NOT a gantt — no durations or dependencies)
+- block: grid/column layout for architectural overviews and structured visual layouts
+- quadrant: 2×2 matrix with named points plotted by x/y values (priority, risk, effort matrices)
 - classDiagram: OOP class structures, inheritance hierarchies, software design models
 - erDiagram: database schemas, entity relationships, data models
 - stateDiagram: state machines, lifecycle flows (e.g. order status, auth states)
 - pie: proportional breakdowns, distribution of categories
 - journey: user experience flows with satisfaction scores per step
+- architecture: physical/logical infrastructure with labeled services, groups, and directional edges
 
 The generated diagram will be rendered interactively in the chat with zoom and download options.
 
@@ -213,12 +221,19 @@ Do NOT use this for:
               'mindmap',
               'c4-context',
               'c4-container',
+              'c4-component',
+              'c4-dynamic',
+              'c4-deployment',
               'gantt',
+              'timeline',
+              'block',
+              'quadrant',
               'classDiagram',
               'stateDiagram',
               'erDiagram',
               'pie',
               'journey',
+              'architecture',
             ],
             description: `Type of Mermaid diagram to generate:
 - flowchart: process steps, decisions, branching logic
@@ -226,12 +241,19 @@ Do NOT use this for:
 - mindmap: hierarchical topic or concept breakdown
 - c4-context: system-level view (users + systems + external dependencies)
 - c4-container: internal containers within a system (web, API, DB layers)
-- gantt: project schedule with tasks, durations, dependencies
+- c4-component: components within a single container (services, modules, libraries)
+- c4-dynamic: numbered runtime message flow between containers (experimental)
+- c4-deployment: deployment topology (cloud nodes, VPCs, servers, containers) (experimental)
+- gantt: project schedule with tasks, durations, and dependencies
+- timeline: chronological events grouped by time period — no durations or dependencies
+- block: grid/column layout for architectural overviews and structured layouts
+- quadrant: 2x2 matrix with named data points plotted by x/y coordinates (0-1 scale)
 - classDiagram: OOP classes with attributes, methods, inheritance
 - stateDiagram: state machines and lifecycle transitions
 - erDiagram: database entities and relationships
 - pie: percentage or proportional distribution
-- journey: user journey steps with satisfaction scores (1-5) per step`,
+- journey: user journey steps with satisfaction scores (1-5) per step
+- architecture: physical/logical infrastructure — services, groups, directional edges (beta)`,
           },
           description: {
             type: 'string',

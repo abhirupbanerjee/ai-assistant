@@ -212,6 +212,28 @@ export function sanitizeMermaidCode(code: string): string {
     sanitized = sanitizeSequenceCode(sanitized);
   }
 
+  // Fix C4 diagram function names: LLMs write camelCase; Mermaid requires underscore for _Ext and _Boundary variants
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  if (/^C4(Context|Container|Component|Dynamic|Deployment)/i.test(sanitized.trim())) {
+    sanitized = sanitized
+      .replace(/\bPersonExt\b/g, 'Person_Ext')
+      .replace(/\bSystemExt\b/g, 'System_Ext')
+      .replace(/\bSystemDbExt\b/g, 'SystemDb_Ext')
+      .replace(/\bSystemQueueExt\b/g, 'SystemQueue_Ext')
+      .replace(/\bContainerExt\b/g, 'Container_Ext')
+      .replace(/\bContainerDbExt\b/g, 'ContainerDb_Ext')
+      .replace(/\bContainerQueueExt\b/g, 'ContainerQueue_Ext')
+      .replace(/\bContainerBoundary\b/g, 'Container_Boundary')
+      .replace(/\bSystemBoundary\b/g, 'System_Boundary')
+      .replace(/\bEnterpriseBoundary\b/g, 'Enterprise_Boundary')
+      .replace(/\bComponentExt\b/g, 'Component_Ext')
+      .replace(/\bComponentDbExt\b/g, 'ComponentDb_Ext')
+      .replace(/\bComponentQueueExt\b/g, 'ComponentQueue_Ext')
+      .replace(/\bComponentBoundary\b/g, 'Component_Boundary')
+      .replace(/\bDeploymentNode\b/g, 'Deployment_Node');
+  }
+
   // Fix gantt-specific issues
   if (sanitized.trim().startsWith('gantt')) {
     // "critical" is not a valid task modifier — the correct keyword is "crit"
@@ -249,6 +271,40 @@ export function sanitizeMermaidCode(code: string): string {
 
     // Fix "Section" (capitalised) or "section Name:" (trailing colon) → "section Name"
     sanitized = sanitized.replace(/^\s*[Ss]ection\s+([^\n:]+):?\s*$/gm, (_, name) => `section ${name.trim()}`);
+  }
+
+  // Auto-upgrade stateDiagram (v1) to stateDiagram-v2 (more features, better renderer)
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  if (sanitized.trim().toLowerCase().startsWith('statediagram') &&
+      !sanitized.trim().toLowerCase().startsWith('statediagram-v2')) {
+    sanitized = sanitized.replace(/^stateDiagram\b/i, 'stateDiagram-v2');
+  }
+
+  // Normalize architecture keyword: LLMs sometimes omit "-beta" suffix
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  if (sanitized.trim().startsWith('architecture')) {
+    sanitized = sanitized.replace(/^architecture\b(?!-beta)/m, 'architecture-beta');
+  }
+
+  // Normalize quadrantChart keyword and clamp point coordinates to [0, 1]
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  if (sanitized.trim().toLowerCase().startsWith('quadrant')) {
+    sanitized = sanitized.replace(/^quadrant\b(?!Chart)/im, 'quadrantChart');
+    sanitized = sanitized.replace(/:\s*\[(\d*\.?\d+),\s*(\d*\.?\d+)\]/g, (_, x, y) => {
+      const cx = Math.min(1, Math.max(0, parseFloat(x))).toFixed(2);
+      const cy = Math.min(1, Math.max(0, parseFloat(y))).toFixed(2);
+      return `: [${cx}, ${cy}]`;
+    });
+  }
+
+  // Normalize block keyword: LLMs sometimes write "block" without "-beta" suffix
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  if (sanitized.trim().startsWith('block') && !sanitized.trim().startsWith('block-beta')) {
+    sanitized = sanitized.replace(/^block\b(?!-beta)/m, 'block-beta');
   }
 
   return sanitized.trim();
@@ -292,6 +348,27 @@ export function detectDiagramType(code: string): MermaidDiagramType | null {
   }
   if (firstLine.startsWith('journey')) {
     return 'journey';
+  }
+  if (firstLine.startsWith('timeline')) {
+    return 'timeline';
+  }
+  if (firstLine.startsWith('block-beta') || firstLine.startsWith('block')) {
+    return 'block';
+  }
+  if (firstLine.startsWith('quadrantchart') || firstLine.startsWith('quadrant')) {
+    return 'quadrant';
+  }
+  if (firstLine.startsWith('architecture-beta') || firstLine.startsWith('architecture')) {
+    return 'architecture';
+  }
+  if (firstLine.startsWith('c4component')) {
+    return 'c4-component';
+  }
+  if (firstLine.startsWith('c4dynamic')) {
+    return 'c4-dynamic';
+  }
+  if (firstLine.startsWith('c4deployment')) {
+    return 'c4-deployment';
   }
 
   return null;

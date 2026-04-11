@@ -12,12 +12,19 @@ export type MermaidDiagramType =
   | 'mindmap'
   | 'c4-context'
   | 'c4-container'
+  | 'c4-component'
+  | 'c4-dynamic'
+  | 'c4-deployment'
   | 'gantt'
   | 'classDiagram'
   | 'stateDiagram'
   | 'erDiagram'
   | 'pie'
-  | 'journey';
+  | 'journey'
+  | 'timeline'
+  | 'block'
+  | 'quadrant'
+  | 'architecture';
 
 export type FlowDirection = 'TD' | 'LR' | 'BT' | 'RL';
 

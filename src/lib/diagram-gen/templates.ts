@@ -101,10 +101,11 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
     systemPrompt: `Generate a Mermaid C4 Context diagram.
 - Start with: C4Context
 - Use title for diagram title
-- Person(alias, "Name", "Description")
-- System(alias, "Name", "Description")
-- System_Ext(alias, "Name", "Description") for external
-- Rel(from, to, "relationship")`,
+- Internal elements: Person(alias, "Name", "Desc"), System(alias, "Name", "Desc"), SystemDb(alias, "Name", "Desc")
+- External elements use underscore suffix: System_Ext(alias, "Name", "Desc"), SystemDb_Ext(alias, "Name", "Desc"), Person_Ext(alias, "Name", "Desc")
+  CRITICAL: NEVER use camelCase — SystemExt, PersonExt are INVALID; always use System_Ext, Person_Ext
+- Boundaries: System_Boundary(id, "label") { ... } or Enterprise_Boundary(id, "label") { ... }
+- Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional`,
     example: `C4Context
     title System Context
     Person(user, "User", "End user")
@@ -118,18 +119,25 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   'c4-container': {
     systemPrompt: `Generate a Mermaid C4 Container diagram.
 - Start with: C4Container
-- Use Container(alias, "Name", "Technology")
-- Use ContainerDb(alias, "Name", "Technology") for databases
-- Use Rel(from, to, "relationship")`,
+- People: Person(alias, "Name", "Desc"), Person_Ext(alias, "Name", "Desc") for external users
+- Containers: Container(alias, "Name", "Tech", "Desc"), ContainerDb(alias, "Name", "Tech", "Desc"), ContainerQueue(alias, "Name", "Tech", "Desc")
+- External systems: System_Ext(alias, "Name", "Desc"), SystemDb_Ext(alias, "Name", "Desc")
+  CRITICAL: NEVER use camelCase — SystemExt, ContainerExt, PersonExt, ContainerBoundary are all INVALID
+  Always use underscore variants: System_Ext, Container_Ext, Person_Ext, Container_Boundary
+- Group containers with: Container_Boundary(id, "label") { ... } — NEVER ContainerBoundary
+- Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional
+- Optional layout: UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")`,
     example: `C4Container
-    title Container Diagram
-    Person(user, "User")
-    Container(web, "Web App", "React")
-    Container(api, "API", "Node.js")
-    ContainerDb(db, "Database", "PostgreSQL")
-    Rel(user, web, "Uses")
-    Rel(web, api, "Calls")
-    Rel(api, db, "Reads/Writes")`,
+    title T-Bills Portal
+    Person(user, "User", "Portal user")
+    System_Ext(oauth, "OAuth", "Identity provider")
+    Container_Boundary(portal, "Portal") {
+        Container(web, "Web App", "Next.js", "Frontend and API")
+        ContainerDb(db, "Database", "PostgreSQL", "Stores data")
+    }
+    Rel(user, web, "Uses", "HTTPS")
+    Rel(web, db, "Reads/Writes")
+    Rel(web, oauth, "Authenticates via")`,
     prefix: 'C4Container',
   },
 
@@ -161,7 +169,7 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
 - Start with: classDiagram
 - Class definition: class ClassName { }
 - Attributes: +publicAttr : Type, -privateAttr : Type, #protectedAttr : Type
-- Methods: +method() : ReturnType (always include colon before return type)
+- Methods: +method() ReturnType (space before return type, NO colon)
 - Relationships: <|-- inheritance, *-- composition, o-- aggregation, --> association
 - Annotations go INSIDE the class body on their own line: <<interface>>, <<abstract>>, <<service>>
 - Do NOT write annotations inline on the class definition line (e.g. "class Foo <<interface>>" is invalid)
@@ -172,11 +180,11 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
       <<abstract>>
       +String name
       +int age
-      +makeSound() : void
+      +makeSound() void
     }
     class Dog {
       +String breed
-      +bark() : void
+      +bark() void
     }
     Animal <|-- Dog`,
     prefix: 'classDiagram',
@@ -256,6 +264,161 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
       Payment: 4: User, Payment Gateway`,
     prefix: 'journey',
   },
+
+  timeline: {
+    systemPrompt: `Generate a Mermaid timeline diagram.
+- Start with: timeline
+- Use title for chart title (optional)
+- Use section to group time periods under a heading
+- Each time period: Period : Event description
+- Multiple events on the same period: add ": Event" on the same or continuation line
+- No arrows, no IDs — pure text structure
+- Do NOT use Gantt syntax here — timeline is a separate diagram type`,
+    example: `timeline
+    title Project Phases
+    section Planning
+        Jan 2024 : Requirements gathering
+                 : Stakeholder review
+    section Delivery
+        Feb 2024 : Design
+        Mar 2024 : Development
+        Apr 2024 : Testing : Deployment`,
+    prefix: 'timeline',
+  },
+
+  block: {
+    systemPrompt: `Generate a Mermaid block diagram.
+- Start with: block-beta
+- Optional: columns N (set grid column count)
+- Node shapes: id["label"] rectangle, id("label") round, id{label} diamond, id[(label)] cylinder
+- Span columns: id["label"]:N for multi-column width
+- Empty cells: space or space:N
+- Links: A --> B or A -->|label| B (same syntax as flowchart)
+- Nested composite blocks: block:id ... end
+- No automatic layout — left-to-right column order determines position`,
+    example: `block-beta
+    columns 3
+    A["Frontend"]:1
+    B["API Gateway"]:1
+    C["Backend"]:1
+    D["Database"]:1
+    space:2
+    E["Cache"]:1
+    A --> B
+    B --> C
+    C --> D
+    C --> E`,
+    prefix: 'block-beta',
+  },
+
+  quadrant: {
+    systemPrompt: `Generate a Mermaid quadrant chart.
+- Start with: quadrantChart
+- title: chart title (optional but recommended)
+- Axes: x-axis LeftLabel --> RightLabel
+        y-axis BottomLabel --> TopLabel
+- Quadrant labels: quadrant-1 TopRight, quadrant-2 TopLeft, quadrant-3 BottomLeft, quadrant-4 BottomRight
+- Points: PointName: [x, y] — x and y MUST be decimal values strictly between 0 and 1 (e.g. 0.25, 0.75)
+- Never use values outside 0–1 range`,
+    example: `quadrantChart
+    title Feature Priority Matrix
+    x-axis Low Effort --> High Effort
+    y-axis Low Value --> High Value
+    quadrant-1 Quick Wins
+    quadrant-2 Major Projects
+    quadrant-3 Fill-ins
+    quadrant-4 Hard Slogs
+    Feature A: [0.2, 0.8]
+    Feature B: [0.7, 0.9]
+    Feature C: [0.3, 0.3]
+    Feature D: [0.8, 0.4]`,
+    prefix: 'quadrantChart',
+  },
+
+  architecture: {
+    systemPrompt: `Generate a Mermaid architecture diagram (beta feature).
+- Start with: architecture-beta
+- Services: service id(icon)[Label] — valid icons: cloud, database, disk, internet, server
+- Groups: group id(icon)[Label]
+- Nest a service/group inside a group: add "in parentGroupId" after the definition
+- Junctions (for multi-way connections): junction id
+- Edges use directional port notation: id:Direction -- Direction:id
+  Directions: T (top), B (bottom), L (left), R (right)
+  Arrow: id:Direction --> Direction:id
+- Keep labels short — no special characters or parentheses in labels`,
+    example: `architecture-beta
+    group api(cloud)[API Layer]
+    service web(server)[Web Server] in api
+    service db(database)[Database] in api
+    service cache(disk)[Cache] in api
+    web:R --> L:db
+    web:B --> T:cache`,
+    prefix: 'architecture-beta',
+  },
+
+  'c4-component': {
+    systemPrompt: `Generate a Mermaid C4 Component diagram (experimental — syntax may change).
+- Start with: C4Component
+- Internal components: Component(alias, "Name", "Tech", "Desc"), ComponentDb(...), ComponentQueue(...)
+- External (underscore suffix): Component_Ext(alias, "Name", "Tech", "Desc"), ComponentDb_Ext(...)
+  CRITICAL: NEVER use camelCase — ComponentExt is INVALID; always use Component_Ext
+- Boundaries: Container_Boundary(id, "label") { ... }
+- Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional`,
+    example: `C4Component
+    title Component Diagram
+    Container_Boundary(api, "API Container") {
+        Component(auth, "Auth Service", "Node.js", "Handles auth")
+        Component(orders, "Order Service", "Node.js", "Manages orders")
+        ComponentDb(db, "Database", "PostgreSQL", "Stores data")
+    }
+    Rel(auth, db, "Reads/Writes")
+    Rel(orders, db, "Reads/Writes")`,
+    prefix: 'C4Component',
+  },
+
+  'c4-dynamic': {
+    systemPrompt: `Generate a Mermaid C4 Dynamic diagram (experimental — syntax may change).
+- Start with: C4Dynamic
+- Shows runtime message flow with numbered steps
+- Same container/person elements as C4Container
+- Numbered relationships: RelIndex("1", from, to, "label")
+- Regular Rel(from, to, "label") also supported
+- Use title for diagram title`,
+    example: `C4Dynamic
+    title Dynamic: Login Flow
+    Person(user, "User")
+    Container(web, "Web App", "Next.js")
+    Container(auth, "Auth Service", "Node.js")
+    ContainerDb(db, "Database", "PostgreSQL")
+    RelIndex("1", user, web, "Submit credentials")
+    RelIndex("2", web, auth, "Validate token")
+    RelIndex("3", auth, db, "Lookup user")
+    RelIndex("4", db, auth, "User record")
+    RelIndex("5", auth, web, "Token issued")
+    RelIndex("6", web, user, "Login success")`,
+    prefix: 'C4Dynamic',
+  },
+
+  'c4-deployment': {
+    systemPrompt: `Generate a Mermaid C4 Deployment diagram (experimental — syntax may change).
+- Start with: C4Deployment
+- Deployment nodes: Deployment_Node(alias, "Name", "Type", "Desc")
+  Alias: Node() also accepted; Node_L() and Node_R() for layout hints
+- Software elements inside nodes: Container(alias, "Name", "Tech", "Desc"), ContainerDb(...)
+- Nest elements with: Deployment_Node(inner, "Name") { ... }
+- Boundaries and Rel(from, to, "label") same as C4Container
+- Use title for diagram title`,
+    example: `C4Deployment
+    title Deployment Diagram
+    Deployment_Node(cloud, "AWS", "Cloud") {
+        Deployment_Node(vpc, "VPC", "Network") {
+            Container(web, "Web App", "EC2", "Frontend")
+            ContainerDb(db, "Database", "RDS PostgreSQL", "Data store")
+        }
+    }
+    Rel(web, db, "Reads/Writes", "TCP/5432")`,
+    prefix: 'C4Deployment',
+  },
 };
 
 // ===== Helper Functions =====
@@ -317,15 +480,32 @@ export const KEYWORD_TO_DIAGRAM_TYPE: Record<string, MermaidDiagramType> = {
   'c4 diagram': 'c4-context',
   'c4 context': 'c4-context',
   'c4 container': 'c4-container',
-  'architecture diagram': 'c4-context',
+  'c4 component': 'c4-component',
+  'c4 dynamic': 'c4-dynamic',
+  'c4 deployment': 'c4-deployment',
+  'architecture diagram': 'architecture',
+  'infrastructure diagram': 'architecture',
   'system diagram': 'c4-context',
 
   // Gantt
   gantt: 'gantt',
   'gantt chart': 'gantt',
-  timeline: 'gantt',
   schedule: 'gantt',
-  'project timeline': 'gantt',
+
+  // Timeline
+  timeline: 'timeline',
+  'project timeline': 'timeline',
+  'event timeline': 'timeline',
+
+  // Block
+  block: 'block',
+  'block diagram': 'block',
+
+  // Quadrant
+  quadrant: 'quadrant',
+  'quadrant chart': 'quadrant',
+  'priority matrix': 'quadrant',
+  '2x2 matrix': 'quadrant',
 
   // Class
   'class diagram': 'classDiagram',

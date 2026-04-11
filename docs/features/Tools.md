@@ -99,7 +99,7 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 - `xlsx_gen` - Generate Excel spreadsheets with formulas and styling
 - `podcast_gen` - Generate audio podcasts using Text-to-Speech
 - `image_gen` - Generate images using DALL-E 3 or Gemini Imagen
-- `diagram_gen` - Generate Mermaid diagrams (flowcharts, sequences, mindmaps)
+- `diagram_gen` - Generate Mermaid diagrams (flowcharts, sequences, mindmaps, timelines, quadrants, C4, architecture, and more — 18 types)
 - `translation` - Translate text using OpenAI, Gemini, or Mistral
 - `data_source` - Query external APIs and CSV data with visualization
 - `chart_gen` - Generate charts from LLM-constructed data
@@ -145,7 +145,7 @@ Terminal tools are a special category of autonomous tools that produce final out
 | `xlsx_gen` | Spreadsheet | Excel spreadsheets (.xlsx) |
 | `podcast_gen` | Audio | AI-generated podcast episodes (MP3/WAV) |
 | `chart_gen` | Visualization | Interactive charts from LLM-constructed data |
-| `diagram_gen` | Diagram | Mermaid diagrams (flowcharts, sequence, etc.) |
+| `diagram_gen` | Diagram | Mermaid diagrams (18 types: flowcharts, sequence, C4, architecture, timeline, quadrant, etc.) |
 
 ### Behavior
 
@@ -1452,6 +1452,213 @@ Notes are displayed in a collapsible accordion below the chart, allowing users t
 ```
 
 **Result:** Interactive bar chart with country names on X-axis, GDP values on Y-axis, and collapsible notes section showing data source attribution.
+
+---
+
+## Diagram Generator Tool
+
+### Purpose
+
+Enables the AI to generate interactive Mermaid diagrams rendered directly in the chat with zoom, pan, SVG download, and PNG export. The tool calls a dedicated generator LLM with type-specific templates and sanitizes the output before returning it to the frontend.
+
+### Supported Diagram Types (18)
+
+| Type | Keyword | Best For |
+|------|---------|----------|
+| `flowchart` | `flowchart TD/LR/BT/RL` | Process flows, decision trees, step-by-step logic |
+| `sequence` | `sequenceDiagram` | API calls, message exchanges between actors/services over time |
+| `mindmap` | `mindmap` | Brainstorming, topic breakdowns, hierarchical concepts |
+| `gantt` | `gantt` | Project schedules with tasks, durations, and dependencies |
+| `timeline` | `timeline` | Chronological events grouped by time period (no durations) |
+| `classDiagram` | `classDiagram` | OOP class structures, inheritance hierarchies |
+| `stateDiagram` | `stateDiagram-v2` | State machines, lifecycle transitions |
+| `erDiagram` | `erDiagram` | Database schemas, entity relationships |
+| `journey` | `journey` | User experience flows with satisfaction scores (1–5) per step |
+| `pie` | `pie` | Proportional distribution, percentage breakdowns |
+| `block` | `block-beta` | Grid/column layout for architectural overviews |
+| `quadrant` | `quadrantChart` | 2×2 matrix with named data points (effort/value, risk/impact) |
+| `architecture` | `architecture-beta` | Infrastructure diagrams with services, groups, directional edges |
+| `c4-context` | `C4Context` | High-level: users + systems + external dependencies |
+| `c4-container` | `C4Container` | Internal containers (web app, API, DB) within a system |
+| `c4-component` | `C4Component` | Components within a single container (experimental) |
+| `c4-dynamic` | `C4Dynamic` | Numbered runtime message flow between containers (experimental) |
+| `c4-deployment` | `C4Deployment` | Deployment topology — cloud nodes, VPCs, servers (experimental) |
+
+### Configuration
+
+```typescript
+interface DiagramGenConfig {
+  temperature: number;      // 0.0–1.0, default: 0.3 (lower = more deterministic)
+  maxTokens: number;        // 500–4000, default: 1500
+  validateSyntax: boolean;  // Validate before returning, default: true
+  maxRetries: number;       // 0–5 retry attempts on validation failure, default: 2
+  debugMode: boolean;       // Enable detailed logging, default: false
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "temperature": 0.3,
+    "maxTokens": 1500,
+    "validateSyntax": true,
+    "maxRetries": 2,
+    "debugMode": false
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "diagram_gen",
+  "description": "Generate a Mermaid diagram rendered interactively in the chat.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "diagram_type": {
+        "type": "string",
+        "enum": [
+          "flowchart", "sequence", "mindmap",
+          "c4-context", "c4-container", "c4-component", "c4-dynamic", "c4-deployment",
+          "gantt", "timeline", "block", "quadrant",
+          "classDiagram", "stateDiagram", "erDiagram",
+          "pie", "journey", "architecture"
+        ],
+        "description": "Type of Mermaid diagram to generate."
+      },
+      "description": {
+        "type": "string",
+        "description": "Detailed description of what the diagram should show, including key elements, relationships, and labels."
+      },
+      "direction": {
+        "type": "string",
+        "enum": ["TD", "LR", "BT", "RL"],
+        "description": "Direction for flowcharts: TD (top-down), LR (left-right), BT (bottom-top), RL (right-left). Default: TD"
+      },
+      "title": {
+        "type": "string",
+        "description": "Optional title for the diagram."
+      }
+    },
+    "required": ["diagram_type", "description"]
+  }
+}
+```
+
+### Generation Pipeline
+
+```
+Chat LLM selects diagram_type
+        ↓
+diagram_gen tool called
+        ↓
+Generator LLM (type-specific template + example)
+        ↓
+Server-side sanitizer (validator.ts)
+  - Normalize smart quotes, arrows, semicolons
+  - Type-specific fixes (C4 camelCase, gantt modifiers, etc.)
+  - Auto-upgrade stateDiagram v1 → v2
+  - Normalize architecture-beta / block-beta / quadrantChart keywords
+  - Clamp quadrant point coordinates to [0, 1]
+        ↓
+Syntax validation (regex, not full parse)
+        ↓
+Retry on failure (up to maxRetries)
+        ↓
+diagramHint returned to frontend
+        ↓
+Client-side sanitizer (MermaidDiagram.tsx) — mirrors server fixes
+        ↓
+mermaid.default.render() — real parse point
+        ↓
+SVG rendered in chat
+```
+
+### Sanitization Rules (Server + Client)
+
+Both `src/lib/diagram-gen/validator.ts` and `src/components/markdown/MermaidDiagram.tsx` apply the same sanitization. Changes to one **must** be mirrored in the other (noted by comments in each file).
+
+| Fix | Rule |
+|-----|------|
+| Smart quotes / arrows | `"` `"` → `"`, `→` → `-->`, `–` `—` → `-` |
+| Trailing semicolons | Removed globally (Mermaid doesn't use them) |
+| `title` directive in flowcharts | Bare `title Text` lines stripped (valid only in YAML frontmatter) |
+| Single `->` in flowcharts | Upgraded to `-->` |
+| `<` `>` in flowchart labels | Escaped to `&lt;` `&gt;` |
+| URL paths in node labels | `[/api/path]` → `["/api/path"]` |
+| `critical` in gantt | Renamed to `crit` |
+| Inline `<<annotation>>` in classDiagram | Stripped from class definition lines |
+| Dots/spaces in erDiagram entity names | Replaced with underscores |
+| C4 camelCase names | `SystemExt` → `System_Ext`, `ContainerBoundary` → `Container_Boundary`, etc. |
+| C4 Component/Deployment camelCase | `ComponentExt` → `Component_Ext`, `DeploymentNode` → `Deployment_Node` |
+| Journey score format | `Task: 5 Actor` → `Task: 5: Actor` |
+| `Section` casing in journey | Normalised to lowercase `section` |
+| `stateDiagram` v1 | Auto-upgraded to `stateDiagram-v2` |
+| `architecture` missing suffix | `architecture` → `architecture-beta` |
+| `quadrant` missing suffix | `quadrant` → `quadrantChart` |
+| `block` missing suffix | `block` → `block-beta` |
+| Sequence activate stack overflow | Drops `deactivate` calls that would underflow the activation stack |
+| Comma-separated participants | `participant A, B` expanded to individual lines |
+
+### Response Format
+
+```typescript
+interface DiagramGenResponse {
+  success: boolean;
+  message?: string;
+  diagramHint?: {
+    code: string;           // Sanitized Mermaid code
+    type: MermaidDiagramType;
+    title?: string;
+  };
+  metadata?: {
+    model: string;
+    diagramType: MermaidDiagramType;
+    processingTimeMs: number;
+    retryCount: number;
+  };
+  error?: {
+    code: string;
+    message: string;
+    details?: string;
+  };
+}
+```
+
+### Example Usage
+
+**User:** "Create an architecture diagram for the T-Bills portal"
+
+**AI calls diagram_gen:**
+```json
+{
+  "diagram_type": "c4-container",
+  "description": "T-Bills portal with web frontend, API layer, PostgreSQL database, and OAuth identity provider",
+  "title": "T-Bills Portal — Container Diagram"
+}
+```
+
+**Result:** Interactive C4 container diagram rendered in chat with zoom controls and SVG/PNG download buttons.
+
+---
+
+**User:** "Show a priority quadrant for our feature backlog"
+
+**AI calls diagram_gen:**
+```json
+{
+  "diagram_type": "quadrant",
+  "description": "Feature backlog plotted by implementation effort (x-axis) and business value (y-axis)",
+  "title": "Feature Priority Matrix"
+}
+```
+
+**Result:** 2×2 quadrant chart with labelled data points, rendered interactively in the chat.
 
 ---
 
