@@ -150,6 +150,18 @@ export function sanitizeMermaidCode(code: string): string {
     .replace(/^```\s*/i, '')
     .replace(/\s*```$/i, '');
 
+  // Fix 4: Normalize Unicode smart quotes and arrows to ASCII equivalents
+  // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
+  // Any changes here should be mirrored there.
+  sanitized = sanitized
+    .replace(/[\u201C\u201D]/g, '"')  // " " → "
+    .replace(/[\u2018\u2019]/g, "'")  // ' ' → '
+    .replace(/\u2192/g, '-->')         // → → -->
+    .replace(/\u2013|\u2014/g, '-');   // – — → -
+
+  // Fix 3: Remove trailing semicolons (LLMs add these from programming habits — Mermaid doesn't use them)
+  sanitized = sanitized.replace(/;[ \t]*$/gm, '');
+
   // Replace & with "and"
   sanitized = sanitized.replace(/\s&\s/g, ' and ');
 
@@ -158,6 +170,21 @@ export function sanitizeMermaidCode(code: string): string {
   // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
   // Any changes here should be mirrored there.
   if (sanitized.trim().startsWith('flowchart') || sanitized.trim().startsWith('graph')) {
+    // Fix 1: Strip invalid bare `title <text>` directive lines (valid only in YAML frontmatter)
+    // Preserves valid node IDs like: title[My Node] or title{Decision}
+    sanitized = sanitized
+      .split('\n')
+      .filter(line => !/^\s*title\s+(?![[\]{(|>])/.test(line))
+      .join('\n');
+
+    // Fix 2: Convert single -> to --> (single arrow is invalid in flowcharts)
+    sanitized = sanitized.replace(/(^|[^-!<])->(?!>)/gm, '$1-->');
+
+    // Fix 8: Escape < > inside node labels [...] and {...} to prevent parser confusion
+    sanitized = sanitized
+      .replace(/\[([^\]]*)\]/g, (_, c) => `[${c.replace(/</g, '&lt;').replace(/>/g, '&gt;')}]`)
+      .replace(/\{([^}]*)\}/g, (_, c) => `{${c.replace(/</g, '&lt;').replace(/>/g, '&gt;')}}`);
+
     sanitized = sanitized.replace(/\[\/([^\]"]*)\]/g, '["/\$1"]');
   }
 
@@ -167,9 +194,61 @@ export function sanitizeMermaidCode(code: string): string {
     (_, before, inside, after) => `root((${before}${inside}${after}))`
   );
 
-  // Fix sequence diagram activate/deactivate stack errors
+  // Fix sequence diagram errors
   if (sanitized.trim().toLowerCase().startsWith('sequencediagram')) {
+    // Fix 7: Expand comma-separated participant declarations to individual lines
+    sanitized = sanitized.split('\n').map(line => {
+      const m = line.match(/^(\s*)participant\s+(.+)$/);
+      if (m && m[2].includes(',')) {
+        return m[2].split(',').map(p => `${m[1]}participant ${p.trim()}`).join('\n');
+      }
+      return line;
+    }).join('\n');
+
+    // Fix 6: Convert single -> to ->> (sequence diagrams require ->> for solid messages)
+    sanitized = sanitized.replace(/(^|[^-])->(?![->])/gm, '$1->>');
+
+    // Fix activate/deactivate stack errors
     sanitized = sanitizeSequenceCode(sanitized);
+  }
+
+  // Fix gantt-specific issues
+  if (sanitized.trim().startsWith('gantt')) {
+    // "critical" is not a valid task modifier — the correct keyword is "crit"
+    sanitized = sanitized.replace(/\bcritical\b/g, 'crit');
+  }
+
+  // Fix classDiagram-specific issues
+  if (sanitized.trim().startsWith('classDiagram')) {
+    // Strip inline <<annotation>> from class definition lines — causes parse errors in many versions.
+    // The annotation must appear on its own line inside the class body: <<interface>>
+    // e.g. "class Foo <<interface>> {" → "class Foo {"
+    sanitized = sanitized.replace(/^(\s*class\s+\w+)\s+<<[^>]+>>/gm, '$1');
+  }
+
+  // Fix erDiagram-specific issues
+  if (sanitized.trim().startsWith('erDiagram')) {
+    // Dots in entity names → underscores (dots not supported in entity identifiers)
+    sanitized = sanitized.replace(/\b([A-Z][A-Z0-9_]*)\.([A-Z][A-Z0-9_]*)\b/g, '$1_$2');
+
+    // Spaces in entity names → underscores (entity names cannot contain spaces)
+    // Matches UPPER_CASE words with spaces between them on relationship lines
+    sanitized = sanitized.replace(
+      /^(\s*)([A-Z][A-Z0-9_]*(?:\s+[A-Z][A-Z0-9_]+)+)(\s+\|)/gm,
+      (_, indent, name, rest) => `${indent}${name.replace(/\s+/g, '_')}${rest}`
+    );
+
+    // Strip %% comment lines inside entity attribute blocks (not supported in erDiagram)
+    sanitized = sanitized.replace(/^\s*%%.*$/gm, '');
+  }
+
+  // Fix journey-specific issues
+  if (sanitized.trim().startsWith('journey')) {
+    // Fix missing colon after score: "Task: 5 Actor" → "Task: 5: Actor"
+    sanitized = sanitized.replace(/(:\s*[1-5])\s+([A-Za-z])/g, '$1: $2');
+
+    // Fix "Section" (capitalised) or "section Name:" (trailing colon) → "section Name"
+    sanitized = sanitized.replace(/^\s*[Ss]ection\s+([^\n:]+):?\s*$/gm, (_, name) => `section ${name.trim()}`);
   }
 
   return sanitized.trim();

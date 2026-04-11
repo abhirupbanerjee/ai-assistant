@@ -808,28 +808,30 @@ export async function PUT(request: NextRequest) {
           cacheTTLSeconds,
         } = settings;
 
-        // Validate enabled flag
-        if (typeof enabled !== 'boolean') {
+        // Validate enabled flag (optional — omit to keep existing value)
+        if (enabled !== undefined && typeof enabled !== 'boolean') {
           return NextResponse.json<ApiError>(
             { error: 'Enabled must be a boolean', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        // Validate providers array
+        // Validate providers array (optional — omit to keep existing providers)
         const validProviders = ['bge-large', 'cohere', 'fireworks', 'bge-base', 'local'];
-        if (!Array.isArray(providers) || providers.length === 0 || providers.length > validProviders.length) {
-          return NextResponse.json<ApiError>(
-            { error: `Providers must be an array with 1-${validProviders.length} providers`, code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-        for (const p of providers) {
-          if (!validProviders.includes(p.provider) || typeof p.enabled !== 'boolean') {
+        if (providers !== undefined) {
+          if (!Array.isArray(providers) || providers.length === 0 || providers.length > validProviders.length) {
             return NextResponse.json<ApiError>(
-              { error: 'Each provider must have a valid provider name and enabled boolean', code: 'VALIDATION_ERROR' },
+              { error: `Providers must be an array with 1-${validProviders.length} providers`, code: 'VALIDATION_ERROR' },
               { status: 400 }
             );
+          }
+          for (const p of providers) {
+            if (!validProviders.includes(p.provider) || typeof p.enabled !== 'boolean') {
+              return NextResponse.json<ApiError>(
+                { error: 'Each provider must have a valid provider name and enabled boolean', code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
           }
         }
 
@@ -841,24 +843,24 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate topKForReranking
-        if (typeof topKForReranking !== 'number' || topKForReranking < 5 || topKForReranking > 100) {
+        // Validate topKForReranking (optional — omit to keep existing value)
+        if (topKForReranking !== undefined && (typeof topKForReranking !== 'number' || topKForReranking < 5 || topKForReranking > 100)) {
           return NextResponse.json<ApiError>(
             { error: 'topKForReranking must be between 5 and 100', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        // Validate minRerankerScore
-        if (typeof minRerankerScore !== 'number' || minRerankerScore < 0 || minRerankerScore > 1) {
+        // Validate minRerankerScore (optional — omit to keep existing value)
+        if (minRerankerScore !== undefined && (typeof minRerankerScore !== 'number' || minRerankerScore < 0 || minRerankerScore > 1)) {
           return NextResponse.json<ApiError>(
             { error: 'minRerankerScore must be between 0 and 1', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        // Validate cacheTTLSeconds
-        if (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400) {
+        // Validate cacheTTLSeconds (optional — omit to keep existing value)
+        if (cacheTTLSeconds !== undefined && (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400)) {
           return NextResponse.json<ApiError>(
             { error: 'cacheTTLSeconds must be between 0 and 86400', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -872,12 +874,12 @@ export async function PUT(request: NextRequest) {
         }
 
         result = await setRerankerSettings({
-          enabled,
-          providers,
+          ...(enabled !== undefined ? { enabled } : {}),
+          ...(providers !== undefined ? { providers } : {}),
           ...(cohereApiKey !== undefined ? { cohereApiKey: cohereApiKey || undefined } : {}),
-          topKForReranking,
-          minRerankerScore,
-          cacheTTLSeconds,
+          ...(topKForReranking !== undefined ? { topKForReranking } : {}),
+          ...(minRerankerScore !== undefined ? { minRerankerScore } : {}),
+          ...(cacheTTLSeconds !== undefined ? { cacheTTLSeconds } : {}),
         }, user.email);
         break;
       }
@@ -1042,54 +1044,56 @@ export async function PUT(request: NextRequest) {
       case 'ocr': {
         const { providers, mistralApiKey, azureDiEndpoint, azureDiKey } = settings;
 
-        // Validate providers is an array of exactly 3 items
-        if (!Array.isArray(providers) || providers.length !== 3) {
-          return NextResponse.json<ApiError>(
-            { error: 'Providers must be an array of exactly 3 items', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        const validProviders = ['mistral', 'azure-di', 'pdf-parse'];
-        const seen = new Set<string>();
-
-        for (const item of providers) {
-          if (!item || typeof item !== 'object') {
+        // Validate providers (optional — omit to keep existing providers)
+        if (providers !== undefined) {
+          if (!Array.isArray(providers) || providers.length !== 3) {
             return NextResponse.json<ApiError>(
-              { error: 'Each provider must be an object with provider and enabled fields', code: 'VALIDATION_ERROR' },
+              { error: 'Providers must be an array of exactly 3 items', code: 'VALIDATION_ERROR' },
               { status: 400 }
             );
           }
 
-          if (!validProviders.includes(item.provider)) {
+          const validProviders = ['mistral', 'azure-di', 'pdf-parse'];
+          const seen = new Set<string>();
+
+          for (const item of providers) {
+            if (!item || typeof item !== 'object') {
+              return NextResponse.json<ApiError>(
+                { error: 'Each provider must be an object with provider and enabled fields', code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+
+            if (!validProviders.includes(item.provider)) {
+              return NextResponse.json<ApiError>(
+                { error: `Invalid provider: ${item.provider}. Must be one of: ${validProviders.join(', ')}`, code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+
+            if (typeof item.enabled !== 'boolean') {
+              return NextResponse.json<ApiError>(
+                { error: 'Each provider enabled field must be a boolean', code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+
+            if (seen.has(item.provider)) {
+              return NextResponse.json<ApiError>(
+                { error: `Duplicate provider: ${item.provider}`, code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+            seen.add(item.provider);
+          }
+
+          // At least one provider must be enabled
+          if (!providers.some((p: { enabled: boolean }) => p.enabled)) {
             return NextResponse.json<ApiError>(
-              { error: `Invalid provider: ${item.provider}. Must be one of: ${validProviders.join(', ')}`, code: 'VALIDATION_ERROR' },
+              { error: 'At least one OCR provider must be enabled', code: 'VALIDATION_ERROR' },
               { status: 400 }
             );
           }
-
-          if (typeof item.enabled !== 'boolean') {
-            return NextResponse.json<ApiError>(
-              { error: 'Each provider enabled field must be a boolean', code: 'VALIDATION_ERROR' },
-              { status: 400 }
-            );
-          }
-
-          if (seen.has(item.provider)) {
-            return NextResponse.json<ApiError>(
-              { error: `Duplicate provider: ${item.provider}`, code: 'VALIDATION_ERROR' },
-              { status: 400 }
-            );
-          }
-          seen.add(item.provider);
-        }
-
-        // At least one provider must be enabled
-        if (!providers.some((p: { enabled: boolean }) => p.enabled)) {
-          return NextResponse.json<ApiError>(
-            { error: 'At least one OCR provider must be enabled', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
         }
 
         // Validate Mistral API key (optional)
@@ -1134,10 +1138,12 @@ export async function PUT(request: NextRequest) {
         }
 
         result = await setOcrSettings({
-          providers: providers.map((p: { provider: string; enabled: boolean }) => ({
-            provider: p.provider as 'mistral' | 'azure-di' | 'pdf-parse',
-            enabled: p.enabled,
-          })),
+          ...(providers !== undefined ? {
+            providers: providers.map((p: { provider: string; enabled: boolean }) => ({
+              provider: p.provider as 'mistral' | 'azure-di' | 'pdf-parse',
+              enabled: p.enabled,
+            })),
+          } : {}),
           ...(mistralApiKey !== undefined ? { mistralApiKey: mistralApiKey || undefined } : {}),
           ...(azureDiEndpoint !== undefined ? { azureDiEndpoint: azureDiEndpoint || undefined } : {}),
           ...(azureDiKey !== undefined ? { azureDiKey: azureDiKey || undefined } : {}),

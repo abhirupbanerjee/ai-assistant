@@ -135,28 +135,102 @@ function sanitizeSequenceCode(code: string): string {
  * Sanitize Mermaid code based on diagram type
  */
 function sanitizeMermaidCode(code: string): string {
-  const trimmed = code.trim();
+  let sanitized = code.trim();
+
+  // Fix 4: Normalize Unicode smart quotes and arrows to ASCII equivalents
+  // Note: same logic exists in src/lib/diagram-gen/validator.ts (server-side).
+  // Any changes here should be mirrored there.
+  sanitized = sanitized
+    .replace(/[\u201C\u201D]/g, '"')  // " " → "
+    .replace(/[\u2018\u2019]/g, "'")  // ' ' → '
+    .replace(/\u2192/g, '-->')         // → → -->
+    .replace(/\u2013|\u2014/g, '-');   // – — → -
+
+  // Fix 3: Remove trailing semicolons (LLMs add these from programming habits — Mermaid doesn't use them)
+  sanitized = sanitized.replace(/;[ \t]*$/gm, '');
 
   // Apply mindmap-specific sanitization
-  if (trimmed.startsWith('mindmap')) {
-    return sanitizeMindmapCode(trimmed);
+  if (sanitized.startsWith('mindmap')) {
+    return sanitizeMindmapCode(sanitized);
   }
 
   // For flowcharts, escape special characters in labels
-  if (trimmed.startsWith('flowchart') || trimmed.startsWith('graph')) {
-    return trimmed
+  if (sanitized.startsWith('flowchart') || sanitized.startsWith('graph')) {
+    // Fix 1: Strip invalid bare `title <text>` directive lines (valid only in YAML frontmatter)
+    // Preserves valid node IDs like: title[My Node] or title{Decision}
+    sanitized = sanitized
+      .split('\n')
+      .filter(line => !/^\s*title\s+(?![[\]{(|>])/.test(line))
+      .join('\n');
+
+    return sanitized
       .replace(/<br\s*\/?>/gi, ' ')                        // Remove <br/> and <br> tags
       .replace(/\[([^\]]*?)&([^\]]*?)\]/g, '[$1 and $2]')  // [text & more] -> [text and more]
       .replace(/\{([^}]*?)&([^}]*?)\}/g, '{$1 and $2}')    // {text & more} -> {text and more}
-      .replace(/\[\/([^\]"]*)\]/g, '["/\$1"]');             // [/api/path] -> ["/api/path"] (prevent parallelogram misparse)
+      .replace(/\[\/([^\]"]*)\]/g, '["/\$1"]')              // [/api/path] -> ["/api/path"] (prevent parallelogram misparse)
+      .replace(/(^|[^-!<])->(?!>)/gm, '$1-->')             // Fix 2: single -> → --> (invalid in flowcharts)
+      .replace(/\[([^\]]*)\]/g, (_, c) => `[${c.replace(/</g, '&lt;').replace(/>/g, '&gt;')}]`)  // Fix 8: < > in labels
+      .replace(/\{([^}]*)\}/g, (_, c) => `{${c.replace(/</g, '&lt;').replace(/>/g, '&gt;')}}`);  // Fix 8: < > in labels
   }
 
-  // Fix sequence diagram activate/deactivate stack errors
-  if (trimmed.startsWith('sequenceDiagram') || trimmed.toLowerCase().startsWith('sequencediagram')) {
-    return sanitizeSequenceCode(trimmed);
+  // Fix sequence diagram errors
+  if (sanitized.startsWith('sequenceDiagram') || sanitized.toLowerCase().startsWith('sequencediagram')) {
+    // Fix 7: Expand comma-separated participant declarations to individual lines
+    sanitized = sanitized.split('\n').map(line => {
+      const m = line.match(/^(\s*)participant\s+(.+)$/);
+      if (m && m[2].includes(',')) {
+        return m[2].split(',').map(p => `${m[1]}participant ${p.trim()}`).join('\n');
+      }
+      return line;
+    }).join('\n');
+
+    // Fix 6: Convert single -> to ->> (sequence diagrams require ->> for solid messages)
+    sanitized = sanitized.replace(/(^|[^-])->(?![->])/gm, '$1->>');
+
+    return sanitizeSequenceCode(sanitized);
   }
 
-  return trimmed;
+  // Fix gantt-specific issues
+  // Note: same logic exists in src/lib/diagram-gen/validator.ts (server-side).
+  // Any changes here should be mirrored there.
+  if (sanitized.startsWith('gantt')) {
+    // "critical" is not a valid task modifier — the correct keyword is "crit"
+    return sanitized.replace(/\bcritical\b/g, 'crit');
+  }
+
+  // Fix classDiagram-specific issues
+  if (sanitized.startsWith('classDiagram')) {
+    // Strip inline <<annotation>> from class definition lines — causes parse errors in many versions.
+    // The annotation must appear on its own line inside the class body: <<interface>>
+    // e.g. "class Foo <<interface>> {" → "class Foo {"
+    return sanitized.replace(/^(\s*class\s+\w+)\s+<<[^>]+>>/gm, '$1');
+  }
+
+  // Fix erDiagram-specific issues
+  if (sanitized.startsWith('erDiagram')) {
+    // Dots in entity names → underscores (dots not supported in entity identifiers)
+    sanitized = sanitized.replace(/\b([A-Z][A-Z0-9_]*)\.([A-Z][A-Z0-9_]*)\b/g, '$1_$2');
+
+    // Spaces in entity names → underscores on relationship lines
+    sanitized = sanitized.replace(
+      /^(\s*)([A-Z][A-Z0-9_]*(?:\s+[A-Z][A-Z0-9_]+)+)(\s+\|)/gm,
+      (_, indent, name, rest) => `${indent}${name.replace(/\s+/g, '_')}${rest}`
+    );
+
+    // Strip %% comment lines (not supported inside erDiagram attribute blocks)
+    return sanitized.replace(/^\s*%%.*$/gm, '');
+  }
+
+  // Fix journey-specific issues
+  if (sanitized.startsWith('journey')) {
+    // Fix missing colon after score: "Task: 5 Actor" → "Task: 5: Actor"
+    sanitized = sanitized.replace(/(:\s*[1-5])\s+([A-Za-z])/g, '$1: $2');
+
+    // Fix "Section" (capitalised) or "section Name:" (trailing colon) → "section Name"
+    return sanitized.replace(/^\s*[Ss]ection\s+([^\n:]+):?\s*$/gm, (_, name) => `section ${name.trim()}`);
+  }
+
+  return sanitized;
 }
 
 export default function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {

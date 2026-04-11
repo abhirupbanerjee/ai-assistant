@@ -181,16 +181,20 @@ export const diagramGenTool: ToolDefinition = {
     type: 'function',
     function: {
       name: 'diagram_gen',
-      description: `Generate a Mermaid diagram. Use this tool when the user asks for:
-- Flowcharts, process flows, workflows
-- Mind maps, brainstorming diagrams
-- Sequence diagrams, interaction flows
-- Architecture diagrams (C4 context/container)
-- Gantt charts, timelines, schedules
-- Class diagrams, ER diagrams
-- State diagrams
-- Pie charts
-- User journey maps
+      description: `Generate a Mermaid diagram. Use this tool when the user asks for any visual diagram.
+
+Choose the right type:
+- flowchart: process flows, decision trees, workflows, step-by-step logic
+- sequence: system interactions over time, API calls, login flows, message exchanges between services
+- mindmap: brainstorming, topic breakdowns, hierarchical concepts
+- c4-context: high-level system architecture showing users, systems, and external dependencies
+- c4-container: internal architecture showing containers (web app, API, DB) inside a system
+- gantt: project timelines, task schedules, sprint planning
+- classDiagram: OOP class structures, inheritance hierarchies, software design models
+- erDiagram: database schemas, entity relationships, data models
+- stateDiagram: state machines, lifecycle flows (e.g. order status, auth states)
+- pie: proportional breakdowns, distribution of categories
+- journey: user experience flows with satisfaction scores per step
 
 The generated diagram will be rendered interactively in the chat with zoom and download options.
 
@@ -216,7 +220,18 @@ Do NOT use this for:
               'pie',
               'journey',
             ],
-            description: 'Type of Mermaid diagram to generate',
+            description: `Type of Mermaid diagram to generate:
+- flowchart: process steps, decisions, branching logic
+- sequence: messages/calls between actors/services over time
+- mindmap: hierarchical topic or concept breakdown
+- c4-context: system-level view (users + systems + external dependencies)
+- c4-container: internal containers within a system (web, API, DB layers)
+- gantt: project schedule with tasks, durations, dependencies
+- classDiagram: OOP classes with attributes, methods, inheritance
+- stateDiagram: state machines and lifecycle transitions
+- erDiagram: database entities and relationships
+- pie: percentage or proportional distribution
+- journey: user journey steps with satisfaction scores (1-5) per step`,
           },
           description: {
             type: 'string',

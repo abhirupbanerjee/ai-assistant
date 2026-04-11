@@ -18,6 +18,10 @@ RULES:
 5. Escape special characters: use "and" instead of "&", avoid parentheses in labels
 6. Do NOT include \`\`\`mermaid or \`\`\` markers
 7. For sequence diagrams: never use activate/deactivate inside alt/else/opt/loop/par blocks — place deactivate after the end keyword instead
+8. Do NOT add semicolons at the end of lines — Mermaid does not use semicolons
+9. Never use "end" as a bare node ID in flowcharts — use "finish", "complete", or "done" instead
+10. Do NOT write "title <text>" as a statement inside the diagram body — it is invalid syntax
+11. In flowcharts, never start a node ID with lowercase "o" or "x" — they are misread as edge markers; capitalise them (e.g. "OAuth" not "oAuth", "XmlParser" not "xmlParser")
 
 NEVER output anything except valid Mermaid code.`;
 
@@ -37,7 +41,7 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
     systemPrompt: `Generate a Mermaid flowchart diagram.
 - Use flowchart {DIRECTION} as the first line
 - Use [Box] for rectangles, {Decision} for diamonds, ([Rounded]) for stadium shapes
-- Use --> for arrows, -->|Label| for labeled arrows
+- Use --> for arrows, -->|Label| for labeled arrows — NEVER use single -> (invalid in Mermaid)
 - Keep max 12-15 nodes
 - If a label contains a URL path or forward slash, wrap it in quotes: ["/api/users"] not [/api/users]`,
     example: `flowchart TD
@@ -133,9 +137,13 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
     systemPrompt: `Generate a Mermaid Gantt chart.
 - Start with: gantt
 - Use title for chart title
-- Use dateFormat YYYY-MM-DD
-- Use section for grouping tasks
-- Task format: Task name :id, start, duration`,
+- Use dateFormat YYYY-MM-DD (default; change only if needed)
+- Use section for grouping tasks — every task must be inside a section
+- Task format: Task name :id, start, duration
+- Valid duration units: d (days), w (weeks), h (hours), m (minutes)
+- Valid task modifiers (must come first if used): done, active, crit, milestone — NEVER use "critical"
+- Do NOT include colons inside task names — the first colon in a line is the separator
+- Use "after taskId" for sequential dependencies: :t2, after t1, 3d`,
     example: `gantt
     title Project Timeline
     dateFormat YYYY-MM-DD
@@ -143,7 +151,7 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
     Research      :a1, 2024-01-01, 7d
     Design        :a2, after a1, 5d
     section Phase 2
-    Development   :b1, after a2, 14d
+    Development   :crit, b1, after a2, 14d
     Testing       :b2, after b1, 7d`,
     prefix: 'gantt',
   },
@@ -151,19 +159,24 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   classDiagram: {
     systemPrompt: `Generate a Mermaid class diagram.
 - Start with: classDiagram
-- Class definition: class ClassName
-- Attributes: +publicAttr, -privateAttr, #protectedAttr
-- Methods: +method(), -method()
-- Relationships: <|-- inheritance, *-- composition, o-- aggregation`,
+- Class definition: class ClassName { }
+- Attributes: +publicAttr : Type, -privateAttr : Type, #protectedAttr : Type
+- Methods: +method() : ReturnType (always include colon before return type)
+- Relationships: <|-- inheritance, *-- composition, o-- aggregation, --> association
+- Annotations go INSIDE the class body on their own line: <<interface>>, <<abstract>>, <<service>>
+- Do NOT write annotations inline on the class definition line (e.g. "class Foo <<interface>>" is invalid)
+- Do NOT use nested namespaces
+- Avoid generic type parameters in relationship lines — use the plain class name`,
     example: `classDiagram
     class Animal {
+      <<abstract>>
       +String name
       +int age
-      +makeSound()
+      +makeSound() : void
     }
     class Dog {
       +String breed
-      +bark()
+      +bark() : void
     }
     Animal <|-- Dog`,
     prefix: 'classDiagram',
@@ -188,9 +201,11 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   erDiagram: {
     systemPrompt: `Generate a Mermaid ER diagram.
 - Start with: erDiagram
-- Entity: ENTITY_NAME
-- Relationships: ||--o{ one-to-many, ||--|| one-to-one
-- Attributes inside entity block`,
+- Entity names: UPPERCASE, no spaces (use _ instead), no dots, no reserved words (ONE, MANY, TO, U)
+- Relationships require a label: ENTITY_A ||--o{ ENTITY_B : "label"
+- Cardinality notation: ||--|| (one-to-one), ||--o{ (one-to-many), o{--o{ (many-to-many), ||--|{ (one-to-one-or-more)
+- Attributes go inside entity blocks: TYPE name, TYPE name PK, TYPE name FK
+- One attribute per line — no semicolons, no %% comments inside entity blocks`,
     example: `erDiagram
     USER ||--o{ ORDER : places
     ORDER ||--|{ LINE_ITEM : contains
@@ -223,9 +238,13 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   journey: {
     systemPrompt: `Generate a Mermaid user journey diagram.
 - Start with: journey
-- Use title for journey title
-- Use section for phases
-- Format: Task: score: actors`,
+- Use title for journey title (required)
+- Use lowercase "section" (not "Section") for phases — no colon after section name
+- Task format: Task name: score: Actor1, Actor2
+- Score must be an integer from 1 to 5 (1 = very negative, 5 = very positive)
+- Multiple actors are comma-separated after the second colon
+- All tasks must be inside a section
+- Do NOT use angle brackets or special characters in task or actor names`,
     example: `journey
     title User Purchase Journey
     section Discovery
