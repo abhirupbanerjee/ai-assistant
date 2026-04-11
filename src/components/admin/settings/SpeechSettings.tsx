@@ -71,6 +71,7 @@ const STT_PROVIDER_INFO: Record<SttProvider, { label: string; models: { id: stri
   fireworks: {
     label: 'Fireworks AI',
     models: [
+      { id: 'whisper-v3', label: 'Whisper v3' },
       { id: 'whisper-v3-turbo', label: 'Whisper v3 Turbo' },
       { id: 'whisper-v3-large', label: 'Whisper v3 Large' },
     ],

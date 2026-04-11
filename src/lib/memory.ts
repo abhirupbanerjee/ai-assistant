@@ -285,7 +285,22 @@ export async function extractFacts(
       // Try to extract JSON array from the response
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        const newFacts = JSON.parse(jsonMatch[0]) as string[];
+        let jsonStr = jsonMatch[0];
+        let newFacts: string[];
+        try {
+          newFacts = JSON.parse(jsonStr) as string[];
+        } catch {
+          // Attempt to repair truncated JSON: trim to last complete string entry
+          const lastComplete = jsonStr.lastIndexOf('",');
+          const lastSingle = jsonStr.lastIndexOf('"');
+          const cutoff = lastComplete > 0 ? lastComplete + 1 : lastSingle > 0 ? lastSingle + 1 : -1;
+          if (cutoff > 1) {
+            jsonStr = jsonStr.slice(0, cutoff) + ']';
+            newFacts = JSON.parse(jsonStr) as string[];
+          } else {
+            throw new Error('Cannot repair truncated JSON array');
+          }
+        }
         // Combine with existing facts, remove duplicates, limit to maxFacts
         const allFacts = [...new Set([...existingFacts, ...newFacts])];
         return allFacts.slice(0, maxFacts);

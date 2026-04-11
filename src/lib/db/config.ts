@@ -491,7 +491,7 @@ export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
     },
     providers: {
       openai:    { enabled: true,  model: 'whisper-1' },
-      fireworks: { enabled: false, model: 'whisper-v3-turbo' },
+      fireworks: { enabled: false, model: 'whisper-v3' },
       mistral:   { enabled: false, model: 'voxtral-mini-transcribe-v2' },
       gemini:    { enabled: false, model: 'gemini-2.5-flash' },
     },

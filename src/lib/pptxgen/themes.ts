@@ -61,9 +61,9 @@ export function buildCustomTheme(colors: {
   accent: string;
 }): ThemeConfig {
   return {
-    primary: colors.primary.replace('#', ''),
-    secondary: colors.secondary.replace('#', ''),
-    accent: colors.accent.replace('#', ''),
+    primary: (colors.primary || '1E2761').replace('#', ''),
+    secondary: (colors.secondary || 'CADCFC').replace('#', ''),
+    accent: (colors.accent || 'FFFFFF').replace('#', ''),
     headerFont: 'Arial Black',
     bodyFont: 'Arial',
     darkTitleSlide: true,

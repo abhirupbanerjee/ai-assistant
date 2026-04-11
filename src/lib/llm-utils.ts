@@ -67,7 +67,10 @@ export async function callLLMForJson(
     setTimeout(() => reject(new Error(`LLM call timed out after ${timeout}ms`)), timeout);
   });
 
-  return Promise.race([completionPromise, timeoutPromise]);
+  const raw = await Promise.race([completionPromise, timeoutPromise]);
+
+  // Strip markdown code fences that some models wrap around JSON
+  return raw.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/g, '').trim();
 }
 
 /**
