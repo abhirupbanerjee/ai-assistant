@@ -132,6 +132,50 @@ function sanitizeSequenceCode(code: string): string {
 }
 
 /**
+ * Sanitize architecture-beta code to fix ID and edge issues.
+ * LLMs often use dots/spaces in IDs (e.g., Next.js 16) which breaks the parser.
+ * Architecture-beta requires alphanumeric IDs and '--' for edges.
+ */
+function sanitizeArchitectureCode(code: string): string {
+  let sanitized = code.replace(/^architecture\b(?!-beta)/, 'architecture-beta');
+
+  // Convert common arrow types to architecture-beta compatible edges
+  sanitized = sanitized.replace(/->+/g, '--');
+
+  const lines = sanitized.split('\n');
+  const processedLines = lines.map(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === 'architecture-beta') return line;
+
+    // 1. Definition lines: <type> ID(icon)[Label] or <type> ID[Label]
+    const defRegex = /^(\s*)(service|gateway|database|public_network|group|disk|cloud|edge|firewall|junction)\s+([^\s[({]+)(.*)$/i;
+    const defMatch = line.match(defRegex);
+    if (defMatch) {
+      const [_, indent, type, id, rest] = defMatch;
+      const safeId = id.replace(/[.\s-]/g, '_');
+      // If the rest doesn't contain a label [], use original id as label
+      if (!rest.includes('[') && !rest.includes('(')) {
+        return `${indent}${type} ${safeId}[${id}]`;
+      }
+      return `${indent}${type} ${safeId}${rest}`;
+    }
+
+    // 2. Edge lines: ID1:dir -- dir:ID2 or ID1 -- ID2
+    if (line.includes('--')) {
+      return line.replace(/([a-zA-Z0-9.-]+)(?=:|\s--|--\s|$)/g, (match) => {
+        const keywords = ['service', 'gateway', 'database', 'public_network', 'group', 'disk', 'cloud', 'edge', 'firewall', 'junction'];
+        if (keywords.includes(match.toLowerCase())) return match;
+        return match.replace(/[.\s-]/g, '_');
+      });
+    }
+
+    return line;
+  });
+
+  return processedLines.join('\n');
+}
+
+/**
  * Sanitize Mermaid code based on diagram type
  */
 function sanitizeMermaidCode(code: string): string {
@@ -263,8 +307,8 @@ function sanitizeMermaidCode(code: string): string {
   // Normalize architecture keyword: LLMs sometimes omit "-beta" suffix
   // Note: same logic exists in src/lib/diagram-gen/validator.ts (server-side).
   // Any changes here should be mirrored there.
-  if (sanitized.startsWith('architecture')) {
-    sanitized = sanitized.replace(/^architecture\b(?!-beta)/, 'architecture-beta');
+  if (sanitized.startsWith('architecture') || sanitized.toLowerCase().startsWith('architecture')) {
+    return sanitizeArchitectureCode(sanitized);
   }
 
   // Normalize quadrantChart keyword and clamp point coordinates to [0, 1]
