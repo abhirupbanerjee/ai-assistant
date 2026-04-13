@@ -18,8 +18,8 @@
  * - and more...
  */
 
-import { useEffect, useRef, useState, useId } from 'react';
-import { AlertCircle, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState, useId, useMemo } from 'react';
+import { Download, ZoomIn, ZoomOut, RotateCcw, FileText } from 'lucide-react';
 
 interface MermaidDiagramProps {
   /** The Mermaid diagram code */
@@ -136,11 +136,27 @@ function sanitizeSequenceCode(code: string): string {
  * LLMs often use dots/spaces in IDs (e.g., Next.js 16) which breaks the parser.
  * Architecture-beta requires alphanumeric IDs and '--' for edges.
  */
+/**
+ * Sanitize architecture-beta diagram code.
+ * architecture-beta has strict syntax rules (mermaid 11.12.2):
+ * - Labels inside [...] may only contain [\w ] (letters, digits, underscores, spaces)
+ * - IDs may only contain [\w-] (letters, digits, underscores, hyphens — no dots)
+ * - Edges use -- (double dash) ONLY, never -->
+ *
+ * Note: same logic exists in src/lib/diagram-gen/validator.ts (server-side).
+ * Any changes here should be mirrored there.
+ */
 function sanitizeArchitectureCode(code: string): string {
   let sanitized = code.replace(/^architecture\b(?!-beta)/, 'architecture-beta');
 
-  // Convert common arrow types to architecture-beta compatible edges
+  // Convert common arrow types to architecture-beta compatible edges (-- only)
   sanitized = sanitized.replace(/->+/g, '--');
+
+  // Clean labels: strip any chars that aren't [\w ] from inside [...]
+  sanitized = sanitized.replace(/\[([^\]]+)\]/g, (_, label) => {
+    const clean = label.replace(/[^\w ]/g, '');
+    return `[${clean}]`;
+  });
 
   const lines = sanitized.split('\n');
   const processedLines = lines.map(line => {
@@ -152,20 +168,20 @@ function sanitizeArchitectureCode(code: string): string {
     const defMatch = line.match(defRegex);
     if (defMatch) {
       const [_, indent, type, id, rest] = defMatch;
-      const safeId = id.replace(/[.\s-]/g, '_');
+      const safeId = id.replace(/[^\w-]/g, '_');
       // If the rest doesn't contain a label [], use original id as label
       if (!rest.includes('[') && !rest.includes('(')) {
-        return `${indent}${type} ${safeId}[${id}]`;
+        return `${indent}${type} ${safeId}[${id.replace(/[^\w ]/g, '')}]`;
       }
       return `${indent}${type} ${safeId}${rest}`;
     }
 
     // 2. Edge lines: ID1:dir -- dir:ID2 or ID1 -- ID2
     if (line.includes('--')) {
-      return line.replace(/([a-zA-Z0-9.-]+)(?=:|\s--|--\s|$)/g, (match) => {
+      return line.replace(/([a-zA-Z0-9._-]+)(?=:|\s--|--\s|$)/g, (match) => {
         const keywords = ['service', 'gateway', 'database', 'public_network', 'group', 'disk', 'cloud', 'edge', 'firewall', 'junction'];
         if (keywords.includes(match.toLowerCase())) return match;
-        return match.replace(/[.\s-]/g, '_');
+        return match.replace(/[^\w-]/g, '_');
       });
     }
 
@@ -173,6 +189,241 @@ function sanitizeArchitectureCode(code: string): string {
   });
 
   return processedLines.join('\n');
+}
+
+/**
+ * Convert Mermaid code to a structured text fallback when rendering fails.
+ * Extracts nodes, labels, edges, and structure from the raw Mermaid source
+ * and produces readable plain text — no LLM call needed.
+ */
+function mermaidToTextFallback(code: string): string {
+  const lines = code.trim().split('\n');
+  const firstLine = lines[0]?.trim() ?? '';
+
+  // Detect diagram type from the first line
+  let diagramType = 'Diagram';
+  if (/^flowchart|^graph\b/i.test(firstLine)) diagramType = 'Flowchart';
+  else if (/^sequenceDiagram/i.test(firstLine)) diagramType = 'Sequence Diagram';
+  else if (/^mindmap/i.test(firstLine)) diagramType = 'Mind Map';
+  else if (/^gantt/i.test(firstLine)) diagramType = 'Gantt Chart';
+  else if (/^classDiagram/i.test(firstLine)) diagramType = 'Class Diagram';
+  else if (/^stateDiagram/i.test(firstLine)) diagramType = 'State Diagram';
+  else if (/^erDiagram/i.test(firstLine)) diagramType = 'ER Diagram';
+  else if (/^pie/i.test(firstLine)) diagramType = 'Pie Chart';
+  else if (/^journey/i.test(firstLine)) diagramType = 'User Journey';
+  else if (/^timeline/i.test(firstLine)) diagramType = 'Timeline';
+  else if (/^block/i.test(firstLine)) diagramType = 'Block Diagram';
+  else if (/^quadrantChart/i.test(firstLine)) diagramType = 'Quadrant Chart';
+  else if (/^architecture/i.test(firstLine)) diagramType = 'Architecture Diagram';
+  else if (/^C4Context/i.test(firstLine)) diagramType = 'C4 Context Diagram';
+  else if (/^C4Container/i.test(firstLine)) diagramType = 'C4 Container Diagram';
+  else if (/^C4Component/i.test(firstLine)) diagramType = 'C4 Component Diagram';
+  else if (/^C4Dynamic/i.test(firstLine)) diagramType = 'C4 Dynamic Diagram';
+  else if (/^C4Deployment/i.test(firstLine)) diagramType = 'C4 Deployment Diagram';
+
+  // Extract title if present
+  const titleMatch = code.match(/^\s*title\s+(.+)$/m);
+  const title = titleMatch?.[1]?.trim();
+
+  const result: string[] = [];
+  result.push(`=== ${title || diagramType} ===`);
+  result.push('');
+
+  // Build a label map: id → label (for resolving references in edges)
+  const labelMap = new Map<string, string>();
+
+  // --- Flowchart / Graph ---
+  if (/^flowchart|^graph\b/i.test(firstLine)) {
+    const nodes: string[] = [];
+    const edges: string[] = [];
+
+    for (const line of lines.slice(1)) {
+      const t = line.trim();
+      if (!t || t.startsWith('%%')) continue;
+
+      // Extract node definitions: id[Label], id{Label}, id(Label), id([Label]), id((Label))
+      const nodeDefs = t.matchAll(/(\w+)\s*(?:\[([^\]]+)\]|\{([^}]+)\}|\(\[([^\]]+)\]\)|\(\(([^)]+)\)\)|\(([^)]+)\))/g);
+      for (const m of nodeDefs) {
+        const id = m[1];
+        const label = m[2] || m[3] || m[4] || m[5] || m[6];
+        if (label && !labelMap.has(id)) {
+          labelMap.set(id, label);
+        }
+      }
+
+      // Extract edges: A -->|label| B or A --> B
+      const edgeMatch = t.match(/(\w+)\s*(?:-->|--[-.]>?|==>|-.->)\s*(?:\|([^|]*)\|\s*)?(\w+)/);
+      if (edgeMatch) {
+        const from = labelMap.get(edgeMatch[1]) || edgeMatch[1];
+        const edgeLabel = edgeMatch[2] ? ` [${edgeMatch[2]}]` : '';
+        const to = labelMap.get(edgeMatch[3]) || edgeMatch[3];
+        edges.push(`  ${from} -->${edgeLabel} ${to}`);
+      }
+    }
+
+    // List unique nodes
+    if (labelMap.size > 0) {
+      result.push('Components:');
+      for (const [id, label] of labelMap) {
+        result.push(`  * ${label} (${id})`);
+      }
+      result.push('');
+    }
+    if (edges.length > 0) {
+      result.push('Flow:');
+      edges.forEach(e => result.push(e));
+    }
+  }
+
+  // --- Sequence Diagram ---
+  else if (/^sequenceDiagram/i.test(firstLine)) {
+    const participants: string[] = [];
+    const messages: string[] = [];
+
+    for (const line of lines.slice(1)) {
+      const t = line.trim();
+      if (!t || t.startsWith('%%')) continue;
+
+      const partMatch = t.match(/^participant\s+(\S+)(?:\s+as\s+(.+))?$/);
+      if (partMatch) {
+        participants.push(partMatch[2] || partMatch[1]);
+        continue;
+      }
+      const msgMatch = t.match(/^(.+?)\s*(->>|-->>|->|-->)\s*(.+?):\s*(.+)$/);
+      if (msgMatch) {
+        messages.push(`  ${msgMatch[1]} -> ${msgMatch[3]}: ${msgMatch[4]}`);
+      }
+    }
+
+    if (participants.length > 0) {
+      result.push('Participants:');
+      participants.forEach(p => result.push(`  * ${p}`));
+      result.push('');
+    }
+    if (messages.length > 0) {
+      result.push('Messages:');
+      messages.forEach(m => result.push(m));
+    }
+  }
+
+  // --- C4 Diagrams ---
+  else if (/^C4/i.test(firstLine)) {
+    const elements: string[] = [];
+    const relationships: string[] = [];
+
+    for (const line of lines.slice(1)) {
+      const t = line.trim();
+      if (!t || t.startsWith('%%')) continue;
+
+      // Elements: Person(id, "Name", "Desc"), System(id, "Name", "Desc"), Container(...), etc.
+      const elMatch = t.match(/^(Person|System|Container|Component|Deployment_Node|Person_Ext|System_Ext|Container_Ext|Component_Ext|SystemDb|ContainerDb|ContainerQueue|ComponentDb)\s*\(\s*(\w+)\s*,\s*"([^"]+)"(?:\s*,\s*"([^"]*)")?(?:\s*,\s*"([^"]*)")?\)/i);
+      if (elMatch) {
+        const type = elMatch[1];
+        const label = elMatch[3];
+        const tech = elMatch[4] ? ` [${elMatch[4]}]` : '';
+        const desc = elMatch[5] ? ` - ${elMatch[5]}` : '';
+        elements.push(`  * ${label}${tech}${desc} (${type})`);
+        labelMap.set(elMatch[2], label);
+        continue;
+      }
+      // Relationships: Rel(from, to, "label") or BiRel(...)
+      const relMatch = t.match(/^(?:Rel|BiRel|RelIndex)\s*\(\s*(?:"[^"]*"\s*,\s*)?(\w+)\s*,\s*(\w+)\s*,\s*"([^"]+)"/i);
+      if (relMatch) {
+        const from = labelMap.get(relMatch[1]) || relMatch[1];
+        const to = labelMap.get(relMatch[2]) || relMatch[2];
+        relationships.push(`  ${from} -> ${to}: ${relMatch[3]}`);
+        continue;
+      }
+      // Boundaries
+      const boundMatch = t.match(/^(System_Boundary|Container_Boundary|Enterprise_Boundary)\s*\(\s*\w+\s*,\s*"([^"]+)"\)/i);
+      if (boundMatch) {
+        elements.push(`  [Boundary] ${boundMatch[2]}`);
+      }
+    }
+
+    if (elements.length > 0) {
+      result.push('Elements:');
+      elements.forEach(e => result.push(e));
+      result.push('');
+    }
+    if (relationships.length > 0) {
+      result.push('Relationships:');
+      relationships.forEach(r => result.push(r));
+    }
+  }
+
+  // --- Architecture-beta ---
+  else if (/^architecture/i.test(firstLine)) {
+    const services: string[] = [];
+    const groups: string[] = [];
+    const connections: string[] = [];
+
+    for (const line of lines.slice(1)) {
+      const t = line.trim();
+      if (!t || t.startsWith('%%')) continue;
+
+      const svcMatch = t.match(/^service\s+(\S+)(?:\([^)]*\))?\s*(?:\[([^\]]+)\])?(?:\s+in\s+(\S+))?/);
+      if (svcMatch) {
+        const label = svcMatch[2] || svcMatch[1];
+        const parent = svcMatch[3] ? ` (in ${svcMatch[3]})` : '';
+        services.push(`  * ${label}${parent}`);
+        labelMap.set(svcMatch[1], label);
+        continue;
+      }
+      const grpMatch = t.match(/^group\s+(\S+)(?:\([^)]*\))?\s*(?:\[([^\]]+)\])?/);
+      if (grpMatch) {
+        const label = grpMatch[2] || grpMatch[1];
+        groups.push(`  * ${label}`);
+        labelMap.set(grpMatch[1], label);
+        continue;
+      }
+      // Edges: id:Dir -- Dir:id or id:Dir -[Label]- Dir:id
+      const edgeMatch = t.match(/^(\S+?)(?::.)?\s*(?:--|-\[([^\]]*)\]-)\s*(?:.:\s*)?(\S+)/);
+      if (edgeMatch && t.includes('--')) {
+        const fromId = edgeMatch[1].replace(/:.$/, '');
+        const edgeLabel = edgeMatch[2] ? ` [${edgeMatch[2]}]` : '';
+        const toId = edgeMatch[3].replace(/^.:/, '');
+        const from = labelMap.get(fromId) || fromId;
+        const to = labelMap.get(toId) || toId;
+        connections.push(`  ${from} <-->${edgeLabel} ${to}`);
+      }
+    }
+
+    if (groups.length > 0) {
+      result.push('Groups:');
+      groups.forEach(g => result.push(g));
+      result.push('');
+    }
+    if (services.length > 0) {
+      result.push('Services:');
+      services.forEach(s => result.push(s));
+      result.push('');
+    }
+    if (connections.length > 0) {
+      result.push('Connections:');
+      connections.forEach(c => result.push(c));
+    }
+  }
+
+  // --- Generic fallback for all other types ---
+  else {
+    // Extract meaningful lines (skip the header, empty lines, and comment lines)
+    const meaningful = lines.slice(1)
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('%%'));
+
+    if (meaningful.length > 0) {
+      result.push('Content:');
+      meaningful.forEach(l => result.push(`  ${l}`));
+    }
+  }
+
+  // If we extracted nothing meaningful, just show the raw code as-is
+  if (result.length <= 2) {
+    return code;
+  }
+
+  return result.join('\n');
 }
 
 /**
@@ -340,6 +591,9 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [scale, setScale] = useState(1);
+
+  // Pre-compute text fallback so it's ready immediately if rendering fails
+  const textFallback = useMemo(() => mermaidToTextFallback(code), [code]);
   const [disclaimerConfig, setDisclaimerConfig] = useState<{
     enabled: boolean;
     fullText: string;
@@ -539,21 +793,34 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
 
   if (error) {
     return (
-      <div className={`bg-red-50 rounded-lg border border-red-200 p-4 my-4 ${className}`}>
-        <div className="flex items-start gap-2 text-red-700">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">Failed to render diagram</p>
-            <p className="text-sm mt-1 text-red-600">{error}</p>
-            <details className="mt-2">
-              <summary className="text-sm cursor-pointer hover:text-red-800">
-                Show diagram code
+      <div className={`bg-amber-50 rounded-lg border border-amber-200 my-4 overflow-hidden ${className}`}>
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-2 bg-amber-100 border-b border-amber-200">
+          <FileText className="w-4 h-4 text-amber-700" />
+          <span className="text-sm font-medium text-amber-800">
+            Diagram (text view — interactive render unavailable)
+          </span>
+        </div>
+        {/* Text fallback content */}
+        <pre className="px-4 py-3 text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
+          {textFallback}
+        </pre>
+        {/* Collapsed error details */}
+        <div className="px-4 pb-3">
+          <details className="text-xs text-amber-700">
+            <summary className="cursor-pointer hover:text-amber-900">
+              Render error details
+            </summary>
+            <p className="mt-1 text-red-600">{error}</p>
+            <details className="mt-1">
+              <summary className="cursor-pointer hover:text-amber-900">
+                Raw Mermaid code
               </summary>
-              <pre className="mt-2 p-2 bg-red-100 rounded text-xs overflow-x-auto">
+              <pre className="mt-1 p-2 bg-amber-100 rounded text-xs overflow-x-auto">
                 {code}
               </pre>
             </details>
-          </div>
+          </details>
         </div>
       </div>
     );

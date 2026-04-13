@@ -342,17 +342,20 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
 - Groups: group id(icon)[Label]
 - Nest a service/group inside a group: add "in parentGroupId" after the definition
 - Junctions (for multi-way connections): junction id
-- Edges use directional port notation: id:Direction -- Direction:id
+- Edges: id:Direction -- Direction:id  (ALWAYS use -- double dash, NEVER -->)
   Directions: T (top), B (bottom), L (left), R (right)
-  Arrow: id:Direction --> Direction:id
-- Keep labels short — no special characters or parentheses in labels`,
+  Labeled edge: id:Direction -[Label]- Direction:id
+STRICT LABEL RULES — labels inside [...] may ONLY contain letters, numbers, underscores, and spaces.
+  NO dots, NO apostrophes, NO hyphens, NO slashes, NO special characters.
+  Write "NextJS 16" not "Next.js 16"; write "Lets Encrypt" not "Let's Encrypt"
+STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyphens. NO dots.`,
     example: `architecture-beta
     group api(cloud)[API Layer]
     service web(server)[Web Server] in api
     service db(database)[Database] in api
     service cache(disk)[Cache] in api
-    web:R --> L:db
-    web:B --> T:cache`,
+    web:R -- L:db
+    web:B -- T:cache`,
     prefix: 'architecture-beta',
   },
 

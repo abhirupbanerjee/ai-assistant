@@ -100,6 +100,19 @@ export function validateMermaidSyntax(
     }
   }
 
+  // Architecture-beta validation (strict parser — catch issues before client)
+  if (expectedType === 'architecture') {
+    // Labels must contain only [\w ] — flag dots, apostrophes, etc.
+    const badLabels = cleanCode.match(/\[([^\]]*[^\w \]][^\]]*)\]/g);
+    if (badLabels) {
+      errors.push(`Architecture labels contain invalid characters: ${badLabels.slice(0, 3).join(', ')} — only letters, numbers, underscores, and spaces allowed`);
+    }
+    // Edges must use -- not -->
+    if (/-->/.test(cleanCode)) {
+      errors.push('Architecture edges must use -- (double dash), not --> (arrow)');
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -281,11 +294,45 @@ export function sanitizeMermaidCode(code: string): string {
     sanitized = sanitized.replace(/^stateDiagram\b/i, 'stateDiagram-v2');
   }
 
-  // Normalize architecture keyword: LLMs sometimes omit "-beta" suffix
+  // Normalize and sanitize architecture-beta diagrams
+  // architecture-beta has strict syntax rules (mermaid 11.12.2):
+  // - Labels inside [...] may only contain [\w ] (letters, digits, underscores, spaces)
+  // - IDs may only contain [\w-] (letters, digits, underscores, hyphens — no dots)
+  // - Edges use -- (double dash) ONLY, never -->
   // Note: same logic exists in src/components/markdown/MermaidDiagram.tsx (client-side).
   // Any changes here should be mirrored there.
   if (sanitized.trim().startsWith('architecture')) {
+    // Fix keyword: LLMs sometimes omit "-beta" suffix
     sanitized = sanitized.replace(/^architecture\b(?!-beta)/m, 'architecture-beta');
+
+    // Fix edges: --> is invalid in architecture-beta; must be -- (double dash)
+    sanitized = sanitized.replace(/->+/g, '--');
+
+    // Fix labels: only [\w ] allowed inside [...] — strip dots, apostrophes, etc.
+    sanitized = sanitized.replace(/\[([^\]]+)\]/g, (_, label) => {
+      const clean = label.replace(/[^\w ]/g, '');
+      return `[${clean}]`;
+    });
+
+    // Fix IDs: replace dots with underscores (dots break the parser)
+    const archKeywords = ['service', 'gateway', 'database', 'public_network', 'group', 'disk', 'cloud', 'edge', 'firewall', 'junction'];
+    sanitized = sanitized.split('\n').map(line => {
+      const t = line.trim();
+      // Definition lines: clean the ID portion
+      const defMatch = line.match(/^(\s*)(service|gateway|database|public_network|group|disk|cloud|edge|firewall|junction)\s+([^\s[({]+)(.*)$/i);
+      if (defMatch) {
+        const [, indent, type, id, rest] = defMatch;
+        return `${indent}${type} ${id.replace(/[^\w-]/g, '_')}${rest}`;
+      }
+      // Edge lines: clean IDs referenced in edges
+      if (t.includes('--') && !t.startsWith('architecture')) {
+        return line.replace(/([a-zA-Z0-9._-]+)(?=:|\s--|--\s|$)/g, (match) => {
+          if (archKeywords.includes(match.toLowerCase())) return match;
+          return match.replace(/[^\w-]/g, '_');
+        });
+      }
+      return line;
+    }).join('\n');
   }
 
   // Normalize quadrantChart keyword and clamp point coordinates to [0, 1]
