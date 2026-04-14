@@ -107,8 +107,8 @@ export async function getAgentModelConfigs(): Promise<StoredAgentModelConfigs> {
   const executorModel =
     presets['fireworks/minimax-m2p5']
       ? 'fireworks/minimax-m2p5'
-      : presets['fireworks/deepseek-v3p2']
-        ? 'fireworks/deepseek-v3p2'
+      : presets['fireworks/minimax-m2p7']
+        ? 'fireworks/minimax-m2p7'
         : presets['fireworks/kimi-k2p5']
           ? 'fireworks/kimi-k2p5'
           : defaultModel;

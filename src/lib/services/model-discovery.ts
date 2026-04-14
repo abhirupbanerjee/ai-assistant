@@ -553,20 +553,20 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       maxOutputTokens: 16384,
     },
     {
-      id: 'fireworks/deepseek-v3p2',
-      name: 'DeepSeek V3.2',
+      id: 'fireworks/qwen3p6-plus',
+      name: 'Qwen3 P6 Plus',
       toolCapable: true,
-      visionCapable: false,
+      visionCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
     {
-      id: 'fireworks/qwen3-coder-480b-a35b-instruct',
-      name: 'Qwen3 Coder 480B',
+      id: 'fireworks/minimax-m2p7',
+      name: 'MiniMax M2.7',
       toolCapable: true,
       visionCapable: false,
-      maxInputTokens: 262144,
-      maxOutputTokens: 65536,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
     },
   ];
 

@@ -187,7 +187,7 @@ User Request
 
 **Model:** MiniMax M2.5 (via Fireworks — `fireworks/minimax-m2p5`)
 
-**Fallback chain:** `fireworks/deepseek-v3p2` → `fireworks/kimi-k2p5` → global default
+**Fallback chain:** `fireworks/minimax-m2p7` → `fireworks/kimi-k2p5` → global default
 
 **Responsibilities:**
 - Execute each task in the plan using appropriate tools

@@ -79,25 +79,25 @@ model_list:
       max_input_tokens: 131072
       max_output_tokens: 16384
 
-  - model_name: fireworks/deepseek-v3p2
+  - model_name: fireworks/qwen3p6-plus
     litellm_params:
-      model: fireworks_ai/accounts/fireworks/models/deepseek-v3p2
+      model: fireworks_ai/accounts/fireworks/models/qwen3p6-plus
+      api_key: os.environ/FIREWORKS_AI_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      max_input_tokens: 131072
+      max_output_tokens: 16384
+
+  - model_name: fireworks/minimax-m2p7
+    litellm_params:
+      model: fireworks_ai/accounts/fireworks/models/minimax-m2p7
       api_key: os.environ/FIREWORKS_AI_API_KEY
     model_info:
       supports_function_calling: true
       supports_vision: false
       max_input_tokens: 131072
       max_output_tokens: 16384
-
-  - model_name: fireworks/qwen3-coder-480b-a35b-instruct
-    litellm_params:
-      model: fireworks_ai/accounts/fireworks/models/qwen3-coder-480b-a35b-instruct
-      api_key: os.environ/FIREWORKS_AI_API_KEY
-    model_info:
-      supports_function_calling: true
-      supports_vision: false
-      max_input_tokens: 262144
-      max_output_tokens: 65536
 
   # ===========================================================================
   # EMBEDDING MODELS

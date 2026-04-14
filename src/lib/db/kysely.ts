@@ -217,10 +217,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // Migration: Seed new Fireworks models added to litellm_config.yaml
   const newFireworksModels = [
     {
-      id: 'fireworks/deepseek-v3p2',
-      display_name: 'DeepSeek V3.2 (Fireworks)',
+      id: 'fireworks/qwen3p6-plus',
+      display_name: 'Qwen3 P6 Plus (Fireworks)',
       tool_capable: 1,
-      vision_capable: 0,
+      vision_capable: 1,
       max_input_tokens: 131072,
       max_output_tokens: 16384,
     },
@@ -233,12 +233,12 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       max_output_tokens: 16384,
     },
     {
-      id: 'fireworks/qwen3-coder-480b-a35b-instruct',
-      display_name: 'Qwen3 Coder 480B (Fireworks)',
+      id: 'fireworks/minimax-m2p7',
+      display_name: 'MiniMax M2.7 (Fireworks)',
       tool_capable: 1,
       vision_capable: 0,
-      max_input_tokens: 262144,
-      max_output_tokens: 65536,
+      max_input_tokens: 131072,
+      max_output_tokens: 16384,
     },
   ];
   for (const model of newFireworksModels) {
@@ -260,6 +260,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       .execute();
   }
   console.log('[Kysely] Seeded new Fireworks models');
+
+  // Migration: Remove retired Fireworks models
+  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/qwen3-coder-480b-a35b-instruct')`.execute(database);
+  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, qwen3-coder-480b)');
 
   // Migration: Remove gpt-4o-mini-transcribe (transcription model, not a chat LLM)
   await sql`DELETE FROM enabled_models WHERE id = 'gpt-4o-mini-transcribe'`.execute(database);
