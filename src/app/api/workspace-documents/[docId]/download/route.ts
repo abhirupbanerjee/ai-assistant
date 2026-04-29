@@ -136,6 +136,7 @@ function getContentType(fileType: string, filename: string): string {
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     md: 'text/markdown',
+    html: 'text/html; charset=utf-8',
     image: 'image/webp', // Default for generated images
     chart: 'image/png',
   };

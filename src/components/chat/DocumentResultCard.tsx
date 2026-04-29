@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, FileSpreadsheet, FileCode, Download, Clock } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, Globe, Download, ExternalLink, Clock } from 'lucide-react';
 import type { GeneratedDocumentInfo } from '@/types';
 
 interface DocumentResultCardProps {
@@ -18,6 +18,8 @@ function getFileIcon(fileType: string) {
       return <FileSpreadsheet size={20} className="text-blue-500" />;
     case 'md':
       return <FileCode size={20} className="text-gray-600" />;
+    case 'html':
+      return <Globe size={20} className="text-emerald-500" />;
     default:
       return <FileText size={20} className="text-gray-500" />;
   }
@@ -34,6 +36,8 @@ function getFileTypeLabel(fileType: string): string {
       return 'Word Document';
     case 'md':
       return 'Markdown';
+    case 'html':
+      return 'HTML Page';
     default:
       return 'Document';
   }
@@ -58,9 +62,15 @@ function formatExpiration(expiresAt: string | null): string | null {
 
 export default function DocumentResultCard({ document }: DocumentResultCardProps) {
   const expiration = formatExpiration(document.expiresAt);
+  const isHtml = document.fileType === 'html';
 
   const handleDownload = () => {
     // Open download URL in new tab
+    window.open(document.downloadUrl, '_blank');
+  };
+
+  const handleOpen = () => {
+    // Open HTML page inline in new tab
     window.open(document.downloadUrl, '_blank');
   };
 
@@ -90,14 +100,26 @@ export default function DocumentResultCard({ document }: DocumentResultCardProps
           )}
         </div>
 
-        {/* Download button */}
-        <button
-          onClick={handleDownload}
-          className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-        >
-          <Download size={16} />
-          Download
-        </button>
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          {isHtml ? (
+            <button
+              onClick={handleOpen}
+              className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
+            >
+              <ExternalLink size={16} />
+              Open
+            </button>
+          ) : (
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+            >
+              <Download size={16} />
+              Download
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -495,7 +495,7 @@ export async function addThreadOutput(
   messageId: string | null,
   filename: string,
   filepath: string,
-  fileType: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3' | 'wav',
+  fileType: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3' | 'wav' | 'html',
   fileSize: number,
   generationConfig?: string,
   expiresAt?: string | null
@@ -669,7 +669,7 @@ export async function addWorkspaceOutput(
   threadId: string | null,
   filename: string,
   filepath: string,
-  fileType: 'pdf' | 'docx' | 'image' | 'chart' | 'md' | 'xlsx' | 'pptx',
+  fileType: 'pdf' | 'docx' | 'image' | 'chart' | 'md' | 'xlsx' | 'pptx' | 'html',
   fileSize: number,
   generationConfig?: string,
   expiresAt?: string | null

@@ -12,6 +12,7 @@ import * as path from 'path';
 import { generatePdf } from './pdf-builder';
 import { generateDocx } from './docx-builder';
 import { generateMd } from './md-builder';
+import { generateHtml } from './html-builder';
 import {
   type BrandingConfig,
   mergeBrandingConfigs,
@@ -33,7 +34,7 @@ import {
 
 // ============ Types ============
 
-export type DocumentFormat = 'pdf' | 'docx' | 'md';
+export type DocumentFormat = 'pdf' | 'docx' | 'md' | 'html';
 
 export interface GenerateDocumentOptions {
   title: string;
@@ -119,6 +120,17 @@ export class DocumentGenerator {
         metadata: options.metadata,
       });
       buffer = result.buffer;
+    } else if (options.format === 'html') {
+      const result = await generateHtml({
+        title: options.title,
+        content: options.content,
+        branding,
+        metadata: {
+          author: options.metadata?.author,
+          date: new Date().toLocaleDateString(),
+        },
+      });
+      buffer = result.buffer;
     } else {
       // Markdown format
       const result = await generateMd({
@@ -201,7 +213,7 @@ export class DocumentGenerator {
         threadContext.actualThreadId ?? null,
         filename,
         filepath,
-        options.format as 'pdf' | 'docx' | 'md',
+        options.format as 'pdf' | 'docx' | 'md' | 'html',
         buffer.length,
         generationConfig,
         expiresAt

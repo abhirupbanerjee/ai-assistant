@@ -214,7 +214,7 @@ export interface ThreadOutputsTable {
   message_id: string | null;
   filename: string;
   filepath: string;
-  file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3' | 'wav';
+  file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3' | 'wav' | 'html';
   file_size: number;
   generation_config: string | null;
   expires_at: string | null;
@@ -676,7 +676,7 @@ export interface WorkspaceOutputsTable {
   thread_id: string | null;
   filename: string;
   filepath: string;
-  file_type: 'pdf' | 'docx' | 'image' | 'chart' | 'md' | 'xlsx' | 'pptx' | 'mp3' | 'wav';
+  file_type: 'pdf' | 'docx' | 'image' | 'chart' | 'md' | 'xlsx' | 'pptx' | 'mp3' | 'wav' | 'html';
   file_size: number;
   generation_config: string | null;
   expires_at: string | null;

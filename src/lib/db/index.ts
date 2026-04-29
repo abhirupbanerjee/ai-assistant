@@ -781,6 +781,55 @@ function runMigrations(database: Database.Database): void {
     `);
     console.log('[DB Migration] Added wav file type to thread_outputs');
   }
+
+  // Migration: Update file_type CHECK constraint to include 'html' format for HTML document generation
+  try {
+    // Test if 'html' is allowed by the current constraint
+    database.exec(`
+      INSERT INTO thread_outputs (thread_id, filename, filepath, file_type, file_size)
+      VALUES ('__migration_test_html__', '__test__', '__test__', 'html', 0)
+    `);
+    // If successful, delete the test row
+    database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test_html__'`);
+  } catch {
+    // 'html' is not allowed, need to recreate the table with updated constraint
+    database.exec(`
+      BEGIN IMMEDIATE;
+      -- Drop any leftover temp table from interrupted migration
+      DROP TABLE IF EXISTS thread_outputs_new;
+      -- Create new table with updated constraint (includes html for HTML document generation)
+      CREATE TABLE thread_outputs_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL,
+        message_id TEXT,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html')),
+        file_size INTEGER NOT NULL,
+        generation_config TEXT,
+        expires_at DATETIME,
+        download_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+      );
+
+      -- Copy existing data
+      INSERT INTO thread_outputs_new (id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at)
+      SELECT id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at
+      FROM thread_outputs;
+
+      -- Drop old table and rename new one
+      DROP TABLE thread_outputs;
+      ALTER TABLE thread_outputs_new RENAME TO thread_outputs;
+
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+      COMMIT;
+    `);
+    console.log('[DB Migration] Added html file type to thread_outputs');
+  }
   } // End of threadOutputsReady check
 
   // Migration: Create thread_shares table for thread sharing feature
@@ -1311,6 +1360,53 @@ function runMigrations(database: Database.Database): void {
       `);
 
       console.log('[DB Migration] Added mp3/wav support to workspace_outputs');
+    }
+
+    // Check if html migration is needed
+    const tableInfoAfterWav = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='workspace_outputs'"
+    ).get() as { sql: string } | undefined;
+
+    if (tableInfoAfterWav && !tableInfoAfterWav.sql.includes("'html'")) {
+      console.log('[DB Migration] Adding html support to workspace_outputs...');
+
+      database.exec(`
+        -- Create new table with updated CHECK constraint (includes html for HTML document generation)
+        CREATE TABLE workspace_outputs_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workspace_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          thread_id TEXT,
+          filename TEXT NOT NULL,
+          filepath TEXT NOT NULL,
+          file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav', 'html')),
+          file_size INTEGER NOT NULL,
+          generation_config TEXT,
+          expires_at DATETIME,
+          download_count INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+          FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE SET NULL
+        );
+
+        -- Copy existing data
+        INSERT INTO workspace_outputs_new
+        SELECT * FROM workspace_outputs;
+
+        -- Drop old table
+        DROP TABLE workspace_outputs;
+
+        -- Rename new table
+        ALTER TABLE workspace_outputs_new RENAME TO workspace_outputs;
+
+        -- Recreate indexes
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_workspace ON workspace_outputs(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_session ON workspace_outputs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_thread ON workspace_outputs(thread_id);
+      `);
+
+      console.log('[DB Migration] Added html support to workspace_outputs');
     }
   }
 

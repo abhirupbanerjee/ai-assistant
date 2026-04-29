@@ -71,8 +71,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const fileType = doc.fileType as string;
     const contentType = getContentType(fileType);
 
-    // Use inline disposition for audio (streaming) and attachment for downloads
-    const disposition = fileType === 'mp3' ? 'inline' : 'attachment';
+    // Use inline disposition for HTML and audio; attachment for downloads
+    const disposition = (fileType === 'mp3' || fileType === 'html') ? 'inline' : 'attachment';
 
     // Create response with file
     const response = new NextResponse(fileBuffer, {
@@ -105,6 +105,7 @@ function getContentType(fileType: string): string {
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     md: 'text/markdown',
+    html: 'text/html; charset=utf-8',
     image: 'image/webp', // Generated images are stored as WebP
     mp3: 'audio/mpeg', // Generated podcasts
   };

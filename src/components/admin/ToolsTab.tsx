@@ -408,7 +408,7 @@ function DocGenConfig({
   };
 
   const handleFormatToggle = (format: string, checked: boolean) => {
-    const formats = ((config.enabledFormats as string[]) || ['pdf', 'docx']).slice();
+    const formats = ((config.enabledFormats as string[]) || ['pdf', 'docx', 'md', 'html']).slice();
     if (checked && !formats.includes(format)) {
       formats.push(format);
     } else if (!checked) {
@@ -416,6 +416,11 @@ function DocGenConfig({
       if (idx !== -1) formats.splice(idx, 1);
     }
     onChange({ ...config, enabledFormats: formats });
+  };
+
+  const handleFormatPromptChange = (format: string, value: string) => {
+    const formatPrompts = (config.formatPrompts as Record<string, string>) || {};
+    onChange({ ...config, formatPrompts: { ...formatPrompts, [format]: value } });
   };
 
   const branding = (config.branding as Record<string, unknown>) || {};
@@ -438,6 +443,7 @@ function DocGenConfig({
           <option value="pdf">PDF</option>
           <option value="docx">Word Document (DOCX)</option>
           <option value="md">Markdown (MD)</option>
+          <option value="html">HTML Page</option>
         </select>
       </div>
 
@@ -470,13 +476,53 @@ function DocGenConfig({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={((config.enabledFormats as string[]) || ['pdf', 'docx', 'md']).includes('md')}
+              checked={((config.enabledFormats as string[]) || ['pdf', 'docx', 'md', 'html']).includes('md')}
               onChange={(e) => handleFormatToggle('md', e.target.checked)}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               disabled={disabled}
             />
             <span className="text-sm">Markdown</span>
           </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={((config.enabledFormats as string[]) || ['pdf', 'docx', 'md', 'html']).includes('html')}
+              onChange={(e) => handleFormatToggle('html', e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={disabled}
+            />
+            <span className="text-sm">HTML</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Per-Format Prompts */}
+      <div className="border-t pt-4 mt-4">
+        <h4 className="font-medium text-gray-900 mb-1 flex items-center gap-2">
+          <FileText size={16} />
+          Per-Format Prompt Guidance
+        </h4>
+        <p className="text-xs text-gray-500 mb-3">
+          Optional system prompt instructions appended when generating each format. Leave blank to use defaults.
+        </p>
+        <div className="space-y-3">
+          {(['pdf', 'docx', 'md', 'html'] as const).map((fmt) => {
+            const label = fmt === 'pdf' ? 'PDF' : fmt === 'docx' ? 'Word (DOCX)' : fmt === 'md' ? 'Markdown' : 'HTML';
+            const formatPrompts = (config.formatPrompts as Record<string, string>) || {};
+            return (
+              <div key={fmt}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                <textarea
+                  rows={fmt === 'html' ? 5 : 2}
+                  value={formatPrompts[fmt] || ''}
+                  onChange={(e) => handleFormatPromptChange(fmt, e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono resize-y"
+                  placeholder={`Custom instructions for ${label} generation (optional)`}
+                  disabled={disabled}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 

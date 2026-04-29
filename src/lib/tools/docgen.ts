@@ -1,7 +1,7 @@
 /**
  * Document Generation Tool Definition
  *
- * Autonomous tool for generating branded PDF and Word documents
+ * Autonomous tool for generating branded PDF, Word, Markdown, and HTML documents
  * from chat content. LLM-triggered via OpenAI function calling
  * when users request document exports.
  */
@@ -19,6 +19,32 @@ import { getRequestContext } from '../request-context';
 
 // ============ Config Schema ============
 
+// ============ Default Per-Format Prompts ============
+
+export const DEFAULT_FORMAT_PROMPTS: Record<string, string> = {
+  pdf: 'Generate a professional PDF document with clear headings, structured sections, and formal language suitable for printing.',
+  docx: 'Generate a Word document with well-organized sections, headings, and bullet points. Use clear, editable formatting.',
+  md: 'Generate a clean Markdown document with proper heading hierarchy, code blocks where appropriate, and concise prose.',
+  html: `Generate an HTML page using the following guidelines based on the requested type:
+
+- **Dashboard**: Use \`\`\`chart blocks for Chart.js charts and \`\`\`mermaid blocks for diagrams. Organize metrics in a grid layout.
+- **Documentation**: Use standard markdown with headings (# ## ###) for chapters and sections. A TOC sidebar and search will be generated automatically.
+- **Diagram/Flowchart**: Use \`\`\`mermaid blocks with supported diagram types: flowchart, mindmap, sequenceDiagram, classDiagram, c4Context, c4Container, c4Component.
+- **Web Page**: Use standard markdown content; it will be rendered as a clean, responsive web page.
+
+For charts, use this format:
+\`\`\`chart
+{
+  "type": "bar",
+  "title": "Chart Title",
+  "labels": ["A", "B", "C"],
+  "datasets": [{"label": "Series 1", "data": [10, 20, 30]}]
+}
+\`\`\`
+
+Supported chart types: bar, line, pie, doughnut, radar, polarArea.`,
+};
+
 const docGenConfigSchema = {
   type: 'object',
   properties: {
@@ -26,7 +52,7 @@ const docGenConfigSchema = {
       type: 'string',
       title: 'Default Format',
       description: 'Default document format when not specified',
-      enum: ['pdf', 'docx', 'md'],
+      enum: ['pdf', 'docx', 'md', 'html'],
       default: 'pdf',
     },
     enabledFormats: {
@@ -35,9 +61,20 @@ const docGenConfigSchema = {
       description: 'Document formats available for export',
       items: {
         type: 'string',
-        enum: ['pdf', 'docx', 'md'],
+        enum: ['pdf', 'docx', 'md', 'html'],
       },
-      default: ['pdf', 'docx', 'md'],
+      default: ['pdf', 'docx', 'md', 'html'],
+    },
+    formatPrompts: {
+      type: 'object',
+      title: 'Per-Format Prompts',
+      description: 'Custom system prompt guidance for each document format',
+      properties: {
+        pdf: { type: 'string', title: 'PDF Prompt', default: '' },
+        docx: { type: 'string', title: 'DOCX Prompt', default: '' },
+        md: { type: 'string', title: 'Markdown Prompt', default: '' },
+        html: { type: 'string', title: 'HTML Prompt', default: '' },
+      },
     },
     branding: {
       type: 'object',
@@ -141,8 +178,8 @@ function validateDocGenConfig(config: Record<string, unknown>): ValidationResult
   const errors: string[] = [];
 
   // Validate defaultFormat
-  if (config.defaultFormat && !['pdf', 'docx', 'md'].includes(config.defaultFormat as string)) {
-    errors.push('defaultFormat must be one of: pdf, docx, md');
+  if (config.defaultFormat && !['pdf', 'docx', 'md', 'html'].includes(config.defaultFormat as string)) {
+    errors.push('defaultFormat must be one of: pdf, docx, md, html');
   }
 
   // Validate enabledFormats
@@ -150,7 +187,7 @@ function validateDocGenConfig(config: Record<string, unknown>): ValidationResult
     if (!Array.isArray(config.enabledFormats)) {
       errors.push('enabledFormats must be an array');
     } else {
-      const validFormats = ['pdf', 'docx', 'md'];
+      const validFormats = ['pdf', 'docx', 'md', 'html'];
       for (const format of config.enabledFormats) {
         if (!validFormats.includes(format as string)) {
           errors.push(`Invalid format in enabledFormats: ${format}`);
@@ -209,7 +246,7 @@ export const documentGenerationTool: ToolDefinition = {
     function: {
       name: 'doc_gen',
       description:
-        'Generate a formatted document (PDF, Word, or Markdown) from content. Use this tool when the user explicitly asks to create, export, download, or save a document, report, summary, or policy. Do NOT use for regular responses - only when explicitly requested. The generated document will be displayed automatically in the chat with a download button - do NOT create markdown links for downloading.',
+        'Generate a formatted document (PDF, Word, Markdown, or HTML) from content. Use this tool when the user explicitly asks to create, export, download, or save a document, report, summary, policy, dashboard, diagram, or web page. Do NOT use for regular responses - only when explicitly requested. The generated document will be displayed automatically in the chat with a download button - do NOT create markdown links for downloading.',
       parameters: {
         type: 'object',
         properties: {
@@ -220,13 +257,13 @@ export const documentGenerationTool: ToolDefinition = {
           content: {
             type: 'string',
             description:
-              'Document content in markdown format. Include all relevant information the user wants in the document.',
+              'Document content in markdown format. For HTML format, may include ```chart (Chart.js JSON) and ```mermaid (diagram) blocks. Include all relevant information the user wants in the document.',
           },
           format: {
             type: 'string',
-            enum: ['pdf', 'docx', 'md'],
+            enum: ['pdf', 'docx', 'md', 'html'],
             description:
-              'Output format: pdf (recommended for professional documents), docx (Word, for editable documents), or md (Markdown, for plain text)',
+              'Output format: pdf (recommended for professional documents), docx (Word, for editable documents), md (Markdown, for plain text), or html (interactive web page with charts, diagrams, TOC, and search)',
           },
         },
         required: ['title', 'content', 'format'],
@@ -297,7 +334,7 @@ export const documentGenerationTool: ToolDefinition = {
       const docGenConfig: DocGenConfig = {
         enabled: toolConfig?.isEnabled ?? TOOL_DEFAULTS.doc_gen.enabled,
         defaultFormat: (config.defaultFormat as DocumentFormat) || 'pdf',
-        enabledFormats: (config.enabledFormats as DocumentFormat[]) || ['pdf', 'docx', 'md'],
+        enabledFormats: (config.enabledFormats as DocumentFormat[]) || ['pdf', 'docx', 'md', 'html'],
         branding: config.branding as BrandingConfig,
         expirationDays: (config.expirationDays as number) || 30,
         maxDocumentSizeMB: (config.maxDocumentSizeMB as number) || 50,
@@ -391,7 +428,7 @@ export async function getDocGenConfig(): Promise<DocGenConfig> {
   return {
     enabled: toolConfig?.isEnabled ?? TOOL_DEFAULTS.doc_gen.enabled,
     defaultFormat: (config.defaultFormat as DocumentFormat) || 'pdf',
-    enabledFormats: (config.enabledFormats as DocumentFormat[]) || ['pdf', 'docx'],
+    enabledFormats: (config.enabledFormats as DocumentFormat[]) || ['pdf', 'docx', 'md', 'html'],
     branding: config.branding as BrandingConfig,
     expirationDays: (config.expirationDays as number) || 30,
     maxDocumentSizeMB: (config.maxDocumentSizeMB as number) || 50,
