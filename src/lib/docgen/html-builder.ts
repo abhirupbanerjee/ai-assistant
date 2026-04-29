@@ -28,6 +28,22 @@ export interface HtmlOptions {
   };
 }
 
+/**
+ * Options for generating HTML from a pre-rendered HTML source
+ * (e.g., output from mammoth.convertToHtml for DOCX conversion)
+ */
+export interface HtmlSourceOptions {
+  title: string;
+  /** Pre-rendered HTML fragment (headings, paragraphs, tables, images) */
+  sourceHtml: string;
+  branding: BrandingConfig;
+  disclaimerConfig?: DisclaimerConfig | null;
+  metadata?: {
+    author?: string;
+    date?: string;
+  };
+}
+
 export interface HtmlResult {
   buffer: Buffer;
   fileSize: number;
@@ -872,5 +888,155 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
     pageType,
     chartCount: chartCounter,
     diagramCount: diagramCounter,
+  };
+}
+
+// ============ HTML Source Generator (for DOCX conversion) ============
+
+/**
+ * Extract TOC entries from pre-rendered HTML (mammoth output).
+ * Works with <h1>, <h2>, <h3>, <h4> tags.
+ */
+function extractTocFromHtml(sourceHtml: string): TocEntry[] {
+  const toc: TocEntry[] = [];
+  const idCounts: Record<string, number> = {};
+
+  // Match h1-h4 tags with their text content
+  const headingRegex = /<h([1-4])[^>]*>([\s\S]*?)<\/h[1-4]>/gi;
+  let match;
+
+  while ((match = headingRegex.exec(sourceHtml)) !== null) {
+    const level = parseInt(match[1], 10);
+    // Strip any inner HTML tags to get plain text
+    const rawText = match[2].replace(/<[^>]+>/g, '').trim();
+    if (!rawText) continue;
+
+    let id = rawText.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (idCounts[id]) {
+      idCounts[id]++;
+      id = id + '-' + idCounts[id];
+    } else {
+      idCounts[id] = 1;
+    }
+    toc.push({ level, text: rawText, id });
+  }
+
+  return toc;
+}
+
+/**
+ * Sanitize mammoth HTML: strip dangerous tags while preserving safe content.
+ * Removes <script>, <style>, <link>, <iframe>, <object>, <embed>, <form>.
+ * Adds anchor IDs to headings that don't have them.
+ */
+function sanitizeMammothHtml(sourceHtml: string): string {
+  // Remove dangerous tags
+  let html = sourceHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  html = html.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  html = html.replace(/<link\b[^>]+>/gi, '');
+  html = html.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+  html = html.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
+  html = html.replace(/<embed\b[^>]+>/gi, '');
+  html = html.replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '');
+  html = html.replace(/javascript:/gi, '');
+
+  // Add IDs to headings that don't have them
+  const idCounts: Record<string, number> = {};
+  html = html.replace(/<h([1-4])([^>]*)>([\s\S]*?)<\/h[1-4]>/gi, (_, level, attrs, content) => {
+    // Skip if already has an id
+    if (/id="/.test(attrs)) return _;
+    const plainText = content.replace(/<[^>]+>/g, '').trim();
+    let id = plainText.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!id) return _;
+    if (idCounts[id]) {
+      idCounts[id]++;
+      id = id + '-' + idCounts[id];
+    } else {
+      idCounts[id] = 1;
+    }
+    return `<h${level}${attrs} id="${id}">${content}</h${level}>`;
+  });
+
+  return html;
+}
+
+/**
+ * Generate a self-contained HTML page from pre-rendered HTML source.
+ * Used when converting DOCX → HTML via mammoth.convertToHtml().
+ * Wraps the source HTML in the documentation template with TOC sidebar and search.
+ */
+export async function generateHtmlFromSource(options: HtmlSourceOptions): Promise<{
+  buffer: Buffer;
+  fileSize: number;
+  tocCount: number;
+}> {
+  const { title, sourceHtml, branding, metadata } = options;
+
+  // Sanitize the mammoth HTML
+  const sanitizedHtml = sanitizeMammothHtml(sourceHtml);
+
+  // Extract TOC from headings
+  const toc = extractTocFromHtml(sanitizedHtml);
+
+  // Build CSS and JS
+  const css = buildCss(branding, 'documentation');
+  const js = buildJs();
+
+  // Build TOC HTML
+  const tocHtml = buildTocHtml(toc);
+
+  // Date for footer
+  const date = metadata?.date || new Date().toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  // Assemble the full documentation template
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <style>${css}</style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-left">
+      ${logoHtml}
+      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      <span class="header-title">${escapeHtml(title)}</span>
+    </div>
+    <div class="header-right">
+      <input type="search" class="search-bar" placeholder="Search..." oninput="searchDocs(this.value)" aria-label="Search documentation">
+    </div>
+  </header>
+  <div class="layout">
+    ${tocHtml}
+    <main class="main-content" role="main">
+      <h1>${escapeHtml(title)}</h1>
+      ${sanitizedHtml}
+      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Converted ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
+    </main>
+  </div>
+  <footer class="site-footer">
+    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Converted ${date}
+  </footer>
+  <script>${js}</script>
+</body>
+</html>`;
+
+  const buffer = Buffer.from(html, 'utf-8');
+
+  return {
+    buffer,
+    fileSize: buffer.length,
+    tocCount: toc.length,
   };
 }

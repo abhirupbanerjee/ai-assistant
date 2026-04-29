@@ -307,6 +307,19 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       },
     },
   },
+  doc_to_html: {
+    enabled: true,
+    config: {
+      branding: {
+        enabled: false,
+        logoUrl: '',
+        organizationName: '',
+        primaryColor: '#003366',
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+      },
+      expirationDays: 30,
+    },
+  },
 };
 
 function getTranslationToolDefaults(): { enabled: boolean; config: Record<string, unknown> } {
