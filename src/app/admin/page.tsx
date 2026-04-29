@@ -9,7 +9,8 @@ import Spinner from '@/components/ui/Spinner';
 import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
-import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
+import AdminSidebarMenu, { type SettingsSection as SidebarSettingsSection } from '@/components/admin/AdminSidebarMenu';
+import FileUploadSettings from '@/components/admin/settings/FileUploadSettings';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
 import { AgentBotsManagement, AgentBotDetail } from '@/components/admin/agent-bots';
@@ -115,7 +116,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
+type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -251,7 +252,7 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'ocr', 'speech', 'cache', 'backup'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup'];
 const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
 
 function AdminPageContent() {
@@ -1156,6 +1157,9 @@ function AdminPageContent() {
 
               {/* Reranker Section */}
               {settingsSection === 'reranker' && <RerankerSettingsTab />}
+
+              {/* File Uploads Section */}
+              {settingsSection === 'uploads' && <FileUploadSettings />}
 
               {/* Document Processing (OCR) Section */}
               {settingsSection === 'ocr' && <DocumentProcessingTab />}

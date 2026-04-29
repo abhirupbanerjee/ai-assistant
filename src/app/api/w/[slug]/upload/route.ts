@@ -29,16 +29,26 @@ interface RouteContext {
 
 // Allowed MIME types for workspace uploads
 const ALLOWED_TYPES = new Set([
+  // Documents
   'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+  'application/msword', // doc
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+  'application/vnd.ms-excel', // xls
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+  'application/vnd.ms-powerpoint', // ppt
+  // Text
   'text/plain',
   'text/markdown',
+  'text/html',
+  'text/csv',
   'application/json',
+  // Images
   'image/png',
   'image/jpeg',
   'image/jpg',
   'image/gif',
   'image/webp',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
 ]);
 
 // Save upload file

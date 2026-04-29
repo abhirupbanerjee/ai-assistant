@@ -46,11 +46,17 @@ export interface ExtractionResult {
 export const SUPPORTED_MIME_TYPES = {
   // Documents
   PDF: 'application/pdf',
+  DOC: 'application/msword',
   DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  XLS: 'application/vnd.ms-excel',
   XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  PPT: 'application/vnd.ms-powerpoint',
   PPTX: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  // Text
   TXT: 'text/plain',
   MD: 'text/markdown',
+  HTML: 'text/html',
+  CSV: 'text/csv',
   JSON: 'application/json',
   // Images
   PNG: 'image/png',
@@ -63,11 +69,16 @@ export const ALL_SUPPORTED_MIME_TYPES = Object.values(SUPPORTED_MIME_TYPES);
 
 export const SUPPORTED_EXTENSIONS = [
   '.pdf',
+  '.doc', // legacy Word
   '.docx',
+  '.xls', // legacy Excel
   '.xlsx',
+  '.ppt', // legacy PowerPoint
   '.pptx',
   '.txt',
   '.md',
+  '.html',
+  '.csv',
   '.json',
   '.png',
   '.jpg',
@@ -76,7 +87,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.gif',
 ] as const;
 
-export const ALLOWED_EXTENSIONS_STRING = '.pdf,.docx,.xlsx,.pptx,.txt,.md,.json,.png,.jpg,.jpeg,.webp,.gif';
+export const ALLOWED_EXTENSIONS_STRING = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp,.gif';
 
 // ============================================
 // MIME Type Helpers
@@ -119,13 +130,47 @@ export function isPlainText(mimeType: string): boolean {
   return mimeType === SUPPORTED_MIME_TYPES.TXT || mimeType === SUPPORTED_MIME_TYPES.MD || mimeType === SUPPORTED_MIME_TYPES.JSON;
 }
 
+export function isCSV(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.CSV;
+}
+
+export function isHTML(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.HTML;
+}
+
+export function isDoc(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.DOC;
+}
+
+export function isXls(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.XLS;
+}
+
+export function isPpt(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.PPT;
+}
+
 export function isPlainTextFile(mimeType: string, filename: string): boolean {
   // Check MIME type first
-  if (mimeType === SUPPORTED_MIME_TYPES.TXT || mimeType === SUPPORTED_MIME_TYPES.MD || mimeType === SUPPORTED_MIME_TYPES.JSON) return true;
-  // Also check file extension for octet-stream (common for .txt, .md, and .json files)
+  if (
+    mimeType === SUPPORTED_MIME_TYPES.TXT ||
+    mimeType === SUPPORTED_MIME_TYPES.MD ||
+    mimeType === SUPPORTED_MIME_TYPES.JSON ||
+    mimeType === SUPPORTED_MIME_TYPES.CSV
+  ) return true;
+  // Also check file extension for octet-stream (common for .txt, .md, .json, .csv files)
   if (mimeType === 'application/octet-stream') {
     const ext = filename.toLowerCase().split('.').pop();
-    return ext === 'txt' || ext === 'md' || ext === 'json';
+    return ext === 'txt' || ext === 'md' || ext === 'json' || ext === 'csv';
+  }
+  return false;
+}
+
+export function isHTMLFile(mimeType: string, filename: string): boolean {
+  if (mimeType === SUPPORTED_MIME_TYPES.HTML) return true;
+  if (mimeType === 'application/octet-stream' || mimeType === 'text/plain') {
+    const ext = filename.toLowerCase().split('.').pop();
+    return ext === 'html' || ext === 'htm';
   }
   return false;
 }
@@ -191,6 +236,34 @@ export async function extractText(
       pages: [{ pageNumber: 1, text }],
       provider: 'pdf-parse', // Use 'pdf-parse' as provider for consistency
     };
+  }
+
+  // TIER 0: HTML files — strip tags to plain text
+  if (isHTMLFile(mimeType, filename)) {
+    console.log(`[Tier 0] Stripping HTML tags from ${filename}...`);
+    const html = buffer.toString('utf-8');
+    const text = stripHTMLTags(html);
+    return {
+      text,
+      numPages: 1,
+      pages: [{ pageNumber: 1, text }],
+      provider: 'pdf-parse',
+    };
+  }
+
+  // TIER 0.5: Legacy Office formats (DOC, XLS, PPT) — handled by officeparser
+  // officeparser supports all Office formats including legacy ones
+  if (isDoc(mimeType) || isXls(mimeType) || isPpt(mimeType)) {
+    try {
+      console.log(`[Tier 0.5] Attempting officeparser for legacy format ${filename}...`);
+      const result = await extractWithOfficeParser(buffer);
+      console.log(`[Tier 0.5] officeparser succeeded: ${result.text.length} chars`);
+      return result;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`[Tier 0.5] officeparser failed for ${filename}: ${msg}`);
+      errors.push(`officeparser: ${msg}`);
+    }
   }
 
   // TIER 0.5: DOCX files (structured XML, no OCR needed)
@@ -425,6 +498,34 @@ async function extractWithExcelJS(buffer: Buffer): Promise<ExtractionResult> {
   if (!text.trim()) throw new Error('exceljs extracted empty text from XLSX');
 
   return { text, numPages: pages.length, pages, provider: 'exceljs' };
+}
+
+// ============================================
+// HTML Strip Utility
+// ============================================
+
+function stripHTMLTags(html: string): string {
+  // Remove script and style elements with their content
+  let text = html.replace(/<(script|style|noscript|iframe)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // Remove HTML comments
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+  // Remove all HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
+  // Decode common HTML entities
+  text = text.replace(/&nbsp;/g, ' ');
+  text = text.replace(/&amp;/g, '&');
+  text = text.replace(/&lt;/g, '<');
+  text = text.replace(/&gt;/g, '>');
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&#39;/g, "'");
+  text = text.replace(/&apos;/g, "'");
+  // Decode numeric HTML entities
+  text = text.replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)));
+  text = text.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  // Collapse multiple whitespace into single spaces
+  text = text.replace(/\s+/g, ' ');
+  // Trim and return
+  return text.trim();
 }
 
 // ============================================

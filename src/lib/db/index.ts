@@ -1928,7 +1928,26 @@ function initializeDefaultSettings(database: Database.Database): void {
       maxFilesPerInput: 5,
       maxFilesPerThread: 10,
       maxFileSizeMB: 10,
-      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'application/json'],
+      allowedTypes: [
+        // Documents
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+        'application/msword', // doc
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+        'application/vnd.ms-excel', // xls
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+        'application/vnd.ms-powerpoint', // ppt
+        // Text
+        'text/plain',
+        'text/markdown',
+        'text/html',
+        'text/csv',
+        'application/json',
+        // Images
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+      ],
     },
     'acronym-mappings': {},
     'system-prompt': {

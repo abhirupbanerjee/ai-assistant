@@ -21,15 +21,27 @@ import Modal from '@/components/ui/Modal';
 
 // Allowed file types (must match config/defaults.json)
 const ALLOWED_TYPES = [
+  // Documents
   'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+  'application/msword', // doc
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+  'application/vnd.ms-excel', // xls
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+  'application/vnd.ms-powerpoint', // ppt
+  // Text
+  'text/plain',
+  'text/markdown',
+  'text/html',
+  'text/csv',
+  'application/json',
+  // Images
   'image/png',
   'image/jpeg',
   'image/webp',
-  'text/plain',
-  'application/json',
 ];
 
-const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg,.webp,.txt,.json';
+const ALLOWED_EXTENSIONS = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp';
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
