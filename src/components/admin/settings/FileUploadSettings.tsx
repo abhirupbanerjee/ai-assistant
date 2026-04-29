@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Save, FileText, ImageIcon, File } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
@@ -81,6 +81,11 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
     }
   }, []);
 
+  // Load settings on mount
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
   const saveSettings = async () => {
     if (!editedSettings) return;
 
@@ -92,8 +97,8 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          section: 'upload-limits',
-          data: {
+          type: 'uploadLimits',
+          settings: {
             maxFilesPerInput: editedSettings.maxFilesPerInput,
             maxFilesPerThread: editedSettings.maxFilesPerThread,
             maxFileSizeMB: editedSettings.maxFileSizeMB,
