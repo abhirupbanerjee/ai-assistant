@@ -9,7 +9,7 @@ import OpenAI from 'openai';
 import { getLlmSettings } from '@/lib/db/compat/config';
 import { getApiKey } from '@/lib/provider-helpers';
 import { getToolConfig } from '@/lib/db/compat/tool-config';
-import { buildGenerationPrompt, DIAGRAM_TEMPLATES } from './templates';
+import { buildGenerationPrompt, getDiagramSystemPrompt, DIAGRAM_TEMPLATES } from './templates';
 import { validateMermaidSyntax, sanitizeMermaidCode } from './validator';
 import type {
   MermaidDiagramType,
@@ -88,8 +88,13 @@ export async function generateMermaidDiagram(
 
   const client = await getOpenAIClient();
 
-  // Build specialized prompt for this diagram type
-  const { system, user } = buildGenerationPrompt(diagramType, description, direction, title);
+  // Get effective system prompt (from config override or hardcoded default)
+  const effectiveSystemPrompt = await getDiagramSystemPrompt(diagramType);
+
+  // Build prompt using effective system prompt (direction is handled by admin override or {DIRECTION} placeholder)
+  const { system, user } = buildGenerationPrompt(
+    diagramType, description, direction, title, effectiveSystemPrompt
+  );
 
   if (config.debugMode) {
     console.log('[DiagramGen] Model:', model);

@@ -1297,6 +1297,273 @@ function ComplianceCheckerConfig({
   );
 }
 
+/**
+ * DiagramGenConfig component - Configuration form for diagram_gen tool
+ */
+function DiagramGenConfig({
+  config,
+  onChange,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+  disabled: boolean;
+}) {
+  const handleChange = (key: string, value: unknown) => {
+    onChange({ ...config, [key]: value });
+  };
+
+  // Default per-diagram system prompts
+  const defaultPrompts: Record<string, string> = {
+    flowchart: `Generate a Mermaid flowchart diagram.
+- Use flowchart {DIRECTION} as the first line
+- Use [Box] for rectangles, {Decision} for diamonds, ([Rounded]) for stadium shapes
+- Use --> for arrows, -->|Label| for labeled arrows — NEVER use single -> (invalid in Mermaid)
+- Keep max 12-15 nodes
+- If a label contains a URL path or forward slash, wrap it in quotes: ["/api/users"] not [/api/users]`,
+    sequence: `Generate a Mermaid sequence diagram.
+- Start with: sequenceDiagram
+- Define participants with: participant Name
+- Use ->> for solid arrows, -->> for dashed
+- Use activate/deactivate for lifelines in the main linear flow only — NOT inside alt/else/opt/loop/par blocks
+- If a participant is activated before an alt/else block, place its deactivate after the end keyword
+- Use Note over/left of/right of for notes`,
+    mindmap: `Generate a Mermaid mindmap diagram.
+- Start with: mindmap
+- Use indentation for hierarchy (2 spaces per level)
+- Root node uses: root((Central Topic))
+- Child nodes are plain text with indentation
+- Max 3-4 levels deep, max 10 nodes total
+- Do NOT use parentheses inside node text
+- Use "and" instead of "&"`,
+    'c4-context': `Generate a Mermaid C4 Context diagram.
+- Start with: C4Context
+- Internal elements: Person(alias, "Name", "Desc"), System(alias, "Name", "Desc"), SystemDb(alias, "Name", "Desc")
+- External elements use underscore suffix: System_Ext(alias, "Name", "Desc"), Person_Ext(alias, "Name", "Desc")
+  CRITICAL: NEVER use camelCase — always use System_Ext, Person_Ext
+- Boundaries: System_Boundary(id, "label") { ... } or Enterprise_Boundary(id, "label") { ... }
+- Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional`,
+    'c4-container': `Generate a Mermaid C4 Container diagram.
+- Start with: C4Container
+- Containers: Container(alias, "Name", "Tech", "Desc"), ContainerDb(alias, "Name", "Tech", "Desc")
+- External systems: System_Ext(alias, "Name", "Desc")
+  CRITICAL: NEVER use camelCase — always use System_Ext, Container_Ext, Person_Ext, Container_Boundary
+- Group containers with: Container_Boundary(id, "label") { ... }
+- Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional`,
+    gantt: `Generate a Mermaid Gantt chart.
+- Start with: gantt
+- Use section for grouping tasks — every task must be inside a section
+- Task format: Task name :id, start, duration
+- Valid duration units: d (days), w (weeks), h (hours), m (minutes)
+- Valid modifiers: done, active, crit, milestone — NEVER use "critical"
+- Do NOT include colons inside task names
+- Use "after taskId" for sequential dependencies`,
+    classDiagram: `Generate a Mermaid class diagram.
+- Start with: classDiagram
+- Class definition: class ClassName { }
+- Attributes: +publicAttr : Type, -privateAttr : Type, #protectedAttr : Type
+- Methods: +method() ReturnType (space before return type, NO colon)
+- Relationships: <|-- inheritance, *-- composition, o-- aggregation, --> association
+- Annotations go INSIDE the class body on their own line: <<interface>>, <<abstract>>
+- Do NOT write annotations inline on the class definition line`,
+    stateDiagram: `Generate a Mermaid state diagram.
+- Start with: stateDiagram-v2
+- Use [*] for start/end states
+- Use --> for transitions
+- Use state "name" as alias for named states`,
+    erDiagram: `Generate a Mermaid ER diagram.
+- Start with: erDiagram
+- Entity names: UPPERCASE, no spaces (use _ instead), no dots, no reserved words (ONE, MANY, TO, U)
+- Relationships require a label: ENTITY_A ||--o{ ENTITY_B : "label"
+- Attributes go inside entity blocks: TYPE name, TYPE name PK, TYPE name FK
+- One attribute per line — no semicolons, no %% comments inside entity blocks`,
+    pie: `Generate a Mermaid pie chart.
+- Start with: pie
+- Use title for chart title
+- Format: "Label" : value`,
+    journey: `Generate a Mermaid user journey diagram.
+- Start with: journey
+- Use title for journey title (required)
+- Use lowercase "section" for phases — no colon after section name
+- Task format: Task name: score: Actor1, Actor2
+- Score must be an integer from 1 to 5
+- All tasks must be inside a section`,
+    timeline: `Generate a Mermaid timeline diagram.
+- Start with: timeline
+- Use title for chart title (optional)
+- Use section to group time periods under a heading
+- Each time period: Period : Event description
+- No arrows, no IDs — pure text structure`,
+    block: `Generate a Mermaid block diagram.
+- Start with: block-beta
+- Optional: columns N (set grid column count)
+- Node shapes: id["label"] rectangle, id("label") round, id{label} diamond, id[(label)] cylinder
+- Span columns: id["label"]:N for multi-column width
+- Links: A --> B or A -->|label| B (same syntax as flowchart)`,
+    quadrant: `Generate a Mermaid quadrant chart.
+- Start with: quadrantChart
+- title: chart title (optional but recommended)
+- Axes: x-axis LeftLabel --> RightLabel, y-axis BottomLabel --> TopLabel
+- Points: PointName: [x, y] — x and y MUST be decimal values strictly between 0 and 1 (e.g. 0.25, 0.75)
+- Never use values outside 0–1 range`,
+    architecture: `Generate a Mermaid architecture diagram (beta).
+- Start with: architecture-beta
+- Services: service id(icon)[Label] — valid icons: cloud, database, disk, internet, server
+- Groups: group id(icon)[Label]
+- Edges: id:Direction -- Direction:id  (ALWAYS use -- double dash, NEVER -->)
+STRICT LABEL RULES — labels inside [...] may ONLY contain letters, numbers, underscores, and spaces.
+  NO dots, NO apostrophes, NO hyphens, NO slashes, NO special characters.
+STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyphens. NO dots.`,
+    'c4-component': `Generate a Mermaid C4 Component diagram (experimental).
+- Start with: C4Component
+- Internal components: Component(alias, "Name", "Tech", "Desc")
+- External: Component_Ext(alias, "Name", "Tech", "Desc")
+  CRITICAL: NEVER use camelCase — always use Component_Ext
+- Boundaries: Container_Boundary(id, "label") { ... }
+- Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional`,
+    'c4-dynamic': `Generate a Mermaid C4 Dynamic diagram (experimental).
+- Start with: C4Dynamic
+- Shows runtime message flow with numbered steps
+- Numbered relationships: RelIndex("1", from, to, "label")
+- Regular Rel(from, to, "label") also supported`,
+    'c4-deployment': `Generate a Mermaid C4 Deployment diagram (experimental).
+- Start with: C4Deployment
+- Deployment nodes: Deployment_Node(alias, "Name", "Type", "Desc")
+- Software elements inside nodes: Container(alias, "Name", "Tech", "Desc"), ContainerDb(...)
+- Nest elements with: Deployment_Node(inner, "Name") { ... }`,
+  };
+
+  // Diagram types to show in the prompt editor (most commonly customized)
+  const diagramTypes = [
+    { key: 'flowchart', label: 'Flowchart' },
+    { key: 'sequence', label: 'Sequence' },
+    { key: 'mindmap', label: 'Mindmap' },
+    { key: 'c4-context', label: 'C4 Context' },
+    { key: 'c4-container', label: 'C4 Container' },
+    { key: 'gantt', label: 'Gantt' },
+    { key: 'classDiagram', label: 'Class Diagram' },
+    { key: 'stateDiagram', label: 'State Diagram' },
+    { key: 'erDiagram', label: 'ER Diagram' },
+    { key: 'pie', label: 'Pie Chart' },
+    { key: 'journey', label: 'Journey' },
+    { key: 'timeline', label: 'Timeline' },
+    { key: 'block', label: 'Block' },
+    { key: 'quadrant', label: 'Quadrant' },
+    { key: 'architecture', label: 'Architecture' },
+    { key: 'c4-component', label: 'C4 Component' },
+    { key: 'c4-dynamic', label: 'C4 Dynamic' },
+    { key: 'c4-deployment', label: 'C4 Deployment' },
+  ];
+
+  const promptTemplates = (config.promptTemplates as Record<string, string>) || {};
+
+  const handlePromptChange = (diagramType: string, value: string) => {
+    onChange({ ...config, promptTemplates: { ...promptTemplates, [diagramType]: value } });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Basic settings */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Temperature</label>
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.1}
+          value={(config.temperature as number) ?? 0.3}
+          onChange={(e) => handleChange('temperature', parseFloat(e.target.value) || 0.3)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">Lower = more deterministic (0.0 – 1.0)</p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Max Tokens</label>
+        <input
+          type="number"
+          min={500}
+          max={4000}
+          value={(config.maxTokens as number) ?? 1500}
+          onChange={(e) => handleChange('maxTokens', parseInt(e.target.value) || 1500)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">Maximum tokens for generated diagram</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          id="validateSyntax"
+          checked={config.validateSyntax !== false}
+          onChange={(e) => handleChange('validateSyntax', e.target.checked)}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          disabled={disabled}
+        />
+        <label htmlFor="validateSyntax" className="text-sm font-medium text-gray-700">
+          Validate Syntax
+        </label>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          id="debugMode"
+          checked={config.debugMode === true}
+          onChange={(e) => handleChange('debugMode', e.target.checked)}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          disabled={disabled}
+        />
+        <label htmlFor="debugMode" className="text-sm font-medium text-gray-700">
+          Debug Mode
+        </label>
+        <span className="text-xs text-gray-500">Log prompts and responses to console</span>
+      </div>
+
+      {/* Per-diagram Prompt Overrides */}
+      <div className="border-t pt-4 mt-4">
+        <h4 className="font-medium text-gray-900 mb-1 flex items-center gap-2">
+          <FileText size={16} />
+          Per-Diagram Prompt Overrides
+        </h4>
+        <p className="text-xs text-gray-500 mb-3">
+          System prompt instructions appended when generating each diagram type. Shows effective value (override or default).
+        </p>
+        <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+          {diagramTypes.map(({ key, label }) => {
+            const effectivePrompt = promptTemplates[key] || defaultPrompts[key] || '';
+            return (
+              <div key={key}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">{label}</label>
+                  {promptTemplates[key] && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Customized</span>
+                  )}
+                </div>
+                <textarea
+                  rows={4}
+                  value={effectivePrompt}
+                  onChange={(e) => handlePromptChange(key, e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono resize-y"
+                  placeholder={effectivePrompt || `No default prompt for ${label}`}
+                  disabled={disabled}
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  {promptTemplates[key]
+                    ? 'Editing override. Clear and save to revert to default.'
+                    : 'Editing system default prompt.'}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts';
 
 interface ToolsTabProps {
@@ -1750,6 +2017,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'security_scan':
         return (
           <SecurityScanConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'diagram_gen':
+        return (
+          <DiagramGenConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}

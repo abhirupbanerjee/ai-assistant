@@ -4,6 +4,7 @@
  * Specialized prompts for each diagram type to ensure valid syntax
  */
 
+import { getToolConfig } from '../db/compat/tool-config';
 import type { MermaidDiagramType, FlowDirection } from '@/types/diagram-gen';
 
 // ===== Base System Prompt =====
@@ -426,23 +427,52 @@ STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyph
 
 // ===== Helper Functions =====
 
+export interface DiagramPromptConfig {
+  /** Override base system prompt (global rules) */
+  baseSystemPrompt?: string;
+  /** Per-diagram-type system prompt overrides */
+  promptTemplates?: Partial<Record<MermaidDiagramType, string>>;
+}
+
+/**
+ * Get the effective system prompt for a diagram type from config override.
+ * Falls back to hardcoded defaults if no override is set.
+ */
+export async function getDiagramSystemPrompt(diagramType: MermaidDiagramType): Promise<string> {
+  const config = await getToolConfig('diagram_gen');
+  const promptTemplates = (config?.config as DiagramPromptConfig)?.promptTemplates;
+  
+  if (promptTemplates && promptTemplates[diagramType]) {
+    return promptTemplates[diagramType]!;
+  }
+  
+  // Fall back to hardcoded template
+  const template = DIAGRAM_TEMPLATES[diagramType];
+  return MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt;
+}
+
 /**
  * Build the full prompt for diagram generation
+ * Optionally accepts config to use overrides instead of hardcoded defaults
  */
 export function buildGenerationPrompt(
   diagramType: MermaidDiagramType,
   description: string,
   direction?: FlowDirection,
-  title?: string
+  title?: string,
+  effectiveSystemPrompt?: string
 ): { system: string; user: string } {
   const template = DIAGRAM_TEMPLATES[diagramType];
 
-  let systemPrompt = MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt;
+  // Use provided effective prompt (from config override) or build from hardcoded defaults
+  let systemPrompt = effectiveSystemPrompt 
+    ? effectiveSystemPrompt 
+    : MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt;
 
-  // Add direction for flowcharts
-  if (diagramType === 'flowchart' && direction) {
+  // Add direction for flowcharts (only if using default prompt)
+  if (!effectiveSystemPrompt && diagramType === 'flowchart' && direction) {
     systemPrompt = systemPrompt.replace('{DIRECTION}', direction);
-  } else if (diagramType === 'flowchart') {
+  } else if (!effectiveSystemPrompt && diagramType === 'flowchart') {
     systemPrompt = systemPrompt.replace('{DIRECTION}', 'TD');
   }
 

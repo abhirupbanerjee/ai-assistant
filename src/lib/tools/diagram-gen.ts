@@ -81,6 +81,28 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
     }
   }
 
+  // Validate promptTemplates if present
+  if (config.promptTemplates !== undefined) {
+    const pt = config.promptTemplates as Record<string, unknown>;
+    if (typeof pt !== 'object' || pt === null || Array.isArray(pt)) {
+      errors.push('promptTemplates must be an object mapping diagram types to prompt strings');
+    } else {
+      const validDiagramTypes = [
+        'flowchart', 'sequence', 'mindmap', 'c4-context', 'c4-container',
+        'c4-component', 'c4-dynamic', 'c4-deployment', 'gantt', 'timeline',
+        'block', 'quadrant', 'classDiagram', 'stateDiagram', 'erDiagram',
+        'pie', 'journey', 'architecture'
+      ];
+      for (const key of Object.keys(pt)) {
+        if (!validDiagramTypes.includes(key)) {
+          errors.push(`promptTemplates: unknown diagram type "${key}"`);
+        } else if (typeof pt[key] !== 'string') {
+          errors.push(`promptTemplates.${key} must be a string`);
+        }
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
