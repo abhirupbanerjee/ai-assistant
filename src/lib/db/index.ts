@@ -1918,11 +1918,16 @@ function initializeDefaultSettings(database: Database.Database): void {
     'tavily-settings': {
       enabled: false,
       defaultTopic: 'general',
-      defaultSearchDepth: 'basic',
-      maxResults: 5,
+      defaultSearchDepth: 'advanced',
+      maxResults: 10,
       includeDomains: [],
       excludeDomains: [],
       cacheTTLSeconds: 3600,
+      includeAnswer: 'basic',
+      includeRawContent: 'none',
+      autoParameters: false,
+      timeRange: 'none',
+      country: '',
     },
     'upload-limits': {
       maxFilesPerInput: 5,

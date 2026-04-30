@@ -91,6 +91,10 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       excludeDomains: [],
       cacheTTLSeconds: 3600,
       includeAnswer: 'basic',
+      includeRawContent: 'none',
+      autoParameters: false,
+      timeRange: 'none',
+      country: '',
     },
   },
   data_viz: {

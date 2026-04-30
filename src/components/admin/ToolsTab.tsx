@@ -355,6 +355,113 @@ function WebSearchConfig({
           How long to cache search results (3600 = 1 hour)
         </p>
       </div>
+
+      {/* Include Answer */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Include AI Answer
+        </label>
+        <select
+          value={(config.includeAnswer as string) || 'basic'}
+          onChange={(e) => handleChange('includeAnswer', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        >
+          <option value="none">None (disabled)</option>
+          <option value="basic">Basic (quick summary)</option>
+          <option value="advanced">Advanced (comprehensive)</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">Include AI-generated answer with search results</p>
+      </div>
+
+      {/* Include Raw Content */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Include Raw Content
+        </label>
+        <select
+          value={(config.includeRawContent as string) || 'none'}
+          onChange={(e) => handleChange('includeRawContent', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        >
+          <option value="none">None (disabled)</option>
+          <option value="markdown">Markdown format</option>
+          <option value="text">Plain text format</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">Include full page content in results</p>
+      </div>
+
+      {/* Auto Parameters */}
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="autoParameters"
+          checked={(config.autoParameters as boolean) || false}
+          onChange={(e) => handleChange('autoParameters', e.target.checked)}
+          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          disabled={disabled}
+        />
+        <label htmlFor="autoParameters" className="text-sm font-medium text-gray-700">
+          Auto Parameters
+        </label>
+      </div>
+      <p className="text-xs text-gray-500 -mt-2 ml-6">
+        Let Tavily auto-configure search parameters (may increase cost/latency)
+      </p>
+
+      {/* Time Range */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Time Range Filter
+        </label>
+        <select
+          value={(config.timeRange as string) || 'none'}
+          onChange={(e) => handleChange('timeRange', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        >
+          <option value="none">No filter (all time)</option>
+          <option value="day">Last 24 hours</option>
+          <option value="week">Last 7 days</option>
+          <option value="month">Last 30 days</option>
+          <option value="year">Last year</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">Restrict results to recency</p>
+      </div>
+
+      {/* Country */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Country Boost (optional)
+        </label>
+        <input
+          type="text"
+          value={(config.country as string) || ''}
+          onChange={(e) => handleChange('country', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="US, GB, CA, etc."
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">ISO country code to boost local results</p>
+      </div>
+
+      {/* Max Results - updated to 20 */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Max Results per Query
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={20}
+          value={(config.maxResults as number) || 10}
+          onChange={(e) => handleChange('maxResults', parseInt(e.target.value) || 10)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">Between 1 and 20</p>
+      </div>
     </div>
   );
 }

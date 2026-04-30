@@ -262,6 +262,12 @@ export function migrateTavilySettingsIfNeeded(): void {
       includeDomains: tavilySettings.includeDomains,
       excludeDomains: tavilySettings.excludeDomains,
       cacheTTLSeconds: tavilySettings.cacheTTLSeconds,
+      // New fields with defaults
+      includeAnswer: 'basic',
+      includeRawContent: 'none',
+      autoParameters: false,
+      timeRange: 'none',
+      country: '',
     },
     tavilySettings.enabled,
     'system-migration'
@@ -288,11 +294,16 @@ export function getWebSearchConfig(): {
         apiKey: (config.apiKey as string) || undefined,
         enabled: toolConfig.isEnabled,
         defaultTopic: (config.defaultTopic as 'general' | 'news' | 'finance') || 'general',
-        defaultSearchDepth: (config.defaultSearchDepth as 'basic' | 'advanced') || 'basic',
-        maxResults: (config.maxResults as number) || 5,
+        defaultSearchDepth: (config.defaultSearchDepth as 'basic' | 'advanced') || 'advanced',
+        maxResults: (config.maxResults as number) || 10,
         includeDomains: (config.includeDomains as string[]) || [],
         excludeDomains: (config.excludeDomains as string[]) || [],
         cacheTTLSeconds: (config.cacheTTLSeconds as number) || 3600,
+        includeAnswer: (config.includeAnswer as 'none' | 'basic' | 'advanced') || 'basic',
+        includeRawContent: (config.includeRawContent as 'none' | 'markdown' | 'text') || 'none',
+        autoParameters: (config.autoParameters as boolean) || false,
+        timeRange: (config.timeRange as 'none' | 'day' | 'week' | 'month' | 'year') || 'none',
+        country: (config.country as string) || '',
       },
     };
   }

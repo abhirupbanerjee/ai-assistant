@@ -56,6 +56,10 @@ export interface TavilySettings {
   excludeDomains: string[];
   cacheTTLSeconds: number;
   includeAnswer?: 'none' | 'basic' | 'advanced';  // 'none' = disabled, 'basic' = quick answer, 'advanced' = comprehensive
+  includeRawContent?: 'none' | 'markdown' | 'text';  // none = disabled, else passes to Tavily
+  autoParameters?: boolean;  // default off for deterministic cost/latency
+  timeRange?: 'none' | 'day' | 'week' | 'month' | 'year';  // recency filter, 'none' = no filter
+  country?: string;  // ISO country code for result boosting, empty = no boost
 }
 
 export interface UploadLimits {

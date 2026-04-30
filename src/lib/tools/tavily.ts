@@ -608,7 +608,7 @@ const webSearchConfigSchema = {
       title: 'Search Depth',
       description: 'Basic = quick (3-5 results), Advanced = comprehensive (10+ results)',
       enum: ['basic', 'advanced'],
-      default: 'basic',
+      default: 'advanced',
     },
     maxResults: {
       type: 'number',
@@ -646,6 +646,32 @@ const webSearchConfigSchema = {
       description: 'Include AI-generated summary: none (disabled), basic (quick), or advanced (comprehensive)',
       enum: ['none', 'basic', 'advanced'],
       default: 'basic',
+    },
+    includeRawContent: {
+      type: 'string',
+      title: 'Include Raw Content',
+      description: 'Include full page content: none (disabled), markdown, or text',
+      enum: ['none', 'markdown', 'text'],
+      default: 'none',
+    },
+    autoParameters: {
+      type: 'boolean',
+      title: 'Auto Parameters',
+      description: 'Let Tavily auto-configure search parameters (may increase cost/latency)',
+      default: false,
+    },
+    timeRange: {
+      type: 'string',
+      title: 'Time Range Filter',
+      description: 'Restrict results to recency: none, day, week, month, or year',
+      enum: ['none', 'day', 'week', 'month', 'year'],
+      default: 'none',
+    },
+    country: {
+      type: 'string',
+      title: 'Country Boost',
+      description: 'ISO country code to boost results from (e.g., US, GB, CA)',
+      default: '',
     },
   },
   required: ['defaultTopic', 'defaultSearchDepth', 'maxResults', 'cacheTTLSeconds'],
@@ -754,7 +780,11 @@ export const tavilyWebSearch: ToolDefinition = {
     includeDomains: [],
     excludeDomains: [],
     cacheTTLSeconds: 3600,
-    includeAnswer: 'basic',  // 'false' | 'basic' | 'advanced'
+    includeAnswer: 'basic',
+    includeRawContent: 'none',
+    autoParameters: false,
+    timeRange: 'none',
+    country: '',
   },
 
   configSchema: webSearchConfigSchema,
@@ -816,11 +846,17 @@ export const tavilyWebSearch: ToolDefinition = {
     const includeDomains = (settings.includeDomains as string[]) || [];
     const excludeDomains = (settings.excludeDomains as string[]) || [];
 
+    // Resolve new Tavily parameters
+    const includeRawContent = (settings.includeRawContent as string) || 'none';
+    const autoParameters = (settings.autoParameters as boolean) || false;
+    const timeRange = (settings.timeRange as string) || 'none';
+    const country = (settings.country as string) || '';
+
     // Check Redis cache first (include params + domains in cache key for varied searches)
     const domainKey = includeDomains.length > 0 || excludeDomains.length > 0
       ? `:inc=${includeDomains.join(',')}:exc=${excludeDomains.join(',')}`
       : '';
-    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}${domainKey}`);
+    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}${domainKey}:${includeRawContent}:${timeRange}:${country}`);
     const cached = await getCachedQuery(`tavily:${cacheKey}`);
 
     if (cached) {
@@ -833,25 +869,45 @@ export const tavilyWebSearch: ToolDefinition = {
       maxResults,
       searchDepth,
       includeAnswer,
+      includeRawContent,
+      autoParameters,
+      timeRange,
+      country,
       includeDomains: includeDomains.length > 0 ? includeDomains : undefined,
       excludeDomains: excludeDomains.length > 0 ? excludeDomains : undefined,
     });
+
+    // Build Tavily request payload
+    const payload: Record<string, unknown> = {
+      api_key: apiKey,
+      query: args.query,
+      max_results: maxResults,
+      search_depth: searchDepth,
+      topic: settings.defaultTopic,
+      include_answer: includeAnswer,
+      include_domains: includeDomains.length > 0 ? includeDomains : undefined,
+      exclude_domains: excludeDomains.length > 0 ? excludeDomains : undefined,
+    };
+
+    // Add optional parameters if not default
+    if (includeRawContent !== 'none') {
+      payload.include_raw_content = includeRawContent;
+    }
+    if (autoParameters) {
+      payload.auto_parameters = true;
+    }
+    if (timeRange !== 'none') {
+      payload.time_range = timeRange;
+    }
+    if (country) {
+      payload.country = country;
+    }
 
     try {
       const response = await fetch('https://api.tavily.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          api_key: apiKey,
-          query: args.query,
-          max_results: maxResults,
-          search_depth: searchDepth,
-          topic: settings.defaultTopic,
-          include_answer: includeAnswer,
-          include_raw_content: false,
-          include_domains: includeDomains.length > 0 ? includeDomains : undefined,
-          exclude_domains: excludeDomains.length > 0 ? excludeDomains : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
