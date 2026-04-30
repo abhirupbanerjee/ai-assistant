@@ -164,7 +164,7 @@ async function getTTSClient(): Promise<OpenAI> {
 
 // ===== Content Formatter =====
 
-const FORMATTER_PROMPT = `You are a podcast script writer. Transform the following content into engaging audio narration.
+const DEFAULT_FORMATTER_PROMPT = `You are a podcast script writer. Transform the following content into engaging audio narration.
 
 RULES:
 1. STRUCTURE: Brief intro → Main points → Concise summary
@@ -181,12 +181,25 @@ RULES:
 OUTPUT: The podcast script only. No stage directions, no markup, no speaker labels. Just natural flowing speech.`;
 
 /**
+ * Get the effective formatter prompt from config or default
+ */
+function getFormatterPrompt(config: PodcastGenConfig): string {
+  const configAny = config as unknown as Record<string, unknown>;
+  const promptTemplates = configAny.promptTemplates as Record<string, string> | undefined;
+  if (promptTemplates?.formatterPrompt) {
+    return promptTemplates.formatterPrompt;
+  }
+  return DEFAULT_FORMATTER_PROMPT;
+}
+
+/**
  * Format content for audio using the thread's LLM model
  */
 async function formatContentForAudio(
   content: string,
   style: 'formal' | 'conversational' | 'news',
-  length: 'short' | 'medium' | 'long'
+  length: 'short' | 'medium' | 'long',
+  config: PodcastGenConfig
 ): Promise<FormatterResult> {
   const openai = await getChatClient();
   const llmSettings = await getLlmSettings();
@@ -195,7 +208,8 @@ async function formatContentForAudio(
   const lengthConfig = LENGTH_CONFIG_DATA[length];
   const styleDesc = STYLE_DESCRIPTIONS_DATA[style];
 
-  const systemPrompt = FORMATTER_PROMPT
+  const basePrompt = getFormatterPrompt(config);
+  const systemPrompt = basePrompt
     .replace('{{STYLE}}', styleDesc)
     .replace('{{WORD_COUNT}}', lengthConfig.words.toString())
     .replace('{{DURATION}}', lengthConfig.minutes);
@@ -760,7 +774,7 @@ export async function generatePodcast(
       if (geminiConfig.multiSpeaker) {
         formatterResult = await formatContentForDialogue(args.content, style, length);
       } else {
-        formatterResult = await formatContentForAudio(args.content, style, length);
+        formatterResult = await formatContentForAudio(args.content, style, length, config);
       }
 
       if (!formatterResult.script) {
@@ -793,7 +807,7 @@ export async function generatePodcast(
         : geminiConfig.hostVoice;
     } else {
       // OpenAI path: Single narrator + OpenAI TTS
-      formatterResult = await formatContentForAudio(args.content, style, length);
+      formatterResult = await formatContentForAudio(args.content, style, length, config);
 
       if (!formatterResult.script) {
         return {
@@ -1056,6 +1070,38 @@ function validatePodcastGenConfig(config: Record<string, unknown>): ValidationRe
     const days = config.expirationDays as number;
     if (typeof days !== 'number' || days < 0 || days > 365) {
       errors.push('expirationDays must be between 0 and 365');
+    }
+  }
+
+  // Validate promptTemplates (internal prompt overrides)
+  if (config.promptTemplates) {
+    const promptTemplates = config.promptTemplates as Record<string, unknown>;
+    
+    // Validate formatterPrompt
+    if (promptTemplates.formatterPrompt !== undefined) {
+      if (typeof promptTemplates.formatterPrompt !== 'string') {
+        errors.push('promptTemplates.formatterPrompt must be a string');
+      } else if (promptTemplates.formatterPrompt.length < 10) {
+        errors.push('promptTemplates.formatterPrompt must be at least 10 characters');
+      }
+    }
+    
+    // Validate dialogueFormatterPrompt
+    if (promptTemplates.dialogueFormatterPrompt !== undefined) {
+      if (typeof promptTemplates.dialogueFormatterPrompt !== 'string') {
+        errors.push('promptTemplates.dialogueFormatterPrompt must be a string');
+      } else if (promptTemplates.dialogueFormatterPrompt.length < 10) {
+        errors.push('promptTemplates.dialogueFormatterPrompt must be at least 10 characters');
+      }
+    }
+    
+    // Validate voiceCastingPrompt
+    if (promptTemplates.voiceCastingPrompt !== undefined) {
+      if (typeof promptTemplates.voiceCastingPrompt !== 'string') {
+        errors.push('promptTemplates.voiceCastingPrompt must be a string');
+      } else if (promptTemplates.voiceCastingPrompt.length < 10) {
+        errors.push('promptTemplates.voiceCastingPrompt must be at least 10 characters');
+      }
     }
   }
 

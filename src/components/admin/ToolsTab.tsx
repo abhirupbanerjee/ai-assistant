@@ -503,23 +503,38 @@ function DocGenConfig({
           Per-Format Prompt Guidance
         </h4>
         <p className="text-xs text-gray-500 mb-3">
-          Optional system prompt instructions appended when generating each format. Leave blank to use defaults.
+          System prompt instructions appended when generating each format. Shows effective value (override or default).
         </p>
         <div className="space-y-3">
           {(['pdf', 'docx', 'md', 'html'] as const).map((fmt) => {
             const label = fmt === 'pdf' ? 'PDF' : fmt === 'docx' ? 'Word (DOCX)' : fmt === 'md' ? 'Markdown' : 'HTML';
             const formatPrompts = (config.formatPrompts as Record<string, string>) || {};
+            const defaultPrompts: Record<string, string> = {
+              pdf: 'Generate a professional PDF document with clear headings, structured sections, and formal language suitable for printing.',
+              docx: 'Generate a Word document with well-organized sections, headings, and bullet points. Use clear, editable formatting.',
+              md: 'Generate a clean Markdown document with proper heading hierarchy, code blocks where appropriate, and concise prose.',
+              html: 'Generate an HTML page with proper structure, charts via ```chart blocks, and diagrams via ```mermaid blocks.',
+            };
+            const effectivePrompt = formatPrompts[fmt] || defaultPrompts[fmt] || '';
             return (
               <div key={fmt}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">{label}</label>
+                  {formatPrompts[fmt] && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Customized</span>
+                  )}
+                </div>
                 <textarea
                   rows={fmt === 'html' ? 5 : 2}
-                  value={formatPrompts[fmt] || ''}
+                  value={effectivePrompt}
                   onChange={(e) => handleFormatPromptChange(fmt, e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono resize-y"
-                  placeholder={`Custom instructions for ${label} generation (optional)`}
+                  placeholder={effectivePrompt}
                   disabled={disabled}
                 />
+                <p className="text-xs text-gray-400 mt-1">
+                  {formatPrompts[fmt] ? 'Editing override. Clear and save to revert to default.' : 'Editing system default prompt.'}
+                </p>
               </div>
             );
           })}

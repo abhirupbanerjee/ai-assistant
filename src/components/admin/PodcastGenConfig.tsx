@@ -716,6 +716,85 @@ export default function PodcastGenConfig({
           </div>
         </div>
       </div>
+
+      {/* Internal Prompt Templates */}
+      <div className="border-t pt-4">
+        <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+          <Settings2 size={16} />
+          Internal Prompt Templates
+        </h4>
+        <p className="text-xs text-gray-500 mb-4">
+          Override the system prompts used internally for podcast generation. Use placeholders like {"{topic}"}, {"{style}"}, {"{length}"} for dynamic values.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Formatter Prompt
+              {(config.promptTemplates as Record<string, string>)?.formatterPrompt ? (
+                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Customized</span>
+              ) : null}
+            </label>
+            <textarea
+              value={((config.promptTemplates as Record<string, string>) || {}).formatterPrompt || 'Format the podcast content with clear segments, intro/outro markers, and speaker labels. Use {host} and {expert} speaker tags. Include tone guidance based on {style}. Target approximately {length} minutes of content.'}
+              onChange={(e) => {
+                const promptTemplates = (config.promptTemplates as Record<string, string>) || {};
+                handleChange('promptTemplates', { ...promptTemplates, formatterPrompt: e.target.value });
+              }}
+              placeholder="Enter formatter prompt template..."
+              className="w-full px-3 py-2 border rounded-lg h-24 resize-none font-mono text-xs"
+              disabled={disabled}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Placeholders: {"{topic}"}, {"{style}"}, {"{length}"}, {"{host}"}, {"{expert}"}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Dialogue Formatter Prompt
+              {(config.promptTemplates as Record<string, string>)?.dialogueFormatterPrompt ? (
+                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Customized</span>
+              ) : null}
+            </label>
+            <textarea
+              value={((config.promptTemplates as Record<string, string>) || {}).dialogueFormatterPrompt || 'Create a natural back-and-forth dialogue between {host} and {expert}. Use conversational language that sounds natural when spoken. Include transitions like "Moving on to..." or "That\'s interesting because..." Include questions from the host to engage the expert.'}
+              onChange={(e) => {
+                const promptTemplates = (config.promptTemplates as Record<string, string>) || {};
+                handleChange('promptTemplates', { ...promptTemplates, dialogueFormatterPrompt: e.target.value });
+              }}
+              placeholder="Enter dialogue formatter prompt template..."
+              className="w-full px-3 py-2 border rounded-lg h-24 resize-none font-mono text-xs"
+              disabled={disabled}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Placeholders: {"{topic}"}, {"{style}"}, {"{host}"}, {"{expert}"}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Voice Casting Prompt
+              {(config.promptTemplates as Record<string, string>)?.voiceCastingPrompt ? (
+                <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Customized</span>
+              ) : null}
+            </label>
+            <textarea
+              value={((config.promptTemplates as Record<string, string>) || {}).voiceCastingPrompt || 'Based on the character description "{character}", suggest the most appropriate voice. Consider: gender, age range, accent, speaking style, and emotional tone. Respond with just the voice name.'}
+              onChange={(e) => {
+                const promptTemplates = (config.promptTemplates as Record<string, string>) || {};
+                handleChange('promptTemplates', { ...promptTemplates, voiceCastingPrompt: e.target.value });
+              }}
+              placeholder="Enter voice casting prompt template..."
+              className="w-full px-3 py-2 border rounded-lg h-24 resize-none font-mono text-xs"
+              disabled={disabled}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Placeholders: {"{character}"}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
