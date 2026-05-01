@@ -924,14 +924,33 @@ function GenericToolConfig({
               )}
             </>
           ) : (
-            <input
-              type="text"
-              value={(config[key] as string) ?? (prop.default as string) ?? ''}
-              onChange={(e) => onChange({ ...config, [key]: e.target.value })}
-              disabled={disabled}
-              placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
+            <>
+              {(() => {
+                const lowerTitle = (prop.title || '').toLowerCase();
+                const lowerKey = key.toLowerCase();
+                const isPromptLike = lowerTitle.includes('prompt') || lowerTitle.includes('template') || lowerKey.includes('prompt') || lowerKey.includes('template') || lowerKey.includes('instruction');
+                const val = (config[key] as string) ?? (prop.default as string) ?? '';
+                return isPromptLike || val.length > 120;
+              })() ? (
+                <textarea
+                  rows={6}
+                  value={(config[key] as string) ?? (prop.default as string) ?? ''}
+                  onChange={(e) => onChange({ ...config, [key]: e.target.value })}
+                  disabled={disabled}
+                  placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={(config[key] as string) ?? (prop.default as string) ?? ''}
+                  onChange={(e) => onChange({ ...config, [key]: e.target.value })}
+                  disabled={disabled}
+                  placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+            </>
           )}
           {prop.description && (
             <p className="text-xs text-gray-500 mt-1">{prop.description}</p>

@@ -311,7 +311,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       },
     },
   },
-  doc_to_html: {
+  file_to_html: {
     enabled: true,
     config: {
       branding: {
@@ -322,6 +322,21 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
         fontFamily: 'Segoe UI, Arial, sans-serif',
       },
       expirationDays: 30,
+    },
+  },
+  html_gen: {
+    enabled: true,
+    config: {
+      defaultPageType: 'auto',
+      branding: {
+        enabled: false,
+        logoUrl: '',
+        organizationName: '',
+        primaryColor: '#003366',
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+      },
+      expirationDays: 30,
+      maxDocumentSizeMB: 50,
     },
   },
 };

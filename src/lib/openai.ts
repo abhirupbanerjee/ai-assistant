@@ -86,7 +86,7 @@ import { getApiKey, getApiBase } from '@/lib/provider-helpers';
  * These tools produce final outputs (images, documents) and should not be called again
  * unless the user explicitly requests it.
  */
-export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen', 'diagram_gen', 'podcast_gen']);
+export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'html_gen', 'file_to_html', 'chart_gen', 'diagram_gen', 'podcast_gen']);
 
 /**
  * Generate a prompt for the LLM to summarize a terminal tool result.
@@ -483,6 +483,8 @@ const OLLAMA_NUM_CTX = parseInt(process.env.OLLAMA_NUM_CTX || '16384', 10);
 const OLLAMA_ALLOWED_TOOLS = new Set([
   'web_search',    // Tavily (already allowed)
   'doc_gen',       // Local PDF/Word generation via pdfkit/docx
+  'html_gen',      // Local HTML generation
+  'file_to_html',  // Local DOCX/PDF to HTML conversion
   'diagram_gen',   // Mermaid syntax, rendered client-side
   'xlsx_gen',      // Local Excel generation via ExcelJS
   'chart_gen',     // Chart config, rendered in frontend

@@ -25,24 +25,7 @@ export const DEFAULT_FORMAT_PROMPTS: Record<string, string> = {
   pdf: 'Generate a professional PDF document with clear headings, structured sections, and formal language suitable for printing.',
   docx: 'Generate a Word document with well-organized sections, headings, and bullet points. Use clear, editable formatting.',
   md: 'Generate a clean Markdown document with proper heading hierarchy, code blocks where appropriate, and concise prose.',
-  html: `Generate an HTML page using the following guidelines based on the requested type:
-
-- **Dashboard**: Use \`\`\`chart blocks for Chart.js charts and \`\`\`mermaid blocks for diagrams. Organize metrics in a grid layout.
-- **Documentation**: Use standard markdown with headings (# ## ###) for chapters and sections. A TOC sidebar and search will be generated automatically.
-- **Diagram/Flowchart**: Use \`\`\`mermaid blocks with supported diagram types: flowchart, mindmap, sequenceDiagram, classDiagram, c4Context, c4Container, c4Component.
-- **Web Page**: Use standard markdown content; it will be rendered as a clean, responsive web page.
-
-For charts, use this format:
-\`\`\`chart
-{
-  "type": "bar",
-  "title": "Chart Title",
-  "labels": ["A", "B", "C"],
-  "datasets": [{"label": "Series 1", "data": [10, 20, 30]}]
-}
-\`\`\`
-
-Supported chart types: bar, line, pie, doughnut, radar, polarArea.`,
+  html: 'DEPRECATED: Use html_gen for HTML pages instead. If you must use doc_gen with html, it behaves like a webpage export.',
 };
 
 const docGenConfigSchema = {
@@ -70,10 +53,10 @@ const docGenConfigSchema = {
       title: 'Per-Format Prompts',
       description: 'Custom system prompt guidance for each document format',
       properties: {
-        pdf: { type: 'string', title: 'PDF Prompt', default: '' },
-        docx: { type: 'string', title: 'DOCX Prompt', default: '' },
-        md: { type: 'string', title: 'Markdown Prompt', default: '' },
-        html: { type: 'string', title: 'HTML Prompt', default: '' },
+        pdf: { type: 'string', title: 'PDF Prompt', default: DEFAULT_FORMAT_PROMPTS.pdf },
+        docx: { type: 'string', title: 'DOCX Prompt', default: DEFAULT_FORMAT_PROMPTS.docx },
+        md: { type: 'string', title: 'Markdown Prompt', default: DEFAULT_FORMAT_PROMPTS.md },
+        html: { type: 'string', title: 'HTML Prompt (Deprecated)', description: 'Deprecated compatibility prompt. Prefer html_gen for interactive HTML pages.', default: DEFAULT_FORMAT_PROMPTS.html },
       },
     },
     branding: {

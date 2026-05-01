@@ -49,6 +49,10 @@ function mapDbToToolConfig(row: DbToolConfig): ToolConfig {
   };
 }
 
+function buildAuditSnapshot(config: Record<string, unknown>, descriptionOverride: string | null): string {
+  return JSON.stringify({ config, descriptionOverride });
+}
+
 function mapDbToAuditEntry(row: DbToolConfigAudit): ToolConfigAuditEntry {
   return {
     id: row.id,
@@ -110,6 +114,7 @@ export async function createToolConfig(
 ): Promise<ToolConfig> {
   const id = uuidv4();
   const configJson = JSON.stringify(config);
+  const createAuditSnapshot = buildAuditSnapshot(config, null);
 
   return transaction(async (trx) => {
     await trx
@@ -130,7 +135,7 @@ export async function createToolConfig(
         tool_name: toolName,
         operation: 'create',
         old_config: null,
-        new_config: configJson,
+        new_config: createAuditSnapshot,
         changed_by: updatedBy,
       })
       .execute();
@@ -163,7 +168,7 @@ export async function updateToolConfig(
   const newEnabled = updates.isEnabled ?? existing.isEnabled;
   const newConfig = updates.config ?? existing.config;
   const newConfigJson = JSON.stringify(newConfig);
-  const oldConfigJson = JSON.stringify(existing.config);
+  const oldAuditSnapshot = buildAuditSnapshot(existing.config, existing.descriptionOverride);
   // Handle descriptionOverride: undefined means keep existing, null means clear it
   const newDescriptionOverride = updates.descriptionOverride !== undefined
     ? updates.descriptionOverride
@@ -187,8 +192,8 @@ export async function updateToolConfig(
       .values({
         tool_name: toolName,
         operation: 'update',
-        old_config: oldConfigJson,
-        new_config: newConfigJson,
+        old_config: oldAuditSnapshot,
+        new_config: buildAuditSnapshot(newConfig, newDescriptionOverride),
         changed_by: updatedBy,
       })
       .execute();
@@ -210,7 +215,7 @@ export async function deleteToolConfig(toolName: string, deletedBy: string): Pro
   const existing = await getToolConfig(toolName);
   if (!existing) return false;
 
-  const oldConfigJson = JSON.stringify(existing.config);
+  const oldAuditSnapshot = buildAuditSnapshot(existing.config, existing.descriptionOverride);
 
   return transaction(async (trx) => {
     await trx
@@ -224,7 +229,7 @@ export async function deleteToolConfig(toolName: string, deletedBy: string): Pro
       .values({
         tool_name: toolName,
         operation: 'delete',
-        old_config: oldConfigJson,
+        old_config: oldAuditSnapshot,
         new_config: null,
         changed_by: deletedBy,
       })

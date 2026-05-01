@@ -1,5 +1,5 @@
 /**
- * Document to HTML Converter Tool
+ * File to HTML Converter Tool
  *
  * Converts uploaded DOCX/PDF documents to self-contained HTML pages
  * with TOC sidebar, search, and branding — using mammoth for DOCX
@@ -20,14 +20,17 @@ import { extractText, isDocx, isPDF } from '../document-extractor';
 import { generateDocumentFilename } from '../docgen/branding';
 import { getOutputDirectory } from '../docgen/branding';
 
+export const FILE_TO_HTML_FUNCTION_DESCRIPTION =
+  'Convert an uploaded DOCX or PDF document to a self-contained HTML page. The HTML page includes a table of contents sidebar, search functionality, and organization branding. Works best with DOCX files which retain all images as embedded base64 data URIs. Call this tool when the user explicitly asks to convert a document to HTML, export as HTML page, or create an HTML version of a document.';
+
 // ============ Config Schema ============
 
-const docToHtmlConfigSchema = {
+const fileToHtmlConfigSchema = {
   type: 'object' as const,
   properties: {
     enabled: {
       type: 'boolean' as const,
-      title: 'Enable Document to HTML Conversion',
+      title: 'Enable File to HTML Conversion',
       description: 'Allow converting uploaded documents to HTML pages',
       default: true,
     },
@@ -104,18 +107,17 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
 
 // ============ Tool Definition ============
 
-export const docToHtmlTool: ToolDefinition = {
-  name: 'doc_to_html',
-  displayName: 'Document to HTML',
+export const fileToHtmlTool: ToolDefinition = {
+  name: 'file_to_html',
+  displayName: 'File to HTML',
   description: 'Convert an uploaded DOCX or PDF document to a self-contained HTML page with TOC sidebar, search, and branding',
   category: 'autonomous',
 
   definition: {
     type: 'function' as const,
     function: {
-      name: 'doc_to_html',
-      description:
-        'Convert an uploaded DOCX or PDF document to a self-contained HTML page. The HTML page includes a table of contents sidebar, search functionality, and organization branding. Works best with DOCX files which retain all images as embedded base64 data URIs. Call this tool when the user explicitly asks to convert a document to HTML, export as HTML page, or create an HTML version of a document.',
+      name: 'file_to_html',
+      description: FILE_TO_HTML_FUNCTION_DESCRIPTION,
       parameters: {
         type: 'object',
         properties: {
@@ -137,7 +139,7 @@ export const docToHtmlTool: ToolDefinition = {
 
   validateConfig,
 
-  defaultConfig: TOOL_DEFAULTS.doc_to_html?.config || {
+  defaultConfig: TOOL_DEFAULTS.file_to_html?.config || {
     enabled: true,
     branding: {
       enabled: false,
@@ -149,7 +151,7 @@ export const docToHtmlTool: ToolDefinition = {
     expirationDays: 30,
   },
 
-  configSchema: docToHtmlConfigSchema,
+  configSchema: fileToHtmlConfigSchema,
 
   execute: async (args: {
     filename?: string;
@@ -169,12 +171,12 @@ export const docToHtmlTool: ToolDefinition = {
       }
 
       // Get tool configuration
-      const toolConfig = await getToolConfig('doc_to_html');
-      const config = (toolConfig?.config || TOOL_DEFAULTS.doc_to_html?.config || {}) as Record<string, unknown>;
+      const toolConfig = await getToolConfig('file_to_html');
+      const config = (toolConfig?.config || TOOL_DEFAULTS.file_to_html?.config || {}) as Record<string, unknown>;
 
-      if (!toolConfig?.isEnabled && !(TOOL_DEFAULTS.doc_to_html?.enabled ?? true)) {
+      if (!toolConfig?.isEnabled && !(TOOL_DEFAULTS.file_to_html?.enabled ?? true)) {
         return JSON.stringify({
-          error: 'Document to HTML conversion is currently disabled',
+          error: 'File to HTML conversion is currently disabled',
           errorCode: 'TOOL_DISABLED',
         });
       }
@@ -190,7 +192,7 @@ export const docToHtmlTool: ToolDefinition = {
 
       // Get category branding if applicable
       if (categoryId) {
-        const effective = await getEffectiveToolConfig('doc_to_html', categoryId);
+        const effective = await getEffectiveToolConfig('file_to_html', categoryId);
         if (effective.branding) {
           branding.enabled = effective.branding.enabled ?? branding.enabled;
           branding.logoUrl = effective.branding.logoUrl ?? branding.logoUrl;
@@ -240,7 +242,7 @@ export const docToHtmlTool: ToolDefinition = {
       const filePath = targetUpload.filepath;
       const isDocxFile = sourceFilename.toLowerCase().endsWith('.docx');
 
-      console.log(`[DocToHtml] Converting: ${sourceFilename} (${filePath})`);
+      console.log(`[FileToHtml] Converting: ${sourceFilename} (${filePath})`);
 
       // Read file buffer
       if (!fs.existsSync(filePath)) {
@@ -257,12 +259,12 @@ export const docToHtmlTool: ToolDefinition = {
         // DOCX: use mammoth.convertToHtml for full fidelity with embedded images
         const mammothResult = await mammoth.convertToHtml({ buffer });
         sourceHtml = mammothResult.value;
-        console.log(`[DocToHtml] mammoth converted ${sourceFilename} (${sourceHtml.length} chars HTML)`);
+        console.log(`[FileToHtml] mammoth converted ${sourceFilename} (${sourceHtml.length} chars HTML)`);
       } else {
         // PDF: extract text (images not yet supported for PDF)
         const result = await extractText(buffer, 'application/pdf', sourceFilename);
         sourceHtml = `<div class="pdf-content">\n<p>${escapeHtml(result.text).replace(/\n\n+/g, '</p>\n<p>')}</p>\n</div>`;
-        console.log(`[DocToHtml] Extracted ${result.text.length} chars from PDF`);
+        console.log(`[FileToHtml] Extracted ${result.text.length} chars from PDF`);
       }
 
       // Determine page title
@@ -312,11 +314,11 @@ export const docToHtmlTool: ToolDefinition = {
         expiresAt
       );
 
-      console.log(`[DocToHtml] HTML page generated: ${outputFilename} (${htmlResult.fileSize} bytes, ${htmlResult.tocCount} TOC entries)`);
+      console.log(`[FileToHtml] HTML page generated: ${outputFilename} (${htmlResult.fileSize} bytes, ${htmlResult.tocCount} TOC entries)`);
 
       return JSON.stringify({
         success: true,
-        message: `Converted "${sourceFilename}" to HTML page with ${htmlResult.tocCount} sections. Do NOT call doc_to_html again unless the user explicitly asks for another conversion.`,
+        message: `Converted "${sourceFilename}" to HTML page with ${htmlResult.tocCount} sections. Do NOT call file_to_html again unless the user explicitly asks for another conversion.`,
         document: {
           id: outputResult.id,
           filename: outputFilename,
@@ -330,7 +332,7 @@ export const docToHtmlTool: ToolDefinition = {
         },
       });
     } catch (error) {
-      console.error('[DocToHtml] Conversion error:', error);
+      console.error('[FileToHtml] Conversion error:', error);
       return JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error during document conversion',
         errorCode: 'CONVERSION_ERROR',
@@ -343,10 +345,10 @@ export const docToHtmlTool: ToolDefinition = {
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"');
 }
 
 function formatFileSize(bytes: number): string {

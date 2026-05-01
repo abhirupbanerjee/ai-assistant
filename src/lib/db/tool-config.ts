@@ -70,6 +70,10 @@ function mapDbToToolConfig(row: DbToolConfig): ToolConfig {
   };
 }
 
+function buildAuditSnapshot(config: Record<string, unknown>, descriptionOverride: string | null): string {
+  return JSON.stringify({ config, descriptionOverride });
+}
+
 function mapDbToAuditEntry(row: DbToolConfigAudit): ToolConfigAuditEntry {
   return {
     id: row.id,
@@ -122,6 +126,7 @@ export function createToolConfig(
 ): ToolConfig {
   const id = uuidv4();
   const configJson = JSON.stringify(config);
+  const createAuditSnapshot = buildAuditSnapshot(config, null);
 
   return transaction(() => {
     execute(
@@ -134,7 +139,7 @@ export function createToolConfig(
     execute(
       `INSERT INTO tool_config_audit (tool_name, operation, old_config, new_config, changed_by)
        VALUES (?, 'create', NULL, ?, ?)`,
-      [toolName, configJson, updatedBy]
+      [toolName, createAuditSnapshot, updatedBy]
     );
 
     return getToolConfig(toolName)!;
@@ -159,7 +164,7 @@ export function updateToolConfig(
   const newEnabled = updates.isEnabled ?? existing.isEnabled;
   const newConfig = updates.config ?? existing.config;
   const newConfigJson = JSON.stringify(newConfig);
-  const oldConfigJson = JSON.stringify(existing.config);
+  const oldAuditSnapshot = buildAuditSnapshot(existing.config, existing.descriptionOverride);
   // Handle descriptionOverride: undefined means keep existing, null means clear it
   const newDescriptionOverride = updates.descriptionOverride !== undefined
     ? updates.descriptionOverride
@@ -177,7 +182,7 @@ export function updateToolConfig(
     execute(
       `INSERT INTO tool_config_audit (tool_name, operation, old_config, new_config, changed_by)
        VALUES (?, 'update', ?, ?, ?)`,
-      [toolName, oldConfigJson, newConfigJson, updatedBy]
+       [toolName, oldAuditSnapshot, newConfigJson, updatedBy]
     );
 
     return getToolConfig(toolName)!;
@@ -191,7 +196,7 @@ export function deleteToolConfig(toolName: string, deletedBy: string): boolean {
   const existing = getToolConfig(toolName);
   if (!existing) return false;
 
-  const oldConfigJson = JSON.stringify(existing.config);
+  const oldAuditSnapshot = buildAuditSnapshot(existing.config, existing.descriptionOverride);
 
   return transaction(() => {
     execute('DELETE FROM tool_configs WHERE tool_name = ?', [toolName]);
@@ -200,7 +205,7 @@ export function deleteToolConfig(toolName: string, deletedBy: string): boolean {
     execute(
       `INSERT INTO tool_config_audit (tool_name, operation, old_config, new_config, changed_by)
        VALUES (?, 'delete', ?, NULL, ?)`,
-      [toolName, oldConfigJson, deletedBy]
+       [toolName, oldAuditSnapshot, deletedBy]
     );
 
     return true;

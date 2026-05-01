@@ -72,6 +72,8 @@ export async function GET() {
         config: safeConfig,
         configSchema: tool.configSchema,
         defaultConfig: tool.defaultConfig,
+        descriptionOverride: config?.descriptionOverride ?? null,
+        defaultDescription: tool.definition?.function?.description ?? tool.description,
         isTerminal: TERMINAL_TOOLS.has(tool.name),
         isHybrid: HYBRID_TOOLS.has(tool.name),
         metadata: config ? {

@@ -26,6 +26,8 @@ export interface HtmlOptions {
     author?: string;
     date?: string;
   };
+  /** Optional explicit page type. If omitted, auto-detection is used. */
+  pageType?: HtmlPageType;
 }
 
 /**
@@ -52,7 +54,7 @@ export interface HtmlResult {
   diagramCount: number;
 }
 
-export type HtmlPageType = 'dashboard' | 'documentation' | 'chart' | 'webpage';
+export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage';
 
 // ============ Content Segment Types ============
 
@@ -103,7 +105,9 @@ const CHART_COLORS = [
 const SUPPORTED_MERMAID_TYPES = new Set([
   'flowchart', 'graph', 'mindmap', 'sequencediagram',
   'c4context', 'c4container', 'c4component',
-  'classdiagram',
+  'classdiagram', 'statediagram', 'statediagram-v2',
+  'erdiagram', 'userjourney', 'gantt', 'gitgraph',
+  'pie', 'requirementdiagram',
 ]);
 
 // ============ Content Parser ============
@@ -187,6 +191,13 @@ function detectMermaidType(code: string): string {
   if (first.startsWith('flowchart') || first.startsWith('graph')) return 'flowchart';
   if (first.startsWith('sequencediagram')) return 'sequence';
   if (first.startsWith('mindmap')) return 'mindmap';
+  if (first.startsWith('statediagram-v2') || first.startsWith('statediagram')) return 'stateDiagram';
+  if (first.startsWith('erdiagram')) return 'erDiagram';
+  if (first.startsWith('userjourney')) return 'userJourney';
+  if (first.startsWith('gantt')) return 'gantt';
+  if (first.startsWith('gitgraph')) return 'gitGraph';
+  if (first.startsWith('pie')) return 'pie';
+  if (first.startsWith('requirementdiagram')) return 'requirementDiagram';
   if (first.startsWith('c4context')) return 'c4-context';
   if (first.startsWith('c4container')) return 'c4-container';
   if (first.startsWith('c4component')) return 'c4-component';
@@ -788,6 +799,188 @@ function buildDashboardTemplate(
 </html>`;
 }
 
+function buildBookTemplate(
+  title: string,
+  contentHtml: string,
+  toc: TocEntry[],
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  disclaimerHtml: string,
+  date: string
+): string {
+  const tocHtml = buildTocHtml(toc).replace('Contents', 'Chapters');
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+
+  const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
+    .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <style>${css}</style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-left">
+      ${logoHtml}
+      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      <span class="header-title">${escapeHtml(title)}</span>
+    </div>
+    <div class="header-right">
+      <input type="search" class="search-bar" placeholder="Search book..." oninput="searchDocs(this.value)" aria-label="Search book">
+      <select aria-label="Language selector" style="padding:6px 10px;border-radius:8px;border:none;">
+        ${langOptions}
+      </select>
+    </div>
+  </header>
+  <div class="layout">
+    ${tocHtml}
+    <main class="main-content" role="main">
+      <section style="margin-bottom:24px;padding:16px 18px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;">
+        <h1 style="margin-bottom:8px;">${escapeHtml(title)}</h1>
+        <p style="font-size:0.9rem;color:#6b7280;margin:0;">${orgName ? escapeHtml(orgName) + ' · ' : ''}Ebook format · Generated ${date}</p>
+      </section>
+      ${disclaimerHtml}
+      ${contentHtml}
+      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
+    </main>
+  </div>
+  <footer class="site-footer">
+    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Book View · Generated ${date}
+  </footer>
+  <script>${js}</script>
+</body>
+</html>`;
+}
+
+function buildReportTemplate(
+  title: string,
+  contentHtml: string,
+  toc: TocEntry[],
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  disclaimerHtml: string,
+  date: string
+): string {
+  const tocHtml = buildTocHtml(toc);
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <style>${css}</style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-left">
+      ${logoHtml}
+      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      <span class="header-title">${escapeHtml(title)}</span>
+    </div>
+    <div class="header-right">
+      <input type="search" class="search-bar" placeholder="Search report..." oninput="searchDocs(this.value)" aria-label="Search report">
+    </div>
+  </header>
+  <div class="layout">
+    ${tocHtml}
+    <main class="main-content" role="main">
+      <section style="margin-bottom:24px;padding:16px 18px;border-left:4px solid #2563eb;border-radius:8px;background:#eff6ff;">
+        <h1 style="margin-bottom:8px;">${escapeHtml(title)}</h1>
+        <p style="font-size:0.9rem;color:#374151;margin:0;">Formal report · ${orgName ? escapeHtml(orgName) + ' · ' : ''}${date}</p>
+      </section>
+      ${disclaimerHtml}
+      ${contentHtml}
+      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
+    </main>
+  </div>
+  <footer class="site-footer">
+    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Report View · Generated ${date}
+  </footer>
+  <script>${js}</script>
+</body>
+</html>`;
+}
+
+function buildWebsiteTemplate(
+  title: string,
+  contentHtml: string,
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  disclaimerHtml: string,
+  date: string
+): string {
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+
+  const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
+    .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <style>${css}</style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-left">
+      ${logoHtml}
+      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      <span class="header-title">${escapeHtml(title)}</span>
+    </div>
+    <div class="header-right">
+      <input type="search" class="search-bar" placeholder="Search website..." oninput="searchDocs(this.value)" aria-label="Search website">
+      <select aria-label="Language selector" style="padding:6px 10px;border-radius:8px;border:none;">
+        ${langOptions}
+      </select>
+    </div>
+  </header>
+  <main role="main" style="max-width:1200px;margin:0 auto;padding:0 20px 28px;">
+    <section style="margin:22px 0 20px;padding:26px;border-radius:14px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;">
+      <h1 style="margin:0 0 10px;color:#fff;">${escapeHtml(title)}</h1>
+      <p style="margin:0;opacity:0.95;">Comprehensive frontend website mockup · Backend/API routes are intentionally left as stubs.</p>
+    </section>
+    ${disclaimerHtml}
+    <section>
+      ${contentHtml}
+    </section>
+    <p style="margin-top:24px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
+  </main>
+  <footer class="site-footer">
+    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Website Mockup · Generated ${date}
+  </footer>
+  <script>${js}</script>
+</body>
+</html>`;
+}
+
 function buildWebpageTemplate(
   title: string,
   contentHtml: string,
@@ -847,8 +1040,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   // Parse content into segments
   const segments = parseContent(content);
 
-  // Detect page type
-  const pageType = detectPageType(segments, title);
+  // Determine page type: explicit override wins, else auto-detect
+  const pageType: HtmlPageType = options.pageType || detectPageType(segments, title);
 
   // Extract TOC for documentation pages
   const toc = pageType === 'documentation' ? extractToc(segments) : [];
@@ -874,8 +1067,14 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   let html: string;
   if (pageType === 'documentation') {
     html = buildDocumentationTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
+  } else if (pageType === 'book') {
+    html = buildBookTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
+  } else if (pageType === 'report') {
+    html = buildReportTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'dashboard') {
     html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+  } else if (pageType === 'website') {
+    html = buildWebsiteTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   } else {
     html = buildWebpageTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   }
