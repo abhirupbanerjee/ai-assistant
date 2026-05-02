@@ -34,6 +34,8 @@ export interface HtmlOptions {
  * Options for generating HTML from a pre-rendered HTML source
  * (e.g., output from mammoth.convertToHtml for DOCX conversion)
  */
+export type HtmlSourcePageType = 'documentation' | 'playbook';
+
 export interface HtmlSourceOptions {
   title: string;
   /** Pre-rendered HTML fragment (headings, paragraphs, tables, images) */
@@ -44,6 +46,8 @@ export interface HtmlSourceOptions {
     author?: string;
     date?: string;
   };
+  /** Optional output layout type. Defaults to 'documentation'. */
+  pageType?: HtmlSourcePageType;
 }
 
 export interface HtmlResult {
@@ -54,7 +58,7 @@ export interface HtmlResult {
   diagramCount: number;
 }
 
-export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage';
+export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage' | 'playbook';
 
 // ============ Content Segment Types ============
 
@@ -499,6 +503,111 @@ function renderSegments(segments: ContentSegment[]): string {
     return '';
   }).join('\n');
 }
+
+// ============ Playbook Card Renderer ============
+
+interface PlaybookCard {
+  title: string;
+  id: string;
+  keywords: string;
+  bodyHtml: string;
+}
+
+/**
+ * Parse content segments into playbook cards.
+ * Each ## heading becomes a card; its following content becomes the card body.
+ * Charts and diagrams are appended into the matching card or a standalone card.
+ */
+function parsePlaybookCards(segments: ContentSegment[]): {
+  cardsHtml: string;
+  groupsHtml: string;
+} {
+  const cards: PlaybookCard[] = [];
+  let currentTitle = '';
+  let currentId = '';
+  let currentBody: string[] = [];
+  let cardIdCounter = 0;
+
+  const flushCard = () => {
+    if (!currentTitle) return;
+    cardIdCounter++;
+    cards.push({
+      title: currentTitle,
+      id: `${currentId}-${cardIdCounter}`,
+      keywords: (currentTitle + ' ' + currentBody.join(' ')).toLowerCase().replace(/<[^>]+>/g, ' ').substring(0, 200),
+      bodyHtml: currentBody.length > 0 ? markdownToHtml(currentBody.join('\n')) : '<p>No details available.</p>',
+    });
+    currentTitle = '';
+    currentId = '';
+    currentBody = [];
+  };
+
+  for (const seg of segments) {
+    if (seg.type === 'markdown') {
+      const lines = (seg as MarkdownSegment).content.split('\n');
+      for (const line of lines) {
+        // ## heading → new card
+        const h2Match = line.match(/^##\s+(.+)$/);
+        if (h2Match) {
+          flushCard();
+          currentTitle = h2Match[1].trim();
+          currentId = currentTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        } else if (currentTitle) {
+          // Accumulate body content
+          currentBody.push(line);
+        } else {
+          // Content before any ## heading — intro text, render inline
+          currentBody.push(line);
+        }
+      }
+    } else if (seg.type === 'chart') {
+      currentBody.push(renderChartSegment(seg as ChartSegment));
+    } else if (seg.type === 'mermaid') {
+      currentBody.push(renderDiagramSegment(seg as DiagramSegment));
+    }
+  }
+  flushCard();
+
+  // If no ## headings at all, wrap all content in a single card
+  if (cards.length === 0 && segments.length > 0) {
+    cards.push({
+      title: 'Overview',
+      id: 'overview-1',
+      keywords: 'overview',
+      bodyHtml: segments.map(seg => {
+        if (seg.type === 'markdown') return markdownToHtml((seg as MarkdownSegment).content);
+        if (seg.type === 'chart') return renderChartSegment(seg as ChartSegment);
+        if (seg.type === 'mermaid') return renderDiagramSegment(seg as DiagramSegment);
+        return '';
+      }).join('\n'),
+    });
+  }
+
+  const cardsHtml = cards.map(card => `
+<article class="pb-card" id="${card.id}" data-keywords="${escapeHtml(card.keywords)}">
+  <button class="pb-card-header" onclick="toggleCard(this)" aria-expanded="false">
+    <h3>${escapeHtml(card.title)}</h3>
+    <span class="pb-card-toggle" aria-hidden="true">&#9660;</span>
+  </button>
+  <div class="pb-card-body">${card.bodyHtml}</div>
+</article>`).join('\n');
+
+  // Build group chips from card titles (deduplicated)
+  const seen = new Set<string>();
+  const groupsHtml = cards
+    .filter(card => {
+      if (seen.has(card.id)) return false;
+      seen.add(card.id);
+      return true;
+    })
+    .map(card =>
+      `<button class="pb-group-chip" onclick="scrollToCard('${card.id}')">${escapeHtml(card.title)}</button>`
+    ).join('\n');
+
+  return { cardsHtml, groupsHtml };
+}
+
+// Note: scrollToCard is embedded in playbookJs below, not needed as module-level function
 
 // ============ TOC HTML Builder ============
 
@@ -1025,6 +1134,257 @@ function buildWebpageTemplate(
 </html>`;
 }
 
+// ============ Playbook Template ============
+
+function buildPlaybookTemplate(
+  title: string,
+  segments: ContentSegment[],
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  date: string
+): string {
+  const primary = branding.primaryColor || '#003366';
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+  const tagline = branding.playbook?.tagline || '';
+  const heroSubtitle = branding.playbook?.heroSubtitle || '';
+  const heroDate = branding.playbook?.heroDate || date;
+  const footerEntity = branding.playbook?.footerEntity || orgName;
+  const footerAgency = branding.playbook?.footerAgency || '';
+  const footerDate = branding.playbook?.footerDate || date;
+
+  // Render playbook-specific cards and group chips from segments
+  const { cardsHtml, groupsHtml } = parsePlaybookCards(segments);
+
+  const playbookCss = `
+    /* Playbook-specific styles */
+    .pb-flag-strip {
+      height: 8px;
+      background: linear-gradient(90deg, ${branding.primaryColor || '#003366'} 0%, ${branding.primaryColor || '#003366'} 33.3%, #e63946 33.3%, #e63946 66.6%, #f4a261 66.6%, #f4a261 100%);
+    }
+    .pb-topbar {
+      background: ${branding.primaryColor || '#003366'};
+      color: #fff;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 8px;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .pb-topbar-left { display: flex; align-items: center; gap: 12px; }
+    .pb-topbar-right { display: flex; align-items: center; gap: 12px; }
+    .pb-tagline { font-size: 0.85rem; opacity: 0.9; }
+    .pb-view-all-btn {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.4);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .pb-view-all-btn:hover { background: rgba(255,255,255,0.35); }
+    .pb-hero {
+      background: linear-gradient(135deg, ${branding.primaryColor || '#003366'} 0%, ${branding.primaryColor || '#003366'} 100%);
+      color: #fff;
+      padding: 48px 24px 56px;
+      text-align: center;
+    }
+    .pb-hero h1 { color: #fff; font-size: 2.2rem; margin: 0 0 12px; }
+    .pb-hero-subtitle { font-size: 1.1rem; opacity: 0.9; margin: 0 0 8px; }
+    .pb-hero-date { font-size: 0.85rem; opacity: 0.75; margin: 0; }
+    .pb-hero-search {
+      max-width: 560px;
+      margin: 24px auto 0;
+      display: flex;
+      gap: 8px;
+    }
+    .pb-hero-search input {
+      flex: 1;
+      padding: 12px 20px;
+      border-radius: 28px;
+      border: none;
+      font-size: 1rem;
+      outline: none;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .pb-main { padding: 0 24px 48px; max-width: 1100px; margin: 0 auto; }
+    .pb-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: -32px; }
+    .pb-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .pb-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+    .pb-card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      background: #fff;
+    }
+    .pb-card-header h3 { margin: 0; font-size: 1.05rem; color: ${branding.primaryColor || '#003366'}; flex: 1; }
+    .pb-card-toggle { font-size: 1.2rem; color: ${branding.primaryColor || '#003366'}; transition: transform 0.2s; }
+    .pb-card-toggle.open { transform: rotate(180deg); }
+    .pb-card-body { padding: 16px 20px; display: none; font-size: 0.9rem; color: #374151; }
+    .pb-card-body.open { display: block; }
+    .pb-card-body h4 { font-size: 0.95rem; font-weight: 600; color: #1f2937; margin: 0 0 8px; }
+    .pb-card-body p { margin: 0 0 8px; }
+    .pb-groups-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 20px 0 0;
+      border-bottom: 2px solid #e5e7eb;
+      margin-bottom: 24px;
+    }
+    .pb-group-chip {
+      padding: 6px 14px;
+      border-radius: 16px;
+      background: ${branding.primaryColor || '#003366'}18;
+      color: ${branding.primaryColor || '#003366'};
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid ${branding.primaryColor || '#003366'}40;
+      transition: background 0.2s;
+    }
+    .pb-group-chip:hover, .pb-group-chip.active { background: ${branding.primaryColor || '#003366'}; color: #fff; }
+    .pb-footer {
+      background: ${branding.primaryColor || '#003366'};
+      color: #fff;
+      padding: 24px;
+      text-align: center;
+    }
+    .pb-footer-entity { font-size: 1rem; font-weight: 600; margin: 0 0 4px; }
+    .pb-footer-agency { font-size: 0.85rem; opacity: 0.85; margin: 0 0 4px; }
+    .pb-footer-date { font-size: 0.8rem; opacity: 0.7; margin: 0; }
+    .pb-hidden { display: none !important; }
+    .pb-no-results { text-align: center; padding: 48px 24px; color: #6b7280; font-size: 1rem; }
+    @media (max-width: 768px) {
+      .pb-hero-search { flex-direction: column; }
+      .pb-cards-grid { grid-template-columns: 1fr; }
+      .pb-topbar { flex-direction: column; gap: 8px; text-align: center; }
+    }
+  `;
+
+  const playbookJs = `
+    // Playbook search and filter
+    function filterPlaybookCards(query) {
+      var cards = document.querySelectorAll('.pb-card');
+      var lc = query.toLowerCase();
+      var matchCount = 0;
+      cards.forEach(function(card) {
+        var title = (card.querySelector('h3') || {}).textContent || '';
+        var bodyText = (card.querySelector('.pb-card-body') || {}).textContent || '';
+        var keywords = card.getAttribute('data-keywords') || '';
+        var visible = !lc || title.toLowerCase().includes(lc) || bodyText.toLowerCase().includes(lc) || keywords.includes(lc);
+        card.classList.toggle('pb-hidden', !visible);
+        if (visible) matchCount++;
+      });
+      var noResults = document.querySelector('.pb-no-results');
+      if (noResults) noResults.style.display = matchCount > 0 ? 'none' : 'block';
+    }
+    function viewAllSections() {
+      var search = document.querySelector('.pb-hero-search input');
+      if (search) search.value = '';
+      document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('pb-hidden'); });
+      document.querySelectorAll('.pb-group-chip').forEach(function(c) { c.classList.remove('active'); });
+      var noResults = document.querySelector('.pb-no-results');
+      if (noResults) noResults.style.display = 'none';
+    }
+    function toggleCard(btn) {
+      var card = btn.closest('.pb-card');
+      var body = card.querySelector('.pb-card-body');
+      var icon = card.querySelector('.pb-card-toggle');
+      var isOpen = body.classList.toggle('open');
+      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      icon.classList.toggle('open', isOpen);
+    }
+    function scrollToCard(cardId) {
+      var card = document.getElementById(cardId);
+      if (!card) {
+        // Fallback: find card whose title matches cardId
+        var allCards = document.querySelectorAll('.pb-card');
+        allCards.forEach(function(c) {
+          var h3 = c.querySelector('h3');
+          if (h3 && h3.textContent.trim() === cardId) card = c;
+        });
+      }
+      if (card) {
+        var body = card.querySelector('.pb-card-body');
+        var btn = card.querySelector('.pb-card-header');
+        var icon = card.querySelector('.pb-card-toggle');
+        if (body && !body.classList.contains('open')) {
+          body.classList.add('open');
+          if (btn) btn.setAttribute('aria-expanded', 'true');
+          if (icon) icon.classList.add('open');
+        }
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  `;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <style>${css}${playbookCss}</style>
+</head>
+<body>
+  <div class="pb-flag-strip"></div>
+  <header class="pb-topbar">
+    <div class="pb-topbar-left">
+      ${logoHtml}
+      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      ${tagline ? `<span class="pb-tagline">${escapeHtml(tagline)}</span>` : ''}
+    </div>
+    <div class="pb-topbar-right">
+      <button class="pb-view-all-btn" onclick="viewAllSections()">View all sections</button>
+    </div>
+  </header>
+  <section class="pb-hero">
+    <h1>${escapeHtml(title)}</h1>
+    ${heroSubtitle ? `<p class="pb-hero-subtitle">${escapeHtml(heroSubtitle)}</p>` : ''}
+    ${heroDate ? `<p class="pb-hero-date">${escapeHtml(heroDate)}</p>` : ''}
+    <div class="pb-hero-search">
+      <input type="search" placeholder="Search sections, steps, and keywords..." aria-label="Search playbook" oninput="filterPlaybookCards(this.value)">
+    </div>
+  </section>
+  <main class="pb-main" role="main">
+    <div class="pb-groups-bar" id="pb-groups">${groupsHtml}</div>
+    <div class="pb-cards-grid" id="pb-cards">
+      ${cardsHtml}
+    </div>
+    <div class="pb-no-results" style="display:none;">No sections match your search. Try different keywords.</div>
+  </main>
+  <footer class="pb-footer">
+    ${footerEntity ? `<p class="pb-footer-entity">${escapeHtml(footerEntity)}</p>` : ''}
+    ${footerAgency ? `<p class="pb-footer-agency">${escapeHtml(footerAgency)}</p>` : ''}
+    ${footerDate ? `<p class="pb-footer-date">${escapeHtml(footerDate)}</p>` : ''}
+  </footer>
+  <script>${js}${playbookJs}</script>
+</body>
+</html>`;
+}
+
 // ============ Main Export ============
 
 /**
@@ -1075,6 +1435,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
     html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'website') {
     html = buildWebsiteTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+  } else if (pageType === 'playbook') {
+    html = buildPlaybookTemplate(title, segments, branding, css, js, date);
   } else {
     html = buildWebpageTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   }
@@ -1160,40 +1522,107 @@ function sanitizeMammothHtml(sourceHtml: string): string {
 }
 
 /**
+ * Convert pre-rendered HTML source (e.g., mammoth output) into markdown-like segments
+ * so it can be rendered as playbook cards using parsePlaybookCards().
+ */
+function sourceHtmlToPlaybookSegments(sanitizedHtml: string): ContentSegment[] {
+  const segments: ContentSegment[] = [];
+  let currentBody: string[] = [];
+  let cardIdCounter = 0;
+
+  const flush = () => {
+    if (currentBody.length > 0) {
+      // Wrap accumulated HTML lines as a markdown section
+      segments.push({ type: 'markdown', content: currentBody.join('\n') });
+      currentBody = [];
+    }
+  };
+
+  // Split HTML by h2 tags to create section boundaries
+  const h2Regex = /<h2([^>]*)>([\s\S]*?)<\/h2>/gi;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = h2Regex.exec(sanitizedHtml)) !== null) {
+    // Accumulate content before this h2 as intro
+    if (lastIndex === 0) {
+      const before = sanitizedHtml.substring(0, match.index).trim();
+      if (before) {
+        currentBody.push(before);
+        flush();
+      }
+    } else {
+      flush();
+    }
+    // Start new section with ## heading
+    const rawText = match[2].replace(/<[^>]+>/g, '').trim();
+    currentBody.push('## ' + rawText);
+    flush();
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining content after last h2
+  if (lastIndex < sanitizedHtml.length) {
+    const after = sanitizedHtml.substring(lastIndex).trim();
+    if (after) {
+      currentBody.push(after);
+      flush();
+    }
+  }
+
+  // If no h2 headings at all, treat entire source as one section
+  if (segments.length === 0) {
+    segments.push({ type: 'markdown', content: sanitizedHtml });
+  }
+
+  return segments;
+}
+
+/**
  * Generate a self-contained HTML page from pre-rendered HTML source.
  * Used when converting DOCX → HTML via mammoth.convertToHtml().
- * Wraps the source HTML in the documentation template with TOC sidebar and search.
+ * Supports both documentation and playbook output layouts.
  */
 export async function generateHtmlFromSource(options: HtmlSourceOptions): Promise<{
   buffer: Buffer;
   fileSize: number;
   tocCount: number;
 }> {
-  const { title, sourceHtml, branding, metadata } = options;
+  const { title, sourceHtml, branding, metadata, pageType } = options;
 
   // Sanitize the mammoth HTML
   const sanitizedHtml = sanitizeMammothHtml(sourceHtml);
-
-  // Extract TOC from headings
-  const toc = extractTocFromHtml(sanitizedHtml);
-
-  // Build CSS and JS
-  const css = buildCss(branding, 'documentation');
-  const js = buildJs();
-
-  // Build TOC HTML
-  const tocHtml = buildTocHtml(toc);
 
   // Date for footer
   const date = metadata?.date || new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   });
 
-  // Assemble the full documentation template
+  // Build CSS and JS
+  const css = buildCss(branding, pageType === 'playbook' ? 'playbook' : 'documentation');
+  const js = buildJs();
+
   const orgName = branding.organizationName || '';
   const logoHtml = branding.enabled && branding.logoUrl
     ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
     : '';
+
+  // Playbook path: convert source HTML into segments and render as cards
+  if (pageType === 'playbook') {
+    const segments = sourceHtmlToPlaybookSegments(sanitizedHtml);
+    const html = buildPlaybookTemplate(title, segments, branding, css, js, date);
+
+    const buffer = Buffer.from(html, 'utf-8');
+    return {
+      buffer,
+      fileSize: buffer.length,
+      tocCount: segments.filter(s => s.type === 'markdown').length,
+    };
+  }
+
+  // Documentation path (default)
+  const toc = extractTocFromHtml(sanitizedHtml);
+  const tocHtml = buildTocHtml(toc);
 
   const html = `<!DOCTYPE html>
 <html lang="en">

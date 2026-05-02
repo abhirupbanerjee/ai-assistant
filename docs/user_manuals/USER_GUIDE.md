@@ -364,6 +364,44 @@ Request formatted documents:
 **Bot:** I've created a PDF document summarizing the leave policies:
 [Download: Leave_Policy_Summary.pdf]
 
+### HTML Generator
+
+Generate interactive HTML pages that users can view in their browser:
+
+**You:** Create a playbook page for our employee onboarding policy
+
+**Bot:** I'll create an interactive playbook HTML page with searchable sections for your onboarding policy.
+
+**Result:** The bot generates an HTML page with:
+- Sticky header bar with navigation
+- Search bar in the hero section
+- Accordion cards for each section (derived from document headings)
+- Footer with organization branding
+- Download button
+
+**Supported page types:**
+- `playbook` - Interactive cards with search and accordion sections
+- `dashboard` - Analytical charts and KPI summaries
+- `documentation` - TOC sidebar with search
+- `report` - Formal report layout
+- `website` - Full webpage mockup
+- `book` - Ebook with chapters and metadata
+
+### File to HTML
+
+Convert uploaded documents (DOCX, PDF) to searchable HTML pages:
+
+**You:** Upload this policy document and create a playbook HTML page
+
+**Bot:** I'll convert your document to an interactive HTML page with searchable sections.
+
+**Result:** The bot:
+1. Extracts content from your uploaded document
+2. Creates an HTML page with accordion sections based on headings
+3. Adds search functionality and organization branding
+
+**Note:** DOCX files are preferred — they retain all embedded images. PDF extraction includes text but images are not yet supported.
+
 ### Task Planning
 
 For complex multi-step requests:

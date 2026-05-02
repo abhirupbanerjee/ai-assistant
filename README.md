@@ -127,6 +127,8 @@ Built with enterprise-grade, open-source technologies:
 - **Load Testing** - k6 Cloud load test execution and reporting
 - **Security Scan** - Automated security vulnerability scanning
 - **Dependency Analysis** - Project dependency inspection and vulnerability checks
+- **HTML Generator** - Generate interactive HTML pages (dashboards, documentation, books, playbooks)
+- **File to HTML** - Convert DOCX/PDF documents to searchable HTML pages
 
 ### Agent Bots (API)
 Expose your AI capabilities as a programmatic API for external systems, apps, and CI/CD pipelines:

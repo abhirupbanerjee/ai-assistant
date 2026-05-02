@@ -131,6 +131,11 @@ export const fileToHtmlTool: ToolDefinition = {
             description:
               'Title for the HTML page. Defaults to the uploaded filename if not provided.',
           },
+          page_type: {
+            type: 'string',
+            enum: ['documentation', 'playbook'],
+            description: 'Output layout type. documentation = TOC/sidebar page. playbook = card-based interactive playbook layout derived from document headings.',
+          },
         },
         required: [],
       },
@@ -156,6 +161,7 @@ export const fileToHtmlTool: ToolDefinition = {
   execute: async (args: {
     filename?: string;
     title?: string;
+    page_type?: 'documentation' | 'playbook';
   }): Promise<string> => {
     try {
       // Get context from AsyncLocalStorage
@@ -270,7 +276,7 @@ export const fileToHtmlTool: ToolDefinition = {
       // Determine page title
       const pageTitle = args.title || sourceFilename.replace(/\.[^/.]+$/, '');
 
-      // Generate the HTML page with TOC sidebar and search
+      // Generate the HTML page — playbook or documentation layout
       const htmlResult = await generateHtmlFromSource({
         title: pageTitle,
         sourceHtml,
@@ -280,6 +286,7 @@ export const fileToHtmlTool: ToolDefinition = {
             year: 'numeric', month: 'long', day: 'numeric',
           }),
         },
+        pageType: args.page_type,
       });
 
       // Save to disk
@@ -306,6 +313,7 @@ export const fileToHtmlTool: ToolDefinition = {
           sourceFilename,
           sourceFormat: isDocxFile ? 'docx' : 'pdf',
           tocCount: htmlResult.tocCount,
+          pageType: args.page_type || 'documentation',
           branding: branding.enabled ? {
             organizationName: branding.organizationName,
             primaryColor: branding.primaryColor,
@@ -328,6 +336,7 @@ export const fileToHtmlTool: ToolDefinition = {
           downloadUrl: `/api/documents/${outputResult.id}/download`,
           sourceFormat: isDocxFile ? 'DOCX' : 'PDF',
           tocCount: htmlResult.tocCount,
+          pageType: args.page_type || 'documentation',
           hasImages: isDocxFile, // mammoth embeds images, PDF extraction doesn't (yet)
         },
       });

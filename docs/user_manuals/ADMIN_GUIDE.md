@@ -768,6 +768,49 @@ Override global settings per category:
 | **Primary Color** | Theme color (hex) |
 | **Font Family** | Document font |
 
+#### HTML Generator
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enabled** | `true` | Enable interactive HTML page generation |
+| **Default Page Type** | `auto` | Default layout: auto, dashboard, documentation, book, report, website, playbook |
+| **Enable Branding** | `false` | Add organization branding to HTML pages |
+| **Logo URL** | — | URL or data URL of organization logo |
+| **Organization Name** | — | Name displayed in page header |
+| **Primary Color** | `#003366` | Primary color for headings and accents |
+| **Font Family** | `Segoe UI, Arial, sans-serif` | Primary font for page text |
+| **Page Expiration** | `30 days` | Days until generated pages expire (0 = never) |
+| **Max Page Size** | `50 MB` | Maximum generated HTML page size |
+
+**Page Types:**
+- `auto` - Auto-infer layout from content
+- `dashboard` - Power BI-style analytical dashboard with KPI summaries and chart grid
+- `documentation` - Structured docs with TOC sidebar and search
+- `book` - Ebook-style chapters with metadata and language options
+- `report` - Formal report layout (executive summary, findings, recommendations)
+- `website` - Frontend webpage mockup (header, hero, sections, footer)
+- `playbook` - Interactive playbook with sticky header, hero search bar, accordion cards from ## headings, and playbook footer branding
+
+#### File to HTML
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enabled** | `true` | Enable DOCX/PDF to HTML conversion |
+| **Enable Branding** | `false` | Add organization branding to HTML pages |
+| **Logo URL** | — | URL or data URL of organization logo |
+| **Organization Name** | — | Name displayed in page header |
+| **Primary Color** | `#003366` | Primary color for headings and accents |
+| **Font Family** | `Segoe UI, Arial, sans-serif` | Primary font for page text |
+| **Document Expiration** | `30 days` | Days until converted pages expire (0 = never) |
+
+**Supported Formats:**
+- `.docx` - Preferred — retains all embedded images as base64
+- `.pdf` - Text extraction only (images not yet supported)
+
+**Page Types:**
+- `documentation` - Standard TOC/sidebar page (default)
+- `playbook` - Card-based interactive playbook layout derived from document headings
+
 #### YouTube Transcript
 
 | Setting | Description |

@@ -138,6 +138,15 @@ interface SuperuserTool {
   categories: CategoryToolStatus[];
 }
 
+interface PlaybookBrandingConfig {
+  tagline: string;
+  heroSubtitle: string;
+  heroDate: string;
+  footerEntity: string;
+  footerAgency: string;
+  footerDate: string;
+}
+
 interface BrandingConfig {
   enabled: boolean;
   logoUrl: string;
@@ -146,6 +155,7 @@ interface BrandingConfig {
   fontFamily: string;
   header: { enabled: boolean; content: string };
   footer: { enabled: boolean; content: string; includePageNumber: boolean };
+  playbook: PlaybookBrandingConfig;
 }
 
 /**
@@ -2395,6 +2405,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                               fontFamily: 'Calibri',
                               header: { enabled: false, content: '' },
                               footer: { enabled: true, content: '', includePageNumber: true },
+                              playbook: {
+                                tagline: '',
+                                heroSubtitle: '',
+                                heroDate: '',
+                                footerEntity: '',
+                                footerAgency: '',
+                                footerDate: '',
+                              },
                             });
                           }}
                           title="Configure branding"

@@ -2141,6 +2141,224 @@ interface YouTubeConfig {
 
 ---
 
+## HTML Generator Tool
+
+### Purpose
+
+Generates interactive, self-contained HTML pages from chat content using LLM-driven design. Supports 7 page types including dashboards with Chart.js, documentation sites, ebooks, reports, web page mockups, and **playbooks**. Embeds Chart.js and Mermaid.js for data visualizations and diagrams.
+
+### Page Types
+
+| Type | Use Case |
+|------|----------|
+| `auto` | Auto-infer layout from content (default) |
+| `dashboard` | Power BI-style analytical dashboard with KPI summaries and chart grid |
+| `documentation` | Structured docs with TOC sidebar and search |
+| `book` | Ebook-style chapters with metadata and language options |
+| `report` | Formal report layout (executive summary, findings, recommendations) |
+| `website` | Frontend webpage mockup (header, hero, sections, footer) |
+| `playbook` | Interactive playbook with sticky top bar, hero search bar, accordion section cards derived from ## headings, and playbook footer branding |
+
+### Playbook Branding Config
+
+The playbook page type supports a `PlaybookBrandingConfig` with the following fields:
+
+```typescript
+interface PlaybookBrandingConfig {
+  tagline: string;         // Tagline displayed in hero section
+  heroSubtitle: string;   // Subtitle under the main title
+  heroDate: string;       // Date shown in hero (e.g., "March 2025")
+  footerEntity: string;    // Footer organization name
+  footerAgency: string;    // Footer agency/department name
+  footerDate: string;     // Footer date text
+}
+```
+
+### Configuration
+
+Configure in **Admin Panel → Tools → HTML Generator**:
+
+| Setting | Default | Description |
+|---------|---------|--------------|
+| Default Page Type | `auto` | Page layout used when not specified |
+| Enable Branding | `false` | Add organization branding to pages |
+| Logo URL | — | URL or data URL of organization logo |
+| Organization Name | — | Name displayed in page header |
+| Primary Color | `#003366` | Primary color for headings and accents |
+| Font Family | `Segoe UI, Arial, sans-serif` | Primary font for page text |
+| Page Expiration | `30 days` | Days until generated pages expire |
+| Max Page Size | `50 MB` | Maximum generated HTML page size |
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "html_gen",
+  "description": "Generate an interactive HTML page from content...",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string", "description": "Page title" },
+      "content": { "type": "string", "description": "Page content in markdown format" },
+      "page_type": {
+        "type": "string",
+        "enum": ["auto", "dashboard", "documentation", "book", "report", "website", "playbook"]
+      }
+    },
+    "required": ["title", "content"]
+  }
+}
+```
+
+### Example Usage
+
+**User:** "Create a playbook page for our employee onboarding policy"
+
+**AI Response:**
+```
+I'll create an interactive playbook page for your employee onboarding policy. I'll structure it with section cards for each key area (preparation, first week, training, etc.) that users can expand and search.
+```
+
+**Function Call:**
+```
+html_gen({
+  title: "Employee Onboarding Playbook",
+  content: `
+# Employee Onboarding Playbook
+
+## Pre-Arrival Preparation
+### IT Setup and Access
+- Create company email account
+- Set up laptop with required software
+- Issue access badge and building keys
+
+### Workspace Preparation
+- Assign desk location and workspace
+- Order welcome kit and equipment
+- Set up workstation ergonomically
+
+## First Day
+### Welcome Orientation
+- Company history and mission overview
+- Meet the team and key stakeholders
+- Office tour and facilities walkthrough
+
+### HR Paperwork
+- Employment contract signing
+- Benefits enrollment
+- Emergency contact information
+
+## First Week
+### Training Schedule
+- Compliance and security training
+- Role-specific tool training
+- Department-specific processes
+
+### Mentorship Program
+- Assign onboarding buddy
+- Schedule check-in meetings
+- 30-60-90 day goal setting
+
+## Compliance & Policy Review
+### Required Training Modules
+\`\`\`chart
+{
+  "title": "Training Module Completion",
+  "data": [
+    {"module": "Security", "progress": 0},
+    {"module": "Ethics", "progress": 0},
+    {"module": "Privacy", "progress": 0}
+  ],
+  "x_field": "module",
+  "y_fields": ["progress"],
+  "recommended_chart": "bar"
+}
+\`\`\`
+`,
+  page_type: "playbook"
+})
+```
+**Result:** Interactive playbook HTML page with accordion cards, search bar, and playbook branding.
+
+---
+
+## File to HTML Tool
+
+### Purpose
+
+Converts uploaded DOCX or PDF documents to self-contained HTML pages with TOC sidebar, search, and organization branding. DOCX files retain embedded images as base64 data URIs for full fidelity.
+
+### Supported File Types
+
+| Format | Notes |
+|--------|-------|
+| `.docx` | **Preferred** — retains all embedded images as base64 |
+| `.pdf` | Text extraction only (images not yet supported) |
+
+### Page Types
+
+| Type | Description |
+|------|-------------|
+| `documentation` | Standard TOC/sidebar page (default) |
+| `playbook` | Card-based interactive playbook layout derived from document ## headings |
+
+### Configuration
+
+Configure in **Admin Panel → Tools → File to HTML**:
+
+| Setting | Default | Description |
+|---------|---------|--------------|
+| Enable File to HTML | `true` | Allow converting documents to HTML |
+| Enable Branding | `false` | Add organization branding to HTML pages |
+| Logo URL | — | URL or data URL of organization logo |
+| Organization Name | — | Name displayed in page header |
+| Primary Color | `#003366` | Primary color for headings and accents |
+| Font Family | `Segoe UI, Arial, sans-serif` | Primary font for page text |
+| Document Expiration | `30 days` | Days until converted pages expire |
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "file_to_html",
+  "description": "Convert an uploaded DOCX or PDF document to a self-contained HTML page...",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "filename": { "type": "string", "description": "Filename of uploaded document" },
+      "title": { "type": "string", "description": "Title for the HTML page" },
+      "page_type": {
+        "type": "string",
+        "enum": ["documentation", "playbook"]
+      }
+    },
+    "required": []
+  }
+}
+```
+
+### Example Usage
+
+**User:** "Upload this policy document and convert it to a playbook HTML page"
+
+1. User uploads `onboarding-policy.docx`
+2. **AI Response:**
+```
+I'll convert your policy document to an interactive playbook HTML page with searchable accordion sections derived from the document headings.
+```
+
+3. **Function Call:**
+```
+file_to_html({
+  filename: "onboarding-policy.docx",
+  title: "Onboarding Policy Playbook",
+  page_type: "playbook"
+})
+```
+**Result:** Interactive playbook HTML page with sections from the document headings, search bar, and download button.
+
+---
+
 ## Thread Sharing Tool
 
 ### Purpose

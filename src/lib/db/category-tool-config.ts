@@ -23,6 +23,15 @@ export interface CategoryToolConfig {
   updatedBy: string;
 }
 
+export interface PlaybookBrandingConfig {
+  tagline: string;
+  heroSubtitle: string;
+  heroDate: string;
+  footerEntity: string;
+  footerAgency: string;
+  footerDate: string;
+}
+
 export interface BrandingConfig {
   enabled: boolean;
   logoUrl: string;
@@ -31,6 +40,7 @@ export interface BrandingConfig {
   fontFamily: string;
   header: { enabled: boolean; content: string };
   footer: { enabled: boolean; content: string; includePageNumber: boolean };
+  playbook: PlaybookBrandingConfig;
 }
 
 // Database row type

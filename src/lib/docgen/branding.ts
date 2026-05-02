@@ -11,6 +11,15 @@ import * as path from 'path';
 
 // ============ Types ============
 
+export interface PlaybookBrandingConfig {
+  tagline: string;
+  heroSubtitle: string;
+  heroDate: string;
+  footerEntity: string;
+  footerAgency: string;
+  footerDate: string;
+}
+
 export interface BrandingConfig {
   enabled: boolean;
   logoUrl: string;
@@ -19,6 +28,7 @@ export interface BrandingConfig {
   fontFamily: string;
   header: { enabled: boolean; content: string };
   footer: { enabled: boolean; content: string; includePageNumber: boolean };
+  playbook: PlaybookBrandingConfig;
 }
 
 export interface ProcessedLogo {
@@ -44,6 +54,14 @@ export const DEFAULT_BRANDING: BrandingConfig = {
   fontFamily: 'Calibri',
   header: { enabled: true, content: '' },
   footer: { enabled: true, content: '', includePageNumber: true },
+  playbook: {
+    tagline: '',
+    heroSubtitle: '',
+    heroDate: '',
+    footerEntity: '',
+    footerAgency: '',
+    footerDate: '',
+  },
 };
 
 // ============ Color Utilities ============
@@ -315,6 +333,9 @@ export function mergeBrandingConfigs(
     }
     if (categoryConfig.footer) {
       base.footer = { ...base.footer, ...categoryConfig.footer };
+    }
+    if (categoryConfig.playbook) {
+      base.playbook = { ...DEFAULT_BRANDING.playbook, ...base.playbook, ...categoryConfig.playbook };
     }
   }
 

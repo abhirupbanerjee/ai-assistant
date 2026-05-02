@@ -30,7 +30,7 @@ import * as path from 'path';
 
 // ============ Types ============
 
-export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website';
+export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'playbook';
 
 function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
   switch (pageType) {
@@ -44,6 +44,8 @@ function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
       return 'report';
     case 'website':
       return 'website';
+    case 'playbook':
+      return 'playbook';
     case 'auto':
     default:
       return undefined;
@@ -70,6 +72,7 @@ const DEFAULT_HTML_PROMPT_LINES = [
   '- book: Create an ebook-style page with title and metadata (country/entity/company where available), and chapter-style headings so sidebar navigation is useful. Include language options in content: English, French, Spanish, Portuguese, Mandarin, Hindi.',
   '- report: Create a formal report structure (executive summary, findings, recommendations). Include charts/diagrams/tables where they improve clarity.',
   '- website: Create a comprehensive front-end webpage mockup with header, hero, sections, and footer. Keep backend/API routes as stubs only.',
+  '- playbook: Create an interactive government/organizational playbook page. Use ## for top-level sections (each becomes a searchable card). Use ### for substeps/details within cards. Avoid hard-coding phases or predefined sections unless the source content or user request explicitly includes them. Derive accent colors from branding.primaryColor or country/organization identity. Search bar in hero is mandatory. The LLM controls content structure through ## headings.',
   '',
   'For charts, use this format inside a ```chart fenced block:',
   '{',
@@ -99,7 +102,7 @@ const htmlGenConfigSchema = {
       type: 'string',
       title: 'Default Page Type',
       description: 'Default page layout when not specified',
-      enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website'],
+      enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook'],
       default: 'auto',
     },
     promptTemplate: {
@@ -170,7 +173,7 @@ const htmlGenConfigSchema = {
 function validateHtmlGenConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
-  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website'];
+  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook'];
 
   if (config.promptTemplate !== undefined && typeof config.promptTemplate !== 'string') {
     errors.push('promptTemplate must be a string');
@@ -237,6 +240,7 @@ export const htmlGenTool: ToolDefinition = {
         '- book: ebook-style chapter hierarchy with metadata and language options (English, French, Spanish, Portuguese, Mandarin, Hindi).',
         '- report: formal structure (executive summary, findings, recommendations), with charts/diagrams where useful.',
         '- website: comprehensive frontend webpage mockup (header, hero, sections, footer), backend APIs as stubs only.',
+        '- playbook: interactive government/organizational playbook with sticky top bar, hero search bar, accordion section cards from ## headings, and playbook footer branding.',
         '',
         'For charts, use this format inside a chart fenced block:',
         '{',
@@ -263,8 +267,8 @@ export const htmlGenTool: ToolDefinition = {
           },
           page_type: {
             type: 'string',
-            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website'],
-            description: 'Page layout type. auto = infer from content/title (use only when format is unspecified). dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured docs with TOC+search. book = ebook-style chapter layout with metadata and language options. report = formal report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer (backend routes as stubs).',
+            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook'],
+            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured docs with TOC+search. book = ebook-style chapter layout with metadata and language options. report = formal report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive government/organizational playbook with sticky top bar, hero search bar, accordion section cards, and playbook footer.',
           },
         },
         required: ['title', 'content'],

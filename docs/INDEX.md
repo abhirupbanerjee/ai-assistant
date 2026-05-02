@@ -53,7 +53,7 @@ Detailed guides for specific features and capabilities.
 
 | Document | Description | Key Topics |
 |----------|-------------|------------|
-| [features/Tools.md](features/Tools.md) | Tools system documentation | Web search, document generation, data sources, charts, task planning, YouTube, thread sharing, email |
+| [features/Tools.md](features/Tools.md) | Tools system documentation | Web search, document generation, HTML pages, DOCX/PDF to HTML, data sources, charts, task planning, YouTube, thread sharing, email |
 
 ### Progressive Web App
 

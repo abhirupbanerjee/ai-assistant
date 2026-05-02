@@ -530,6 +530,8 @@ If no category override is set, the global configuration applies.
 |------|-------------|
 | **Web Search** | Search the web for current information |
 | **Document Generator** | Create PDF, DOCX, or Markdown documents |
+| **HTML Generator** | Generate interactive HTML pages (playbooks, dashboards, docs) |
+| **File to HTML** | Convert DOCX/PDF documents to searchable HTML |
 | **Data Source Query** | Query configured APIs and CSV data |
 | **Chart Generator** | Create visualizations from data |
 | **Function APIs** | Call external APIs with structured schemas |
