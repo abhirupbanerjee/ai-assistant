@@ -16,6 +16,7 @@ dist/
 .env.prod
 .env*.local
 
+
 # Debug
 npm-debug.log*
 yarn-debug.log*
@@ -72,3 +73,12 @@ data/*.db.backup-*
 
 # SQLite export CSVs (migration data)
 sqlite_export/
+
+
+
+# git
+
+
+# AI
+.claude
+

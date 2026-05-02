@@ -504,110 +504,242 @@ function renderSegments(segments: ContentSegment[]): string {
   }).join('\n');
 }
 
-// ============ Playbook Card Renderer ============
+// ============ Playbook Structure ============
+// Hierarchy: ## heading → Part card   |   ### heading → Accordion topic row
 
-interface PlaybookCard {
+interface PlaybookTopic {
+  id: string;
+  title: string;
+  subtitle: string;
+  bodyHtml: string;
+  keywords: string;
+}
+
+interface PlaybookPart {
+  partLabel: string;
   title: string;
   id: string;
-  keywords: string;
-  bodyHtml: string;
+  accentColor: string;
+  topics: PlaybookTopic[];
+}
+
+/** Map of part-label prefixes to accent colours (can be extended per-country). */
+const PART_ACCENT_COLORS = [
+  '#007A5E', // green
+  '#00247D', // blue
+  '#FCD116', // yellow
+  '#C8102E', // red
+  '#009B3A', // green
+  '#4D8CC4', // blue
+];
+
+/**
+ * Convert "About Digital Government for Resilience" → "ABOUT DIGITAL GOVERNMENT FOR RESILIENCE"
+ */
+function toUpperHeading(text: string): string {
+  return text.toUpperCase().replace(/\bFOR\b/g, 'FOR').replace(/\bAND\b/g, 'AND');
 }
 
 /**
- * Parse content segments into playbook cards.
- * Each ## heading becomes a card; its following content becomes the card body.
- * Charts and diagrams are appended into the matching card or a standalone card.
+ * Derive a short subtitle from body lines (first non-empty line or 120-char truncation).
  */
-function parsePlaybookCards(segments: ContentSegment[]): {
-  cardsHtml: string;
-  groupsHtml: string;
-} {
-  const cards: PlaybookCard[] = [];
-  let currentTitle = '';
-  let currentId = '';
-  let currentBody: string[] = [];
-  let cardIdCounter = 0;
+function deriveSubtitle(bodyLines: string[]): string {
+  const raw = bodyLines.join('\n').trim();
+  if (!raw) return '';
+  const html = markdownToHtml(raw);
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (text.length <= 120) return text;
+  return text.substring(0, 120).replace(/\s\S+$/, '') + '…';
+}
 
-  const flushCard = () => {
-    if (!currentTitle) return;
-    cardIdCounter++;
-    cards.push({
-      title: currentTitle,
-      id: `${currentId}-${cardIdCounter}`,
-      keywords: (currentTitle + ' ' + currentBody.join(' ')).toLowerCase().replace(/<[^>]+>/g, ' ').substring(0, 200),
-      bodyHtml: currentBody.length > 0 ? markdownToHtml(currentBody.join('\n')) : '<p>No details available.</p>',
+/**
+ * Parse markdown/segments into a hierarchical PlaybookPart[] structure.
+ * ## headings → parts
+ * ### headings → topic rows within the current part
+ * All other content belongs to the current part's intro or current topic.
+ */
+function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
+  const parts: PlaybookPart[] = [];
+  let currentPartLabel = 'PART I';
+  let currentPartTitle = '';
+  let currentPartId = '';
+  let currentPartBody: string[] = [];
+  let partCounter = 0;
+  let currentTopicTitle = '';
+  let currentTopicId = '';
+  let currentTopicBody: string[] = [];
+  let topicCounter = 0;
+
+  const flushTopic = (part: PlaybookPart) => {
+    if (!currentTopicTitle) return;
+    topicCounter++;
+    const id = `${currentTopicId}-${topicCounter}`;
+    part.topics.push({
+      id,
+      title: currentTopicTitle,
+      subtitle: deriveSubtitle(currentTopicBody),
+      bodyHtml: currentTopicBody.length > 0
+        ? markdownToHtml(currentTopicBody.join('\n'))
+        : '<p>No details available.</p>',
+      keywords: (currentTopicTitle + ' ' + currentTopicBody.join(' '))
+        .toLowerCase().replace(/<[^>]+>/g, ' ').substring(0, 200),
     });
-    currentTitle = '';
-    currentId = '';
-    currentBody = [];
+    currentTopicTitle = '';
+    currentTopicId = '';
+    currentTopicBody = [];
+  };
+
+  const flushPart = () => {
+    if (!currentPartTitle) return;
+    flushTopic({ partLabel: currentPartLabel, title: currentPartTitle, id: currentPartId, accentColor: PART_ACCENT_COLORS[parts.length % PART_ACCENT_COLORS.length], topics: [] });
+    partCounter++;
+    // Advance part label
+    const partNum = partCounter + 1;
+    if (partNum === 1) currentPartLabel = 'PART I';
+    else if (partNum === 2) currentPartLabel = 'PART II';
+    else if (partNum === 3) currentPartLabel = 'PART III';
+    else if (partNum === 4) currentPartLabel = 'PARTS IV & V';
+    else currentPartLabel = `PART ${partNum}`;
+    currentPartTitle = '';
+    currentPartId = '';
+    currentPartBody = [];
+    topicCounter = 0;
   };
 
   for (const seg of segments) {
     if (seg.type === 'markdown') {
       const lines = (seg as MarkdownSegment).content.split('\n');
       for (const line of lines) {
-        // ## heading → new card
         const h2Match = line.match(/^##\s+(.+)$/);
+        const h3Match = line.match(/^###\s+(.+)$/);
+
         if (h2Match) {
-          flushCard();
-          currentTitle = h2Match[1].trim();
-          currentId = currentTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        } else if (currentTitle) {
-          // Accumulate body content
-          currentBody.push(line);
+          // Flush pending topic, then pending part
+          const lastPart = parts[parts.length - 1];
+          if (lastPart) flushTopic(lastPart);
+          if (currentPartTitle) flushPart();
+
+          currentPartTitle = h2Match[1].trim();
+          currentPartId = currentPartTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        } else if (h3Match) {
+          const lastPart = parts[parts.length - 1];
+          if (lastPart) flushTopic(lastPart);
+          else if (currentPartTitle) flushPart();
+
+          currentTopicTitle = h3Match[1].trim();
+          currentTopicId = currentTopicTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          currentTopicBody = [];
+          topicCounter++;
+        } else if (currentTopicTitle) {
+          currentTopicBody.push(line);
+        } else if (currentPartTitle) {
+          currentPartBody.push(line);
         } else {
-          // Content before any ## heading — intro text, render inline
-          currentBody.push(line);
+          // Intro content before any ## — attach to next part
+          currentPartBody.push(line);
         }
       }
     } else if (seg.type === 'chart') {
-      currentBody.push(renderChartSegment(seg as ChartSegment));
+      const html = renderChartSegment(seg as ChartSegment);
+      if (currentTopicTitle) currentTopicBody.push(html);
+      else currentPartBody.push(html);
     } else if (seg.type === 'mermaid') {
-      currentBody.push(renderDiagramSegment(seg as DiagramSegment));
+      const html = renderDiagramSegment(seg as DiagramSegment);
+      if (currentTopicTitle) currentTopicBody.push(html);
+      else currentPartBody.push(html);
     }
   }
-  flushCard();
 
-  // If no ## headings at all, wrap all content in a single card
-  if (cards.length === 0 && segments.length > 0) {
-    cards.push({
+  // Flush last topic and part
+  const lastPart = parts[parts.length - 1];
+  if (lastPart) flushTopic(lastPart);
+  if (currentPartTitle) {
+    flushPart();
+    // The flushPart() call above creates a new empty part, fix by pushing the real one
+    const realPart = parts[parts.length - 1];
+    if (!realPart && currentPartTitle) {
+      parts.push({
+        partLabel: currentPartLabel,
+        title: currentPartTitle,
+        id: currentPartId,
+        accentColor: PART_ACCENT_COLORS[parts.length % PART_ACCENT_COLORS.length],
+        topics: [],
+      });
+    }
+  }
+
+  // If no parts at all, treat all content as one overview part
+  if (parts.length === 0 && segments.length > 0) {
+    const allHtml = segments.map(seg => {
+      if (seg.type === 'markdown') return markdownToHtml((seg as MarkdownSegment).content);
+      if (seg.type === 'chart') return renderChartSegment(seg as ChartSegment);
+      if (seg.type === 'mermaid') return renderDiagramSegment(seg as DiagramSegment);
+      return '';
+    }).join('\n');
+    parts.push({
+      partLabel: 'OVERVIEW',
       title: 'Overview',
-      id: 'overview-1',
-      keywords: 'overview',
-      bodyHtml: segments.map(seg => {
-        if (seg.type === 'markdown') return markdownToHtml((seg as MarkdownSegment).content);
-        if (seg.type === 'chart') return renderChartSegment(seg as ChartSegment);
-        if (seg.type === 'mermaid') return renderDiagramSegment(seg as DiagramSegment);
-        return '';
-      }).join('\n'),
+      id: 'overview',
+      accentColor: PART_ACCENT_COLORS[0],
+      topics: [{
+        id: 'overview-1',
+        title: 'Overview',
+        subtitle: deriveSubtitle([]),
+        bodyHtml: allHtml || '<p>No details available.</p>',
+        keywords: 'overview',
+      }],
     });
   }
 
-  const cardsHtml = cards.map(card => `
-<article class="pb-card" id="${card.id}" data-keywords="${escapeHtml(card.keywords)}">
-  <button class="pb-card-header" onclick="toggleCard(this)" aria-expanded="false">
-    <h3>${escapeHtml(card.title)}</h3>
-    <span class="pb-card-toggle" aria-hidden="true">&#9660;</span>
-  </button>
-  <div class="pb-card-body">${card.bodyHtml}</div>
-</article>`).join('\n');
-
-  // Build group chips from card titles (deduplicated)
-  const seen = new Set<string>();
-  const groupsHtml = cards
-    .filter(card => {
-      if (seen.has(card.id)) return false;
-      seen.add(card.id);
-      return true;
-    })
-    .map(card =>
-      `<button class="pb-group-chip" onclick="scrollToCard('${card.id}')">${escapeHtml(card.title)}</button>`
-    ).join('\n');
-
-  return { cardsHtml, groupsHtml };
+  return parts;
 }
 
-// Note: scrollToCard is embedded in playbookJs below, not needed as module-level function
+/**
+ * Render PlaybookPart[] into HTML for the cards grid.
+ */
+function renderPlaybookPartsHtml(parts: PlaybookPart[]): {
+  cardsHtml: string;
+  partDetailHtml: string;
+} {
+  const cardsHtml = parts.map(part => `
+<article class="pb-card" id="${part.id}" data-keywords="${escapeHtml((part.title + ' ' + part.topics.map(t => t.title).join(' ')).toLowerCase())}">
+  <button class="pb-card-header" onclick="openPlaybookPart('${part.id}')" aria-label="Open ${escapeHtml(part.partLabel)}">
+    <div class="pb-card-top-border" style="background:${part.accentColor};"></div>
+    <div class="pb-card-header-inner">
+      <div>
+        <span class="pb-card-part-label">${escapeHtml(part.partLabel)}</span>
+        <h3>${escapeHtml(toUpperHeading(part.title))}</h3>
+      </div>
+      <span class="pb-card-arrow" aria-hidden="true">&#8594;</span>
+    </div>
+  </button>
+</article>`).join('\n');
+
+  // Pre-render hidden part detail panels using <template> tags for safe content storage
+  const partDetailHtml = parts.map(part => {
+    const topicRows = part.topics.map(topic => `
+<div class="pb-topic-row" id="${topic.id}" data-keywords="${escapeHtml(topic.keywords)}">
+  <button class="pb-topic-header" onclick="togglePlaybookTopic('${topic.id}')" aria-expanded="false">
+    <div class="pb-topic-header-left">
+      <span class="pb-topic-title">${escapeHtml(topic.title)}</span>
+      ${topic.subtitle ? `<span class="pb-topic-subtitle">${escapeHtml(topic.subtitle)}</span>` : ''}
+    </div>
+    <span class="pb-topic-chevron" aria-hidden="true">&#8250;</span>
+  </button>
+  <div class="pb-topic-body">${topic.bodyHtml}</div>
+</div>`).join('\n');
+
+    return `<template id="pb-part-tmpl-${part.id}">
+<div class="pb-part-detail">
+  <div class="pb-part-detail-heading">${escapeHtml(part.partLabel)}: ${escapeHtml(toUpperHeading(part.title))}</div>
+  <div class="pb-topic-list">${topicRows}</div>
+</div>
+</template>`;
+  }).join('\n');
+
+  return { cardsHtml, partDetailHtml };
+}
 
 // ============ TOC HTML Builder ============
 
@@ -1136,6 +1268,82 @@ function buildWebpageTemplate(
 
 // ============ Playbook Template ============
 
+/**
+ * Country-aware playbook theme resolver.
+ * Detects the country/organization from title and branding fields,
+ * then returns a { primary, secondary, accent, flagStrip } palette.
+ * The primary colour from branding.primaryColor overrides any inferred value.
+ */
+function resolvePlaybookTheme(
+  branding: BrandingConfig,
+  title: string,
+  organizationName: string
+): { primary: string; secondary: string; accent: string; flagStrip: string } {
+  // If an explicit primary colour is set, use it and derive the rest
+  if (branding.primaryColor) {
+    return {
+      primary: branding.primaryColor,
+      secondary: branding.primaryColor,
+      accent: branding.primaryColor,
+      flagStrip: branding.primaryColor,
+    };
+  }
+
+  // Detect country from title / org name (case-insensitive)
+  const combined = (title + ' ' + organizationName).toLowerCase();
+
+  if (/grenada/i.test(combined)) {
+    // Green, red, yellow
+    return { primary: '#007A5E', secondary: '#CE1126', accent: '#FCD116', flagStrip: '#007A5E,#CE1126,#FCD116' };
+  }
+  if (/jamaica/i.test(combined)) {
+    // Green, yellow, black
+    return { primary: '#009B3A', secondary: '#FED100', accent: '#000000', flagStrip: '#009B3A,#FED100,#000000' };
+  }
+  if (/barbados/i.test(combined)) {
+    // Blue, yellow, blue
+    return { primary: '#00247D', secondary: '#FCD116', accent: '#00247D', flagStrip: '#00247D,#FCD116,#00247D' };
+  }
+  if (/trinidad/i.test(combined)) {
+    // Red, white, black
+    return { primary: '#C8102E', secondary: '#FFFFFF', accent: '#000000', flagStrip: '#C8102E,#FFFFFF,#000000' };
+  }
+  if (/bahamas/i.test(combined)) {
+    // Aquamarine, yellow, black
+    return { primary: '#00778B', secondary: '#FCD116', accent: '#000000', flagStrip: '#00778B,#FCD116,#000000' };
+  }
+  if (/antigua/i.test(combined)) {
+    // Red, white, blue
+    return { primary: '#C8102E', secondary: '#FFFFFF', accent: '#002F6C', flagStrip: '#C8102E,#FFFFFF,#002F6C' };
+  }
+  if (/saint[\s-]?lusia|st[\s-]?lucia/i.test(combined)) {
+    // Cerulean blue, yellow, black
+    return { primary: '#4D8CC4', secondary: '#FCD116', accent: '#000000', flagStrip: '#4D8CC4,#FCD116,#000000' };
+  }
+  if (/dominica/i.test(combined)) {
+    // Green, red, yellow
+    return { primary: '#007A5E', secondary: '#CE1126', accent: '#FCD116', flagStrip: '#007A5E,#CE1126,#FCD116' };
+  }
+  if (/guyana/i.test(combined)) {
+    // White, red, black, gold
+    return { primary: '#009E49', secondary: '#CE1126', accent: '#FCD116', flagStrip: '#009E49,#CE1126,#FCD116' };
+  }
+  if (/suriname/i.test(combined)) {
+    // Green, white, red, gold
+    return { primary: '#377E3F', secondary: '#FFFFFF', accent: '#B40A2C', flagStrip: '#377E3F,#FFFFFF,#B40A2C' };
+  }
+  if (/belize/i.test(combined)) {
+    // Blue, red, white
+    return { primary: '#00358E', secondary: '#D90000', accent: '#FFFFFF', flagStrip: '#00358E,#D90000,#FFFFFF' };
+  }
+  if (/caribbean/i.test(combined)) {
+    return { primary: '#7AB800', secondary: '#0033A0', accent: '#FF6900', flagStrip: '#7AB800,#0033A0,#FF6900' };
+  }
+
+  // Default: deep navy
+  return { primary: '#003366', secondary: '#003366', accent: '#003366', flagStrip: '#003366,#003366,#003366' };
+}
+
 function buildPlaybookTemplate(
   title: string,
   segments: ContentSegment[],
@@ -1156,187 +1364,280 @@ function buildPlaybookTemplate(
   const footerAgency = branding.playbook?.footerAgency || '';
   const footerDate = branding.playbook?.footerDate || date;
 
-  // Render playbook-specific cards and group chips from segments
-  const { cardsHtml, groupsHtml } = parsePlaybookCards(segments);
+  // Resolve country-aware theme
+  const theme = resolvePlaybookTheme(branding, title, orgName);
 
   const playbookCss = `
     /* Playbook-specific styles */
     .pb-flag-strip {
-      height: 8px;
-      background: linear-gradient(90deg, ${branding.primaryColor || '#003366'} 0%, ${branding.primaryColor || '#003366'} 33.3%, #e63946 33.3%, #e63946 66.6%, #f4a261 66.6%, #f4a261 100%);
+      height: 6px;
+      background: linear-gradient(90deg, ${theme.flagStrip});
     }
-    .pb-topbar {
-      background: ${branding.primaryColor || '#003366'};
-      color: #fff;
+    .pb-header {
+      background: #fff;
+      color: #1f2937;
       padding: 10px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       position: sticky;
-      top: 8px;
+      top: 6px;
       z-index: 100;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-bottom: 1px solid #e5e7eb;
     }
-    .pb-topbar-left { display: flex; align-items: center; gap: 12px; }
-    .pb-topbar-right { display: flex; align-items: center; gap: 12px; }
-    .pb-tagline { font-size: 0.85rem; opacity: 0.9; }
+    .pb-header-left { display: flex; align-items: center; gap: 12px; }
+    .pb-header-right { display: flex; align-items: center; gap: 12px; }
+    .pb-tagline { font-size: 0.8rem; color: #6b7280; }
     .pb-view-all-btn {
-      background: rgba(255,255,255,0.2);
+      background: ${theme.primary};
       color: #fff;
-      border: 1px solid rgba(255,255,255,0.4);
-      padding: 6px 16px;
+      border: none;
+      padding: 7px 18px;
       border-radius: 20px;
       font-size: 0.85rem;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: opacity 0.2s;
     }
-    .pb-view-all-btn:hover { background: rgba(255,255,255,0.35); }
+    .pb-view-all-btn:hover { opacity: 0.85; }
     .pb-hero {
-      background: linear-gradient(135deg, ${branding.primaryColor || '#003366'} 0%, ${branding.primaryColor || '#003366'} 100%);
-      color: #fff;
-      padding: 48px 24px 56px;
+      background: #fff;
+      padding: 40px 24px 48px;
       text-align: center;
     }
-    .pb-hero h1 { color: #fff; font-size: 2.2rem; margin: 0 0 12px; }
-    .pb-hero-subtitle { font-size: 1.1rem; opacity: 0.9; margin: 0 0 8px; }
-    .pb-hero-date { font-size: 0.85rem; opacity: 0.75; margin: 0; }
+    .pb-hero h1 { font-size: 2rem; color: #1f2937; margin: 0 0 10px; font-weight: 700; }
+    .pb-hero-subtitle { font-size: 1rem; color: #6b7280; margin: 0 0 6px; }
+    .pb-hero-date { font-size: 0.8rem; color: #9ca3af; margin: 0; }
     .pb-hero-search {
       max-width: 560px;
-      margin: 24px auto 0;
-      display: flex;
-      gap: 8px;
+      margin: 20px auto 0;
     }
     .pb-hero-search input {
-      flex: 1;
-      padding: 12px 20px;
+      width: 100%;
+      padding: 10px 20px;
       border-radius: 28px;
-      border: none;
-      font-size: 1rem;
+      border: 1px solid #d1d5db;
+      font-size: 0.95rem;
       outline: none;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
-    .pb-main { padding: 0 24px 48px; max-width: 1100px; margin: 0 auto; }
-    .pb-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: -32px; }
+    .pb-hero-search input:focus { border-color: ${theme.primary}; }
+    .pb-main { padding: 0 24px 48px; max-width: 960px; margin: 0 auto; }
+    /* Part cards grid */
+    .pb-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 0; }
     .pb-card {
       background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      border-radius: 10px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
       overflow: hidden;
-      transition: transform 0.2s, box-shadow 0.2s;
-      display: flex;
-      flex-direction: column;
+      transition: box-shadow 0.2s, transform 0.2s;
     }
-    .pb-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+    .pb-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); transform: translateY(-2px); }
+    .pb-card.selected { box-shadow: 0 0 0 2px ${theme.primary}; }
     .pb-card-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid #e5e7eb;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 0;
+      border: none;
+      display: block;
       cursor: pointer;
       background: #fff;
+      text-align: left;
+      width: 100%;
     }
-    .pb-card-header h3 { margin: 0; font-size: 1.05rem; color: ${branding.primaryColor || '#003366'}; flex: 1; }
-    .pb-card-toggle { font-size: 1.2rem; color: ${branding.primaryColor || '#003366'}; transition: transform 0.2s; }
-    .pb-card-toggle.open { transform: rotate(180deg); }
-    .pb-card-body { padding: 16px 20px; display: none; font-size: 0.9rem; color: #374151; }
-    .pb-card-body.open { display: block; }
-    .pb-card-body h4 { font-size: 0.95rem; font-weight: 600; color: #1f2937; margin: 0 0 8px; }
-    .pb-card-body p { margin: 0 0 8px; }
-    .pb-groups-bar {
+    .pb-card-top-border { height: 4px; width: 100%; }
+    .pb-card-header-inner {
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .pb-card-part-label {
+      display: block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+    .pb-card-header h3 { margin: 0; font-size: 0.9rem; color: #1f2937; font-weight: 600; line-height: 1.3; }
+    .pb-card-arrow { font-size: 1.2rem; color: #d1d5db; flex-shrink: 0; margin-top: 2px; }
+    .pb-card.selected .pb-card-arrow { color: ${theme.primary}; }
+    /* Lifecycle chips */
+    .pb-lifecycle-bar {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
       padding: 20px 0 0;
-      border-bottom: 2px solid #e5e7eb;
-      margin-bottom: 24px;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 24px;
     }
-    .pb-group-chip {
-      padding: 6px 14px;
-      border-radius: 16px;
-      background: ${branding.primaryColor || '#003366'}18;
-      color: ${branding.primaryColor || '#003366'};
+    .pb-lifecycle-chip {
+      padding: 6px 16px;
+      border-radius: 20px;
+      background: #f3f4f6;
+      color: #374151;
       font-size: 0.8rem;
       font-weight: 600;
+      letter-spacing: 0.04em;
       cursor: pointer;
-      border: 1px solid ${branding.primaryColor || '#003366'}40;
-      transition: background 0.2s;
+      border: 1px solid #d1d5db;
+      transition: all 0.2s;
     }
-    .pb-group-chip:hover, .pb-group-chip.active { background: ${branding.primaryColor || '#003366'}; color: #fff; }
+    .pb-lifecycle-chip:hover { background: ${theme.primary}; color: #fff; border-color: ${theme.primary}; }
+    .pb-lifecycle-chip.active { background: ${theme.primary}; color: #fff; border-color: ${theme.primary}; }
+    /* Part detail area */
+    .pb-part-detail-area {
+      margin-top: 28px;
+      display: none;
+    }
+    .pb-part-detail-area.active { display: block; }
+    .pb-part-detail {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+    .pb-part-detail-heading {
+      padding: 14px 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: ${theme.primary};
+      background: ${theme.primary}08;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    /* Topic list inside detail area */
+    .pb-topic-list { }
+    .pb-topic-row { border-bottom: 1px solid #f3f4f6; }
+    .pb-topic-row:last-child { border-bottom: none; }
+    .pb-topic-header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: #fff;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      gap: 12px;
+    }
+    .pb-topic-header:hover { background: #f9fafb; }
+    .pb-topic-header-left { flex: 1; }
+    .pb-topic-title { display: block; font-size: 0.95rem; font-weight: 600; color: #1f2937; }
+    .pb-topic-subtitle { display: block; font-size: 0.8rem; color: #9ca3af; margin-top: 2px; }
+    .pb-topic-chevron { font-size: 1.4rem; color: #d1d5db; transition: transform 0.2s; flex-shrink: 0; }
+    .pb-topic-body {
+      display: none;
+      padding: 0 20px 16px;
+      font-size: 0.9rem;
+      color: #374151;
+      line-height: 1.7;
+      border-top: 1px solid #f3f4f6;
+    }
+    .pb-topic-body.open { display: block; }
+    .pb-topic-body h4 { font-size: 0.95rem; font-weight: 600; color: #1f2937; margin: 12px 0 6px; }
+    .pb-topic-body p { margin: 0 0 8px; }
+    /* Footer */
     .pb-footer {
-      background: ${branding.primaryColor || '#003366'};
-      color: #fff;
-      padding: 24px;
+      background: #f9fafb;
+      color: #6b7280;
+      padding: 20px 24px;
       text-align: center;
+      border-top: 1px solid #e5e7eb;
     }
-    .pb-footer-entity { font-size: 1rem; font-weight: 600; margin: 0 0 4px; }
-    .pb-footer-agency { font-size: 0.85rem; opacity: 0.85; margin: 0 0 4px; }
-    .pb-footer-date { font-size: 0.8rem; opacity: 0.7; margin: 0; }
+    .pb-footer-entity { font-size: 0.9rem; font-weight: 600; color: #374151; margin: 0 0 4px; }
+    .pb-footer-agency { font-size: 0.8rem; margin: 0 0 4px; }
+    .pb-footer-date { font-size: 0.75rem; opacity: 0.7; margin: 0; }
     .pb-hidden { display: none !important; }
-    .pb-no-results { text-align: center; padding: 48px 24px; color: #6b7280; font-size: 1rem; }
+    .pb-no-results { text-align: center; padding: 40px 24px; color: #9ca3af; font-size: 0.95rem; }
     @media (max-width: 768px) {
       .pb-hero-search { flex-direction: column; }
       .pb-cards-grid { grid-template-columns: 1fr; }
-      .pb-topbar { flex-direction: column; gap: 8px; text-align: center; }
+      .pb-header { flex-direction: column; gap: 8px; text-align: center; }
     }
   `;
 
   const playbookJs = `
-    // Playbook search and filter
+    // Open a part card → render its template into the detail area
+    function openPlaybookPart(partId) {
+      var detail = document.getElementById('pb-part-detail');
+      if (!detail) return;
+      var tmpl = document.getElementById('pb-part-tmpl-' + partId);
+      if (!tmpl) return;
+      // Clone template content into detail area
+      detail.innerHTML = '';
+      var clone = tmpl.content.cloneNode(true);
+      detail.appendChild(clone);
+      detail.classList.add('active');
+      // Highlight selected card
+      document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('selected'); });
+      var card = document.getElementById(partId);
+      if (card) card.classList.add('selected');
+      detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    // Toggle a topic row accordion
+    function togglePlaybookTopic(topicId) {
+      var row = document.getElementById(topicId);
+      if (!row) return;
+      var btn = row.querySelector('.pb-topic-header');
+      var body = row.querySelector('.pb-topic-body');
+      var isOpen = body && body.classList.contains('open');
+      // Close all other rows
+      document.querySelectorAll('.pb-topic-body.open').forEach(function(b) { b.classList.remove('open'); });
+      document.querySelectorAll('.pb-topic-header[aria-expanded="true"]').forEach(function(b) { b.setAttribute('aria-expanded', 'false'); });
+      if (!isOpen) {
+        if (body) body.classList.add('open');
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+    // Filter playbook cards + topic rows by search query
     function filterPlaybookCards(query) {
-      var cards = document.querySelectorAll('.pb-card');
+      var detail = document.getElementById('pb-part-detail');
+      if (detail) { detail.classList.remove('active'); detail.innerHTML = ''; }
+      document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('selected'); });
       var lc = query.toLowerCase();
       var matchCount = 0;
-      cards.forEach(function(card) {
+      document.querySelectorAll('.pb-card').forEach(function(card) {
         var title = (card.querySelector('h3') || {}).textContent || '';
-        var bodyText = (card.querySelector('.pb-card-body') || {}).textContent || '';
         var keywords = card.getAttribute('data-keywords') || '';
-        var visible = !lc || title.toLowerCase().includes(lc) || bodyText.toLowerCase().includes(lc) || keywords.includes(lc);
+        var visible = !lc || title.toLowerCase().includes(lc) || keywords.includes(lc);
         card.classList.toggle('pb-hidden', !visible);
         if (visible) matchCount++;
       });
       var noResults = document.querySelector('.pb-no-results');
       if (noResults) noResults.style.display = matchCount > 0 ? 'none' : 'block';
     }
+    // Filter lifecycle chips (placeholder — highlights active chip)
+    function filterPlaybookChips(btn) {
+      document.querySelectorAll('.pb-lifecycle-chip').forEach(function(c) { c.classList.remove('active'); });
+      if (btn) btn.classList.add('active');
+    }
+    // View all sections — reset search, show all cards
     function viewAllSections() {
       var search = document.querySelector('.pb-hero-search input');
       if (search) search.value = '';
       document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('pb-hidden'); });
-      document.querySelectorAll('.pb-group-chip').forEach(function(c) { c.classList.remove('active'); });
+      document.querySelectorAll('.pb-lifecycle-chip').forEach(function(c) { c.classList.remove('active'); });
       var noResults = document.querySelector('.pb-no-results');
       if (noResults) noResults.style.display = 'none';
-    }
-    function toggleCard(btn) {
-      var card = btn.closest('.pb-card');
-      var body = card.querySelector('.pb-card-body');
-      var icon = card.querySelector('.pb-card-toggle');
-      var isOpen = body.classList.toggle('open');
-      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-      icon.classList.toggle('open', isOpen);
-    }
-    function scrollToCard(cardId) {
-      var card = document.getElementById(cardId);
-      if (!card) {
-        // Fallback: find card whose title matches cardId
-        var allCards = document.querySelectorAll('.pb-card');
-        allCards.forEach(function(c) {
-          var h3 = c.querySelector('h3');
-          if (h3 && h3.textContent.trim() === cardId) card = c;
-        });
-      }
-      if (card) {
-        var body = card.querySelector('.pb-card-body');
-        var btn = card.querySelector('.pb-card-header');
-        var icon = card.querySelector('.pb-card-toggle');
-        if (body && !body.classList.contains('open')) {
-          body.classList.add('open');
-          if (btn) btn.setAttribute('aria-expanded', 'true');
-          if (icon) icon.classList.add('open');
-        }
-        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      var detail = document.getElementById('pb-part-detail');
+      if (detail) { detail.classList.remove('active'); detail.innerHTML = ''; }
+      document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('selected'); });
     }
   `;
+
+  // Parse and render playbook parts
+  const parts = parsePlaybookParts(segments);
+  const { cardsHtml: partsCardsHtml, partDetailHtml } = renderPlaybookPartsHtml(parts);
+
+  // Lifecycle category chips (static for now; pluggable via branding.playbook.categories)
+  const lifecycleChips = ['ALIGN', 'ENABLE', 'LAUNCH', 'SUSTAIN']
+    .map(cat => `<button class="pb-lifecycle-chip" onclick="filterPlaybookChips(this)">${cat}</button>`)
+    .join('\n');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1350,13 +1651,13 @@ function buildPlaybookTemplate(
 </head>
 <body>
   <div class="pb-flag-strip"></div>
-  <header class="pb-topbar">
-    <div class="pb-topbar-left">
+  <header class="pb-header">
+    <div class="pb-header-left">
       ${logoHtml}
       ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
       ${tagline ? `<span class="pb-tagline">${escapeHtml(tagline)}</span>` : ''}
     </div>
-    <div class="pb-topbar-right">
+    <div class="pb-header-right">
       <button class="pb-view-all-btn" onclick="viewAllSections()">View all sections</button>
     </div>
   </header>
@@ -1369,11 +1670,12 @@ function buildPlaybookTemplate(
     </div>
   </section>
   <main class="pb-main" role="main">
-    <div class="pb-groups-bar" id="pb-groups">${groupsHtml}</div>
     <div class="pb-cards-grid" id="pb-cards">
-      ${cardsHtml}
+      ${partsCardsHtml}
     </div>
     <div class="pb-no-results" style="display:none;">No sections match your search. Try different keywords.</div>
+    <div class="pb-lifecycle-bar">${lifecycleChips}</div>
+    <section id="pb-part-detail" class="pb-part-detail-area" aria-live="polite"></section>
   </main>
   <footer class="pb-footer">
     ${footerEntity ? `<p class="pb-footer-entity">${escapeHtml(footerEntity)}</p>` : ''}
@@ -1381,6 +1683,7 @@ function buildPlaybookTemplate(
     ${footerDate ? `<p class="pb-footer-date">${escapeHtml(footerDate)}</p>` : ''}
   </footer>
   <script>${js}${playbookJs}</script>
+  ${partDetailHtml}
 </body>
 </html>`;
 }
