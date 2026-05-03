@@ -1463,7 +1463,6 @@ function buildPlaybookTemplate(
     .pb-card-header h3 { margin: 0; font-size: 0.9rem; color: #1f2937; font-weight: 600; line-height: 1.3; }
     .pb-card-arrow { font-size: 1.2rem; color: #d1d5db; flex-shrink: 0; margin-top: 2px; }
     .pb-card.selected .pb-card-arrow { color: ${theme.primary}; }
-    /* Lifecycle chips */
     /* Part detail area */
     .pb-part-detail-area {
       margin-top: 28px;
@@ -1590,18 +1589,45 @@ function buildPlaybookTemplate(
       if (noResults) noResults.style.display = matchCount > 0 ? 'none' : 'block';
     }
     // View all sections — reset search, show all cards
+    // View all sections — toggle between card view and fully expanded view
     function viewAllSections() {
+      var detail = document.getElementById('pb-part-detail');
+      var btn = document.getElementById('pb-view-all-btn');
+      if (!detail) return;
+      // If already in "all expanded" mode → collapse back to card grid
+      if (detail.getAttribute('data-expanded') === 'all') {
+        detail.classList.remove('active');
+        detail.innerHTML = '';
+        detail.removeAttribute('data-expanded');
+        document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('selected'); });
+        if (btn) btn.textContent = 'View all sections';
+        return;
+      }
+      // Reset search & show all cards
       var search = document.querySelector('.pb-hero-search input');
       if (search) search.value = '';
       document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('pb-hidden'); });
       var noResults = document.querySelector('.pb-no-results');
       if (noResults) noResults.style.display = 'none';
-      var detail = document.getElementById('pb-part-detail');
-      if (detail) { detail.classList.remove('active'); detail.innerHTML = ''; }
-      document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('selected'); });
+      // Clone ALL part templates into the detail area
+      detail.innerHTML = '';
+      document.querySelectorAll('.pb-card').forEach(function(card) {
+        var tmpl = document.getElementById('pb-part-tmpl-' + card.id);
+        if (tmpl) {
+          var clone = tmpl.content.cloneNode(true);
+          detail.appendChild(clone);
+        }
+      });
+      // Expand all topic bodies so every row of text is visible
+      detail.querySelectorAll('.pb-topic-body').forEach(function(b) { b.classList.add('open'); });
+      detail.querySelectorAll('.pb-topic-header').forEach(function(h) { h.setAttribute('aria-expanded', 'true'); });
+      detail.classList.add('active');
+      detail.setAttribute('data-expanded', 'all');
+      if (btn) btn.textContent = 'Collapse sections';
+      detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  `;
 
+  `;
   // Parse and render playbook parts
   const parts = parsePlaybookParts(segments);
   const { cardsHtml: partsCardsHtml, partDetailHtml } = renderPlaybookPartsHtml(parts);
@@ -1625,7 +1651,7 @@ function buildPlaybookTemplate(
       ${tagline ? `<span class="pb-tagline">${escapeHtml(tagline)}</span>` : ''}
     </div>
     <div class="pb-header-right">
-      <button class="pb-view-all-btn" onclick="viewAllSections()">View all sections</button>
+      <button id="pb-view-all-btn" class="pb-view-all-btn" onclick="viewAllSections()">View all sections</button>
     </div>
   </header>
   <section class="pb-hero">
