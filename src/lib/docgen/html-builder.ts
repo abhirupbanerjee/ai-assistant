@@ -555,29 +555,50 @@ function deriveSubtitle(bodyLines: string[]): string {
 
 /**
  * Parse markdown/segments into a hierarchical PlaybookPart[] structure.
- * Detects the top heading level and adjusts hierarchy accordingly:
- * - If ## exists: ## → parts, ### → topics
- * - If no ## but ### exists: ### → parts, #### → topics
+ * Counts heading occurrences to determine correct hierarchy:
+ * - If multiple ##: ## → parts, ### → topics
+ * - If single ## + multiple ###: ## is title-only, ### → parts, #### → topics
+ * - If no ## + multiple ###: ### → parts, #### → topics
  * - Otherwise: all content as one overview part
  */
 function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
-  // Pre-scan to detect top heading level
-  let hasH2 = false;
-  let hasH3 = false;
+  // Pre-scan to count heading occurrences
+  let h2Count = 0;
+  let h3Count = 0;
+  let h4Count = 0;
   for (const seg of segments) {
     if (seg.type === 'markdown') {
       const lines = (seg as MarkdownSegment).content.split('\n');
       for (const line of lines) {
-        if (/^##\s+/.test(line)) hasH2 = true;
-        if (/^###\s+/.test(line)) hasH3 = true;
+        if (/^##\s+/.test(line)) h2Count++;
+        if (/^###\s+/.test(line)) h3Count++;
+        if (/^####\s+/.test(line)) h4Count++;
       }
     }
   }
-  // Determine heading patterns based on what exists
-  // If h2 exists: h2 → parts, h3 → topics
-  // If no h2 but h3 exists: h3 → parts, h4 → topics
-  const partHeadingRegex = hasH2 ? /^##\s+(.+)$/ : (hasH3 ? /^###\s+(.+)$/ : null);
-  const topicHeadingRegex = hasH2 ? /^###\s+(.+)$/ : (hasH3 ? /^####\s+(.+)$/ : null);
+
+  // Determine heading patterns based on counts
+  // If multiple h2: h2 → parts, h3 → topics
+  // If single h2 + multiple h3: h2 is title-only, h3 → parts, h4 → topics
+  // If no h2 + multiple h3: h3 → parts, h4 → topics
+  let partHeadingRegex: RegExp | null = null;
+  let topicHeadingRegex: RegExp | null = null;
+  let skipFirstH2 = false;
+
+  if (h2Count > 1) {
+    partHeadingRegex = /^##\s+(.+)$/;
+    topicHeadingRegex = /^###\s+(.+)$/;
+  } else if (h2Count === 1 && h3Count > 1) {
+    partHeadingRegex = /^###\s+(.+)$/;
+    topicHeadingRegex = /^####\s+(.+)$/;
+    skipFirstH2 = true;
+  } else if (h2Count === 0 && h3Count > 1) {
+    partHeadingRegex = /^###\s+(.+)$/;
+    topicHeadingRegex = /^####\s+(.+)$/;
+  } else if (h3Count === 1 && h4Count > 1) {
+    partHeadingRegex = /^####\s+(.+)$/;
+    topicHeadingRegex = null;
+  }
 
   const parts: PlaybookPart[] = [];
   let currentPartLabel = 'PART I';
@@ -589,6 +610,7 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
   let currentTopicId = '';
   let currentTopicBody: string[] = [];
   let topicCounter = 0;
+  let skippedTitleH2 = false;
 
   const flushTopic = (part: PlaybookPart) => {
     if (!currentTopicTitle) return;
@@ -613,7 +635,6 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
     if (!currentPartTitle) return;
     flushTopic({ partLabel: currentPartLabel, title: currentPartTitle, id: currentPartId, accentColor: PART_ACCENT_COLORS[parts.length % PART_ACCENT_COLORS.length], topics: [] });
     partCounter++;
-    // Advance part label
     const partNum = partCounter + 1;
     if (partNum === 1) currentPartLabel = 'PART I';
     else if (partNum === 2) currentPartLabel = 'PART II';
@@ -630,11 +651,18 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
     if (seg.type === 'markdown') {
       const lines = (seg as MarkdownSegment).content.split('\n');
       for (const line of lines) {
+        // Check for h2 heading (might need to skip if it's just the title)
+        const h2Match = line.match(/^##\s+(.+)$/);
+        if (h2Match && skipFirstH2 && !skippedTitleH2) {
+          // Skip the first h2 - it's just the document title
+          skippedTitleH2 = true;
+          continue;
+        }
+
         const partMatch = partHeadingRegex ? line.match(partHeadingRegex) : null;
         const topicMatch = topicHeadingRegex ? line.match(topicHeadingRegex) : null;
 
         if (partMatch) {
-          // Flush pending topic, then pending part
           const lastPart = parts[parts.length - 1];
           if (lastPart) flushTopic(lastPart);
           if (currentPartTitle) flushPart();
@@ -675,7 +703,6 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
   if (lastPart) flushTopic(lastPart);
   if (currentPartTitle) {
     flushPart();
-    // The flushPart() call above creates a new empty part, fix by pushing the real one
     const realPart = parts[parts.length - 1];
     if (!realPart && currentPartTitle) {
       parts.push({
@@ -1834,10 +1861,6 @@ function sanitizeMammothHtml(sourceHtml: string): string {
   return html;
 }
 
-/**
- * Convert pre-rendered HTML source (e.g., mammoth output) into markdown-like segments
- * so it can be rendered as playbook cards using parsePlaybookCards().
- */
 function sourceHtmlToPlaybookSegments(sanitizedHtml: string): ContentSegment[] {
   const segments: ContentSegment[] = [];
   let currentBody: string[] = [];
@@ -1849,15 +1872,38 @@ function sourceHtmlToPlaybookSegments(sanitizedHtml: string): ContentSegment[] {
     }
   };
 
-  // Detect which heading levels exist
-  const hasH2 = /<h2[^>]*>/i.test(sanitizedHtml);
-  const hasH3 = /<h3[^>]*>/i.test(sanitizedHtml);
+  // Count heading occurrences to determine correct hierarchy
+  const h2Count = (sanitizedHtml.match(/<h2[^>]*>/gi) || []).length;
+  const h3Count = (sanitizedHtml.match(/<h3[^>]*>/gi) || []).length;
+  const h4Count = (sanitizedHtml.match(/<h4[^>]*>/gi) || []).length;
 
   // Determine which heading to use for parts (cards)
-  // If h2 exists: h2 → parts (##), h3 → topics (###)
-  // If no h2 but h3 exists: h3 → parts (##), h4 → topics (###)
-  const partTag = hasH2 ? 'h2' : (hasH3 ? 'h3' : null);
-  const topicTag = hasH2 ? 'h3' : (hasH3 ? 'h4' : null);
+  // If multiple h2: h2 → parts, h3 → topics
+  // If single h2 + multiple h3: h2 is title-only, h3 → parts, h4 → topics
+  // If no h2 + multiple h3: h3 → parts, h4 → topics
+  // Otherwise: single overview section
+  let partTag: string | null = null;
+  let topicTag: string | null = null;
+  let stripFirstH2 = false;
+
+  if (h2Count > 1) {
+    // Multiple h2 headings: use h2 for parts
+    partTag = 'h2';
+    topicTag = 'h3';
+  } else if (h2Count === 1 && h3Count > 1) {
+    // Single h2 (title) + multiple h3: use h3 for parts, strip the h2
+    partTag = 'h3';
+    topicTag = 'h4';
+    stripFirstH2 = true;
+  } else if (h2Count === 0 && h3Count > 1) {
+    // No h2, multiple h3: use h3 for parts
+    partTag = 'h3';
+    topicTag = 'h4';
+  } else if (h3Count === 1 && h4Count > 1) {
+    // Single h3 (title) + multiple h4: use h4 for parts
+    partTag = 'h4';
+    topicTag = null;
+  }
 
   if (!partTag) {
     // No part headings found, treat entire source as one section
@@ -1865,15 +1911,32 @@ function sourceHtmlToPlaybookSegments(sanitizedHtml: string): ContentSegment[] {
     return segments;
   }
 
+  // Strip the first h2 if it's just a title (not a part heading)
+  let workingHtml = sanitizedHtml;
+  if (stripFirstH2) {
+    // Remove the first h2 tag and its content (the title)
+    workingHtml = workingHtml.replace(/<h2[^>]*>[\s\S]*?<\/h2>/i, '');
+    // Also remove any paragraph immediately after the h2 that looks like a subtitle
+    // (first <p> tag right after the h2, before any h3)
+    workingHtml = workingHtml.replace(/^\s*<p[^>]*>(?!<strong>|<em>|<a\s|<img\s)([\s\S]*?)<\/p>/i, (match, content) => {
+      // Only strip if it's a short paragraph (likely subtitle)
+      const plainText = content.replace(/<[^>]+>/g, '').trim();
+      if (plainText.length < 200 && !plainText.includes('\n')) {
+        return '';
+      }
+      return match;
+    });
+  }
+
   // Build regex for part headings
   const partRegex = new RegExp(`<${partTag}([^>]*)>([\\s\\S]*?)<\\/${partTag}>`, 'gi');
   let lastIndex = 0;
   let match;
 
-  while ((match = partRegex.exec(sanitizedHtml)) !== null) {
+  while ((match = partRegex.exec(workingHtml)) !== null) {
     // Accumulate content before this part heading
     if (lastIndex === 0) {
-      const before = sanitizedHtml.substring(0, match.index).trim();
+      const before = workingHtml.substring(0, match.index).trim();
       if (before) {
         currentBody.push(before);
         flush();
@@ -1889,8 +1952,8 @@ function sourceHtmlToPlaybookSegments(sanitizedHtml: string): ContentSegment[] {
   }
 
   // Remaining content after last part heading
-  if (lastIndex < sanitizedHtml.length) {
-    const after = sanitizedHtml.substring(lastIndex).trim();
+  if (lastIndex < workingHtml.length) {
+    const after = workingHtml.substring(lastIndex).trim();
     if (after) {
       currentBody.push(after);
       flush();
@@ -1899,11 +1962,10 @@ function sourceHtmlToPlaybookSegments(sanitizedHtml: string): ContentSegment[] {
 
   // If no segments were created, treat entire source as one section
   if (segments.length === 0) {
-    segments.push({ type: 'markdown', content: sanitizedHtml });
+    segments.push({ type: 'markdown', content: workingHtml });
   }
 
-  // Post-process: convert topic headings (h3 or h4) to ### in the markdown content
-  // This ensures parsePlaybookParts can correctly identify topics
+  // Post-process: convert topic headings to ### in the markdown content
   if (topicTag) {
     const topicRegex = new RegExp(`<${topicTag}([^>]*)>([\\s\\S]*?)<\\/${topicTag}>`, 'gi');
     for (let i = 0; i < segments.length; i++) {
