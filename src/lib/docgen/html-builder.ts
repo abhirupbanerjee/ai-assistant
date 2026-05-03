@@ -554,6 +554,30 @@ function deriveSubtitle(bodyLines: string[]): string {
 }
 
 /**
+ * Normalize embedded HTML headings in markdown content to markdown heading syntax.
+ * Converts <h2>, <h3>, <h4> tags to ##, ###, #### markdown headings.
+ * This ensures the heading-count parser works for both markdown and raw HTML headings.
+ */
+function normalizeHtmlHeadingsInMarkdown(content: string): string {
+  // Convert <h2>...</h2> to ## ...
+  let normalized = content.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, inner) => {
+    const text = inner.replace(/<[^>]+>/g, '').trim();
+    return `\n## ${text}\n`;
+  });
+  // Convert <h3>...</h3> to ### ...
+  normalized = normalized.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, inner) => {
+    const text = inner.replace(/<[^>]+>/g, '').trim();
+    return `\n### ${text}\n`;
+  });
+  // Convert <h4>...</h4> to #### ...
+  normalized = normalized.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, inner) => {
+    const text = inner.replace(/<[^>]+>/g, '').trim();
+    return `\n#### ${text}\n`;
+  });
+  return normalized;
+}
+
+/**
  * Parse markdown/segments into a hierarchical PlaybookPart[] structure.
  * Counts heading occurrences to determine correct hierarchy:
  * - If multiple ##: ## → parts, ### → topics
@@ -562,17 +586,27 @@ function deriveSubtitle(bodyLines: string[]): string {
  * - Otherwise: all content as one overview part
  */
 function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
-  // Pre-scan to count heading occurrences
+  // Normalize embedded HTML headings in markdown content first
+  // This ensures <h2>, <h3>, <h4> tags are converted to ##, ###, #### markdown headings
+  const normalizedSegments = segments.map(seg => {
+    if (seg.type === 'markdown') {
+      const normalized = normalizeHtmlHeadingsInMarkdown((seg as MarkdownSegment).content);
+      return { type: 'markdown', content: normalized } as MarkdownSegment;
+    }
+    return seg;
+  });
+
+  // Pre-scan to count heading occurrences (exact level matching with negative lookahead)
   let h2Count = 0;
   let h3Count = 0;
   let h4Count = 0;
-  for (const seg of segments) {
+  for (const seg of normalizedSegments) {
     if (seg.type === 'markdown') {
       const lines = (seg as MarkdownSegment).content.split('\n');
       for (const line of lines) {
-        if (/^##\s+/.test(line)) h2Count++;
-        if (/^###\s+/.test(line)) h3Count++;
-        if (/^####\s+/.test(line)) h4Count++;
+        if (/^##(?!#)\s+/.test(line)) h2Count++;
+        if (/^###(?!#)\s+/.test(line)) h3Count++;
+        if (/^####(?!#)\s+/.test(line)) h4Count++;
       }
     }
   }
@@ -586,17 +620,17 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
   let skipFirstH2 = false;
 
   if (h2Count > 1) {
-    partHeadingRegex = /^##\s+(.+)$/;
-    topicHeadingRegex = /^###\s+(.+)$/;
+    partHeadingRegex = /^##(?!#)\s+(.+)$/;
+    topicHeadingRegex = /^###(?!#)\s+(.+)$/;
   } else if (h2Count === 1 && h3Count > 1) {
-    partHeadingRegex = /^###\s+(.+)$/;
-    topicHeadingRegex = /^####\s+(.+)$/;
+    partHeadingRegex = /^###(?!#)\s+(.+)$/;
+    topicHeadingRegex = /^####(?!#)\s+(.+)$/;
     skipFirstH2 = true;
   } else if (h2Count === 0 && h3Count > 1) {
-    partHeadingRegex = /^###\s+(.+)$/;
-    topicHeadingRegex = /^####\s+(.+)$/;
+    partHeadingRegex = /^###(?!#)\s+(.+)$/;
+    topicHeadingRegex = /^####(?!#)\s+(.+)$/;
   } else if (h3Count === 1 && h4Count > 1) {
-    partHeadingRegex = /^####\s+(.+)$/;
+    partHeadingRegex = /^####(?!#)\s+(.+)$/;
     topicHeadingRegex = null;
   }
 
@@ -647,12 +681,13 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
     topicCounter = 0;
   };
 
-  for (const seg of segments) {
+  // Use normalized segments for parsing
+  for (const seg of normalizedSegments) {
     if (seg.type === 'markdown') {
       const lines = (seg as MarkdownSegment).content.split('\n');
       for (const line of lines) {
         // Check for h2 heading (might need to skip if it's just the title)
-        const h2Match = line.match(/^##\s+(.+)$/);
+        const h2Match = line.match(/^##(?!#)\s+(.+)$/);
         if (h2Match && skipFirstH2 && !skippedTitleH2) {
           // Skip the first h2 - it's just the document title
           skippedTitleH2 = true;
