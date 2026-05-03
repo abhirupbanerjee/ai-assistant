@@ -520,6 +520,7 @@ interface PlaybookPart {
   title: string;
   id: string;
   accentColor: string;
+  introHtml: string;  // Content that appears directly under the part heading (before any topics)
   topics: PlaybookTopic[];
 }
 
@@ -679,16 +680,11 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
   const pushCurrentPart = () => {
     if (!currentPart) return;
     flushTopic();
-    // If part has no topics, add an Overview topic from intro content
-    if (currentPart.topics.length === 0 && introBody.length > 0) {
-      currentPart.topics.push({
-        id: `${currentPart.id}-overview`,
-        title: 'Overview',
-        subtitle: deriveSubtitle(introBody),
-        bodyHtml: markdownToHtml(introBody.join('\n')),
-        keywords: currentPart.title.toLowerCase(),
-      });
+    // Store intro content as introHtml (rendered directly, not in accordion)
+    if (introBody.length > 0) {
+      currentPart.introHtml = markdownToHtml(introBody.join('\n'));
     }
+    // If part has no topics, don't add an Overview topic - just use introHtml
     parts.push(currentPart);
     currentPart = null;
     introBody = [];
@@ -702,6 +698,7 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
       title,
       id: slug(title),
       accentColor: PART_ACCENT_COLORS[partCounter % PART_ACCENT_COLORS.length],
+      introHtml: '',  // Will be populated from introBody when part is pushed
       topics: [],
     };
     partCounter++;
@@ -778,6 +775,7 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
       title: 'Overview',
       id: 'overview',
       accentColor: PART_ACCENT_COLORS[0],
+      introHtml: '',
       topics: [{
         id: 'overview-1',
         title: 'Overview',
@@ -811,6 +809,11 @@ function renderPlaybookPartsHtml(parts: PlaybookPart[]): {
 
   // Pre-render hidden part detail panels using <template> tags for safe content storage
   const partDetailHtml = parts.map(part => {
+    // Render intro content directly under the heading (not in accordion)
+    const introHtml = part.introHtml 
+      ? `<div class="pb-part-intro">${part.introHtml}</div>` 
+      : '';
+    
     const topicRows = part.topics.map(topic => `
 <div class="pb-topic-row" id="${topic.id}" data-keywords="${escapeHtml(topic.keywords)}">
   <button class="pb-topic-header" onclick="togglePlaybookTopic('${topic.id}')" aria-expanded="false">
@@ -823,10 +826,16 @@ function renderPlaybookPartsHtml(parts: PlaybookPart[]): {
   <div class="pb-topic-body">${topic.bodyHtml}</div>
 </div>`).join('\n');
 
+    // Only render topic-list if there are topics
+    const topicListHtml = part.topics.length > 0 
+      ? `<div class="pb-topic-list">${topicRows}</div>` 
+      : '';
+
     return `<template id="pb-part-tmpl-${part.id}">
 <div class="pb-part-detail">
   <div class="pb-part-detail-heading">${escapeHtml(part.partLabel)}: ${escapeHtml(toUpperHeading(part.title))}</div>
-  <div class="pb-topic-list">${topicRows}</div>
+  ${introHtml}
+  ${topicListHtml}
 </div>
 </template>`;
   }).join('\n');
@@ -1578,6 +1587,16 @@ function buildPlaybookTemplate(
       background: ${theme.primary}08;
       border-bottom: 1px solid #e5e7eb;
     }
+    /* Intro content directly under part heading */
+    .pb-part-intro {
+      padding: 16px 20px;
+      font-size: 0.9rem;
+      color: #374151;
+      line-height: 1.7;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .pb-part-intro p { margin: 0 0 8px; }
+    .pb-part-intro p:last-child { margin-bottom: 0; }
     /* Topic list inside detail area */
     .pb-topic-list { }
     .pb-topic-row { border-bottom: 1px solid #f3f4f6; }
@@ -1646,6 +1665,9 @@ function buildPlaybookTemplate(
       document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('selected'); });
       var card = document.getElementById(partId);
       if (card) card.classList.add('selected');
+      // Auto-expand all topic bodies so content is immediately visible
+      detail.querySelectorAll('.pb-topic-body').forEach(function(b) { b.classList.add('open'); });
+      detail.querySelectorAll('.pb-topic-header').forEach(function(h) { h.setAttribute('aria-expanded', 'true'); });
       detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     // Toggle a topic row accordion
