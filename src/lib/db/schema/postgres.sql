@@ -1220,3 +1220,119 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_log_created ON token_usage_log(create
 CREATE INDEX IF NOT EXISTS idx_token_usage_log_category ON token_usage_log(category, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_token_usage_log_user ON token_usage_log(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_token_usage_log_model ON token_usage_log(model, created_at DESC);
+
+-- ============ WhatsApp Channels ============
+
+-- WhatsApp channel configuration for standalone workspaces
+-- Each workspace can have at most one WhatsApp channel (UNIQUE on workspace_id)
+CREATE TABLE IF NOT EXISTS workspace_whatsapp_channels (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL UNIQUE,
+  phone_number_id TEXT NOT NULL UNIQUE,
+  business_account_id TEXT,
+  display_phone_number TEXT,
+  access_token_encrypted TEXT NOT NULL,
+  app_secret_encrypted TEXT NOT NULL,
+  webhook_verify_token_hash TEXT NOT NULL,
+  is_enabled INTEGER DEFAULT 1,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_channels_workspace ON workspace_whatsapp_channels(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_channels_phone ON workspace_whatsapp_channels(phone_number_id);
+
+-- WhatsApp contacts mapped to workspace sessions/threads
+-- Maps each WhatsApp phone number to a workspace session and thread for conversation continuity
+CREATE TABLE IF NOT EXISTS workspace_whatsapp_contacts (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  wa_id TEXT NOT NULL,
+  display_name TEXT,
+  workspace_session_id TEXT NOT NULL,
+  workspace_thread_id TEXT NOT NULL,
+  last_inbound_at TIMESTAMP,
+  service_window_expires_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(channel_id, wa_id),
+  FOREIGN KEY (channel_id) REFERENCES workspace_whatsapp_channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_thread_id) REFERENCES workspace_threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_contacts_channel_wa ON workspace_whatsapp_contacts(channel_id, wa_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_contacts_session ON workspace_whatsapp_contacts(workspace_session_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_contacts_thread ON workspace_whatsapp_contacts(workspace_thread_id);
+
+-- WhatsApp message log for idempotency and delivery tracking
+CREATE TABLE IF NOT EXISTS workspace_whatsapp_messages (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  contact_id TEXT,
+  workspace_message_id TEXT,
+  meta_message_id TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  status TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'sent', 'delivered', 'read', 'failed')),
+  message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text', 'image', 'document', 'audio', 'video', 'template')),
+  text_content TEXT,
+  error_message TEXT,
+  raw_payload_json TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(channel_id, meta_message_id),
+  FOREIGN KEY (channel_id) REFERENCES workspace_whatsapp_channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (contact_id) REFERENCES workspace_whatsapp_contacts(id) ON DELETE SET NULL,
+  FOREIGN KEY (workspace_message_id) REFERENCES workspace_messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_messages_contact ON workspace_whatsapp_messages(contact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_messages_meta ON workspace_whatsapp_messages(meta_message_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_whatsapp_messages_channel ON workspace_whatsapp_messages(channel_id, created_at DESC);
+
+-- Update workspace_whatsapp_channels updated_at timestamp
+CREATE OR REPLACE FUNCTION update_workspace_whatsapp_channel_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_workspace_whatsapp_channel_timestamp ON workspace_whatsapp_channels;
+CREATE TRIGGER update_workspace_whatsapp_channel_timestamp
+  BEFORE UPDATE ON workspace_whatsapp_channels
+  FOR EACH ROW
+  EXECUTE FUNCTION update_workspace_whatsapp_channel_timestamp();
+
+-- Update workspace_whatsapp_contacts updated_at timestamp
+CREATE OR REPLACE FUNCTION update_workspace_whatsapp_contact_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_workspace_whatsapp_contact_timestamp ON workspace_whatsapp_contacts;
+CREATE TRIGGER update_workspace_whatsapp_contact_timestamp
+  BEFORE UPDATE ON workspace_whatsapp_contacts
+  FOR EACH ROW
+  EXECUTE FUNCTION update_workspace_whatsapp_contact_timestamp();
+
+-- Update workspace_whatsapp_messages updated_at timestamp
+CREATE OR REPLACE FUNCTION update_workspace_whatsapp_message_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_workspace_whatsapp_message_timestamp ON workspace_whatsapp_messages;
+CREATE TRIGGER update_workspace_whatsapp_message_timestamp
+  BEFORE UPDATE ON workspace_whatsapp_messages
+  FOR EACH ROW
+  EXECUTE FUNCTION update_workspace_whatsapp_message_timestamp();

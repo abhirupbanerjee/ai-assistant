@@ -24,6 +24,7 @@ import {
   Code,
   Globe,
   MessageSquare,
+  MessageCircle,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -146,9 +147,32 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEmbedModal, setShowEmbedModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [formData, setFormData] = useState<WorkspaceFormData>(initialFormData);
   const [isSaving, setIsSaving] = useState(false);
+
+  // WhatsApp config state
+  const [whatsappConfig, setWhatsappConfig] = useState<{
+    id?: string;
+    phone_number_id: string;
+    business_account_id: string;
+    display_phone_number: string;
+    access_token: string;
+    app_secret: string;
+    webhook_verify_token: string;
+    is_enabled: boolean;
+    webhook_url?: string;
+  }>({
+    phone_number_id: '',
+    business_account_id: '',
+    display_phone_number: '',
+    access_token: '',
+    app_secret: '',
+    webhook_verify_token: '',
+    is_enabled: true,
+  });
+  const [isLoadingWhatsApp, setIsLoadingWhatsApp] = useState(false);
 
   // Embed code states
   const [embedCode, setEmbedCode] = useState<{
@@ -388,6 +412,110 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  // Open WhatsApp config modal
+  const openWhatsAppConfig = async (workspace: Workspace) => {
+    setSelectedWorkspace(workspace);
+    setIsLoadingWhatsApp(true);
+    setShowWhatsAppModal(true);
+
+    try {
+      const res = await fetch(`/api/admin/workspaces/${workspace.id}/whatsapp`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.channel) {
+          setWhatsappConfig({
+            id: data.channel.id,
+            phone_number_id: data.channel.phone_number_id,
+            business_account_id: data.channel.business_account_id || '',
+            display_phone_number: data.channel.display_phone_number || '',
+            access_token: '', // Never pre-fill secrets
+            app_secret: '', // Never pre-fill secrets
+            webhook_verify_token: '', // Never pre-fill secrets
+            is_enabled: data.channel.is_enabled,
+            webhook_url: data.channel.webhook_url,
+          });
+        } else {
+          // Reset to empty config
+          setWhatsappConfig({
+            phone_number_id: '',
+            business_account_id: '',
+            display_phone_number: '',
+            access_token: '',
+            app_secret: '',
+            webhook_verify_token: '',
+            is_enabled: true,
+            webhook_url: undefined,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch WhatsApp config:', err);
+    } finally {
+      setIsLoadingWhatsApp(false);
+    }
+  };
+
+  // Save WhatsApp config
+  const saveWhatsAppConfig = async () => {
+    if (!selectedWorkspace) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/admin/workspaces/${selectedWorkspace.id}/whatsapp`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(whatsappConfig),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to save WhatsApp config');
+      }
+
+      setShowWhatsAppModal(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save WhatsApp config');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Delete WhatsApp config
+  const deleteWhatsAppConfig = async () => {
+    if (!selectedWorkspace || !whatsappConfig.id) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/admin/workspaces/${selectedWorkspace.id}/whatsapp`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to delete WhatsApp config');
+      }
+
+      setShowWhatsAppModal(false);
+      setWhatsappConfig({
+        phone_number_id: '',
+        business_account_id: '',
+        display_phone_number: '',
+        access_token: '',
+        app_secret: '',
+        webhook_verify_token: '',
+        is_enabled: true,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete WhatsApp config');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Filter workspaces
   const filteredWorkspaces = workspaces.filter(w => {
     const matchesSearch = w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -502,6 +630,8 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
               }}
               onToggle={() => toggleEnabled(workspace)}
               onGetCode={() => fetchEmbedCode(workspace)}
+              onWhatsApp={isAdmin && workspace.type === 'standalone' ? () => openWhatsAppConfig(workspace) : undefined}
+              isAdmin={isAdmin}
             />
           ))}
         </div>
@@ -668,6 +798,191 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
           )}
         </div>
       </Modal>
+
+      {/* WhatsApp Config Modal */}
+      <Modal
+        isOpen={showWhatsAppModal}
+        onClose={() => {
+          setShowWhatsAppModal(false);
+          setWhatsappConfig({
+            phone_number_id: '',
+            business_account_id: '',
+            display_phone_number: '',
+            access_token: '',
+            app_secret: '',
+            webhook_verify_token: '',
+            is_enabled: true,
+          });
+        }}
+        title="WhatsApp Channel Configuration"
+      >
+        <div className="space-y-4">
+          {isLoadingWhatsApp ? (
+            <div className="flex items-center justify-center py-8">
+              <Spinner size="lg" />
+            </div>
+          ) : (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-700">
+                  Configure WhatsApp Business API for this workspace. You'll need credentials from your Meta Business Suite.
+                </p>
+              </div>
+
+              {whatsappConfig.webhook_url && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Webhook URL
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={whatsappConfig.webhook_url}
+                      readOnly
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => copyToClipboard(whatsappConfig.webhook_url!, 'webhook_url')}
+                    >
+                      {copiedField === 'webhook_url' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use this URL in your Meta app webhook configuration
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={whatsappConfig.phone_number_id}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, phone_number_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="123456789012345"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Display Phone Number
+                </label>
+                <input
+                  type="text"
+                  value={whatsappConfig.display_phone_number}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, display_phone_number: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="+1 555 123 4567"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Business Account ID
+                </label>
+                <input
+                  type="text"
+                  value={whatsappConfig.business_account_id}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, business_account_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="123456789012345"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Access Token <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={whatsappConfig.access_token}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, access_token: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="EAAxxxxxxxxxx"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Permanent token from Meta Business Suite
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  App Secret <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={whatsappConfig.app_secret}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, app_secret: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Webhook Verify Token <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={whatsappConfig.webhook_verify_token}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, webhook_verify_token: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="your-verify-token"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Create a custom verify token for webhook verification
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="whatsapp-enabled"
+                  checked={whatsappConfig.is_enabled}
+                  onChange={(e) => setWhatsappConfig({ ...whatsappConfig, is_enabled: e.target.checked })}
+                  className="rounded border-gray-300 text-green-600"
+                />
+                <label htmlFor="whatsapp-enabled" className="text-sm font-medium text-gray-700">
+                  Enable WhatsApp Channel
+                </label>
+              </div>
+
+              <div className="flex justify-between gap-3 pt-4 border-t">
+                <div>
+                  {whatsappConfig.id && (
+                    <Button
+                      variant="danger"
+                      onClick={deleteWhatsAppConfig}
+                      disabled={isSaving}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowWhatsAppModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={saveWhatsAppConfig}
+                    disabled={isSaving || !whatsappConfig.phone_number_id}
+                  >
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -679,12 +994,16 @@ function WorkspaceCard({
   onDelete,
   onToggle,
   onGetCode,
+  onWhatsApp,
+  isAdmin,
 }: {
   workspace: Workspace;
   onEdit: () => void;
   onDelete: () => void;
   onToggle: () => void;
   onGetCode: () => void;
+  onWhatsApp?: () => void;
+  isAdmin: boolean;
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
@@ -750,6 +1069,16 @@ function WorkspaceCard({
           >
             {workspace.is_enabled ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
           </button>
+
+          {onWhatsApp && (
+            <button
+              onClick={onWhatsApp}
+              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+              title="WhatsApp Channel"
+            >
+              <MessageCircle className="w-4 h-4" />
+            </button>
+          )}
 
           <button
             onClick={onGetCode}

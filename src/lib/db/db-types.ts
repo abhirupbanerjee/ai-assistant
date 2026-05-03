@@ -1024,4 +1024,54 @@ export interface DB {
   reindex_jobs: ReindexJobsTable;
   // Token Usage Log
   token_usage_log: TokenUsageLogTable;
+  // WhatsApp Channels
+  workspace_whatsapp_channels: WorkspaceWhatsappChannelsTable;
+  workspace_whatsapp_contacts: WorkspaceWhatsappContactsTable;
+  workspace_whatsapp_messages: WorkspaceWhatsappMessagesTable;
+}
+
+// ============ WhatsApp Channels ============
+
+export interface WorkspaceWhatsappChannelsTable {
+  id: string;
+  workspace_id: string;
+  phone_number_id: string;
+  business_account_id: string | null;
+  display_phone_number: string | null;
+  access_token_encrypted: string;
+  app_secret_encrypted: string;
+  webhook_verify_token_hash: string;
+  is_enabled: Generated<number>;
+  created_by: string;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface WorkspaceWhatsappContactsTable {
+  id: string;
+  channel_id: string;
+  wa_id: string;
+  display_name: string | null;
+  workspace_session_id: string;
+  workspace_thread_id: string;
+  last_inbound_at: string | null;
+  service_window_expires_at: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export interface WorkspaceWhatsappMessagesTable {
+  id: string;
+  channel_id: string;
+  contact_id: string | null;
+  workspace_message_id: string | null;
+  meta_message_id: string;
+  direction: string;
+  status: Generated<string>;
+  message_type: string;
+  text_content: string | null;
+  error_message: string | null;
+  raw_payload_json: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
 }
