@@ -1464,28 +1464,6 @@ function buildPlaybookTemplate(
     .pb-card-arrow { font-size: 1.2rem; color: #d1d5db; flex-shrink: 0; margin-top: 2px; }
     .pb-card.selected .pb-card-arrow { color: ${theme.primary}; }
     /* Lifecycle chips */
-    .pb-lifecycle-bar {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      padding: 20px 0 0;
-      border-top: 1px solid #e5e7eb;
-      margin-top: 24px;
-    }
-    .pb-lifecycle-chip {
-      padding: 6px 16px;
-      border-radius: 20px;
-      background: #f3f4f6;
-      color: #374151;
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      cursor: pointer;
-      border: 1px solid #d1d5db;
-      transition: all 0.2s;
-    }
-    .pb-lifecycle-chip:hover { background: ${theme.primary}; color: #fff; border-color: ${theme.primary}; }
-    .pb-lifecycle-chip.active { background: ${theme.primary}; color: #fff; border-color: ${theme.primary}; }
     /* Part detail area */
     .pb-part-detail-area {
       margin-top: 28px;
@@ -1611,17 +1589,11 @@ function buildPlaybookTemplate(
       var noResults = document.querySelector('.pb-no-results');
       if (noResults) noResults.style.display = matchCount > 0 ? 'none' : 'block';
     }
-    // Filter lifecycle chips (placeholder — highlights active chip)
-    function filterPlaybookChips(btn) {
-      document.querySelectorAll('.pb-lifecycle-chip').forEach(function(c) { c.classList.remove('active'); });
-      if (btn) btn.classList.add('active');
-    }
     // View all sections — reset search, show all cards
     function viewAllSections() {
       var search = document.querySelector('.pb-hero-search input');
       if (search) search.value = '';
       document.querySelectorAll('.pb-card').forEach(function(c) { c.classList.remove('pb-hidden'); });
-      document.querySelectorAll('.pb-lifecycle-chip').forEach(function(c) { c.classList.remove('active'); });
       var noResults = document.querySelector('.pb-no-results');
       if (noResults) noResults.style.display = 'none';
       var detail = document.getElementById('pb-part-detail');
@@ -1633,11 +1605,6 @@ function buildPlaybookTemplate(
   // Parse and render playbook parts
   const parts = parsePlaybookParts(segments);
   const { cardsHtml: partsCardsHtml, partDetailHtml } = renderPlaybookPartsHtml(parts);
-
-  // Lifecycle category chips (static for now; pluggable via branding.playbook.categories)
-  const lifecycleChips = ['ALIGN', 'ENABLE', 'LAUNCH', 'SUSTAIN']
-    .map(cat => `<button class="pb-lifecycle-chip" onclick="filterPlaybookChips(this)">${cat}</button>`)
-    .join('\n');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1674,7 +1641,6 @@ function buildPlaybookTemplate(
       ${partsCardsHtml}
     </div>
     <div class="pb-no-results" style="display:none;">No sections match your search. Try different keywords.</div>
-    <div class="pb-lifecycle-bar">${lifecycleChips}</div>
     <section id="pb-part-detail" class="pb-part-detail-area" aria-live="polite"></section>
   </main>
   <footer class="pb-footer">
