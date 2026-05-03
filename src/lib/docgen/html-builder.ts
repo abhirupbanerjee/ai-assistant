@@ -105,13 +105,15 @@ const CHART_COLORS = [
   '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
 ];
 
-// Supported Mermaid types for HTML output (scoped active set)
+// Supported Mermaid types for HTML output (aligned with MermaidDiagram.tsx and diagram_gen)
 const SUPPORTED_MERMAID_TYPES = new Set([
   'flowchart', 'graph', 'mindmap', 'sequencediagram',
-  'c4context', 'c4container', 'c4component',
+  'c4context', 'c4container', 'c4component', 'c4dynamic', 'c4deployment',
   'classdiagram', 'statediagram', 'statediagram-v2',
   'erdiagram', 'userjourney', 'gantt', 'gitgraph',
-  'pie', 'requirementdiagram',
+  'pie', 'requirementdiagram', 'timeline', 'block-beta', 'block',
+  'quadrantchart', 'quadrant', 'architecture-beta', 'architecture',
+  'sankey', 'packet-beta', 'zenuml',
 ]);
 
 // ============ Content Parser ============
@@ -119,11 +121,79 @@ const SUPPORTED_MERMAID_TYPES = new Set([
 /**
  * Parse markdown content into typed segments
  */
+/**
+ * Detect if a bare line starts a Mermaid diagram block (not inside fences).
+ * Matches common diagram type declarations.
+ */
+function isBareMermaidStartLine(line: string): boolean {
+  const trimmed = line.trim().toLowerCase();
+  // Match flowchart/graph variants, sequenceDiagram, etc.
+  const bareMermaidPatterns = [
+    /^(flowchart|graph)\b/,
+    /^sequencediagram\b/,
+    /^mindmap\b/,
+    /^statediagram(-v2)?\b/,
+    /^erdiagram\b/,
+    /^userjourney\b/,
+    /^gantt\b/,
+    /^gitgraph\b/,
+    /^pie\b/,
+    /^requirementdiagram\b/,
+    /^c4(context|container|component|dynamic|deployment)\b/,
+    /^classdiagram\b/,
+    /^timeline\b/,
+    /^block(-beta)?\b/,
+    /^quadrant(chart)?\b/,
+    /^architecture(-beta)?\b/,
+    /^sankey\b/,
+    /^packet-beta\b/,
+    /^zenuml\b/,
+  ];
+  return bareMermaidPatterns.some(p => p.test(trimmed));
+}
+
+/**
+ * Collect a bare Mermaid block starting at index `start`.
+ * Collects until:
+ * - a blank line followed by non-indented prose/heading
+ * - a markdown heading line
+ * - another fenced block start
+ * - EOF
+ */
+function collectBareMermaidBlock(lines: string[], start: number): { block: string[]; endIndex: number } {
+  const block: string[] = [lines[start]];
+  let i = start + 1;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Stop at a markdown heading
+    if (/^#{1,6}\s+/.test(line)) break;
+    // Stop at a fenced block start
+    if (/^```/.test(line)) break;
+    // If blank line and next line is not indented, stop
+    if (line.trim() === '') {
+      if (i + 1 < lines.length && !/^\s/.test(lines[i + 1])) break;
+      block.push(line);
+      i++;
+      continue;
+    }
+    block.push(line);
+    i++;
+  }
+  return { block, endIndex: i };
+}
+
 function parseContent(content: string): ContentSegment[] {
   const segments: ContentSegment[] = [];
   const lines = content.split('\n');
   let i = 0;
   let currentMarkdown: string[] = [];
+
+  function flushMarkdown() {
+    if (currentMarkdown.length > 0) {
+      segments.push({ type: 'markdown', content: currentMarkdown.join('\n') });
+      currentMarkdown = [];
+    }
+  }
 
   while (i < lines.length) {
     const line = lines[i];
@@ -131,13 +201,8 @@ function parseContent(content: string): ContentSegment[] {
     // Detect fenced code blocks
     const fenceMatch = line.match(/^```(\w+)?\s*$/);
     if (fenceMatch) {
+      flushMarkdown();
       const lang = (fenceMatch[1] || '').toLowerCase();
-
-      // Flush accumulated markdown
-      if (currentMarkdown.length > 0) {
-        segments.push({ type: 'markdown', content: currentMarkdown.join('\n') });
-        currentMarkdown = [];
-      }
 
       // Collect block content until closing fence
       const blockLines: string[] = [];
@@ -153,10 +218,16 @@ function parseContent(content: string): ContentSegment[] {
       if (lang === 'chart') {
         try {
           const config = JSON.parse(blockContent) as ChartBlockConfig;
-          segments.push({ type: 'chart', config, raw: blockContent });
+          // Validate chart config has required fields for Chart.js
+          if (Array.isArray(config.data) && config.x_field && Array.isArray(config.y_fields) && config.y_fields.length > 0) {
+            segments.push({ type: 'chart', config, raw: blockContent });
+          } else {
+            // Invalid config — treat as markdown code block
+            currentMarkdown.push('```chart\n' + blockContent + '\n```');
+          }
         } catch {
           // Invalid JSON — treat as markdown code block
-          currentMarkdown.push('```\n' + blockContent + '\n```');
+          currentMarkdown.push('```chart\n' + blockContent + '\n```');
         }
       } else if (lang === 'mermaid') {
         const sanitized = sanitizeMermaidCode(blockContent);
@@ -173,16 +244,34 @@ function parseContent(content: string): ContentSegment[] {
         // Other code blocks — pass through as markdown
         currentMarkdown.push('```' + (lang || '') + '\n' + blockContent + '\n```');
       }
-    } else {
-      currentMarkdown.push(line);
-      i++;
+      continue;
     }
+
+    // Detect bare Mermaid blocks (not inside fences)
+    if (isBareMermaidStartLine(line)) {
+      flushMarkdown();
+      const { block, endIndex } = collectBareMermaidBlock(lines, i);
+      const rawCode = block.join('\n');
+      const sanitized = sanitizeMermaidCode(rawCode);
+      const firstLine = sanitized.trim().split('\n')[0].toLowerCase().replace(/\s+/g, '');
+      const isSupported = Array.from(SUPPORTED_MERMAID_TYPES).some(t => firstLine.startsWith(t));
+      if (isSupported) {
+        const diagramType = detectMermaidType(sanitized);
+        segments.push({ type: 'mermaid', code: sanitized, diagramType });
+      } else {
+        // Unsupported — render as code block
+        currentMarkdown.push('```mermaid\n' + rawCode + '\n```');
+      }
+      i = endIndex;
+      continue;
+    }
+
+    currentMarkdown.push(line);
+    i++;
   }
 
   // Flush remaining markdown
-  if (currentMarkdown.length > 0) {
-    segments.push({ type: 'markdown', content: currentMarkdown.join('\n') });
-  }
+  flushMarkdown();
 
   return segments;
 }
@@ -353,10 +442,11 @@ function markdownToHtml(md: string): string {
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
+    .replace(/&/g, '\x26amp;')
+    .replace(/</g, '\x26lt;')
+    .replace(/>/g, '\x26gt;')
+    .replace(/"/g, '\x26quot;')
+    .replace(/'/g, '\x26#39;');
 }
 
 // ============ Chart.js Config Builder ============
@@ -467,31 +557,29 @@ function renderChartSegment(seg: ChartSegment): string {
   chartCounter++;
   const id = `chart-${chartCounter}`;
   const chartConfig = buildChartJsConfig(seg.config, id);
+  const encodedConfig = Buffer.from(chartConfig, 'utf-8').toString('base64');
   const notesHtml = seg.config.notes
     ? `<details class="chart-notes"><summary>Notes</summary><p>${escapeHtml(seg.config.notes)}</p></details>`
     : '';
   return `
 <div class="chart-card">
   ${seg.config.title ? `<h4 class="chart-title">${escapeHtml(seg.config.title)}</h4>` : ''}
-  <div class="chart-container">
-    <canvas id="${id}"></canvas>
+  <div class="chart-container" data-chart-wrapper="true">
+    <canvas id="${id}" data-chart-config="${encodedConfig}"></canvas>
   </div>
   ${notesHtml}
-  <script>
-    (function() {
-      var ctx = document.getElementById('${id}').getContext('2d');
-      new Chart(ctx, ${chartConfig});
-    })();
-  </script>
 </div>`;
 }
 
 function renderDiagramSegment(seg: DiagramSegment): string {
   diagramCounter++;
-  const escapedCode = seg.code.replace(/</g, '<').replace(/>/g, '>');
+  // Encode Mermaid source safely using base64 to avoid HTML parsing corruption
+  const encodedSource = Buffer.from(seg.code, 'utf-8').toString('base64');
   return `
 <div class="diagram-card">
-  <div class="mermaid">${escapedCode}</div>
+  <div class="mermaid" data-mermaid-source="${encodedSource}">
+    <pre style="color:#6b7280;font-size:12px;">Loading diagram...</pre>
+  </div>
 </div>`;
 }
 
@@ -981,10 +1069,110 @@ function buildCss(branding: BrandingConfig, pageType: HtmlPageType): string {
 // JS source for the generated HTML page.
 // Stored as an array of lines to avoid template-literal parsing of $& and $1.
 const JS_LINES = [
-  '// Mermaid init',
-  'if (typeof mermaid !== "undefined") {',
-  '  mermaid.initialize({ startOnLoad: true, theme: "default", securityLevel: "loose" });',
-  '}',
+  '// Mermaid init - explicit rendering (mirrors MermaidDiagram.tsx approach)',
+  '(function() {',
+  '  if (typeof mermaid === "undefined") return;',
+  '  mermaid.initialize({',
+  '    startOnLoad: false,',
+  '    theme: "default",',
+  '    securityLevel: "loose",',
+  '    suppressErrorRendering: true,',
+  '    fontFamily: "system-ui, -apple-system, sans-serif",',
+  '    flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },',
+  '    mindmap: { useMaxWidth: true, padding: 16 }',
+  '  });',
+  '  // Helper to escape HTML for fallback display',
+  '  function escapeHtmlForFallback(str) {',
+  '    return str',
+  '      .replace(/\\x26/g, "\\x26amp;")',
+  '      .replace(/\\x3C/g, "\\x26lt;")',
+  '      .replace(/\\x3E/g, "\\x26gt;")',
+  '      .replace(/"/g, "\\x26quot;")',
+  '      .replace(/\'/g, "\\x26#39;");',
+  '  }',
+  '  // Render all .mermaid blocks explicitly',
+  '  var mermaidBlocks = document.querySelectorAll(".mermaid");',
+  '  if (mermaidBlocks.length === 0) return;',
+  '  mermaidBlocks.forEach(function(block, index) {',
+  '    // Get Mermaid source from data attribute (base64 encoded) or textContent',
+  '    var encoded = block.getAttribute("data-mermaid-source");',
+  '    var code = encoded ? atob(encoded) : block.textContent.trim();',
+  '    if (!code) return;',
+  '    var id = "mermaid-svg-" + index + "-" + Date.now();',
+  '    try {',
+  '      mermaid.render(id, code).then(function(result) {',
+  '        block.innerHTML = result.svg;',
+  '      }).catch(function(err) {',
+  '        console.error("Mermaid render error:", err);',
+  '        // Show fallback: code in a pre block with proper escaping',
+  '        block.innerHTML = "<pre style=\\"background:#fef3c7;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;\\">" +',
+  '          "<strong>Diagram (text view)</strong>\\n" + escapeHtmlForFallback(code) + "</pre>";',
+  '      });',
+  '    } catch (e) {',
+  '      console.error("Mermaid render error:", e);',
+  '    }',
+  '  });',
+  '  // Expose for playbook template rendering',
+  '  window.renderMermaidDiagrams = function() {',
+  '    var blocks = document.querySelectorAll(".mermaid[data-mermaid-source]");',
+  '    blocks.forEach(function(block, index) {',
+  '      if (block.querySelector("svg")) return; // Already rendered',
+  '      var encoded = block.getAttribute("data-mermaid-source");',
+  '      if (!encoded) return;',
+  '      var code = atob(encoded);',
+  '      var id = "mermaid-svg-dynamic-" + index + "-" + Date.now();',
+  '      try {',
+  '        mermaid.render(id, code).then(function(result) {',
+  '          block.innerHTML = result.svg;',
+  '        }).catch(function(err) {',
+  '          console.error("Mermaid render error:", err);',
+  '          block.innerHTML = "<pre style=\\"background:#fef3c7;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;\\">" +',
+  '            "<strong>Diagram (text view)</strong>\\n" + escapeHtmlForFallback(code) + "</pre>";',
+  '        });',
+  '      } catch (e) {',
+  '        console.error("Mermaid render error:", e);',
+  '      }',
+  '    });',
+  '  };',
+  '})();',
+  '',
+  '// Chart.js init - explicit rendering with fallback',
+  '(function() {',
+  '  if (typeof Chart === "undefined") {',
+  '    // Show visible fallback in every chart-card',
+  '    document.querySelectorAll("canvas[data-chart-config]").forEach(function(canvas) {',
+  '      var wrapper = canvas.closest("[data-chart-wrapper]") || canvas.parentNode;',
+  '      wrapper.innerHTML = "<div style=\\"padding:16px;text-align:center;color:#dc2626;background:#fef2f2;border-radius:6px;font-size:13px;\\">" +',
+  '        "<strong>Chart could not be rendered.</strong><br>Chart.js failed to load. Please check your network connection or allow CDN scripts." +',
+  '        "</div>";',
+  '    });',
+  '    return;',
+  '  }',
+  '  function renderCharts() {',
+  '    document.querySelectorAll("canvas[data-chart-config]").forEach(function(canvas) {',
+  '      if (canvas.getAttribute("data-chart-rendered") === "true") return;',
+  '      var encoded = canvas.getAttribute("data-chart-config");',
+  '      if (!encoded) return;',
+  '      try {',
+  '        var config = JSON.parse(atob(encoded));',
+  '        new Chart(canvas.getContext("2d"), config);',
+  '        canvas.setAttribute("data-chart-rendered", "true");',
+  '      } catch (e) {',
+  '        console.error("Chart render error:", e);',
+  '        var wrapper = canvas.closest("[data-chart-wrapper]") || canvas.parentNode;',
+  '        wrapper.innerHTML = "<div style=\\"padding:16px;text-align:center;color:#dc2626;background:#fef2f2;border-radius:6px;font-size:13px;\\">" +',
+  '          "<strong>Chart could not be rendered.</strong><br>Invalid chart configuration." +',
+  '          "</div>";',
+  '      }',
+  '    });',
+  '  }',
+  '  if (document.readyState === "loading") {',
+  '    document.addEventListener("DOMContentLoaded", renderCharts);',
+  '  } else {',
+  '    renderCharts();',
+  '  }',
+  '  window.renderCharts = renderCharts;',
+  '})();',
   '',
   '// TOC active link tracking',
   '(function() {',
@@ -1668,6 +1856,14 @@ function buildPlaybookTemplate(
       // Auto-expand all topic bodies so content is immediately visible
       detail.querySelectorAll('.pb-topic-body').forEach(function(b) { b.classList.add('open'); });
       detail.querySelectorAll('.pb-topic-header').forEach(function(h) { h.setAttribute('aria-expanded', 'true'); });
+      // Render any Mermaid diagrams in the cloned content
+      if (typeof window.renderMermaidDiagrams === 'function') {
+        window.renderMermaidDiagrams();
+      }
+      // Render any Chart.js charts in the cloned content
+      if (typeof window.renderCharts === 'function') {
+        window.renderCharts();
+      }
       detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     // Toggle a topic row accordion
@@ -1739,6 +1935,14 @@ function buildPlaybookTemplate(
       detail.classList.add('active');
       detail.setAttribute('data-expanded', 'all');
       if (btn) btn.textContent = 'Collapse sections';
+      // Render any Mermaid diagrams in the cloned content
+      if (typeof window.renderMermaidDiagrams === 'function') {
+        window.renderMermaidDiagrams();
+      }
+      // Render any Chart.js charts in the cloned content
+      if (typeof window.renderCharts === 'function') {
+        window.renderCharts();
+      }
       detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
