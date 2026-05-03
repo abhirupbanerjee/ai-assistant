@@ -634,24 +634,34 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
     topicHeadingRegex = null;
   }
 
+  // Helper to generate part labels
+  const getPartLabel = (index: number): string => {
+    const labels = ['PART I', 'PART II', 'PART III', 'PART IV', 'PART V'];
+    if (index < labels.length) return labels[index];
+    return `PART ${index + 1}`;
+  };
+
+  // Helper to create slug from title
+  const slug = (text: string): string => 
+    text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  // State machine for parsing
   const parts: PlaybookPart[] = [];
-  let currentPartLabel = 'PART I';
-  let currentPartTitle = '';
-  let currentPartId = '';
-  let currentPartBody: string[] = [];
   let partCounter = 0;
+  let topicCounter = 0;
+  let currentPart: PlaybookPart | null = null;
   let currentTopicTitle = '';
   let currentTopicId = '';
   let currentTopicBody: string[] = [];
-  let topicCounter = 0;
+  let introBody: string[] = [];
   let skippedTitleH2 = false;
 
-  const flushTopic = (part: PlaybookPart) => {
-    if (!currentTopicTitle) return;
+  // Flush current topic into current part
+  const flushTopic = () => {
+    if (!currentPart || !currentTopicTitle) return;
     topicCounter++;
-    const id = `${currentTopicId}-${topicCounter}`;
-    part.topics.push({
-      id,
+    currentPart.topics.push({
+      id: `${currentTopicId}-${topicCounter}`,
       title: currentTopicTitle,
       subtitle: deriveSubtitle(currentTopicBody),
       bodyHtml: currentTopicBody.length > 0
@@ -665,27 +675,47 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
     currentTopicBody = [];
   };
 
-  const flushPart = () => {
-    if (!currentPartTitle) return;
-    flushTopic({ partLabel: currentPartLabel, title: currentPartTitle, id: currentPartId, accentColor: PART_ACCENT_COLORS[parts.length % PART_ACCENT_COLORS.length], topics: [] });
+  // Push current part into parts array
+  const pushCurrentPart = () => {
+    if (!currentPart) return;
+    flushTopic();
+    // If part has no topics, add an Overview topic from intro content
+    if (currentPart.topics.length === 0 && introBody.length > 0) {
+      currentPart.topics.push({
+        id: `${currentPart.id}-overview`,
+        title: 'Overview',
+        subtitle: deriveSubtitle(introBody),
+        bodyHtml: markdownToHtml(introBody.join('\n')),
+        keywords: currentPart.title.toLowerCase(),
+      });
+    }
+    parts.push(currentPart);
+    currentPart = null;
+    introBody = [];
+  };
+
+  // Create a new part
+  const createPart = (title: string) => {
+    pushCurrentPart();
+    currentPart = {
+      partLabel: getPartLabel(partCounter),
+      title,
+      id: slug(title),
+      accentColor: PART_ACCENT_COLORS[partCounter % PART_ACCENT_COLORS.length],
+      topics: [],
+    };
     partCounter++;
-    const partNum = partCounter + 1;
-    if (partNum === 1) currentPartLabel = 'PART I';
-    else if (partNum === 2) currentPartLabel = 'PART II';
-    else if (partNum === 3) currentPartLabel = 'PART III';
-    else if (partNum === 4) currentPartLabel = 'PARTS IV & V';
-    else currentPartLabel = `PART ${partNum}`;
-    currentPartTitle = '';
-    currentPartId = '';
-    currentPartBody = [];
     topicCounter = 0;
   };
 
-  // Use normalized segments for parsing
+  // Parse normalized segments
   for (const seg of normalizedSegments) {
     if (seg.type === 'markdown') {
       const lines = (seg as MarkdownSegment).content.split('\n');
-      for (const line of lines) {
+      for (const rawLine of lines) {
+        // Strip carriage return from Windows-style line endings
+        const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+        
         // Check for h2 heading (might need to skip if it's just the title)
         const h2Match = line.match(/^##(?!#)\s+(.+)$/);
         if (h2Match && skipFirstH2 && !skippedTitleH2) {
@@ -698,61 +728,46 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
         const topicMatch = topicHeadingRegex ? line.match(topicHeadingRegex) : null;
 
         if (partMatch) {
-          const lastPart = parts[parts.length - 1];
-          if (lastPart) flushTopic(lastPart);
-          if (currentPartTitle) flushPart();
-
-          currentPartTitle = partMatch[1].trim();
-          currentPartId = currentPartTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          // New part heading - create a new part
+          createPart(partMatch[1].trim());
         } else if (topicMatch) {
-          const lastPart = parts[parts.length - 1];
-          if (lastPart) flushTopic(lastPart);
-          else if (currentPartTitle) flushPart();
-
+          // New topic heading
+          if (!currentPart) {
+            // Create an implicit overview part if we haven't started one
+            createPart('Overview');
+          }
+          flushTopic();
           currentTopicTitle = topicMatch[1].trim();
-          currentTopicId = currentTopicTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          currentTopicId = slug(currentTopicTitle);
           currentTopicBody = [];
-          topicCounter++;
         } else if (currentTopicTitle) {
+          // Content for current topic
           currentTopicBody.push(line);
-        } else if (currentPartTitle) {
-          currentPartBody.push(line);
+        } else if (currentPart) {
+          // Intro content for current part (before any topic)
+          introBody.push(line);
         } else {
-          // Intro content before any part heading — attach to next part
-          currentPartBody.push(line);
+          // Content before any part heading - save for later
+          introBody.push(line);
         }
       }
     } else if (seg.type === 'chart') {
       const html = renderChartSegment(seg as ChartSegment);
       if (currentTopicTitle) currentTopicBody.push(html);
-      else currentPartBody.push(html);
+      else introBody.push(html);
     } else if (seg.type === 'mermaid') {
       const html = renderDiagramSegment(seg as DiagramSegment);
       if (currentTopicTitle) currentTopicBody.push(html);
-      else currentPartBody.push(html);
+      else introBody.push(html);
     }
   }
 
-  // Flush last topic and part
-  const lastPart = parts[parts.length - 1];
-  if (lastPart) flushTopic(lastPart);
-  if (currentPartTitle) {
-    flushPart();
-    const realPart = parts[parts.length - 1];
-    if (!realPart && currentPartTitle) {
-      parts.push({
-        partLabel: currentPartLabel,
-        title: currentPartTitle,
-        id: currentPartId,
-        accentColor: PART_ACCENT_COLORS[parts.length % PART_ACCENT_COLORS.length],
-        topics: [],
-      });
-    }
-  }
+  // Push the final part
+  pushCurrentPart();
 
-  // If no parts at all, treat all content as one overview part
-  if (parts.length === 0 && segments.length > 0) {
-    const allHtml = segments.map(seg => {
+  // If no parts were created, treat all content as one overview part
+  if (parts.length === 0 && normalizedSegments.length > 0) {
+    const allHtml = normalizedSegments.map(seg => {
       if (seg.type === 'markdown') return markdownToHtml((seg as MarkdownSegment).content);
       if (seg.type === 'chart') return renderChartSegment(seg as ChartSegment);
       if (seg.type === 'mermaid') return renderDiagramSegment(seg as DiagramSegment);
@@ -775,9 +790,7 @@ function parsePlaybookParts(segments: ContentSegment[]): PlaybookPart[] {
 
   return parts;
 }
-/**
- * Render PlaybookPart[] into HTML for the cards grid.
- */
+
 function renderPlaybookPartsHtml(parts: PlaybookPart[]): {
   cardsHtml: string;
   partDetailHtml: string;
