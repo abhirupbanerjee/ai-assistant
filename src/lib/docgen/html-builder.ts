@@ -7,10 +7,13 @@
  * - chart: Single or few charts
  * - webpage: General purpose HTML page
  *
- * Embeds Chart.js (charts) and Mermaid.js (diagrams) via CDN.
+ * Embeds Chart.js (charts) and Mermaid.js (diagrams) as inline scripts from local node_modules.
+ * This makes generated HTML self-contained — no CDN dependencies at view time.
  * Imports sanitizeMermaidCode from diagram-gen/validator for quality parity.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { sanitizeMermaidCode } from '../diagram-gen/validator';
 import type { BrandingConfig } from './branding';
 import type { DisclaimerConfig } from '../disclaimer';
@@ -115,6 +118,59 @@ const SUPPORTED_MERMAID_TYPES = new Set([
   'quadrantchart', 'quadrant', 'architecture-beta', 'architecture',
   'sankey', 'packet-beta', 'zenuml',
 ]);
+
+// ============ Inline Vendor Bundles ============
+
+/**
+ * Read a vendor bundle from the local node_modules directory.
+ * This makes generated HTML self-contained — no CDN dependencies at view time.
+ *
+ * Tries multiple likely paths for robustness across package versions.
+ */
+function readVendorBundle(packageName: string, relativePaths: string[]): string | null {
+  for (const relativePath of relativePaths) {
+    const filePath = path.join(process.cwd(), 'node_modules', packageName, relativePath);
+    try {
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath, 'utf-8');
+      }
+    } catch {
+      // Continue to next candidate
+    }
+  }
+  return null;
+}
+
+/**
+ * Build inline <script> blocks for Chart.js and Mermaid from local node_modules.
+ * Falls back to HTML comments (not CDN) so missing bundles are visible, not silent.
+ */
+function buildVendorScripts(): string {
+  const chartJsBundle = readVendorBundle('chart.js', [
+    'dist/chart.umd.min.js',
+    'dist/chart.umd.js',
+  ]);
+  const mermaidBundle = readVendorBundle('mermaid', [
+    'dist/mermaid.min.js',
+    'dist/mermaid.js',
+  ]);
+
+  const scripts: string[] = [];
+
+  if (chartJsBundle) {
+    scripts.push(`<script>\n${chartJsBundle}\n</script>`);
+  } else {
+    scripts.push('<!-- Chart.js bundle not found: charts will show a fallback message. Run: npm install -->');
+  }
+
+  if (mermaidBundle) {
+    scripts.push(`<script>\n${mermaidBundle}\n</script>`);
+  } else {
+    scripts.push('<!-- Mermaid bundle not found: diagrams will show a text fallback. Run: npm install -->');
+  }
+
+  return scripts.join('\n');
+}
 
 // ============ Content Parser ============
 
@@ -1069,18 +1125,8 @@ function buildCss(branding: BrandingConfig, pageType: HtmlPageType): string {
 // JS source for the generated HTML page.
 // Stored as an array of lines to avoid template-literal parsing of $& and $1.
 const JS_LINES = [
-  '// Mermaid init - explicit rendering (mirrors MermaidDiagram.tsx approach)',
+  '// Mermaid init - explicit rendering with missing-library fallback',
   '(function() {',
-  '  if (typeof mermaid === "undefined") return;',
-  '  mermaid.initialize({',
-  '    startOnLoad: false,',
-  '    theme: "default",',
-  '    securityLevel: "loose",',
-  '    suppressErrorRendering: true,',
-  '    fontFamily: "system-ui, -apple-system, sans-serif",',
-  '    flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },',
-  '    mindmap: { useMaxWidth: true, padding: 16 }',
-  '  });',
   '  // Helper to escape HTML for fallback display',
   '  function escapeHtmlForFallback(str) {',
   '    return str',
@@ -1090,11 +1136,34 @@ const JS_LINES = [
   '      .replace(/"/g, "\\x26quot;")',
   '      .replace(/\'/g, "\\x26#39;");',
   '  }',
+  '  function showDiagramTextFallback(block, code) {',
+  '    block.innerHTML = "<pre style=\\"background:#fef3c7;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;\\">" +',
+  '      "<strong>Diagram could not be rendered.</strong><br>Mermaid library is unavailable. Diagram source is shown below:\\\\n" +',
+  '      escapeHtmlForFallback(code) + "</pre>";',
+  '  }',
+  '  if (typeof mermaid === "undefined") {',
+  '    // Mermaid unavailable: replace all .mermaid blocks with text fallbacks',
+  '    document.querySelectorAll(".mermaid[data-mermaid-source]").forEach(function(block) {',
+  '      var encoded = block.getAttribute("data-mermaid-source");',
+  '      if (!encoded) return;',
+  '      var code = atob(encoded);',
+  '      showDiagramTextFallback(block, code);',
+  '    });',
+  '    return;',
+  '  }',
+  '  mermaid.initialize({',
+  '    startOnLoad: false,',
+  '    theme: "default",',
+  '    securityLevel: "loose",',
+  '    suppressErrorRendering: true,',
+  '    fontFamily: "system-ui, -apple-system, sans-serif",',
+  '    flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },',
+  '    mindmap: { useMaxWidth: true, padding: 16 }',
+  '  });',
   '  // Render all .mermaid blocks explicitly',
   '  var mermaidBlocks = document.querySelectorAll(".mermaid");',
   '  if (mermaidBlocks.length === 0) return;',
   '  mermaidBlocks.forEach(function(block, index) {',
-  '    // Get Mermaid source from data attribute (base64 encoded) or textContent',
   '    var encoded = block.getAttribute("data-mermaid-source");',
   '    var code = encoded ? atob(encoded) : block.textContent.trim();',
   '    if (!code) return;',
@@ -1104,19 +1173,18 @@ const JS_LINES = [
   '        block.innerHTML = result.svg;',
   '      }).catch(function(err) {',
   '        console.error("Mermaid render error:", err);',
-  '        // Show fallback: code in a pre block with proper escaping',
-  '        block.innerHTML = "<pre style=\\"background:#fef3c7;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;\\">" +',
-  '          "<strong>Diagram (text view)</strong>\\n" + escapeHtmlForFallback(code) + "</pre>";',
+  '        showDiagramTextFallback(block, code);',
   '      });',
   '    } catch (e) {',
   '      console.error("Mermaid render error:", e);',
+  '      showDiagramTextFallback(block, code);',
   '    }',
   '  });',
   '  // Expose for playbook template rendering',
   '  window.renderMermaidDiagrams = function() {',
   '    var blocks = document.querySelectorAll(".mermaid[data-mermaid-source]");',
   '    blocks.forEach(function(block, index) {',
-  '      if (block.querySelector("svg")) return; // Already rendered',
+  '      if (block.querySelector("svg")) return;',
   '      var encoded = block.getAttribute("data-mermaid-source");',
   '      if (!encoded) return;',
   '      var code = atob(encoded);',
@@ -1126,11 +1194,11 @@ const JS_LINES = [
   '          block.innerHTML = result.svg;',
   '        }).catch(function(err) {',
   '          console.error("Mermaid render error:", err);',
-  '          block.innerHTML = "<pre style=\\"background:#fef3c7;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;\\">" +',
-  '            "<strong>Diagram (text view)</strong>\\n" + escapeHtmlForFallback(code) + "</pre>";',
+  '          showDiagramTextFallback(block, code);',
   '        });',
   '      } catch (e) {',
   '        console.error("Mermaid render error:", e);',
+  '        showDiagramTextFallback(block, code);',
   '      }',
   '    });',
   '  };',
@@ -1139,11 +1207,10 @@ const JS_LINES = [
   '// Chart.js init - explicit rendering with fallback',
   '(function() {',
   '  if (typeof Chart === "undefined") {',
-  '    // Show visible fallback in every chart-card',
   '    document.querySelectorAll("canvas[data-chart-config]").forEach(function(canvas) {',
   '      var wrapper = canvas.closest("[data-chart-wrapper]") || canvas.parentNode;',
   '      wrapper.innerHTML = "<div style=\\"padding:16px;text-align:center;color:#dc2626;background:#fef2f2;border-radius:6px;font-size:13px;\\">" +',
-  '        "<strong>Chart could not be rendered.</strong><br>Chart.js failed to load. Please check your network connection or allow CDN scripts." +',
+  '        "<strong>Chart could not be rendered.</strong><br>Chart.js library is unavailable." +',
   '        "</div>";',
   '    });',
   '    return;',
@@ -1245,6 +1312,7 @@ function buildDocumentationTemplate(
   const logoHtml = branding.enabled && branding.logoUrl
     ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
     : '';
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1252,8 +1320,7 @@ function buildDocumentationTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}</style>
 </head>
 <body>
@@ -1297,6 +1364,7 @@ function buildDashboardTemplate(
   const logoHtml = branding.enabled && branding.logoUrl
     ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
     : '';
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1304,8 +1372,7 @@ function buildDashboardTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}</style>
 </head>
 <body>
@@ -1349,6 +1416,7 @@ function buildBookTemplate(
   const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
     .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
     .join('');
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1356,8 +1424,7 @@ function buildBookTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}</style>
 </head>
 <body>
@@ -1409,6 +1476,7 @@ function buildReportTemplate(
   const logoHtml = branding.enabled && branding.logoUrl
     ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
     : '';
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1416,8 +1484,7 @@ function buildReportTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}</style>
 </head>
 <body>
@@ -1468,6 +1535,7 @@ function buildWebsiteTemplate(
   const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
     .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
     .join('');
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1475,8 +1543,7 @@ function buildWebsiteTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}</style>
 </head>
 <body>
@@ -1525,6 +1592,7 @@ function buildWebpageTemplate(
   const logoHtml = branding.enabled && branding.logoUrl
     ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
     : '';
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1532,8 +1600,7 @@ function buildWebpageTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}</style>
 </head>
 <body>
@@ -1950,6 +2017,7 @@ function buildPlaybookTemplate(
   // Parse and render playbook parts
   const parts = parsePlaybookParts(segments);
   const { cardsHtml: partsCardsHtml, partDetailHtml } = renderPlaybookPartsHtml(parts);
+  const vendorScripts = buildVendorScripts();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1957,8 +2025,7 @@ function buildPlaybookTemplate(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${vendorScripts}
   <style>${css}${playbookCss}</style>
 </head>
 <body>
@@ -2310,8 +2377,7 @@ export async function generateHtmlFromSource(options: HtmlSourceOptions): Promis
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  ${buildVendorScripts()}
   <style>${css}</style>
 </head>
 <body>
