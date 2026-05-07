@@ -77,14 +77,6 @@ model_list:
   # ===========================================================================
 
   - model_name: fireworks/deepseek-v4-pro
-<｜｜DSML｜｜parameter name="task_progress" string="true">- [x] Add V4 models to TOOL_CAPABLE_PATTERNS
-- [x] Add V4 Pro to THINKING_CAPABLE_PATTERNS
-- [x] Add V4 models to CONTEXT_WINDOWS
-- [x] Update isThinkTagModel() regex to include deepseek-v4-pro
-- [x] Update family fallback patterns for V4 context windows
-- [x] Override maxOutputTokens in discoverDeepSeekModels() for V4 models
-- [x] Edit llm-client.ts: raise 4096 cap to 16384
-- [x] Edit config-loader.ts: add V4 models to toolCapable list
     litellm_params:
       model: fireworks_ai/accounts/fireworks/models/deepseek-v4-pro
       api_key: os.environ/FIREWORKS_AI_API_KEY
