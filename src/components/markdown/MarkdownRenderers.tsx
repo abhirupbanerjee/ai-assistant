@@ -270,6 +270,75 @@ const CodeWithMermaid: Components['code'] = ({ children, className }) => {
 };
 
 /**
+ * Code block component with Mermaid support AND a copy button for Mermaid source.
+ * Only used in the main chat assistant responses (via MarkdownComponentsWithCodeCopy).
+ * For non-Mermaid blocks, delegates to the standard CodeWithMermaid behavior.
+ */
+const CodeWithMermaidAndCopy: Components['code'] = ({ children, className }) => {
+  const [copied, setCopied] = useState(false);
+  const isInline = !className;
+  const language = className?.replace('language-', '') || '';
+  const codeContent = getTextContent(children);
+  const isMermaid = language === 'mermaid';
+
+  if (isMermaid) {
+    const handleCopy = async () => {
+      try {
+        await navigator.clipboard.writeText(codeContent);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy Mermaid source:', err);
+      }
+    };
+
+    return (
+      <div className="relative group/mermaid my-3">
+        <button
+          onClick={handleCopy}
+          className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/mermaid:opacity-100 focus:opacity-100"
+          title={copied ? 'Copied' : 'Copy source'}
+          aria-label={copied ? 'Copied' : 'Copy source'}
+          type="button"
+        >
+          {copied ? (
+            <Check size={14} className="text-green-600" />
+          ) : (
+            <Copy size={14} />
+          )}
+        </button>
+        <Suspense
+          fallback={
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 my-3">
+              <div className="flex items-center gap-2 text-gray-500">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-sm">Loading diagram...</span>
+              </div>
+            </div>
+          }
+        >
+          <MermaidDiagram code={codeContent} />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (isInline) {
+    return (
+      <code className="px-1.5 py-0.5 rounded font-mono text-xs sm:text-sm">
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <code className="text-gray-800 font-mono text-xs sm:text-sm">
+      {children}
+    </code>
+  );
+};
+
+/**
  * Standard code block component (no Mermaid support - for embed mode)
  */
 const CodeWithoutMermaid: Components['code'] = ({ children, className }) => {
@@ -317,16 +386,29 @@ const CopyablePre: Components['pre'] = ({ children }) => {
   const [copied, setCopied] = useState(false);
 
   // Detect if this is a Mermaid block — the code renderer replaces those with
-  // a <Suspense>/<MermaidDiagram> tree, so the child won't be a plain <code>.
-  // We check for a <code> child with a language-mermaid class to skip the button.
+  // a <div class="group/mermaid"> containing <Suspense>/<MermaidDiagram>,
+  // so the child won't be a plain <code>. We check for a <div> with the
+  // group/mermaid class, or a <code> with language-mermaid class (legacy).
   const isMermaidBlock = React.Children.toArray(children).some((child) => {
     if (!React.isValidElement(child)) return false;
     const props = child.props as Record<string, unknown>;
-    return (
+    // CodeWithMermaidAndCopy returns a <div className="relative group/mermaid ...">
+    if (
+      child.type === 'div' &&
+      typeof props.className === 'string' &&
+      props.className.includes('group/mermaid')
+    ) {
+      return true;
+    }
+    // Legacy: CodeWithMermaid returns <Suspense> wrapped in <pre> by react-markdown
+    if (
       child.type === 'code' &&
       typeof props.className === 'string' &&
       props.className.includes('language-mermaid')
-    );
+    ) {
+      return true;
+    }
+    return false;
   });
 
   const handleCopy = async () => {
@@ -503,6 +585,7 @@ const CopyableTable: Components['table'] = ({ children }) => {
  */
 export const MarkdownComponentsWithCodeCopy: Components = {
   ...MarkdownComponents,
+  code: CodeWithMermaidAndCopy,
   pre: CopyablePre,
   table: CopyableTable,
 } as Components;
