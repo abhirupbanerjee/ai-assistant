@@ -480,6 +480,7 @@ function getHardcodedDefaults(): AppConfig {
         'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
         'ollama-llama3.2', 'ollama-qwen3', 'ollama-gpt-oss',
         'claude-haiku-4-5-20251001', 'fireworks/minimax-m2p5',
+        'deepseek-v4-flash', 'deepseek-v4-pro',
       ],
       transcription: 'whisper-1',
       rerankerCohere: 'rerank-english-v3.0',

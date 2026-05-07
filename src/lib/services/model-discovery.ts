@@ -49,7 +49,9 @@ const TOOL_CAPABLE_PATTERNS = [
   /^pixtral/,
   // Anthropic Claude
   /^claude/,
-  // DeepSeek (chat only — deepseek-reasoner does not support tool_choice)
+  // DeepSeek V4 (flash and pro both support tool calling)
+  /^deepseek-v4-(flash|pro)/,
+  // Legacy DeepSeek (chat only — deepseek-reasoner does not support tool_choice)
   /^deepseek-chat/,
   // Ollama (some models)
   /^llama3/,
@@ -113,6 +115,7 @@ const THINKING_CAPABLE_PATTERNS = [
   /^qwen3/,
   /^qwq/,
   /^deepseek-r/,
+  /^deepseek-v4-pro/,
   // OpenAI reasoning models
   /^o1/,
   /^o3/,
@@ -165,6 +168,9 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'claude-3-sonnet': 200000,
   'claude-3-haiku': 200000,
   'claude-3-5-sonnet': 200000,
+  // DeepSeek V4 (native API)
+  'deepseek-v4-flash': 1048576,
+  'deepseek-v4-pro': 1048576,
   // DeepSeek (use actual API model IDs)
   'deepseek-reasoner': 64000,
   'deepseek-chat': 128000,
@@ -203,7 +209,7 @@ export function isThinkTagModel(modelId: string): boolean {
   if (lastSlash !== -1) id = id.slice(lastSlash + 1);
   // Strip version/tag suffixes (e.g. ":8b", ":latest", "-instruct")
   id = id.replace(/:.*$/, '');
-  return /^(qwen3|qwq|deepseek-r)/.test(id);
+  return /^(qwen3|qwq|deepseek-r|deepseek-v4-pro)/.test(id);
 }
 
 function isToolCapable(modelId: string): boolean {
@@ -259,6 +265,7 @@ function getContextWindow(modelId: string): number | null {
     [/^mistral-large/, 256000],
     [/^mistral-small/, 32000],
     [/^claude/, 1000000],
+    [/^deepseek-v4/, 1048576],
     [/^deepseek-r/, 64000],
     [/^deepseek/, 128000],
   ];
@@ -507,7 +514,8 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
     // DeepSeek does NOT support vision
     visionCapable: false,
     maxInputTokens: getContextWindow(m.id),
-    maxOutputTokens: getDefaultOutputTokens('deepseek'),
+    // V4 models support 16384 output tokens; legacy models use provider default (8000)
+    maxOutputTokens: /^deepseek-v4/.test(m.id) ? 16384 : getDefaultOutputTokens('deepseek'),
     isEnabled: !!(await getEnabledModel(m.id)),
   })));
   return models.sort((a, b) => a.name.localeCompare(b.name));

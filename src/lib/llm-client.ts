@@ -84,7 +84,7 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
     model,
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
-    max_tokens: Math.min(opts.maxTokens ?? 2000, 4096),
+    max_tokens: Math.min(opts.maxTokens ?? 2000, 16384),
   });
   return response.choices[0]?.message?.content?.trim() || '';
 }

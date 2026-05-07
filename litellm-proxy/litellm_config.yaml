@@ -47,10 +47,44 @@ model_list:
       supports_function_calling: true
 
   # ===========================================================================
+  # DEEPSEEK V4 MODELS (Native API via api.deepseek.com)
+  # ===========================================================================
+
+  - model_name: deepseek-v4-flash
+    litellm_params:
+      model: openai/deepseek-v4-flash
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: https://api.deepseek.com
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 1048576
+      max_output_tokens: 16384
+
+  - model_name: deepseek-v4-pro
+    litellm_params:
+      model: openai/deepseek-v4-pro
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: https://api.deepseek.com
+    model_info:
+      supports_function_calling: true
+      supports_vision: false
+      max_input_tokens: 1048576
+      max_output_tokens: 16384
+
+  # ===========================================================================
   # FIREWORKS AI MODELS (SOC2 / GDPR / HIPAA — Zero Data Retention)
   # ===========================================================================
 
   - model_name: fireworks/deepseek-v4-pro
+<｜｜DSML｜｜parameter name="task_progress" string="true">- [x] Add V4 models to TOOL_CAPABLE_PATTERNS
+- [x] Add V4 Pro to THINKING_CAPABLE_PATTERNS
+- [x] Add V4 models to CONTEXT_WINDOWS
+- [x] Update isThinkTagModel() regex to include deepseek-v4-pro
+- [x] Update family fallback patterns for V4 context windows
+- [x] Override maxOutputTokens in discoverDeepSeekModels() for V4 models
+- [x] Edit llm-client.ts: raise 4096 cap to 16384
+- [x] Edit config-loader.ts: add V4 models to toolCapable list
     litellm_params:
       model: fireworks_ai/accounts/fireworks/models/deepseek-v4-pro
       api_key: os.environ/FIREWORKS_AI_API_KEY
