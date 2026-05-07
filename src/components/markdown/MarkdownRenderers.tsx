@@ -374,10 +374,135 @@ const CopyablePre: Components['pre'] = ({ children }) => {
 };
 
 /**
+ * Reconstruct HTML table markup from React children for clipboard copy.
+ * Walks the rendered React tree (thead/tbody → tr → th/td) and builds
+ * a clean <table> HTML string that Office apps (Word, Excel, PPT) understand.
+ */
+function reconstructTableHtml(children: React.ReactNode): string {
+  const rows: string[] = [];
+
+  const processChildren = (nodes: React.ReactNode) => {
+    React.Children.forEach(nodes, (child) => {
+      if (!React.isValidElement(child)) return;
+      const el = child as React.ReactElement<{ children?: React.ReactNode; style?: React.CSSProperties }>;
+      const type = typeof el.type === 'string' ? el.type : '';
+
+      if (type === 'thead' || type === 'tbody' || type === 'tfoot') {
+        processChildren(el.props.children);
+      } else if (type === 'tr') {
+        const cells: string[] = [];
+        React.Children.forEach(el.props.children, (cell) => {
+          if (!React.isValidElement(cell)) return;
+          const cellEl = cell as React.ReactElement<{ children?: React.ReactNode; style?: React.CSSProperties }>;
+          const cellType = typeof cellEl.type === 'string' ? cellEl.type : '';
+          if (cellType === 'th' || cellType === 'td') {
+            const text = getTextContent(cellEl.props.children);
+            const align = cellEl.props.style?.textAlign;
+            const alignAttr = align ? ` align="${align}"` : '';
+            cells.push(`    <${cellType}${alignAttr}>${text}</${cellType}>`);
+          }
+        });
+        rows.push(`  <tr>\n${cells.join('\n')}\n  </tr>`);
+      }
+    });
+  };
+
+  processChildren(children);
+  return `<table>\n${rows.join('\n')}\n</table>`;
+}
+
+/**
+ * Extract TSV (tab-separated values) from a rendered table's React children.
+ * Used as the text/plain fallback for clipboard copy.
+ */
+function extractTableTsv(children: React.ReactNode): string {
+  const lines: string[] = [];
+
+  const processChildren = (nodes: React.ReactNode) => {
+    React.Children.forEach(nodes, (child) => {
+      if (!React.isValidElement(child)) return;
+      const el = child as React.ReactElement<{ children?: React.ReactNode }>;
+      const type = typeof el.type === 'string' ? el.type : '';
+
+      if (type === 'thead' || type === 'tbody' || type === 'tfoot') {
+        processChildren(el.props.children);
+      } else if (type === 'tr') {
+        const cells: string[] = [];
+        React.Children.forEach(el.props.children, (cell) => {
+          if (!React.isValidElement(cell)) return;
+          const cellEl = cell as React.ReactElement<{ children?: React.ReactNode }>;
+          const cellType = typeof cellEl.type === 'string' ? cellEl.type : '';
+          if (cellType === 'th' || cellType === 'td') {
+            const text = getTextContent(cellEl.props.children);
+            // Replace internal newlines with spaces for clean TSV
+            cells.push(text.replace(/\n/g, ' '));
+          }
+        });
+        lines.push(cells.join('\t'));
+      }
+    });
+  };
+
+  processChildren(children);
+  return lines.join('\n');
+}
+
+/**
+ * Table renderer with a per-table copy button.
+ * Copies the table as HTML (for Word/Excel/PPT) with a plain text TSV fallback.
+ */
+const CopyableTable: Components['table'] = ({ children }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      const tableHtml = reconstructTableHtml(children);
+      const plainText = extractTableTsv(children);
+
+      const blobHtml = new Blob([tableHtml], { type: 'text/html' });
+      const blobText = new Blob([plainText], { type: 'text/plain' });
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': blobHtml,
+          'text/plain': blobText,
+        }),
+      ]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy table:', err);
+    }
+  };
+
+  return (
+    <div className="relative group/table my-4">
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/table:opacity-100 focus:opacity-100"
+        title={copied ? 'Copied' : 'Copy table'}
+        aria-label={copied ? 'Copied' : 'Copy table'}
+        type="button"
+      >
+        {copied ? (
+          <Check size={14} className="text-green-600" />
+        ) : (
+          <Copy size={14} />
+        )}
+      </button>
+      <div className="overflow-x-auto touch-pan-x rounded-md border border-gray-200">
+        <table className="w-max min-w-full">{children}</table>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Markdown components WITH Mermaid support AND per-code-block copy buttons.
  * Use this for: Main Chat assistant messages only.
  */
 export const MarkdownComponentsWithCodeCopy: Components = {
   ...MarkdownComponents,
   pre: CopyablePre,
+  table: CopyableTable,
 } as Components;
