@@ -11,7 +11,7 @@ import ImageDisplay from './ImageDisplay';
 import PodcastPlayer from './PodcastPlayer';
 import DataVisualization from './DataVisualization';
 import MermaidDiagram from '@/components/markdown/MermaidDiagram';
-import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
+import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
 
 const MAX_SOURCES_DISPLAYED = 5;
@@ -138,7 +138,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
         <div className="markdown-content">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            components={MarkdownComponents}
+            components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
           >
             {displayContent}
           </ReactMarkdown>

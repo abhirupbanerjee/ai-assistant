@@ -1,7 +1,7 @@
 'use client';
 
-import React, { Suspense, lazy } from 'react';
-import { ExternalLink } from 'lucide-react';
+import React, { Suspense, lazy, useState } from 'react';
+import { Copy, Check, ExternalLink } from 'lucide-react';
 import type { Components } from 'react-markdown';
 
 // Lazy load MermaidDiagram to avoid loading Mermaid.js until needed
@@ -306,4 +306,78 @@ export const MarkdownComponents: Components = {
 export const MarkdownComponentsLite: Components = {
   ...BaseMarkdownComponents,
   code: CodeWithoutMermaid,
+} as Components;
+
+/**
+ * Pre renderer with a per-code-block copy button.
+ * Only used in the main chat assistant responses.
+ * Skips Mermaid-rendered diagram blocks (no copy button on diagram output).
+ */
+const CopyablePre: Components['pre'] = ({ children }) => {
+  const [copied, setCopied] = useState(false);
+
+  // Detect if this is a Mermaid block — the code renderer replaces those with
+  // a <Suspense>/<MermaidDiagram> tree, so the child won't be a plain <code>.
+  // We check for a <code> child with a language-mermaid class to skip the button.
+  const isMermaidBlock = React.Children.toArray(children).some((child) => {
+    if (!React.isValidElement(child)) return false;
+    const props = child.props as Record<string, unknown>;
+    return (
+      child.type === 'code' &&
+      typeof props.className === 'string' &&
+      props.className.includes('language-mermaid')
+    );
+  });
+
+  const handleCopy = async () => {
+    const rawText = getTextContent(children);
+    // Strip exactly one trailing newline added by the markdown renderer
+    const copyText = rawText.endsWith('\n') ? rawText.slice(0, -1) : rawText;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy code:', err);
+    }
+  };
+
+  if (isMermaidBlock) {
+    // Render without copy button for Mermaid diagram blocks
+    return (
+      <pre className="bg-gray-100 text-gray-800 p-4 rounded-md overflow-x-auto whitespace-pre my-3 border border-gray-300 max-w-full touch-pan-x font-mono text-sm leading-relaxed">
+        {children}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="relative group/code my-3">
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/code:opacity-100 focus:opacity-100"
+        title={copied ? 'Copied' : 'Copy code'}
+        aria-label={copied ? 'Copied' : 'Copy code'}
+        type="button"
+      >
+        {copied ? (
+          <Check size={14} className="text-green-600" />
+        ) : (
+          <Copy size={14} />
+        )}
+      </button>
+      <pre className="bg-gray-100 text-gray-800 p-4 pt-10 pr-12 rounded-md overflow-x-auto whitespace-pre border border-gray-300 max-w-full touch-pan-x font-mono text-sm leading-relaxed">
+        {children}
+      </pre>
+    </div>
+  );
+};
+
+/**
+ * Markdown components WITH Mermaid support AND per-code-block copy buttons.
+ * Use this for: Main Chat assistant messages only.
+ */
+export const MarkdownComponentsWithCodeCopy: Components = {
+  ...MarkdownComponents,
+  pre: CopyablePre,
 } as Components;
