@@ -384,9 +384,9 @@ function getHardcodedDefaults(): AppConfig {
         cacheEnabled: true,
         cacheTTLSeconds: 3600,
       },
-      'fireworks/minimax-m2p5': {
-        name: 'MiniMax M2.5 via Fireworks (Route 2 Fallback)',
-        description: 'MiniMax M2.5 via Fireworks AI — 1M context, tool calling, vision, bypasses LiteLLM',
+      'fireworks/kimi-k2p6': {
+        name: 'Kimi K2.6 via Fireworks (Route 2 Fallback)',
+        description: 'Kimi K2.6 via Fireworks AI — 131K context, tool calling, vision, bypasses LiteLLM',
         provider: 'fireworks',
         temperature: 0.2,
         maxTokens: 4000,
@@ -479,8 +479,8 @@ function getHardcodedDefaults(): AppConfig {
         'mistral-large-3', 'mistral-medium-3.1', 'mistral-small-3.2',
         'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
         'ollama-llama3.2', 'ollama-qwen3', 'ollama-gpt-oss',
-        'claude-haiku-4-5-20251001', 'fireworks/minimax-m2p5',
-        'deepseek-v4-flash', 'deepseek-v4-pro',
+        'claude-haiku-4-5-20251001', 'fireworks/kimi-k2p6',
+        'deepseek-v4-flash',
       ],
       transcription: 'whisper-1',
       rerankerCohere: 'rerank-english-v3.0',

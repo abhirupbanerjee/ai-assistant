@@ -2145,19 +2145,108 @@ interface YouTubeConfig {
 
 ### Purpose
 
-Generates interactive, self-contained HTML pages from chat content using LLM-driven design. Supports 7 page types including dashboards with Chart.js, documentation sites, ebooks, reports, web page mockups, and **playbooks**. Embeds Chart.js and Mermaid.js for data visualizations and diagrams.
+Generates interactive, self-contained HTML pages from chat content using LLM-driven design. Supports 8 page types including dashboards with Chart.js, documentation sites, ebooks, reports, web page mockups, **playbooks**, and **roadmaps**. Embeds Chart.js and Mermaid.js for data visualizations and diagrams.
 
 ### Page Types
 
 | Type | Use Case |
 |------|----------|
 | `auto` | Auto-infer layout from content (default) |
-| `dashboard` | Power BI-style analytical dashboard with KPI summaries and chart grid |
+| `dashboard` | Power BI-style analytical dashboard with KPI row, chart canvas, and optional filter/data side rails |
 | `documentation` | Structured docs with TOC sidebar and search |
 | `book` | Ebook-style chapters with metadata and language options |
 | `report` | Formal report layout (executive summary, findings, recommendations) |
 | `website` | Frontend webpage mockup (header, hero, sections, footer) |
 | `playbook` | Interactive playbook with sticky top bar, hero search bar, accordion section cards derived from ## headings, and playbook footer branding |
+| `roadmap` | Visual timeline page with phase cards, milestone markers, and a horizontal progress bar |
+
+### Dashboard Schema
+
+Dashboard pages use a **5-zone layout**: title bar, KPI row, chart canvas (12-column grid), optional left filters rail, and optional right data rail. The LLM produces these zones by embedding fenced JSON blocks inside the `content` string.
+
+| Block | Zone | Description |
+|-------|------|-------------|
+| ` ```kpi ` | KPI row | 1-6 tiles with label, value, delta, sparkline |
+| ` ```chart ` | Canvas | Quantitative panel with optional `size` and `tags` |
+| ` ```filters ` | Left rail | Slicers (select, multiselect, search, daterange) |
+| ` ```data ` | Right rail | KV stats + optional table |
+
+#### KPI Block (` ```kpi `)
+```json
+{
+  "label": "Total Revenue",
+  "value": "$2.4M",
+  "delta": "+12.4%",
+  "trend_direction": "positive",
+  "trend": [10, 12, 14, 15, 18, 20],
+  "tags": ["region:north", "category:sales"]
+}
+```
+- `trend_direction`: `"positive" | "negative" | "neutral"` (colours the delta)
+- `trend`: optional sparkline array of numbers
+- `tags`: optional array for slicer filtering
+
+#### Chart Block (` ```chart `)
+Same schema as the general `chart_gen` tool, with two dashboard-specific additions:
+```json
+{
+  "title": "Monthly Revenue",
+  "data": [{"month": "Jan", "revenue": 100}],
+  "x_field": "month",
+  "y_fields": ["revenue"],
+  "recommended_chart": "bar",
+  "size": "half",
+  "tags": ["region:north"]
+}
+```
+- `size`: `"hero" | "half" | "third" | "quarter"` (defaults to `"half"`)
+- `tags`: optional array for slicer filtering
+
+#### Filters Block (` ```filters `)
+```json
+{
+  "title": "Filters",
+  "slicers": [
+    {
+      "id": "region",
+      "label": "Region",
+      "type": "multiselect",
+      "options": ["North", "South", "East", "West"],
+      "tag_prefix": "region"
+    },
+    {
+      "id": "date",
+      "label": "Date Range",
+      "type": "daterange"
+    },
+    {
+      "id": "search",
+      "label": "Search",
+      "type": "search"
+    }
+  ]
+}
+```
+- `type`: `"select" | "multiselect" | "search" | "daterange"`
+- `tag_prefix`: matched against `tags` entries on KPIs and charts (intra-group OR, inter-group AND)
+- Side rails are **optional** — only emit when filtering or supporting detail adds value
+
+#### Data Block (` ```data `)
+```json
+{
+  "title": "Details",
+  "items": [
+    {"label": "Total Records", "value": "1,284", "note": "as of today"},
+    {"label": "Last Updated", "value": "14 May 2025"}
+  ],
+  "table": {
+    "headers": ["Metric", "Value"],
+    "rows": [["Avg Response Time", "42 ms"], ["Uptime", "99.9%"]]
+  }
+}
+```
+- `items`: array of stat items with optional `note`
+- `table`: optional simple HTML table
 
 ### Playbook Branding Config
 

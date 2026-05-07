@@ -76,16 +76,6 @@ model_list:
   # FIREWORKS AI MODELS (SOC2 / GDPR / HIPAA — Zero Data Retention)
   # ===========================================================================
 
-  - model_name: fireworks/deepseek-v4-pro
-    litellm_params:
-      model: fireworks_ai/accounts/fireworks/models/deepseek-v4-pro
-      api_key: os.environ/FIREWORKS_AI_API_KEY
-    model_info:
-      supports_function_calling: true
-      supports_vision: false
-      max_input_tokens: 1048576
-      max_output_tokens: 16384
-
   - model_name: fireworks/glm-5p1
     litellm_params:
       model: fireworks_ai/accounts/fireworks/models/glm-5p1
@@ -96,14 +86,14 @@ model_list:
       max_input_tokens: 202000
       max_output_tokens: 16384
 
-  - model_name: fireworks/minimax-m2p5
+  - model_name: fireworks/kimi-k2p6
     litellm_params:
-      model: fireworks_ai/accounts/fireworks/models/minimax-m2p5
+      model: fireworks_ai/accounts/fireworks/models/kimi-k2p6
       api_key: os.environ/FIREWORKS_AI_API_KEY
     model_info:
       supports_function_calling: true
       supports_vision: true
-      max_input_tokens: 1000000
+      max_input_tokens: 131072
       max_output_tokens: 16384
 
   - model_name: fireworks/kimi-k2p5

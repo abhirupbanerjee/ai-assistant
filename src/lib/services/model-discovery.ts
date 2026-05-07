@@ -537,14 +537,6 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
 
   const FIREWORKS_MODELS = [
     {
-      id: 'fireworks/deepseek-v4-pro',
-      name: 'DeepSeek V4 Pro',
-      toolCapable: true,
-      visionCapable: false,
-      maxInputTokens: 1048576,
-      maxOutputTokens: 16384,
-    },
-    {
       id: 'fireworks/glm-5p1',
       name: 'GLM-5.1',
       toolCapable: false,
@@ -553,11 +545,11 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       maxOutputTokens: 16384,
     },
     {
-      id: 'fireworks/minimax-m2p5',
-      name: 'MiniMax M2.5',
+      id: 'fireworks/kimi-k2p6',
+      name: 'Kimi K2.6',
       toolCapable: true,
       visionCapable: true,
-      maxInputTokens: 1000000,
+      maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
     {

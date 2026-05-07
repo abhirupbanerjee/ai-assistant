@@ -82,7 +82,7 @@ interface DiagramSegment {
   diagramType: string;
 }
 
-type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment;
+type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment;
 
 interface ChartBlockConfig {
   title?: string;
@@ -92,6 +92,66 @@ interface ChartBlockConfig {
   recommended_chart?: string;
   series_mode?: 'grouped' | 'stacked' | 'auto';
   notes?: string;
+  /** Dashboard layout size hint: hero=8col, half=6col, third=4col, quarter=3col */
+  size?: 'hero' | 'half' | 'third' | 'quarter';
+  /** Panel zone: 'canvas' (default) or 'kpi' (renders as KPI tile) */
+  panel?: 'canvas' | 'kpi';
+  /** Tags for client-side slicer filtering (e.g. ["region:north","category:sales"]) */
+  tags?: string[];
+}
+
+/** KPI tile block — rendered in the KPI row at the top of the dashboard */
+interface KpiBlockConfig {
+  label: string;
+  value: string;
+  delta?: string;
+  /** positive | negative | neutral — controls delta colour */
+  trend_direction?: 'positive' | 'negative' | 'neutral';
+  /** Optional sparkline data (array of numbers) */
+  trend?: number[];
+  /** Tags for slicer filtering */
+  tags?: string[];
+}
+
+/** Filters block — defines left-rail slicers */
+interface FiltersBlockConfig {
+  title?: string;
+  slicers: Array<{
+    id: string;
+    label: string;
+    type: 'select' | 'multiselect' | 'search' | 'daterange';
+    options?: string[];
+    tag_prefix?: string;
+  }>;
+}
+
+/** Data block — defines right-rail data/stats panel */
+interface DataBlockConfig {
+  title?: string;
+  items: Array<{
+    label: string;
+    value: string;
+    note?: string;
+  }>;
+  table?: {
+    headers: string[];
+    rows: string[][];
+  };
+}
+
+interface KpiSegment {
+  type: 'kpi';
+  config: KpiBlockConfig;
+}
+
+interface FiltersSegment {
+  type: 'filters';
+  config: FiltersBlockConfig;
+}
+
+interface DataSegment {
+  type: 'data';
+  config: DataBlockConfig;
 }
 
 interface TocEntry {
@@ -300,6 +360,39 @@ function parseContent(content: string): ContentSegment[] {
         } else {
           // Unsupported type — render as code block
           currentMarkdown.push('```mermaid\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'kpi') {
+        try {
+          const config = JSON.parse(blockContent) as KpiBlockConfig;
+          if (typeof config.label === 'string' && typeof config.value === 'string') {
+            segments.push({ type: 'kpi', config });
+          } else {
+            currentMarkdown.push('```kpi\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```kpi\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'filters') {
+        try {
+          const config = JSON.parse(blockContent) as FiltersBlockConfig;
+          if (Array.isArray(config.slicers)) {
+            segments.push({ type: 'filters', config });
+          } else {
+            currentMarkdown.push('```filters\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```filters\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'data') {
+        try {
+          const config = JSON.parse(blockContent) as DataBlockConfig;
+          if (Array.isArray(config.items) || (config.table && Array.isArray(config.table.headers))) {
+            segments.push({ type: 'data', config });
+          } else {
+            currentMarkdown.push('```data\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```data\n' + blockContent + '\n```');
         }
       } else {
         // Other code blocks — pass through as markdown
@@ -1596,9 +1689,686 @@ function buildDashboardTemplate(
   css: string,
   js: string,
   disclaimerHtml: string,
+  date: string,
+  segments?: ContentSegment[]
+): string {
+  // Backwards-compatible fallback: if no segments provided, use legacy single-grid layout.
+  if (!segments) {
+    return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.dashboard);
+  }
+  return buildDashboardTemplateV2(title, segments, branding, css, js, disclaimerHtml, date);
+}
+
+// ============ KPI / Filters / Data Renderers ============
+
+let kpiCounter = 0;
+
+/**
+ * Render a KPI tile with optional sparkline. The sparkline is a tiny inline Chart.js line chart.
+ */
+function renderKpiTile(seg: KpiSegment): string {
+  kpiCounter++;
+  const id = `kpi-spark-${kpiCounter}`;
+  const cfg = seg.config;
+  const trend = cfg.trend_direction || 'neutral';
+  const tagsAttr = cfg.tags && cfg.tags.length ? ` data-tags="${escapeHtml(cfg.tags.join(' '))}"` : '';
+
+  let sparkHtml = '';
+  if (Array.isArray(cfg.trend) && cfg.trend.length >= 2) {
+    const sparkConfig = JSON.stringify({
+      type: 'line',
+      data: {
+        labels: cfg.trend.map((_, i) => String(i)),
+        datasets: [{
+          data: cfg.trend,
+          borderColor: trend === 'positive' ? '#10b981' : trend === 'negative' ? '#ef4444' : '#6b7280',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: true,
+          backgroundColor: trend === 'positive' ? 'rgba(16,185,129,0.1)' : trend === 'negative' ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.1)',
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, title: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { display: false },
+        },
+        elements: { point: { radius: 0 } },
+      },
+    });
+    const encoded = Buffer.from(sparkConfig, 'utf-8').toString('base64');
+    sparkHtml = `<div class="kpi-spark" data-chart-wrapper="true"><canvas id="${id}" data-chart-config="${encoded}"></canvas></div>`;
+  }
+
+  const deltaHtml = cfg.delta
+    ? `<div class="kpi-delta kpi-delta-${trend}">${escapeHtml(cfg.delta)}</div>`
+    : '';
+
+  return `
+<div class="kpi-tile panel"${tagsAttr}>
+  <div class="kpi-label">${escapeHtml(cfg.label)}</div>
+  <div class="kpi-value">${escapeHtml(cfg.value)}</div>
+  ${deltaHtml}
+  ${sparkHtml}
+</div>`;
+}
+
+/**
+ * Render filters sidebar from a FiltersSegment.
+ */
+function renderFiltersSidebar(seg: FiltersSegment): string {
+  const cfg = seg.config;
+  const heading = cfg.title || 'Filters';
+  const slicersHtml = cfg.slicers.map(slicer => {
+    const prefix = slicer.tag_prefix || slicer.id;
+    if (slicer.type === 'search') {
+      return `
+<div class="filter-slicer">
+  <label for="filter-${escapeHtml(slicer.id)}">${escapeHtml(slicer.label)}</label>
+  <input type="search" id="filter-${escapeHtml(slicer.id)}" data-slicer-type="search" placeholder="Search..." oninput="dashSearch(this.value)">
+</div>`;
+    }
+    if (slicer.type === 'daterange') {
+      return `
+<div class="filter-slicer">
+  <label>${escapeHtml(slicer.label)}</label>
+  <div class="filter-daterange">
+    <input type="date" data-slicer-id="${escapeHtml(slicer.id)}" data-slicer-type="datestart" data-tag-prefix="${escapeHtml(prefix)}" onchange="dashApplyFilters()">
+    <span>—</span>
+    <input type="date" data-slicer-id="${escapeHtml(slicer.id)}" data-slicer-type="dateend" data-tag-prefix="${escapeHtml(prefix)}" onchange="dashApplyFilters()">
+  </div>
+</div>`;
+    }
+    const opts = (slicer.options || []).map(opt => `
+<label class="filter-opt">
+  <input type="checkbox" data-tag="${escapeHtml(prefix + ':' + opt)}" onchange="dashApplyFilters()">
+  <span>${escapeHtml(opt)}</span>
+</label>`).join('');
+    return `
+<div class="filter-slicer">
+  <label class="filter-slicer-label">${escapeHtml(slicer.label)}</label>
+  <div class="filter-options">${opts}</div>
+</div>`;
+  }).join('');
+
+  return `
+<aside class="dash-filters" aria-label="Filters">
+  <div class="dash-rail-header">
+    <span class="dash-rail-title">${escapeHtml(heading)}</span>
+    <button class="dash-rail-clear" onclick="dashClearFilters()" aria-label="Clear filters">Clear</button>
+  </div>
+  <div class="dash-rail-body">${slicersHtml}</div>
+</aside>`;
+}
+
+/**
+ * Render right-rail data panel from a DataSegment.
+ */
+function renderDataPanel(seg: DataSegment): string {
+  const cfg = seg.config;
+  const heading = cfg.title || 'Details';
+  const itemsHtml = (cfg.items || []).map(item => `
+<div class="data-item">
+  <div class="data-item-label">${escapeHtml(item.label)}</div>
+  <div class="data-item-value">${escapeHtml(item.value)}</div>
+  ${item.note ? `<div class="data-item-note">${escapeHtml(item.note)}</div>` : ''}
+</div>`).join('');
+
+  let tableHtml = '';
+  if (cfg.table && cfg.table.headers && cfg.table.rows) {
+    const head = cfg.table.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+    const body = cfg.table.rows.map(row =>
+      `<tr>${row.map(c => `<td>${escapeHtml(String(c))}</td>`).join('')}</tr>`
+    ).join('');
+    tableHtml = `
+<div class="data-table-wrap">
+  <table class="data-table">
+    <thead><tr>${head}</tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+</div>`;
+  }
+
+  return `
+<aside class="dash-data" aria-label="${escapeHtml(heading)}">
+  <div class="dash-rail-header">
+    <span class="dash-rail-title">${escapeHtml(heading)}</span>
+  </div>
+  <div class="dash-rail-body">
+    ${itemsHtml}
+    ${tableHtml}
+  </div>
+</aside>`;
+}
+
+/**
+ * Render a chart segment as a dashboard panel with size class and tag attributes.
+ */
+function renderDashboardChartPanel(seg: ChartSegment): string {
+  chartCounter++;
+  const id = `chart-${chartCounter}`;
+  const chartConfig = buildChartJsConfig(seg.config, id);
+  const encodedConfig = Buffer.from(chartConfig, 'utf-8').toString('base64');
+  const size = seg.config.size || 'half';
+  const tagsAttr = seg.config.tags && seg.config.tags.length
+    ? ` data-tags="${escapeHtml(seg.config.tags.join(' '))}"`
+    : '';
+  const notesHtml = seg.config.notes
+    ? `<details class="chart-notes"><summary>Notes</summary><p>${escapeHtml(seg.config.notes)}</p></details>`
+    : '';
+  return `
+<div class="panel panel-${size}"${tagsAttr}>
+  ${seg.config.title ? `<div class="panel-title">${escapeHtml(seg.config.title)}</div>` : ''}
+  <div class="panel-body chart-container" data-chart-wrapper="true">
+    <canvas id="${id}" data-chart-config="${encodedConfig}"></canvas>
+  </div>
+  ${notesHtml}
+</div>`;
+}
+
+/**
+ * Render a diagram segment as a dashboard panel.
+ */
+function renderDashboardDiagramPanel(seg: DiagramSegment, size: 'hero' | 'half' | 'third' | 'quarter' = 'half'): string {
+  diagramCounter++;
+  const encodedSource = Buffer.from(seg.code, 'utf-8').toString('base64');
+  return `
+<div class="panel panel-${size}">
+  <div class="panel-body">
+    <div class="mermaid" data-mermaid-source="${encodedSource}">
+      <pre style="color:#6b7280;font-size:12px;">Loading diagram...</pre>
+    </div>
+  </div>
+</div>`;
+}
+
+// ============ Power BI-style Dashboard Template ============
+
+/**
+ * Power BI-style dashboard: 5-zone canvas
+ *  - title bar (top, full width, primary-coloured)
+ *  - KPI row (top of canvas)
+ *  - chart canvas (12-col grid with size-spans)
+ *  - filters sidebar (left, optional)
+ *  - data panel (right, optional)
+ */
+function buildDashboardTemplateV2(
+  title: string,
+  segments: ContentSegment[],
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  disclaimerHtml: string,
   date: string
 ): string {
-  return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.dashboard);
+  const primary = branding.primaryColor || '#003366';
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="dash-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+  const vendorScripts = buildVendorScripts();
+
+  // Reset KPI counter at the start of each dashboard build
+  kpiCounter = 0;
+
+  // Route segments into zones
+  const kpiSegments: KpiSegment[] = [];
+  const filterSegments: FiltersSegment[] = [];
+  const dataSegments: DataSegment[] = [];
+  const canvasSegments: ContentSegment[] = [];
+  const noteSegments: MarkdownSegment[] = [];
+
+  for (const seg of segments) {
+    if (seg.type === 'kpi') {
+      kpiSegments.push(seg);
+    } else if (seg.type === 'filters') {
+      filterSegments.push(seg);
+    } else if (seg.type === 'data') {
+      dataSegments.push(seg);
+    } else if (seg.type === 'chart') {
+      // chart with panel:'kpi' is treated as KPI (legacy support — extract value from data)
+      if (seg.config.panel === 'kpi') {
+        const firstY = seg.config.y_fields[0];
+        const total = seg.config.data.reduce((acc, d) => acc + Number(d[firstY] ?? 0), 0);
+        kpiSegments.push({
+          type: 'kpi',
+          config: {
+            label: seg.config.title || firstY,
+            value: total.toLocaleString(),
+            trend: seg.config.data.map(d => Number(d[firstY] ?? 0)),
+          },
+        });
+      } else {
+        canvasSegments.push(seg);
+      }
+    } else if (seg.type === 'mermaid') {
+      canvasSegments.push(seg);
+    } else if (seg.type === 'markdown') {
+      // Markdown with non-trivial content goes into the notes section at bottom
+      const txt = (seg as MarkdownSegment).content.trim();
+      if (txt) noteSegments.push(seg as MarkdownSegment);
+    }
+  }
+
+  // Render canvas panels
+  const canvasHtml = canvasSegments.map(seg => {
+    if (seg.type === 'chart') return renderDashboardChartPanel(seg as ChartSegment);
+    if (seg.type === 'mermaid') return renderDashboardDiagramPanel(seg as DiagramSegment);
+    return '';
+  }).join('\n');
+
+  // KPI row
+  const kpiRowHtml = kpiSegments.length > 0
+    ? `<div class="dash-kpis">${kpiSegments.map(renderKpiTile).join('\n')}</div>`
+    : '';
+
+  // Filters sidebar (optional)
+  const filtersHtml = filterSegments.length > 0
+    ? filterSegments.map(renderFiltersSidebar).join('\n')
+    : '';
+
+  // Data panel (optional)
+  const dataHtml = dataSegments.length > 0
+    ? dataSegments.map(renderDataPanel).join('\n')
+    : '';
+
+  // Notes area (any leftover markdown rendered at bottom of canvas)
+  const notesHtml = noteSegments.length > 0
+    ? `<div class="panel panel-notes panel-hero"><div class="panel-title">Notes</div><div class="panel-body dash-notes">${noteSegments.map(s => markdownToHtml(s.content)).join('\n')}</div></div>`
+    : '';
+
+  // Determine grid template columns based on optional sidebars
+  const hasFilters = filtersHtml !== '';
+  const hasData = dataHtml !== '';
+  let gridCols: string;
+  if (hasFilters && hasData) gridCols = '240px 1fr 280px';
+  else if (hasFilters) gridCols = '240px 1fr';
+  else if (hasData) gridCols = '1fr 280px';
+  else gridCols = '1fr';
+
+  // Position columns for filters/canvas/data
+  const filtersColStart = hasFilters ? '1' : '0';
+  const canvasColStart = hasFilters ? '2' : '1';
+  const canvasColEnd = hasData ? (hasFilters ? '3' : '2') : '-1';
+  const dataColStart = hasFilters ? '3' : '2';
+
+  // Dashboard-specific CSS — neutral light-gray canvas, primary-color title bar
+  const dashboardCss = `
+    body { background: #f3f4f6; }
+    /* Top title bar */
+    .dash-titlebar {
+      background: ${primary};
+      color: #fff;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .dash-titlebar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .dash-logo { height: 32px; width: auto; object-fit: contain; }
+    .dash-titlebar-org { font-size: 0.85rem; font-weight: 600; opacity: 0.9; }
+    .dash-titlebar-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.25); }
+    .dash-titlebar-title {
+      font-size: 1.05rem; font-weight: 700; margin: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .dash-titlebar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .dash-titlebar-search {
+      padding: 6px 14px;
+      border-radius: 18px;
+      border: none;
+      width: 240px;
+      font-size: 0.85rem;
+      outline: none;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+    .dash-titlebar-search::placeholder { color: rgba(255,255,255,0.7); }
+    .dash-titlebar-search:focus { background: rgba(255,255,255,0.25); }
+    .dash-titlebar-action {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center; justify-content: center;
+      transition: background 0.2s;
+    }
+    .dash-titlebar-action:hover { background: rgba(255,255,255,0.25); }
+
+    /* Shell grid */
+    .dash-shell {
+      display: grid;
+      grid-template-columns: ${gridCols};
+      gap: 16px;
+      padding: 16px;
+      max-width: 1800px;
+      margin: 0 auto;
+      align-items: start;
+    }
+
+    /* KPI row */
+    .dash-kpis {
+      grid-column: ${canvasColStart} / ${canvasColEnd};
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+    }
+    .kpi-tile {
+      padding: 14px 16px;
+      display: flex; flex-direction: column;
+      min-height: 110px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-label {
+      font-size: 0.72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+    .kpi-value {
+      font-size: 1.6rem; font-weight: 700;
+      color: #1f2937; line-height: 1.1;
+    }
+    .kpi-delta {
+      font-size: 0.78rem; font-weight: 600;
+      margin-top: 4px;
+    }
+    .kpi-delta-positive { color: #047857; }
+    .kpi-delta-negative { color: #b91c1c; }
+    .kpi-delta-neutral { color: #6b7280; }
+    .kpi-spark {
+      margin-top: 8px;
+      height: 32px;
+      position: relative;
+    }
+    .kpi-spark canvas { width: 100% !important; height: 100% !important; }
+
+    /* Canvas (chart grid) */
+    .dash-canvas {
+      grid-column: ${canvasColStart} / ${canvasColEnd};
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      grid-auto-rows: minmax(180px, auto);
+      gap: 16px;
+    }
+    /* Generic panel */
+    .panel {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel.panel-hidden { display: none !important; }
+    .panel-title {
+      font-size: 0.85rem; font-weight: 600;
+      color: #374151;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+    .panel-body { flex: 1; min-height: 0; position: relative; }
+    .panel .chart-container { height: 100%; min-height: 220px; }
+    .panel .mermaid { display: flex; justify-content: center; align-items: center; min-height: 220px; }
+    /* Size spans */
+    .panel-hero    { grid-column: span 12; grid-row: span 2; min-height: 380px; }
+    .panel-half    { grid-column: span 6;  grid-row: span 2; min-height: 320px; }
+    .panel-third   { grid-column: span 4;  grid-row: span 2; min-height: 320px; }
+    .panel-quarter { grid-column: span 3;  grid-row: span 2; min-height: 280px; }
+    .panel-notes   { grid-column: span 12; }
+    .dash-notes p { margin: 0 0 8px; }
+    .dash-notes ul, .dash-notes ol { margin: 0 0 8px 18px; }
+
+    /* Side rails (filters / data) */
+    .dash-filters {
+      grid-column: 1 / 2;
+      grid-row: 1 / span 2;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 0;
+      position: sticky;
+      top: 72px;
+      max-height: calc(100vh - 88px);
+      overflow-y: auto;
+    }
+    .dash-data {
+      grid-column: ${dataColStart} / -1;
+      grid-row: 1 / span 2;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 0;
+      position: sticky;
+      top: 72px;
+      max-height: calc(100vh - 88px);
+      overflow-y: auto;
+    }
+    .dash-rail-header {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #e5e7eb;
+      background: #f9fafb;
+      border-radius: 10px 10px 0 0;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .dash-rail-title {
+      font-size: 0.78rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: #374151;
+    }
+    .dash-rail-clear {
+      background: none; border: none;
+      color: ${primary};
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .dash-rail-clear:hover { text-decoration: underline; }
+    .dash-rail-body { padding: 12px 14px; }
+
+    .filter-slicer { margin-bottom: 18px; }
+    .filter-slicer-label, .filter-slicer label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #4b5563;
+      margin-bottom: 6px;
+    }
+    .filter-slicer input[type="search"], .filter-slicer input[type="date"] {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .filter-slicer input:focus { border-color: ${primary}; }
+    .filter-daterange { display: flex; align-items: center; gap: 6px; }
+    .filter-daterange span { color: #9ca3af; font-size: 0.85rem; }
+    .filter-options { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+    .filter-opt {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: #1f2937;
+      cursor: pointer;
+      padding: 2px 0;
+    }
+    .filter-opt input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .filter-opt:hover { color: ${primary}; }
+
+    .data-item { padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+    .data-item:last-child { border-bottom: none; }
+    .data-item-label { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+    .data-item-value { font-size: 0.95rem; font-weight: 600; color: #1f2937; }
+    .data-item-note { font-size: 0.78rem; color: #9ca3af; margin-top: 2px; }
+    .data-table-wrap { margin-top: 14px; overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .data-table th { background: #f9fafb; color: #4b5563; padding: 6px 8px; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb; }
+    .data-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #1f2937; }
+    .data-table tr:hover td { background: #f9fafb; }
+
+    /* Footer */
+    .dash-footer {
+      text-align: center;
+      padding: 14px 16px;
+      color: #9ca3af;
+      font-size: 0.75rem;
+    }
+
+    /* Disclaimer override for dashboard */
+    .dash-shell .disclaimer {
+      grid-column: 1 / -1;
+      margin: 0;
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+      .dash-shell {
+        grid-template-columns: 1fr;
+      }
+      .dash-kpis, .dash-canvas, .dash-filters, .dash-data {
+        grid-column: 1 / -1;
+      }
+      .dash-filters, .dash-data {
+        grid-row: auto;
+        position: static;
+        max-height: none;
+      }
+      .panel-hero, .panel-half, .panel-third, .panel-quarter {
+        grid-column: span 12;
+      }
+    }
+    @media (max-width: 700px) {
+      .dash-canvas { grid-template-columns: 1fr; }
+      .panel-hero, .panel-half, .panel-third, .panel-quarter {
+        grid-column: span 1;
+      }
+      .dash-titlebar-search { width: 140px; }
+      .dash-titlebar-org { display: none; }
+    }
+  `;
+
+  // Dashboard-specific JS — slicer engine + panel search
+  const dashboardJs = `
+    // Slicer engine: toggle visibility of panels based on data-tags vs active filter tags
+    function dashApplyFilters() {
+      var checkedTags = [];
+      document.querySelectorAll('.dash-filters input[type="checkbox"]:checked').forEach(function(cb) {
+        var t = cb.getAttribute('data-tag');
+        if (t) checkedTags.push(t);
+      });
+      // Group checked tags by prefix (intra-group OR, inter-group AND)
+      var groups = {};
+      checkedTags.forEach(function(tag) {
+        var idx = tag.indexOf(':');
+        var prefix = idx > 0 ? tag.substring(0, idx) : tag;
+        if (!groups[prefix]) groups[prefix] = [];
+        groups[prefix].push(tag);
+      });
+      var groupKeys = Object.keys(groups);
+      // Apply to all .panel and .kpi-tile elements with data-tags
+      document.querySelectorAll('.panel[data-tags], .kpi-tile[data-tags]').forEach(function(el) {
+        var tagsAttr = el.getAttribute('data-tags') || '';
+        var tags = tagsAttr.split(/\\s+/).filter(Boolean);
+        // Element is visible if, for every active group, it has at least one matching tag
+        var visible = true;
+        for (var i = 0; i < groupKeys.length; i++) {
+          var groupTags = groups[groupKeys[i]];
+          var matches = groupTags.some(function(gt) { return tags.indexOf(gt) !== -1; });
+          if (!matches) { visible = false; break; }
+        }
+        el.classList.toggle('panel-hidden', !visible);
+      });
+    }
+    function dashClearFilters() {
+      document.querySelectorAll('.dash-filters input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+      document.querySelectorAll('.dash-filters input[type="search"], .dash-filters input[type="date"]').forEach(function(inp) { inp.value = ''; });
+      document.querySelectorAll('.panel-hidden, .kpi-tile.panel-hidden').forEach(function(el) { el.classList.remove('panel-hidden'); });
+    }
+    // Global panel-search: hide panels whose textContent doesn't contain the query
+    function dashSearch(query) {
+      var lc = (query || '').toLowerCase().trim();
+      document.querySelectorAll('.dash-canvas .panel').forEach(function(panel) {
+        if (!lc) { panel.classList.remove('panel-hidden'); return; }
+        var t = (panel.textContent || '').toLowerCase();
+        // Also include data-tags in searchable text
+        var tags = (panel.getAttribute('data-tags') || '').toLowerCase();
+        var match = t.indexOf(lc) !== -1 || tags.indexOf(lc) !== -1 || (panel.querySelector('.panel-title') || {}).textContent && (panel.querySelector('.panel-title').textContent.toLowerCase().indexOf(lc) !== -1);
+        panel.classList.toggle('panel-hidden', !match);
+      });
+    }
+  `;
+
+  // Top title bar — primary-coloured, with search and refresh
+  const titleBarHtml = `
+<header class="dash-titlebar">
+  <div class="dash-titlebar-left">
+    ${logoHtml}
+    ${orgName ? `<span class="dash-titlebar-org">${escapeHtml(orgName)}</span>` : ''}
+    ${orgName ? '<span class="dash-titlebar-divider"></span>' : ''}
+    <h1 class="dash-titlebar-title">${escapeHtml(title)}</h1>
+  </div>
+  <div class="dash-titlebar-right">
+    <input type="search" class="dash-titlebar-search" placeholder="Search panels..." oninput="dashSearch(this.value)" aria-label="Search dashboard panels">
+    <button class="dash-titlebar-action" onclick="window.print()" title="Print" aria-label="Print">⎙</button>
+  </div>
+</header>`;
+
+  // Determine grid placement for filters and data based on whether they exist
+  const filtersWrapped = filtersHtml; // already includes <aside class="dash-filters">
+  const dataWrapped = dataHtml; // already includes <aside class="dash-data">
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  ${vendorScripts}
+  <style>${css}${dashboardCss}</style>
+</head>
+<body>
+  ${titleBarHtml}
+  <div class="dash-shell">
+    ${disclaimerHtml}
+    ${filtersWrapped}
+    ${kpiRowHtml}
+    <div class="dash-canvas" id="dash-canvas">
+      ${canvasHtml}
+      ${notesHtml}
+    </div>
+    ${dataWrapped}
+  </div>
+  <footer class="dash-footer">
+    Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}
+  </footer>
+  <script>${js}${dashboardJs}</script>
+</body>
+</html>`;
 }
 
 function buildBookTemplate(
@@ -2299,7 +3069,7 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   } else if (pageType === 'report') {
     html = buildReportTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'dashboard') {
-    html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+    html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date, segments);
   } else if (pageType === 'website') {
     html = buildWebsiteTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'playbook') {
