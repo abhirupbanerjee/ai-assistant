@@ -29,6 +29,8 @@ export interface BrandingConfig {
   header: { enabled: boolean; content: string };
   footer: { enabled: boolean; content: string; includePageNumber: boolean };
   playbook: PlaybookBrandingConfig;
+  /** Hero subtitle for website page type hero section */
+  heroSubtitle?: string;
 }
 
 export interface ProcessedLogo {

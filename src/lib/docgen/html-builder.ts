@@ -37,7 +37,7 @@ export interface HtmlOptions {
  * Options for generating HTML from a pre-rendered HTML source
  * (e.g., output from mammoth.convertToHtml for DOCX conversion)
  */
-export type HtmlSourcePageType = 'documentation' | 'playbook';
+export type HtmlSourcePageType = 'documentation' | 'playbook' | 'roadmap';
 
 export interface HtmlSourceOptions {
   title: string;
@@ -61,7 +61,7 @@ export interface HtmlResult {
   diagramCount: number;
 }
 
-export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage' | 'playbook';
+export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage' | 'playbook' | 'roadmap';
 
 // ============ Content Segment Types ============
 
@@ -387,6 +387,8 @@ function detectPageType(segments: ContentSegment[], title: string): HtmlPageType
   // Check title keywords
   if (/dashboard|analytics|metrics|kpi/i.test(titleLower)) return 'dashboard';
   if (/doc|guide|manual|reference|wiki|readme/i.test(titleLower)) return 'documentation';
+  if (/report|formal report|annual report|status report|assessment/i.test(titleLower)) return 'report';
+  if (/book|ebook|chapter|volume/i.test(titleLower)) return 'book';
 
   return 'webpage';
 }
@@ -994,13 +996,13 @@ function renderPlaybookPartsHtml(parts: PlaybookPart[]): {
 
 // ============ TOC HTML Builder ============
 
-function buildTocHtml(toc: TocEntry[]): string {
+function buildTocHtml(toc: TocEntry[], heading: string = 'Contents'): string {
   if (toc.length === 0) return '';
   const items = toc.map(entry => {
     const indent = (entry.level - 2) * 16;
     return `<li style="padding-left:${indent}px"><a href="#${entry.id}" class="toc-link">${escapeHtml(entry.text)}</a></li>`;
   }).join('\n');
-  return `<nav class="toc" id="toc-nav"><h3>Contents</h3><ul>${items}</ul></nav>`;
+  return `<nav class="toc" id="toc-nav"><h3>${escapeHtml(heading)}</h3><ul>${items}</ul></nav>`;
 }
 
 // ============ CSS ============
@@ -1332,7 +1334,247 @@ function buildJs(): string {
   return JS_LINES.join('\n');
 }
 
+// ============ Document Layout Flags ============
+
+interface DocumentLayoutFlags {
+  /** Show TOC sidebar (documentation, book, report) */
+  showToc: boolean;
+  /** TOC heading label (e.g. 'Contents', 'Chapters') */
+  tocHeading: string;
+  /** Show language selector in header */
+  showLangSelector: boolean;
+  /** Show hero section with gradient background (website) */
+  showHero: boolean;
+  /** Show metadata badge under title (report, book) */
+  showMetadataBadge: boolean;
+  /** Badge label text (e.g. 'Formal report', 'Ebook format') */
+  badgeLabel: string;
+  /** Badge accent style: 'border-left' or 'border' */
+  badgeStyle: 'border-left' | 'border';
+  /** Show title in header bar */
+  showHeaderTitle: boolean;
+  /** Footer suffix text */
+  footerSuffix: string;
+  /** Search placeholder text */
+  searchPlaceholder: string;
+  /** Max content width */
+  contentMaxWidth: string;
+}
+
+const DOCUMENT_LAYOUT_FLAGS: Record<string, DocumentLayoutFlags> = {
+  documentation: {
+    showToc: true,
+    tocHeading: 'Contents',
+    showLangSelector: false,
+    showHero: false,
+    showMetadataBadge: false,
+    badgeLabel: '',
+    badgeStyle: 'border',
+    showHeaderTitle: true,
+    footerSuffix: 'Generated',
+    searchPlaceholder: 'Search...',
+    contentMaxWidth: '960px',
+  },
+  book: {
+    showToc: true,
+    tocHeading: 'Chapters',
+    showLangSelector: true,
+    showHero: false,
+    showMetadataBadge: true,
+    badgeLabel: 'Ebook format',
+    badgeStyle: 'border',
+    showHeaderTitle: true,
+    footerSuffix: 'Book View',
+    searchPlaceholder: 'Search book...',
+    contentMaxWidth: '960px',
+  },
+  report: {
+    showToc: true,
+    tocHeading: 'Contents',
+    showLangSelector: false,
+    showHero: false,
+    showMetadataBadge: true,
+    badgeLabel: 'Formal report',
+    badgeStyle: 'border-left',
+    showHeaderTitle: true,
+    footerSuffix: 'Report View',
+    searchPlaceholder: 'Search report...',
+    contentMaxWidth: '960px',
+  },
+  website: {
+    showToc: false,
+    tocHeading: 'Contents',
+    showLangSelector: true,
+    showHero: true,
+    showMetadataBadge: false,
+    badgeLabel: '',
+    badgeStyle: 'border',
+    showHeaderTitle: true,
+    footerSuffix: 'Website Mockup',
+    searchPlaceholder: 'Search website...',
+    contentMaxWidth: '1200px',
+  },
+  webpage: {
+    showToc: false,
+    tocHeading: 'Contents',
+    showLangSelector: false,
+    showHero: false,
+    showMetadataBadge: false,
+    badgeLabel: '',
+    badgeStyle: 'border',
+    showHeaderTitle: false,
+    footerSuffix: '',
+    searchPlaceholder: 'Search...',
+    contentMaxWidth: '960px',
+  },
+  dashboard: {
+    showToc: false,
+    tocHeading: 'Contents',
+    showLangSelector: false,
+    showHero: false,
+    showMetadataBadge: false,
+    badgeLabel: '',
+    badgeStyle: 'border',
+    showHeaderTitle: false,
+    footerSuffix: '',
+    searchPlaceholder: 'Search...',
+    contentMaxWidth: '100%',
+  },
+  roadmap: {
+    showToc: false,
+    tocHeading: 'Contents',
+    showLangSelector: false,
+    showHero: false,
+    showMetadataBadge: false,
+    badgeLabel: '',
+    badgeStyle: 'border',
+    showHeaderTitle: true,
+    footerSuffix: 'Roadmap',
+    searchPlaceholder: 'Search roadmap...',
+    contentMaxWidth: '960px',
+  },
+};
+
 // ============ Template Assemblers ============
+
+/**
+ * Single parameterized document layout builder.
+ * Consolidates documentation, book, report, website, webpage, and dashboard templates.
+ * Uses DocumentLayoutFlags to control all structural variations.
+ */
+function buildDocumentLayout(
+  title: string,
+  contentHtml: string,
+  toc: TocEntry[],
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  disclaimerHtml: string,
+  date: string,
+  flags: DocumentLayoutFlags
+): string {
+  const orgName = branding.organizationName || '';
+  const logoHtml = branding.enabled && branding.logoUrl
+    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
+    : '';
+  const vendorScripts = buildVendorScripts();
+
+  // TOC sidebar
+  const tocHtml = flags.showToc ? buildTocHtml(toc, flags.tocHeading) : '';
+
+  // Language selector dropdown
+  const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
+    .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
+    .join('');
+  const langSelectorHtml = flags.showLangSelector
+    ? `<select aria-label="Language selector" style="padding:6px 10px;border-radius:8px;border:none;">${langOptions}</select>`
+    : '';
+
+  // Search bar
+  const searchHtml = `<input type="search" class="search-bar" placeholder="${escapeHtml(flags.searchPlaceholder)}" oninput="searchDocs(this.value)" aria-label="Search">`;
+
+  // Metadata badge (for report, book)
+  const badgeHtml = flags.showMetadataBadge
+    ? `<section style="margin-bottom:24px;padding:16px 18px;${flags.badgeStyle === 'border-left' ? 'border-left:4px solid #2563eb;border-radius:8px;background:#eff6ff;' : 'border:1px solid #e5e7eb;border-radius:10px;background:#fff;'}">
+        <h1 style="margin-bottom:8px;">${escapeHtml(title)}</h1>
+        <p style="font-size:0.9rem;color:${flags.badgeStyle === 'border-left' ? '#374151' : '#6b7280'};margin:0;">${flags.badgeLabel}${orgName ? ' · ' + escapeHtml(orgName) : ''}${flags.badgeStyle === 'border-left' ? ' · ' + date : ' · Generated ' + date}</p>
+      </section>`
+    : '';
+
+  // Hero section (for website)
+  const heroHtml = flags.showHero
+    ? `<section style="margin:22px 0 20px;padding:26px;border-radius:14px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;">
+        <h1 style="margin:0 0 10px;color:#fff;">${escapeHtml(title)}</h1>
+        <p style="margin:0;opacity:0.95;">${escapeHtml(branding.heroSubtitle || 'Website')}</p>
+      </section>`
+    : '';
+
+  // Header title
+  const headerTitleHtml = flags.showHeaderTitle
+    ? `<span class="header-title">${escapeHtml(title)}</span>`
+    : '';
+
+  // Dashboard title in header-right
+  const dashboardTitleHtml = !flags.showToc && !flags.showHeaderTitle && !flags.showHero
+    ? `<span style="color:rgba(255,255,255,0.85);font-size:0.9rem;font-weight:600">${escapeHtml(title)}</span>`
+    : '';
+
+  // Main content wrapper
+  const isDashboard = !flags.showToc && !flags.showHeaderTitle && !flags.showHero && !flags.showMetadataBadge;
+  const mainContentClass = isDashboard ? 'main-content full-width' : 'main-content';
+  const mainContentStyle = isDashboard ? 'padding:24px' : '';
+  const mainWrapper = flags.showHero ? 'main' : 'div class="layout"';
+  const mainInner = flags.showHero
+    ? `<main role="main" style="max-width:${flags.contentMaxWidth};margin:0 auto;padding:0 20px 28px;">
+        ${heroHtml}
+        ${disclaimerHtml}
+        <section>${contentHtml}</section>
+        <p style="margin-top:24px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
+      </main>`
+    : `<div class="layout">
+        ${tocHtml}
+        <main class="${mainContentClass}" style="${mainContentStyle}" role="main">
+          ${isDashboard ? disclaimerHtml + '<div class="dashboard-grid">' + contentHtml + '</div>' : ''}
+          ${!isDashboard ? (badgeHtml || `<h1>${escapeHtml(title)}</h1>`) + disclaimerHtml + contentHtml : ''}
+          ${!isDashboard ? `<p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>` : ''}
+          ${isDashboard ? `<p style="margin-top:24px;font-size:0.8rem;color:#9ca3af;text-align:right">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>` : ''}
+        </main>
+      </div>`;
+
+  // Footer
+  const footerSuffix = flags.footerSuffix ? ` · ${flags.footerSuffix}` : '';
+  const footerHtml = flags.footerSuffix
+    ? `<footer class="site-footer">${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)}${footerSuffix} · Generated ${date}</footer>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
+  ${vendorScripts}
+  <style>${css}</style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-left">
+      ${logoHtml}
+      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      ${headerTitleHtml}
+    </div>
+    <div class="header-right">
+      ${searchHtml}
+      ${langSelectorHtml}
+      ${dashboardTitleHtml}
+    </div>
+  </header>
+  ${mainInner}
+  ${footerHtml}
+  <script>${js}</script>
+</body>
+</html>`;
+}
 
 function buildDocumentationTemplate(
   title: string,
@@ -1344,48 +1586,7 @@ function buildDocumentationTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  const tocHtml = buildTocHtml(toc);
-  const orgName = branding.organizationName || '';
-  const logoHtml = branding.enabled && branding.logoUrl
-    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
-    : '';
-  const vendorScripts = buildVendorScripts();
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  ${vendorScripts}
-  <style>${css}</style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="header-left">
-      ${logoHtml}
-      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
-      <span class="header-title">${escapeHtml(title)}</span>
-    </div>
-    <div class="header-right">
-      <input type="search" class="search-bar" placeholder="Search..." oninput="searchDocs(this.value)" aria-label="Search documentation">
-    </div>
-  </header>
-  <div class="layout">
-    ${tocHtml}
-    <main class="main-content" role="main">
-      <h1>${escapeHtml(title)}</h1>
-      ${disclaimerHtml}
-      ${contentHtml}
-      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
-    </main>
-  </div>
-  <footer class="site-footer">
-    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Generated ${date}
-  </footer>
-  <script>${js}</script>
-</body>
-</html>`;
+  return buildDocumentLayout(title, contentHtml, toc, branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.documentation);
 }
 
 function buildDashboardTemplate(
@@ -1397,41 +1598,7 @@ function buildDashboardTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  const orgName = branding.organizationName || '';
-  const logoHtml = branding.enabled && branding.logoUrl
-    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
-    : '';
-  const vendorScripts = buildVendorScripts();
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  ${vendorScripts}
-  <style>${css}</style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="header-left">
-      ${logoHtml}
-      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
-    </div>
-    <div class="header-right">
-      <span style="color:rgba(255,255,255,0.85);font-size:0.9rem;font-weight:600">${escapeHtml(title)}</span>
-    </div>
-  </header>
-  <main class="main-content full-width" style="padding:24px" role="main">
-    ${disclaimerHtml}
-    <div class="dashboard-grid">
-      ${contentHtml}
-    </div>
-    <p style="margin-top:24px;font-size:0.8rem;color:#9ca3af;text-align:right">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
-  </main>
-  <script>${js}</script>
-</body>
-</html>`;
+  return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.dashboard);
 }
 
 function buildBookTemplate(
@@ -1444,58 +1611,7 @@ function buildBookTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  const tocHtml = buildTocHtml(toc).replace('Contents', 'Chapters');
-  const orgName = branding.organizationName || '';
-  const logoHtml = branding.enabled && branding.logoUrl
-    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
-    : '';
-
-  const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
-    .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
-    .join('');
-  const vendorScripts = buildVendorScripts();
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  ${vendorScripts}
-  <style>${css}</style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="header-left">
-      ${logoHtml}
-      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
-      <span class="header-title">${escapeHtml(title)}</span>
-    </div>
-    <div class="header-right">
-      <input type="search" class="search-bar" placeholder="Search book..." oninput="searchDocs(this.value)" aria-label="Search book">
-      <select aria-label="Language selector" style="padding:6px 10px;border-radius:8px;border:none;">
-        ${langOptions}
-      </select>
-    </div>
-  </header>
-  <div class="layout">
-    ${tocHtml}
-    <main class="main-content" role="main">
-      <section style="margin-bottom:24px;padding:16px 18px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;">
-        <h1 style="margin-bottom:8px;">${escapeHtml(title)}</h1>
-        <p style="font-size:0.9rem;color:#6b7280;margin:0;">${orgName ? escapeHtml(orgName) + ' · ' : ''}Ebook format · Generated ${date}</p>
-      </section>
-      ${disclaimerHtml}
-      ${contentHtml}
-      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
-    </main>
-  </div>
-  <footer class="site-footer">
-    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Book View · Generated ${date}
-  </footer>
-  <script>${js}</script>
-</body>
-</html>`;
+  return buildDocumentLayout(title, contentHtml, toc, branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.book);
 }
 
 function buildReportTemplate(
@@ -1508,51 +1624,7 @@ function buildReportTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  const tocHtml = buildTocHtml(toc);
-  const orgName = branding.organizationName || '';
-  const logoHtml = branding.enabled && branding.logoUrl
-    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
-    : '';
-  const vendorScripts = buildVendorScripts();
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  ${vendorScripts}
-  <style>${css}</style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="header-left">
-      ${logoHtml}
-      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
-      <span class="header-title">${escapeHtml(title)}</span>
-    </div>
-    <div class="header-right">
-      <input type="search" class="search-bar" placeholder="Search report..." oninput="searchDocs(this.value)" aria-label="Search report">
-    </div>
-  </header>
-  <div class="layout">
-    ${tocHtml}
-    <main class="main-content" role="main">
-      <section style="margin-bottom:24px;padding:16px 18px;border-left:4px solid #2563eb;border-radius:8px;background:#eff6ff;">
-        <h1 style="margin-bottom:8px;">${escapeHtml(title)}</h1>
-        <p style="font-size:0.9rem;color:#374151;margin:0;">Formal report · ${orgName ? escapeHtml(orgName) + ' · ' : ''}${date}</p>
-      </section>
-      ${disclaimerHtml}
-      ${contentHtml}
-      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
-    </main>
-  </div>
-  <footer class="site-footer">
-    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Report View · Generated ${date}
-  </footer>
-  <script>${js}</script>
-</body>
-</html>`;
+  return buildDocumentLayout(title, contentHtml, toc, branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.report);
 }
 
 function buildWebsiteTemplate(
@@ -1564,59 +1636,26 @@ function buildWebsiteTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  const orgName = branding.organizationName || '';
-  const logoHtml = branding.enabled && branding.logoUrl
-    ? `<img src="${branding.logoUrl}" class="header-logo" alt="${escapeHtml(orgName)} logo">`
-    : '';
-
-  const langOptions = ['English', 'French', 'Spanish', 'Portuguese', 'Mandarin', 'Hindi']
-    .map(lang => `<option value="${lang.toLowerCase()}">${lang}</option>`)
-    .join('');
-  const vendorScripts = buildVendorScripts();
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
-  ${vendorScripts}
-  <style>${css}</style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="header-left">
-      ${logoHtml}
-      ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
-      <span class="header-title">${escapeHtml(title)}</span>
-    </div>
-    <div class="header-right">
-      <input type="search" class="search-bar" placeholder="Search website..." oninput="searchDocs(this.value)" aria-label="Search website">
-      <select aria-label="Language selector" style="padding:6px 10px;border-radius:8px;border:none;">
-        ${langOptions}
-      </select>
-    </div>
-  </header>
-  <main role="main" style="max-width:1200px;margin:0 auto;padding:0 20px 28px;">
-    <section style="margin:22px 0 20px;padding:26px;border-radius:14px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;">
-      <h1 style="margin:0 0 10px;color:#fff;">${escapeHtml(title)}</h1>
-      <p style="margin:0;opacity:0.95;">Comprehensive frontend website mockup · Backend/API routes are intentionally left as stubs.</p>
-    </section>
-    ${disclaimerHtml}
-    <section>
-      ${contentHtml}
-    </section>
-    <p style="margin-top:24px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
-  </main>
-  <footer class="site-footer">
-    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Website Mockup · Generated ${date}
-  </footer>
-  <script>${js}</script>
-</body>
-</html>`;
+  return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.website);
 }
 
 function buildWebpageTemplate(
+  title: string,
+  contentHtml: string,
+  branding: BrandingConfig,
+  css: string,
+  js: string,
+  disclaimerHtml: string,
+  date: string
+): string {
+  return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.webpage);
+}
+
+/**
+ * Build a roadmap page with a visual timeline bar and phase cards.
+ * Parses ## headings as phases and ### headings as milestones within each phase.
+ */
+function buildRoadmapTemplate(
   title: string,
   contentHtml: string,
   branding: BrandingConfig,
@@ -1631,6 +1670,103 @@ function buildWebpageTemplate(
     : '';
   const vendorScripts = buildVendorScripts();
 
+  const roadmapCss = `
+    .rm-container { max-width: 960px; margin: 0 auto; padding: 0 20px 40px; }
+    .rm-header { text-align: center; padding: 32px 0 24px; }
+    .rm-header h1 { margin: 0 0 8px; }
+    .rm-header p { color: #6b7280; font-size: 0.95rem; margin: 0; }
+    /* Timeline bar */
+    .rm-timeline-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      position: relative; margin: 32px 0 40px; padding: 0 10px;
+    }
+    .rm-timeline-bar::before {
+      content: ''; position: absolute; top: 50%; left: 0; right: 0;
+      height: 4px; background: #e5e7eb; transform: translateY(-50%);
+      border-radius: 2px; z-index: 0;
+    }
+    .rm-timeline-bar::after {
+      content: ''; position: absolute; top: 50%; left: 0;
+      height: 4px; background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      transform: translateY(-50%); border-radius: 2px; z-index: 1;
+      width: 0; transition: width 0.6s ease;
+    }
+    .rm-timeline-bar.complete::after { width: 100%; }
+    .rm-timeline-dot {
+      position: relative; z-index: 2;
+      display: flex; flex-direction: column; align-items: center;
+      cursor: pointer; transition: transform 0.2s;
+    }
+    .rm-timeline-dot:hover { transform: scale(1.1); }
+    .rm-timeline-dot .dot {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #e5e7eb; border: 3px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      transition: background 0.3s;
+    }
+    .rm-timeline-dot.active .dot { background: #3b82f6; }
+    .rm-timeline-dot.completed .dot { background: #10b981; }
+    .rm-timeline-dot .label {
+      margin-top: 8px; font-size: 0.7rem; color: #6b7280;
+      text-align: center; max-width: 80px; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rm-timeline-dot.active .label { color: #3b82f6; font-weight: 600; }
+    .rm-timeline-dot.completed .label { color: #10b981; font-weight: 600; }
+    /* Phase cards */
+    .rm-phases { display: flex; flex-direction: column; gap: 20px; }
+    .rm-phase-card {
+      background: #fff; border: 1px solid #e5e7eb;
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      transition: box-shadow 0.2s;
+    }
+    .rm-phase-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .rm-phase-card-header {
+      padding: 16px 20px; display: flex; align-items: center;
+      justify-content: space-between; cursor: pointer;
+      background: #f9fafb; border-bottom: 1px solid #e5e7eb;
+    }
+    .rm-phase-card-header h3 { margin: 0; font-size: 1.05rem; color: #1f2937; }
+    .rm-phase-status {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; padding: 3px 10px; border-radius: 12px;
+    }
+    .rm-phase-status.completed { background: #d1fae5; color: #065f46; }
+    .rm-phase-status.in-progress { background: #dbeafe; color: #1e40af; }
+    .rm-phase-status.planned { background: #f3f4f6; color: #6b7280; }
+    .rm-phase-card-body { padding: 16px 20px; }
+    .rm-phase-card-body p { margin: 0 0 12px; color: #374151; font-size: 0.9rem; }
+    .rm-milestones { list-style: none; padding: 0; margin: 0; }
+    .rm-milestone {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid #f3f4f6;
+    }
+    .rm-milestone:last-child { border-bottom: none; }
+    .rm-milestone-icon {
+      width: 20px; height: 20px; border-radius: 50%;
+      flex-shrink: 0; margin-top: 2px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; color: #fff;
+    }
+    .rm-milestone-icon.done { background: #10b981; }
+    .rm-milestone-icon.pending { background: #d1d5db; }
+    .rm-milestone-icon.active { background: #3b82f6; }
+    .rm-milestone-text { font-size: 0.9rem; color: #374151; }
+    .rm-milestone-text strong { color: #1f2937; }
+    @media (max-width: 768px) {
+      .rm-timeline-bar { overflow-x: auto; padding-bottom: 8px; }
+      .rm-timeline-dot .label { font-size: 0.6rem; max-width: 60px; }
+    }
+  `;
+
+  const roadmapJs = `
+    function scrollToPhase(phaseId) {
+      var el = document.getElementById(phaseId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  `;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1638,24 +1774,37 @@ function buildWebpageTemplate(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}${orgName ? ' — ' + escapeHtml(orgName) : ''}</title>
   ${vendorScripts}
-  <style>${css}</style>
+  <style>${css}${roadmapCss}</style>
 </head>
 <body>
   <header class="site-header">
     <div class="header-left">
       ${logoHtml}
       ${orgName ? `<span class="header-org">${escapeHtml(orgName)}</span>` : ''}
+      <span class="header-title">${escapeHtml(title)}</span>
+    </div>
+    <div class="header-right">
+      <input type="search" class="search-bar" placeholder="Search roadmap..." oninput="searchDocs(this.value)" aria-label="Search roadmap">
     </div>
   </header>
-  <div class="layout">
-    <main class="main-content" role="main">
+  <div class="rm-container">
+    <div class="rm-header">
       <h1>${escapeHtml(title)}</h1>
-      ${disclaimerHtml}
+      <p>${escapeHtml(branding.heroSubtitle || 'Strategic Roadmap')} · ${date}</p>
+    </div>
+    ${disclaimerHtml}
+    <div class="rm-timeline-bar" id="rm-timeline-bar">
+      <!-- Timeline dots will be injected by JS parsing h2 headings -->
+    </div>
+    <div class="rm-phases" id="rm-phases">
       ${contentHtml}
-      <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
-    </main>
+    </div>
+    <p style="margin-top:32px;font-size:0.8rem;color:#9ca3af;text-align:center">Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}</p>
   </div>
-  <script>${js}</script>
+  <footer class="site-footer">
+    ${orgName ? escapeHtml(orgName) + ' · ' : ''}${escapeHtml(title)} · Roadmap · Generated ${date}
+  </footer>
+  <script>${js}${roadmapJs}</script>
 </body>
 </html>`;
 }
@@ -2121,8 +2270,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   // Determine page type: explicit override wins, else auto-detect
   const pageType: HtmlPageType = options.pageType || detectPageType(segments, title);
 
-  // Extract TOC for documentation pages
-  const toc = pageType === 'documentation' ? extractToc(segments) : [];
+  // Extract TOC for documentation, book, and report pages
+  const toc = (pageType === 'documentation' || pageType === 'book' || pageType === 'report') ? extractToc(segments) : [];
 
   // Build CSS and JS
   const css = buildCss(branding, pageType);
@@ -2155,6 +2304,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
     html = buildWebsiteTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'playbook') {
     html = buildPlaybookTemplate(title, segments, branding, css, js, date);
+  } else if (pageType === 'roadmap') {
+    html = buildRoadmapTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   } else {
     html = buildWebpageTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   }
@@ -2401,6 +2552,18 @@ export async function generateHtmlFromSource(options: HtmlSourceOptions): Promis
       buffer,
       fileSize: buffer.length,
       tocCount: segments.filter(s => s.type === 'markdown').length,
+    };
+  }
+
+  // Roadmap path: render source HTML content in the roadmap template
+  if (pageType === 'roadmap') {
+    const html = buildRoadmapTemplate(title, sanitizedHtml, branding, css, js, '', date);
+
+    const buffer = Buffer.from(html, 'utf-8');
+    return {
+      buffer,
+      fileSize: buffer.length,
+      tocCount: 0,
     };
   }
 

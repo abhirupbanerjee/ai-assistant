@@ -21,7 +21,8 @@ import { generateDocumentFilename } from '../docgen/branding';
 import { getOutputDirectory } from '../docgen/branding';
 
 export const FILE_TO_HTML_FUNCTION_DESCRIPTION =
-  'Convert an uploaded DOCX or PDF document to a self-contained HTML page. The HTML page includes a table of contents sidebar, search functionality, and organization branding. Works best with DOCX files which retain all images as embedded base64 data URIs. Call this tool when the user explicitly asks to convert a document to HTML, export as HTML page, or create an HTML version of a document.';
+  'Convert an uploaded DOCX or PDF document to a self-contained HTML page. The HTML page includes a table of contents sidebar, search functionality, and organization branding. Supports documentation, playbook, and roadmap layouts. Works best with DOCX files which retain all images as embedded base64 data URIs. Call this tool when the user explicitly asks to convert a document to HTML, export as HTML page, or create an HTML version of a document.';
+
 
 // ============ Config Schema ============
 
@@ -133,8 +134,8 @@ export const fileToHtmlTool: ToolDefinition = {
           },
           page_type: {
             type: 'string',
-            enum: ['documentation', 'playbook'],
-            description: 'Output layout type. documentation = TOC/sidebar page. playbook = card-based interactive playbook layout derived from document headings.',
+            enum: ['documentation', 'playbook', 'roadmap'],
+            description: 'Output layout type. documentation = TOC/sidebar page. playbook = card-based interactive playbook layout derived from document headings. roadmap = timeline-based roadmap page with phase cards and milestone markers.',
           },
         },
         required: [],
@@ -161,7 +162,7 @@ export const fileToHtmlTool: ToolDefinition = {
   execute: async (args: {
     filename?: string;
     title?: string;
-    page_type?: 'documentation' | 'playbook';
+    page_type?: 'documentation' | 'playbook' | 'roadmap';
   }): Promise<string> => {
     try {
       // Get context from AsyncLocalStorage

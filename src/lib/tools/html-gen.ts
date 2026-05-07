@@ -30,7 +30,7 @@ import * as path from 'path';
 
 // ============ Types ============
 
-export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'playbook';
+export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'playbook' | 'roadmap';
 
 function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
   switch (pageType) {
@@ -46,6 +46,8 @@ function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
       return 'website';
     case 'playbook':
       return 'playbook';
+    case 'roadmap':
+      return 'roadmap';
     case 'auto':
     default:
       return undefined;
@@ -68,11 +70,12 @@ const DEFAULT_HTML_PROMPT_LINES = [
   '',
   '- auto: Use only when the user does not specify a concrete format. Prefer explicit page types for repeatable skill behavior.',
   '- dashboard: Create a Power BI-style analytical dashboard. Keep headings minimal. Include KPI summaries and a grid of chart panels. Prefer Chart.js for quantitative visuals; use Mermaid for process/system visuals when charts are not suitable.',
-  '- documentation: Create a polished documentation page with clear sections using # ## ### headings. TOC sidebar + search are generated automatically.',
-  '- book: Create an ebook-style page with title and metadata (country/entity/company where available), and chapter-style headings so sidebar navigation is useful. Include language options in content: English, French, Spanish, Portuguese, Mandarin, Hindi.',
-  '- report: Create a formal report structure (executive summary, findings, recommendations). Include charts/diagrams/tables where they improve clarity.',
+  '- documentation: Create a polished HTML documentation page with clear sections using # ## ### headings. TOC sidebar + search are generated automatically.',
+  '- book: Create an HTML ebook-style page with title and metadata (country/entity/company where available), and chapter-style headings so sidebar navigation is useful. Include language options in content: English, French, Spanish, Portuguese, Mandarin, Hindi.',
+  '- report: Create a formal HTML report structure (executive summary, findings, recommendations). Include charts/diagrams/tables where they improve clarity.',
   '- website: Create a comprehensive front-end webpage mockup with header, hero, sections, and footer. Keep backend/API routes as stubs only.',
-  '- playbook: Create an interactive government/organizational playbook page. IMPORTANT heading contract: the tool title parameter is the page title; do not repeat the page title as content. In the content argument, use markdown heading syntax only for playbook structure: ## for each category/part/card, ### for each question/step/topic/accordion row inside a card, and #### only for lower-level details inside a topic. Do not use raw <h2>, <h3>, or <h4> HTML tags for playbook structure. Never put all content under a single ## Overview unless the user explicitly asks for a one-card overview. Avoid hard-coding phases or predefined sections unless the source content or user request explicitly includes them. Derive accent colors from branding.primaryColor or country/organization identity. Search bar in hero is mandatory.',
+  '- playbook: Create an interactive government/organizational HTML playbook page. IMPORTANT heading contract: the tool title parameter is the page title; do not repeat the page title as content. In the content argument, use markdown heading syntax only for playbook structure: ## for each category/part/card, ### for each question/step/topic/accordion row inside a card, and #### only for lower-level details inside a topic. Do not use raw <h2>, <h3>, or <h4> HTML tags for playbook structure. Never put all content under a single ## Overview unless the user explicitly asks for a one-card overview. Avoid hard-coding phases or predefined sections unless the source content or user request explicitly includes them. Derive accent colors from branding.primaryColor or country/organization identity. Search bar in hero is mandatory.',
+  '- roadmap: Create a visual HTML roadmap page with a horizontal timeline bar showing progression across phases. Use ## for each phase heading, ### for milestones within a phase. Include milestone markers, phase cards with descriptions, and a visual timeline bar at the top. Use accent colors from branding.primaryColor or derive from context.',
   '',
   'For charts, you MUST use a fenced ```chart block containing valid JSON. Do NOT emit raw <canvas>, <script>, or JavaScript.',
   '```chart',
@@ -111,9 +114,10 @@ const htmlGenConfigSchema = {
       type: 'string',
       title: 'Default Page Type',
       description: 'Default page layout when not specified',
-      enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook'],
+      enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap'],
       default: 'auto',
     },
+
     promptTemplate: {
       type: 'string',
       title: 'HTML Generation Prompt Template',
@@ -182,7 +186,8 @@ const htmlGenConfigSchema = {
 function validateHtmlGenConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
-  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook'];
+  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap'];
+
 
   if (config.promptTemplate !== undefined && typeof config.promptTemplate !== 'string') {
     errors.push('promptTemplate must be a string');
@@ -227,7 +232,8 @@ export const htmlGenTool: ToolDefinition = {
   name: 'html_gen',
   displayName: 'HTML Generator',
   description:
-    'Generate interactive, self-contained HTML pages (dashboards, documentation, web pages, books) with Chart.js charts, Mermaid diagrams, TOC sidebar, and search.',
+    'Generate interactive, self-contained HTML pages (dashboards, documentation, books, reports, roadmaps, web pages, playbooks) with Chart.js charts, Mermaid diagrams, TOC sidebar, and search.',
+
   category: 'autonomous',
 
   definition: {
@@ -235,7 +241,7 @@ export const htmlGenTool: ToolDefinition = {
     function: {
       name: 'html_gen',
       description: [
-        'Generate an interactive HTML page from content. Use this tool when the user explicitly asks to create, export, download, or save a web page, dashboard, documentation site, HTML book, or any interactive HTML artifact with charts and/or diagrams.',
+        'Generate an interactive HTML page from content. Use this tool when the user explicitly asks to create, export, download, or save an HTML web page, HTML dashboard, HTML documentation site, HTML book, HTML report, HTML roadmap, or any interactive HTML artifact with charts and/or diagrams.',
         '',
         'Do NOT use for PDF, Word, or Markdown documents (use doc_gen instead).',
         'Do NOT use for regular responses - only when explicitly requested.',
@@ -245,11 +251,12 @@ export const htmlGenTool: ToolDefinition = {
         'Guidelines for content by page_type:',
         '- auto: use only when user does not explicitly choose a format; otherwise use an explicit page_type.',
         '- dashboard: Power BI-style analytical layout with KPI summaries and chart grid; keep headings minimal.',
-        '- documentation: structured sections via markdown headings (# ## ###); TOC and search are generated automatically.',
-        '- book: ebook-style chapter hierarchy with metadata and language options (English, French, Spanish, Portuguese, Mandarin, Hindi).',
-        '- report: formal structure (executive summary, findings, recommendations), with charts/diagrams where useful.',
+        '- documentation: structured HTML documentation sections via markdown headings (# ## ###); TOC and search are generated automatically.',
+        '- book: HTML ebook-style chapter hierarchy with metadata and language options (English, French, Spanish, Portuguese, Mandarin, Hindi).',
+        '- report: formal HTML report structure (executive summary, findings, recommendations), with charts/diagrams where useful.',
         '- website: comprehensive frontend webpage mockup (header, hero, sections, footer), backend APIs as stubs only.',
-        '- playbook: interactive government/organizational playbook with sticky top bar, hero search bar, accordion section cards from ## headings, topic rows from ### headings, and optional detail headings from #### headings. The title argument is the page title; do not duplicate it in content.',
+        '- playbook: interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards from ## headings, topic rows from ### headings, and optional detail headings from #### headings. The title argument is the page title; do not duplicate it in content.',
+        '- roadmap: visual HTML roadmap page with a horizontal timeline bar showing progression across phases, phase cards with descriptions, and milestone markers.',
         '',
         'IMPORTANT: All charts and diagrams MUST be inside fenced code blocks.',
         '',
@@ -287,9 +294,10 @@ export const htmlGenTool: ToolDefinition = {
           },
           page_type: {
             type: 'string',
-            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook'],
-            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured docs with TOC+search. book = ebook-style chapter layout with metadata and language options. report = formal report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive government/organizational playbook with sticky top bar, hero search bar, accordion section cards, and playbook footer.',
+            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap'],
+            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured HTML documentation with TOC+search. book = HTML ebook-style chapter layout with metadata and language options. report = formal HTML report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards, and playbook footer. roadmap = visual HTML roadmap page with timeline bar, phase cards, and milestone markers.',
           },
+
         },
         required: ['title', 'content'],
       },
