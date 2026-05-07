@@ -7,7 +7,7 @@
  * - chart: Single or few charts
  * - webpage: General purpose HTML page
  *
- * Embeds Chart.js (charts) and Mermaid.js (diagrams) as inline scripts from local node_modules.
+ * Embeds Chart.js (charts) and Mermaid.js (diagrams) as inline scripts from local vendor files.
  * This makes generated HTML self-contained — no CDN dependencies at view time.
  * Imports sanitizeMermaidCode from diagram-gen/validator for quality parity.
  */
@@ -122,14 +122,19 @@ const SUPPORTED_MERMAID_TYPES = new Set([
 // ============ Inline Vendor Bundles ============
 
 /**
- * Read a vendor bundle from the local node_modules directory.
+ * Read a vendor bundle from the local public/vendor directory, falling back to node_modules.
  * This makes generated HTML self-contained — no CDN dependencies at view time.
  *
  * Tries multiple likely paths for robustness across package versions.
  */
-function readVendorBundle(packageName: string, relativePaths: string[]): string | null {
-  for (const relativePath of relativePaths) {
-    const filePath = path.join(process.cwd(), 'node_modules', packageName, relativePath);
+function readVendorBundle(packageName: string, vendorFileName: string, relativePaths: string[]): string | null {
+  const appRoot = process.env.APP_ROOT ?? process.cwd();
+  const candidatePaths = [
+    path.join(appRoot, 'public', 'vendor', vendorFileName),
+    ...relativePaths.map((relativePath) => path.join(appRoot, 'node_modules', packageName, relativePath)),
+  ];
+
+  for (const filePath of candidatePaths) {
     try {
       if (fs.existsSync(filePath)) {
         return fs.readFileSync(filePath, 'utf-8');
@@ -142,15 +147,15 @@ function readVendorBundle(packageName: string, relativePaths: string[]): string 
 }
 
 /**
- * Build inline <script> blocks for Chart.js and Mermaid from local node_modules.
+ * Build inline <script> blocks for Chart.js and Mermaid from local vendor bundles.
  * Falls back to HTML comments (not CDN) so missing bundles are visible, not silent.
  */
 function buildVendorScripts(): string {
-  const chartJsBundle = readVendorBundle('chart.js', [
+  const chartJsBundle = readVendorBundle('chart.js', 'chart.umd.min.js', [
     'dist/chart.umd.min.js',
     'dist/chart.umd.js',
   ]);
-  const mermaidBundle = readVendorBundle('mermaid', [
+  const mermaidBundle = readVendorBundle('mermaid', 'mermaid.min.js', [
     'dist/mermaid.min.js',
     'dist/mermaid.js',
   ]);
@@ -1215,6 +1220,31 @@ const JS_LINES = [
   '    });',
   '    return;',
   '  }',
+  '  function chartTitleFromConfig(config) {',
+  '    var title = config && config.options && config.options.plugins && config.options.plugins.title;',
+  '    if (!title || !title.display || !title.text) return "Chart";',
+  '    return Array.isArray(title.text) ? title.text.join(" ") : String(title.text);',
+  '  }',
+  '  function replaceChartCanvasWithImage(canvas, chart, config) {',
+  '    try {',
+  '      if (!canvas || !canvas.parentNode) return;',
+  '      var imageData = canvas.toDataURL("image/png");',
+  '      var img = document.createElement("img");',
+  '      img.src = imageData;',
+  '      img.alt = chartTitleFromConfig(config);',
+  '      img.setAttribute("data-chart-image", "true");',
+  '      img.width = canvas.width;',
+  '      img.height = canvas.height;',
+  '      img.style.width = "100%";',
+  '      img.style.height = "100%";',
+  '      img.style.objectFit = "contain";',
+  '      img.style.display = "block";',
+  '      canvas.parentNode.replaceChild(img, canvas);',
+  '      if (chart && typeof chart.destroy === "function") chart.destroy();',
+  '    } catch (e) {',
+  '      console.warn("Chart image archival failed; leaving canvas in place:", e);',
+  '    }',
+  '  }',
   '  function renderCharts() {',
   '    document.querySelectorAll("canvas[data-chart-config]").forEach(function(canvas) {',
   '      if (canvas.getAttribute("data-chart-rendered") === "true") return;',
@@ -1222,8 +1252,15 @@ const JS_LINES = [
   '      if (!encoded) return;',
   '      try {',
   '        var config = JSON.parse(atob(encoded));',
-  '        new Chart(canvas.getContext("2d"), config);',
+  '        config.options = config.options || {};',
+  '        config.options.animation = { duration: 0 };',
+  '        config.options.responsive = true;',
+  '        config.options.maintainAspectRatio = false;',
+  '        var chart = new Chart(canvas.getContext("2d"), config);',
   '        canvas.setAttribute("data-chart-rendered", "true");',
+  '        requestAnimationFrame(function() {',
+  '          replaceChartCanvasWithImage(canvas, chart, config);',
+  '        });',
   '      } catch (e) {',
   '        console.error("Chart render error:", e);',
   '        var wrapper = canvas.closest("[data-chart-wrapper]") || canvas.parentNode;',

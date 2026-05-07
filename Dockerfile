@@ -18,6 +18,14 @@ COPY . .
 # Ensure public directory exists
 RUN mkdir -p public
 
+# Copy browser-ready vendor bundles used by self-contained HTML generation.
+# Next standalone tracing does not include these dynamic fs reads from node_modules.
+RUN mkdir -p public/vendor && \
+    cp node_modules/chart.js/dist/chart.umd.min.js public/vendor/chart.umd.min.js && \
+    cp node_modules/mermaid/dist/mermaid.min.js public/vendor/mermaid.min.js && \
+    echo "=== HTML vendor bundle sizes ===" && \
+    ls -lh public/vendor/
+
 # Build-time environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -29,6 +37,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV APP_ROOT=/app
 
 # Install gosu for dropping privileges and k6 CLI for load testing
 RUN apt-get update && \
