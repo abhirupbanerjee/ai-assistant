@@ -30,7 +30,7 @@ import * as path from 'path';
 
 // ============ Types ============
 
-export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'playbook' | 'roadmap';
+export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan';
 
 function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
   switch (pageType) {
@@ -48,6 +48,10 @@ function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
       return 'playbook';
     case 'roadmap':
       return 'roadmap';
+    case 'gantt':
+      return 'gantt';
+    case 'project_plan':
+      return 'project_plan';
     case 'auto':
     default:
       return undefined;
@@ -76,6 +80,45 @@ const DEFAULT_HTML_PROMPT_LINES = [
   '- website: Create a comprehensive front-end webpage mockup with header, hero, sections, and footer. Keep backend/API routes as stubs only.',
   '- playbook: Create an interactive government/organizational HTML playbook page. IMPORTANT heading contract: the tool title parameter is the page title; do not repeat the page title as content. In the content argument, use markdown heading syntax only for playbook structure: ## for each category/part/card, ### for each question/step/topic/accordion row inside a card, and #### only for lower-level details inside a topic. Do not use raw <h2>, <h3>, or <h4> HTML tags for playbook structure. Never put all content under a single ## Overview unless the user explicitly asks for a one-card overview. Avoid hard-coding phases or predefined sections unless the source content or user request explicitly includes them. Derive accent colors from branding.primaryColor or country/organization identity. Search bar in hero is mandatory.',
   '- roadmap: Create a visual HTML roadmap page with a horizontal timeline bar showing progression across phases. Use ## for each phase heading, ### for milestones within a phase. Include milestone markers, phase cards with descriptions, and a visual timeline bar at the top. Use accent colors from branding.primaryColor or derive from context.',
+  '- gantt: Create an interactive Gantt chart with category filtering, legend, hover tooltips, and a today marker. You MUST emit a single ```gantt fenced block containing valid JSON (schema below). Do NOT use markdown headings or prose for the Gantt data — all task data goes inside the JSON block. Use today\'s actual date (you know the current date) as the reference for start_date and task dates.',
+  '- project_plan: Same as gantt but also renders a KPI summary strip (total tasks, milestones, work streams, categories, timeline span) and a roll-up table grouped by work stream. Use the same ```gantt JSON block format.',
+  '',
+  'Gantt JSON block schema (use for both gantt and project_plan page types):',
+  '```gantt',
+  '{',
+  '  "title": "Optional chart title (can omit if page title is sufficient)",',
+  '  "subtitle": "Optional subtitle or date range label",',
+  '  "start_date": "2026-05-01",',
+  '  "end_date": "2026-12-31",',
+  '  "axis": "weeks",',
+  '  "flag_colors": ["#CE1126", "#FCD116", "#009E60"],',
+  '  "categories": [',
+  '    { "id": "onboarding", "label": "Onboarding", "color": "#1f4e79" },',
+  '    { "id": "training",   "label": "Training",   "color": "#2C5F7A" },',
+  '    { "id": "champions",  "label": "Champions",  "color": "#5B2D8E" }',
+  '  ],',
+  '  "tasks": [',
+  '    { "group": "Phase 1", "name": "Orientation",      "sub": "Week 1: team formation", "category": "onboarding", "start": "2026-05-04", "end": "2026-05-08" },',
+  '    { "group": "Phase 1", "name": "Onboarding session","sub": "Week 3: full-day",      "category": "onboarding", "start": "2026-05-18", "end": "2026-05-22" },',
+  '    { "group": "Phase 2", "name": "BA fundamentals",  "sub": "Self-paced with check-ins","category": "training", "start": "2026-06-01", "end": "2026-06-26" },',
+  '    { "group": "Phase 2", "name": "Launch milestone", "sub": "Go-live",                "category": "champions", "start": "2026-07-01", "type": "diamond" }',
+  '  ]',
+  '}',
+  '```',
+  '',
+  'Gantt JSON field reference:',
+  '- start_date / end_date: ISO date strings (YYYY-MM-DD). Use the actual current year — do NOT default to 2024 or 2025.',
+  '- axis: "weeks" (default) | "months" | "dates". Use "weeks" for multi-month plans, "months" for year+ plans, "dates" for short sprints.',
+  '- flag_colors: optional 3-color array for a decorative flag strip at the top (e.g. national flag colors). Omit if not relevant.',
+  '- categories: array of { id, label, color? }. Define one category per work stream or role type. Colors are optional — branding.primaryColor is used as fallback.',
+  '- tasks[].group: section/phase heading that groups rows visually.',
+  '- tasks[].name: task label shown in the left column.',
+  '- tasks[].sub: optional subtitle shown below the name.',
+  '- tasks[].category: must match a category id.',
+  '- tasks[].start / end: ISO date, or week token "W1"–"Wn" (relative to start_date), or month token "M1"–"Mn".',
+  '- tasks[].type: "bar" (default) | "diamond" (milestone — no end date needed).',
+  '- tasks[].hatched: true for a hatched/striped bar (optional, indicates uncertainty or overlap).',
+  '- tasks[].detail: hover tooltip text (optional).',
   '',
   'For charts, you MUST use a fenced ```chart block containing valid JSON. Do NOT emit raw <canvas>, <script>, or JavaScript.',
   '```chart',
@@ -186,7 +229,7 @@ const htmlGenConfigSchema = {
 function validateHtmlGenConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
-  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap'];
+  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'];
 
 
   if (config.promptTemplate !== undefined && typeof config.promptTemplate !== 'string') {
@@ -232,7 +275,7 @@ export const htmlGenTool: ToolDefinition = {
   name: 'html_gen',
   displayName: 'HTML Generator',
   description:
-    'Generate interactive, self-contained HTML pages (dashboards, documentation, books, reports, roadmaps, web pages, playbooks) with Chart.js charts, Mermaid diagrams, TOC sidebar, and search.',
+    'Generate interactive, self-contained HTML pages (dashboards, documentation, books, reports, roadmaps, Gantt charts, project plans, web pages, playbooks) with Chart.js charts, Mermaid diagrams, TOC sidebar, and search.',
 
   category: 'autonomous',
 
@@ -294,8 +337,8 @@ export const htmlGenTool: ToolDefinition = {
           },
           page_type: {
             type: 'string',
-            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap'],
-            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured HTML documentation with TOC+search. book = HTML ebook-style chapter layout with metadata and language options. report = formal HTML report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards, and playbook footer. roadmap = visual HTML roadmap page with timeline bar, phase cards, and milestone markers.',
+            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'],
+            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured HTML documentation with TOC+search. book = HTML ebook-style chapter layout with metadata and language options. report = formal HTML report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards, and playbook footer. roadmap = visual HTML roadmap page with timeline bar, phase cards, and milestone markers. gantt = interactive week-resolution Gantt chart with category filtering, legend, hover tooltips, and today marker — use a ```gantt JSON block in content. project_plan = same as gantt but adds a KPI summary strip (task count, milestones, work streams) and a roll-up table grouped by work stream.',
           },
 
         },

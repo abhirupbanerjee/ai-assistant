@@ -19,6 +19,9 @@ import { buildWebpageTemplate } from './templates/webpage';
 import { buildDashboardTemplate } from './templates/dashboard';
 import { buildPlaybookTemplate } from './templates/playbook';
 import { buildRoadmapTemplate } from './templates/roadmap';
+import { buildGanttTemplate } from './templates/gantt';
+import { buildProjectPlanTemplate } from './templates/project-plan';
+import type { GanttSegment } from './types';
 
 export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   const { title, content, branding, disclaimerConfig, metadata } = options;
@@ -87,6 +90,16 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
     html = buildPlaybookTemplate(title, segments, branding, css, js, date, serverResult ?? undefined);
   } else if (pageType === 'roadmap') {
     html = buildRoadmapTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+  } else if (pageType === 'gantt' || pageType === 'project_plan') {
+    // Find the first gantt segment; fall back to empty config if none found
+    const ganttSeg = segments.find((s): s is GanttSegment => s.type === 'gantt');
+    const ganttCfg = ganttSeg?.config ?? { tasks: [] };
+    const todayIso = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    if (pageType === 'project_plan') {
+      html = buildProjectPlanTemplate(title, ganttCfg, branding, css, js, disclaimerHtml, date, todayIso);
+    } else {
+      html = buildGanttTemplate(title, ganttCfg, branding, css, js, disclaimerHtml, date, todayIso);
+    }
   } else {
     html = buildWebpageTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
   }

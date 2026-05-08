@@ -2145,7 +2145,7 @@ interface YouTubeConfig {
 
 ### Purpose
 
-Generates interactive, self-contained HTML pages from chat content using LLM-driven design. Supports 8 page types including dashboards with Chart.js, documentation sites, ebooks, reports, web page mockups, **playbooks**, and **roadmaps**. Embeds Chart.js and Mermaid.js for data visualizations and diagrams.
+Generates interactive, self-contained HTML pages from chat content using LLM-driven design. Supports 10 page types including dashboards with Chart.js, documentation sites, ebooks, reports, web page mockups, **playbooks**, **roadmaps**, **Gantt charts**, and **project plans**. Embeds Chart.js and Mermaid.js for data visualizations and diagrams.
 
 ### Page Types
 
@@ -2159,6 +2159,8 @@ Generates interactive, self-contained HTML pages from chat content using LLM-dri
 | `website` | Frontend webpage mockup (header, hero, sections, footer) |
 | `playbook` | Interactive playbook with sticky top bar, hero search bar, accordion section cards derived from ## headings, and playbook footer branding |
 | `roadmap` | Visual timeline page with phase cards, milestone markers, and a horizontal progress bar |
+| `gantt` | Interactive Gantt chart with category filtering, legend, hover tooltips, today marker, and optional flag strip |
+| `project_plan` | Same as `gantt` plus a KPI summary strip (task count, milestones, work streams, categories, timeline span) and a roll-up table grouped by work stream |
 
 ### Dashboard Schema
 
@@ -2278,6 +2280,51 @@ Configure in **Admin Panel → Tools → HTML Generator**:
 | Page Expiration | `30 days` | Days until generated pages expire |
 | Max Page Size | `50 MB` | Maximum generated HTML page size |
 
+### Gantt / Project Plan Schema
+
+Gantt and project plan pages use a single ` ```gantt ` fenced JSON block inside the `content` argument.
+
+```json
+{
+  "title": "Optional chart title",
+  "subtitle": "Optional subtitle or date range label",
+  "start_date": "2026-05-01",
+  "end_date": "2027-02-28",
+  "axis": "weeks",
+  "flag_colors": ["#CE1126", "#FCD116", "#009E60"],
+  "categories": [
+    { "id": "onboarding",  "label": "Onboarding",  "color": "#1f4e79" },
+    { "id": "training",    "label": "Training",    "color": "#2C5F7A" },
+    { "id": "milestones",  "label": "Milestones",  "color": "#8B6914" }
+  ],
+  "tasks": [
+    { "group": "Phase 1", "name": "Orientation",     "sub": "Week 1", "category": "onboarding", "start": "2026-05-04", "end": "2026-05-08" },
+    { "group": "Phase 1", "name": "Onboarding session","sub": "Week 3","category": "onboarding", "start": "2026-05-18", "end": "2026-05-22" },
+    { "group": "Phase 2", "name": "BA fundamentals", "sub": "Self-paced","category": "training",  "start": "2026-06-01", "end": "2026-06-26" },
+    { "group": "Phase 2", "name": "Launch milestone","sub": "Go-live",  "category": "milestones","start": "2026-07-01", "type": "diamond" }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `start_date` / `end_date` | ISO date strings (YYYY-MM-DD). Use the actual current year. |
+| `axis` | `"weeks"` (default) \| `"months"` \| `"dates"` |
+| `flag_colors` | Optional 3-color array for a decorative flag strip (e.g. national flag colors) |
+| `categories` | Array of `{ id, label, color? }`. Colors are optional — branding.primaryColor is used as fallback. |
+| `tasks[].group` | Section/phase heading that groups rows visually |
+| `tasks[].name` | Task label shown in the left column |
+| `tasks[].sub` | Optional subtitle shown below the name |
+| `tasks[].category` | Must match a category `id` |
+| `tasks[].start` / `end` | ISO date, or week token `"W1"`–`"Wn"`, or month token `"M1"`–`"Mn"` |
+| `tasks[].type` | `"bar"` (default) \| `"diamond"` (milestone — no end date needed) |
+| `tasks[].hatched` | `true` for a hatched/striped bar (indicates uncertainty or overlap) |
+| `tasks[].detail` | Hover tooltip text |
+
+The `project_plan` page type renders the same Gantt chart plus:
+- **KPI strip**: total tasks, milestones, work streams, categories, timeline span
+- **Roll-up table**: grouped by work stream with task counts and activity list
+
 ### OpenAI Function Schema
 
 ```json
@@ -2291,7 +2338,7 @@ Configure in **Admin Panel → Tools → HTML Generator**:
       "content": { "type": "string", "description": "Page content in markdown format" },
       "page_type": {
         "type": "string",
-        "enum": ["auto", "dashboard", "documentation", "book", "report", "website", "playbook"]
+        "enum": ["auto", "dashboard", "documentation", "book", "report", "website", "playbook", "roadmap", "gantt", "project_plan"]
       }
     },
     "required": ["title", "content"]

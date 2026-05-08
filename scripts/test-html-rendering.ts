@@ -1,10 +1,13 @@
 /**
- * Smoke test for server-side HTML rendering (charts + mermaid diagrams).
+ * Smoke test for server-side HTML rendering (charts + mermaid diagrams)
+ * and Gantt/project_plan HTML generation.
  *
  * Run with:
  *   npx tsx scripts/test-html-rendering.ts
  *
  * Writes output to /tmp/html-render-smoke-test.html for manual inspection.
+ * Gantt output: /tmp/html-gantt-test.html
+ * Project plan output: /tmp/html-project-plan-test.html
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -205,9 +208,122 @@ async function main() {
 
   if (allPassed) {
     console.log('\n✅ All smoke tests passed!\n');
-    process.exit(0);
   } else {
     console.log('\n❌ Some renders failed — check output above.\n');
+  }
+
+  // ---- Gantt / project_plan HTML generation tests ----
+  console.log('\n📅 Gantt / Project Plan generation tests...\n');
+
+  const { generateHtml } = await import('../src/lib/docgen/html/generate');
+
+  const ganttContent = `
+\`\`\`gantt
+{
+  "title": "Digital Grenada Deployment Roadmap",
+  "subtitle": "Transformation Agents: Change Champions and Digital Ambassadors · May 2026 to February 2027",
+  "start_date": "2026-05-01",
+  "end_date": "2027-02-28",
+  "axis": "weeks",
+  "flag_colors": ["#CE1126", "#FCD116", "#009E60"],
+  "categories": [
+    { "id": "onboarding",  "label": "Onboarding",         "color": "#1f4e79" },
+    { "id": "training",    "label": "Foundation Training", "color": "#2C5F7A" },
+    { "id": "champions",   "label": "Change Champions",    "color": "#1f4e79" },
+    { "id": "ambassadors", "label": "Digital Ambassadors", "color": "#CE1126" },
+    { "id": "milestones",  "label": "Milestones",          "color": "#8B6914" }
+  ],
+  "tasks": [
+    { "group": "Onboarding & Formation", "name": "Orientation",           "sub": "Week 1: team formation, introductions", "category": "onboarding",  "start": "2026-05-04", "end": "2026-05-08" },
+    { "group": "Onboarding & Formation", "name": "Onboarding session",    "sub": "Week 3: full-day programme",            "category": "onboarding",  "start": "2026-05-18", "end": "2026-05-22" },
+    { "group": "Onboarding & Formation", "name": "Deploy into live projects","sub": "Week 4: field deployment begins",     "category": "onboarding",  "start": "2026-05-25", "end": "2026-05-29" },
+    { "group": "Foundation Training (June)", "name": "Account management intro",  "sub": "Holding MDA/community relationships", "category": "training", "start": "2026-06-01", "end": "2026-06-12" },
+    { "group": "Foundation Training (June)", "name": "BA fundamentals",           "sub": "Self-paced with check-ins",           "category": "training", "start": "2026-06-01", "end": "2026-06-26" },
+    { "group": "Foundation Training (June)", "name": "Data capture mechanics",    "sub": "Listening, documenting, journaling",  "category": "training", "start": "2026-06-08", "end": "2026-06-19" },
+    { "group": "Foundation Training (June)", "name": "EA orientation",            "sub": "What you need to know",               "category": "training", "start": "2026-06-08", "end": "2026-06-19" },
+    { "group": "Foundation Training (June)", "name": "Process reengineering basics","sub": "",                                  "category": "training", "start": "2026-06-08", "end": "2026-06-19" },
+    { "group": "Foundation Training (June)", "name": "DTA culture orientation",   "sub": "",                                    "category": "training", "start": "2026-06-15", "end": "2026-06-19" },
+    { "group": "Change Champions", "name": "EA baselining: first round",  "sub": "Visit MDAs, document use cases",       "category": "champions", "start": "2026-05-25", "end": "2026-08-14" },
+    { "group": "Change Champions", "name": "First cycle reports submitted","sub": "Use cases, blockers, KPIs",            "category": "champions", "start": "2026-07-27", "end": "2026-08-07" },
+    { "group": "Change Champions", "name": "EA baselining: second cycle", "sub": "Address blockers, deepen",             "category": "champions", "start": "2026-08-17", "end": "2026-11-06" },
+    { "group": "Change Champions", "name": "G-Tax and Civil Registry engagement","sub": "Expand to additional services",  "category": "champions", "start": "2026-09-07", "end": "2026-12-18" },
+    { "group": "Change Champions", "name": "Phase 1 findings compiled",   "sub": "Present to DTA leadership",           "category": "milestones","start": "2026-11-09", "end": "2026-11-20" },
+    { "group": "Digital Ambassadors", "name": "Community awareness: first round","sub": "Outreach, events, social media","category": "ambassadors","start": "2026-05-04", "end": "2026-08-14" },
+    { "group": "Digital Ambassadors", "name": "Feedback collection",      "sub": "Surveys, focus groups",               "category": "ambassadors","start": "2026-07-06", "end": "2026-08-14" },
+    { "group": "Digital Ambassadors", "name": "Community awareness: second round","sub": "Deeper engagement",           "category": "ambassadors","start": "2026-08-17", "end": "2026-12-18" },
+    { "group": "Digital Ambassadors", "name": "Phase 2 community report", "sub": "Compile and present findings",        "category": "milestones","start": "2026-12-07", "end": "2026-12-18" },
+    { "group": "Programme Milestones", "name": "Mid-programme review",    "sub": "DTA leadership + agents",             "category": "milestones","start": "2026-09-14", "type": "diamond", "detail": "Mid-programme review with DTA leadership and all transformation agents" },
+    { "group": "Programme Milestones", "name": "Final programme review",  "sub": "Outcomes, lessons learned",           "category": "milestones","start": "2027-01-25", "type": "diamond", "detail": "Final review: outcomes, lessons learned, recommendations for next cohort" },
+    { "group": "Programme Milestones", "name": "Graduation & recognition","sub": "Ceremony and awards",                 "category": "milestones","start": "2027-02-08", "type": "diamond" }
+  ]
+}
+\`\`\`
+`;
+
+  const branding = {
+    enabled: false,
+    logoUrl: '',
+    organizationName: 'Digital Grenada',
+    primaryColor: '#1f4e79',
+    fontFamily: 'Segoe UI, Arial, sans-serif',
+    header: { enabled: false, content: '' },
+    footer: { enabled: false, content: '', includePageNumber: false },
+    playbook: { tagline: '', heroSubtitle: '', heroDate: '', footerEntity: '', footerAgency: '', footerDate: '' },
+  };
+
+  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Test gantt
+  let ganttPassed = true;
+  try {
+    const ganttResult = await generateHtml({
+      title: 'Digital Grenada Deployment Roadmap',
+      content: ganttContent,
+      branding,
+      metadata: { author: 'Digital Grenada', date: today },
+      pageType: 'gantt',
+    });
+    const ganttPath = '/tmp/html-gantt-test.html';
+    fs.writeFileSync(ganttPath, ganttResult.buffer);
+    const sizeKb = Math.round(ganttResult.buffer.length / 1024);
+    console.log(`  ✅ gantt page generated: ${sizeKb} KB → ${ganttPath}`);
+    console.log(`     pageType=${ganttResult.pageType}, charts=${ganttResult.chartCount}, diagrams=${ganttResult.diagramCount}`);
+  } catch (err) {
+    console.error('  ❌ gantt generation failed:', err);
+    ganttPassed = false;
+    allPassed = false;
+  }
+
+  // Test project_plan
+  let projectPlanPassed = true;
+  try {
+    const ppResult = await generateHtml({
+      title: 'Digital Grenada Deployment Roadmap',
+      content: ganttContent,
+      branding,
+      metadata: { author: 'Digital Grenada', date: today },
+      pageType: 'project_plan',
+    });
+    const ppPath = '/tmp/html-project-plan-test.html';
+    fs.writeFileSync(ppPath, ppResult.buffer);
+    const sizeKb = Math.round(ppResult.buffer.length / 1024);
+    console.log(`  ✅ project_plan page generated: ${sizeKb} KB → ${ppPath}`);
+    console.log(`     pageType=${ppResult.pageType}, charts=${ppResult.chartCount}, diagrams=${ppResult.diagramCount}`);
+  } catch (err) {
+    console.error('  ❌ project_plan generation failed:', err);
+    projectPlanPassed = false;
+    allPassed = false;
+  }
+
+  if (ganttPassed && projectPlanPassed) {
+    console.log('\n✅ Gantt tests passed!\n');
+  }
+
+  if (allPassed) {
+    console.log('✅ All tests passed!\n');
+    process.exit(0);
+  } else {
+    console.log('❌ Some tests failed — check output above.\n');
     process.exit(1);
   }
 }

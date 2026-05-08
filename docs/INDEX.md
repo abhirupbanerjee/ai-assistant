@@ -54,7 +54,7 @@ Detailed guides for specific features and capabilities.
 | Document | Description | Key Topics |
 |----------|-------------|------------|
 | [features/Tools.md](features/Tools.md) | Tools system documentation | Web search, document generation, HTML pages, DOCX/PDF to HTML, data sources, charts, task planning, YouTube, thread sharing, email |
-| [tech/html-rendering.md](tech/html-rendering.md) | Server-side HTML chart & diagram rendering | Playwright/Chromium server-side rendering, Chart.js PNG output, Mermaid SVG output, client-side fallback, Docker setup |
+| [tech/html-rendering.md](tech/html-rendering.md) | Server-side HTML chart & diagram rendering | Playwright/Chromium server-side rendering, Chart.js PNG output, Mermaid SVG output, Gantt/project-plan charts, client-side fallback, Docker setup |
 
 ### Progressive Web App
 
@@ -178,6 +178,8 @@ Guides for different user roles and workflows.
 ### Tools & Function Calling
 
 - [features/Tools.md](features/Tools.md) - Complete tools documentation
+- [features/Tools.md § HTML Generator Tool](features/Tools.md#html-generator-tool) - HTML page types including `gantt` and `project_plan`
+- [tech/html-rendering.md § Gantt & Project Plan](tech/html-rendering.md#gantt--project-plan-page-types) - Gantt chart architecture, `GanttBlockConfig` schema, time axis normalization
 - [features/SKILLS.md](features/SKILLS.md) - Skill-based tool routing
 - [user_manuals/ADMIN_GUIDE.md § Tools](user_manuals/ADMIN_GUIDE.md#8-tools) - Tools configuration UI
 - [user_manuals/ADMIN_GUIDE.md § Tool Routing](user_manuals/ADMIN_GUIDE.md#9-tool-routing) - Routing rules UI
@@ -307,6 +309,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.5** | May 2026 | **Gantt & Project Plan page types** — `gantt` and `project_plan` added to `html_gen` tool. JSON fenced ` ```gantt ` blocks define categories, tasks, and a hybrid time axis (ISO dates / week tokens / month tokens). `project_plan` adds a KPI strip and roll-up summary table. Branding-driven color palette with per-category overrides. Interactive filter tabs and hover tooltips. New files: `templates/gantt.ts`, `templates/project-plan.ts`; updated `types.ts`, `content-parser.ts`, `page-type.ts`, `generate.ts`, `html-gen.ts`. |
 | **3.4** | May 2026 | **Server-side HTML rendering** — Playwright/Chromium renders Chart.js charts to PNG and Mermaid diagrams to inline SVG at generation time. `chartjs-plugin-datalabels` added for value annotations. Generated HTML is fully self-contained with graceful client-side fallback. `html-builder.ts` refactored from 3,386-line monolith into 33-module `src/lib/docgen/html/` directory. |
 | **3.3** | April 2026 | **Two-Route LLM Architecture** — Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled. Route-aware model filtering, admin UI gating (view-only for disabled routes), model conflict warnings, cross-route fallback chain, model readiness gating on chat submit. |
 | **3.2** | March 2026 | **Anthropic Direct SDK** — Claude chat + tool calling bypasses LiteLLM via `@anthropic-ai/sdk` for reliable tool call JSON. LiteLLM cache fix (`clearLiteLLMCache()` after model sync). Stream reset SSE event for clean model fallback. |
@@ -357,4 +360,4 @@ When updating documentation:
 
 ---
 
-*Last updated: May 2026 (v3.4)*
+*Last updated: May 2026 (v3.5)*

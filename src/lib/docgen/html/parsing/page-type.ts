@@ -9,6 +9,7 @@ import type { ContentSegment, HtmlPageType, MarkdownSegment } from '../types';
 export function detectPageType(segments: ContentSegment[], title: string): HtmlPageType {
   const chartCount = segments.filter(s => s.type === 'chart').length;
   const diagramCount = segments.filter(s => s.type === 'mermaid').length;
+  const ganttCount = segments.filter(s => s.type === 'gantt').length;
   const markdownSegments = segments.filter(s => s.type === 'markdown');
 
   // Count headings in markdown
@@ -18,6 +19,16 @@ export function detectPageType(segments: ContentSegment[], title: string): HtmlP
   }, 0);
 
   const titleLower = title.toLowerCase();
+
+  // Gantt / Project Plan: presence of a gantt segment is definitive
+  if (ganttCount > 0) {
+    if (/project.?plan|work.?plan|schedule|wbs|work.?breakdown/i.test(titleLower)) return 'project_plan';
+    return 'gantt';
+  }
+
+  // Title-based gantt/project-plan detection (no block yet, but explicit intent)
+  if (/gantt|deployment.?roadmap|delivery.?timeline|implementation.?timeline/i.test(titleLower)) return 'gantt';
+  if (/project.?plan|work.?plan|wbs|work.?breakdown/i.test(titleLower)) return 'project_plan';
 
   // Dashboard: multiple charts, few headings
   if (chartCount >= 2 && headingCount <= 3) return 'dashboard';

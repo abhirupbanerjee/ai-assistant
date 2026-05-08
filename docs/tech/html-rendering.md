@@ -144,3 +144,113 @@ All mermaid diagram types work via the server-side path:
 - Pie chart (mermaid)
 
 Sanitization of mermaid source (smart quotes, fences, `&`, `<>` in labels) is handled upstream by `src/lib/diagram-gen/validator.ts` → `sanitizeMermaidCode()`.
+
+---
+
+## Gantt & Project Plan Page Types
+
+The `gantt` and `project_plan` page types are fully client-side rendered (no Playwright required). They use a custom interactive Gantt chart built with vanilla HTML/CSS/JS, not Mermaid.
+
+### Architecture
+
+```
+generateHtml()
+  ├── parseContent()          → finds GanttSegment (```gantt JSON block)
+  ├── detectPageType()        → 'gantt' or 'project_plan'
+  └── buildGanttTemplate()   → self-contained HTML with inline JS
+       or buildProjectPlanTemplate() → calls buildGanttTemplate(projectPlanMode=true)
+                                       + injects KPI strip + roll-up table
+```
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `src/lib/docgen/html/types.ts` | `GanttSegment`, `GanttBlockConfig`, `GanttTask`, `GanttCategory` types |
+| `src/lib/docgen/html/parsing/content-parser.ts` | Parses ` ```gantt ` fenced JSON blocks into `GanttSegment` |
+| `src/lib/docgen/html/parsing/page-type.ts` | Detects `gantt` / `project_plan` from segment presence or title keywords |
+| `src/lib/docgen/html/templates/gantt.ts` | Full Gantt template builder |
+| `src/lib/docgen/html/templates/project-plan.ts` | Project plan template (wraps gantt + adds KPI strip + roll-up table) |
+| `src/lib/docgen/html/generate.ts` | Routes `gantt` / `project_plan` page types to the correct builder |
+| `src/lib/tools/html-gen.ts` | LLM-facing tool definition — `page_type` enum, authoring contract in `DEFAULT_HTML_PROMPT_LINES` |
+
+### GanttBlockConfig Schema
+
+```typescript
+interface GanttBlockConfig {
+  title?: string;
+  subtitle?: string;
+  start_date?: string;          // ISO date (YYYY-MM-DD)
+  end_date?: string;            // ISO date
+  axis?: 'weeks' | 'months' | 'dates';
+  flag_colors?: [string, string, string];  // 3-color flag strip
+  categories?: GanttCategory[];
+  tasks: GanttTask[];
+}
+
+interface GanttCategory {
+  id: string;
+  label: string;
+  color?: string;               // Optional hex color
+}
+
+interface GanttTask {
+  group: string;                // Section heading
+  name: string;                 // Task label
+  sub?: string;                 // Subtitle
+  category: string;             // Must match a category id
+  start: string;                // ISO date, "W1"–"Wn", or "M1"–"Mn"
+  end?: string;                 // Same format; omit for diamonds
+  type?: 'bar' | 'diamond';    // Default: 'bar'
+  hatched?: boolean;            // Striped bar
+  detail?: string;              // Hover tooltip
+}
+```
+
+### Time Axis Normalization
+
+The `parsePosition(token, startDate, axis)` function converts any time token to a 0-based week column index:
+
+| Token format | Conversion |
+|---|---|
+| `"W1"` – `"Wn"` | `n - 1` (0-based week index) |
+| `"M1"` – `"Mn"` | `(n - 1) * 4` (approximate weeks) |
+| ISO date `"YYYY-MM-DD"` | `Math.floor((date - startDate) / 7 days)` |
+
+### Color Resolution
+
+Category colors are resolved in priority order:
+
+1. `category.color` (LLM-specified hex)
+2. `branding.primaryColor` (for index 0 only)
+3. `DEFAULT_PALETTE` — `['#1f4e79', '#2C5F7A', '#5B2D8E', '#8B6914', '#7a3535', '#3a6b3a', '#4a4a7a', '#6b4a2a']`
+
+### Flag Strip
+
+If `cfg.flag_colors` contains exactly 3 colors, a decorative 3-stripe flag strip is rendered at the top of the page (e.g. national flag colors). If fewer than 3 colors are provided, the strip is omitted.
+
+### project_plan Extras
+
+When `projectPlanMode = true`, `buildGanttTemplate()` adds:
+
+- **KPI strip** (above the Gantt grid): total tasks, milestone count, work stream count, category count, timeline span in weeks
+- **Roll-up table** (below the Gantt grid): one row per work stream (`group`) with task count, milestone count, and a comma-separated activity list with colored category dots
+
+### Auto-Detection Keywords
+
+`detectPageType()` in `parsing/page-type.ts` auto-detects these page types:
+
+| Condition | Detected type |
+|---|---|
+| Content has a `GanttSegment` AND title matches `project.?plan\|work.?plan\|schedule\|wbs` | `project_plan` |
+| Content has a `GanttSegment` (any title) | `gantt` |
+| No segment but title matches `gantt\|deployment.?roadmap\|delivery.?timeline` | `gantt` |
+| No segment but title matches `project.?plan\|work.?plan\|wbs` | `project_plan` |
+
+### Testing
+
+```bash
+npx tsx scripts/test-html-rendering.ts
+# Gantt output:        /tmp/html-gantt-test.html
+# Project plan output: /tmp/html-project-plan-test.html
+```

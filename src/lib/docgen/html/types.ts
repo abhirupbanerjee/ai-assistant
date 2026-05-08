@@ -45,7 +45,7 @@ export interface HtmlResult {
   diagramCount: number;
 }
 
-export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage' | 'playbook' | 'roadmap';
+export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan';
 
 // ============ Content Segment Types ============
 
@@ -66,7 +66,7 @@ export interface DiagramSegment {
   diagramType: string;
 }
 
-export type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment;
+export type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment | GanttSegment;
 
 export interface ChartBlockConfig {
   title?: string;
@@ -136,6 +136,97 @@ export interface FiltersSegment {
 export interface DataSegment {
   type: 'data';
   config: DataBlockConfig;
+}
+
+// ============ Gantt / Project Plan Types ============
+
+/**
+ * A single category definition for a Gantt chart.
+ * The LLM/user defines names, ids, and colors — nothing is hardcoded.
+ */
+export interface GanttCategory {
+  /** Unique identifier used in task.category */
+  id: string;
+  /** Human-readable label shown in the legend */
+  label: string;
+  /** Hex color for bars/diamonds in this category */
+  color?: string;
+}
+
+/**
+ * A single task (bar or milestone diamond) in the Gantt chart.
+ * start/end accept ISO dates ("2026-05-04"), week tokens ("W1"), or month tokens ("M1").
+ */
+export interface GanttTask {
+  /** Group/section heading this task belongs to */
+  group: string;
+  /** Task display name */
+  name: string;
+  /** Optional sub-label shown below the name */
+  sub?: string;
+  /** Category id — must match a GanttCategory.id */
+  category: string;
+  /**
+   * Start position. Accepts:
+   *   - ISO date string: "2026-05-04"
+   *   - Week token: "W1" … "W52"
+   *   - Month token: "M1" … "M24"
+   */
+  start: string;
+  /**
+   * End position (same format as start). Omit for milestone diamonds.
+   */
+  end?: string;
+  /** "diamond" renders a milestone marker instead of a bar */
+  type?: 'bar' | 'diamond';
+  /** Apply a diagonal stripe pattern to the bar (e.g. for planned/future phases) */
+  hatched?: boolean;
+  /** Tooltip detail text */
+  detail?: string;
+}
+
+/**
+ * Top-level configuration block for a Gantt / Project Plan page.
+ * Emitted by the LLM inside a ```gantt fenced block as JSON.
+ */
+export interface GanttBlockConfig {
+  /** Chart title (overrides the page title if provided) */
+  title?: string;
+  /** Subtitle / date range description */
+  subtitle?: string;
+  /**
+   * Reference start date for the timeline.
+   * ISO date string: "2026-05-04". If omitted, W1/M1 tokens are used as-is.
+   */
+  start_date?: string;
+  /**
+   * Reference end date. Used to compute total weeks/months when axis="dates".
+   */
+  end_date?: string;
+  /**
+   * Time axis granularity.
+   * - "weeks"  → W1…Wn columns (default)
+   * - "months" → M1…Mn columns
+   * - "dates"  → derive weeks from start_date/end_date
+   */
+  axis?: 'weeks' | 'months' | 'dates';
+  /**
+   * Optional three-color flag strip [color1, color2, color3].
+   * Priority: flag_colors > branding.primary/accent/secondary > default palette.
+   */
+  flag_colors?: [string, string, string];
+  /**
+   * User/LLM-defined categories. Names, ids, and colors are fully dynamic.
+   * If a task references a category id not in this list, a default color is assigned.
+   */
+  categories?: GanttCategory[];
+  /** The tasks to render */
+  tasks: GanttTask[];
+}
+
+export interface GanttSegment {
+  type: 'gantt';
+  config: GanttBlockConfig;
 }
 
 export interface TocEntry {

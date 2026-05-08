@@ -7,6 +7,7 @@ import type {
   ContentSegment,
   DataBlockConfig,
   FiltersBlockConfig,
+  GanttBlockConfig,
   KpiBlockConfig,
 } from '../types';
 import { isSupportedMermaidType, detectMermaidType, isBareMermaidStartLine, collectBareMermaidBlock } from './mermaid';
@@ -95,6 +96,17 @@ export function parseContent(content: string): ContentSegment[] {
           }
         } catch {
           currentMarkdown.push('```data\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'gantt' || lang === 'project_plan') {
+        try {
+          const config = JSON.parse(blockContent) as GanttBlockConfig;
+          if (Array.isArray(config.tasks) && config.tasks.length > 0) {
+            segments.push({ type: 'gantt', config });
+          } else {
+            currentMarkdown.push('```' + lang + '\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```' + lang + '\n' + blockContent + '\n```');
         }
       } else {
         // Other code blocks — pass through as markdown
