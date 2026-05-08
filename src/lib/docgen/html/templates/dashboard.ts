@@ -202,6 +202,83 @@ export function buildDashboardTemplateV2(
     .data-table tr:hover td { background: #f9fafb; }
     .dash-footer { text-align: center; padding: 14px 16px; color: #9ca3af; font-size: 0.75rem; }
     .dash-shell .disclaimer { grid-column: 1 / -1; margin: 0; }
+    /* ── KPI Tooltip ── */
+    .kpi-tile { cursor: default; }
+    .kpi-tile[data-kpi-tooltip] { cursor: help; }
+    .kpi-tooltip-icon {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-size: 0.75rem;
+      color: #9ca3af;
+      line-height: 1;
+      font-style: normal;
+      pointer-events: none;
+    }
+    .kpi-tooltip-bubble {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2937;
+      color: #f9fafb;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      padding: 8px 12px;
+      border-radius: 8px;
+      white-space: normal;
+      max-width: 240px;
+      min-width: 140px;
+      text-align: left;
+      z-index: 200;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+      pointer-events: none;
+    }
+    .kpi-tooltip-bubble::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #1f2937;
+    }
+    .kpi-tile:hover .kpi-tooltip-bubble,
+    .kpi-tile:focus-within .kpi-tooltip-bubble { display: block; }
+    /* ── Chart Panel Insight Overlay ── */
+    .panel-has-insight { position: relative; overflow: hidden; }
+    .panel-insight-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.82);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 10;
+      border-radius: 10px;
+      pointer-events: none;
+    }
+    .panel-has-insight:hover .panel-insight-overlay { opacity: 1; pointer-events: auto; }
+    .panel-insight-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 24px;
+      max-width: 340px;
+      text-align: center;
+    }
+    .panel-insight-icon { font-size: 1.6rem; line-height: 1; }
+    .panel-insight-text {
+      color: #f9fafb;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      font-weight: 500;
+    }
     @media (max-width: 1100px) {
       .dash-shell { grid-template-columns: 1fr; }
       .dash-kpis, .dash-canvas, .dash-filters, .dash-data { grid-column: 1 / -1; }

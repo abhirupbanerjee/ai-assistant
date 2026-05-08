@@ -1,6 +1,10 @@
 /**
  * Generate a self-contained HTML page from pre-rendered HTML source.
  * Used when converting DOCX → HTML via mammoth.convertToHtml().
+ *
+ * For gantt, project_plan, and dashboard page types, the source HTML is
+ * converted to plain text and routed through generateHtml() so that
+ * JSON fenced blocks (```gantt, ```chart, etc.) are parsed correctly.
  */
 import type { HtmlSourceOptions } from '../types';
 import { escapeHtml } from '../markdown/escape';
@@ -12,6 +16,7 @@ import { sanitizeMammothHtml } from './sanitize';
 import { sourceHtmlToPlaybookSegments } from './source-segments';
 import { buildPlaybookTemplate } from '../templates/playbook';
 import { buildRoadmapTemplate } from '../templates/roadmap';
+import { generateHtml } from '../generate';
 
 export async function generateHtmlFromSource(options: HtmlSourceOptions): Promise<{
   buffer: Buffer;
@@ -26,7 +31,7 @@ export async function generateHtmlFromSource(options: HtmlSourceOptions): Promis
     year: 'numeric', month: 'long', day: 'numeric',
   });
 
-  const css = buildCss(branding, pageType === 'playbook' ? 'playbook' : 'documentation');
+  const css = buildCss(branding, pageType === 'playbook' ? 'playbook' : 'website');
   const js = buildJs();
 
   const orgName = branding.organizationName || '';
@@ -51,6 +56,39 @@ export async function generateHtmlFromSource(options: HtmlSourceOptions): Promis
     return {
       buffer,
       fileSize: buffer.length,
+      tocCount: 0,
+    };
+  }
+
+  // For gantt, project_plan, and dashboard: extract plain text from the HTML
+  // and route through generateHtml() so JSON fenced blocks are parsed correctly.
+  if (pageType === 'gantt' || pageType === 'project_plan' || pageType === 'dashboard') {
+    // Strip HTML tags to get plain text / markdown content
+    const plainText = sanitizedHtml
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    const result = await generateHtml({
+      title,
+      content: plainText,
+      branding,
+      metadata: { date },
+      pageType,
+    });
+
+    return {
+      buffer: result.buffer,
+      fileSize: result.fileSize,
       tocCount: 0,
     };
   }

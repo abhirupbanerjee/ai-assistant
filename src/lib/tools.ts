@@ -24,7 +24,7 @@ import { dnsScanTool } from './tools/dns-scan';
 import { cookieAuditTool } from './tools/cookie-audit';
 import { redirectAuditTool } from './tools/redirect-audit';
 import { fileToHtmlTool } from './tools/file-to-html';
-import { htmlGenTool } from './tools/html-gen';
+import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -221,17 +221,32 @@ export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI
       // Check for admin-configured description override
       const descriptionOverride = await getDescriptionOverride(tool.name);
 
+      // For html_gen: inject today's date into the description so the LLM
+      // always knows the current date when generating gantt/project_plan content.
+      const baseDescription = tool.name === 'html_gen'
+        ? getHtmlGenDescriptionWithDate()
+        : tool.definition.function.description;
+
       if (descriptionOverride) {
-        // Create a copy with the overridden description
+        // Admin override takes precedence; still append date note for html_gen
+        const finalDescription = tool.name === 'html_gen'
+          ? descriptionOverride + `\n\nToday's date is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (${new Date().toISOString().slice(0, 10)}).`
+          : descriptionOverride;
         const overriddenTool: OpenAI.Chat.ChatCompletionFunctionTool = {
           ...tool.definition,
           function: {
             ...tool.definition.function,
-            description: descriptionOverride,
+            description: finalDescription,
           },
         };
         tools.push(overriddenTool);
         logger.debug('Applied description override', { tool: tool.name });
+      } else if (baseDescription !== tool.definition.function.description) {
+        // Date-injected description (html_gen)
+        tools.push({
+          ...tool.definition,
+          function: { ...tool.definition.function, description: baseDescription },
+        });
       } else {
         tools.push(tool.definition);
       }

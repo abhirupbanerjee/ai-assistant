@@ -1,9 +1,9 @@
 /**
- * Webpage template — thin wrapper around shared document layout.
+ * Webpage template — delegates to buildSimpleDocTemplate.
+ * @see simple-doc.ts
  */
 import type { BrandingConfig } from '../../branding';
-import { buildDocumentLayout } from '../layout/document-layout';
-import { DOCUMENT_LAYOUT_FLAGS } from '../layout/document-layout-flags';
+import { buildSimpleDocTemplate } from './simple-doc';
 
 export function buildWebpageTemplate(
   title: string,
@@ -14,5 +14,5 @@ export function buildWebpageTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.webpage);
+  return buildSimpleDocTemplate('website', title, contentHtml, [], branding, css, js, disclaimerHtml, date);
 }

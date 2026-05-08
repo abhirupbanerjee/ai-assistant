@@ -9,8 +9,13 @@ import type {
   FiltersBlockConfig,
   GanttBlockConfig,
   KpiBlockConfig,
+  RoadmapBlockConfig,
+  PlaybookBlockConfig,
+  BookBlockConfig,
+  ReportBlockConfig,
 } from '../types';
 import { isSupportedMermaidType, detectMermaidType, isBareMermaidStartLine, collectBareMermaidBlock } from './mermaid';
+import { normalizeGanttConfig } from './gantt-normalizer';
 
 export function parseContent(content: string): ContentSegment[] {
   const segments: ContentSegment[] = [];
@@ -99,14 +104,62 @@ export function parseContent(content: string): ContentSegment[] {
         }
       } else if (lang === 'gantt' || lang === 'project_plan') {
         try {
-          const config = JSON.parse(blockContent) as GanttBlockConfig;
-          if (Array.isArray(config.tasks) && config.tasks.length > 0) {
+          const rawConfig = JSON.parse(blockContent) as GanttBlockConfig;
+          if (Array.isArray(rawConfig.tasks) && rawConfig.tasks.length > 0) {
+            // Normalize at parse time: infer milestones, validate fields, auto-select axis
+            const { config } = normalizeGanttConfig(rawConfig);
             segments.push({ type: 'gantt', config });
           } else {
             currentMarkdown.push('```' + lang + '\n' + blockContent + '\n```');
           }
         } catch {
           currentMarkdown.push('```' + lang + '\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'roadmap') {
+        try {
+          const config = JSON.parse(blockContent) as RoadmapBlockConfig;
+          if ((Array.isArray(config.phases) && config.phases.length > 0) ||
+              (Array.isArray(config.bands) && config.bands.length > 0) ||
+              (Array.isArray(config.rays) && config.rays.length > 0)) {
+            segments.push({ type: 'roadmap', config });
+          } else {
+            currentMarkdown.push('```roadmap\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```roadmap\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'playbook') {
+        try {
+          const config = JSON.parse(blockContent) as PlaybookBlockConfig;
+          if (Array.isArray(config.parts) && config.parts.length > 0) {
+            segments.push({ type: 'playbook', config });
+          } else {
+            currentMarkdown.push('```playbook\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```playbook\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'book') {
+        try {
+          const config = JSON.parse(blockContent) as BookBlockConfig;
+          if (Array.isArray(config.chapters) && config.chapters.length > 0) {
+            segments.push({ type: 'book', config });
+          } else {
+            currentMarkdown.push('```book\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```book\n' + blockContent + '\n```');
+        }
+      } else if (lang === 'report') {
+        try {
+          const config = JSON.parse(blockContent) as ReportBlockConfig;
+          if (Array.isArray(config.sections) && config.sections.length > 0) {
+            segments.push({ type: 'report', config });
+          } else {
+            currentMarkdown.push('```report\n' + blockContent + '\n```');
+          }
+        } catch {
+          currentMarkdown.push('```report\n' + blockContent + '\n```');
         }
       } else {
         // Other code blocks — pass through as markdown

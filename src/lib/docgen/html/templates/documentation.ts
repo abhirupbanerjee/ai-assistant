@@ -1,10 +1,10 @@
 /**
- * Documentation template — thin wrapper around shared document layout.
+ * Documentation template — delegates to buildSimpleDocTemplate.
+ * @see simple-doc.ts
  */
 import type { BrandingConfig } from '../../branding';
 import type { TocEntry } from '../types';
-import { buildDocumentLayout } from '../layout/document-layout';
-import { DOCUMENT_LAYOUT_FLAGS } from '../layout/document-layout-flags';
+import { buildSimpleDocTemplate } from './simple-doc';
 
 export function buildDocumentationTemplate(
   title: string,
@@ -16,5 +16,5 @@ export function buildDocumentationTemplate(
   disclaimerHtml: string,
   date: string
 ): string {
-  return buildDocumentLayout(title, contentHtml, toc, branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.documentation);
+  return buildSimpleDocTemplate('website', title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
 }

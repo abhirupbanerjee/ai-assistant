@@ -21,7 +21,7 @@ export interface HtmlOptions {
  * Options for generating HTML from a pre-rendered HTML source
  * (e.g., output from mammoth.convertToHtml for DOCX conversion)
  */
-export type HtmlSourcePageType = 'documentation' | 'playbook' | 'roadmap';
+export type HtmlSourcePageType = 'documentation' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan' | 'dashboard';
 
 export interface HtmlSourceOptions {
   title: string;
@@ -45,7 +45,201 @@ export interface HtmlResult {
   diagramCount: number;
 }
 
-export type HtmlPageType = 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'chart' | 'webpage' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan';
+export type HtmlPageType = 'dashboard' | 'book' | 'report' | 'website' | 'chart' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan';
+
+// ============ Book Types ============
+
+/**
+ * A single section within a book chapter.
+ */
+export interface BookSection {
+  heading: string;
+  content: string;
+}
+
+/**
+ * A single chapter in a book.
+ */
+export interface BookChapter {
+  title: string;
+  sections?: BookSection[];
+}
+
+/**
+ * Top-level configuration block for a Book page.
+ * Emitted by the LLM inside a ```book fenced block as JSON.
+ */
+export interface BookBlockConfig {
+  frontMatter?: {
+    author?: string;
+    subtitle?: string;
+    publisher?: string;
+    edition?: string;
+    abstract?: string;
+  };
+  chapters: BookChapter[];
+}
+
+export interface BookSegment {
+  type: 'book';
+  config: BookBlockConfig;
+}
+
+// ============ Report Types ============
+
+/**
+ * A single section in a formal report.
+ */
+export interface ReportSection {
+  heading: string;
+  type?: 'findings' | 'analysis' | 'recommendations' | 'methodology' | 'background' | 'content';
+  content: string;
+}
+
+/**
+ * Top-level configuration block for a Report page.
+ * Emitted by the LLM inside a ```report fenced block as JSON.
+ */
+export interface ReportBlockConfig {
+  metadata?: {
+    preparedFor?: string;
+    preparedBy?: string;
+    date?: string;
+    classification?: string;
+    version?: string;
+  };
+  executiveSummary?: string;
+  sections: ReportSection[];
+  appendices?: Array<{ title: string; content: string }>;
+}
+
+export interface ReportSegment {
+  type: 'report';
+  config: ReportBlockConfig;
+}
+
+// ============ Roadmap Types (Sun Ray Diagram) ============
+
+/**
+ * A single band (concentric ring) in the sun ray diagram.
+ * Bands represent maturity/progress layers from inner (current) to outer (future).
+ */
+export interface RoadmapBand {
+  /** Band label (e.g. "Foundation", "Integration") */
+  label: string;
+  /** Optional explicit hex color for this band */
+  color?: string;
+}
+
+/**
+ * A single ray (radial segment) in the sun ray diagram.
+ * Rays represent strategic pillars or themes that cut across all bands.
+ */
+export interface RoadmapRay {
+  /** Caption / pillar title */
+  caption: string;
+  /** Short description of this pillar */
+  description?: string;
+  /** Status of this pillar */
+  status?: 'completed' | 'in-progress' | 'planned';
+}
+
+/**
+ * A single phase in a roadmap (legacy linear format).
+ * The LLM emits these inside a ```roadmap fenced block as JSON.
+ */
+export interface RoadmapPhase {
+  /** Phase display title */
+  title: string;
+  /** Optional date range or period label, e.g. "Q1 2026" */
+  period?: string;
+  /** Status badge: completed | in-progress | planned */
+  status?: 'completed' | 'in-progress' | 'planned';
+  /** Short description paragraph */
+  description?: string;
+  /** List of milestone strings */
+  milestones?: string[];
+}
+
+/**
+ * Top-level configuration block for a Roadmap page (Sun Ray Diagram).
+ * Emitted by the LLM inside a ```roadmap fenced block as JSON.
+ */
+export interface RoadmapBlockConfig {
+  /** Page/chart title */
+  title?: string;
+  /** Subtitle shown below the title */
+  subtitle?: string;
+  /** Central topic label (shown at the origin of the sun ray) */
+  topic?: string;
+  /** Current state description (shown at arc start) */
+  currentState?: string;
+  /** Future state description (shown at arc end) */
+  futureState?: string;
+  /** Overall progress percentage (0-100) */
+  overallProgress?: number;
+  /**
+   * Concentric bands (inner = current, outer = future).
+   * If omitted, bands are auto-generated from phases.
+   */
+  bands?: RoadmapBand[];
+  /**
+   * Radial rays (strategic pillars/themes).
+   * If omitted, rays are auto-generated from phases.
+   */
+  rays?: RoadmapRay[];
+  /** Legacy: phases array (used when bands/rays not provided) */
+  phases?: RoadmapPhase[];
+}
+
+export interface RoadmapSegment {
+  type: 'roadmap';
+  config: RoadmapBlockConfig;
+}
+
+// ============ Playbook Types ============
+
+/**
+ * A single topic within a playbook part.
+ */
+export interface PlaybookTopic {
+  /** Topic title */
+  title: string;
+  /** Short subtitle / summary */
+  subtitle?: string;
+  /** Markdown body content */
+  body?: string;
+}
+
+/**
+ * A single part (section) in a playbook.
+ */
+export interface PlaybookPart {
+  /** Part title */
+  title: string;
+  /** Optional intro paragraph */
+  intro?: string;
+  /** Topics within this part */
+  topics?: PlaybookTopic[];
+}
+
+/**
+ * Top-level configuration block for a Playbook page.
+ * Emitted by the LLM inside a ```playbook fenced block as JSON.
+ */
+export interface PlaybookBlockConfig {
+  /** Page title */
+  title?: string;
+  /** Hero subtitle */
+  subtitle?: string;
+  /** The parts/sections of the playbook */
+  parts: PlaybookPart[];
+}
+
+export interface PlaybookSegment {
+  type: 'playbook';
+  config: PlaybookBlockConfig;
+}
 
 // ============ Content Segment Types ============
 
@@ -66,7 +260,7 @@ export interface DiagramSegment {
   diagramType: string;
 }
 
-export type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment | GanttSegment;
+export type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment | GanttSegment | RoadmapSegment | PlaybookSegment | BookSegment | ReportSegment;
 
 export interface ChartBlockConfig {
   title?: string;
@@ -95,6 +289,8 @@ export interface KpiBlockConfig {
   trend?: number[];
   /** Tags for slicer filtering */
   tags?: string[];
+  /** Hover tooltip detail text (shown on mouse-over of the KPI tile) */
+  tooltip?: string;
 }
 
 /** Filters block — defines left-rail slicers */

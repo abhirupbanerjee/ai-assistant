@@ -9,153 +9,21 @@
  *   - "W1"…"Wn"  → week index (1-based)
  *   - "M1"…"Mn"  → month index, converted to weeks (×4.33)
  *   - ISO date    → weeks from start_date (or from first task date)
+ *
+ * Bar/diamond rendering:
+ *   Each task row uses a two-layer approach:
+ *     1. Grid cells — provide the column lines and background (no position:relative)
+ *     2. Overlay div — sits on top of the data area (position:absolute) and
+ *        holds bars/diamonds positioned by percentage, avoiding z-index stacking
+ *        issues that would hide bars behind later sibling cells.
  */
 import type { BrandingConfig } from '../../branding';
 import type { GanttBlockConfig, GanttTask, GanttCategory } from '../types';
 import { escapeHtml } from '../markdown/escape';
 import { buildVendorScripts } from '../vendor-bundles';
-
-// ── Default professional palette (used only when LLM/branding provides nothing) ──
-const DEFAULT_PALETTE = [
-  '#1f4e79', '#2C5F7A', '#5B2D8E', '#8B6914',
-  '#7a3535', '#3a6b3a', '#4a4a7a', '#6b4a2a',
-];
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Parse a position token to a 0-based week index. */
-function parsePosition(
-  token: string,
-  startDate: Date | null,
-  axis: 'weeks' | 'months' | 'dates',
-): number {
-  const t = (token || '').trim();
-
-  // Week token: W1, W2, …
-  const wMatch = t.match(/^[Ww](\d+)$/);
-  if (wMatch) return Math.max(0, parseInt(wMatch[1], 10) - 1);
-
-  // Month token: M1, M2, …
-  const mMatch = t.match(/^[Mm](\d+)$/);
-  if (mMatch) {
-    const monthIdx = parseInt(mMatch[1], 10) - 1;
-    return Math.round(monthIdx * 4.333);
-  }
-
-  // ISO date: 2026-05-04
-  const dateMatch = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dateMatch) {
-    const d = new Date(t);
-    if (!isNaN(d.getTime())) {
-      if (startDate) {
-        const diffMs = d.getTime() - startDate.getTime();
-        return Math.max(0, Math.round(diffMs / (7 * 24 * 60 * 60 * 1000)));
-      }
-      // No start_date — treat as absolute week 0 fallback
-      return 0;
-    }
-  }
-
-  // Numeric fallback
-  const n = parseInt(t, 10);
-  return isNaN(n) ? 0 : Math.max(0, n - 1);
-}
-
-/** Compute total columns needed from tasks. */
-function computeTotalColumns(
-  tasks: GanttTask[],
-  startDate: Date | null,
-  axis: 'weeks' | 'months' | 'dates',
-): number {
-  let max = 0;
-  for (const t of tasks) {
-    const s = parsePosition(t.start, startDate, axis);
-    const e = t.end ? parsePosition(t.end, startDate, axis) : s + 1;
-    if (e > max) max = e;
-  }
-  return Math.max(max, 4);
-}
-
-/** Build month header spans from a start date + total weeks. */
-interface MonthSpan {
-  label: string;
-  startCol: number; // 0-based
-  weeks: number;
-}
-
-function buildMonthSpans(
-  startDate: Date | null,
-  totalCols: number,
-  axis: 'weeks' | 'months' | 'dates',
-): MonthSpan[] {
-  if (axis === 'months') {
-    // Each column IS a month
-    const spans: MonthSpan[] = [];
-    for (let i = 0; i < totalCols; i++) {
-      spans.push({ label: `M${i + 1}`, startCol: i, weeks: 1 });
-    }
-    return spans;
-  }
-
-  if (!startDate || axis === 'weeks') {
-    // Group every 4 weeks into a "month" label
-    const spans: MonthSpan[] = [];
-    let col = 0;
-    let monthNum = 1;
-    while (col < totalCols) {
-      const w = Math.min(4, totalCols - col);
-      spans.push({ label: `M${monthNum}`, startCol: col, weeks: w });
-      col += w;
-      monthNum++;
-    }
-    return spans;
-  }
-
-  // axis === 'dates' with a real start date — group by calendar month
-  const spans: MonthSpan[] = [];
-  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  let currentMonth = startDate.getMonth();
-  let currentYear = startDate.getFullYear();
-  let spanStart = 0;
-
-  for (let w = 0; w <= totalCols; w++) {
-    const weekDate = new Date(startDate.getTime() + w * 7 * 24 * 60 * 60 * 1000);
-    const wMonth = weekDate.getMonth();
-    const wYear = weekDate.getFullYear();
-
-    if ((wMonth !== currentMonth || wYear !== currentYear) || w === totalCols) {
-      const spanWeeks = w - spanStart;
-      if (spanWeeks > 0) {
-        const yearSuffix = currentYear !== startDate.getFullYear() ? ` ${currentYear}` : ` ${currentYear}`;
-        spans.push({
-          label: `${MONTH_NAMES[currentMonth]}${yearSuffix}`,
-          startCol: spanStart,
-          weeks: spanWeeks,
-        });
-      }
-      currentMonth = wMonth;
-      currentYear = wYear;
-      spanStart = w;
-    }
-  }
-  return spans;
-}
-
-/** Resolve category color — LLM color → branding primary → default palette. */
-function resolveCategoryColor(
-  catId: string,
-  categories: GanttCategory[],
-  branding: BrandingConfig,
-  paletteIndex: number,
-): string {
-  const cat = categories.find(c => c.id === catId);
-  if (cat?.color) return cat.color;
-  // Use branding primary only for index 0; rest fall through to default palette
-  if (paletteIndex === 0 && branding.primaryColor) return branding.primaryColor;
-  return DEFAULT_PALETTE[paletteIndex % DEFAULT_PALETTE.length];
-}
+import { resolveCategoryColor } from '../branding/color-resolver';
+import { parsePosition, computeTotalColumns, buildMonthSpans } from '../time/time-axis';
+import { normalizeGanttConfig } from '../parsing/gantt-normalizer';
 
 // ── Main template builder ─────────────────────────────────────────────────────
 
@@ -172,6 +40,9 @@ export function buildGanttTemplate(
   /** If true, render the extended project-plan header (KPI strip + roll-up table) */
   projectPlanMode = false,
 ): string {
+  // ── Normalize config (validate tasks, infer milestones, auto-select axis) ──
+  const { config } = normalizeGanttConfig(cfg);
+
   const orgName = branding.organizationName || '';
   const logoHtml = branding.enabled && branding.logoUrl
     ? `<img src="${branding.logoUrl}" class="gantt-logo" alt="${escapeHtml(orgName)} logo">`
@@ -179,16 +50,15 @@ export function buildGanttTemplate(
   const vendorScripts = buildVendorScripts();
 
   // ── Resolve time axis ──
-  const axis = cfg.axis || 'weeks';
-  const startDate = cfg.start_date ? new Date(cfg.start_date) : null;
-  const totalCols = computeTotalColumns(cfg.tasks, startDate, axis);
+  const axis = config.axis || 'weeks';
+  const startDate = config.start_date ? new Date(config.start_date) : null;
+  const totalCols = computeTotalColumns(config.tasks, startDate, axis);
   const monthSpans = buildMonthSpans(startDate, totalCols, axis);
 
   // ── Resolve flag strip colors ──
-  // BrandingConfig doesn't have accentColor/secondaryColor; access via unknown cast
   const brandingAny = branding as unknown as Record<string, string>;
-  const flagColors: string[] = cfg.flag_colors && cfg.flag_colors.length === 3
-    ? cfg.flag_colors
+  const flagColors: string[] = config.flag_colors && config.flag_colors.length === 3
+    ? config.flag_colors
     : [
         branding.primaryColor || '',
         brandingAny['accentColor'] || '',
@@ -204,11 +74,10 @@ export function buildGanttTemplate(
     : '';
 
   // ── Resolve categories (fully dynamic) ──
-  const categories: GanttCategory[] = cfg.categories || [];
-  // Collect any category ids referenced in tasks but not declared
+  const categories: GanttCategory[] = config.categories || [];
   const declaredIds = new Set(categories.map(c => c.id));
   const extraIds: string[] = [];
-  for (const t of cfg.tasks) {
+  for (const t of config.tasks) {
     if (t.category && !declaredIds.has(t.category) && !extraIds.includes(t.category)) {
       extraIds.push(t.category);
     }
@@ -230,7 +99,12 @@ export function buildGanttTemplate(
     const today = new Date(todayIso);
     if (!isNaN(today.getTime())) {
       const diffMs = today.getTime() - startDate.getTime();
-      todayCol = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+      if (axis === 'months') {
+        // Approximate months from start
+        todayCol = Math.round(diffMs / (30.44 * 24 * 60 * 60 * 1000));
+      } else {
+        todayCol = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+      }
     }
   }
 
@@ -241,7 +115,7 @@ export function buildGanttTemplate(
     color: colorMap[c.id],
   })));
 
-  const jsTasks = JSON.stringify(cfg.tasks.map(t => ({
+  const jsTasks = JSON.stringify(config.tasks.map(t => ({
     group: t.group,
     name: t.name,
     sub: t.sub || '',
@@ -261,11 +135,11 @@ export function buildGanttTemplate(
   // ── Project plan KPI strip ──
   let projectPlanHeaderHtml = '';
   if (projectPlanMode) {
-    const totalTasks = cfg.tasks.filter(t => (t.type || 'bar') === 'bar').length;
-    const milestones = cfg.tasks.filter(t => t.type === 'diamond').length;
-    const groups = [...new Set(cfg.tasks.map(t => t.group))].length;
-    const dateRange = cfg.subtitle || (cfg.start_date && cfg.end_date
-      ? `${cfg.start_date} → ${cfg.end_date}`
+    const totalTasks = config.tasks.filter(t => t.type !== 'diamond').length;
+    const milestones = config.tasks.filter(t => t.type === 'diamond').length;
+    const groups = [...new Set(config.tasks.map(t => t.group))].length;
+    const dateRange = config.subtitle || (config.start_date && config.end_date
+      ? `${config.start_date} → ${config.end_date}`
       : '');
 
     projectPlanHeaderHtml = `
@@ -278,8 +152,8 @@ export function buildGanttTemplate(
     </div>`;
   }
 
-  const chartTitle = cfg.title || pageTitle;
-  const chartSubtitle = cfg.subtitle || '';
+  const chartTitle = config.title || pageTitle;
+  const chartSubtitle = config.subtitle || '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -302,6 +176,7 @@ ${css}
   --gantt-group-label: ${branding.primaryColor || '#007A5E'};
   --gantt-today: #dc2626;
   --gantt-font: ${branding.fontFamily || '"Segoe UI", system-ui, sans-serif'};
+  --gantt-label-w: 200px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -406,7 +281,7 @@ html, body {
 .gantt-week-row,
 .gantt-task-row {
   display: grid;
-  align-items: center;
+  align-items: stretch;
 }
 
 .gantt-month-row {
@@ -424,6 +299,8 @@ html, body {
   color: var(--gantt-faint);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  display: flex;
+  align-items: center;
 }
 
 .gantt-month-cell {
@@ -437,18 +314,30 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gantt-week-row {
   border-bottom: 1px solid var(--gantt-line);
 }
-.gantt-week-label-area { font-size: 9px; color: var(--gantt-faint); padding: 3px 0; }
+.gantt-week-label-area {
+  font-size: 9px;
+  color: var(--gantt-faint);
+  padding: 3px 0;
+  display: flex;
+  align-items: center;
+}
 .gantt-week-cell {
   border-left: 1px solid #f0f0ed;
   padding: 2px 0;
   font-size: 8px;
   color: var(--gantt-faint);
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Group label */
@@ -461,11 +350,12 @@ html, body {
   text-transform: uppercase;
 }
 
-/* Task row */
+/* Task row — two-layer: grid cells (background) + overlay (bars/diamonds) */
 .gantt-task-row {
   min-height: 36px;
   border-bottom: 1px solid #f5f5f2;
   transition: background 0.1s, opacity 0.3s;
+  position: relative;   /* overlay anchor */
 }
 .gantt-task-row:hover { background: var(--gantt-row-hover); }
 .gantt-task-row.dimmed { opacity: 0.12; }
@@ -475,6 +365,11 @@ html, body {
   color: var(--gantt-ink);
   padding-right: 10px;
   line-height: 1.3;
+  /* vertically center the text within the stretched cell */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 36px;
 }
 .gantt-task-name .gantt-sub {
   font-size: 10px;
@@ -483,10 +378,28 @@ html, body {
   margin-top: 1px;
 }
 
+/* Grid cells — background/border layer only; no position:relative so they
+   don't create stacking contexts that would hide the overlay bars. */
 .gantt-grid-cell {
-  position: relative;
   height: 100%;
   border-left: 1px solid #f5f5f2;
+  min-height: 36px;
+}
+
+/* ── Overlay layer ──────────────────────────────────────────────────────
+   Sits on top of all grid cells. Bars and diamonds are placed here using
+   percentage-based left/width so they span correctly across columns
+   without being clipped by sibling cell stacking contexts.
+*/
+.gantt-bar-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* starts after the label column */
+  left: var(--gantt-label-w);
+  right: 0;
+  pointer-events: none;   /* let grid-cell hover/click pass through */
+  z-index: 4;
 }
 
 /* Bars */
@@ -496,8 +409,8 @@ html, body {
   bottom: 7px;
   border-radius: 4px;
   cursor: pointer;
+  pointer-events: auto;
   transition: filter 0.15s, transform 0.15s;
-  z-index: 2;
 }
 .gantt-bar:hover {
   filter: brightness(1.12);
@@ -517,12 +430,13 @@ html, body {
 .gantt-diamond {
   position: absolute;
   top: 50%;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   transform: translateY(-50%) rotate(45deg);
   border-radius: 2px;
   cursor: pointer;
-  z-index: 3;
+  pointer-events: auto;
+  z-index: 5;
   transition: transform 0.15s;
 }
 .gantt-diamond:hover {
@@ -536,7 +450,7 @@ html, body {
   width: 2px;
   background: var(--gantt-today);
   opacity: 0.55;
-  z-index: 5;
+  z-index: 6;
   pointer-events: none;
 }
 .gantt-today-label {
@@ -640,7 +554,7 @@ html, body {
   padding: 8px 12px;
   border-bottom: 1px solid #f5f5f2;
   color: var(--gantt-ink);
-  vertical-align: top;
+  vertical-align: middle;
 }
 .pp-rollup tr:last-child td { border-bottom: none; }
 .pp-rollup tr:hover td { background: var(--gantt-row-hover); }
@@ -677,6 +591,7 @@ html, body {
   .gantt-page-header { flex-direction: column; align-items: flex-start; }
   .gantt-container { padding: 12px; }
   .gantt-controls { padding: 10px 12px 0; }
+  :root { --gantt-label-w: 140px; }
 }
   </style>
 </head>
@@ -725,6 +640,9 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   var TODAY_COL  = ${jsTodayCol};
   var AXIS       = ${jsAxis};
 
+  // Label column width in pixels — must match CSS --gantt-label-w
+  var LABEL_W = 200;
+
   // ── State ────────────────────────────────────────────────────────────
   var activeFilter = 'all';
 
@@ -763,7 +681,7 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   });
 
   // ── Build Gantt grid ─────────────────────────────────────────────────
-  var gridCols = '200px repeat(' + TOTAL_COLS + ', 1fr)';
+  var gridCols = 'var(--gantt-label-w) repeat(' + TOTAL_COLS + ', 1fr)';
 
   // Month header
   var monthRow = document.createElement('div');
@@ -784,7 +702,7 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   });
   wrapEl.appendChild(monthRow);
 
-  // Week sub-header
+  // Week/month sub-header
   var weekRow = document.createElement('div');
   weekRow.className = 'gantt-week-row';
   weekRow.style.gridTemplateColumns = gridCols;
@@ -801,7 +719,20 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   }
   wrapEl.appendChild(weekRow);
 
-  // Task rows
+  // ── Task rows ────────────────────────────────────────────────────────
+  // Each row uses a two-layer approach:
+  //   Layer 1: grid cells (background lines) — no position:relative
+  //   Layer 2: .gantt-bar-overlay (position:absolute) — bars + diamonds
+  //
+  // Bar/diamond left and width are expressed as percentages of the DATA
+  // area width (total row width minus the label column).
+  //
+  //   left%  = startCol / TOTAL_COLS * 100
+  //   width% = (endCol - startCol) / TOTAL_COLS * 100
+  //
+  // The overlay's left edge is offset by LABEL_W (CSS var --gantt-label-w)
+  // so percentages are relative to the data area only.
+
   var lastGroup = '';
   TASKS.forEach(function(task) {
     if (task.group !== lastGroup) {
@@ -817,57 +748,67 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
     row.dataset.cat = task.category;
     row.style.gridTemplateColumns = gridCols;
 
-    // Task name cell
+    // ── Task name cell (label column) ──
     var nameCell = document.createElement('div');
     nameCell.className = 'gantt-task-name';
     nameCell.innerHTML = escHtml(task.name) +
       (task.sub ? '<span class="gantt-sub">' + escHtml(task.sub) + '</span>' : '');
     row.appendChild(nameCell);
 
-    // Grid cells
+    // ── Background grid cells (column lines only) ──
     for (var col = 0; col < TOTAL_COLS; col++) {
       var cell = document.createElement('div');
       cell.className = 'gantt-grid-cell';
-
-      var catColor = getCatColor(task.category);
-
-      if (task.type === 'diamond' && col === task.startCol) {
-        var diamond = document.createElement('div');
-        diamond.className = 'gantt-diamond';
-        diamond.style.background = catColor;
-        diamond.style.left = '50%';
-        diamond.style.marginLeft = '-5px';
-        diamond.dataset.task = task.name;
-        diamond.dataset.detail = task.detail;
-        diamond.dataset.dates = colLabel(task.startCol);
-        cell.appendChild(diamond);
-      } else if (task.type !== 'diamond' && col === task.startCol) {
-        var span = task.endCol - task.startCol;
-        var bar = document.createElement('div');
-        bar.className = 'gantt-bar' + (task.hatched ? ' hatched' : '');
-        bar.style.background = catColor;
-        bar.style.left = '0';
-        bar.style.width = 'calc(' + (span * 100) + '% + ' + (span - 1) + 'px)';
-        bar.dataset.task = task.name;
-        bar.dataset.detail = task.detail;
-        bar.dataset.dates = colLabel(task.startCol) + '\u2013' + colLabel(task.endCol);
-        cell.appendChild(bar);
-      }
-
-      // Today line
-      if (col === TODAY_COL && TODAY_COL >= 0) {
-        var todayLine = document.createElement('div');
-        todayLine.className = 'gantt-today-line';
-        var todayLbl = document.createElement('div');
-        todayLbl.className = 'gantt-today-label';
-        todayLbl.textContent = 'Today';
-        todayLine.appendChild(todayLbl);
-        cell.appendChild(todayLine);
-      }
-
       row.appendChild(cell);
     }
 
+    // ── Overlay layer (bars + diamonds + today line) ──
+    var overlay = document.createElement('div');
+    overlay.className = 'gantt-bar-overlay';
+
+    var catColor = getCatColor(task.category);
+    var startPct = (task.startCol / TOTAL_COLS * 100).toFixed(4);
+
+    if (task.type === 'diamond') {
+      // Diamond: centered on startCol
+      var diamond = document.createElement('div');
+      diamond.className = 'gantt-diamond';
+      diamond.style.background = catColor;
+      // Center the 12px diamond on the column midpoint
+      diamond.style.left = 'calc(' + startPct + '% + ' + (100 / TOTAL_COLS / 2).toFixed(4) + '% - 6px)';
+      diamond.dataset.task = task.name;
+      diamond.dataset.detail = task.detail;
+      diamond.dataset.dates = colLabel(task.startCol);
+      overlay.appendChild(diamond);
+    } else {
+      // Bar: spans from startCol to endCol
+      var span = Math.max(1, task.endCol - task.startCol);
+      var widthPct = (span / TOTAL_COLS * 100).toFixed(4);
+      var bar = document.createElement('div');
+      bar.className = 'gantt-bar' + (task.hatched ? ' hatched' : '');
+      bar.style.background = catColor;
+      bar.style.left = startPct + '%';
+      bar.style.width = widthPct + '%';
+      bar.dataset.task = task.name;
+      bar.dataset.detail = task.detail;
+      bar.dataset.dates = colLabel(task.startCol) + '\u2013' + colLabel(task.endCol);
+      overlay.appendChild(bar);
+    }
+
+    // Today line (inside overlay, same percentage system)
+    if (TODAY_COL >= 0 && TODAY_COL < TOTAL_COLS) {
+      var todayPct = (TODAY_COL / TOTAL_COLS * 100).toFixed(4);
+      var todayLine = document.createElement('div');
+      todayLine.className = 'gantt-today-line';
+      todayLine.style.left = todayPct + '%';
+      var todayLbl = document.createElement('div');
+      todayLbl.className = 'gantt-today-label';
+      todayLbl.textContent = 'Today';
+      todayLine.appendChild(todayLbl);
+      overlay.appendChild(todayLine);
+    }
+
+    row.appendChild(overlay);
     wrapEl.appendChild(row);
   });
 

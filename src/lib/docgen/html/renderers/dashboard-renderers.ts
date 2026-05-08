@@ -8,7 +8,7 @@ import { buildChartJsConfig } from '../charts/chartjs-config';
 import type { RenderContext } from './segment-renderers';
 
 /**
- * Render a KPI tile with optional sparkline.
+ * Render a KPI tile with optional sparkline and hover tooltip.
  */
 export function renderKpiTile(seg: KpiSegment, kpiCounter: { value: number }): string {
   kpiCounter.value++;
@@ -52,12 +52,21 @@ export function renderKpiTile(seg: KpiSegment, kpiCounter: { value: number }): s
     ? `<div class="kpi-delta kpi-delta-${trend}">${escapeHtml(cfg.delta)}</div>`
     : '';
 
+  // Tooltip: shown on hover if tooltip text is provided
+  const tooltipAttr = cfg.tooltip ? ` data-kpi-tooltip="${escapeHtml(cfg.tooltip)}"` : '';
+  const tooltipIcon = cfg.tooltip ? `<span class="kpi-tooltip-icon" aria-hidden="true">ℹ</span>` : '';
+  const tooltipHtml = cfg.tooltip
+    ? `<div class="kpi-tooltip-bubble" role="tooltip">${escapeHtml(cfg.tooltip)}</div>`
+    : '';
+
   return `
-<div class="kpi-tile panel"${tagsAttr}>
+<div class="kpi-tile panel"${tagsAttr}${tooltipAttr}>
+  ${tooltipIcon}
   <div class="kpi-label">${escapeHtml(cfg.label)}</div>
   <div class="kpi-value">${escapeHtml(cfg.value)}</div>
   ${deltaHtml}
   ${sparkHtml}
+  ${tooltipHtml}
 </div>`;
 }
 
@@ -150,7 +159,8 @@ export function renderDataPanel(seg: DataSegment): string {
 }
 
 /**
- * Render a chart segment as a dashboard panel with size class and tag attributes.
+ * Render a chart segment as a dashboard panel with size class, tag attributes,
+ * and an optional hover insight overlay (from config.notes).
  */
 export function renderDashboardChartPanel(
   seg: ChartSegment,
@@ -162,19 +172,29 @@ export function renderDashboardChartPanel(
   const tagsAttr = seg.config.tags && seg.config.tags.length
     ? ` data-tags="${escapeHtml(seg.config.tags.join(' '))}"`
     : '';
-  const notesHtml = seg.config.notes
-    ? `<details class="chart-notes"><summary>Notes</summary><p>${escapeHtml(seg.config.notes)}</p></details>`
+
+  // Insight overlay: shown on panel hover when notes are present
+  const insightHtml = seg.config.notes
+    ? `<div class="panel-insight-overlay" aria-label="Chart insight">
+        <div class="panel-insight-content">
+          <span class="panel-insight-icon">💡</span>
+          <span class="panel-insight-text">${escapeHtml(seg.config.notes)}</span>
+        </div>
+      </div>`
     : '';
+
+  const hasInsight = !!seg.config.notes;
+  const insightClass = hasInsight ? ' panel-has-insight' : '';
 
   // Server-rendered: emit static <img> with data-URL
   if (rendered) {
     return `
-<div class="panel panel-${size}"${tagsAttr}>
+<div class="panel panel-${size}${insightClass}"${tagsAttr}>
   ${seg.config.title ? `<div class="panel-title">${escapeHtml(seg.config.title)}</div>` : ''}
   <div class="panel-body chart-container" data-chart-wrapper="true">
     <img src="${rendered.pngDataUrl}" alt="${escapeHtml(rendered.title)}" style="width:100%;height:auto;display:block;" data-chart-image="true">
   </div>
-  ${notesHtml}
+  ${insightHtml}
 </div>`;
   }
 
@@ -182,12 +202,12 @@ export function renderDashboardChartPanel(
   const chartConfig = buildChartJsConfig(seg.config, id);
   const encodedConfig = Buffer.from(chartConfig, 'utf-8').toString('base64');
   return `
-<div class="panel panel-${size}"${tagsAttr}>
+<div class="panel panel-${size}${insightClass}"${tagsAttr}>
   ${seg.config.title ? `<div class="panel-title">${escapeHtml(seg.config.title)}</div>` : ''}
   <div class="panel-body chart-container" data-chart-wrapper="true">
     <canvas id="${id}" data-chart-config="${encodedConfig}"></canvas>
   </div>
-  ${notesHtml}
+  ${insightHtml}
 </div>`;
 }
 

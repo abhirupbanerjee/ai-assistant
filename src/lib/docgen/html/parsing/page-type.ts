@@ -10,6 +10,9 @@ export function detectPageType(segments: ContentSegment[], title: string): HtmlP
   const chartCount = segments.filter(s => s.type === 'chart').length;
   const diagramCount = segments.filter(s => s.type === 'mermaid').length;
   const ganttCount = segments.filter(s => s.type === 'gantt').length;
+  const roadmapCount = segments.filter(s => s.type === 'roadmap').length;
+  const bookCount = segments.filter(s => s.type === 'book').length;
+  const reportCount = segments.filter(s => s.type === 'report').length;
   const markdownSegments = segments.filter(s => s.type === 'markdown');
 
   // Count headings in markdown
@@ -19,6 +22,11 @@ export function detectPageType(segments: ContentSegment[], title: string): HtmlP
   }, 0);
 
   const titleLower = title.toLowerCase();
+
+  // Structured block types take priority
+  if (bookCount > 0) return 'book';
+  if (reportCount > 0) return 'report';
+  if (roadmapCount > 0) return 'roadmap';
 
   // Gantt / Project Plan: presence of a gantt segment is definitive
   if (ganttCount > 0) {
@@ -33,17 +41,17 @@ export function detectPageType(segments: ContentSegment[], title: string): HtmlP
   // Dashboard: multiple charts, few headings
   if (chartCount >= 2 && headingCount <= 3) return 'dashboard';
 
-  // Documentation: many headings
-  if (headingCount >= 3) return 'documentation';
-
   // Chart: primarily charts
   if (chartCount >= 1 && diagramCount === 0 && headingCount <= 1) return 'chart';
 
   // Check title keywords
   if (/dashboard|analytics|metrics|kpi/i.test(titleLower)) return 'dashboard';
-  if (/doc|guide|manual|reference|wiki|readme/i.test(titleLower)) return 'documentation';
   if (/report|formal report|annual report|status report|assessment/i.test(titleLower)) return 'report';
   if (/book|ebook|chapter|volume/i.test(titleLower)) return 'book';
+  if (/roadmap|transformation|journey|maturity/i.test(titleLower)) return 'roadmap';
+  if (/playbook/i.test(titleLower)) return 'playbook';
+  if (/website|landing.?page|homepage/i.test(titleLower)) return 'website';
 
-  return 'webpage';
+  // Default: website layout (replaces old webpage/documentation fallback)
+  return 'website';
 }

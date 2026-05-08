@@ -134,8 +134,8 @@ export const fileToHtmlTool: ToolDefinition = {
           },
           page_type: {
             type: 'string',
-            enum: ['documentation', 'playbook', 'roadmap'],
-            description: 'Output layout type. documentation = TOC/sidebar page. playbook = card-based interactive playbook layout derived from document headings. roadmap = timeline-based roadmap page with phase cards and milestone markers.',
+            enum: ['documentation', 'playbook', 'roadmap', 'gantt', 'project_plan', 'dashboard'],
+            description: 'Output layout type. documentation = TOC/sidebar page. playbook = card-based interactive playbook layout derived from document headings. roadmap = timeline-based roadmap page with phase cards and milestone markers. gantt = Gantt chart (requires a ```gantt JSON block in the document). project_plan = project plan with KPI strip and work-stream roll-up (requires a ```gantt JSON block). dashboard = analytical dashboard (requires ```chart/kpi/filters/data blocks).',
           },
         },
         required: [],
@@ -162,7 +162,7 @@ export const fileToHtmlTool: ToolDefinition = {
   execute: async (args: {
     filename?: string;
     title?: string;
-    page_type?: 'documentation' | 'playbook' | 'roadmap';
+    page_type?: 'documentation' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan' | 'dashboard';
   }): Promise<string> => {
     try {
       // Get context from AsyncLocalStorage

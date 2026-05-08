@@ -1,7 +1,7 @@
 /**
  * Main HTML generation orchestrator.
  */
-import type { HtmlOptions, HtmlResult, HtmlPageType, ContentSegment } from './types';
+import type { HtmlOptions, HtmlResult, HtmlPageType } from './types';
 import { parseContent } from './parsing/content-parser';
 import { detectPageType } from './parsing/page-type';
 import { extractToc } from './parsing/toc';
@@ -11,17 +11,15 @@ import { escapeHtml } from './markdown/escape';
 import { renderSegments } from './renderers/render-segments';
 import { serverRenderAll, type ServerRenderResult } from './server-renderer';
 
-import { buildDocumentationTemplate } from './templates/documentation';
-import { buildBookTemplate } from './templates/book';
-import { buildReportTemplate } from './templates/report';
-import { buildWebsiteTemplate } from './templates/website';
-import { buildWebpageTemplate } from './templates/webpage';
+import { buildSimpleDocTemplate } from './templates/simple-doc';
 import { buildDashboardTemplate } from './templates/dashboard';
-import { buildPlaybookTemplate } from './templates/playbook';
-import { buildRoadmapTemplate } from './templates/roadmap';
+import { buildPlaybookTemplate, buildPlaybookFromConfig } from './templates/playbook';
+import { buildRoadmapTemplate, buildRoadmapFromConfig } from './templates/roadmap';
 import { buildGanttTemplate } from './templates/gantt';
 import { buildProjectPlanTemplate } from './templates/project-plan';
-import type { GanttSegment } from './types';
+import { buildBookFromConfig, buildBookTemplate } from './templates/book';
+import { buildReportFromConfig, buildReportTemplate } from './templates/report';
+import type { GanttSegment, RoadmapSegment, PlaybookSegment, BookSegment, ReportSegment } from './types';
 
 export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   const { title, content, branding, disclaimerConfig, metadata } = options;
@@ -32,8 +30,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   // Determine page type
   const pageType: HtmlPageType = options.pageType || detectPageType(segments, title);
 
-  // Extract TOC for documentation, book, and report pages
-  const toc = (pageType === 'documentation' || pageType === 'book' || pageType === 'report') ? extractToc(segments) : [];
+  // Extract TOC for book and report pages (documentation removed)
+  const toc = (pageType === 'book' || pageType === 'report') ? extractToc(segments) : [];
 
   // ---- Server-side rendering of charts and diagrams ----
   const chartConfigs: Array<{ index: number; config: import('./types').ChartBlockConfig }> = [];
@@ -76,20 +74,44 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
 
   // Assemble final HTML based on page type
   let html: string;
-  if (pageType === 'documentation') {
-    html = buildDocumentationTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
-  } else if (pageType === 'book') {
-    html = buildBookTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
-  } else if (pageType === 'report') {
-    html = buildReportTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
+
+  if (pageType === 'website') {
+    // website uses the simple doc layout (hero enabled)
+    html = buildSimpleDocTemplate('website', title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'dashboard') {
     html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date, segments, serverResult ?? undefined);
-  } else if (pageType === 'website') {
-    html = buildWebsiteTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+  } else if (pageType === 'book') {
+    // Prefer JSON-driven path if a ```book block was parsed
+    const bookSeg = segments.find((s): s is BookSegment => s.type === 'book');
+    if (bookSeg) {
+      html = buildBookFromConfig(title, bookSeg.config, branding, css, js, date);
+    } else {
+      html = buildBookTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
+    }
+  } else if (pageType === 'report') {
+    // Prefer JSON-driven path if a ```report block was parsed
+    const reportSeg = segments.find((s): s is ReportSegment => s.type === 'report');
+    if (reportSeg) {
+      html = buildReportFromConfig(title, reportSeg.config, branding, css, js, disclaimerHtml, date);
+    } else {
+      html = buildReportTemplate(title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
+    }
   } else if (pageType === 'playbook') {
-    html = buildPlaybookTemplate(title, segments, branding, css, js, date, serverResult ?? undefined);
+    // Prefer JSON-driven path if a ```playbook block was parsed
+    const playbookSeg = segments.find((s): s is PlaybookSegment => s.type === 'playbook');
+    if (playbookSeg) {
+      html = buildPlaybookFromConfig(title, playbookSeg.config, branding, css, js, date);
+    } else {
+      html = buildPlaybookTemplate(title, segments, branding, css, js, date, serverResult ?? undefined);
+    }
   } else if (pageType === 'roadmap') {
-    html = buildRoadmapTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+    // Prefer JSON-driven path if a ```roadmap block was parsed
+    const roadmapSeg = segments.find((s): s is RoadmapSegment => s.type === 'roadmap');
+    if (roadmapSeg) {
+      html = buildRoadmapFromConfig(title, roadmapSeg.config, branding, css, js, disclaimerHtml, date);
+    } else {
+      html = buildRoadmapTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+    }
   } else if (pageType === 'gantt' || pageType === 'project_plan') {
     // Find the first gantt segment; fall back to empty config if none found
     const ganttSeg = segments.find((s): s is GanttSegment => s.type === 'gantt');
@@ -101,7 +123,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
       html = buildGanttTemplate(title, ganttCfg, branding, css, js, disclaimerHtml, date, todayIso);
     }
   } else {
-    html = buildWebpageTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date);
+    // Fallback: treat unknown/chart types as website layout
+    html = buildSimpleDocTemplate('website', title, contentHtml, [], branding, css, js, disclaimerHtml, date);
   }
 
   const buffer = Buffer.from(html, 'utf-8');

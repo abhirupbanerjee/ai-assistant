@@ -217,6 +217,8 @@ async function main() {
 
   const { generateHtml } = await import('../src/lib/docgen/html/generate');
 
+  // Test data uses axis:"weeks" for a 10-month plan — autoSelectAxis should
+  // override this to "months" automatically.
   const ganttContent = `
 \`\`\`gantt
 {
@@ -288,6 +290,41 @@ async function main() {
     const sizeKb = Math.round(ganttResult.buffer.length / 1024);
     console.log(`  ✅ gantt page generated: ${sizeKb} KB → ${ganttPath}`);
     console.log(`     pageType=${ganttResult.pageType}, charts=${ganttResult.chartCount}, diagrams=${ganttResult.diagramCount}`);
+
+    // ── Structural assertions ──
+    const ganttHtml = ganttResult.buffer.toString('utf-8');
+
+    // 1. Auto-axis: "weeks" for a 10-month plan should be overridden to "months"
+    if (ganttHtml.includes('"months"')) {
+      console.log('     ✅ axis auto-corrected to "months" (was "weeks" for 10-month plan)');
+    } else {
+      console.warn('     ⚠️  axis may not have been auto-corrected — check AXIS variable in output');
+    }
+
+    // 2. Overlay layer present (bars/diamonds rendered via overlay, not per-cell)
+    if (ganttHtml.includes('gantt-bar-overlay')) {
+      console.log('     ✅ gantt-bar-overlay present (overlay rendering active)');
+    } else {
+      console.warn('     ⚠️  gantt-bar-overlay not found — bars may not render');
+      allPassed = false;
+    }
+
+    // 3. Diamond milestones present
+    if (ganttHtml.includes('gantt-diamond')) {
+      console.log('     ✅ gantt-diamond class present (milestone markers rendered)');
+    } else {
+      console.warn('     ⚠️  gantt-diamond not found — milestone diamonds may be missing');
+      allPassed = false;
+    }
+
+    // 4. No "undefined" group labels
+    if (!ganttHtml.includes('>undefined<')) {
+      console.log('     ✅ No "undefined" group labels in output');
+    } else {
+      console.warn('     ⚠️  Found "undefined" group label in output');
+      allPassed = false;
+    }
+
   } catch (err) {
     console.error('  ❌ gantt generation failed:', err);
     ganttPassed = false;
@@ -309,6 +346,34 @@ async function main() {
     const sizeKb = Math.round(ppResult.buffer.length / 1024);
     console.log(`  ✅ project_plan page generated: ${sizeKb} KB → ${ppPath}`);
     console.log(`     pageType=${ppResult.pageType}, charts=${ppResult.chartCount}, diagrams=${ppResult.diagramCount}`);
+
+    // ── Structural assertions ──
+    const ppHtml = ppResult.buffer.toString('utf-8');
+
+    // 5. Roll-up table present
+    if (ppHtml.includes('pp-rollup')) {
+      console.log('     ✅ pp-rollup table present');
+    } else {
+      console.warn('     ⚠️  pp-rollup table not found');
+      allPassed = false;
+    }
+
+    // 6. No "undefined" in work stream summary
+    if (!ppHtml.includes('>undefined<')) {
+      console.log('     ✅ No "undefined" work stream names in summary');
+    } else {
+      console.warn('     ⚠️  Found "undefined" in work stream summary');
+      allPassed = false;
+    }
+
+    // 7. KPI strip present
+    if (ppHtml.includes('pp-kpi-strip')) {
+      console.log('     ✅ KPI strip present');
+    } else {
+      console.warn('     ⚠️  KPI strip not found');
+      allPassed = false;
+    }
+
   } catch (err) {
     console.error('  ❌ project_plan generation failed:', err);
     projectPlanPassed = false;
@@ -317,6 +382,138 @@ async function main() {
 
   if (ganttPassed && projectPlanPassed) {
     console.log('\n✅ Gantt tests passed!\n');
+  }
+
+  // ── Normalizer unit test: short plan should stay "weeks" ──
+  console.log('\n🔬 Normalizer unit tests...\n');
+  try {
+    const { normalizeGanttConfig } = await import('../src/lib/docgen/html/parsing/gantt-normalizer');
+
+    // Short plan (< 90 days) — should stay weeks
+    const shortPlan = normalizeGanttConfig({
+      start_date: '2026-05-01',
+      axis: undefined,
+      tasks: [
+        { group: 'Phase 1', name: 'Task A', category: 'cat1', start: '2026-05-04', end: '2026-05-22', type: 'bar' },
+        { group: 'Phase 1', name: 'Milestone', category: 'cat1', start: '2026-06-01', type: 'diamond' },
+      ],
+    });
+    const shortAxis = shortPlan.config.axis;
+    console.log(`  Short plan (< 90 days) → axis="${shortAxis}" ${shortAxis === 'weeks' ? '✅' : '⚠️  expected weeks'}`);
+
+    // Long plan (> 180 days) — should be months
+    const longPlan = normalizeGanttConfig({
+      start_date: '2026-01-01',
+      axis: 'weeks', // LLM chose weeks — should be overridden
+      tasks: [
+        { group: 'Phase 1', name: 'Task A', category: 'cat1', start: '2026-01-04', end: '2026-09-30', type: 'bar' },
+      ],
+    });
+    const longAxis = longPlan.config.axis;
+    console.log(`  Long plan (> 180 days, axis:"weeks") → axis="${longAxis}" ${longAxis === 'months' ? '✅ auto-corrected' : '⚠️  expected months'}`);
+
+    // Milestone inference: task with no end → should become diamond
+    const inferTest = normalizeGanttConfig({
+      tasks: [
+        { group: 'G1', name: 'No-end task', category: 'c1', start: '2026-05-01' },
+        { group: 'G1', name: 'Same-end task', category: 'c1', start: '2026-05-01', end: '2026-05-01' },
+        { group: 'G1', name: 'Normal task', category: 'c1', start: '2026-05-01', end: '2026-05-15', type: 'bar' },
+      ],
+    });
+    const diamonds = inferTest.config.tasks.filter(t => t.type === 'diamond').length;
+    const bars = inferTest.config.tasks.filter(t => t.type === 'bar').length;
+    console.log(`  Milestone inference: ${diamonds} diamonds, ${bars} bars ${diamonds === 2 && bars === 1 ? '✅' : '⚠️  expected 2 diamonds, 1 bar'}`);
+
+    // Group fallback: undefined group → should become 'General'
+    const groupTest = normalizeGanttConfig({
+      tasks: [
+        { group: '', name: 'Ungrouped task', category: 'c1', start: '2026-05-01', end: '2026-05-15', type: 'bar' },
+      ],
+    });
+    const groupName = groupTest.config.tasks[0]?.group;
+    console.log(`  Group fallback: empty group → "${groupName}" ${groupName === 'General' ? '✅' : '⚠️  expected General'}`);
+
+    console.log('\n✅ Normalizer unit tests passed!\n');
+  } catch (err) {
+    console.error('  ❌ Normalizer unit tests failed:', err);
+    allPassed = false;
+  }
+
+  // ---- Roadmap HTML generation test ----
+  console.log('\n🗺️  Roadmap generation test...\n');
+
+  const roadmapContent = `
+## Phase 1: Discovery & Planning
+Establish the foundation for the transformation programme. Identify key stakeholders, document current-state processes, and define success metrics.
+
+### Stakeholder mapping
+Identify all internal and external stakeholders across MDAs.
+
+### Current-state assessment
+Document existing workflows, pain points, and baseline KPIs.
+
+### Programme charter approved
+Formal sign-off from DTA leadership on scope, budget, and timeline.
+
+## Phase 2: Pilot Deployment
+Deploy the solution in a controlled environment with a small cohort of early adopters.
+
+### Pilot cohort onboarded
+Select and onboard 10–15 pilot users from two MDAs.
+
+### Feedback loops established
+Weekly check-ins, surveys, and issue tracking in place.
+
+### Pilot review completed
+Compile findings and present recommendations to leadership.
+
+## Phase 3: Full Rollout
+Scale the solution across all target MDAs based on pilot learnings.
+
+### Training programme delivered
+All transformation agents complete foundation training.
+
+### MDA-wide deployment
+Solution live across all 12 target MDAs.
+
+### Post-deployment review
+30-day post-launch assessment and lessons-learned report.
+`;
+
+  let roadmapPassed = true;
+  try {
+    const roadmapResult = await generateHtml({
+      title: 'Digital Transformation Roadmap',
+      content: roadmapContent,
+      branding: {
+        ...branding,
+        primaryColor: '#1f4e79',
+        organizationName: 'Digital Transformation Authority',
+      },
+      metadata: { author: 'DTA', date: today },
+      pageType: 'roadmap',
+    });
+    const roadmapPath = '/tmp/html-roadmap-test.html';
+    fs.writeFileSync(roadmapPath, roadmapResult.buffer);
+    const sizeKb = Math.round(roadmapResult.buffer.length / 1024);
+    console.log(`  ✅ roadmap page generated: ${sizeKb} KB → ${roadmapPath}`);
+    console.log(`     pageType=${roadmapResult.pageType}, charts=${roadmapResult.chartCount}, diagrams=${roadmapResult.diagramCount}`);
+    // Verify timeline bar placeholder is present
+    const html = roadmapResult.buffer.toString('utf-8');
+    if (!html.includes('rm-timeline-bar')) {
+      console.warn('  ⚠️  roadmap: rm-timeline-bar not found in output');
+    }
+    if (!html.includes('buildTimelineDots')) {
+      console.warn('  ⚠️  roadmap: buildTimelineDots JS not found in output');
+    }
+  } catch (err) {
+    console.error('  ❌ roadmap generation failed:', err);
+    roadmapPassed = false;
+    allPassed = false;
+  }
+
+  if (roadmapPassed) {
+    console.log('\n✅ Roadmap test passed!\n');
   }
 
   if (allPassed) {

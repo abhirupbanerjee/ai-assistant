@@ -2,7 +2,8 @@
  * HTML Generator Tool Definition
  *
  * Generates interactive, self-contained HTML pages from chat content.
- * Supports dashboards, documentation, books, web pages, and report layouts.
+ * Supports dashboards, books, reports, web pages, roadmaps, Gantt charts,
+ * project plans, and playbooks.
  * Embeds Chart.js and Mermaid.js for charts and diagrams.
  *
  * This tool is separate from doc_gen to keep tool intent clean:
@@ -30,14 +31,12 @@ import * as path from 'path';
 
 // ============ Types ============
 
-export type HtmlGenPageType = 'auto' | 'dashboard' | 'documentation' | 'book' | 'report' | 'website' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan';
+export type HtmlGenPageType = 'auto' | 'dashboard' | 'book' | 'report' | 'website' | 'playbook' | 'roadmap' | 'gantt' | 'project_plan';
 
 function mapPageType(pageType: HtmlGenPageType): HtmlPageType | undefined {
   switch (pageType) {
     case 'dashboard':
       return 'dashboard';
-    case 'documentation':
-      return 'documentation';
     case 'book':
       return 'book';
     case 'report':
@@ -74,23 +73,128 @@ const DEFAULT_HTML_PROMPT_LINES = [
   '',
   '- auto: Use only when the user does not specify a concrete format. Prefer explicit page types for repeatable skill behavior.',
   '- dashboard: Create a Power BI-style analytical dashboard. Keep prose minimal — let the visuals tell the story. Layout has 5 zones: top title bar, KPI row, chart canvas (12-col grid), optional left filters rail, optional right data rail. Use the following fenced blocks (each must contain valid JSON). KPI tiles for the top row use ```kpi blocks (1-6 tiles recommended): {"label":"Revenue","value":"$2.4M","delta":"+12.4%","trend_direction":"positive","trend":[10,12,14,15,18,20],"tags":["region:north"]} where trend_direction is "positive"|"negative"|"neutral" and trend is an optional sparkline array. Chart panels use the standard ```chart block, optionally with "size":"hero"|"half"|"third"|"quarter" (defaults to half) and "tags":["category:sales"] for filterability. Optional filters rail uses a single ```filters block: {"title":"Filters","slicers":[{"id":"region","label":"Region","type":"multiselect","options":["North","South"],"tag_prefix":"region"}]} (slicer types: select, multiselect, search, daterange). Optional right data rail uses a single ```data block: {"title":"Details","items":[{"label":"Total Records","value":"1,284","note":"as of today"}],"table":{"headers":["Metric","Value"],"rows":[["Avg","42"]]}}. Tag conventions: tag_prefix on a slicer matches data-tags entries on charts/KPIs (intra-group OR, inter-group AND). Side rails are optional — only emit them when the user data benefits from filtering or detail views. Prefer Chart.js for quantitative visuals; use Mermaid for process/system visuals when charts are not suitable.',
-  '- documentation: Create a polished HTML documentation page with clear sections using # ## ### headings. TOC sidebar + search are generated automatically.',
-  '- book: Create an HTML ebook-style page with title and metadata (country/entity/company where available), and chapter-style headings so sidebar navigation is useful. Include language options in content: English, French, Spanish, Portuguese, Mandarin, Hindi.',
-  '- report: Create a formal HTML report structure (executive summary, findings, recommendations). Include charts/diagrams/tables where they improve clarity.',
+  '- book: Create a structured HTML ebook with a cover page and numbered chapters. You MUST emit a single ```book fenced block containing valid JSON (schema below). The cover page is auto-generated from frontMatter. Each chapter has a title and sections with headings and markdown content.',
+  '- report: Create a formal HTML report with a cover page, executive summary, and typed sections. You MUST emit a single ```report fenced block containing valid JSON (schema below). Section types control visual treatment: findings (blue), recommendations (green), analysis (purple), methodology (gray), background (amber).',
   '- website: Create a comprehensive front-end webpage mockup with header, hero, sections, and footer. Keep backend/API routes as stubs only.',
   '- playbook: Create an interactive government/organizational HTML playbook page. IMPORTANT heading contract: the tool title parameter is the page title; do not repeat the page title as content. In the content argument, use markdown heading syntax only for playbook structure: ## for each category/part/card, ### for each question/step/topic/accordion row inside a card, and #### only for lower-level details inside a topic. Do not use raw <h2>, <h3>, or <h4> HTML tags for playbook structure. Never put all content under a single ## Overview unless the user explicitly asks for a one-card overview. Avoid hard-coding phases or predefined sections unless the source content or user request explicitly includes them. Derive accent colors from branding.primaryColor or country/organization identity. Search bar in hero is mandatory.',
-  '- roadmap: Create a visual HTML roadmap page with a horizontal timeline bar showing progression across phases. Use ## for each phase heading, ### for milestones within a phase. Include milestone markers, phase cards with descriptions, and a visual timeline bar at the top. Use accent colors from branding.primaryColor or derive from context.',
+  '- roadmap: Create a Sun Ray Diagram — a visual strategic roadmap showing progression from Current State to Future State. You MUST emit a single ```roadmap fenced block containing valid JSON (schema below). Concentric arc bands (inner=current, outer=future) are divided by diagonal ray lines into segments representing strategic pillars.',
   '- gantt: Create an interactive Gantt chart with category filtering, legend, hover tooltips, and a today marker. You MUST emit a single ```gantt fenced block containing valid JSON (schema below). Do NOT use markdown headings or prose for the Gantt data — all task data goes inside the JSON block. Use today\'s actual date (you know the current date) as the reference for start_date and task dates.',
-  '- project_plan: Same as gantt but also renders a KPI summary strip (total tasks, milestones, work streams, categories, timeline span) and a roll-up table grouped by work stream. Use the same ```gantt JSON block format.',
+  '- project_plan: Same as gantt but also renders a KPI summary strip (total tasks, milestones, work streams, categories, timeline span) and a roll-up table grouped by work stream showing numeric counts. Use the same ```gantt JSON block format.',
   '',
-  'Gantt JSON block schema (use for both gantt and project_plan page types):',
+  '═══ BOOK JSON block schema (use for book page type): ═══',
+  '```book',
+  '{',
+  '  "frontMatter": {',
+  '    "author": "Jane Doe",',
+  '    "subtitle": "A comprehensive guide",',
+  '    "publisher": "Acme Corp",',
+  '    "edition": "1st Edition",',
+  '    "abstract": "This book covers..."',
+  '  },',
+  '  "chapters": [',
+  '    {',
+  '      "title": "Getting Started",',
+  '      "sections": [',
+  '        { "heading": "Introduction", "content": "markdown content here..." },',
+  '        { "heading": "Key Concepts", "content": "markdown content here..." }',
+  '      ]',
+  '    },',
+  '    {',
+  '      "title": "Advanced Topics",',
+  '      "sections": [',
+  '        { "heading": "Deep Dive", "content": "markdown content here..." }',
+  '      ]',
+  '    }',
+  '  ]',
+  '}',
+  '```',
+  '',
+  'Book JSON field reference:',
+  '- frontMatter: optional cover page metadata (author, subtitle, publisher, edition, abstract).',
+  '- chapters: REQUIRED array of chapters. Each chapter has a title and optional sections array.',
+  '- sections[].heading: section heading shown as h3.',
+  '- sections[].content: markdown string (supports bold, italic, lists, tables, code blocks).',
+  '',
+  '═══ REPORT JSON block schema (use for report page type): ═══',
+  '```report',
+  '{',
+  '  "metadata": {',
+  '    "preparedFor": "Board of Directors",',
+  '    "preparedBy": "Strategy Team",',
+  '    "date": "May 2026",',
+  '    "classification": "Internal",',
+  '    "version": "1.0"',
+  '  },',
+  '  "executiveSummary": "markdown summary of key findings and recommendations...",',
+  '  "sections": [',
+  '    {',
+  '      "heading": "Market Analysis",',
+  '      "type": "findings",',
+  '      "content": "markdown content..."',
+  '    },',
+  '    {',
+  '      "heading": "Strategic Recommendations",',
+  '      "type": "recommendations",',
+  '      "content": "markdown content..."',
+  '    }',
+  '  ],',
+  '  "appendices": [',
+  '    { "title": "Data Sources", "content": "markdown content..." }',
+  '  ]',
+  '}',
+  '```',
+  '',
+  'Report JSON field reference:',
+  '- metadata: optional cover page metadata (preparedFor, preparedBy, date, classification, version).',
+  '- executiveSummary: optional markdown string shown in a highlighted card before sections.',
+  '- sections: REQUIRED array. Each section has heading, optional type, and content (markdown).',
+  '- sections[].type: "findings"|"analysis"|"recommendations"|"methodology"|"background"|"content". Controls left-border color.',
+  '- appendices: optional array of { title, content } shown after sections with A/B/C numbering.',
+  '',
+  '═══ ROADMAP JSON block schema (Sun Ray Diagram — use for roadmap page type): ═══',
+  '```roadmap',
+  '{',
+  '  "topic": "Digital Transformation",',
+  '  "subtitle": "Strategic Roadmap 2026-2030",',
+  '  "currentState": "Manual processes, siloed data, legacy systems",',
+  '  "futureState": "Fully automated, integrated platform, AI-driven insights",',
+  '  "overallProgress": 35,',
+  '  "bands": [',
+  '    { "label": "Foundation" },',
+  '    { "label": "Integration" },',
+  '    { "label": "Automation" },',
+  '    { "label": "Intelligence" },',
+  '    { "label": "Innovation" }',
+  '  ],',
+  '  "rays": [',
+  '    { "caption": "People & Culture", "description": "Team alignment and capability building", "status": "completed" },',
+  '    { "caption": "Technology", "description": "Platform modernization and cloud migration", "status": "in-progress" },',
+  '    { "caption": "Process", "description": "Workflow automation and optimization", "status": "planned" },',
+  '    { "caption": "Data & Analytics", "description": "Unified data platform and AI insights", "status": "planned" }',
+  '  ]',
+  '}',
+  '```',
+  '',
+  'Roadmap JSON field reference:',
+  '- topic: REQUIRED. Central label shown at the origin of the sun ray diagram.',
+  '- subtitle: optional subtitle shown in the header.',
+  '- currentState: description of where the organization is today (shown at arc start).',
+  '- futureState: description of the target end state (shown at arc end).',
+  '- overallProgress: optional integer 0-100 shown as a progress ring in the header.',
+  '- bands: REQUIRED array of concentric layers (inner=current, outer=future). 3-7 bands recommended.',
+  '  Each band: { "label": "string", "color"?: "#hex" }. Colors auto-generated from branding if omitted.',
+  '- rays: REQUIRED array of strategic pillars/themes (the diagonal segments). 3-6 rays recommended.',
+  '  Each ray: { "caption": "string", "description"?: "string", "status"?: "completed"|"in-progress"|"planned" }.',
+  '  Hover over any arc segment to see the ray description. Click to expand a detail card.',
+  '',
+  '═══ GANTT JSON block schema (use for both gantt and project_plan page types): ═══',
   '```gantt',
   '{',
   '  "title": "Optional chart title (can omit if page title is sufficient)",',
   '  "subtitle": "Optional subtitle or date range label",',
   '  "start_date": "2026-05-01",',
   '  "end_date": "2026-12-31",',
-  '  "axis": "weeks",',
+  '  "axis": "months",',
   '  "flag_colors": ["#CE1126", "#FCD116", "#009E60"],',
   '  "categories": [',
   '    { "id": "onboarding", "label": "Onboarding", "color": "#1f4e79" },',
@@ -98,27 +202,35 @@ const DEFAULT_HTML_PROMPT_LINES = [
   '    { "id": "champions",  "label": "Champions",  "color": "#5B2D8E" }',
   '  ],',
   '  "tasks": [',
-  '    { "group": "Phase 1", "name": "Orientation",      "sub": "Week 1: team formation", "category": "onboarding", "start": "2026-05-04", "end": "2026-05-08" },',
-  '    { "group": "Phase 1", "name": "Onboarding session","sub": "Week 3: full-day",      "category": "onboarding", "start": "2026-05-18", "end": "2026-05-22" },',
-  '    { "group": "Phase 2", "name": "BA fundamentals",  "sub": "Self-paced with check-ins","category": "training", "start": "2026-06-01", "end": "2026-06-26" },',
-  '    { "group": "Phase 2", "name": "Launch milestone", "sub": "Go-live",                "category": "champions", "start": "2026-07-01", "type": "diamond" }',
+  '    { "group": "Phase 1", "name": "Orientation",      "sub": "Week 1: team formation", "category": "onboarding", "start": "2026-05-04", "end": "2026-05-22", "type": "bar" },',
+  '    { "group": "Phase 1", "name": "Onboarding session","sub": "Week 3: full-day",      "category": "onboarding", "start": "2026-05-18", "end": "2026-05-29", "type": "bar" },',
+  '    { "group": "Phase 2", "name": "BA fundamentals",  "sub": "Self-paced with check-ins","category": "training", "start": "2026-06-01", "end": "2026-06-26", "type": "bar" },',
+  '    { "group": "Phase 2", "name": "Launch milestone", "sub": "Go-live",                "category": "champions", "start": "2026-07-01", "type": "diamond", "detail": "Full platform go-live" }',
   '  ]',
   '}',
   '```',
   '',
   'Gantt JSON field reference:',
   '- start_date / end_date: ISO date strings (YYYY-MM-DD). Use the actual current year — do NOT default to 2024 or 2025.',
-  '- axis: "weeks" (default) | "months" | "dates". Use "weeks" for multi-month plans, "months" for year+ plans, "dates" for short sprints.',
+  '- axis: REQUIRED. Choose based on total project duration:',
+  '    "weeks"  → project span ≤ 3 months (≤ ~90 days). Produces weekly columns.',
+  '    "months" → project span 3–18 months. Produces monthly columns. USE THIS for most multi-month plans.',
+  '    "dates"  → project span ≤ 2 weeks. Produces daily columns for short sprints only.',
+  '  The renderer will auto-correct "weeks" to "months" if the span exceeds 6 months, but you should choose correctly upfront.',
   '- flag_colors: optional 3-color array for a decorative flag strip at the top (e.g. national flag colors). Omit if not relevant.',
   '- categories: array of { id, label, color? }. Define one category per work stream or role type. Colors are optional — branding.primaryColor is used as fallback.',
-  '- tasks[].group: section/phase heading that groups rows visually.',
-  '- tasks[].name: task label shown in the left column.',
+  '- tasks[].group: REQUIRED. Section/phase heading that groups rows visually. Must never be empty or null.',
+  '- tasks[].name: REQUIRED. Task label shown in the left column.',
   '- tasks[].sub: optional subtitle shown below the name.',
-  '- tasks[].category: must match a category id.',
-  '- tasks[].start / end: ISO date, or week token "W1"–"Wn" (relative to start_date), or month token "M1"–"Mn".',
-  '- tasks[].type: "bar" (default) | "diamond" (milestone — no end date needed).',
+  '- tasks[].category: REQUIRED. Must match a category id.',
+  '- tasks[].start: REQUIRED. ISO date (YYYY-MM-DD), week token "W1"–"Wn", or month token "M1"–"Mn".',
+  '- tasks[].end: ISO date, week token, or month token. OMIT for milestones (type: "diamond"). Required for type: "bar".',
+  '- tasks[].type: REQUIRED. "bar" for duration tasks | "diamond" for point-in-time milestones.',
+  '    IMPORTANT: Every milestone MUST have type: "diamond" and NO end field.',
+  '    IMPORTANT: Every regular task MUST have type: "bar" and a valid end field.',
+  '    Do NOT mix — a task without an end date will be auto-converted to a diamond.',
   '- tasks[].hatched: true for a hatched/striped bar (optional, indicates uncertainty or overlap).',
-  '- tasks[].detail: hover tooltip text (optional).',
+  '- tasks[].detail: hover tooltip text shown on bar/diamond hover (optional but recommended for project_plan).',
   '',
   'For charts, you MUST use a fenced ```chart block containing valid JSON. Do NOT emit raw <canvas>, <script>, or JavaScript.',
   '```chart',
@@ -148,6 +260,19 @@ const DEFAULT_HTML_PROMPT_LINES = [
 
 export const DEFAULT_HTML_PROMPT = DEFAULT_HTML_PROMPT_LINES.join('\n');
 
+/**
+ * Returns the html_gen function.description with today's date injected.
+ * Called at request time so the LLM always knows the current date.
+ */
+export function getHtmlGenDescriptionWithDate(): string {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const todayHuman = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+  const dateNote = `\n\nToday's date is ${todayHuman} (${today}). Use this as the reference when generating gantt/project_plan date ranges or any date-sensitive content.`;
+  return htmlGenTool.definition!.function.description + dateNote;
+}
+
 // ============ Config Schema ============
 
 const htmlGenConfigSchema = {
@@ -157,7 +282,7 @@ const htmlGenConfigSchema = {
       type: 'string',
       title: 'Default Page Type',
       description: 'Default page layout when not specified',
-      enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap'],
+      enum: ['auto', 'dashboard', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'],
       default: 'auto',
     },
 
@@ -229,7 +354,7 @@ const htmlGenConfigSchema = {
 function validateHtmlGenConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
-  const validPageTypes = ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'];
+  const validPageTypes = ['auto', 'dashboard', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'];
 
 
   if (config.promptTemplate !== undefined && typeof config.promptTemplate !== 'string') {
@@ -275,7 +400,7 @@ export const htmlGenTool: ToolDefinition = {
   name: 'html_gen',
   displayName: 'HTML Generator',
   description:
-    'Generate interactive, self-contained HTML pages (dashboards, documentation, books, reports, roadmaps, Gantt charts, project plans, web pages, playbooks) with Chart.js charts, Mermaid diagrams, TOC sidebar, and search.',
+    'Generate interactive, self-contained HTML pages (dashboards, books, reports, roadmaps, Gantt charts, project plans, websites, playbooks) with Chart.js charts, Mermaid diagrams, TOC sidebar, and search.',
 
   category: 'autonomous',
 
@@ -284,7 +409,7 @@ export const htmlGenTool: ToolDefinition = {
     function: {
       name: 'html_gen',
       description: [
-        'Generate an interactive HTML page from content. Use this tool when the user explicitly asks to create, export, download, or save an HTML web page, HTML dashboard, HTML documentation site, HTML book, HTML report, HTML roadmap, or any interactive HTML artifact with charts and/or diagrams.',
+        'Generate an interactive HTML page from content. Use this tool when the user explicitly asks to create, export, download, or save an HTML web page, HTML dashboard, HTML book, HTML report, HTML roadmap, or any interactive HTML artifact with charts and/or diagrams.',
         '',
         'Do NOT use for PDF, Word, or Markdown documents (use doc_gen instead).',
         'Do NOT use for regular responses - only when explicitly requested.',
@@ -293,13 +418,14 @@ export const htmlGenTool: ToolDefinition = {
         '',
         'Guidelines for content by page_type:',
         '- auto: use only when user does not explicitly choose a format; otherwise use an explicit page_type.',
-        '- dashboard: Power BI-style 5-zone layout (title bar, KPI row, chart canvas, optional left filters rail, optional right data rail). Use ```kpi blocks for top KPI tiles ({label,value,delta?,trend_direction?,trend?,tags?}), ```chart blocks for canvas panels (with optional "size":"hero|half|third|quarter" and "tags":[...] for filtering), one ```filters block for the left rail (slicers: select|multiselect|search|daterange), and one ```data block for the right rail (items + optional table). Side rails are optional — emit them only when filtering or supporting detail adds value. Keep prose minimal.',
-        '- documentation: structured HTML documentation sections via markdown headings (# ## ###); TOC and search are generated automatically.',
-        '- book: HTML ebook-style chapter hierarchy with metadata and language options (English, French, Spanish, Portuguese, Mandarin, Hindi).',
-        '- report: formal HTML report structure (executive summary, findings, recommendations), with charts/diagrams where useful.',
+        '- dashboard: Power BI-style 5-zone layout (title bar, KPI row, chart canvas, optional left filters rail, optional right data rail). Use ```kpi blocks for top KPI tiles, ```chart blocks for canvas panels, one ```filters block for the left rail, and one ```data block for the right rail. Keep prose minimal.',
+        '- book: Structured HTML ebook with cover page and numbered chapters. MUST use a ```book JSON block with frontMatter and chapters array. Each chapter has sections with heading and markdown content.',
+        '- report: Formal HTML report with cover page, executive summary, and typed sections. MUST use a ```report JSON block with metadata, executiveSummary, sections (with type: findings|recommendations|analysis|methodology|background), and optional appendices.',
         '- website: comprehensive frontend webpage mockup (header, hero, sections, footer), backend APIs as stubs only.',
-        '- playbook: interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards from ## headings, topic rows from ### headings, and optional detail headings from #### headings. The title argument is the page title; do not duplicate it in content.',
-        '- roadmap: visual HTML roadmap page with a horizontal timeline bar showing progression across phases, phase cards with descriptions, and milestone markers.',
+        '- playbook: interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards from ## headings, topic rows from ### headings. The title argument is the page title; do not duplicate it in content.',
+        '- roadmap: Sun Ray Diagram — visual strategic roadmap showing Current State → Future State. MUST use a ```roadmap JSON block with topic, bands (concentric layers), and rays (strategic pillars). Hover over segments for details, click to expand cards.',
+        '- gantt: interactive Gantt chart with category filtering, legend, hover tooltips, and today marker. MUST use a ```gantt JSON block.',
+        '- project_plan: same as gantt but adds a KPI summary strip and roll-up table grouped by work stream.',
         '',
         'IMPORTANT: All charts and diagrams MUST be inside fenced code blocks.',
         '',
@@ -333,12 +459,12 @@ export const htmlGenTool: ToolDefinition = {
           },
           content: {
             type: 'string',
-            description: 'Page content in markdown format. May include chart and mermaid fenced blocks. Include all relevant information the user wants in the page.',
+            description: 'Page content in markdown format. May include chart, mermaid, book, report, roadmap, gantt, kpi, filters, data, and playbook fenced blocks. Include all relevant information the user wants in the page.',
           },
           page_type: {
             type: 'string',
-            enum: ['auto', 'dashboard', 'documentation', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'],
-            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. documentation = structured HTML documentation with TOC+search. book = HTML ebook-style chapter layout with metadata and language options. report = formal HTML report layout with visuals where useful. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive government/organizational HTML playbook with sticky top bar, hero search bar, accordion section cards, and playbook footer. roadmap = visual HTML roadmap page with timeline bar, phase cards, and milestone markers. gantt = interactive week-resolution Gantt chart with category filtering, legend, hover tooltips, and today marker — use a ```gantt JSON block in content. project_plan = same as gantt but adds a KPI summary strip (task count, milestones, work streams) and a roll-up table grouped by work stream.',
+            enum: ['auto', 'dashboard', 'book', 'report', 'website', 'playbook', 'roadmap', 'gantt', 'project_plan'],
+            description: 'Page layout type. auto = infer from content/title. dashboard = Power BI-style analytical dashboard with chart grid. book = structured HTML ebook with cover page, numbered chapters, and TOC — use a ```book JSON block. report = formal HTML report with cover page, executive summary, and typed sections — use a ```report JSON block. website = comprehensive frontend webpage mockup with header/hero/sections/footer. playbook = interactive organizational HTML playbook with sticky top bar, hero search bar, and accordion section cards. roadmap = Sun Ray Diagram showing strategic transformation from Current State to Future State — use a ```roadmap JSON block with bands and rays. gantt = interactive Gantt chart with category filtering, legend, hover tooltips, and today marker — use a ```gantt JSON block. project_plan = same as gantt but adds a KPI summary strip and roll-up table grouped by work stream.',
           },
 
         },
