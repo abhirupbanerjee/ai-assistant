@@ -81,6 +81,7 @@ const nextConfig: NextConfig = {
     '@xenova/transformers',
     'onnxruntime-node',
     'pdfkit',
+    'playwright',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {
@@ -91,8 +92,14 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: maxUploadSize,
   },
   // Include PDFKit font files in standalone output (required for PDF generation)
+  // Include vendor bundles for self-contained HTML generation (Chart.js, Mermaid, datalabels plugin)
   outputFileTracingIncludes: {
-    '/api/**': ['./node_modules/pdfkit/js/data/**/*'],
+    '/api/**': [
+      './node_modules/pdfkit/js/data/**/*',
+      './node_modules/chart.js/dist/chart.umd.min.js',
+      './node_modules/chartjs-plugin-datalabels/dist/chartjs-plugin-datalabels.min.js',
+      './node_modules/mermaid/dist/mermaid.min.js',
+    ],
   },
   // Exclude data directory from build (contains Redis files with restricted permissions)
   outputFileTracingExcludes: {

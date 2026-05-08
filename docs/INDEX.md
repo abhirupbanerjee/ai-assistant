@@ -54,6 +54,7 @@ Detailed guides for specific features and capabilities.
 | Document | Description | Key Topics |
 |----------|-------------|------------|
 | [features/Tools.md](features/Tools.md) | Tools system documentation | Web search, document generation, HTML pages, DOCX/PDF to HTML, data sources, charts, task planning, YouTube, thread sharing, email |
+| [tech/html-rendering.md](tech/html-rendering.md) | Server-side HTML chart & diagram rendering | Playwright/Chromium server-side rendering, Chart.js PNG output, Mermaid SVG output, client-side fallback, Docker setup |
 
 ### Progressive Web App
 
@@ -306,6 +307,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.4** | May 2026 | **Server-side HTML rendering** — Playwright/Chromium renders Chart.js charts to PNG and Mermaid diagrams to inline SVG at generation time. `chartjs-plugin-datalabels` added for value annotations. Generated HTML is fully self-contained with graceful client-side fallback. `html-builder.ts` refactored from 3,386-line monolith into 33-module `src/lib/docgen/html/` directory. |
 | **3.3** | April 2026 | **Two-Route LLM Architecture** — Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled. Route-aware model filtering, admin UI gating (view-only for disabled routes), model conflict warnings, cross-route fallback chain, model readiness gating on chat submit. |
 | **3.2** | March 2026 | **Anthropic Direct SDK** — Claude chat + tool calling bypasses LiteLLM via `@anthropic-ai/sdk` for reliable tool call JSON. LiteLLM cache fix (`clearLiteLLMCache()` after model sync). Stream reset SSE event for clean model fallback. |
 | **3.1** | March 2026 | Agent Bots (programmatic API), Fireworks AI + DeepSeek + Anthropic providers, Thinking Models (`<think>` processing), 8+ new tools (SonarCloud, PageSpeed, SSL/DNS/Cookie/Redirect scan, k6 load test, security scan, dependency analysis), Next.js 16, configurable tool call limits |
@@ -355,4 +357,4 @@ When updating documentation:
 
 ---
 
-*Last updated: April 2026 (v3.3)*
+*Last updated: May 2026 (v3.4)*

@@ -22,6 +22,7 @@ RUN mkdir -p public
 # Next standalone tracing does not include these dynamic fs reads from node_modules.
 RUN mkdir -p public/vendor && \
     cp node_modules/chart.js/dist/chart.umd.min.js public/vendor/chart.umd.min.js && \
+    cp node_modules/chartjs-plugin-datalabels/dist/chartjs-plugin-datalabels.min.js public/vendor/chartjs-plugin-datalabels.min.js && \
     cp node_modules/mermaid/dist/mermaid.min.js public/vendor/mermaid.min.js && \
     echo "=== HTML vendor bundle sizes ===" && \
     ls -lh public/vendor/
@@ -39,7 +40,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV APP_ROOT=/app
 
-# Install gosu for dropping privileges and k6 CLI for load testing
+# Install gosu for dropping privileges, k6 CLI for load testing,
+# and Playwright Chromium for server-side chart/diagram rendering
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gosu gnupg2 curl ca-certificates && \
     mkdir -p /root/.gnupg && chmod 700 /root/.gnupg && \
@@ -50,6 +52,14 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends k6 && \
     apt-get purge -y --auto-remove curl && \
     rm -rf /var/lib/apt/lists/* /root/.gnupg
+
+# Install Playwright Chromium for server-side HTML chart/diagram rendering
+# This adds ~200MB to the image but eliminates client-side JS dependencies in generated HTML
+COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
+RUN npx playwright install chromium --with-deps && \
+    rm -rf /root/.cache/ms-playwright/.registry-* 2>/dev/null; \
+    echo "=== Playwright Chromium installed ===" && \
+    ls -la /root/.cache/ms-playwright/ 2>/dev/null || echo "Playwright cache location may differ"
 
 # Create non-root user
 RUN groupadd --system --gid 1001 nodejs

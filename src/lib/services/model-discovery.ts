@@ -63,20 +63,13 @@ const TOOL_CAPABLE_PATTERNS = [
 // Models known to support vision/images
 const VISION_CAPABLE_PATTERNS = [
   // OpenAI
-  /^gpt-4o/,
-  /^gpt-4-turbo/,
   /^gpt-4\.1/,
   /^gpt-5/,  // GPT-5 family supports vision
-  /^o1/,
-  /^o3/,
-  /^o4/,  // Future-proofing
   // Gemini
   /^gemini-2/,
-  /^gemini-1\.5/,
-  // Mistral
-  /^pixtral/,
+  /^gemini-3/,
   /^mistral-large/,  // Mistral Large 3+ supports vision
-  /^mistral-small-3/,
+  /^mistral-small/,
   // Anthropic Claude (all Claude 3+ models support vision)
   /^claude/,
   // Note: DeepSeek does NOT support vision
@@ -135,11 +128,6 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5.4': 1000000,
   'gpt-5-mini': 1000000,
   'gpt-5-nano': 1000000,
-  'gpt-4o': 128000,
-  'gpt-4o-mini': 128000,
-  'gpt-4-turbo': 128000,
-  'gpt-4': 8192,
-  'gpt-3.5-turbo': 16385,
   // OpenAI - o-series
   'o1': 200000,
   'o1-preview': 128000,
@@ -153,37 +141,31 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gemini-pro-latest': 1049000,
   'gemini-flash-latest': 1049000,
   'gemini-flash-lite-latest': 1049000,
-  'gemini-1.5-pro': 1000000,
-  'gemini-1.5-flash': 1000000,
+
   // Mistral
   'mistral-large-latest': 256000,
   'mistral-small-latest': 32000,
   // Anthropic Claude
+  'claude-sonnet-4-7': 1000000,
   'claude-sonnet-4-6': 1000000,
   'claude-opus-4-6': 1000000,
   'claude-sonnet-4-5': 1000000,
   'claude-haiku-4-5': 1000000,
   'claude-opus-4-5': 1000000,
-  'claude-3-opus': 200000,
-  'claude-3-sonnet': 200000,
-  'claude-3-haiku': 200000,
-  'claude-3-5-sonnet': 200000,
   // DeepSeek V4 (native API)
   'deepseek-v4-flash': 1048576,
   'deepseek-v4-pro': 1048576,
-  // DeepSeek (use actual API model IDs)
-  'deepseek-reasoner': 64000,
-  'deepseek-chat': 128000,
+
 };
 
 // Provider-specific default output token limits
 const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
-  deepseek: 8000,
+  deepseek: 16000,
   ollama: 2000,
   openai: 16000,
-  anthropic: 16000,
+  anthropic: 32000,
   gemini: 16000,
-  mistral: 16000,
+  mistral: 8000,
 };
 
 /**
@@ -254,13 +236,9 @@ function getContextWindow(modelId: string): number | null {
   const familyPatterns: [RegExp, number][] = [
     [/^gpt-5/, 1000000],
     [/^gpt-4\.1/, 1000000],
-    [/^gpt-4o/, 128000],
     [/^gpt-4-turbo/, 128000],
     [/^gpt-4/, 8192],
-    [/^gpt-3\.5/, 16385],
-    [/^o[134]-/, 200000],
     [/^gemini-2\.5/, 1000000],
-    [/^gemini-1\.5/, 1000000],
     [/^gemini-2/, 1000000],
     [/^mistral-large/, 256000],
     [/^mistral-small/, 32000],
