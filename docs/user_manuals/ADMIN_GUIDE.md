@@ -158,7 +158,7 @@ Widgets showing recent system activity:
 | **RAG Tuning** | Interactive RAG parameter testing |
 | **RAG Testing** | Built-in retrieval test suite with result scoring |
 | **Reranker** | Enable/configure BGE, Cohere, or local reranking with priority fallback |
-| **Memory** | User memory extraction settings |
+| **Memory** | User memory extraction, semantic retrieval, and temporal filtering |
 | **Summarization** | Thread summarization settings |
 | **Limits** | Conversation history, upload limits |
 | **Agent** | Autonomous agent budget, quality threshold, timeout settings |
@@ -1676,6 +1676,44 @@ The system automatically determines image handling based on model and OCR config
 | **Similarity Threshold** | Minimum relevance score |
 | **Reranker** | Enable/disable reranking |
 | **Reranker Providers** | Priority-ordered list (BGE Large, Cohere, BGE Base, Local) |
+
+### Memory Settings
+
+The **Memory** section under Settings controls how Policy Bot extracts, stores, and retrieves user-specific facts across conversations. Memory enables the AI to personalize responses based on past interactions.
+
+#### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enable Memory** | Off | Master toggle for the user memory system. When enabled, facts about users are extracted from conversations and stored for future reference. |
+| **Extraction Threshold** | 5 | Minimum number of messages in a thread before fact extraction is triggered. Higher values reduce extraction frequency. |
+| **Max Facts Per Category** | 20 | Maximum number of facts stored per user per category. Older facts are replaced when this limit is reached. |
+| **Max Facts Per Query** | 10 | Maximum number of facts returned by semantic retrieval when a user sends a message. Controls how many relevant memories are injected into the AI's context. |
+| **Auto-Extract on Thread End** | On | When enabled, facts are automatically extracted when a conversation thread ends. |
+| **Extraction Max Tokens** | 1000 | Token budget for the LLM call that extracts facts from conversation history. |
+| **Fact Max Age (Days)** | 0 (no limit) | Maximum age in days for facts to be included in context. Facts older than this threshold are filtered out. Set to 0 to disable temporal filtering. |
+
+#### How It Works
+
+1. **Fact Extraction**: After N messages (defined by Extraction Threshold), the system analyzes the conversation using an LLM to identify key facts about the user (e.g., "User prefers PDF format", "User works in HR department").
+2. **Storage**: Facts are stored in the `user_memories` database table, organized by user and category, with timestamps for temporal tracking.
+3. **Semantic Retrieval**: When a user sends a message, the system embeds the query and searches for semantically relevant facts in the Qdrant vector store. This returns only the most relevant facts (up to `Max Facts Per Query`) rather than all stored facts.
+4. **Fallback**: If Qdrant is unavailable, the system falls back to a SQLite full-scan with temporal filtering applied.
+5. **Temporal Filtering**: When `Fact Max Age (Days)` is set to a value greater than 0, facts older than the specified number of days are excluded from the AI's context, ensuring the AI only uses recent, relevant information.
+6. **Context Injection**: Retrieved facts are formatted and injected into the system prompt, allowing the AI to personalize responses based on remembered user preferences and history.
+
+#### API Endpoints
+
+- `GET /api/user/memory` — View extracted memories for the current user
+- `DELETE /api/user/memory` — Clear all memories for the current user
+- `GET /api/admin/memory/stats` — View memory extraction statistics (admin only)
+
+#### Best Practices
+
+- **Start with defaults**: The default settings work well for most deployments. Adjust gradually based on observed behavior.
+- **Semantic retrieval vs. full scan**: Semantic retrieval via Qdrant provides more relevant results than the SQLite fallback. Ensure Qdrant is running for best results.
+- **Temporal filtering**: For deployments where user preferences change frequently (e.g., quarterly policy updates), set `Fact Max Age (Days)` to 90 or 180 to keep memories current.
+- **Extraction threshold**: Lower values (3-5) work well for chat-heavy use cases. Higher values (10+) reduce LLM costs for document-focused deployments.
 
 ### Security Settings
 

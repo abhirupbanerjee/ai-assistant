@@ -33,7 +33,10 @@ export async function GET() {
       settings: {
         extractionThreshold: settings.extractionThreshold,
         maxFactsPerCategory: settings.maxFactsPerCategory,
+        maxFactsPerQuery: settings.maxFactsPerQuery,
         autoExtractOnThreadEnd: settings.autoExtractOnThreadEnd,
+        extractionMaxTokens: settings.extractionMaxTokens,
+        factMaxAgeDays: settings.factMaxAgeDays,
       },
       stats,
     });

@@ -221,7 +221,7 @@ export async function GET() {
         branding: await getBrandingSettings(),
         embedding: { model: 'text-embedding-3-large', dimensions: 3072 },
         reranker: { enabled: false, provider: 'cohere', topKForReranking: 50, minRerankerScore: 0.3, cacheTTLSeconds: 3600 },
-        memory: { enabled: false, extractionThreshold: 5, maxFactsPerCategory: 20, autoExtractOnThreadEnd: true },
+        memory: { enabled: false, extractionThreshold: 5, maxFactsPerCategory: 20, maxFactsPerQuery: 10, autoExtractOnThreadEnd: true, extractionMaxTokens: 1000, factMaxAgeDays: 0 },
         summarization: { enabled: false, tokenThreshold: 100000, keepRecentMessages: 10, summaryMaxTokens: 2000, archiveOriginalMessages: true },
         ocr: DEFAULT_OCR_SETTINGS,
       },
@@ -889,8 +889,10 @@ export async function PUT(request: NextRequest) {
           enabled,
           extractionThreshold,
           maxFactsPerCategory,
+          maxFactsPerQuery,
           autoExtractOnThreadEnd,
           extractionMaxTokens,
+          factMaxAgeDays,
         } = settings;
 
         // Validate enabled flag
@@ -917,6 +919,14 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate maxFactsPerQuery
+        if (typeof maxFactsPerQuery !== 'number' || maxFactsPerQuery < 1 || maxFactsPerQuery > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max facts per query must be between 1 and 50', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
         // Validate autoExtractOnThreadEnd
         if (typeof autoExtractOnThreadEnd !== 'boolean') {
           return NextResponse.json<ApiError>(
@@ -933,12 +943,22 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate factMaxAgeDays
+        if (typeof factMaxAgeDays !== 'number' || factMaxAgeDays < 0 || factMaxAgeDays > 365) {
+          return NextResponse.json<ApiError>(
+            { error: 'Fact max age days must be between 0 and 365', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
         result = await setMemorySettings({
           enabled,
           extractionThreshold,
           maxFactsPerCategory,
+          maxFactsPerQuery,
           autoExtractOnThreadEnd,
           extractionMaxTokens,
+          factMaxAgeDays,
         }, user.email);
         break;
       }

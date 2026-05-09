@@ -10,14 +10,27 @@ import { getDb } from './db/kysely';
 import { getMemorySettings } from './db/compat/config';
 import { getLlmSettings } from './db/compat/config';
 import { createInternalCompletion } from './llm-client';
+import { createEmbedding } from './openai';
+import { qdrantStore } from './vector-store/qdrant';
+import type { ChunkMetadata } from '@/types';
 
 // ============ Types ============
+
+/**
+ * A single memory fact with a timestamp for temporal filtering.
+ * Backward compatible: old facts stored as plain strings are treated
+ * as having no timestamp (always included).
+ */
+export interface FactEntry {
+  text: string;
+  timestamp?: string;  // ISO date string, undefined for legacy facts
+}
 
 export interface UserMemory {
   id: number;
   userId: number;
   categoryId: number | null;
-  facts: string[];
+  facts: FactEntry[];
   createdAt: string;
   updatedAt: string;
 }
@@ -63,14 +76,61 @@ IMPORTANT: Return ONLY a valid JSON array of strings, nothing else. Example:
 
 If no new facts worth remembering, return an empty array: []`;
 
+// ============ Vector Store ============
+
+/** Qdrant collection name for user memory facts */
+const USER_MEMORY_COLLECTION = 'user_memories';
+
 // ============ Helper ============
+
+/**
+ * Parse facts_json with backward compatibility.
+ * Old format: string[] (plain strings)
+ * New format: FactEntry[] (objects with text + timestamp)
+ */
+function parseFacts(factsJson: string): FactEntry[] {
+  const parsed = JSON.parse(factsJson);
+  if (!Array.isArray(parsed)) return [];
+
+  // Check if it's the old format (plain strings) or new format (FactEntry objects)
+  if (parsed.length > 0 && typeof parsed[0] === 'string') {
+    // Old format: convert to FactEntry[] with no timestamp
+    return (parsed as string[]).map(text => ({ text }));
+  }
+
+  // New format: already FactEntry[]
+  return parsed as FactEntry[];
+}
+
+/**
+ * Extract just the text from FactEntry[] for operations that need plain strings.
+ */
+function factTexts(facts: FactEntry[]): string[] {
+  return facts.map(f => f.text);
+}
+
+/**
+ * Filter facts by max age, keeping facts within the specified number of days.
+ * Facts without a timestamp (legacy) are always included.
+ */
+function filterFactsByAge(facts: FactEntry[], maxAgeDays: number): FactEntry[] {
+  if (maxAgeDays <= 0) return facts; // 0 or negative means no filtering
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - maxAgeDays);
+
+  return facts.filter(f => {
+    if (!f.timestamp) return true; // Legacy facts always included
+    return new Date(f.timestamp) >= cutoff;
+  });
+}
 
 function toUserMemory(row: DbUserMemory): UserMemory {
   return {
     id: row.id,
     userId: row.user_id,
     categoryId: row.category_id,
-    facts: JSON.parse(row.facts_json) as string[],
+    facts: parseFacts(row.facts_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -151,7 +211,66 @@ export async function updateMemory(userId: number, categoryId: number | null, fa
       .execute();
   }
 
-  return (await getMemoryForUser(userId, categoryId))!;
+  const result = (await getMemoryForUser(userId, categoryId))!;
+
+  // Sync to vector store for semantic retrieval (non-blocking)
+  syncMemoryToVectorStore(userId, categoryId, facts).catch(() => {});
+
+  return result;
+}
+
+/**
+ * Sync user memory facts to vector store for semantic retrieval.
+ *
+ * Embeds each fact and stores it in the user_memories Qdrant collection.
+ * Called automatically after updateMemory().
+ */
+export async function syncMemoryToVectorStore(userId: number, categoryId: number | null, facts: string[]): Promise<void> {
+  if (facts.length === 0) return;
+
+  try {
+    // Check if Qdrant is healthy
+    const healthy = await qdrantStore.healthCheck();
+    if (!healthy) {
+      console.warn('[Memory] Qdrant not available, skipping vector sync');
+      return;
+    }
+
+    // Create embeddings for all facts
+    const embeddings = await Promise.all(
+      facts.map(fact => createEmbedding(fact))
+    );
+
+    // Build document IDs: user_<userId>_cat_<categoryId>_<index>
+    const ids = facts.map((_, i) => `user_${userId}_cat_${categoryId ?? 'global'}_${i}`);
+
+    // Build metadata for each fact
+    // Use a partial metadata shape compatible with ChunkMetadata
+    const metadatas: ChunkMetadata[] = facts.map((fact, i) => ({
+      documentId: ids[i],
+      documentName: `User Memory - User ${userId}`,
+      pageNumber: 0,
+      chunkIndex: i,
+      source: 'user' as const,
+      userId: String(userId),
+      categoryId: categoryId !== null ? String(categoryId) : undefined,
+    }));
+
+    // Delete existing memory vectors for this user+category first
+    const deleteFilter: Record<string, unknown> = { userId };
+    if (categoryId !== null) {
+      deleteFilter.categoryId = String(categoryId);
+    }
+    await qdrantStore.deleteDocumentsByFilter(USER_MEMORY_COLLECTION, deleteFilter);
+
+    // Add new vectors
+    await qdrantStore.addDocuments(USER_MEMORY_COLLECTION, ids, embeddings, facts, metadatas);
+
+    console.log(`[Memory] Synced ${facts.length} facts to vector store for user ${userId}, category ${categoryId}`);
+  } catch (error) {
+    // Non-blocking: log warning but don't fail the memory update
+    console.warn('[Memory] Failed to sync facts to vector store:', error);
+  }
 }
 
 /**
@@ -177,6 +296,21 @@ export async function clearMemory(userId: number, categoryId?: number | null): P
 
     await deleteQuery.execute();
   }
+
+  // Also clean up Qdrant vectors (non-blocking)
+  try {
+    const healthy = await qdrantStore.healthCheck();
+    if (healthy) {
+      const deleteFilter: Record<string, unknown> = { userId };
+      if (categoryId !== undefined && categoryId !== null) {
+        deleteFilter.categoryId = String(categoryId);
+      }
+      await qdrantStore.deleteDocumentsByFilter(USER_MEMORY_COLLECTION, deleteFilter);
+      console.log(`[Memory] Cleaned up Qdrant vectors for user ${userId}, category ${categoryId}`);
+    }
+  } catch (error) {
+    console.warn('[Memory] Failed to clean up Qdrant vectors:', error);
+  }
 }
 
 /**
@@ -197,7 +331,7 @@ export async function getMemoryStats(): Promise<MemoryStats> {
     .execute();
   const totalFacts = totalFactsRows.reduce((sum, row) => {
     try {
-      const facts = JSON.parse(row.facts_json) as string[];
+      const facts = parseFacts(row.facts_json);
       return sum + facts.length;
     } catch {
       return sum;
@@ -317,30 +451,105 @@ export async function extractFacts(
 }
 
 /**
- * Format memory facts for injection into system prompt
+ * Format memory facts for injection into system prompt.
+ *
+ * Accepts FactEntry[] and applies temporal filtering based on settings.
+ * Falls back to plain string[] for backward compatibility.
  */
-export function formatMemoryForPrompt(facts: string[]): string {
+export function formatMemoryForPrompt(facts: string[] | FactEntry[]): string {
+  // Normalize to string[] for display
+  let displayFacts: string[];
+
   if (facts.length === 0) return '';
+
+  if (typeof facts[0] === 'string') {
+    displayFacts = facts as string[];
+  } else {
+    displayFacts = (facts as FactEntry[]).map(f => f.text);
+  }
+
+  if (displayFacts.length === 0) return '';
 
   return `
 ## User Context (Memory)
 The following facts are known about this user from previous conversations:
-${facts.map((fact) => `- ${fact}`).join('\n')}
+${displayFacts.map((fact) => `- ${fact}`).join('\n')}
 
 Use this context to provide more personalized and relevant responses.
 `;
 }
 
 /**
- * Get memory context for a user (combines global and category-specific)
+ * Get memory context for a user (combines global and category-specific).
+ *
+ * When a query string is provided, uses semantic search against the vector store
+ * to retrieve only the most relevant facts. Falls back to SQLite full-scan if
+ * the vector store is unavailable.
  */
-export async function getMemoryContext(userId: number, categoryIds: number[] = []): Promise<string> {
+export async function getMemoryContext(
+  userId: number,
+  categoryIds: number[] = [],
+  query?: string
+): Promise<string> {
   const settings = await getMemorySettings();
   if (!settings.enabled) {
     return '';
   }
 
-  const allFacts: string[] = [];
+  // If a query is provided, try semantic retrieval from vector store
+  if (query && query.trim()) {
+    try {
+      const healthy = await qdrantStore.healthCheck();
+      if (healthy) {
+        // Embed the query
+        const queryEmbedding = await createEmbedding(query.trim());
+
+        // Query the user_memories collection for relevant facts
+        const result = await qdrantStore.query(
+          USER_MEMORY_COLLECTION,
+          queryEmbedding,
+          settings.maxFactsPerQuery ?? 10,
+          { userId }
+        );
+
+        if (result.documents.length > 0) {
+          console.log(`[Memory] Semantic retrieval returned ${result.documents.length} relevant facts for user ${userId}`);
+
+          // Apply temporal filtering to semantic results if factMaxAgeDays is set
+          if (settings.factMaxAgeDays > 0 && result.metadatas.length > 0) {
+            const filteredDocs: string[] = [];
+            for (let i = 0; i < result.documents.length; i++) {
+              const metadata = result.metadatas[i] as unknown as Record<string, unknown> | undefined;
+              const timestamp = metadata?.timestamp as string | undefined;
+              if (!timestamp) {
+                // Legacy facts without timestamp always included
+                filteredDocs.push(result.documents[i]);
+              } else {
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - settings.factMaxAgeDays);
+                if (new Date(timestamp) >= cutoff) {
+                  filteredDocs.push(result.documents[i]);
+                }
+              }
+            }
+            if (filteredDocs.length > 0) {
+              return formatMemoryForPrompt(filteredDocs);
+            }
+            // If all results filtered out, fall through to SQLite fallback
+            console.log(`[Memory] All ${result.documents.length} semantic results filtered by age, falling back to SQLite`);
+          } else {
+            return formatMemoryForPrompt(result.documents);
+          }
+        }
+      }
+    } catch (error) {
+      // Fall through to SQLite fallback
+      console.warn('[Memory] Semantic retrieval failed, falling back to SQLite:', error);
+    }
+  }
+
+  // Fallback: SQLite full-scan (original behavior)
+  const allFacts: FactEntry[] = [];
 
   // Get global memory (category_id = null)
   const globalMemory = await getMemoryForUser(userId, null);
@@ -356,14 +565,27 @@ export async function getMemoryContext(userId: number, categoryIds: number[] = [
     }
   }
 
-  // Remove duplicates
-  const uniqueFacts = [...new Set(allFacts)];
+  // Apply temporal filtering
+  const filteredFacts = filterFactsByAge(allFacts, settings.factMaxAgeDays);
+
+  // Remove duplicates by text
+  const seen = new Set<string>();
+  const uniqueFacts: FactEntry[] = [];
+  for (const fact of filteredFacts) {
+    if (!seen.has(fact.text)) {
+      seen.add(fact.text);
+      uniqueFacts.push(fact);
+    }
+  }
 
   return formatMemoryForPrompt(uniqueFacts);
 }
 
 /**
  * Process a conversation and update memory if needed
+ *
+ * Converts extracted string[] facts to FactEntry[] with timestamps
+ * for temporal tracking before persisting.
  */
 export async function processConversationForMemory(
   userId: number,
@@ -379,16 +601,34 @@ export async function processConversationForMemory(
   const existingMemory = await getMemoryForUser(userId, categoryId);
   const existingFacts = existingMemory?.facts || [];
 
-  // Extract new facts
-  const newFacts = await extractFacts(
+  // Extract new facts (extractFacts works with string[])
+  const existingTexts = factTexts(existingFacts);
+  const newTexts = await extractFacts(
     messages,
-    existingFacts,
+    existingTexts,
     settings.maxFactsPerCategory
   );
 
-  // Update memory if facts changed
-  if (JSON.stringify(newFacts) !== JSON.stringify(existingFacts)) {
-    await updateMemory(userId, categoryId, newFacts);
-    console.log(`[Memory] Updated memory for user ${userId}, category ${categoryId}: ${newFacts.length} facts`);
+  // Convert string[] to FactEntry[] with timestamps
+  const now = new Date().toISOString();
+  const newFactEntries: FactEntry[] = newTexts.map(text => {
+    // Preserve timestamp from existing fact if it already exists
+    const existing = existingFacts.find(f => f.text === text);
+    return {
+      text,
+      timestamp: existing?.timestamp ?? now,
+    };
+  });
+
+  // Update memory if facts changed (order-independent comparison by text only)
+  const newTextSet = new Set(newTexts);
+  const existingTextSet = new Set(factTexts(existingFacts));
+  const factsChanged =
+    newTextSet.size !== existingTextSet.size ||
+    ![...newTextSet].every(t => existingTextSet.has(t));
+
+  if (factsChanged) {
+    await updateMemory(userId, categoryId, newTexts);
+    console.log(`[Memory] Updated memory for user ${userId}, category ${categoryId}: ${newTexts.length} facts`);
   }
 }

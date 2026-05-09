@@ -1081,9 +1081,13 @@ export interface SkillsSettings {
 }
 
 export interface MemorySettings {
-  enabled: boolean;           // Enable memory extraction (default: false)
-  maxFactsPerCategory: number; // Max facts to store per category (default: 50)
-  maxFactAge: number;         // Days to keep facts (default: 90)
+  enabled: boolean;               // Enable memory extraction (default: false)
+  extractionThreshold: number;    // Minimum messages before extracting facts (default: 5)
+  maxFactsPerCategory: number;    // Max facts to store per category (default: 20)
+  maxFactsPerQuery: number;       // Max facts returned by semantic retrieval (default: 10)
+  autoExtractOnThreadEnd: boolean; // Auto-extract facts when thread ends (default: true)
+  extractionMaxTokens: number;    // Max tokens for fact extraction LLM call (default: 1000)
+  factMaxAgeDays: number;         // Max age in days for facts (0 = no filtering, default: 0)
 }
 
 export interface SummarizationSettings {

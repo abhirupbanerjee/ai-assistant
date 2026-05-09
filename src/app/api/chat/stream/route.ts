@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
           // Get memory and summary context
           let memoryContext = '';
           if (memorySettings.enabled && dbUser) {
-            memoryContext = await getMemoryContext(dbUser.id, categoryIds);
+            memoryContext = await getMemoryContext(dbUser.id, categoryIds, message);
           }
 
           let summaryContext = '';
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
         // Get memory and summary context
         let memoryContext = '';
         if (memorySettings.enabled && dbUser) {
-          memoryContext = await getMemoryContext(dbUser.id, categoryIds);
+          memoryContext = await getMemoryContext(dbUser.id, categoryIds, message);
         }
 
         let summaryContext = '';

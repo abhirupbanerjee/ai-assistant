@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     // Get memory context if enabled
     let memoryContext = '';
     if (memorySettings.enabled && dbUser) {
-      memoryContext = await getMemoryContext(dbUser.id, categoryIds);
+      memoryContext = await getMemoryContext(dbUser.id, categoryIds, message);
     }
 
     // Get thread summary context if available

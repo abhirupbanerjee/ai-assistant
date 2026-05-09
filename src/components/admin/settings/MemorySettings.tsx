@@ -9,8 +9,10 @@ interface MemorySettings {
   enabled: boolean;
   extractionThreshold: number;
   maxFactsPerCategory: number;
+  maxFactsPerQuery: number;
   autoExtractOnThreadEnd: boolean;
   extractionMaxTokens: number;
+  factMaxAgeDays: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -41,8 +43,10 @@ export default function MemorySettingsTab() {
         enabled: false,
         extractionThreshold: 5,
         maxFactsPerCategory: 20,
+        maxFactsPerQuery: 10,
         autoExtractOnThreadEnd: true,
         extractionMaxTokens: 1000,
+        factMaxAgeDays: 0,
       };
 
       setSettings(memoryData);
@@ -50,8 +54,10 @@ export default function MemorySettingsTab() {
         enabled: memoryData.enabled,
         extractionThreshold: memoryData.extractionThreshold,
         maxFactsPerCategory: memoryData.maxFactsPerCategory,
+        maxFactsPerQuery: memoryData.maxFactsPerQuery,
         autoExtractOnThreadEnd: memoryData.autoExtractOnThreadEnd,
         extractionMaxTokens: memoryData.extractionMaxTokens,
+        factMaxAgeDays: memoryData.factMaxAgeDays,
       });
       setError(null);
     } catch (err) {
@@ -95,8 +101,10 @@ export default function MemorySettingsTab() {
         enabled: settings.enabled,
         extractionThreshold: settings.extractionThreshold,
         maxFactsPerCategory: settings.maxFactsPerCategory,
+        maxFactsPerQuery: settings.maxFactsPerQuery,
         autoExtractOnThreadEnd: settings.autoExtractOnThreadEnd,
         extractionMaxTokens: settings.extractionMaxTokens,
+        factMaxAgeDays: settings.factMaxAgeDays,
       });
       setIsModified(false);
     }
@@ -197,6 +205,34 @@ export default function MemorySettingsTab() {
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <p className="mt-1 text-xs text-gray-500">Maximum facts stored per category (5-100)</p>
+            </div>
+
+            {/* Max Facts Per Query */}
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Max Facts Per Query</label>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={editedSettings.maxFactsPerQuery}
+                onChange={(e) => updateSetting('maxFactsPerQuery', parseInt(e.target.value) || 10)}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">Max facts returned by semantic retrieval (1-50)</p>
+            </div>
+
+            {/* Fact Max Age Days */}
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-1">Fact Max Age (Days)</label>
+              <input
+                type="number"
+                min="0"
+                max="365"
+                value={editedSettings.factMaxAgeDays}
+                onChange={(e) => updateSetting('factMaxAgeDays', parseInt(e.target.value) || 0)}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">Max age in days for facts (0 = no filtering)</p>
             </div>
 
             {/* Extraction Max Tokens */}

@@ -146,8 +146,10 @@ export interface MemorySettings {
   enabled: boolean;               // Enable/disable memory system
   extractionThreshold: number;    // Minimum messages before extracting facts
   maxFactsPerCategory: number;    // Maximum facts stored per user+category
+  maxFactsPerQuery: number;       // Maximum facts returned by semantic retrieval (default: 10)
   autoExtractOnThreadEnd: boolean; // Auto-extract facts when thread ends
   extractionMaxTokens: number;    // Max tokens for fact extraction LLM call (default: 1000)
+  factMaxAgeDays: number;         // Max age in days for facts (0 = no filtering, default: 0)
 }
 
 export interface SummarizationSettings {
@@ -785,8 +787,10 @@ export function getMemorySettings(): MemorySettings {
     enabled: false,
     extractionThreshold: 5,
     maxFactsPerCategory: 20,
+    maxFactsPerQuery: 10,
     autoExtractOnThreadEnd: true,
     extractionMaxTokens: 1000,
+    factMaxAgeDays: 0,
   };
   const config = loadConfig();
   const base = config.memory ? { ...hardcoded, ...config.memory } : hardcoded;

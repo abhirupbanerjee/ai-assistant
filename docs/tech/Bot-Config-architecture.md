@@ -539,19 +539,24 @@ The system automatically extracts important facts from conversations and stores 
 
 ```typescript
 interface MemorySettings {
-  enabled: boolean;
-  extractionThreshold: number;      // Min messages before extraction
-  maxFactsPerCategory: number;      // Max facts stored per category
-  autoExtractOnThreadEnd: boolean;  // Extract when thread ends
-  extractionMaxTokens: number;      // Token budget for extraction
+  enabled: boolean;               // Enable/disable memory system
+  extractionThreshold: number;    // Min messages before extraction (default: 5)
+  maxFactsPerCategory: number;    // Max facts stored per category (default: 20)
+  maxFactsPerQuery: number;       // Max facts returned by semantic retrieval (default: 10)
+  autoExtractOnThreadEnd: boolean; // Extract when thread ends (default: true)
+  extractionMaxTokens: number;    // Token budget for extraction (default: 1000)
+  factMaxAgeDays: number;         // Max age in days for facts (0 = no filtering, default: 0)
 }
 ```
 
 **How it works:**
 1. After N messages, system analyzes conversation for key facts
 2. Facts are extracted using LLM (e.g., "User prefers PDF format")
-3. Facts stored in `user_memories` table by category
-4. Injected into future prompts for personalization
+3. Facts stored in `user_memories` table by category with timestamps
+4. **Semantic retrieval**: When a user sends a message, the system embeds the query and searches for semantically relevant facts in Qdrant (up to `maxFactsPerQuery` results)
+5. **Fallback**: If Qdrant is unavailable, falls back to SQLite full-scan with temporal filtering
+6. **Temporal filtering**: Facts older than `factMaxAgeDays` are excluded (when set > 0)
+7. Injected into future prompts for personalization
 
 **API:**
 - `GET /api/user/memory` - View extracted memories
