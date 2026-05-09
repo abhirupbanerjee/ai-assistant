@@ -27,6 +27,7 @@ import {
   performRAGRetrieval,
   getStreamingConfigMs,
 } from '@/lib/streaming';
+import { saveTrajectoryEntries } from '@/lib/db/citation-trajectory';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint } from '@/types';
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
           webSearchEnabled = true,
           targetLanguage = 'en',
           responseTone = 'default',
+          showCitationTrajectory = true,
         } = body;
 
         if (!message || !threadId) {
@@ -376,6 +378,28 @@ export async function POST(request: NextRequest) {
               conversationHistory  // Pass for follow-up context boosting
             );
             const ragMs = Date.now() - ragStart;
+
+            // Save citation trajectory data (pre-rerank and post-rerank scores)
+            if (ragResult.trajectoryData && ragResult.trajectoryData.length > 0) {
+              try {
+                const trajectoryEntries = ragResult.trajectoryData.map(t => ({
+                  messageId: assistantMessageId,
+                  threadId,
+                  chunkId: t.chunkId,
+                  documentName: t.documentName,
+                  pageNumber: t.pageNumber,
+                  rawScore: t.rawScore,
+                  rerankedScore: t.rerankedScore,
+                  wasSelected: t.wasSelected,
+                  rankBefore: t.rankBefore,
+                  rankAfter: t.rankAfter,
+                }));
+                saveTrajectoryEntries(trajectoryEntries);
+              } catch (trajectoryError) {
+                // Log but don't fail the request for trajectory saving errors
+                console.error('[Stream] Failed to save trajectory data:', trajectoryError);
+              }
+            }
 
             // Send sources from RAG
             send({ type: 'sources', data: ragResult.sources });

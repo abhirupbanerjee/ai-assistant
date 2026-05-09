@@ -265,6 +265,7 @@ export interface ChatPreferences {
   webSearchEnabled: boolean;
   targetLanguage: string;
   responseTone: string;
+  showCitationTrajectory: boolean;
 }
 
 /**
@@ -274,6 +275,7 @@ export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   webSearchEnabled: true,
   targetLanguage: 'en',
   responseTone: 'default',
+  showCitationTrajectory: true,
 };
 
 // ============ Request/Response Types ============
@@ -290,6 +292,7 @@ export interface StreamChatRequest {
   webSearchEnabled?: boolean; // default: true (follows admin setting)
   targetLanguage?: string; // e.g., 'es', 'fr', defaults to 'en'
   responseTone?: string; // e.g., 'concise', 'formal', defaults to 'default'
+  showCitationTrajectory?: boolean; // default: true
 }
 
 /**

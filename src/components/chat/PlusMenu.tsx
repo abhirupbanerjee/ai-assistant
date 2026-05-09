@@ -7,6 +7,7 @@ import ModeToggle, { ChatMode } from './ModeToggle';
 import WebSearchToggle from './WebSearchToggle';
 import LanguageSelector from './LanguageSelector';
 import ToneSelector from './ToneSelector';
+import CitationTrajectoryToggle from './CitationTrajectoryToggle';
 
 interface UrlSourceInfo {
   filename: string;
@@ -34,6 +35,9 @@ interface PlusMenuProps {
   // ToneSelector props
   selectedTone: string;
   onToneChange: (tone: string) => void;
+  // CitationTrajectoryToggle props
+  showCitationTrajectory: boolean;
+  onCitationTrajectoryToggle: (enabled: boolean) => void;
   // General
   disabled?: boolean;
 }
@@ -52,6 +56,8 @@ export default function PlusMenu({
   onLanguageChange,
   selectedTone,
   onToneChange,
+  showCitationTrajectory,
+  onCitationTrajectoryToggle,
   disabled,
 }: PlusMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -78,6 +84,7 @@ export default function PlusMenu({
     selectedLanguage !== 'en',
     selectedTone !== 'default',
     currentUploads.length > 0,
+    showCitationTrajectory,
   ].filter(Boolean).length;
 
   return (
@@ -128,6 +135,11 @@ export default function PlusMenu({
             <ToneSelector
               selectedTone={selectedTone}
               onToneChange={onToneChange}
+              disabled={disabled}
+            />
+            <CitationTrajectoryToggle
+              enabled={showCitationTrajectory}
+              onToggle={onCitationTrajectoryToggle}
               disabled={disabled}
             />
           </div>

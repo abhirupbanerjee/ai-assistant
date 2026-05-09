@@ -52,6 +52,20 @@ export interface ToolRoutingMatch {
 }
 
 /**
+ * A single chunk's trajectory data (pre-rerank and post-rerank)
+ */
+export interface ChunkTrajectoryData {
+  chunkId: string;
+  documentName: string;
+  pageNumber: number;
+  rawScore: number;
+  rerankedScore: number | null;
+  wasSelected: boolean;
+  rankBefore: number;
+  rankAfter: number | null;
+}
+
+/**
  * Result of RAG retrieval phase
  */
 export interface RAGRetrievalResult {
@@ -71,6 +85,8 @@ export interface RAGRetrievalResult {
   matchedSkills: MatchedSkillForCompliance[];
   /** Tool routing matches (for compliance checking) */
   toolRoutingMatches: ToolRoutingMatch[];
+  /** Citation trajectory data (pre-rerank and post-rerank scores) */
+  trajectoryData?: ChunkTrajectoryData[];
 }
 
 /**
@@ -376,6 +392,39 @@ export async function performRAGRetrieval(
     forceMode: m.forceMode,
   })) || [];
 
+  // ============ Build Citation Trajectory Data ============
+  // Capture pre-rerank and post-rerank scores for each chunk
+  // to enable the Citation Trajectory visualization.
+  const allPreRerank = [...globalChunks, ...userChunks];
+  const allPostRerank = [...rerankedGlobalChunks, ...rerankedUserChunks];
+
+  // Build a map of post-rerank chunks by their ID for quick lookup
+  const postRerankMap = new Map<string, { score: number; index: number }>();
+  allPostRerank.forEach((chunk, index) => {
+    postRerankMap.set(chunk.id, { score: chunk.score, index });
+  });
+
+  // Build trajectory data: for each pre-rerank chunk, find its post-rerank position
+  const trajectoryData: ChunkTrajectoryData[] = allPreRerank
+    .map((chunk, index) => {
+      const postRerank = postRerankMap.get(chunk.id);
+      return {
+        chunkId: chunk.id,
+        documentName: chunk.documentName,
+        pageNumber: chunk.pageNumber,
+        rawScore: chunk.score,
+        rerankedScore: postRerank?.score ?? null,
+        wasSelected: postRerank !== undefined,
+        rankBefore: index + 1,
+        rankAfter: postRerank !== undefined ? postRerank.index + 1 : null,
+      };
+    })
+    // Sort by rank after reranking (selected chunks first, then by rerank position)
+    .sort((a, b) => {
+      if (a.wasSelected !== b.wasSelected) return a.wasSelected ? -1 : 1;
+      return (a.rankAfter ?? 999) - (b.rankAfter ?? 999);
+    });
+
   return {
     context,
     systemPrompt,
@@ -385,5 +434,6 @@ export async function performRAGRetrieval(
     availableTools,
     matchedSkills,
     toolRoutingMatches,
+    trajectoryData,
   };
 }

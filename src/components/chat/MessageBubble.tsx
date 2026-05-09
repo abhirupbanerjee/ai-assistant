@@ -13,6 +13,7 @@ import DataVisualization from './DataVisualization';
 import MermaidDiagram from '@/components/markdown/MermaidDiagram';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
+import CitationTrajectoryCard from './CitationTrajectoryCard';
 
 const MAX_SOURCES_DISPLAYED = 5;
 
@@ -53,9 +54,13 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   /** Callback to regenerate the assistant response (assistant messages only) */
   onRegenerate?: () => void;
+  /** Thread ID for citation trajectory card */
+  threadId?: string | null;
+  /** Whether to show citation trajectory card */
+  showCitationTrajectory?: boolean;
 }
 
-export default function MessageBubble({ message, isStreaming = false, onRegenerate }: MessageBubbleProps) {
+export default function MessageBubble({ message, isStreaming = false, onRegenerate, threadId, showCitationTrajectory = true }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -246,6 +251,14 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
               </div>
             )}
           </div>
+        )}
+
+        {/* Citation Trajectory Card — shown for assistant messages with sources */}
+        {!isUser && !isStreaming && threadId && sortedSources.length > 0 && showCitationTrajectory && (
+          <CitationTrajectoryCard
+            messageId={message.id}
+            threadId={threadId}
+          />
         )}
 
         <div className={`flex items-center justify-between gap-2 mt-2 ${isUser ? 'text-white/70' : 'text-gray-500'}`}>

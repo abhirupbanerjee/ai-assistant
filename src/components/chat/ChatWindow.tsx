@@ -608,6 +608,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           <MessageBubble
             key={`archived-${message.id}`}
             message={message}
+            threadId={threadId}
+            showCitationTrajectory={chatPreferences.showCitationTrajectory}
           />
         ))}
 
@@ -626,6 +628,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           <MessageBubble
             key={message.id}
             message={message}
+            threadId={threadId}
+            showCitationTrajectory={chatPreferences.showCitationTrajectory}
             onRegenerate={
               message.role === 'assistant' && !streamingState.isStreaming
                 ? () => {

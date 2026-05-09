@@ -605,6 +605,34 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Check and create citation_trajectories table for Citation Trajectory feature
+  const citationTrajectoriesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='citation_trajectories'"
+  ).get();
+
+  if (!citationTrajectoriesTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS citation_trajectories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        chunk_id TEXT NOT NULL,
+        document_name TEXT NOT NULL,
+        page_number INTEGER DEFAULT 1,
+        raw_score REAL,
+        reranked_score REAL,
+        was_selected INTEGER DEFAULT 0,
+        rank_before INTEGER,
+        rank_after INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_citation_traj_message ON citation_trajectories(message_id, thread_id);
+      CREATE INDEX IF NOT EXISTS idx_citation_traj_thread ON citation_trajectories(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_citation_traj_created ON citation_trajectories(created_at DESC);
+    `);
+  }
+
   // Migration: Ensure thread_outputs table exists and clean up any interrupted migrations
   const threadOutputsExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_outputs'"

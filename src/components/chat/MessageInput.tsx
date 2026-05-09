@@ -91,6 +91,10 @@ export default function MessageInput({
     onPreferencesChange({ ...preferences, responseTone: tone });
   };
 
+  const handleCitationTrajectoryToggle = (enabled: boolean) => {
+    onPreferencesChange({ ...preferences, showCitationTrajectory: enabled });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       // On mobile, Enter always inserts a new line (submit via button only)
@@ -259,6 +263,8 @@ export default function MessageInput({
               onLanguageChange={handleLanguageChange}
               selectedTone={preferences.responseTone}
               onToneChange={handleToneChange}
+              showCitationTrajectory={preferences.showCitationTrajectory}
+              onCitationTrajectoryToggle={handleCitationTrajectoryToggle}
             />
           </div>
 

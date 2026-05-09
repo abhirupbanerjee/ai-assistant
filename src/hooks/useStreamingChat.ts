@@ -769,6 +769,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           webSearchEnabled: preferences?.webSearchEnabled,
           targetLanguage: preferences?.targetLanguage,
           responseTone: preferences?.responseTone,
+          showCitationTrajectory: preferences?.showCitationTrajectory,
         }),
         signal: abortControllerRef.current.signal,
       });
