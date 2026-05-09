@@ -14,7 +14,7 @@ import { getTrajectorySummary } from '@/lib/db/citation-trajectory';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { threadId: string; messageId: string } }
+  { params }: { params: Promise<{ threadId: string; messageId: string }> }
 ) {
   try {
     const user = await getCurrentUser();
@@ -22,7 +22,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { threadId, messageId } = params;
+    const { threadId, messageId } = await params;
 
     // Verify thread ownership
     const thread = await getThread(user.id, threadId);
