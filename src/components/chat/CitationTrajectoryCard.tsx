@@ -68,10 +68,6 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
     return <Minus size={14} className="text-gray-400" />;
   };
 
-  if (!summary) {
-    return null; // Don't render anything until data is loaded
-  }
-
   return (
     <div className="mt-3 pt-3 border-t border-gray-200">
       <button
@@ -81,34 +77,22 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         <GitCommit size={14} />
         <span>Citation Trajectory</span>
-        <span className="text-xs text-gray-400 font-normal ml-1">
-          ({summary.totalChunksRetrieved} chunks · {summary.documentCount} docs)
-        </span>
+        {summary && (
+          <span className="text-xs text-gray-400 font-normal ml-1">
+            ({summary.totalChunksRetrieved} chunks · {summary.documentCount} docs)
+          </span>
+        )}
+        {loading && (
+          <span className="text-xs text-gray-400 font-normal ml-1 animate-pulse">
+            Loading...
+          </span>
+        )}
       </button>
 
       {expanded && (
         <div className="mt-2 space-y-2">
-          {/* Summary stats */}
-          <div className="flex items-center gap-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-            <span>
-              Retrieved: <strong>{summary.totalChunksRetrieved}</strong>
-            </span>
-            <span className="text-gray-300">|</span>
-            <span>
-              Passed threshold: <strong>{summary.chunksPassedThreshold}</strong>
-            </span>
-            <span className="text-gray-300">|</span>
-            <span>
-              In context: <strong>{summary.chunksInFinalContext}</strong>
-            </span>
-            <span className="text-gray-300">|</span>
-            <span>
-              Documents: <strong>{summary.documentCount}</strong>
-            </span>
-          </div>
-
           {/* Loading state */}
-          {loading && (
+          {loading && !summary && (
             <div className="text-xs text-gray-400 text-center py-2">
               Loading trajectory data...
             </div>
@@ -121,8 +105,29 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
             </div>
           )}
 
+          {/* Summary stats */}
+          {summary && (
+            <div className="flex items-center gap-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+              <span>
+                Retrieved: <strong>{summary.totalChunksRetrieved}</strong>
+              </span>
+              <span className="text-gray-300">|</span>
+              <span>
+                Passed threshold: <strong>{summary.chunksPassedThreshold}</strong>
+              </span>
+              <span className="text-gray-300">|</span>
+              <span>
+                In context: <strong>{summary.chunksInFinalContext}</strong>
+              </span>
+              <span className="text-gray-300">|</span>
+              <span>
+                Documents: <strong>{summary.documentCount}</strong>
+              </span>
+            </div>
+          )}
+
           {/* Trajectory entries */}
-          {summary.entries.length > 0 && (
+          {summary && summary.entries.length > 0 && (
             <div className="space-y-1.5 max-h-80 overflow-y-auto">
               {summary.entries.map((entry, i) => (
                 <div
@@ -205,14 +210,23 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
             </div>
           )}
 
+          {/* Empty state */}
+          {summary && summary.entries.length === 0 && (
+            <div className="text-xs text-gray-400 text-center py-2">
+              No trajectory data available for this message.
+            </div>
+          )}
+
           {/* Export button */}
-          <button
-            onClick={handleExportJSON}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-          >
-            <Download size={12} />
-            Export JSON
-          </button>
+          {summary && summary.entries.length > 0 && (
+            <button
+              onClick={handleExportJSON}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+            >
+              <Download size={12} />
+              Export JSON
+            </button>
+          )}
         </div>
       )}
     </div>
