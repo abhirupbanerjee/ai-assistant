@@ -299,8 +299,14 @@ async function rerankWithBGE(
       const classify = reranker as unknown as (text: string) => Promise<ClassificationResult>;
       const result = await classify(input);
 
-      // BGE outputs [{ label: 'LABEL_0', score: 0.xxx }]
-      const score = Array.isArray(result) ? result[0]?.score ?? 0 : 0;
+       // BGE text-classification applies softmax across two labels:
+       // LABEL_0 = not relevant, LABEL_1 = relevant
+       // Results are sorted descending by score, so result[0] is always the highest-scoring label.
+       // We must explicitly find LABEL_1 (the "relevant" class) to get the true relevance probability.
+       const relevantResult = Array.isArray(result)
+         ? result.find(r => r.label === 'LABEL_1') ?? result[0]
+         : null;
+       const score = relevantResult?.score ?? 0;
 
       if (score >= minScore) {
         scoredChunks.push({
