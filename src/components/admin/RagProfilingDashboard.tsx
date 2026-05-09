@@ -84,6 +84,12 @@ interface SettingsImpact {
   testCount: number;
 }
 
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 // ============ KPI Card ============
 
 function KpiCard({
@@ -190,6 +196,8 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
     avgChunks: number;
     results: Array<{ query: string; chunksRetrieved: number; avgSimilarity: number; latencyMs: number }>;
   } | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
 
   // ============ Data Fetching ============
 
@@ -218,14 +226,26 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
     }
   }, []);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/categories');
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data.categories || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch categories:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      await Promise.all([fetchTrends(trendDays), fetchBatchSuites()]);
+      await Promise.all([fetchTrends(trendDays), fetchBatchSuites(), fetchCategories()]);
       setLoading(false);
     };
     load();
-  }, [fetchTrends, fetchBatchSuites, trendDays]);
+  }, [fetchTrends, fetchBatchSuites, fetchCategories, trendDays]);
 
   // ============ Batch Runner ============
 
@@ -249,12 +269,12 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
     setError(null);
     setBatchResults(null);
 
-    try {
-      const res = await fetch('/api/admin/rag-testing/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries }),
-      });
+     try {
+       const res = await fetch('/api/admin/rag-testing/batch', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ queries, categoryIds: selectedCategoryIds }),
+       });
 
       if (!res.ok) {
         const data = await res.json();
@@ -488,13 +508,52 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
       {/* ==================== Tab: Batch Test Suites ==================== */}
       {activeTab === 'batch' && (
         <div className="space-y-4">
-          {/* Batch Input */}
-          <div className="bg-white rounded-lg border shadow-sm p-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Run Batch Test Suite</h3>
-            <p className="text-sm text-gray-500 mb-3">
-              Enter one query per line. All queries will be run against the current RAG settings.
-            </p>
-            <textarea
+       {/* Batch Input */}
+           <div className="bg-white rounded-lg border shadow-sm p-4">
+             <h3 className="font-semibold text-gray-900 mb-2">Run Batch Test Suite</h3>
+             <p className="text-sm text-gray-500 mb-3">
+               Enter one query per line. All queries will be run against the current RAG settings.
+             </p>
+
+             {/* Category Selector */}
+             <div className="mb-4">
+               <label className="block text-sm font-medium text-gray-700 mb-2">
+                 Category (optional)
+               </label>
+               {categories.length === 0 ? (
+                 <p className="text-xs text-gray-500">No categories available</p>
+               ) : (
+                 <div className="flex flex-wrap gap-2">
+                   {categories.map((cat) => (
+                     <button
+                       key={cat.id}
+                       onClick={() => {
+                         setSelectedCategoryIds((prev) =>
+                           prev.includes(cat.id)
+                             ? prev.filter((id) => id !== cat.id)
+                             : [...prev, cat.id]
+                         );
+                       }}
+                       className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                         selectedCategoryIds.includes(cat.id)
+                           ? 'bg-purple-600 text-white'
+                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                       }`}
+                     >
+                       {selectedCategoryIds.includes(cat.id) && <span className="mr-1">✓</span>}
+                       {cat.name}
+                     </button>
+                   ))}
+                 </div>
+               )}
+               {selectedCategoryIds.length === 0 && categories.length > 0 && (
+                 <p className="text-xs text-gray-500 mt-2">
+                   No category selected — queries will run against global documents only
+                 </p>
+               )}
+             </div>
+
+             <textarea
               value={batchQueries}
               onChange={(e) => setBatchQueries(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"

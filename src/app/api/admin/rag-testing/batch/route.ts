@@ -4,7 +4,7 @@ import { getUserRole } from '@/lib/users';
 import { saveBatchSuite, getBatchSuites, getBatchSuiteDetail, cleanupBatchSuites } from '@/lib/db/rag-profiling';
 import { createEmbedding } from '@/lib/openai';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
-import { getRagSettings } from '@/lib/db/compat';
+import { getRagSettings, getCategoryById } from '@/lib/db/compat';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,36 +18,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { queries = [], name } = body;
+     const body = await request.json();
+     const { queries = [], name, categoryIds = [] } = body;
 
-    if (!Array.isArray(queries) || queries.length === 0) {
-      return NextResponse.json({ error: 'At least one query is required' }, { status: 400 });
-    }
+     if (!Array.isArray(queries) || queries.length === 0) {
+       return NextResponse.json({ error: 'At least one query is required' }, { status: 400 });
+     }
 
-    if (queries.length > 20) {
-      return NextResponse.json({ error: 'Maximum 20 queries per batch' }, { status: 400 });
-    }
+     if (queries.length > 20) {
+       return NextResponse.json({ error: 'Maximum 20 queries per batch' }, { status: 400 });
+     }
 
-    // Get current RAG settings
-    const settings = await getRagSettings();
-    const store = await getVectorStore();
-    const collNames = getCollectionNames();
+     // Get current RAG settings
+     const settings = await getRagSettings();
+     const store = await getVectorStore();
+     const collNames = getCollectionNames();
 
-    // Run each query through the RAG pipeline
-    const results = [];
-    for (const query of queries) {
-      const startTime = Date.now();
+     // Convert category IDs to slugs
+     const categorySlugs: string[] = [];
+     for (const catId of categoryIds) {
+       const category = await getCategoryById(catId);
+       if (category) {
+         categorySlugs.push(category.slug);
+       }
+     }
 
-      // Create embedding
-      const embedding = await createEmbedding(query.trim());
+     // Build collection names: use specific categories if provided, otherwise use global + legacy
+     let collectionsToQuery: string[];
+     if (categorySlugs.length > 0) {
+       collectionsToQuery = categorySlugs.map(slug => collNames.forCategory(slug));
+     } else {
+       collectionsToQuery = [collNames.global, collNames.legacy];
+     }
 
-      // Query vector store (all collections)
-      const queryResults = await store.queryMultipleCollections(
-        [collNames.forCategory('*')],
-        embedding,
-        settings.topKChunks || 20
-      );
+     // Run each query through the RAG pipeline
+     const results = [];
+     for (const query of queries) {
+       const startTime = Date.now();
+
+       // Create embedding
+       const embedding = await createEmbedding(query.trim());
+
+       // Query vector store
+       const queryResults = await store.queryMultipleCollections(
+         collectionsToQuery,
+         embedding,
+         settings.topKChunks || 20
+       );
 
       const latencyMs = Date.now() - startTime;
 
