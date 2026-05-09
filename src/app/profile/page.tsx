@@ -32,6 +32,7 @@ export default function ProfilePage() {
   const [clearCategoryId, setClearCategoryId] = useState<number | null | 'all'>(null);
   const [exportingHistory, setExportingHistory] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [deletingFact, setDeletingFact] = useState<string | null>(null);
 
   const loadMemory = useCallback(async () => {
     try {
@@ -104,7 +105,35 @@ export default function ProfilePage() {
     return memory?.categoryName || (clearCategoryId === null ? 'Global Memory' : `Category ${clearCategoryId}`);
   };
 
+  const handleDeleteFact = async (categoryId: number | null, factText: string) => {
+    setDeletingFact(factText);
+    setError(null);
+    try {
+      const response = await fetch('/api/user/memory', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId,
+          factText,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete fact');
+      }
+
+      // Reload memory data
+      await loadMemory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete fact');
+    } finally {
+      setDeletingFact(null);
+    }
+  };
+
   const handleExportHistory = async () => {
+
     setExportingHistory(true);
     setExportError(null);
     try {
@@ -239,10 +268,24 @@ export default function ProfilePage() {
                       {memory.facts.map((fact, index) => (
                         <li
                           key={index}
-                          className="flex items-start gap-2 text-sm text-gray-700"
+                          className="flex items-start justify-between gap-2 text-sm text-gray-700 group"
                         >
-                          <span className="text-blue-500 mt-1">•</span>
-                          <span>{fact}</span>
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-blue-500 mt-1 shrink-0">•</span>
+                            <span className="break-words">{fact}</span>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteFact(memory.categoryId, fact)}
+                            disabled={deletingFact === fact}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all shrink-0 disabled:opacity-50"
+                            title="Delete this fact"
+                          >
+                            {deletingFact === fact ? (
+                              <Loader2 className="animate-spin" size={14} />
+                            ) : (
+                              <X size={14} />
+                            )}
+                          </button>
                         </li>
                       ))}
                     </ul>

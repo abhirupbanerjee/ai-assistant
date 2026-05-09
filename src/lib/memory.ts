@@ -177,17 +177,35 @@ export async function getAllMemoriesForUser(userId: number): Promise<UserMemory[
 
 /**
  * Update memory for a user in a specific category
+ *
+ * Accepts either string[] (plain facts) or FactEntry[] (facts with timestamps).
+ * When string[] is provided, timestamps are added automatically for new facts
+ * and preserved from existing facts where possible.
  */
-export async function updateMemory(userId: number, categoryId: number | null, facts: string[]): Promise<UserMemory> {
+export async function updateMemory(userId: number, categoryId: number | null, facts: string[] | FactEntry[]): Promise<UserMemory> {
   const db = await getDb();
   const existingMemory = await getMemoryForUser(userId, categoryId);
+
+  // Normalize to FactEntry[] with timestamps for persistence
+  const now = new Date().toISOString();
+  const factEntries: FactEntry[] = facts.map(fact => {
+    if (typeof fact === 'string') {
+      // Preserve timestamp from existing fact if it already exists
+      const existing = existingMemory?.facts.find(f => f.text === fact);
+      return { text: fact, timestamp: existing?.timestamp ?? now };
+    }
+    return fact; // Already FactEntry
+  });
+
+  // Store as FactEntry[] (with timestamps) for temporal filtering support
+  const factsJson = JSON.stringify(factEntries);
 
   if (existingMemory) {
     // Update existing memory
     let updateQuery = db
       .updateTable('user_memories')
       .set({
-        facts_json: JSON.stringify(facts),
+        facts_json: factsJson,
         updated_at: new Date().toISOString(),
       })
       .where('user_id', '=', userId);
@@ -206,7 +224,7 @@ export async function updateMemory(userId: number, categoryId: number | null, fa
       .values({
         user_id: userId,
         category_id: categoryId,
-        facts_json: JSON.stringify(facts),
+        facts_json: factsJson,
       })
       .execute();
   }
@@ -214,7 +232,9 @@ export async function updateMemory(userId: number, categoryId: number | null, fa
   const result = (await getMemoryForUser(userId, categoryId))!;
 
   // Sync to vector store for semantic retrieval (non-blocking)
-  syncMemoryToVectorStore(userId, categoryId, facts).catch(() => {});
+  // Pass plain strings for vector storage (text content only)
+  const factTexts = factEntries.map(f => f.text);
+  syncMemoryToVectorStore(userId, categoryId, factTexts).catch(() => {});
 
   return result;
 }
@@ -274,9 +294,38 @@ export async function syncMemoryToVectorStore(userId: number, categoryId: number
 }
 
 /**
+ * Delete a single fact from a user's memory category.
+ * Removes the fact from the stored array and updates the vector store.
+ * Preserves timestamps on remaining facts.
+ */
+export async function deleteFact(
+  userId: number,
+  categoryId: number | null,
+  factText: string
+): Promise<UserMemory> {
+  const memory = await getMemoryForUser(userId, categoryId);
+  if (!memory) {
+    throw new Error('Memory not found');
+  }
+
+  // Filter out the fact to delete (by text match)
+  const filteredFacts = memory.facts.filter(f => f.text !== factText);
+
+  // If nothing changed, the fact wasn't found
+  if (filteredFacts.length === memory.facts.length) {
+    throw new Error('Fact not found');
+  }
+
+  // Persist the updated fact list (preserving FactEntry format with timestamps)
+  // updateMemory handles persistence + vector store sync
+  return updateMemory(userId, categoryId, filteredFacts);
+}
+
+/**
  * Clear memory for a user in a specific category
  */
 export async function clearMemory(userId: number, categoryId?: number | null): Promise<void> {
+
   const db = await getDb();
 
   if (categoryId === undefined) {
