@@ -8,6 +8,7 @@ import {
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
+import { RagProfilingDashboard } from '@/components/admin/RagProfilingDashboard';
 
 // ============ Types ============
 
@@ -64,14 +65,14 @@ interface ReindexJob {
   errors: string[];
 }
 
-type SectionId = 'embedding' | 'ragParams' | 'ragTuning';
+type SectionId = 'profiling' | 'embedding' | 'ragParams' | 'ragTuning';
 
 // ============ Component ============
 
 export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: boolean }) {
   // Section collapse/expand
   const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(
-    new Set(['embedding', 'ragParams'])
+    new Set(['profiling'])
   );
 
   // Shared UI state
@@ -420,7 +421,17 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         </div>
       )}
 
-      {/* ==================== Section 1: Embedding Configuration ==================== */}
+      {/* ==================== Section 1: RAG Profiling & Trends ==================== */}
+      <div className="bg-white rounded-lg border shadow-sm">
+        <SectionHeader id="profiling" title="RAG Profiling & Trends" subtitle="Performance metrics, batch testing, and settings impact analysis" />
+        {expandedSections.has('profiling') && (
+          <div className="p-6">
+            <RagProfilingDashboard embedded />
+          </div>
+        )}
+      </div>
+
+      {/* ==================== Section 2: Embedding Configuration ==================== */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="embedding" title="Embedding Configuration" subtitle="Model selection, fallback, and reindexing" />
         {expandedSections.has('embedding') && (
@@ -620,7 +631,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         )}
       </div>
 
-      {/* ==================== Section 2: RAG Parameters ==================== */}
+      {/* ==================== Section 3: RAG Parameters ==================== */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="ragParams" title="RAG Parameters" subtitle="Configure retrieval and chunking parameters">
           {!readOnly && (
@@ -789,7 +800,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         )}
       </div>
 
-      {/* ==================== Section 3: RAG Tuning ==================== */}
+      {/* ==================== Section 4: RAG Tuning ==================== */}
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="ragTuning" title="RAG Tuning" subtitle="Test and compare RAG settings with sample queries" />
         {expandedSections.has('ragTuning') && (

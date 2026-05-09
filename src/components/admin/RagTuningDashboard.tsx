@@ -1,17 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Play,
   RefreshCw,
   Beaker,
   ChevronDown,
   ChevronUp,
-  Trash2,
-  BarChart3,
-  Clock,
   FileText,
   Settings,
+  BarChart3,
 } from 'lucide-react';
 
 interface TestMetrics {
@@ -32,26 +30,6 @@ interface TestResult {
   settings: Record<string, unknown>;
   metrics: TestMetrics;
   chunks: TopChunk[];
-}
-
-interface SavedResult {
-  id: number;
-  queryId: number | null;
-  testQuery: string;
-  settingsSnapshot: Record<string, unknown>;
-  chunksRetrieved: number;
-  avgSimilarity: number;
-  latencyMs: number;
-  topChunks: TopChunk[];
-  createdBy: string;
-  createdAt: string;
-}
-
-interface TestStats {
-  totalTests: number;
-  avgLatency: number;
-  avgChunksRetrieved: number;
-  avgSimilarity: number;
 }
 
 interface Category {
@@ -83,10 +61,6 @@ export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // History
-  const [savedResults, setSavedResults] = useState<SavedResult[]>([]);
-  const [stats, setStats] = useState<TestStats | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
   const [expandedChunks, setExpandedChunks] = useState<'A' | 'B' | null>(null);
 
   // Fetch current settings and categories
@@ -120,26 +94,6 @@ export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } 
 
     fetchData();
   }, []);
-
-  // Fetch test history
-  const fetchHistory = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/rag-testing/results?limit=20');
-      if (res.ok) {
-        const data = await res.json();
-        setSavedResults(data.results || []);
-        setStats(data.stats || null);
-      }
-    } catch (e) {
-      console.error('Failed to fetch history:', e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (showHistory) {
-      fetchHistory();
-    }
-  }, [showHistory, fetchHistory]);
 
   // Run a single test
   const runTest = async (useVariant: boolean): Promise<TestResult | null> => {
@@ -191,20 +145,6 @@ export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } 
     }
   };
 
-  // Clean up old results
-  const handleCleanup = async () => {
-    try {
-      const res = await fetch('/api/admin/rag-testing/results?keepRecent=50', {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        fetchHistory();
-      }
-    } catch (e) {
-      console.error('Cleanup failed:', e);
-    }
-  };
-
   // Category toggle
   const toggleCategory = (catId: number) => {
     setSelectedCategories((prev) =>
@@ -229,6 +169,19 @@ export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } 
             </div>
           </div>
         )}
+
+        {/* Banner pointing to profiling section */}
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <BarChart3 size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-blue-800">📊 Historical trends and KPIs are now in the RAG Profiling section above</p>
+              <p className="text-xs text-blue-700 mt-1">
+                View performance trends, batch test suites, and settings impact analysis in the RAG Profiling & Trends section.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
@@ -370,14 +323,6 @@ export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } 
               )}
               {loading ? 'Running...' : 'Run Test'}
             </button>
-
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <Clock size={16} />
-              {showHistory ? 'Hide' : 'Show'} History
-            </button>
           </div>
         </div>
       </div>
@@ -404,88 +349,6 @@ export function RagTuningDashboard({ embedded = false }: { embedded?: boolean } 
               onToggleExpand={() => setExpandedChunks(expandedChunks === 'B' ? null : 'B')}
             />
           )}
-        </div>
-      )}
-
-      {/* History Section */}
-      {showHistory && (
-        <div className={embedded ? 'pt-4 border-t' : 'bg-white rounded-lg border shadow-sm p-6'}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <BarChart3 size={20} className="text-gray-600" />
-              <h3 className="font-medium text-gray-900">Test History</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={fetchHistory}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw size={16} className="text-gray-500" />
-              </button>
-              <button
-                onClick={handleCleanup}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Clean up old results"
-              >
-                <Trash2 size={16} className="text-gray-500" />
-              </button>
-            </div>
-          </div>
-
-          {/* Stats Summary */}
-          {stats && stats.totalTests > 0 && (
-            <div className="grid grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
-              <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">{stats.totalTests}</div>
-                <div className="text-xs text-gray-500">Total Tests</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">{stats.avgLatency}ms</div>
-                <div className="text-xs text-gray-500">Avg Latency</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">{stats.avgChunksRetrieved}</div>
-                <div className="text-xs text-gray-500">Avg Chunks</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">
-                  {(stats.avgSimilarity * 100).toFixed(1)}%
-                </div>
-                <div className="text-xs text-gray-500">Avg Similarity</div>
-              </div>
-            </div>
-          )}
-
-          {/* Results List */}
-          <div className="space-y-2 max-h-80 overflow-y-auto">
-            {savedResults.length === 0 ? (
-              <p className="text-center text-gray-500 py-4">No test results yet</p>
-            ) : (
-              savedResults.map((result) => (
-                <div
-                  key={result.id}
-                  className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {result.testQuery}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span>{result.chunksRetrieved} chunks</span>
-                        <span>{(result.avgSimilarity * 100).toFixed(1)}% avg</span>
-                        <span>{result.latencyMs}ms</span>
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-400 ml-2">
-                      {new Date(result.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
         </div>
       )}
     </div>

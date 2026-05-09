@@ -633,6 +633,30 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Migration: Create rag_batch_suites table for RAG Profiling batch test suites
+  const ragBatchSuitesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='rag_batch_suites'"
+  ).get();
+
+  if (!ragBatchSuitesTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS rag_batch_suites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        query_count INTEGER NOT NULL,
+        avg_latency REAL NOT NULL,
+        avg_similarity REAL NOT NULL,
+        avg_chunks REAL NOT NULL,
+        queries_json TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rag_batch_suites_created ON rag_batch_suites(created_at DESC);
+    `);
+    console.log('[DB Migration] Created rag_batch_suites table');
+  }
+
   // Migration: Ensure thread_outputs table exists and clean up any interrupted migrations
   const threadOutputsExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_outputs'"
