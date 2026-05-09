@@ -19,12 +19,16 @@ import type { RetrievedChunk } from '@/types';
  * Options for reranking chunks
  */
 export interface RerankOptions {
-  /** If true, skip threshold filtering (useful for user uploads) */
+  /** Override the configured min score with a custom threshold (e.g., 0.05 for user uploads) */
+  minScoreOverride?: number;
+  /** If true, skip threshold filtering (useful for user uploads) - DEPRECATED: use minScoreOverride instead */
   bypassThreshold?: boolean;
   /** Document names to boost (from previous conversation) */
   boostDocuments?: string[];
   /** Boost multiplier for matching documents (default: 1.3) */
   boostFactor?: number;
+  /** If provided, will be populated with all chunk scores before threshold filtering */
+  scoresOut?: Map<string, number>;
 }
 
 // Cohere rerank result type
@@ -347,8 +351,15 @@ export async function rerankChunks(
   options?: RerankOptions
 ): Promise<RetrievedChunk[]> {
   const settings = await getRerankerSettings();
-  // When bypassThreshold is true, use 0 as minScore to include all chunks
-  const minScore = options?.bypassThreshold ? 0 : settings.minRerankerScore;
+  // Determine minScore: use override if provided, else check deprecated bypassThreshold, else use configured threshold
+  let minScore: number;
+  if (options?.minScoreOverride !== undefined) {
+    minScore = options.minScoreOverride;
+  } else if (options?.bypassThreshold) {
+    minScore = 0; // Deprecated: bypass all filtering
+  } else {
+    minScore = settings.minRerankerScore;
+  }
 
   // Return original chunks if no chunks
   if (chunks.length === 0) {

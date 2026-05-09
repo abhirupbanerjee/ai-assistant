@@ -17,7 +17,7 @@ import { resolveSkills } from '../skills/resolver';
 import { getAvailableDataSourcesDescription } from '../tools/data-source';
 import { getToolDefinitions } from '../tools';
 import { ragLogger as logger } from '../logger';
-import { MAX_QUERY_EXPANSIONS, CHUNK_PREVIEW_LENGTH } from '../constants';
+import { MAX_QUERY_EXPANSIONS, CHUNK_PREVIEW_LENGTH, USER_UPLOAD_MIN_RERANK_SCORE } from '../constants';
 import { detectFollowUp } from '../conversation-context';
 
 /**
@@ -229,11 +229,12 @@ export async function performRAGRetrieval(
   // Apply reranking with boost for follow-up context
   send?.({ type: 'operation_log', category: 'rag', message: 'Reranking search results' });
   const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
-  // User uploads bypass threshold - user explicitly added these docs for this conversation
+  // User uploads use a low threshold (0.05) to filter obviously irrelevant uploads
+  // while still respecting user intent to include uploaded documents
   if (userChunks.length > 0) {
     send?.({ type: 'operation_log', category: 'rag', message: 'Ranking user documents' });
   }
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true, boostDocuments });
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { minScoreOverride: USER_UPLOAD_MIN_RERANK_SCORE, boostDocuments });
 
   // Emit truncation warnings for documents with content cut off
   if (send && userDocTruncations.length > 0) {

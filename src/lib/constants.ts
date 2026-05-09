@@ -70,6 +70,9 @@ export function getEmbeddingModelDimensions(modelId: string): number {
 /** Maximum tokens for local reranker model input */
 export const LOCAL_RERANKER_MAX_TOKENS = 512;
 
+/** Minimum reranker score for user-uploaded documents (filters obviously irrelevant uploads) */
+export const USER_UPLOAD_MIN_RERANK_SCORE = 0.05;
+
 // ============ Tool Constants ============
 
 /**

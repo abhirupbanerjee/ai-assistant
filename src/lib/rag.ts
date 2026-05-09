@@ -31,6 +31,7 @@ import {
   MAX_USER_DOC_CHUNKS,
   MAX_USER_CHUNKS_RETURNED,
   CHUNK_PREVIEW_LENGTH,
+  USER_UPLOAD_MIN_RERANK_SCORE,
 } from './constants';
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from '@/types';
 
@@ -466,8 +467,9 @@ export async function ragQuery(
   // Apply reranking if enabled (improves relevance ordering)
   // Pass boostDocuments to prioritize chunks from previous conversation context
   const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
-  // User uploads bypass threshold - user explicitly added these docs for this conversation
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { bypassThreshold: true, boostDocuments });
+  // User uploads use a low threshold (0.05) to filter obviously irrelevant uploads
+  // while still respecting user intent to include uploaded documents
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { minScoreOverride: USER_UPLOAD_MIN_RERANK_SCORE, boostDocuments });
 
   // Format context for LLM
   const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
