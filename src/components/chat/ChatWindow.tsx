@@ -69,7 +69,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<string[]>([]);
   const [urlSources, setUrlSources] = useState<UrlSource[]>([]);
+  const [pendingUrlSources, setPendingUrlSources] = useState<UrlSource[]>([]);
   const [showSummaryDetails, setShowSummaryDetails] = useState(false);
   const [summaryData, setSummaryData] = useState<ThreadSummary | null>(null);
   const [archivedMessages, setArchivedMessages] = useState<Message[]>([]);
@@ -84,9 +86,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   useImperativeHandle(ref, () => ({
     removeUpload: (filename: string) => {
       setUploads(prev => prev.filter(f => f !== filename));
+      setPendingUploads(prev => prev.filter(f => f !== filename));
     },
     removeUrlSource: (filename: string) => {
       setUrlSources(prev => prev.filter(s => s.filename !== filename));
+      setPendingUrlSources(prev => prev.filter(s => s.filename !== filename));
     },
   }), []);
 
@@ -283,6 +287,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   useEffect(() => {
     resetStreaming();
 
+    // Reset pending uploads/sources when switching threads
+    setPendingUploads([]);
+    setPendingUrlSources([]);
+
     if (activeThread) {
       setThreadId(activeThread.id);
       loadThread(activeThread.id);
@@ -474,10 +482,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     // Use provided preferences or fall back to current state
     const prefsToUse = preferences || chatPreferences;
     await sendStreamingMessage(content, currentThreadId, mode, prefsToUse);
+
+    // Clear pending uploads/sources after sending — they've been sent to the LLM
+    setPendingUploads([]);
+    setPendingUrlSources([]);
   }, [threadId, createThread, sendStreamingMessage, chatPreferences]);
 
   const handleUploadComplete = (filename: string) => {
     setUploads((prev) => [...prev, filename]);
+    setPendingUploads((prev) => [...prev, filename]);
   };
 
   const handleUrlSourceAdded = (source: {
@@ -487,6 +500,13 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     title?: string;
   }) => {
     setUrlSources((prev) => [
+      ...prev,
+      {
+        ...source,
+        extractedAt: new Date().toISOString(),
+      },
+    ]);
+    setPendingUrlSources((prev) => [
       ...prev,
       {
         ...source,
@@ -878,7 +898,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         modelReady={modelReady}
         onModelStatusChange={setModelReady}
         threadId={threadId}
-        currentUploads={uploads}
+        currentUploads={pendingUploads}
         onUploadComplete={handleUploadComplete}
         onUrlSourceAdded={handleUrlSourceAdded}
         preferences={chatPreferences}
