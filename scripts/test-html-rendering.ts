@@ -500,11 +500,16 @@ Solution live across all 12 target MDAs.
     console.log(`     pageType=${roadmapResult.pageType}, charts=${roadmapResult.chartCount}, diagrams=${roadmapResult.diagramCount}`);
     // Verify timeline bar placeholder is present
     const html = roadmapResult.buffer.toString('utf-8');
-    if (!html.includes('rm-timeline-bar')) {
-      console.warn('  ⚠️  roadmap: rm-timeline-bar not found in output');
+    // Sun Ray Diagram assertions
+    if (html.includes('rm-sunray') || html.includes('sunray') || html.includes('rm-arc') || html.includes('<svg')) {
+      console.log('     ✅ roadmap: Sun Ray Diagram SVG/arc elements present');
+    } else {
+      console.warn('     ⚠️  roadmap: Sun Ray Diagram elements not found in output');
     }
-    if (!html.includes('buildTimelineDots')) {
-      console.warn('  ⚠️  roadmap: buildTimelineDots JS not found in output');
+    if (!html.includes('rm-timeline-bar') && !html.includes('buildTimelineDots')) {
+      console.log('     ✅ roadmap: old linear timeline elements correctly absent');
+    } else {
+      console.warn('     ⚠️  roadmap: old linear timeline elements still present (rm-timeline-bar / buildTimelineDots)');
     }
   } catch (err) {
     console.error('  ❌ roadmap generation failed:', err);

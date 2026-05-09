@@ -19,31 +19,62 @@ import {
 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 
-// Allowed file types (must match config/defaults.json)
-const ALLOWED_TYPES = [
-  // Documents
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
-  'application/msword', // doc
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
-  'application/vnd.ms-excel', // xls
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
-  'application/vnd.ms-powerpoint', // ppt
-  // Text
-  'text/plain',
-  'text/markdown',
-  'text/html',
-  'text/csv',
-  'application/json',
-  // Images
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-];
+// MIME type → extension mapping for building the accept attribute
+const MIME_TO_EXT: Record<string, string> = {
+  'application/pdf': '.pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.ms-powerpoint': '.ppt',
+  'text/plain': '.txt',
+  'text/markdown': '.md',
+  'text/html': '.html',
+  'text/csv': '.csv',
+  'application/json': '.json',
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+};
 
-const ALLOWED_EXTENSIONS = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp';
-const MAX_FILE_SIZE_MB = 10;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+// Friendly labels for the drop-zone hint
+const MIME_TO_LABEL: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+  'application/vnd.ms-powerpoint': 'PPT',
+  'text/plain': 'TXT',
+  'text/markdown': 'MD',
+  'text/html': 'HTML',
+  'text/csv': 'CSV',
+  'application/json': 'JSON',
+  'image/png': 'PNG',
+  'image/jpeg': 'JPG',
+  'image/webp': 'WebP',
+};
+
+// Group labels for the drop-zone hint
+const TYPE_GROUP_LABELS: Record<string, string> = {
+  'application/pdf': 'Documents',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Documents',
+  'application/msword': 'Documents',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Documents',
+  'application/vnd.ms-excel': 'Documents',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'Documents',
+  'application/vnd.ms-powerpoint': 'Documents',
+  'text/plain': 'Text',
+  'text/markdown': 'Text',
+  'text/html': 'Text',
+  'text/csv': 'Text',
+  'application/json': 'Text',
+  'image/png': 'Images',
+  'image/jpeg': 'Images',
+  'image/webp': 'Images',
+};
 
 type UploadTab = 'file' | 'web' | 'youtube';
 
@@ -135,6 +166,11 @@ export default function FileUpload({
   const [inputError, setInputError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Upload settings fetched from admin config (Admin → Settings → File Upload)
+  const [allowedTypes, setAllowedTypes] = useState<string[]>([]);
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState(10);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   // Check if URL extraction and image processing is available
   useEffect(() => {
     const checkCapabilities = async () => {
@@ -160,6 +196,32 @@ export default function FileUpload({
     checkCapabilities();
   }, []);
 
+  // Fetch upload limits from admin settings (same source as server-side validation)
+  useEffect(() => {
+    const fetchUploadLimits = async () => {
+      try {
+        const res = await fetch('/api/admin/settings');
+        if (res.ok) {
+          const data = await res.json();
+          const limits = data.uploadLimits;
+          if (limits) {
+            if (limits.allowedTypes && limits.allowedTypes.length > 0) {
+              setAllowedTypes(limits.allowedTypes);
+            }
+            if (limits.maxFileSizeMB) {
+              setMaxFileSizeMB(limits.maxFileSizeMB);
+            }
+          }
+        }
+      } catch {
+        // Silently fail — fall back to defaults
+      } finally {
+        setSettingsLoaded(true);
+      }
+    };
+    fetchUploadLimits();
+  }, []);
+
   // Reset queue when modal closes
   useEffect(() => {
     if (!isModalOpen) {
@@ -180,17 +242,40 @@ export default function FileUpload({
     setIsDragging(false);
   }, []);
 
+  // Build accept string and allowed labels from the fetched allowedTypes
+  const acceptExtensions = allowedTypes
+    .map((mime) => MIME_TO_EXT[mime])
+    .filter(Boolean)
+    .join(',');
+
+  const maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
+
+  // Build a human-readable summary of allowed types for the drop zone
+  const allowedLabels = (() => {
+    const groups: string[] = [];
+    const docTypes = allowedTypes.filter((m) => TYPE_GROUP_LABELS[m] === 'Documents');
+    const textTypes = allowedTypes.filter((m) => TYPE_GROUP_LABELS[m] === 'Text');
+    const imageTypes = allowedTypes.filter((m) => TYPE_GROUP_LABELS[m] === 'Images');
+    if (docTypes.length > 0) groups.push(docTypes.map((m) => MIME_TO_LABEL[m]).join(', '));
+    if (textTypes.length > 0) groups.push(textTypes.map((m) => MIME_TO_LABEL[m]).join(', '));
+    if (imageTypes.length > 0) groups.push(imageTypes.map((m) => MIME_TO_LABEL[m]).join(', '));
+    return groups;
+  })();
+
   // Add file to queue
   const addFileToQueue = useCallback((file: File) => {
     setInputError(null);
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setInputError('Invalid file type. Allowed: PDF, PNG, JPG, TXT, JSON');
+    if (!allowedTypes.includes(file.type)) {
+      const allowedLabelsStr = allowedTypes
+        .map((m) => MIME_TO_LABEL[m] || m)
+        .join(', ');
+      setInputError(`Invalid file type. Allowed: ${allowedLabelsStr}`);
       return;
     }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setInputError(`File too large (max ${MAX_FILE_SIZE_MB}MB)`);
+    if (file.size > maxFileSizeBytes) {
+      setInputError(`File too large (max ${maxFileSizeMB}MB)`);
       return;
     }
 
@@ -213,7 +298,7 @@ export default function FileUpload({
         status: 'pending',
       },
     ]);
-  }, [queue]);
+  }, [queue, allowedTypes, maxFileSizeBytes, maxFileSizeMB]);
 
   // Add web URL to queue
   const addWebUrlToQueue = useCallback(() => {
@@ -573,15 +658,20 @@ export default function FileUpload({
                 </button>
               </p>
               <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1">
-                  <FileText size={12} />
-                  PDF, TXT
-                </span>
-                <span className="flex items-center gap-1">
-                  <ImageIcon size={12} />
-                  PNG, JPG
-                </span>
-                <span>Max {MAX_FILE_SIZE_MB}MB</span>
+                {allowedLabels.length > 0 ? (
+                  allowedLabels.map((label, i) => (
+                    <span key={i} className="flex items-center gap-1">
+                      {i === 0 ? <FileText size={12} /> : i === 1 && allowedLabels.length > 2 ? <FileText size={12} /> : <ImageIcon size={12} />}
+                      {label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <FileText size={12} />
+                    Loading…
+                  </span>
+                )}
+                <span>Max {maxFileSizeMB}MB</span>
               </div>
             </div>
 
@@ -800,7 +890,7 @@ export default function FileUpload({
         <input
           ref={fileInputRef}
           type="file"
-          accept={ALLOWED_EXTENSIONS}
+          accept={acceptExtensions}
           onChange={handleFileSelect}
           multiple
           className="hidden"

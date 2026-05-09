@@ -227,9 +227,22 @@ The roadmap renders as a **Sun Ray Diagram**: a quarter-circle SVG with concentr
 - `"2026-05-04"` — ISO date (requires `start_date` to compute column offset)
 
 **Axis modes** (`axis`):
-- `"weeks"` — each column = 1 week (default)
-- `"months"` — each column = 1 month
-- `"dates"` — each column = 1 day (for short sprints)
+- `"weeks"` — each column = 1 week (0–3 months)
+- `"months"` — each column = 1 month (3–13 months)
+- `"quarters"` — each column = 1 quarter (1–3 years)
+- `"years"` — each column = 1 year (3+ years)
+- `"dates"` — each column = 1 day (short sprints)
+
+**Auto-selection** (applied when `axis` is omitted or would produce an unreadable column count):
+
+| Span | Auto axis |
+|------|-----------|
+| ≤ 90 days | `"weeks"` |
+| 91–395 days | `"months"` |
+| 396–1,095 days | `"quarters"` |
+| > 1,095 days | `"years"` |
+
+If the LLM provides an explicit `axis`, it is respected unless it would produce too many columns (e.g. `"weeks"` for a plan > 180 days is overridden to the ideal axis).
 
 **Hover tooltips**: Set `detail` on any task to show a tooltip on bar/diamond hover.
 
@@ -376,9 +389,12 @@ Exports: `resolveCategoryColor`, `paletteColor`, `resolvePalette`, `DEFAULT_PALE
 
 Gantt time-axis utilities, independently testable:
 
-- `parsePosition(token, startDate, axis)` — token → 0-based column index
+- `parsePosition(token, startDate, axis)` — token → 0-based column index (axis-consistent: months→month offset, quarters→quarter offset, years→year offset)
 - `computeTotalColumns(tasks, startDate, axis)` — max column needed
-- `buildMonthSpans(startDate, totalCols, axis)` — header row spans
+- `buildMonthSpans(startDate, totalCols, axis)` — top header row spans (groups columns by year for months/quarters, by decade for years)
+- `buildColumnLabels(startDate, totalCols, axis)` — sub-header label array (e.g. `["May","Jun",…]` for months, `["Q2","Q3",…]` for quarters)
+- `colToLabel(col, startDate, axis)` — human-readable tooltip label (e.g. `"Q2 2026"`, `"May 2026"`, `"2027"`)
+- `autoSelectAxis(tasks, startDate, explicitAxis?)` — 4-tier auto-selection with override guard
 
 ---
 

@@ -400,12 +400,14 @@ export interface GanttBlockConfig {
    */
   end_date?: string;
   /**
-   * Time axis granularity.
-   * - "weeks"  → W1…Wn columns (default)
-   * - "months" → M1…Mn columns
-   * - "dates"  → derive weeks from start_date/end_date
+   * Time axis granularity. Auto-selected from project span if omitted.
+   * - "weeks"    → W1…Wn columns  (0–3 months)
+   * - "months"   → M1…Mn columns  (3–13 months)
+   * - "quarters" → Q1…Qn columns  (1–3 years)
+   * - "years"    → year columns   (3+ years)
+   * - "dates"    → day columns    (short sprints)
    */
-  axis?: 'weeks' | 'months' | 'dates';
+  axis?: 'weeks' | 'months' | 'quarters' | 'years' | 'dates';
   /**
    * Optional three-color flag strip [color1, color2, color3].
    * Priority: flag_colors > branding.primary/accent/secondary > default palette.

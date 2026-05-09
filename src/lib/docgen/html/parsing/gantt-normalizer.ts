@@ -92,10 +92,17 @@ export function normalizeGanttConfig(
     const endRaw = typeof t.end === 'string' ? t.end.trim() : '';
     const hasValidEnd = isValidPosition(endRaw) && endRaw !== startRaw;
 
-    // Infer milestone: explicit type=diamond, OR no end, OR end === start
+    // Infer milestone: explicit type=diamond, OR no end, OR end === start,
+    // OR category name contains "milestone" (and not explicitly typed as "bar")
+    const categoryIsMilestone =
+      t.type !== 'bar' &&
+      typeof t.category === 'string' &&
+      /milestone/i.test(t.category);
+
     const isMilestone =
       t.type === 'diamond' ||
-      !hasValidEnd;
+      !hasValidEnd ||
+      categoryIsMilestone;
 
     const normalizedTask: GanttTask = {
       group,

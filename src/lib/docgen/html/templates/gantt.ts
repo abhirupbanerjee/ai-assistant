@@ -22,7 +22,7 @@ import type { GanttBlockConfig, GanttTask, GanttCategory } from '../types';
 import { escapeHtml } from '../markdown/escape';
 import { buildVendorScripts } from '../vendor-bundles';
 import { resolveCategoryColor } from '../branding/color-resolver';
-import { parsePosition, computeTotalColumns, buildMonthSpans } from '../time/time-axis';
+import { parsePosition, computeTotalColumns, buildMonthSpans, buildColumnLabels, colToLabel } from '../time/time-axis';
 import { normalizeGanttConfig } from '../parsing/gantt-normalizer';
 
 // ── Main template builder ─────────────────────────────────────────────────────
@@ -98,13 +98,7 @@ export function buildGanttTemplate(
   if (startDate) {
     const today = new Date(todayIso);
     if (!isNaN(today.getTime())) {
-      const diffMs = today.getTime() - startDate.getTime();
-      if (axis === 'months') {
-        // Approximate months from start
-        todayCol = Math.round(diffMs / (30.44 * 24 * 60 * 60 * 1000));
-      } else {
-        todayCol = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
-      }
+      todayCol = parsePosition(todayIso, startDate, axis);
     }
   }
 
@@ -131,6 +125,7 @@ export function buildGanttTemplate(
   const jsTotalCols = totalCols;
   const jsTodayCol = todayCol;
   const jsAxis = JSON.stringify(axis);
+  const jsColumnLabels = JSON.stringify(buildColumnLabels(startDate, totalCols, axis));
 
   // ── Project plan KPI strip ──
   let projectPlanHeaderHtml = '';
@@ -633,12 +628,13 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   'use strict';
 
   // ── Data injected by server ──────────────────────────────────────────
-  var CATEGORIES = ${jsCategories};
-  var TASKS      = ${jsTasks};
-  var MONTHS     = ${jsMonths};
-  var TOTAL_COLS = ${jsTotalCols};
-  var TODAY_COL  = ${jsTodayCol};
-  var AXIS       = ${jsAxis};
+  var CATEGORIES  = ${jsCategories};
+  var TASKS       = ${jsTasks};
+  var MONTHS      = ${jsMonths};
+  var TOTAL_COLS  = ${jsTotalCols};
+  var TODAY_COL   = ${jsTodayCol};
+  var AXIS        = ${jsAxis};
+  var COL_LABELS  = ${jsColumnLabels};
 
   // Label column width in pixels — must match CSS --gantt-label-w
   var LABEL_W = 200;
@@ -714,7 +710,7 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   for (var w = 0; w < TOTAL_COLS; w++) {
     var wCell = document.createElement('div');
     wCell.className = 'gantt-week-cell';
-    wCell.textContent = (AXIS === 'months') ? ('M' + (w + 1)) : ('W' + (w + 1));
+    wCell.textContent = COL_LABELS[w] || ('W' + (w + 1));
     weekRow.appendChild(wCell);
   }
   wrapEl.appendChild(weekRow);
@@ -876,8 +872,7 @@ ${disclaimerHtml ? `<div class="gantt-disclaimer">${disclaimerHtml}</div>` : ''}
   }
 
   function colLabel(col) {
-    if (AXIS === 'months') return 'M' + (col + 1);
-    return 'W' + (col + 1);
+    return COL_LABELS[col] || ('W' + (col + 1));
   }
 
   function escHtml(str) {
