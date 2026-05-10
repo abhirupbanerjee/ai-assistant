@@ -6,6 +6,7 @@ import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
+import InlineLanguageToneChips from './InlineLanguageToneChips';
 import Toast from '@/components/ui/Toast';
 import { ChatMode } from './ModeToggle';
 import type { ChatPreferences } from '@/types/stream';
@@ -268,14 +269,23 @@ export default function MessageInput({
             {attachmentChipsSlot}
             {/* Inline mode chips on desktop EXPANDED */}
             {!isMobile && (
-              <InlineModeChips
-                mode={mode}
-                onModeChange={setMode}
-                webSearchEnabled={preferences.webSearchEnabled}
-                onWebSearchToggle={handleWebSearchToggle}
-                autonomousAdminDisabled={autonomousAdminDisabled}
-                disabled={disabled}
-              />
+              <>
+                <InlineModeChips
+                  mode={mode}
+                  onModeChange={setMode}
+                  webSearchEnabled={preferences.webSearchEnabled}
+                  onWebSearchToggle={handleWebSearchToggle}
+                  autonomousAdminDisabled={autonomousAdminDisabled}
+                  disabled={disabled}
+                />
+                <InlineLanguageToneChips
+                  selectedLanguage={preferences.targetLanguage}
+                  onLanguageChange={handleLanguageChange}
+                  selectedTone={preferences.responseTone}
+                  onToneChange={handleToneChange}
+                  disabled={disabled}
+                />
+              </>
             )}
           </div>
         )}
