@@ -259,11 +259,11 @@ export default function MessageInput({
 
   // Unified layout for both mobile and desktop
   return (
-    <div className="bg-white p-4 safe-area-bottom" data-state={inputState}>
-      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
+    <div className="bg-white p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
+      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 transition-all duration-300">
         {/* Chip slots: CategoryChip + AttachmentChipsRow (visible in EXPANDED state) */}
         {(categoryChipSlot || attachmentChipsSlot) && inputState !== 'compact' && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2 transition-all duration-300">
             {categoryChipSlot}
             {attachmentChipsSlot}
             {/* Inline mode chips on desktop EXPANDED */}
