@@ -331,21 +331,27 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] Ensured parallel_tool_capable and thinking_capable columns exist');
 
   // Migration: Update thread_outputs and workspace_outputs file_type CHECK constraints to include 'html'
+  // First, update any rows with file_types that would violate the new constraint to a valid type
   await sql`
-    DO $$ BEGIN
-      ALTER TABLE thread_outputs DROP CONSTRAINT IF EXISTS thread_outputs_file_type_check;
-      ALTER TABLE thread_outputs ADD CONSTRAINT thread_outputs_file_type_check
-        CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html'));
-    EXCEPTION WHEN others THEN NULL;
-    END $$
+    UPDATE thread_outputs SET file_type = 'md' WHERE file_type NOT IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html')
   `.execute(database);
   await sql`
-    DO $$ BEGIN
-      ALTER TABLE workspace_outputs DROP CONSTRAINT IF EXISTS workspace_outputs_file_type_check;
-      ALTER TABLE workspace_outputs ADD CONSTRAINT workspace_outputs_file_type_check
-        CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'html'));
-    EXCEPTION WHEN others THEN NULL;
-    END $$
+    UPDATE workspace_outputs SET file_type = 'md' WHERE file_type NOT IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'html')
+  `.execute(database);
+  // Drop old constraints and add updated ones
+  await sql`
+    ALTER TABLE thread_outputs DROP CONSTRAINT IF EXISTS thread_outputs_file_type_check
+  `.execute(database);
+  await sql`
+    ALTER TABLE thread_outputs ADD CONSTRAINT thread_outputs_file_type_check
+      CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html'))
+  `.execute(database);
+  await sql`
+    ALTER TABLE workspace_outputs DROP CONSTRAINT IF EXISTS workspace_outputs_file_type_check
+  `.execute(database);
+  await sql`
+    ALTER TABLE workspace_outputs ADD CONSTRAINT workspace_outputs_file_type_check
+      CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'html'))
   `.execute(database);
   console.log('[Kysely] Updated file_type constraints to include html format');
 

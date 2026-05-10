@@ -293,8 +293,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       .catch(() => { /* default to enabled */ });
   }, []);
 
+  // Ref to track if a send is in progress (prevents race condition with activeThread change)
+  const isSendingRef = useRef(false);
+
   // Load thread messages when active thread changes
   useEffect(() => {
+    // CRITICAL: If a send is in progress (e.g. starter prompt on new thread),
+    // do NOT reset streaming — this would abort the in-flight SSE connection.
+    // The activeThread change is a side effect of createThread() calling
+    // onThreadCreated() during sendMessage(), and resetting would kill the stream.
+    if (isSendingRef.current) return;
+
     resetStreaming();
 
     // Reset pending uploads/sources when switching threads
@@ -318,6 +327,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       setArchivedMessages([]);
     }
   }, [activeThread, resetStreaming]);
+
 
   // Load starter prompts and category welcome for single-category threads
   useEffect(() => {
@@ -477,10 +487,14 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const sendMessage = useCallback(async (content: string, mode?: 'normal' | 'autonomous', preferences?: ChatPreferences) => {
     setError(null);
 
+    // Set sending flag BEFORE createThread (which may trigger onThreadCreated → activeThread change)
+    isSendingRef.current = true;
+
     let currentThreadId = threadId;
     if (!currentThreadId) {
       currentThreadId = await createThread();
       if (!currentThreadId) {
+        isSendingRef.current = false;
         setError('Failed to create conversation');
         return;
       }
@@ -497,12 +511,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
     // Use provided preferences or fall back to current state
     const prefsToUse = preferences || chatPreferences;
-    await sendStreamingMessage(content, currentThreadId, mode, prefsToUse);
+    try {
+      await sendStreamingMessage(content, currentThreadId, mode, prefsToUse);
+    } finally {
+      isSendingRef.current = false;
+    }
 
     // Clear pending uploads/sources after sending — they've been sent to the LLM
     setPendingUploads([]);
     setPendingUrlSources([]);
   }, [threadId, createThread, sendStreamingMessage, chatPreferences]);
+
 
   const handleUploadComplete = (filename: string) => {
     setUploads((prev) => [...prev, filename]);
