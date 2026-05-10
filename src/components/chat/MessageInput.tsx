@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, AlertCircle, Loader2, X, Square } from 'lucide-react';
+import { ArrowUp, AlertCircle, Loader2, X, Square, RotateCcw } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
@@ -270,10 +270,10 @@ export default function MessageInput({
 
         {/* Upload Error */}
         {uploadError && (
-          <div className="mb-2 p-2 bg-red-50 text-red-600 rounded-lg text-sm">
+          <div className="mb-2 p-2 bg-red-50 text-red-600 rounded-lg text-sm" role="alert">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
                   <div>{uploadError}</div>
                   <div className="text-xs text-red-500 mt-1">
@@ -286,7 +286,7 @@ export default function MessageInput({
                 className="p-0.5 hover:bg-red-100 rounded flex-shrink-0"
                 aria-label="Dismiss error"
               >
-                <X size={14} />
+                <X size={14} aria-hidden="true" />
               </button>
             </div>
           </div>

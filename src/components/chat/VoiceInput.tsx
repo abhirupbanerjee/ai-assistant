@@ -171,46 +171,49 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
     return null;
   }
 
-  if (isTranscribing) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--accent-color)' }} />
-        <span className="text-sm text-gray-600">Transcribing...</span>
-      </div>
-    );
-  }
+   if (isTranscribing) {
+     return (
+       <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg" role="status" aria-live="polite" aria-label="Transcribing audio">
+         <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--accent-color)' }} />
+         <span className="text-sm text-gray-600">Transcribing...</span>
+       </div>
+     );
+   }
 
-  if (isRecording) {
-    return (
-      <button
-        onClick={stopRecording}
-        className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
-      >
-        <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
-        <span className="text-sm font-medium">
-          {formatTime(recordingTime)} / {formatTime(maxDuration)}
-        </span>
-        <Square size={16} fill="currentColor" />
-      </button>
-    );
-  }
+   if (isRecording) {
+     return (
+       <button
+         onClick={stopRecording}
+         className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+         aria-label={`Recording: ${formatTime(recordingTime)} of ${formatTime(maxDuration)}`}
+         aria-live="polite"
+       >
+         <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
+         <span className="text-sm font-medium">
+           {formatTime(recordingTime)} / {formatTime(maxDuration)}
+         </span>
+         <Square size={16} fill="currentColor" />
+       </button>
+     );
+   }
 
-  return (
-    <button
-      onClick={startRecording}
-      disabled={disabled}
-      className="p-2 text-gray-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
-      title="Voice input"
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.color = 'var(--accent-color)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = '';
-      }}
-    >
-      <Mic size={20} />
-    </button>
-  );
+   return (
+     <button
+       onClick={startRecording}
+       disabled={disabled}
+       className="p-2 text-gray-500 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 hover:scale-110"
+       title="Voice input (click to record)"
+       aria-label="Start voice recording"
+       onMouseEnter={(e) => {
+         if (!disabled) {
+           e.currentTarget.style.color = 'var(--accent-color)';
+         }
+       }}
+       onMouseLeave={(e) => {
+         e.currentTarget.style.color = '';
+       }}
+     >
+       <Mic size={20} />
+     </button>
+   );
 }

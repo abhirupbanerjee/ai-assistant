@@ -73,6 +73,9 @@ export default function CategoryChip({
             ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200'
             : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
         } ${disabled || readOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label={selectedCategory ? `Category: ${selectedCategory.categoryName}` : 'Select a category'}
       >
         {selectedCategory ? (
           <>
@@ -85,7 +88,7 @@ export default function CategoryChip({
                   setIsOpen(false);
                 }}
                 className="ml-1 hover:opacity-70 transition-opacity"
-                aria-label="Clear category"
+                aria-label={`Clear ${selectedCategory.categoryName}`}
               >
                 <X size={14} />
               </button>
@@ -101,7 +104,7 @@ export default function CategoryChip({
 
       {/* Dropdown menu */}
       {isOpen && subscriptions.length > 1 && (
-        <div className="absolute top-full left-0 mt-1 w-max bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+        <div className="absolute top-full left-0 mt-1 w-max bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50" role="listbox">
           {subscriptions.map((sub) => (
             <button
               key={sub.categoryId}
@@ -114,6 +117,8 @@ export default function CategoryChip({
                   ? 'bg-blue-50 text-blue-700 font-medium'
                   : 'text-gray-700 hover:bg-gray-50'
               }`}
+              role="option"
+              aria-selected={selectedCategoryId === sub.categoryId}
             >
               {sub.categoryName}
             </button>

@@ -41,27 +41,28 @@ export default function AttachmentChipsRow({
   };
 
   return (
-    <>
+    <div role="list" className="contents">
       {/* File uploads */}
       {allUploads.map((filename) => {
         const isPending = pendingUploads.includes(filename);
         return (
           <div
             key={filename}
+            role="listitem"
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
               isPending
                 ? 'bg-blue-100 text-blue-700 border border-blue-200'
                 : 'bg-green-100 text-green-700 border border-green-200'
             }`}
           >
-            <FileText size={12} className="shrink-0" />
+            <FileText size={12} className="shrink-0" aria-hidden="true" />
             <span className="truncate max-w-[120px]">{filename}</span>
             <button
               onClick={() => onRemoveUpload(filename)}
               className="ml-0.5 hover:opacity-70 transition-opacity"
-              aria-label={`Remove ${filename}`}
+              aria-label={`Remove file: ${filename}`}
             >
-              <X size={12} />
+              <X size={12} aria-hidden="true" />
             </button>
           </div>
         );
@@ -73,6 +74,7 @@ export default function AttachmentChipsRow({
         return (
           <div
             key={source.filename}
+            role="listitem"
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
               isPending
                 ? 'bg-purple-100 text-purple-700 border border-purple-200'
@@ -86,13 +88,13 @@ export default function AttachmentChipsRow({
             <button
               onClick={() => onRemoveUrlSource(source.filename)}
               className="ml-0.5 hover:opacity-70 transition-opacity"
-              aria-label={`Remove ${source.title || source.originalUrl}`}
+              aria-label={`Remove source: ${source.title || source.originalUrl}`}
             >
-              <X size={12} />
+              <X size={12} aria-hidden="true" />
             </button>
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
