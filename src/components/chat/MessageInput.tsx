@@ -68,7 +68,16 @@ export default function MessageInput({
   attachmentChipsSlot,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
-  const [mode, setMode] = useState<ChatMode>('normal');
+  // Restore default mode from localStorage on mount
+  const [mode, setMode] = useState<ChatMode>(() => {
+    if (typeof window === 'undefined') return 'normal';
+    try {
+      const saved = localStorage.getItem('policybot:pref:defaultMode');
+      return (saved as ChatMode) || 'normal';
+    } catch {
+      return 'normal';
+    }
+  });
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -127,6 +136,12 @@ export default function MessageInput({
       onSend(message.trim(), mode, preferences);
       setMessage('');
       clearDraft();
+      // Save mode to localStorage for next session
+      try {
+        localStorage.setItem('policybot:pref:defaultMode', mode);
+      } catch (error) {
+        console.warn('Failed to save default mode preference:', error);
+      }
       // Reset mode to normal after sending
       setMode('normal');
     }
