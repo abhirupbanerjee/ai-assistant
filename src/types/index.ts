@@ -351,6 +351,18 @@ export interface ThreadMetadata {
   uploadCount: number;
 }
 
+// ============ Starter Prompt Types ============
+
+export interface StarterPrompt {
+  label: string;
+  prompt: string;
+}
+
+export interface WelcomeConfig {
+  title?: string;
+  message?: string;
+}
+
 export interface StoredMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool';

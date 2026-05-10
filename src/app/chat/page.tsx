@@ -8,7 +8,6 @@ import ThreadSidebar, { type ThreadSidebarRef } from '@/components/layout/Thread
 import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
-import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
@@ -16,7 +15,12 @@ import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenu
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
 import MobileFABs from '@/components/mobile/MobileFABs';
-import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
+import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, StarterPrompt } from '@/types';
+
+interface WelcomeConfig {
+  title?: string;
+  message?: string;
+}
 
 // Inner component that uses the mobile menu context
 function HomeContent() {
@@ -26,6 +30,10 @@ function HomeContent() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
+  const [brandingSubtitle, setBrandingSubtitle] = useState<string>('Ask questions about policy documents');
+  const [globalWelcome, setGlobalWelcome] = useState<WelcomeConfig>({});
+  const [globalStarterPrompts, setGlobalStarterPrompts] = useState<StarterPrompt[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [threadCount, setThreadCount] = useState(0);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
@@ -72,11 +80,17 @@ function HomeContent() {
           setUserSubscriptions(subsData.subscriptions || []);
         }
 
-        // Load branding
+        // Load full branding data
         const brandingResponse = await fetch('/api/branding');
         if (brandingResponse.ok) {
           const brandingData = await brandingResponse.json();
           setBrandingName(brandingData.botName || 'Policy Bot');
+          setBrandingSubtitle(brandingData.subtitle || 'Ask questions about policy documents');
+          setGlobalWelcome({
+            title: brandingData.welcomeTitle || undefined,
+            message: brandingData.welcomeMessage || undefined,
+          });
+          setGlobalStarterPrompts(brandingData.starterPrompts || []);
         }
 
         // Load thread count for mobile FAB badge
@@ -94,11 +108,14 @@ function HomeContent() {
 
   const handleThreadSelect = useCallback((thread: Thread | null) => {
     setActiveThread(thread);
+    // Clear selected category when switching threads (let ChatWindow handle category-based welcome)
+    setSelectedCategoryId(null);
   }, []);
 
   const handleThreadCreated = useCallback((thread: Thread) => {
     setActiveThread(thread);
     setThreadCount(prev => prev + 1);
+    setSelectedCategoryId(null);
   }, []);
 
   const handleArtifactsChange = useCallback((data: {
@@ -172,9 +189,6 @@ function HomeContent() {
   // Header always shows the bot name (branding)
   const getHeaderTitle = () => brandingName;
 
-  // Get user role for WelcomeScreen
-  const userRole = (session?.user as { role?: string })?.role as 'user' | 'superuser' | 'admin' | undefined;
-
   // Calculate artifact count for FAB badge
   const artifactCount = artifactsData.generatedDocs.length +
     artifactsData.generatedImages.length +
@@ -185,18 +199,29 @@ function HomeContent() {
   // Handler for creating new thread from mobile header
   const handleNewThreadFromHeader = useCallback(() => {
     setActiveThread(null);
+    setSelectedCategoryId(null);
+  }, []);
+
+  // Handler for category change from header
+  const handleCategoryChange = useCallback((categoryId: number | null, categoryName: string) => {
+    setSelectedCategoryId(categoryId);
+    // Clear active thread when changing category
+    setActiveThread(null);
   }, []);
 
   return (
     <div className="fixed-layout bg-gray-50">
-      {/* Header - shows MobileHeader on mobile when thread active */}
+      {/* Header - shows category dropdown + help link */}
       <AppHeader
         title={getHeaderTitle()}
         isMobile={isMobile}
         activeThread={activeThread}
         onOpenThreadsMenu={mobileMenu?.openThreadsMenu}
         onNewThread={handleNewThreadFromHeader}
-        onHomeClick={() => setActiveThread(null)}
+        onHomeClick={handleNewThreadFromHeader}
+        userSubscriptions={userSubscriptions}
+        selectedCategoryId={selectedCategoryId}
+        onCategoryChange={handleCategoryChange}
       />
 
       {/* Content area */}
@@ -211,30 +236,24 @@ function HomeContent() {
           />
         )}
 
-        {/* Main content area */}
+        {/* Main content area - Always show ChatWindow */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          {activeThread ? (
-            <ErrorBoundary moduleName="ChatWindow">
-              <ChatWindow
-                ref={chatWindowRef}
-                activeThread={activeThread}
-                onThreadCreated={handleThreadCreated}
-                userSubscriptions={userSubscriptions}
-                brandingName={brandingName}
-                onArtifactsChange={handleArtifactsChange}
-                onInputFocus={handleInputFocus}
-                onInputBlur={handleInputBlur}
-              />
-            </ErrorBoundary>
-          ) : (
-            <ErrorBoundary moduleName="WelcomeScreen">
-              <WelcomeScreen
-                userRole={userRole || 'user'}
-                brandingName={brandingName}
-                onNewThread={handleNewThreadFromHeader}
-              />
-            </ErrorBoundary>
-          )}
+          <ErrorBoundary moduleName="ChatWindow">
+            <ChatWindow
+              ref={chatWindowRef}
+              activeThread={activeThread}
+              onThreadCreated={handleThreadCreated}
+              userSubscriptions={userSubscriptions}
+              brandingName={brandingName}
+              brandingSubtitle={brandingSubtitle}
+              globalWelcome={globalWelcome}
+              globalStarterPrompts={globalStarterPrompts}
+              selectedCategoryId={selectedCategoryId}
+              onArtifactsChange={handleArtifactsChange}
+              onInputFocus={handleInputFocus}
+              onInputBlur={handleInputBlur}
+            />
+          </ErrorBoundary>
         </main>
 
         {/* Right sidebar - Desktop only */}

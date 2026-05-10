@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import CategoryChip from './CategoryChip';
 import AttachmentChipsRow from './AttachmentChipsRow';
 import Spinner from '@/components/ui/Spinner';
-import StarterButtons, { StarterPrompt } from './StarterButtons';
+import StarterButtons from './StarterButtons';
+import SuggestionGrid from './SuggestionGrid';
 import ProcessingIndicator from './ProcessingIndicator';
 
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
@@ -33,6 +34,8 @@ interface ChatWindowProps {
   brandingSubtitle?: string;
   globalWelcome?: WelcomeConfig;
   categoryWelcome?: WelcomeConfig;
+  globalStarterPrompts?: StarterPrompt[];
+  selectedCategoryId?: number | null;
   // Callbacks for artifacts data
   onArtifactsChange?: (data: {
     threadId: string | null;
@@ -67,6 +70,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   brandingSubtitle,
   globalWelcome,
   categoryWelcome,
+  globalStarterPrompts,
+  selectedCategoryId,
   onArtifactsChange,
   onInputFocus,
   onInputBlur,
@@ -602,31 +607,43 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         onScroll={handleMessagesScroll}
         className="flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative"
       >
-        {messages.length === 0 && archivedMessages.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
-            <h2 className="text-lg font-medium text-gray-900 mb-2">
-              {welcomeContent.title}
-            </h2>
-            <p className="text-gray-500 max-w-md mb-6">
-              {starterPrompts.length > 0
-                ? 'Click a quick start button below or type your own question.'
-                : `${welcomeContent.message} or upload a document to check for compliance. Start by typing a question below.`
-              }
-            </p>
+            {messages.length === 0 && archivedMessages.length === 0 && !loading && (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
+                <h2 className="text-lg font-medium text-gray-900 mb-2">
+                  {welcomeContent.title}
+                </h2>
+                <p className="text-gray-500 max-w-md mb-6">
+                  {/* Show different message based on whether we have prompts */}
+                  {(starterPrompts.length > 0 || (globalStarterPrompts && globalStarterPrompts.length > 0))
+                    ? 'Click a quick start button below or type your own question.'
+                    : `${welcomeContent.message} or upload a document to check for compliance. Start by typing a question below.`
+                  }
+                </p>
 
-            {/* Starter Prompts */}
-            {starterPrompts.length > 0 && (
-              <div className="max-w-2xl w-full">
-                <StarterButtons
-                  starters={starterPrompts}
-                  onSelect={handleStarterSelect}
-                  disabled={loading || loadingStarters}
-                />
+                {/* Category-specific Starter Prompts (from category data) */}
+                {starterPrompts.length > 0 && (
+                  <div className="max-w-2xl w-full">
+                    <StarterButtons
+                      starters={starterPrompts}
+                      onSelect={handleStarterSelect}
+                      disabled={loading || loadingStarters}
+                    />
+                  </div>
+                )}
+
+                {/* Global Starter Prompts (from branding) - show when no category */}
+                {!starterPrompts.length && globalStarterPrompts && globalStarterPrompts.length > 0 && (
+                  <div className="w-full">
+                    <SuggestionGrid
+                      starters={globalStarterPrompts}
+                      onSelect={handleStarterSelect}
+                      disabled={loading}
+                    />
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
         {/* Archived messages (from before summarization) */}
         {archivedMessages.map((message) => (

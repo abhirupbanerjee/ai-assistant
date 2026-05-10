@@ -18,6 +18,7 @@ export async function GET() {
       welcomeTitle: branding.welcomeTitle || null,
       welcomeMessage: branding.welcomeMessage || null,
       accentColor: branding.accentColor || '#2563eb',
+      starterPrompts: branding.starterPrompts || [],
       // Include available icons for client reference
       availableIcons: BRANDING_ICONS,
     });

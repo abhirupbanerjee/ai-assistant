@@ -5,6 +5,11 @@ import { Save, Globe, Landmark, DollarSign, Activity, Layers, Server, ScrollText
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
+interface StarterPrompt {
+  label: string;
+  prompt: string;
+}
+
 interface BrandingSettings {
   botName: string;
   botIcon: string;
@@ -12,6 +17,7 @@ interface BrandingSettings {
   welcomeTitle?: string;
   welcomeMessage?: string;
   accentColor?: string;
+  starterPrompts?: StarterPrompt[];
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -61,6 +67,7 @@ export default function BrandingSettingsTab() {
         welcomeTitle: '',
         welcomeMessage: '',
         accentColor: '#3B82F6',
+        starterPrompts: [],
       };
 
       setSettings(brandingData);
@@ -71,6 +78,7 @@ export default function BrandingSettingsTab() {
         welcomeTitle: brandingData.welcomeTitle,
         welcomeMessage: brandingData.welcomeMessage,
         accentColor: brandingData.accentColor,
+        starterPrompts: brandingData.starterPrompts || [],
       });
       setError(null);
     } catch (err) {
@@ -254,6 +262,71 @@ export default function BrandingSettingsTab() {
                 placeholder="#3B82F6"
                 className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
               />
+            </div>
+          </div>
+
+          {/* Default Starter Prompts */}
+          <div className="border-t pt-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Default Starter Prompts</label>
+            <p className="text-sm text-gray-500 mb-3">
+              These prompts appear on the welcome screen when no category is selected. Maximum 6 prompts.
+            </p>
+            <div className="space-y-3">
+              {(editedSettings.starterPrompts || []).map((prompt, index) => (
+                <div key={index} className="flex gap-3 items-start p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="text"
+                      value={prompt.label}
+                      onChange={(e) => {
+                        const newPrompts = [...(editedSettings.starterPrompts || [])];
+                        newPrompts[index] = { ...prompt, label: e.target.value };
+                        updateSetting('starterPrompts', newPrompts);
+                      }}
+                      placeholder="Button label (e.g., Generate Report)"
+                      maxLength={50}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <textarea
+                      value={prompt.prompt}
+                      onChange={(e) => {
+                        const newPrompts = [...(editedSettings.starterPrompts || [])];
+                        newPrompts[index] = { ...prompt, prompt: e.target.value };
+                        updateSetting('starterPrompts', newPrompts);
+                      }}
+                      placeholder="Full prompt text..."
+                      maxLength={500}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newPrompts = [...(editedSettings.starterPrompts || [])];
+                      newPrompts.splice(index, 1);
+                      updateSetting('starterPrompts', newPrompts);
+                    }}
+                    className="mt-1 p-1 text-red-500 hover:text-red-700"
+                    title="Remove prompt"
+                  >
+                    <span className="sr-only">Remove</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {(editedSettings.starterPrompts || []).length < 6 && (
+                <button
+                  onClick={() => {
+                    const newPrompts = [...(editedSettings.starterPrompts || []), { label: '', prompt: '' }];
+                    updateSetting('starterPrompts', newPrompts);
+                  }}
+                  className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-gray-400 hover:text-gray-600 text-sm font-medium"
+                >
+                  + Add Prompt
+                </button>
+              )}
             </div>
           </div>
 

@@ -81,6 +81,11 @@ export interface RetentionSettings {
 
 export type AcronymMappings = Record<string, string[]>;
 
+export interface StarterPrompt {
+  label: string;   // Button text (max 30 chars)
+  prompt: string;  // Full message to send (max 500 chars)
+}
+
 export interface BrandingSettings {
   botName: string;
   botIcon: string;
@@ -88,6 +93,7 @@ export interface BrandingSettings {
   welcomeTitle?: string;      // Global fallback for welcome screen
   welcomeMessage?: string;    // Global fallback for welcome screen
   accentColor?: string;       // Accent color for UI elements (default: #2563eb)
+  starterPrompts?: StarterPrompt[]; // Default prompts when no category selected
 }
 
 export interface PWASettings {

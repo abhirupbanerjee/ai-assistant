@@ -126,13 +126,17 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
                 {thinkingExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </span>
               {isStreaming && !message.content && (
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                <div className="streaming-dots inline-flex ml-auto">
+                  <span className="streaming-dot" />
+                  <span className="streaming-dot" />
+                  <span className="streaming-dot" />
+                </div>
               )}
             </button>
             {thinkingExpanded && (
               <div className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-pre-wrap bg-white border-t border-gray-100 max-h-64 overflow-y-auto leading-relaxed">
                 {effectiveThinking}
-                {isStreaming && !message.content && (
+                {isStreaming && (
                   <span className="inline-block w-1.5 h-3 bg-purple-300 animate-pulse ml-0.5 align-middle" />
                 )}
               </div>
@@ -148,7 +152,13 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
             {displayContent}
           </ReactMarkdown>
           {isStreaming && (
-            <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5 align-middle" />
+            <div className="inline-flex items-center gap-1 ml-0.5 align-middle">
+              <div className="streaming-dots">
+                <span className="streaming-dot" />
+                <span className="streaming-dot" />
+                <span className="streaming-dot" />
+              </div>
+            </div>
           )}
         </div>
 

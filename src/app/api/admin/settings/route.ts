@@ -609,7 +609,7 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'branding': {
-        const { botName, botIcon, subtitle, welcomeTitle, welcomeMessage, accentColor } = settings;
+        const { botName, botIcon, subtitle, welcomeTitle, welcomeMessage, accentColor, starterPrompts } = settings;
 
         // Validate bot name
         if (typeof botName !== 'string' || botName.trim().length === 0) {
@@ -693,6 +693,43 @@ export async function PUT(request: NextRequest) {
           }
         }
 
+        // Validate starter prompts if provided (max 6 for default branding)
+        if (starterPrompts !== undefined && starterPrompts !== null) {
+          if (!Array.isArray(starterPrompts)) {
+            return NextResponse.json<ApiError>(
+              { error: 'Starter prompts must be an array', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          if (starterPrompts.length > 6) {
+            return NextResponse.json<ApiError>(
+              { error: 'Maximum 6 default starter prompts allowed', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          for (let i = 0; i < starterPrompts.length; i++) {
+            const prompt = starterPrompts[i];
+            if (!prompt || typeof prompt.label !== 'string' || typeof prompt.prompt !== 'string') {
+              return NextResponse.json<ApiError>(
+                { error: `Starter prompt ${i + 1} must have label and prompt strings`, code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+            if (prompt.label.length > 50) {
+              return NextResponse.json<ApiError>(
+                { error: `Starter prompt ${i + 1} label must be 50 characters or less`, code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+            if (prompt.prompt.length > 500) {
+              return NextResponse.json<ApiError>(
+                { error: `Starter prompt ${i + 1} prompt must be 500 characters or less`, code: 'VALIDATION_ERROR' },
+                { status: 400 }
+              );
+            }
+          }
+        }
+
         result = await setBrandingSettings({
           botName: botName.trim(),
           botIcon,
@@ -700,6 +737,7 @@ export async function PUT(request: NextRequest) {
           welcomeTitle: welcomeTitle || undefined,
           welcomeMessage: welcomeMessage || undefined,
           accentColor: accentColor || undefined,
+          starterPrompts: starterPrompts || undefined,
         }, user.email);
 
         // Auto-update PWA icons based on selected bot icon
