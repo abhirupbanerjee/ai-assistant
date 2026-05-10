@@ -462,7 +462,7 @@ export default function WelcomeScreen({
   // ============ Render ============
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 overflow-y-auto">
+    <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 pb-8 sm:pb-6 overflow-y-auto">
       <div className="max-w-6xl w-full">
 
         {/* Header */}
@@ -470,7 +470,7 @@ export default function WelcomeScreen({
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             Welcome to {brandingName}
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 text-sm sm:text-base">
             Your AI assistant for policy documents and compliance
           </p>
 
@@ -480,18 +480,19 @@ export default function WelcomeScreen({
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}
                 disabled={isExporting}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isExporting ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : (
                   <Download size={16} />
                 )}
-                Export Guide
+                <span className="hidden sm:inline">Export Guide</span>
+                <span className="sm:hidden">Export</span>
                 <ChevronDown size={14} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
               </button>
               {showExportMenu && (
-                <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[180px] z-10">
+                <div className="absolute top-full mt-1 right-0 sm:left-1/2 sm:-translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] sm:min-w-[180px] z-10">
                   <button
                     onClick={() => handleExport('md')}
                     className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

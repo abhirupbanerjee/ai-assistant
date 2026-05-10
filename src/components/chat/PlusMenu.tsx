@@ -77,37 +77,46 @@ export default function PlusMenu({
     }
   }, [isOpen]);
 
-  // Count active features for badge
-  const activeCount = [
-    mode === 'autonomous',
-    webSearchEnabled,
-    selectedLanguage !== 'en',
-    selectedTone !== 'default',
-    currentUploads.length > 0,
-    showCitationTrajectory,
-  ].filter(Boolean).length;
+   // Count active toggles (excluding uploads which are shown separately)
+   const activeToggles = [
+     mode === 'autonomous',
+     webSearchEnabled,
+     selectedLanguage !== 'en',
+     selectedTone !== 'default',
+     showCitationTrajectory,
+   ].filter(Boolean).length;
 
-  return (
-    <div ref={menuRef} className="relative">
-      {/* Plus button */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        disabled={disabled}
-        className={`p-2 rounded-lg transition-colors relative ${
-          isOpen
-            ? 'bg-blue-100 text-blue-700'
-            : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        <Plus size={20} className={`transition-transform ${isOpen ? 'rotate-45' : ''}`} />
-        {/* Active features badge */}
-        {activeCount > 0 && !isOpen && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
-            {activeCount}
-          </span>
-        )}
-      </button>
+   const hasUploads = currentUploads.length > 0;
+   const hasActiveFeatures = activeToggles > 0 || hasUploads;
+
+   return (
+     <div ref={menuRef} className="relative">
+       {/* Plus button */}
+       <button
+         type="button"
+         onClick={() => setIsOpen(!isOpen)}
+         disabled={disabled}
+         className={`p-2 rounded-lg transition-colors relative ${
+           isOpen
+             ? 'bg-blue-100 text-blue-700'
+             : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+       >
+         <Plus size={20} className={`transition-transform ${isOpen ? 'rotate-45' : ''}`} />
+         {/* Active features badge: green dot for toggles, number for uploads */}
+         {hasActiveFeatures && !isOpen && (
+           <div className="absolute -top-1 -right-1 flex items-center gap-0.5">
+             {activeToggles > 0 && (
+               <span className="w-2 h-2 bg-green-500 rounded-full" title="Active toggles" />
+             )}
+             {hasUploads && (
+               <span className="w-4 h-4 bg-blue-500 text-white text-[9px] font-medium rounded-full flex items-center justify-center">
+                 {currentUploads.length > 9 ? '9+' : currentUploads.length}
+               </span>
+             )}
+           </div>
+         )}
+       </button>
 
       {/* Popup menu */}
       {isOpen && (

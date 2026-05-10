@@ -47,11 +47,12 @@ export default function MessageActions({ content, onRegenerate }: MessageActions
   }, [content, isSpeaking]);
 
   return (
-    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 mt-1">
+    <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center gap-0.5 mt-1">
       <button
         onClick={handleCopy}
         className="p-1.5 rounded-md hover:bg-gray-200 transition-colors"
         title={copied ? 'Copied!' : 'Copy'}
+        aria-label={copied ? 'Copied to clipboard' : 'Copy message to clipboard'}
       >
         {copied ? (
           <Check size={13} className="text-green-600" />
@@ -65,6 +66,7 @@ export default function MessageActions({ content, onRegenerate }: MessageActions
           onClick={onRegenerate}
           className="p-1.5 rounded-md hover:bg-gray-200 transition-colors"
           title="Regenerate response"
+          aria-label="Regenerate response"
         >
           <RefreshCw size={13} className="text-gray-400 hover:text-gray-600" />
         </button>
@@ -74,6 +76,7 @@ export default function MessageActions({ content, onRegenerate }: MessageActions
         onClick={handleReadAloud}
         className="p-1.5 rounded-md hover:bg-gray-200 transition-colors"
         title={isSpeaking ? 'Stop reading' : 'Read aloud'}
+        aria-label={isSpeaking ? 'Stop reading aloud' : 'Read message aloud'}
       >
         {isSpeaking ? (
           <VolumeX size={13} className="text-blue-500" />

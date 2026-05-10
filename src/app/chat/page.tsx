@@ -11,6 +11,7 @@ import AppFooter from '@/components/layout/AppFooter';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { MobileMenuProvider, useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import MobileThreadsMenu from '@/components/mobile/MobileThreadsMenu';
 import MobileArtifactsMenu from '@/components/mobile/MobileArtifactsMenu';
@@ -28,6 +29,20 @@ function HomeContent() {
   const [threadCount, setThreadCount] = useState(0);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
+
+  // Swipe gestures for mobile navigation
+  useSwipeGesture({
+    onSwipeLeft: () => {
+      // Left swipe → open artifacts menu (right edge)
+      mobileMenu?.openArtifactsMenu();
+    },
+    onSwipeRight: () => {
+      // Right swipe → open threads menu (left edge)
+      mobileMenu?.openThreadsMenu();
+    },
+    rightEdgeOnly: false, // Allow swipes from anywhere
+    disabled: (mobileMenu?.isThreadsMenuOpen || mobileMenu?.isArtifactsMenuOpen) || !isMobile,
+  });
 
   // Artifacts state (lifted from ChatWindow)
   const [artifactsData, setArtifactsData] = useState<{
@@ -168,26 +183,8 @@ function HomeContent() {
     artifactsData.urlSources.length;
 
   // Handler for creating new thread from mobile header
-  const handleNewThreadFromHeader = useCallback(async () => {
-    try {
-      const response = await fetch('/api/threads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (response.ok) {
-        const thread = await response.json();
-        const newThread = {
-          ...thread,
-          createdAt: new Date(thread.createdAt),
-          updatedAt: new Date(thread.updatedAt),
-        };
-        setActiveThread(newThread);
-        setThreadCount(prev => prev + 1);
-      }
-    } catch (err) {
-      console.error('Failed to create thread:', err);
-    }
+  const handleNewThreadFromHeader = useCallback(() => {
+    setActiveThread(null);
   }, []);
 
   return (

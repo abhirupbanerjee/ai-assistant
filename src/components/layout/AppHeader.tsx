@@ -37,17 +37,15 @@ export default function AppHeader({
 
   // Default: centered logo header
   return (
-    <header className="shrink-0 bg-white border-b px-4 py-3 shadow-sm">
-      <div className="flex items-center justify-center">
-        <Link
-          href="/chat"
-          onClick={onHomeClick}
-          className="inline-flex items-center gap-2 text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
-        >
-          <Bot size={24} className="text-blue-600" />
-          <span>{title}</span>
-        </Link>
-      </div>
+    <header className="shrink-0 bg-white border-b px-4 py-2 md:py-3 shadow-sm h-12 md:h-14 flex items-center justify-center">
+      <Link
+        href="/chat"
+        onClick={onHomeClick}
+        className="inline-flex items-center gap-2 text-base md:text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
+      >
+        <Bot size={20} className="md:w-6 md:h-6 text-blue-600" />
+        <span className="hidden sm:inline">{title}</span>
+      </Link>
     </header>
   );
 }

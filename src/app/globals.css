@@ -28,6 +28,13 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  height: 100dvh;
+}
+
+@supports not (height: 100dvh) {
+  .fixed-layout {
+    height: 100vh;
+  }
 }
 
 /* Scrollable container that prevents mobile pull-to-refresh */

@@ -6,6 +6,8 @@ import type { Message, MessageMetadata, Thread, UserSubscription, Source, Messag
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
+import CategoryChip from './CategoryChip';
+import AttachmentChipsRow from './AttachmentChipsRow';
 import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
@@ -81,6 +83,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const [chatPreferences, setChatPreferences] = useState<ChatPreferences>(DEFAULT_CHAT_PREFERENCES);
   const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
+  const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -441,9 +444,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const createThread = useCallback(async (): Promise<string | null> => {
     try {
+      const body: { categoryIds?: number[] } = {};
+      if (pendingCategoryId) {
+        body.categoryIds = [pendingCategoryId];
+      }
+
       const response = await fetch('/api/threads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -456,7 +465,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       console.error('Failed to create thread:', err);
     }
     return null;
-  }, [onThreadCreated]);
+  }, [onThreadCreated, pendingCategoryId]);
 
   const sendMessage = useCallback(async (content: string, mode?: 'normal' | 'autonomous', preferences?: ChatPreferences) => {
     setError(null);
@@ -895,22 +904,47 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         )}
       </div>
 
-      {/* Input */}
-      <MessageInput
-        onSend={sendMessage}
-        disabled={loading}
-        modelReady={modelReady}
-        onModelStatusChange={setModelReady}
-        threadId={threadId}
-        currentUploads={pendingUploads}
-        onUploadComplete={handleUploadComplete}
-        onUrlSourceAdded={handleUrlSourceAdded}
-        preferences={chatPreferences}
-        onPreferencesChange={setChatPreferences}
-        autonomousAdminDisabled={autonomousAdminDisabled}
-        onFocus={onInputFocus}
-        onBlur={onInputBlur}
-      />
+       {/* Input */}
+       <MessageInput
+         onSend={sendMessage}
+         disabled={loading}
+         modelReady={modelReady}
+         onModelStatusChange={setModelReady}
+         threadId={threadId}
+         currentUploads={pendingUploads}
+         onUploadComplete={handleUploadComplete}
+         onUrlSourceAdded={handleUrlSourceAdded}
+         preferences={chatPreferences}
+         onPreferencesChange={setChatPreferences}
+         autonomousAdminDisabled={autonomousAdminDisabled}
+         onFocus={onInputFocus}
+         onBlur={onInputBlur}
+          categoryChipSlot={
+            <CategoryChip
+              subscriptions={userSubscriptions}
+              selectedCategoryId={pendingCategoryId}
+              onSelect={setPendingCategoryId}
+              disabled={!!threadId}
+              readOnly={!!activeThread}
+            />
+          }
+         attachmentChipsSlot={
+           <AttachmentChipsRow
+             uploads={uploads}
+             urlSources={urlSources}
+             pendingUploads={pendingUploads}
+             pendingUrlSources={pendingUrlSources}
+             onRemoveUpload={(filename: string) => {
+               setPendingUploads(prev => prev.filter(f => f !== filename));
+               setUploads(prev => prev.filter(f => f !== filename));
+             }}
+             onRemoveUrlSource={(filename: string) => {
+               setPendingUrlSources(prev => prev.filter(s => s.filename !== filename));
+               setUrlSources(prev => prev.filter(s => s.filename !== filename));
+             }}
+           />
+         }
+       />
 
     </div>
   );

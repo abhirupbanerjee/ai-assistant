@@ -29,10 +29,11 @@ export default function MobileFABs({
 
   return (
     <>
-      {/* Threads FAB - Top Left (below header) */}
+      {/* Threads FAB - Top Left (below header, respects safe-area-inset-top for notched devices) */}
       <button
         onClick={openThreadsMenu}
-        className={`fixed top-16 left-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
+        className={`fixed left-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
           shouldHideFABs ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
         }`}
         aria-label="Open threads menu"
@@ -45,11 +46,12 @@ export default function MobileFABs({
         )}
       </button>
 
-      {/* Artifacts FAB - Top Right (below header, only when there's an active thread) */}
+      {/* Artifacts FAB - Top Right (below header, respects safe-area-inset-top for notched devices) */}
       {hasActiveThread && (
         <button
           onClick={openArtifactsMenu}
-          className={`fixed top-16 right-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
+          className={`fixed right-4 z-40 w-12 h-12 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-200 ${
             shouldHideFABs ? 'opacity-0 pointer-events-none -translate-y-4' : 'opacity-100 translate-y-0'
           }`}
           aria-label="Open artifacts menu"

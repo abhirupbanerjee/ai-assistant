@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
 
 const config: Config = {
   content: [
@@ -25,7 +26,14 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(function ({ addVariant }) {
+      // Add data-state variants for adaptive input bar
+      addVariant('data-state-compact', '&[data-state="compact"]');
+      addVariant('data-state-expanded', '&[data-state="expanded"]');
+      addVariant('data-state-focused-write', '&[data-state="focused-write"]');
+    }),
+  ],
 };
 
 export default config;

@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, AlertCircle, Loader2, X } from 'lucide-react';
+import { ArrowUp, AlertCircle, Loader2, X, Square } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
+import InlineModeChips from './InlineModeChips';
 import { ChatMode } from './ModeToggle';
 import type { ChatPreferences } from '@/types/stream';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { useDraftPersistence } from '@/hooks/useDraftPersistence';
+import { useInputState } from '@/hooks/useInputState';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 interface UrlSourceInfo {
   filename: string;
@@ -31,9 +35,15 @@ interface MessageInputProps {
   // Model readiness — false when no valid model is available for the active route
   modelReady?: boolean;
   onModelStatusChange?: (ready: boolean) => void;
+  // Streaming state
+  isStreaming?: boolean;
+  onAbort?: () => void;
   // Focus callbacks for sidebar hiding (mobile)
   onFocus?: () => void;
   onBlur?: () => void;
+  // Chip slots for CategoryChip and AttachmentChipsRow
+  categoryChipSlot?: React.ReactNode;
+  attachmentChipsSlot?: React.ReactNode;
 }
 
 export default function MessageInput({
@@ -48,52 +58,95 @@ export default function MessageInput({
   autonomousAdminDisabled,
   modelReady = true,
   onModelStatusChange,
+  isStreaming = false,
+  onAbort,
   onFocus,
   onBlur,
+  categoryChipSlot,
+  attachmentChipsSlot,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<ChatMode>('normal');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [lineCount, setLineCount] = useState(1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
+
+  // Draft persistence
+  const { clearDraft } = useDraftPersistence(threadId, message, setMessage);
+
+  // Input state management (COMPACT/EXPANDED/FOCUSED-WRITE)
+  const { state: inputState } = useInputState({
+    value: message,
+    isFocused,
+    attachmentCount: currentUploads.length,
+    lineCount,
+  });
 
   // Auto-resize textarea with different max heights for mobile vs desktop
   useEffect(() => {
     if (textareaRef.current) {
       const maxHeight = isMobile ? 112 : 150; // Mobile: 4 lines, Desktop: ~6 lines
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, maxHeight)}px`;
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+      
+      // Calculate line count (approximate: 28px per line on mobile, 24px on desktop)
+      const lineHeightPx = isMobile ? 28 : 24;
+      const calculatedLines = Math.ceil(scrollHeight / lineHeightPx);
+      setLineCount(calculatedLines);
     }
   }, [message, isMobile]);
 
   const isSubmitDisabled = disabled || !modelReady;
 
-  const handleSubmit = () => {
+  // Preference change handlers
+  const handleWebSearchToggle = useCallback((enabled: boolean) => {
+    onPreferencesChange({ ...preferences, webSearchEnabled: enabled });
+  }, [preferences, onPreferencesChange]);
+
+  const handleLanguageChange = useCallback((languageCode: string) => {
+    onPreferencesChange({ ...preferences, targetLanguage: languageCode });
+  }, [preferences, onPreferencesChange]);
+
+  const handleToneChange = useCallback((tone: string) => {
+    onPreferencesChange({ ...preferences, responseTone: tone });
+  }, [preferences, onPreferencesChange]);
+
+  const handleCitationTrajectoryToggle = useCallback((enabled: boolean) => {
+    onPreferencesChange({ ...preferences, showCitationTrajectory: enabled });
+  }, [preferences, onPreferencesChange]);
+
+  const handleSubmit = useCallback(() => {
     if (message.trim() && !isSubmitDisabled) {
       onSend(message.trim(), mode, preferences);
       setMessage('');
+      clearDraft();
       // Reset mode to normal after sending
       setMode('normal');
     }
-  };
+  }, [message, isSubmitDisabled, onSend, mode, preferences, clearDraft]);
 
-  // Preference change handlers
-  const handleWebSearchToggle = (enabled: boolean) => {
-    onPreferencesChange({ ...preferences, webSearchEnabled: enabled });
-  };
+  // Memoized keyboard shortcut callbacks to prevent listener re-binding
+  const focusTextarea = useCallback(() => {
+    textareaRef.current?.focus();
+  }, []);
 
-  const handleLanguageChange = (languageCode: string) => {
-    onPreferencesChange({ ...preferences, targetLanguage: languageCode });
-  };
+  const blurTextarea = useCallback(() => {
+    textareaRef.current?.blur();
+  }, []);
 
-  const handleToneChange = (tone: string) => {
-    onPreferencesChange({ ...preferences, responseTone: tone });
-  };
-
-  const handleCitationTrajectoryToggle = (enabled: boolean) => {
-    onPreferencesChange({ ...preferences, showCitationTrajectory: enabled });
-  };
+  // Keyboard shortcuts (desktop only)
+  useKeyboardShortcuts({
+    onFocus: focusTextarea,
+    onBlur: blurTextarea,
+    onSend: handleSubmit,
+    onTogglePlusMenu: undefined,
+    textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
+    disabled: disabled || isMobile,
+  });
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -115,10 +168,12 @@ export default function MessageInput({
   };
 
   const handleFocus = () => {
+    setIsFocused(true);
     onFocus?.();
   };
 
   const handleBlur = () => {
+    setIsFocused(false);
     onBlur?.();
   };
 
@@ -190,8 +245,27 @@ export default function MessageInput({
 
   // Unified layout for both mobile and desktop
   return (
-    <div className="bg-white p-4 safe-area-bottom">
+    <div className="bg-white p-4 safe-area-bottom" data-state={inputState}>
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
+        {/* Chip slots: CategoryChip + AttachmentChipsRow (visible in EXPANDED state) */}
+        {(categoryChipSlot || attachmentChipsSlot) && inputState !== 'compact' && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {categoryChipSlot}
+            {attachmentChipsSlot}
+            {/* Inline mode chips on desktop EXPANDED */}
+            {!isMobile && (
+              <InlineModeChips
+                mode={mode}
+                onModeChange={setMode}
+                webSearchEnabled={preferences.webSearchEnabled}
+                onWebSearchToggle={handleWebSearchToggle}
+                autonomousAdminDisabled={autonomousAdminDisabled}
+                disabled={disabled}
+              />
+            )}
+          </div>
+        )}
+
         <UploadsIndicator />
 
         {/* Upload Error */}
@@ -271,25 +345,38 @@ export default function MessageInput({
           {/* Center: Model selector */}
           <ModelSelector threadId={threadId} onModelStatusChange={onModelStatusChange} />
 
-          {/* Right action: Send */}
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitDisabled || !message.trim()}
-            className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-            style={{
-              backgroundColor: 'var(--accent-color)',
-            }}
-            onMouseEnter={(e) => {
-              if (!isSubmitDisabled && message.trim()) {
-                e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--accent-color)';
-            }}
-          >
-            <ArrowUp size={18} strokeWidth={2.5} />
-          </button>
+          {/* Right action: Send or Stop (during streaming) */}
+          {isStreaming ? (
+            <button
+              onClick={onAbort}
+              className="p-2.5 rounded-full text-white transition-all bg-red-500 hover:bg-red-600 flex-shrink-0"
+              title="Stop generation"
+              aria-label="Stop generation"
+            >
+              <Square size={18} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitDisabled || !message.trim()}
+              className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--accent-color)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSubmitDisabled && message.trim()) {
+                  e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--accent-color)';
+              }}
+              title="Send message"
+              aria-label="Send message"
+            >
+              <ArrowUp size={18} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
       </div>
     </div>
