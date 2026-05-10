@@ -6,6 +6,7 @@ import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
+import Toast from '@/components/ui/Toast';
 import { ChatMode } from './ModeToggle';
 import type { ChatPreferences } from '@/types/stream';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -71,11 +72,12 @@ export default function MessageInput({
   const [isUploading, setIsUploading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [lineCount, setLineCount] = useState(1);
+  const [lastFailedFile, setLastFailedFile] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
   // Draft persistence
-  const { clearDraft } = useDraftPersistence(threadId, message, setMessage);
+  const { clearDraft, restoredEvent, dismissRestoredEvent } = useDraftPersistence(threadId, message, setMessage);
 
   // Input state management (COMPACT/EXPANDED/FOCUSED-WRITE)
   const { state: inputState } = useInputState({
@@ -177,6 +179,40 @@ export default function MessageInput({
     onBlur?.();
   };
 
+  // Upload a single file
+  const uploadFile = useCallback(async (file: File) => {
+    if (!threadId) return;
+
+    setUploadError(null);
+    setIsUploading(true);
+    setLastFailedFile(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`/api/threads/${threadId}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        onUploadComplete(data.filename);
+      } else {
+        const errorData = await response.json();
+        const errorMsg = errorData.error || 'Failed to upload file';
+        setUploadError(errorMsg);
+        setLastFailedFile(file);
+      }
+    } catch (error) {
+      setUploadError('Failed to upload file. Please try again.');
+      setLastFailedFile(file);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [threadId, onUploadComplete]);
+
   // Handle paste event for file uploads
   const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
@@ -198,34 +234,12 @@ export default function MessageInput({
 
     // Prevent default paste for file uploads
     e.preventDefault();
-    setUploadError(null);
-    setIsUploading(true);
 
     // Upload each file
     for (const file of files) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch(`/api/threads/${threadId}/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          onUploadComplete(data.filename);
-        } else {
-          const errorData = await response.json();
-          setUploadError(errorData.error || 'Failed to upload file');
-        }
-      } catch (error) {
-        setUploadError('Failed to upload file. Please try again.');
-      }
+      await uploadFile(file);
     }
-
-    setIsUploading(false);
-  }, [threadId, onUploadComplete]);
+  }, [threadId, uploadFile]);
 
   // Uploads indicator
   const UploadsIndicator = () =>
@@ -281,13 +295,29 @@ export default function MessageInput({
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => setUploadError(null)}
-                className="p-0.5 hover:bg-red-100 rounded flex-shrink-0"
-                aria-label="Dismiss error"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {lastFailedFile && (
+                  <button
+                    onClick={() => uploadFile(lastFailedFile)}
+                    disabled={isUploading}
+                    className="p-0.5 hover:bg-red-100 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                    title="Retry upload"
+                    aria-label="Retry upload"
+                  >
+                    <RotateCcw size={14} aria-hidden="true" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setUploadError(null);
+                    setLastFailedFile(null);
+                  }}
+                  className="p-0.5 hover:bg-red-100 rounded"
+                  aria-label="Dismiss error"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -379,6 +409,16 @@ export default function MessageInput({
           )}
         </div>
       </div>
+
+      {/* Draft restored toast */}
+      {restoredEvent && (
+        <Toast
+          message="Draft restored"
+          type="info"
+          duration={4000}
+          onDismiss={dismissRestoredEvent}
+        />
+      )}
     </div>
   );
 }
