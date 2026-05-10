@@ -11,11 +11,17 @@ interface RestoredEvent {
   previousValue: string;
 }
 
+interface DraftSaveError {
+  type: 'quota' | 'unknown';
+  message: string;
+}
+
 /**
  * Hook to persist and restore message drafts to localStorage.
  * Saves drafts keyed by thread ID (or 'new' for unsent threads).
  * Automatically restores on mount and when threadId changes.
  * Emits a restoredEvent when a draft is restored, allowing callers to show feedback.
+ * Exposes draftSaveError when localStorage quota is exceeded.
  */
 export function useDraftPersistence(
   threadId: string | null,
@@ -26,6 +32,7 @@ export function useDraftPersistence(
   const { debounceMs = 300 } = options;
   const restoredForThread = useRef<string | null>(null);
   const [restoredEvent, setRestoredEvent] = useState<RestoredEvent | null>(null);
+  const [draftSaveError, setDraftSaveError] = useState<DraftSaveError | null>(null);
 
   // Generate storage key based on thread ID
   const getStorageKey = useCallback((id: string | null) => {
@@ -39,8 +46,16 @@ export function useDraftPersistence(
       if (message.trim()) {
         try {
           localStorage.setItem(key, message);
+          // Clear any previous save error on success
+          setDraftSaveError(null);
         } catch (error) {
           console.warn('Failed to save draft to localStorage:', error);
+          // Detect QuotaExceededError specifically
+          if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            setDraftSaveError({ type: 'quota', message: 'Draft not saved — storage is full' });
+          } else {
+            setDraftSaveError({ type: 'unknown', message: 'Failed to save draft' });
+          }
         }
       } else {
         // Clear draft if message is empty
@@ -54,6 +69,7 @@ export function useDraftPersistence(
 
     return () => clearTimeout(timer);
   }, [message, threadId, debounceMs, getStorageKey]);
+
 
   // Restore draft from localStorage on mount or threadId change (once per thread)
   useEffect(() => {
@@ -89,5 +105,11 @@ export function useDraftPersistence(
     setRestoredEvent(null);
   }, []);
 
-  return { clearDraft, restoredEvent, dismissRestoredEvent };
+  // Clear draft save error (called when user dismisses the warning)
+  const clearDraftSaveError = useCallback(() => {
+    setDraftSaveError(null);
+  }, []);
+
+  return { clearDraft, restoredEvent, dismissRestoredEvent, draftSaveError, clearDraftSaveError };
+
 }

@@ -17,6 +17,8 @@ import HitlClarificationCard from './HitlClarificationCard';
 import PlanApprovalCard from './PlanApprovalCard';
 import { useScrollHide } from '@/hooks/useScrollHide';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
+
 
 interface WelcomeConfig {
   title?: string;
@@ -539,7 +541,21 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     sendMessage(prompt);
   };
 
+  // Fallback UI for MessageInput when it crashes
+  const InputFallback = () => (
+    <div className="p-4 bg-gray-50 border-t border-gray-200 text-center">
+      <p className="text-sm text-gray-500 mb-2">Input unavailable — please refresh the page</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
+      >
+        Refresh
+      </button>
+    </div>
+  );
+
   return (
+
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Summarization Banner */}
       {activeThread?.isSummarized && summaryData && (
@@ -904,47 +920,50 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         )}
       </div>
 
-       {/* Input */}
-       <MessageInput
-         onSend={sendMessage}
-         disabled={loading}
-         modelReady={modelReady}
-         onModelStatusChange={setModelReady}
-         threadId={threadId}
-         currentUploads={pendingUploads}
-         onUploadComplete={handleUploadComplete}
-         onUrlSourceAdded={handleUrlSourceAdded}
-         preferences={chatPreferences}
-         onPreferencesChange={setChatPreferences}
-         autonomousAdminDisabled={autonomousAdminDisabled}
-         onFocus={onInputFocus}
-         onBlur={onInputBlur}
-          categoryChipSlot={
-            <CategoryChip
-              subscriptions={userSubscriptions}
-              selectedCategoryId={pendingCategoryId}
-              onSelect={setPendingCategoryId}
-              disabled={!!threadId}
-              readOnly={!!activeThread}
-            />
-          }
-         attachmentChipsSlot={
-           <AttachmentChipsRow
-             uploads={uploads}
-             urlSources={urlSources}
-             pendingUploads={pendingUploads}
-             pendingUrlSources={pendingUrlSources}
-             onRemoveUpload={(filename: string) => {
-               setPendingUploads(prev => prev.filter(f => f !== filename));
-               setUploads(prev => prev.filter(f => f !== filename));
-             }}
-             onRemoveUrlSource={(filename: string) => {
-               setPendingUrlSources(prev => prev.filter(s => s.filename !== filename));
-               setUrlSources(prev => prev.filter(s => s.filename !== filename));
-             }}
-           />
-         }
-       />
+       {/* Input (wrapped in ErrorBoundary for resilience) */}
+       <ErrorBoundary moduleName="MessageInput" fallback={<InputFallback />}>
+         <MessageInput
+           onSend={sendMessage}
+           disabled={loading}
+           modelReady={modelReady}
+           onModelStatusChange={setModelReady}
+           threadId={threadId}
+           currentUploads={pendingUploads}
+           onUploadComplete={handleUploadComplete}
+           onUrlSourceAdded={handleUrlSourceAdded}
+           preferences={chatPreferences}
+           onPreferencesChange={setChatPreferences}
+           autonomousAdminDisabled={autonomousAdminDisabled}
+           onFocus={onInputFocus}
+           onBlur={onInputBlur}
+            categoryChipSlot={
+              <CategoryChip
+                subscriptions={userSubscriptions}
+                selectedCategoryId={pendingCategoryId}
+                onSelect={setPendingCategoryId}
+                disabled={!!threadId}
+                readOnly={!!activeThread}
+              />
+            }
+           attachmentChipsSlot={
+             <AttachmentChipsRow
+               uploads={uploads}
+               urlSources={urlSources}
+               pendingUploads={pendingUploads}
+               pendingUrlSources={pendingUrlSources}
+               onRemoveUpload={(filename: string) => {
+                 setPendingUploads(prev => prev.filter(f => f !== filename));
+                 setUploads(prev => prev.filter(f => f !== filename));
+               }}
+               onRemoveUrlSource={(filename: string) => {
+                 setPendingUrlSources(prev => prev.filter(s => s.filename !== filename));
+                 setUrlSources(prev => prev.filter(s => s.filename !== filename));
+               }}
+             />
+           }
+         />
+       </ErrorBoundary>
+
 
     </div>
   );

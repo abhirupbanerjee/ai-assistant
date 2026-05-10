@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Plus } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ModeToggle, { ChatMode } from './ModeToggle';
 import WebSearchToggle from './WebSearchToggle';
-import LanguageSelector from './LanguageSelector';
-import ToneSelector from './ToneSelector';
 import CitationTrajectoryToggle from './CitationTrajectoryToggle';
+
+// Lazy-load LanguageSelector and ToneSelector (rarely used on first interaction)
+const DynamicLanguageSelector = dynamic(() => import('./LanguageSelector'), { ssr: false });
+const DynamicToneSelector = dynamic(() => import('./ToneSelector'), { ssr: false });
+
 
 interface UrlSourceInfo {
   filename: string;
@@ -136,16 +140,17 @@ export default function PlusMenu({
               onToggle={onWebSearchToggle}
               disabled={disabled}
             />
-            <LanguageSelector
+            <DynamicLanguageSelector
               selectedLanguage={selectedLanguage}
               onLanguageChange={onLanguageChange}
               disabled={disabled}
             />
-            <ToneSelector
+            <DynamicToneSelector
               selectedTone={selectedTone}
               onToneChange={onToneChange}
               disabled={disabled}
             />
+
             <CitationTrajectoryToggle
               enabled={showCitationTrajectory}
               onToggle={onCitationTrajectoryToggle}

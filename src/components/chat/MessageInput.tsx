@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+
 import { ArrowUp, AlertCircle, Loader2, X, Square, RotateCcw } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
 import InlineLanguageToneChips from './InlineLanguageToneChips';
-import Toast from '@/components/ui/Toast';
+import ChipSheet from './ChipSheet';
+
 import { ChatMode } from './ModeToggle';
+import { useToast } from '@/contexts/ToastContext';
 import type { ChatPreferences } from '@/types/stream';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
@@ -83,11 +86,24 @@ export default function MessageInput({
   const [isFocused, setIsFocused] = useState(false);
   const [lineCount, setLineCount] = useState(1);
   const [lastFailedFile, setLastFailedFile] = useState<File | null>(null);
+  const [chipSheetOpen, setChipSheetOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
+  // Toast notifications
+  const { addToast } = useToast();
+
   // Draft persistence
-  const { clearDraft, restoredEvent, dismissRestoredEvent } = useDraftPersistence(threadId, message, setMessage);
+  const { clearDraft, restoredEvent, dismissRestoredEvent, draftSaveError, clearDraftSaveError } = useDraftPersistence(threadId, message, setMessage);
+
+  // Fire toast when draft is restored
+  useEffect(() => {
+    if (restoredEvent) {
+      addToast('Draft restored', 'info', 4000);
+      dismissRestoredEvent();
+    }
+  }, [restoredEvent, addToast, dismissRestoredEvent]);
+
 
   // Input state management (COMPACT/EXPANDED/FOCUSED-WRITE)
   const { state: inputState } = useInputState({
@@ -96,6 +112,34 @@ export default function MessageInput({
     attachmentCount: currentUploads.length,
     lineCount,
   });
+
+  // Compute active chip count for ChipSheet collapsed pill
+  const activeChipCount = useMemo(() => {
+    let count = 0;
+    if (mode === 'autonomous') count++;
+    if (preferences.webSearchEnabled) count++;
+    if (preferences.targetLanguage !== 'en') count++;
+    if (preferences.responseTone !== 'default') count++;
+    if (currentUploads.length > 0) count++;
+    return count;
+  }, [mode, preferences.webSearchEnabled, preferences.targetLanguage, preferences.responseTone, currentUploads.length]);
+
+
+  // aria-live state announcements — announce input state transitions to screen readers
+  const prevInputState = useRef(inputState);
+  const [stateAnnouncement, setStateAnnouncement] = useState('');
+  useEffect(() => {
+    if (prevInputState.current !== inputState) {
+      prevInputState.current = inputState;
+      const labels: Record<string, string> = {
+        compact: 'Compact input mode',
+        expanded: 'Expanded input mode with options',
+        'focused-write': 'Focused input mode',
+      };
+      setStateAnnouncement(labels[inputState] || '');
+    }
+  }, [inputState]);
+
 
   // Auto-resize textarea with different max heights for mobile vs desktop
   useEffect(() => {
@@ -276,12 +320,50 @@ export default function MessageInput({
   // Unified layout for both mobile and desktop
   return (
     <div className="bg-white p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
+      {/* Screen reader state announcements */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {stateAnnouncement}
+      </span>
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 transition-all duration-300">
+
         {/* Chip slots: CategoryChip + AttachmentChipsRow (visible in EXPANDED state) */}
+        {/* On mobile FOCUSED-WRITE, chips are shown in the ChipSheet instead */}
         {(categoryChipSlot || attachmentChipsSlot) && inputState !== 'compact' && (
           <div className="mb-3 flex flex-wrap items-center gap-2 transition-all duration-300">
-            {categoryChipSlot}
-            {attachmentChipsSlot}
+            {/* On mobile focused-write, show ChipSheet collapsed pill instead of inline chips */}
+            {isMobile && inputState === 'focused-write' ? (
+              <ChipSheet
+                isOpen={chipSheetOpen}
+                onClose={() => setChipSheetOpen(false)}
+                activeCount={activeChipCount}
+                categoryChipSlot={categoryChipSlot}
+                attachmentChipsSlot={attachmentChipsSlot}
+                modeChips={
+                  <InlineModeChips
+                    mode={mode}
+                    onModeChange={setMode}
+                    webSearchEnabled={preferences.webSearchEnabled}
+                    onWebSearchToggle={handleWebSearchToggle}
+                    autonomousAdminDisabled={autonomousAdminDisabled}
+                    disabled={disabled}
+                  />
+                }
+                languageToneChips={
+                  <InlineLanguageToneChips
+                    selectedLanguage={preferences.targetLanguage}
+                    onLanguageChange={handleLanguageChange}
+                    selectedTone={preferences.responseTone}
+                    onToneChange={handleToneChange}
+                    disabled={disabled}
+                  />
+                }
+              />
+            ) : (
+              <>
+                {categoryChipSlot}
+                {attachmentChipsSlot}
+              </>
+            )}
             {/* Inline mode chips on desktop EXPANDED */}
             {!isMobile && (
               <>
@@ -305,9 +387,30 @@ export default function MessageInput({
           </div>
         )}
 
+
         <UploadsIndicator />
 
+        {/* Draft save error warning (e.g., localStorage quota exceeded) */}
+        {draftSaveError && (
+          <div className="mb-2 p-2 bg-yellow-50 text-yellow-700 rounded-lg text-sm" role="alert">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <span>{draftSaveError.message}</span>
+              </div>
+              <button
+                onClick={clearDraftSaveError}
+                className="p-0.5 hover:bg-yellow-100 rounded flex-shrink-0"
+                aria-label="Dismiss warning"
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Upload Error */}
+
         {uploadError && (
           <div className="mb-2 p-2 bg-red-50 text-red-600 rounded-lg text-sm" role="alert">
             <div className="flex items-start justify-between gap-2">
@@ -435,15 +538,7 @@ export default function MessageInput({
         </div>
       </div>
 
-      {/* Draft restored toast */}
-      {restoredEvent && (
-        <Toast
-          message="Draft restored"
-          type="info"
-          duration={4000}
-          onDismiss={dismissRestoredEvent}
-        />
-      )}
+      {/* Draft restored toast — fired via useToast on restore */}
     </div>
   );
 }
