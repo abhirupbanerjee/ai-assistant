@@ -364,26 +364,6 @@ export default function MessageInput({
                 {attachmentChipsSlot}
               </>
             )}
-            {/* Inline mode chips on desktop EXPANDED */}
-            {!isMobile && (
-              <>
-                <InlineModeChips
-                  mode={mode}
-                  onModeChange={setMode}
-                  webSearchEnabled={preferences.webSearchEnabled}
-                  onWebSearchToggle={handleWebSearchToggle}
-                  autonomousAdminDisabled={autonomousAdminDisabled}
-                  disabled={disabled}
-                />
-                <InlineLanguageToneChips
-                  selectedLanguage={preferences.targetLanguage}
-                  onLanguageChange={handleLanguageChange}
-                  selectedTone={preferences.responseTone}
-                  onToneChange={handleToneChange}
-                  disabled={disabled}
-                />
-              </>
-            )}
           </div>
         )}
 
