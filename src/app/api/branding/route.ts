@@ -11,6 +11,13 @@ export async function GET() {
   try {
     const branding = await getBrandingSettings();
 
+    // Ensure starterPrompts is always an array
+    const starterPrompts = Array.isArray(branding.starterPrompts)
+      ? branding.starterPrompts
+      : [];
+
+    console.log('[Branding API] Returning starterPrompts:', starterPrompts.length, 'items');
+
     return NextResponse.json({
       botName: branding.botName,
       botIcon: branding.botIcon,
@@ -18,7 +25,7 @@ export async function GET() {
       welcomeTitle: branding.welcomeTitle || null,
       welcomeMessage: branding.welcomeMessage || null,
       accentColor: branding.accentColor || '#2563eb',
-      starterPrompts: branding.starterPrompts || [],
+      starterPrompts: starterPrompts,
       // Include available icons for client reference
       availableIcons: BRANDING_ICONS,
     });

@@ -495,6 +495,12 @@ export async function POST(request: NextRequest) {
             // follow-up detection, and context-aware cache keys
             const llmStart = Date.now();
 
+            // Send generating status before starting LLM call (English path)
+            // For non-English, this is sent after translation at line 660
+            if (!targetLanguage || targetLanguage === 'en') {
+              send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
+            }
+
             // Define streaming callbacks
             const callbacks = {
               // For English responses: forward content tokens directly to the client as they

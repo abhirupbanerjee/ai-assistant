@@ -633,10 +633,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                 )}
 
                 {/* Global Starter Prompts (from branding) - show when no category */}
-                {!starterPrompts.length && globalStarterPrompts && globalStarterPrompts.length > 0 && (
+                {/* SuggestionGrid handles empty arrays with internal DEFAULT_PROMPTS fallback */}
+                {!starterPrompts.length && (
                   <div className="w-full">
                     <SuggestionGrid
-                      starters={globalStarterPrompts}
+                      starters={globalStarterPrompts || []}
                       onSelect={handleStarterSelect}
                       disabled={loading}
                     />
@@ -691,8 +692,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           />
         ))}
 
-        {/* Streaming UI - Processing Indicator */}
-        {streamingState.isStreaming && (
+        {/* Processing Indicator - shows detailed status during all phases */}
+        {(streamingState.isStreaming || (loading && streamingState.processingDetails.phase !== 'complete')) && (
           <ProcessingIndicator
             details={streamingState.processingDetails}
             onToggleExpand={toggleProcessingDetails}
@@ -894,18 +895,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             }}
             isStreaming={true}
           />
-        )}
-
-        {/* Legacy loading indicator */}
-        {loading && !streamingState.isStreaming && (
-          <div className="flex justify-start mb-4">
-            <div className="bg-gray-100 rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Spinner size="sm" />
-                <span className="text-gray-600 text-sm">Thinking...</span>
-              </div>
-            </div>
-          </div>
         )}
 
         {displayError && (
