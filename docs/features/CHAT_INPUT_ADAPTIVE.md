@@ -308,12 +308,27 @@ REPLACE
 - `tailwind.config.ts` — Added data-state Tailwind variants plugin
 - `docs/features/CHAT_INPUT_ADAPTIVE.md` — This file (Phase 2 & 3 docs)
 
-### Phase 4-A Stabilization (Risk Fixes)
+### Phase 4-A Stabilization (Risk Fixes) ✅
 - `src/components/chat/AttachmentChipsRow.tsx` — Removed wrapper div (Risk #1)
 - `src/components/chat/CategoryChip.tsx` — Removed wrapper div, inline hint (Risk #1)
 - `src/hooks/useDraftPersistence.ts` — Fixed re-restore loop with restoredForThread ref (Risk #4)
 - `src/components/chat/MessageInput.tsx` — Memoized keyboard shortcut callbacks (Risk #2)
 - `src/hooks/useKeyboardShortcuts.ts` — Widened ref type to include null (Risk #3)
+
+### Phase 4-B Polish (Error/Empty States) ✅
+**B1: Voice Input Styling** ✅
+- `src/components/chat/VoiceInput.tsx` — Added hover:scale-110, accent color, improved aria-live
+
+**B3: Accessibility Audit** ✅
+- `src/components/chat/AttachmentChipsRow.tsx` — Semantic role="list"/role="listitem", aria-hidden icons, improved aria-label
+- `src/components/chat/CategoryChip.tsx` — Listbox semantics: aria-haspopup, aria-expanded, role="listbox"/role="option", aria-selected
+- `src/components/chat/MessageInput.tsx` — role="alert" on uploadError, useCallback memoization
+
+**B4: Error/Empty States** ✅
+- `src/components/ui/Toast.tsx` — NEW: Reusable Toast component (success/error/info, auto-dismiss 3s, fixed bottom-right)
+- `src/hooks/useDraftPersistence.ts` — Expose restoredEvent + dismissRestoredEvent for caller feedback
+- `src/components/chat/MessageInput.tsx` — Render Toast on draft restore (4s auto-dismiss), extract uploadFile helper, add RotateCcw retry button in upload error block
+- `src/components/chat/CategoryChip.tsx` — Skip empty-state (no actionable state for users)
 
 ## Build Status
 
