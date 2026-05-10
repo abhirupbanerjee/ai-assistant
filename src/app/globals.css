@@ -278,3 +278,34 @@ input, textarea, select {
   overflow-x: hidden;
   max-width: 100%;
 }
+
+/* ============ Accessibility: Reduced Motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============ High Contrast Mode ============ */
+@media (prefers-contrast: more) {
+  /* Strengthen focus rings and borders */
+  *:focus-visible {
+    outline: 3px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+
+  /* Enhance button borders */
+  button, [role="button"] {
+    border: 2px solid currentColor;
+  }
+
+  /* Enhance input borders */
+  input, textarea, select {
+    border: 2px solid currentColor;
+  }
+}
