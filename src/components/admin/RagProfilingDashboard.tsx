@@ -169,7 +169,25 @@ function TrendTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 // ============ Main Component ============
 
-export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean } = {}) {
+interface RagProfilingDashboardProps {
+  embedded?: boolean;
+  currentSettings?: {
+    similarityThreshold: number;
+    topKChunks: number;
+    maxContextChunks: number;
+  } | null;
+  onApplySettings?: (settings: {
+    similarityThreshold: number;
+    topKChunks: number;
+    maxContextChunks: number;
+  }) => void;
+}
+
+export function RagProfilingDashboard({
+  embedded = false,
+  currentSettings,
+  onApplySettings,
+}: RagProfilingDashboardProps = {}) {
   // Tab state
   const [activeTab, setActiveTab] = useState<'summary' | 'batch' | 'settings'>('summary');
 
@@ -321,6 +339,16 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
     );
   }
 
+  // ============ Derived Values ============
+
+  const currentLabel = currentSettings
+    ? [
+        `sim=${currentSettings.similarityThreshold}`,
+        `topK=${currentSettings.topKChunks}`,
+        `ctx=${currentSettings.maxContextChunks}`,
+      ].join(', ')
+    : null;
+
   // ============ Tab Header ============
 
   const tabs = [
@@ -360,148 +388,157 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
       {/* ==================== Tab: Performance Summary ==================== */}
       {activeTab === 'summary' && (
         <div className="space-y-4">
-          {/* KPI Cards */}
-          {kpiSummary && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <KpiCard
-                title="Avg Latency"
-                value={kpiSummary.current.avgLatency}
-                unit="ms"
-                delta={kpiSummary.deltas.latencyDelta}
-                higherIsBetter={false}
-                icon={<Zap size={16} />}
-                color="orange"
-              />
-              <KpiCard
-                title="Avg Similarity"
-                value={(kpiSummary.current.avgSimilarity * 100).toFixed(1)}
-                unit="%"
-                delta={kpiSummary.deltas.similarityDelta}
-                higherIsBetter={true}
-                icon={<BarChart3 size={16} />}
-                color="green"
-              />
-              <KpiCard
-                title="Avg Chunks"
-                value={kpiSummary.current.avgChunks}
-                unit=""
-                delta={kpiSummary.deltas.chunksDelta}
-                higherIsBetter={false}
-                icon={<FileText size={16} />}
-                color="blue"
-              />
-              <KpiCard
-                title="Tests (7 days)"
-                value={kpiSummary.current.totalTests}
-                unit="runs"
-                delta={kpiSummary.deltas.testCountDelta}
-                higherIsBetter={true}
-                icon={<Activity size={16} />}
-                color="purple"
-              />
+          {(!kpiSummary || kpiSummary.current.totalTests === 0) ? (
+            <div className="bg-white rounded-lg border shadow-sm p-8 text-center">
+              <Activity size={32} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500 text-sm font-medium">No test data yet</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Run RAG tests from the <strong>RAG Tuning</strong> section below to start tracking performance.
+              </p>
             </div>
+          ) : (
+            <>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <KpiCard
+                  title="Avg Latency"
+                  value={kpiSummary.current.avgLatency}
+                  unit="ms"
+                  delta={kpiSummary.deltas.latencyDelta}
+                  higherIsBetter={false}
+                  icon={<Zap size={16} />}
+                  color="orange"
+                />
+                <KpiCard
+                  title="Avg Similarity"
+                  value={(kpiSummary.current.avgSimilarity * 100).toFixed(1)}
+                  unit="%"
+                  delta={kpiSummary.deltas.similarityDelta}
+                  higherIsBetter={true}
+                  icon={<BarChart3 size={16} />}
+                  color="green"
+                />
+                <KpiCard
+                  title="Avg Chunks"
+                  value={kpiSummary.current.avgChunks}
+                  unit=""
+                  delta={kpiSummary.deltas.chunksDelta}
+                  higherIsBetter={false}
+                  icon={<FileText size={16} />}
+                  color="blue"
+                />
+                <KpiCard
+                  title="Tests (7 days)"
+                  value={kpiSummary.current.totalTests}
+                  unit="runs"
+                  delta={kpiSummary.deltas.testCountDelta}
+                  higherIsBetter={true}
+                  icon={<Activity size={16} />}
+                  color="purple"
+                />
+              </div>
+
+              {/* Trend Chart */}
+              <div className="bg-white rounded-lg border shadow-sm p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900">Performance Trends</h3>
+                  <div className="flex items-center gap-2">
+                    {[7, 14, 30, 90].map((days) => (
+                      <button
+                        key={days}
+                        onClick={() => setTrendDays(days)}
+                        className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                          trendDays === days
+                            ? 'bg-blue-100 text-blue-700 font-medium'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {days}d
+                      </button>
+                    ))}
+                    <button
+                      onClick={handleExportCsv}
+                      className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+                      title="Export CSV"
+                    >
+                      <Download size={14} className="text-gray-500" />
+                    </button>
+                    <button
+                      onClick={() => fetchTrends(trendDays)}
+                      className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+                      title="Refresh"
+                    >
+                      <RefreshCw size={14} className="text-gray-500" />
+                    </button>
+                  </div>
+                </div>
+
+                {dailyTrends.length === 0 ? (
+                  <div className="py-8 text-center text-gray-500 text-sm">
+                    No trend data for this period.
+                  </div>
+                ) : (
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={dailyTrends} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <defs>
+                          <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#f97316" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="colorSimilarity" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#22c55e" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(val) => {
+                            const d = new Date(val);
+                            return `${d.getMonth() + 1}/${d.getDate()}`;
+                          }}
+                        />
+                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} domain={[0, 1]} />
+                        <Tooltip content={<TrendTooltip />} />
+                        <Legend />
+                        <Area
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="avgLatency"
+                          name="Latency (ms)"
+                          stroke="#f97316"
+                          fill="url(#colorLatency)"
+                          strokeWidth={2}
+                        />
+                        <Area
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="avgSimilarity"
+                          name="Similarity"
+                          stroke="#22c55e"
+                          fill="url(#colorSimilarity)"
+                          strokeWidth={2}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="avgChunks"
+                          name="Chunks"
+                          stroke="#3b82f6"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                          dot={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </>
           )}
-
-          {/* Trend Chart */}
-          <div className="bg-white rounded-lg border shadow-sm p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">Performance Trends</h3>
-              <div className="flex items-center gap-2">
-                {/* Time range selector */}
-                {[7, 14, 30, 90].map((days) => (
-                  <button
-                    key={days}
-                    onClick={() => setTrendDays(days)}
-                    className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                      trendDays === days
-                        ? 'bg-blue-100 text-blue-700 font-medium'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {days}d
-                  </button>
-                ))}
-                <button
-                  onClick={handleExportCsv}
-                  className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
-                  title="Export CSV"
-                >
-                  <Download size={14} className="text-gray-500" />
-                </button>
-                <button
-                  onClick={() => fetchTrends(trendDays)}
-                  className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
-                  title="Refresh"
-                >
-                  <RefreshCw size={14} className="text-gray-500" />
-                </button>
-              </div>
-            </div>
-
-            {dailyTrends.length === 0 ? (
-              <div className="py-8 text-center text-gray-500 text-sm">
-                No test data yet. Run some RAG tests to see trends.
-              </div>
-            ) : (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dailyTrends} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <defs>
-                      <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f97316" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="colorSimilarity" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(val) => {
-                        const d = new Date(val);
-                        return `${d.getMonth() + 1}/${d.getDate()}`;
-                      }}
-                    />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} domain={[0, 1]} />
-                    <Tooltip content={<TrendTooltip />} />
-                    <Legend />
-                    <Area
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="avgLatency"
-                      name="Latency (ms)"
-                      stroke="#f97316"
-                      fill="url(#colorLatency)"
-                      strokeWidth={2}
-                    />
-                    <Area
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="avgSimilarity"
-                      name="Similarity"
-                      stroke="#22c55e"
-                      fill="url(#colorSimilarity)"
-                      strokeWidth={2}
-                    />
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="avgChunks"
-                      name="Chunks"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      strokeDasharray="4 2"
-                      dot={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -665,7 +702,7 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
             ) : (
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={settingsImpact} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <BarChart data={settingsImpact} margin={{ top: 5, right: 40, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis
                       dataKey="label"
@@ -674,8 +711,18 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
                       textAnchor="end"
                       height={60}
                     />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} domain={[0, 1]} />
+                    <YAxis
+                      yAxisId="left"
+                      tick={{ fontSize: 11 }}
+                      label={{ value: 'Latency (ms)', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11 } }}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 11 }}
+                      domain={[0, 1]}
+                      label={{ value: 'Similarity', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 11 } }}
+                    />
                     <Tooltip content={<TrendTooltip />} />
                     <Legend />
                     <Bar yAxisId="left" dataKey="avgLatency" name="Latency (ms)" fill="#f97316" radius={[4, 4, 0, 0]} />
@@ -696,18 +743,56 @@ export function RagProfilingDashboard({ embedded = false }: { embedded?: boolean
                       <th className="text-right py-2 px-3 text-gray-600 font-medium">Avg Latency</th>
                       <th className="text-right py-2 px-3 text-gray-600 font-medium">Avg Similarity</th>
                       <th className="text-right py-2 px-3 text-gray-600 font-medium">Avg Chunks</th>
+                      {onApplySettings && (
+                        <th className="text-right py-2 px-3 text-gray-600 font-medium">Action</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {settingsImpact.map((s, i) => (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-2 px-3 font-medium text-gray-900">{s.label}</td>
-                        <td className="py-2 px-3 text-right text-gray-600">{s.testCount}</td>
-                        <td className="py-2 px-3 text-right text-gray-600">{s.avgLatency}ms</td>
-                        <td className="py-2 px-3 text-right text-gray-600">{(s.avgSimilarity * 100).toFixed(1)}%</td>
-                        <td className="py-2 px-3 text-right text-gray-600">{s.avgChunks}</td>
-                      </tr>
-                    ))}
+                    {settingsImpact.map((s, i) => {
+                      const isCurrent = currentLabel !== null && s.label === currentLabel;
+                      const canApply = !isCurrent &&
+                        onApplySettings &&
+                        s.similarityThreshold != null &&
+                        s.topKChunks != null &&
+                        s.maxContextChunks != null;
+                      return (
+                        <tr key={i} className={`border-b border-gray-100 hover:bg-gray-50 ${isCurrent ? 'bg-green-50' : ''}`}>
+                          <td className="py-2 px-3 font-medium text-gray-900">
+                            <span className="flex items-center gap-2">
+                              {s.label}
+                              {isCurrent && (
+                                <span className="px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+                                  Current
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-600">{s.testCount}</td>
+                          <td className="py-2 px-3 text-right text-gray-600">{s.avgLatency}ms</td>
+                          <td className="py-2 px-3 text-right text-gray-600">{(s.avgSimilarity * 100).toFixed(1)}%</td>
+                          <td className="py-2 px-3 text-right text-gray-600">{s.avgChunks}</td>
+                          {onApplySettings && (
+                            <td className="py-2 px-3 text-right">
+                              {canApply ? (
+                                <button
+                                  onClick={() => onApplySettings({
+                                    similarityThreshold: s.similarityThreshold!,
+                                    topKChunks: s.topKChunks!,
+                                    maxContextChunks: s.maxContextChunks!,
+                                  })}
+                                  className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                                >
+                                  Apply
+                                </button>
+                              ) : isCurrent ? (
+                                <span className="text-xs text-gray-400">Active</span>
+                              ) : null}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

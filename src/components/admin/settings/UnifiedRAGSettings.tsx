@@ -426,7 +426,23 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         <SectionHeader id="profiling" title="RAG Profiling & Trends" subtitle="Performance metrics, batch testing, and settings impact analysis" />
         {expandedSections.has('profiling') && (
           <div className="p-6">
-            <RagProfilingDashboard embedded />
+            <RagProfilingDashboard
+              embedded
+              currentSettings={editedSettings ? {
+                similarityThreshold: editedSettings.similarityThreshold,
+                topKChunks: editedSettings.topKChunks,
+                maxContextChunks: editedSettings.maxContextChunks,
+              } : null}
+              onApplySettings={(s) => {
+                setEditedSettings(prev => prev ? { ...prev, ...s } : prev);
+                setIsModified(true);
+                setExpandedSections(prev => new Set([...prev, 'ragParams']));
+                showSuccess('Settings pre-filled in RAG Parameters — review and save to apply.');
+                setTimeout(() => {
+                  document.getElementById('section-ragParams')?.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+              }}
+            />
           </div>
         )}
       </div>
@@ -632,7 +648,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
       </div>
 
       {/* ==================== Section 3: RAG Parameters ==================== */}
-      <div className="bg-white rounded-lg border shadow-sm">
+      <div id="section-ragParams" className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="ragParams" title="RAG Parameters" subtitle="Configure retrieval and chunking parameters">
           {!readOnly && (
             <>

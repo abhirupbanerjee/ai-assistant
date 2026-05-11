@@ -123,7 +123,7 @@ export async function syncModelToLiteLLM(
   // Providers managed via litellm_config.yaml — skip dynamic sync
   // Ollama: YAML model names (e.g. "qwen2.5:3b") don't match DB IDs (e.g. "ollama-qwen2.5")
   // Fireworks: LiteLLM format ("fireworks_ai/accounts/fireworks/models/...") differs from DB IDs
-  if (model.providerId === 'ollama' || model.providerId === 'fireworks') {
+  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud') {
     return true;
   }
 

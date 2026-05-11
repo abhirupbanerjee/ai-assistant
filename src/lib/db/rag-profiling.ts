@@ -50,6 +50,9 @@ export interface SettingsImpact {
   avgSimilarity: number;
   avgChunks: number;
   testCount: number;
+  similarityThreshold?: number;
+  topKChunks?: number;
+  maxContextChunks?: number;
 }
 
 export interface BatchSuite {
@@ -247,12 +250,24 @@ export function getSettingsImpactAnalysis(): SettingsImpact[] {
 
   return rows.map((row) => {
     let label = 'Default';
+    let similarityThreshold: number | undefined;
+    let topKChunks: number | undefined;
+    let maxContextChunks: number | undefined;
     try {
       const settings = JSON.parse(row.settings_snapshot);
       const parts: string[] = [];
-      if (settings.similarityThreshold) parts.push(`sim=${settings.similarityThreshold}`);
-      if (settings.topKChunks) parts.push(`topK=${settings.topKChunks}`);
-      if (settings.maxContextChunks) parts.push(`ctx=${settings.maxContextChunks}`);
+      if (settings.similarityThreshold != null) {
+        similarityThreshold = settings.similarityThreshold;
+        parts.push(`sim=${settings.similarityThreshold}`);
+      }
+      if (settings.topKChunks != null) {
+        topKChunks = settings.topKChunks;
+        parts.push(`topK=${settings.topKChunks}`);
+      }
+      if (settings.maxContextChunks != null) {
+        maxContextChunks = settings.maxContextChunks;
+        parts.push(`ctx=${settings.maxContextChunks}`);
+      }
       if (parts.length > 0) label = parts.join(', ');
     } catch {
       label = 'Unknown';
@@ -264,6 +279,9 @@ export function getSettingsImpactAnalysis(): SettingsImpact[] {
       avgSimilarity: Math.round((row.avg_similarity ?? 0) * 10000) / 10000,
       avgChunks: Math.round((row.avg_chunks ?? 0) * 10) / 10,
       testCount: row.test_count,
+      similarityThreshold,
+      topKChunks,
+      maxContextChunks,
     };
   });
 }
