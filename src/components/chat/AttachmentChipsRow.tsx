@@ -20,9 +20,13 @@ export default function AttachmentChipsRow({
   onRemoveUpload,
   onRemoveUrlSource,
 }: AttachmentChipsRowProps) {
-  // Combine all attachments
-  const allUploads = [...uploads, ...pendingUploads];
-  const allUrlSources = [...urlSources, ...pendingUrlSources];
+  // Combine all attachments, deduplicating by filename
+  // (uploads and pendingUploads may overlap since handleUploadComplete adds to both)
+  const allUploads = [...new Set([...uploads, ...pendingUploads])];
+  // Deduplicate URL sources by filename (later entry wins for pending status)
+  const allUrlSources = [...new Map(
+    [...urlSources, ...pendingUrlSources].map(s => [s.filename, s])
+  ).values()];
   const hasAttachments = allUploads.length > 0 || allUrlSources.length > 0;
 
   if (!hasAttachments) {

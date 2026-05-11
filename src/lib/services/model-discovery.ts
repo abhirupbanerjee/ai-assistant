@@ -646,6 +646,27 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         break;
       }
 
+      case 'ollama-cloud': {
+        const apiKey = await getProviderApiKey('ollama-cloud');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        // Use the discoverOllamaCloudModels function from ollama-cloud service
+        const { discoverOllamaCloudModels } = await import('./ollama-cloud');
+        const cloudModels = await discoverOllamaCloudModels();
+        models = cloudModels.map(m => ({
+          id: m.id,
+          name: m.name,
+          provider: 'ollama-cloud',
+          toolCapable: m.toolCapable,
+          visionCapable: m.visionCapable,
+          maxInputTokens: m.maxInputTokens,
+          maxOutputTokens: m.maxOutputTokens,
+          isEnabled: m.isEnabled,
+        }));
+        break;
+      }
+
       default:
         return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
     }
@@ -690,7 +711,7 @@ export async function discoverAllModels(): Promise<{
   providers: Record<string, DiscoveryResult>;
   totalModels: number;
 }> {
-  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks'];
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud'];
   const results: Record<string, DiscoveryResult> = {};
   let totalModels = 0;
 

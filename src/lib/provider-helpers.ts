@@ -73,6 +73,7 @@ export const PROVIDERS = {
   ANTHROPIC: 'anthropic',
   DEEPSEEK: 'deepseek',
   FIREWORKS: 'fireworks',
+  OLLAMA_CLOUD: 'ollama-cloud',
 } as const;
 
 export type ProviderId = typeof PROVIDERS[keyof typeof PROVIDERS];
@@ -103,5 +104,8 @@ export const PROVIDER_ENV_VARS = {
   },
   fireworks: {
     apiKey: 'FIREWORKS_AI_API_KEY',
+  },
+  'ollama-cloud': {
+    apiKey: 'OLLAMA_API_KEY',
   },
 } as const;

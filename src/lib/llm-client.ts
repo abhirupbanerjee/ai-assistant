@@ -7,12 +7,15 @@
  * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
  * Route 2: Fireworks AI direct + Claude (Anthropic) direct
  * Route 3: Ollama direct (local / air-gapped)
+ * Route 4: Ollama Cloud direct (hosted models)
  */
 
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings, getRoutesSettings } from './db/compat/config';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
+import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
+
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 const FIREWORKS_FALLBACK_MODEL = 'accounts/fireworks/models/minimax-m2p5';
@@ -138,6 +141,25 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
   return response.choices[0]?.message?.content?.trim() || '';
 }
 
+/**
+ * Call Ollama Cloud for non-streaming internal completions.
+ * Uses the native /api/chat endpoint via callOllamaCloud().
+ */
+async function callOllamaCloudDirect(model: string, opts: InternalCompletionOptions): Promise<string> {
+  const response = await callOllamaCloud(model, opts.messages, {
+    temperature: opts.temperature,
+    maxTokens: opts.maxTokens,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Ollama Cloud API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json() as { message?: { content: string } };
+  return data.message?.content?.trim() || '';
+}
+
 // ============ Route Classification ============
 
 function isClaudeModel(model: string): boolean {
@@ -150,6 +172,10 @@ function isFireworksModel(model: string): boolean {
 
 function isOllamaModel(model: string): boolean {
   return model.startsWith('ollama-') || model.startsWith('ollama/');
+}
+
+function isOllamaCloudModelFn(model: string): boolean {
+  return isOllamaCloudModel(model);
 }
 
 // ============ Main Entry Point ============
@@ -178,7 +204,12 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return callOllama(model, opts);
   }
 
-  // Route 1 → try LiteLLM, fall back to Route 2/3 if enabled
+  // Route 4 models → always direct to Ollama Cloud
+  if (isOllamaCloudModelFn(model)) {
+    return callOllamaCloudDirect(model, opts);
+  }
+
+  // Route 1 → try LiteLLM, fall back to Route 2/3/4 if enabled
   try {
     return await callLiteLLM(model, opts);
   } catch (err) {

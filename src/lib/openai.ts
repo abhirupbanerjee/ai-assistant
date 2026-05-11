@@ -80,6 +80,7 @@ import {
   type ConversationContext,
 } from './conversation-context';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
+import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -858,6 +859,120 @@ async function streamOneCompletion(
   return { content: content || null, tool_calls, thinkingContent: thinkingContent || null, totalTokens: streamTotalTokens };
 }
 
+// ============ Ollama Cloud Streaming ============
+
+/**
+ * Stream a completion from the Ollama Cloud native API (bypassing LiteLLM).
+ * Uses the native /api/chat endpoint with Bearer auth.
+ * Returns the same shape as streamOneCompletion() so the tool loop can consume it uniformly.
+ *
+ * Note: Ollama Cloud uses native API format, not OpenAI-compatible.
+ * Tool calls are not supported via the native API — only text completions.
+ */
+async function streamOllamaCloudCompletion(
+  model: string,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  options?: {
+    temperature?: number;
+    maxTokens?: number;
+  },
+  onChunk?: (text: string) => void,
+): Promise<{ content: string | null; tool_calls: undefined; thinkingContent: string | null; totalTokens: number }> {
+  const controller = new AbortController();
+  let wasAborted = false;
+
+  const streamingConfig = await getStreamingConfigMs();
+  const interChunkTimeoutMs = streamingConfig.TOOL_TIMEOUT_MS;
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    logger.warn('Ollama Cloud streaming timed out waiting for first chunk', { model });
+    wasAborted = true;
+    controller.abort();
+  }, FIRST_CHUNK_TIMEOUT_MS);
+
+  const resetTimeout = () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      logger.warn('Ollama Cloud streaming timed out between chunks', { model });
+      wasAborted = true;
+      controller.abort();
+    }, interChunkTimeoutMs);
+  };
+
+  let content = '';
+  let totalTokens = 0;
+
+  try {
+    const response = await callOllamaCloud(model, messages, {
+      temperature: options?.temperature,
+      maxTokens: options?.maxTokens,
+      stream: true,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Ollama Cloud API error: ${response.status} ${response.statusText} — ${errorText}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Ollama Cloud response has no body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      resetTimeout();
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('{')) continue;
+
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed.done) {
+            // Final message with stats
+            totalTokens = (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0);
+          }
+          if (parsed.message?.content) {
+            content += parsed.message.content;
+            onChunk?.(parsed.message.content);
+          }
+        } catch {
+          // Skip malformed JSON lines
+        }
+      }
+    }
+
+    if (wasAborted) {
+      throw new Error(
+        `Ollama Cloud streaming timeout (model: ${model}). ` +
+        `The model may be unresponsive.`
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
+      throw new Error(
+        `Ollama Cloud streaming timeout (model: ${model}). ` +
+        `The model may be unresponsive.`
+      );
+    }
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
+  return { content: content || null, tool_calls: undefined, thinkingContent: null, totalTokens };
+}
+
 export async function generateResponseWithTools(
   systemPrompt: string,
   conversationHistory: Message[],
@@ -892,14 +1007,17 @@ export async function generateResponseWithTools(
   const useAnthropicDirect = isClaudeModel(effectiveModel);
   const useFireworksDirect = isFireworksModel(effectiveModel);
   const useOllamaDirect = isOllamaModel(effectiveModel);
+  const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
+    : useOllamaCloudDirect ? 'Ollama Cloud directly'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   const openai = useAnthropicDirect ? null
     : useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
+    : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
@@ -1221,6 +1339,22 @@ export async function generateResponseWithTools(
     );
     responseMessage = anthropicResult;
     accumulatedTokens += anthropicResult.totalTokens;
+  } else if (useOllamaCloudDirect) {
+    // Ollama Cloud uses native API — no tool support, text-only streaming
+    const ollamaMessages = messages.map(m => ({
+      role: m.role as 'system' | 'user' | 'assistant',
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+    responseMessage = await streamOllamaCloudCompletion(
+      effectiveModel,
+      ollamaMessages,
+      {
+        temperature: llmSettings.temperature,
+        maxTokens: effectiveMaxTokens,
+      },
+      callbacks?.onChunk,
+    );
+    accumulatedTokens += responseMessage.totalTokens;
   } else {
     responseMessage = await streamOneCompletion(openai!, completionParams, callbacks?.onChunk, callbacks?.onThinkingChunk);
     accumulatedTokens += responseMessage.totalTokens;

@@ -678,7 +678,7 @@ export async function setLlmFallbackSettings(
 export async function getRoutesSettings(): Promise<RoutesSettings> {
   const raw = await getSetting<RoutesSettings>('routes-settings');
   if (!raw) return DEFAULT_ROUTES_SETTINGS;
-  // Back-compat: older DB rows may lack route3Enabled
+  // Back-compat: older DB rows may lack route3Enabled or route4Enabled
   return { ...DEFAULT_ROUTES_SETTINGS, ...raw };
 }
 

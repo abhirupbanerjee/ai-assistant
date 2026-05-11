@@ -242,13 +242,15 @@ export interface RoutesSettings {
   route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
   route2Enabled: boolean;                  // Route 2: Direct providers (Fireworks AI, Claude/Anthropic)
   route3Enabled: boolean;                  // Route 3: Local / Ollama direct (air-gapped capable)
-  primaryRoute: 'route1' | 'route2' | 'route3';  // Which route is primary (others become fallback)
+  route4Enabled: boolean;                  // Route 4: Ollama Cloud direct (hosted models)
+  primaryRoute: 'route1' | 'route2' | 'route3' | 'route4';  // Which route is primary (others become fallback)
 }
 
 export const DEFAULT_ROUTES_SETTINGS: RoutesSettings = {
   route1Enabled: true,
   route2Enabled: false,
   route3Enabled: false,
+  route4Enabled: false,
   primaryRoute: 'route1',
 };
 

@@ -53,6 +53,7 @@ export const DEFAULT_PROVIDERS: Omit<LLMProvider, 'createdAt' | 'updatedAt'>[] =
   { id: 'anthropic', name: 'Anthropic (Claude)', apiKey: null, apiBase: null, enabled: true },
   { id: 'deepseek', name: 'DeepSeek', apiKey: null, apiBase: null, enabled: true },
   { id: 'fireworks', name: 'Fireworks AI', apiKey: null, apiBase: null, enabled: true },
+  { id: 'ollama-cloud', name: 'Ollama Cloud', apiKey: null, apiBase: null, enabled: true },
 ];
 
 // Environment variable mapping for auto-seeding

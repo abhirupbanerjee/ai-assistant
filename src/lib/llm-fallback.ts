@@ -201,6 +201,13 @@ export function isRoute3Model(model: string): boolean {
   return model.startsWith('ollama-') || model.startsWith('ollama/');
 }
 
+/**
+ * Check if a model belongs to Route 4 (Ollama Cloud direct)
+ */
+export function isRoute4Model(model: string): boolean {
+  return model.startsWith('ollama-cloud/');
+}
+
 // ============ Model Resolution ============
 
 /**
@@ -250,6 +257,15 @@ export async function buildModelsToTry(
         }
       }
     }
+    if (routesSettings.route4Enabled && !isRoute4Model(selectedModel!)) {
+      const route4Fallbacks = await getActiveModels();
+      for (const m of route4Fallbacks) {
+        if (isRoute4Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
+          models.push(m.id);
+          break; // One Ollama Cloud fallback is enough
+        }
+      }
+    }
 
     return { models: models.filter(Boolean) };
   }
@@ -287,6 +303,15 @@ export async function buildModelsToTry(
     const route3Models = await getActiveModels();
     for (const m of route3Models) {
       if (isRoute3Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
+        models.push(m.id);
+        break;
+      }
+    }
+  }
+  if (routesSettings.route4Enabled) {
+    const route4Models = await getActiveModels();
+    for (const m of route4Models) {
+      if (isRoute4Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
         models.push(m.id);
         break;
       }

@@ -119,6 +119,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       anthropic: { apiKey: 'ANTHROPIC_API_KEY' },
       deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
       fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
+      'ollama-cloud': { apiKey: 'OLLAMA_API_KEY' },
     };
 
     for (const provider of DEFAULT_PROVIDERS) {
@@ -153,6 +154,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     .onConflict(oc => oc.column('id').doNothing())
     .execute();
   console.log('[Kysely] Ensured Fireworks AI provider exists');
+
+  // Seed Ollama Cloud provider (added after initial setup)
+  await database
+    .insertInto('llm_providers')
+    .values({
+      id: 'ollama-cloud',
+      name: 'Ollama Cloud',
+      api_key: process.env['OLLAMA_API_KEY'] || null,
+      api_base: null,
+      enabled: 1,
+    })
+    .onConflict(oc => oc.column('id').doNothing())
+    .execute();
+  console.log('[Kysely] Ensured Ollama Cloud provider exists');
 
   // Migration: Create reindex_jobs table if it doesn't exist
   await sql`
