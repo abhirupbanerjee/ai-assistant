@@ -73,6 +73,9 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     DROP CONSTRAINT IF EXISTS thread_outputs_file_type_check
   `.execute(database);
   await sql`
+    UPDATE thread_outputs SET file_type = 'md' WHERE file_type NOT IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html')
+  `.execute(database);
+  await sql`
     ALTER TABLE thread_outputs
     ADD CONSTRAINT thread_outputs_file_type_check
     CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html'))
