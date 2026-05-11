@@ -66,7 +66,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // for threads that exist only in SQLite (hybrid mode).
   await sql`ALTER TABLE thread_categories DROP CONSTRAINT IF EXISTS thread_categories_thread_id_fkey`.execute(database);
 
-  // Migration: Update thread_outputs file_type CHECK constraint to include audio formats (mp3, wav)
+  // Migration: Update thread_outputs file_type CHECK constraint to include audio and html formats
   // This matches the SQLite migration in index.ts lines 641-729
   await sql`
     ALTER TABLE thread_outputs
@@ -75,9 +75,9 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`
     ALTER TABLE thread_outputs
     ADD CONSTRAINT thread_outputs_file_type_check
-    CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav'))
+    CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html'))
   `.execute(database);
-  console.log('[Kysely] Updated thread_outputs file_type constraint for audio formats');
+  console.log('[Kysely] Updated thread_outputs file_type constraint for audio and html formats');
 
   // Migration: Add credentials authentication columns to users table
   // password_hash stores bcrypt-hashed passwords
