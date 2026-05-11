@@ -417,16 +417,28 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
   const data = await response.json() as { models: Array<{ name: string }> };
 
   const filtered = data.models.filter(m => isChatModel(m.name));
-  const models = await Promise.all(filtered.map(async m => {
-    // Ollama model names often include tags like ":latest"
-    const baseName = m.name.split(':')[0];
-    const id = `ollama-${baseName}`;
+
+  // Deduplicate: "model:latest" and "model" are the same — use base name.
+  // Keep distinct size variants like "llama3.2:3b" and "llama3.2:7b" as separate entries.
+  const seen = new Set<string>();
+  const uniqueModels = filtered.filter(m => {
+    const [base, tag] = m.name.split(':');
+    const normalized = (!tag || tag === 'latest') ? base : m.name;
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+
+  const models = await Promise.all(uniqueModels.map(async m => {
+    const [base, tag] = m.name.split(':');
+    const modelName = (!tag || tag === 'latest') ? base : m.name;
+    const id = `ollama-${modelName}`;
     return {
       id,
       name: generateDisplayName(id),
       provider: 'ollama',
-      toolCapable: isToolCapable(baseName),
-      visionCapable: isVisionCapable(baseName),
+      toolCapable: isToolCapable(base),
+      visionCapable: isVisionCapable(base),
       maxInputTokens: null,  // Ollama doesn't report this
       maxOutputTokens: getDefaultOutputTokens('ollama'),
       isEnabled: !!(await getEnabledModel(id)),

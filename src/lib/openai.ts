@@ -292,7 +292,7 @@ function getFireworksEmbeddingModelId(model: string): string {
  * These models bypass LiteLLM and connect directly to the local Ollama server.
  */
 export function isOllamaModel(model: string): boolean {
-  return model.startsWith('ollama-') || model.startsWith('ollama/');
+  return (model.startsWith('ollama-') && !model.startsWith('ollama-cloud/')) || model.startsWith('ollama/');
 }
 
 /**

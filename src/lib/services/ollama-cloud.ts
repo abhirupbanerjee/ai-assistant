@@ -176,10 +176,23 @@ export async function discoverOllamaCloudModels(): Promise<DiscoveredModel[]> {
     return !name.includes('embed') && !name.includes('guard');
   });
 
-  const models = await Promise.all(chatModels.map(async m => {
-    const baseName = m.name.split(':')[0];
-    const id = `ollama-cloud/${baseName}`;
-    const caps = detectCapabilities(baseName);
+  // Deduplicate: for each base model name, keep only unique tags.
+  // If the only tag is "latest", use the base name. Otherwise use full "name:tag".
+  const seen = new Set<string>();
+  const uniqueModels = chatModels.filter(m => {
+    const [base, tag] = m.name.split(':');
+    // Normalize: "gemma3" and "gemma3:latest" are the same — use base name
+    const normalized = (!tag || tag === 'latest') ? base : m.name;
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+
+  const models = await Promise.all(uniqueModels.map(async m => {
+    const [base, tag] = m.name.split(':');
+    const modelName = (!tag || tag === 'latest') ? base : m.name;
+    const id = `ollama-cloud/${modelName}`;
+    const caps = detectCapabilities(base);
 
     return {
       id,
