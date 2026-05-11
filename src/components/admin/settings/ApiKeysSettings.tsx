@@ -56,11 +56,13 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   deepseek: ['LLM'],
   ollama: ['LLM'],
   anthropic: ['LLM'],
+  'ollama-cloud': ['LLM'],
 };
 
 const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral', 'deepseek'];
 const ROUTE_2_PROVIDERS = ['fireworks', 'anthropic'];
 const ROUTE_3_PROVIDERS = ['ollama'];
+const ROUTE_4_PROVIDERS = ['ollama-cloud'];
 const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks'];
 
 // ============================================================================
@@ -396,6 +398,10 @@ export default function ApiKeysSettings() {
     }));
   }
 
+  function isOllamaCloudProvider(providerId: string): boolean {
+    return providerId === 'ollama-cloud';
+  }
+
   // ============================================================================
   // Save
   // ============================================================================
@@ -546,6 +552,7 @@ export default function ApiKeysSettings() {
   function renderProviderRow(provider: LLMProvider) {
     const source = getProviderSource(provider);
     const isOllama = provider.id === 'ollama';
+    const isOllamaCloud = provider.id === 'ollama-cloud';
     const capabilities = PROVIDER_CAPABILITIES[provider.id] || ['LLM'];
     const testResult = testResults[provider.id];
 
@@ -615,6 +622,7 @@ export default function ApiKeysSettings() {
   const route1Providers = providers.filter((p) => ROUTE_1_PROVIDERS.includes(p.id));
   const route2Providers = providers.filter((p) => ROUTE_2_PROVIDERS.includes(p.id));
   const route3Providers = providers.filter((p) => ROUTE_3_PROVIDERS.includes(p.id));
+  const route4Providers = providers.filter((p) => ROUTE_4_PROVIDERS.includes(p.id));
 
   return (
     <div className="space-y-6">
@@ -713,6 +721,16 @@ export default function ApiKeysSettings() {
           </div>
           <div className="divide-y divide-gray-100">
             {route3Providers.map(renderProviderRow)}
+          </div>
+        </div>
+
+        {/* Route 4 */}
+        <div className="mb-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
+            Route 4 — Ollama Cloud
+          </div>
+          <div className="divide-y divide-gray-100">
+            {route4Providers.map(renderProviderRow)}
           </div>
         </div>
 

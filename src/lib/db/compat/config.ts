@@ -688,21 +688,24 @@ export async function setRoutesSettings(
 ): Promise<RoutesSettings> {
   const current = await getRoutesSettings();
   const merged = { ...current, ...settings };
-  // Back-compat: ensure route3Enabled exists for older DB rows
+  // Back-compat: ensure route3Enabled and route4Enabled exist for older DB rows
   if (merged.route3Enabled === undefined) merged.route3Enabled = false;
+  if (merged.route4Enabled === undefined) merged.route4Enabled = false;
   // Ensure at least one route is enabled
-  if (!merged.route1Enabled && !merged.route2Enabled && !merged.route3Enabled) {
+  if (!merged.route1Enabled && !merged.route2Enabled && !merged.route3Enabled && !merged.route4Enabled) {
     merged.route1Enabled = true;
   }
   // If primary route is disabled, switch primary to the first enabled route
   if (
     (merged.primaryRoute === 'route1' && !merged.route1Enabled) ||
     (merged.primaryRoute === 'route2' && !merged.route2Enabled) ||
-    (merged.primaryRoute === 'route3' && !merged.route3Enabled)
+    (merged.primaryRoute === 'route3' && !merged.route3Enabled) ||
+    (merged.primaryRoute === 'route4' && !merged.route4Enabled)
   ) {
     merged.primaryRoute = merged.route1Enabled ? 'route1'
       : merged.route2Enabled ? 'route2'
-      : 'route3';
+      : merged.route3Enabled ? 'route3'
+      : 'route4';
   }
   await setSetting('routes-settings', merged, updatedBy);
   return merged;

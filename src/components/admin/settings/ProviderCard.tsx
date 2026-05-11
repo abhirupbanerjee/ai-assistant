@@ -24,6 +24,7 @@ export default function ProviderCard({ provider, onUpdate, onTest }: ProviderCar
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const isOllama = provider.id === 'ollama';
+  const isOllamaCloud = provider.id === 'ollama-cloud';
   const isConfigured = provider.apiKeyConfigured || (isOllama && provider.apiBase);
 
   const handleTest = async () => {
