@@ -1,5 +1,5 @@
 /**
- * Citation Trajectory Database Operations
+ * Citation Trajectory Database Operations (PostgreSQL)
  *
  * Tracks the full retrieval path for each chunk: raw vector score → reranker score → final selection.
  * Enables the Citation Trajectory UI to show why each chunk was or wasn't included in context.
@@ -10,7 +10,9 @@
  * - 'web': Web search results from Tavily (no vector/reranker scores)
  */
 
-import { getDatabase } from './index';
+import { getDb } from './kysely';
+import type { DB } from './db-types';
+import { sql } from 'kysely';
 
 // ============ Types ============
 
@@ -45,7 +47,7 @@ export interface TrajectorySummary {
 /**
  * Save a batch of citation trajectory entries
  */
-export function saveTrajectoryEntries(
+export async function saveTrajectoryEntries(
   entries: Array<{
     messageId: string;
     threadId: string;
@@ -59,72 +61,51 @@ export function saveTrajectoryEntries(
     rankAfter: number | null;
     sourceType?: TrajectorySourceType; // Defaults to 'vector' if not specified
   }>
-): void {
+): Promise<void> {
   if (entries.length === 0) return;
 
-  const db = getDatabase();
-  const insert = db.prepare(`
-    INSERT INTO citation_trajectories (
-      message_id, thread_id, chunk_id, document_name, page_number,
-      raw_score, reranked_score, was_selected,
-      rank_before, rank_after, source_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const insertMany = db.transaction((rows: typeof entries) => {
-    for (const row of rows) {
-      insert.run(
-        row.messageId,
-        row.threadId,
-        row.chunkId,
-        row.documentName,
-        row.pageNumber,
-        row.rawScore,
-        row.rerankedScore,
-        row.wasSelected ? 1 : 0,
-        row.rankBefore,
-        row.rankAfter,
-        row.sourceType || 'vector'
-      );
-    }
-  });
-
-  insertMany(entries);
+  const db = await getDb();
+  
+  // Insert entries in batches to avoid hitting PostgreSQL limits
+  const batchSize = 1000;
+  for (let i = 0; i < entries.length; i += batchSize) {
+    const batch = entries.slice(i, i + batchSize);
+    
+    await db.insertInto('citation_trajectories')
+      .values(batch.map(row => ({
+        message_id: row.messageId,
+        thread_id: row.threadId,
+        chunk_id: row.chunkId,
+        document_name: row.documentName,
+        page_number: row.pageNumber,
+        raw_score: row.rawScore,
+        reranked_score: row.rerankedScore,
+        was_selected: row.wasSelected ? 1 : 0,
+        rank_before: row.rankBefore,
+        rank_after: row.rankAfter,
+        source_type: row.sourceType || 'vector'
+      })))
+      .execute();
+  }
 }
 
 /**
  * Get trajectory entries for a specific message
  */
-export function getTrajectoryForMessage(
+export async function getTrajectoryForMessage(
   messageId: string,
   threadId: string
-): CitationTrajectoryEntry[] {
-  const db = getDatabase();
-  const rows = db.prepare(`
-    SELECT
-      id, message_id, thread_id, chunk_id, document_name, page_number,
-      raw_score, reranked_score, was_selected,
-      rank_before, rank_after, source_type, created_at
-    FROM citation_trajectories
-    WHERE message_id = ? AND thread_id = ?
-    ORDER BY
-      CASE source_type WHEN 'web' THEN 0 ELSE 1 END,
-      rank_after ASC, rank_before ASC
-  `).all(messageId, threadId) as Array<{
-    id: number;
-    message_id: string;
-    thread_id: string;
-    chunk_id: string;
-    document_name: string;
-    page_number: number;
-    raw_score: number | null;
-    reranked_score: number | null;
-    was_selected: number;
-    rank_before: number | null;
-    rank_after: number | null;
-    source_type: string;
-    created_at: string;
-  }>;
+): Promise<CitationTrajectoryEntry[]> {
+  const db = await getDb();
+  
+  const rows = await db.selectFrom('citation_trajectories')
+    .selectAll()
+    .where('message_id', '=', messageId)
+    .where('thread_id', '=', threadId)
+    .orderBy(sql`CASE source_type WHEN 'web' THEN 0 ELSE 1 END`)
+    .orderBy('rank_after', 'asc')
+    .orderBy('rank_before', 'asc')
+    .execute();
 
   return rows.map(row => ({
     id: row.id,
@@ -146,11 +127,11 @@ export function getTrajectoryForMessage(
 /**
  * Get a summary of the trajectory for a message
  */
-export function getTrajectorySummary(
+export async function getTrajectorySummary(
   messageId: string,
   threadId: string
-): TrajectorySummary {
-  const entries = getTrajectoryForMessage(messageId, threadId);
+): Promise<TrajectorySummary> {
+  const entries = await getTrajectoryForMessage(messageId, threadId);
 
   const uniqueDocs = new Set(entries.map(e => e.documentName));
   const selected = entries.filter(e => e.wasSelected);
@@ -167,26 +148,47 @@ export function getTrajectorySummary(
 /**
  * Clean up old trajectory entries (keep recent N per thread)
  */
-export function cleanupOldTrajectories(keepRecent: number = 100): number {
-  const db = getDatabase();
-  const result = db.prepare(`
-    DELETE FROM citation_trajectories
-    WHERE id NOT IN (
-      SELECT id FROM citation_trajectories
-      ORDER BY created_at DESC
-      LIMIT ?
-    )
-  `).run(keepRecent);
-  return result.changes;
+export async function cleanupOldTrajectories(keepRecent: number = 100): Promise<number> {
+  const db = await getDb();
+  
+  // Get IDs to keep
+  const idsToKeepResult = await db.selectFrom('citation_trajectories')
+    .select(['id', 'thread_id'])
+    .orderBy('created_at', 'desc')
+    .limit(keepRecent)
+    .execute();
+
+  if (idsToKeepResult.length === 0) {
+    return 0;
+  }
+
+  // Delete entries not in the keep list for each thread
+  const threadIds = [...new Set(idsToKeepResult.map(row => row.thread_id))];
+  let totalDeleted = 0;
+
+  for (const threadId of threadIds) {
+    const idsToKeepForThread = idsToKeepResult
+      .filter(row => row.thread_id === threadId)
+      .map(row => row.id);
+
+    const result = await db.deleteFrom('citation_trajectories')
+      .where('thread_id', '=', threadId)
+      .where('id', 'not in', idsToKeepForThread)
+      .execute();
+
+    totalDeleted += result.length;
+  }
+
+  return totalDeleted;
 }
 
 /**
  * Delete trajectory entries for a thread
  */
-export function deleteThreadTrajectories(threadId: string): number {
-  const db = getDatabase();
-  const result = db.prepare(
-    'DELETE FROM citation_trajectories WHERE thread_id = ?'
-  ).run(threadId);
-  return result.changes;
+export async function deleteThreadTrajectories(threadId: string): Promise<number> {
+  const db = await getDb();
+  const result = await db.deleteFrom('citation_trajectories')
+    .where('thread_id', '=', threadId)
+    .execute();
+  return result.length;
 }

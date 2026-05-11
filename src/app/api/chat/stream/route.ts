@@ -393,8 +393,9 @@ export async function POST(request: NextRequest) {
                   wasSelected: t.wasSelected,
                   rankBefore: t.rankBefore,
                   rankAfter: t.rankAfter,
+                  sourceType: 'vector' as const,
                 }));
-                saveTrajectoryEntries(trajectoryEntries);
+                await saveTrajectoryEntries(trajectoryEntries);
               } catch (trajectoryError) {
                 // Log but don't fail the request for trajectory saving errors
                 console.error('[Stream] Failed to save trajectory data:', trajectoryError);
@@ -666,7 +667,7 @@ export async function POST(request: NextRequest) {
                         chunkId: result.url || `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                         documentName: docName,
                         pageNumber: 0,
-                        rawScore: null,  // No vector score for web results
+                        rawScore: result.score ?? null,  // Tavily relevance score
                         rerankedScore: null,  // No reranker for web results
                         wasSelected: true,  // Web results are always included in context
                         rankBefore: null,
@@ -681,14 +682,14 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // Save web search trajectory entries
-            if (webTrajectoryEntries.length > 0) {
-              try {
-                saveTrajectoryEntries(webTrajectoryEntries);
-              } catch (trajectoryError) {
-                console.error('[Stream] Failed to save web trajectory data:', trajectoryError);
-              }
-            }
+             // Save web search trajectory entries
+             if (webTrajectoryEntries.length > 0) {
+               try {
+                 await saveTrajectoryEntries(webTrajectoryEntries);
+               } catch (trajectoryError) {
+                 console.error('[Stream] Failed to save web trajectory data:', trajectoryError);
+               }
+             }
 
             // Combine all sources
             const allSources = [...ragResult.sources, ...webSources];

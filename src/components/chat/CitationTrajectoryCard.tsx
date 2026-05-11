@@ -188,51 +188,70 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
                     </div>
                   </div>
 
-                  {/* Score bars - only show for non-web sources */}
-                  {!isWeb && (
-                  <div className="mt-1.5 flex items-center gap-3">
-                    {/* Raw score */}
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] text-gray-400">Vector</span>
-                        <span className="text-[10px] text-gray-500">
-                          {entry.rawScore !== null ? entry.rawScore.toFixed(3) : '—'}
+                  {/* Score bars - show Vector/Reranker for vector sources, Relevance for web sources */}
+                  {isWeb ? (
+                    /* Web source: show Tavily relevance score */
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-purple-400">Relevance</span>
+                          <span className="text-[10px] text-purple-600">
+                            {entry.rawScore !== null ? entry.rawScore.toFixed(3) : '—'}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${scoreColor(entry.rawScore)}`}
+                            style={{ width: `${Math.min((entry.rawScore ?? 0) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Vector source: show Vector and Reranker scores */
+                    <div className="mt-1.5 flex items-center gap-3">
+                      {/* Raw score */}
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-gray-400">Vector</span>
+                          <span className="text-[10px] text-gray-500">
+                            {entry.rawScore !== null ? entry.rawScore.toFixed(3) : '—'}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${scoreColor(entry.rawScore)}`}
+                            style={{ width: `${Math.min((entry.rawScore ?? 0) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Reranker score */}
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-gray-400">Reranker</span>
+                          <span className="text-[10px] text-gray-500">
+                            {entry.rerankedScore !== null ? entry.rerankedScore.toFixed(3) : '—'}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${scoreColor(entry.rerankedScore)}`}
+                            style={{ width: `${Math.min((entry.rerankedScore ?? 0) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Rank change */}
+                      <div className="flex items-center gap-1 text-[10px] text-gray-400 flex-shrink-0">
+                        <RankChange before={entry.rankBefore} after={entry.rankAfter} />
+                        <span>
+                          {entry.rankBefore !== null ? `#${entry.rankBefore}` : '—'}
+                          {' → '}
+                          {entry.rankAfter !== null ? `#${entry.rankAfter}` : '—'}
                         </span>
                       </div>
-                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${scoreColor(entry.rawScore)}`}
-                          style={{ width: `${Math.min((entry.rawScore ?? 0) * 100, 100)}%` }}
-                        />
-                      </div>
                     </div>
-
-                    {/* Reranker score */}
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] text-gray-400">Reranker</span>
-                        <span className="text-[10px] text-gray-500">
-                          {entry.rerankedScore !== null ? entry.rerankedScore.toFixed(3) : '—'}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${scoreColor(entry.rerankedScore)}`}
-                          style={{ width: `${Math.min((entry.rerankedScore ?? 0) * 100, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Rank change */}
-                    <div className="flex items-center gap-1 text-[10px] text-gray-400 flex-shrink-0">
-                      <RankChange before={entry.rankBefore} after={entry.rankAfter} />
-                      <span>
-                        {entry.rankBefore !== null ? `#${entry.rankBefore}` : '—'}
-                        {' → '}
-                        {entry.rankAfter !== null ? `#${entry.rankAfter}` : '—'}
-                      </span>
-                    </div>
-                  </div>
                   )}
 
                   {/* Web source info line */}

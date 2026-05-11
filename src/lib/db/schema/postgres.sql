@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
   message_id TEXT,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html')),
   file_size INTEGER NOT NULL,
   generation_config TEXT,
   expires_at TIMESTAMP,
@@ -235,6 +235,30 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
 
 CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
 CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+
+-- ============ Citation Trajectories ============
+
+CREATE TABLE IF NOT EXISTS citation_trajectories (
+  id SERIAL PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  chunk_id TEXT NOT NULL,
+  document_name TEXT NOT NULL,
+  page_number INTEGER NOT NULL,
+  raw_score REAL,
+  reranked_score REAL,
+  was_selected INTEGER NOT NULL,
+  rank_before INTEGER,
+  rank_after INTEGER,
+  source_type TEXT DEFAULT 'vector' CHECK (source_type IN ('vector', 'user_upload', 'web')),
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_citation_trajectories_message ON citation_trajectories(message_id);
+CREATE INDEX IF NOT EXISTS idx_citation_trajectories_thread ON citation_trajectories(thread_id);
+CREATE INDEX IF NOT EXISTS idx_citation_trajectories_source_type ON citation_trajectories(source_type);
 
 -- ============ Memory & Summarization ============
 
@@ -772,7 +796,7 @@ CREATE TABLE IF NOT EXISTS workspace_outputs (
   thread_id TEXT,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav', 'html')),
   file_size INTEGER NOT NULL,
   generation_config TEXT,
   expires_at TIMESTAMP,

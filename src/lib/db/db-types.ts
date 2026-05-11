@@ -684,6 +684,28 @@ export interface WorkspaceOutputsTable {
   created_at: Generated<string>;
 }
 
+// ============ Citation Trajectories ============
+
+export interface CitationTrajectoriesTable {
+  id: Generated<number>;
+  message_id: string;
+  thread_id: string;
+  chunk_id: string;
+  document_name: string;
+  page_number: number;
+  raw_score: number | null;
+  reranked_score: number | null;
+  was_selected: number;  // 0 or 1
+  rank_before: number | null;
+  rank_after: number | null;
+  source_type: 'vector' | 'user_upload' | 'web';
+  created_at: Generated<string>;
+}
+
+export type CitationTrajectory = Selectable<CitationTrajectoriesTable>;
+export type NewCitationTrajectory = Insertable<CitationTrajectoriesTable>;
+export type CitationTrajectoryUpdate = Updateable<CitationTrajectoriesTable>;
+
 // ============ Folder Syncs ============
 
 export interface FolderSyncsTable {
@@ -1028,6 +1050,8 @@ export interface DB {
   workspace_whatsapp_channels: WorkspaceWhatsappChannelsTable;
   workspace_whatsapp_contacts: WorkspaceWhatsappContactsTable;
   workspace_whatsapp_messages: WorkspaceWhatsappMessagesTable;
+  // Citation Trajectories
+  citation_trajectories: CitationTrajectoriesTable;
 }
 
 // ============ WhatsApp Channels ============

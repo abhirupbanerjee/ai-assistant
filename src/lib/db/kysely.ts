@@ -370,6 +370,31 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Updated file_type constraints to include html format');
 
+  // Migration: Create citation_trajectories table if it doesn't exist
+  await sql`
+    CREATE TABLE IF NOT EXISTS citation_trajectories (
+      id SERIAL PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      chunk_id TEXT NOT NULL,
+      document_name TEXT NOT NULL,
+      page_number INTEGER NOT NULL,
+      raw_score REAL,
+      reranked_score REAL,
+      was_selected INTEGER NOT NULL,
+      rank_before INTEGER,
+      rank_after INTEGER,
+      source_type TEXT DEFAULT 'vector' CHECK (source_type IN ('vector', 'user_upload', 'web')),
+      created_at TIMESTAMP DEFAULT NOW(),
+      FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_citation_trajectories_message ON citation_trajectories(message_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_citation_trajectories_thread ON citation_trajectories(thread_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_citation_trajectories_source_type ON citation_trajectories(source_type)`.execute(database);
+  console.log('[Kysely] Ensured citation_trajectories table exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy
