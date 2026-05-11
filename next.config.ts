@@ -82,6 +82,7 @@ const nextConfig: NextConfig = {
     'onnxruntime-node',
     'pdfkit',
     'playwright',
+    'tiktoken',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {
