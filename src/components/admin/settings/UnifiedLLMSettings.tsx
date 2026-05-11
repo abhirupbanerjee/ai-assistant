@@ -177,7 +177,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     return provider?.name || providerId;
   };
 
-  const configuredProviders = providers.filter(p => p.apiKeyConfigured || p.id === 'ollama' || p.id === 'ollama-cloud');
+  const configuredProviders = providers.filter(p => {
+    // Ollama local is configured if apiBase exists (no API key needed)
+    if (p.id === 'ollama') return !!p.apiBase;
+    // Ollama Cloud is configured only if API key exists
+    if (p.id === 'ollama-cloud') return p.apiKeyConfigured;
+    // Other providers need API key
+    return p.apiKeyConfigured;
+  });
 
   // ============ Data Loading ============
 

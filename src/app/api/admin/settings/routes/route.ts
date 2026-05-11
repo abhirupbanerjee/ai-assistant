@@ -26,6 +26,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Check if user has admin or superuser role
+    if (user.role !== 'admin' && user.role !== 'superuser') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const settings = await getRoutesSettings();
 
     return NextResponse.json({ settings });
@@ -46,6 +51,11 @@ export async function PUT(request: NextRequest) {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user has admin role (only admins can modify settings)
+    if (user.role !== 'admin') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     const body = await request.json();

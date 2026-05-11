@@ -35,26 +35,31 @@ interface RerankerProviderStatus {
 }
 
 // Provider display info
-const RERANKER_PROVIDER_INFO: Record<RerankerProvider, { label: string; description: string }> = {
+const RERANKER_PROVIDER_INFO: Record<RerankerProvider, { label: string; description: string; route?: string }> = {
   'bge-large': {
     label: 'BGE Reranker Large',
     description: 'Best accuracy cross-encoder (~670MB)',
+    route: 'Route 3 (Local)',
   },
   'cohere': {
     label: 'Cohere API',
     description: 'Fast API-based reranking (requires API key)',
+    route: 'Route 1/2 (Cloud)',
   },
   'fireworks': {
     label: 'Fireworks AI (Qwen3)',
     description: 'Cloud API reranking (requires API key)',
+    route: 'Route 2 (Direct)',
   },
   'bge-base': {
     label: 'BGE Reranker Base',
     description: 'Smaller cross-encoder (~220MB)',
+    route: 'Route 3 (Local)',
   },
   'local': {
     label: 'Local Bi-encoder',
     description: 'Legacy model, less accurate (~90MB)',
+    route: 'Route 3 (Local)',
   },
 };
 
@@ -385,6 +390,11 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
                           <span className={`font-medium ${config.enabled ? 'text-gray-900' : 'text-gray-500'}`}>
                             {info.label}
                           </span>
+                          {info.route && (
+                            <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                              {info.route}
+                            </span>
+                          )}
                           {!available && (
                             <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">
                               Unavailable

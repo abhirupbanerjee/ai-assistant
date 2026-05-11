@@ -224,7 +224,16 @@ export default function ModelDiscoveryModal({
   };
 
   // Get available providers
-  const availableProviders = providers.filter(p => p.enabled && (p.apiKeyConfigured || p.id === 'ollama'));
+  const availableProviders = providers.filter(p => {
+    // Must be enabled
+    if (!p.enabled) return false;
+    // Ollama local needs apiBase (not apiKey)
+    if (p.id === 'ollama') return !!p.apiBase;
+    // Ollama Cloud needs API key configured
+    if (p.id === 'ollama-cloud') return p.apiKeyConfigured;
+    // Other providers need API key
+    return p.apiKeyConfigured;
+  });
 
   return (
     <Modal

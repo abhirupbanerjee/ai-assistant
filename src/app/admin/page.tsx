@@ -603,6 +603,7 @@ function AdminPageContent() {
         model: llmSettings?.model,
         temperature: llmSettings?.temperature,
         maxTokens: llmSettings?.maxTokens,
+        promptOptimizationMaxTokens: llmSettings?.promptOptimizationMaxTokens,
       })
     );
   };

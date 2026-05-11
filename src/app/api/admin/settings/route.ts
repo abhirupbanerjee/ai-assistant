@@ -114,6 +114,7 @@ export async function GET() {
     const limitsMeta = await getSettingMetadata('limits-settings');
     const tokenLimitsMeta = await getSettingMetadata('token-limits-settings');
     const uploadMeta = await getSettingMetadata('upload-limits');
+    const retentionMeta = await getSettingMetadata('retention-settings');
     const ocrMeta = await getSettingMetadata('ocr-settings');
 
     return NextResponse.json({
@@ -188,7 +189,11 @@ export async function GET() {
         updatedAt: uploadMeta?.updatedAt || new Date().toISOString(),
         updatedBy: uploadMeta?.updatedBy || 'system',
       },
-      retentionSettings,
+      retention: {
+        ...retentionSettings,
+        updatedAt: retentionMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: retentionMeta?.updatedBy || 'system',
+      },
       ocr: {
         ...ocrSettings,
         // Mask sensitive credentials
@@ -1348,6 +1353,47 @@ export async function PUT(request: NextRequest) {
           success: true,
           tokenLimits: {
             ...result,
+            updatedAt: meta?.updatedAt || new Date().toISOString(),
+            updatedBy: meta?.updatedBy || user.email,
+          },
+        });
+      }
+
+      case 'model-tokens': {
+        const { model, maxTokens } = settings;
+
+        if (!model || typeof model !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Model name is required', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate maxTokens - can be a number or 'default'
+        if (maxTokens !== 'default') {
+          if (typeof maxTokens !== 'number' || maxTokens < 100 || maxTokens > 32000) {
+            return NextResponse.json<ApiError>(
+              { error: 'Max tokens must be between 100 and 32,000, or "default"', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
+        // Import the function to set model token limits
+        const { setModelTokenLimit, getModelTokenLimits } = await import('@/lib/db/compat');
+
+        // Update the specific model's token limit
+        await setModelTokenLimit(model, maxTokens, user.email);
+
+        // Get updated model limits
+        const updatedModelLimits = await getModelTokenLimits();
+
+        // Return with metadata
+        const meta = await getSettingMetadata('model-token-limits');
+        return NextResponse.json({
+          success: true,
+          modelTokenLimits: {
+            limits: updatedModelLimits,
             updatedAt: meta?.updatedAt || new Date().toISOString(),
             updatedBy: meta?.updatedBy || user.email,
           },
