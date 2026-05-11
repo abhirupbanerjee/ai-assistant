@@ -90,6 +90,10 @@ export interface ContextOptions {
   memoryContext?: string;
   /** Category slugs for cache key */
   categorySlugs?: string[];
+  /** User ID for cache isolation (security-critical: prevents cross-user cache collisions) */
+  userId?: string;
+  /** Thread ID for cache isolation (security-critical: prevents cross-thread cache collisions) */
+  threadId?: string;
 }
 
 // ============ Follow-up Detection ============
@@ -361,6 +365,8 @@ export function buildConversationContext(
     summaryContext,
     memoryContext,
     categorySlugs = [],
+    userId,
+    threadId,
   } = options;
 
   // 1. Detect follow-up
@@ -416,14 +422,16 @@ The current message appears to be a follow-up. Consider the above context when r
     ? hashQuery(memoryContext.substring(0, 100))
     : null;
 
-  // 7. Build cache key
+  // 7. Build cache key (userId + threadId required to prevent cross-user cache collisions)
   const cacheKey = buildCacheKey(
     currentMessage,
     isFollowUp,
     historyFingerprint,
     summaryFingerprint,
     memoryFingerprint,
-    categorySlugs
+    categorySlugs,
+    userId,
+    threadId,
   );
 
   // Don't cache follow-up responses (too context-dependent)

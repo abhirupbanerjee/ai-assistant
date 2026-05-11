@@ -289,42 +289,42 @@ export async function PUT(request: NextRequest) {
           semanticBreakpointThreshold,
         } = settings;
 
-        if (typeof topKChunks !== 'number' || topKChunks < 1 || topKChunks > 50) {
+        if (typeof topKChunks !== 'number' || !isFinite(topKChunks) || topKChunks < 1 || topKChunks > 50) {
           return NextResponse.json<ApiError>(
             { error: 'Top K chunks must be between 1 and 50', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof maxContextChunks !== 'number' || maxContextChunks < 1 || maxContextChunks > 30) {
+        if (typeof maxContextChunks !== 'number' || !isFinite(maxContextChunks) || maxContextChunks < 1 || maxContextChunks > 30) {
           return NextResponse.json<ApiError>(
             { error: 'Max context chunks must be between 1 and 30', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof similarityThreshold !== 'number' || similarityThreshold < 0 || similarityThreshold > 1) {
+        if (typeof similarityThreshold !== 'number' || !isFinite(similarityThreshold) || similarityThreshold < 0 || similarityThreshold > 1) {
           return NextResponse.json<ApiError>(
             { error: 'Similarity threshold must be between 0 and 1', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof chunkSize !== 'number' || chunkSize < 100 || chunkSize > 2000) {
+        if (typeof chunkSize !== 'number' || !isFinite(chunkSize) || chunkSize < 100 || chunkSize > 2000) {
           return NextResponse.json<ApiError>(
             { error: 'Chunk size must be between 100 and 2000', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof chunkOverlap !== 'number' || chunkOverlap < 0 || chunkOverlap > chunkSize / 2) {
+        if (typeof chunkOverlap !== 'number' || !isFinite(chunkOverlap) || chunkOverlap < 0 || chunkOverlap > chunkSize / 2) {
           return NextResponse.json<ApiError>(
             { error: 'Chunk overlap must be between 0 and half of chunk size', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400) {
+        if (typeof cacheTTLSeconds !== 'number' || !isFinite(cacheTTLSeconds) || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400) {
           return NextResponse.json<ApiError>(
             { error: 'Cache TTL must be between 0 and 86400 seconds (24 hours)', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -341,7 +341,7 @@ export async function PUT(request: NextRequest) {
 
         // Validate semantic breakpoint threshold
         if (semanticBreakpointThreshold !== undefined) {
-          if (typeof semanticBreakpointThreshold !== 'number' || semanticBreakpointThreshold < 0.3 || semanticBreakpointThreshold > 0.8) {
+          if (typeof semanticBreakpointThreshold !== 'number' || !isFinite(semanticBreakpointThreshold) || semanticBreakpointThreshold < 0.3 || semanticBreakpointThreshold > 0.8) {
             return NextResponse.json<ApiError>(
               { error: 'Semantic breakpoint threshold must be between 0.3 and 0.8', code: 'VALIDATION_ERROR' },
               { status: 400 }
@@ -379,21 +379,21 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        if (typeof temperature !== 'number' || temperature < 0 || temperature > 1) {
+        if (typeof temperature !== 'number' || !isFinite(temperature) || temperature < 0 || temperature > 1) {
           return NextResponse.json<ApiError>(
             { error: 'Temperature must be between 0 and 1', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof maxTokens !== 'number' || maxTokens < 100 || maxTokens > 16000) {
+        if (typeof maxTokens !== 'number' || !isFinite(maxTokens) || maxTokens < 100 || maxTokens > 16000) {
           return NextResponse.json<ApiError>(
             { error: 'Max tokens must be between 100 and 16000', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof promptOptimizationMaxTokens !== 'number' || promptOptimizationMaxTokens < 100 || promptOptimizationMaxTokens > 8000) {
+        if (typeof promptOptimizationMaxTokens !== 'number' || !isFinite(promptOptimizationMaxTokens) || promptOptimizationMaxTokens < 100 || promptOptimizationMaxTokens > 8000) {
           return NextResponse.json<ApiError>(
             { error: 'Prompt optimization max tokens must be between 100 and 8000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -502,7 +502,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate max results
-        if (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 20) {
+        if (typeof maxResults !== 'number' || !isFinite(maxResults) || maxResults < 1 || maxResults > 20) {
           return NextResponse.json<ApiError>(
             { error: 'Max results must be between 1 and 20', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -510,7 +510,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate cache TTL (1 minute to 1 month)
-        if (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 60 || cacheTTLSeconds > 2592000) {
+        if (typeof cacheTTLSeconds !== 'number' || !isFinite(cacheTTLSeconds) || cacheTTLSeconds < 60 || cacheTTLSeconds > 2592000) {
           return NextResponse.json<ApiError>(
             { error: 'Cache TTL must be between 60 seconds and 2592000 seconds (1 month)', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -552,21 +552,21 @@ export async function PUT(request: NextRequest) {
       case 'uploadLimits': {
         const { maxFilesPerInput, maxFilesPerThread, maxFileSizeMB, allowedTypes } = settings;
 
-        if (typeof maxFilesPerThread !== 'number' || maxFilesPerThread < 0 || maxFilesPerThread > 100) {
+        if (typeof maxFilesPerThread !== 'number' || !isFinite(maxFilesPerThread) || maxFilesPerThread < 0 || maxFilesPerThread > 100) {
           return NextResponse.json<ApiError>(
             { error: 'Max files per thread must be between 0 and 100', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof maxFilesPerInput !== 'number' || maxFilesPerInput < 0 || maxFilesPerInput > maxFilesPerThread) {
+        if (typeof maxFilesPerInput !== 'number' || !isFinite(maxFilesPerInput) || maxFilesPerInput < 0 || maxFilesPerInput > maxFilesPerThread) {
           return NextResponse.json<ApiError>(
             { error: `Max files per input must be between 0 and ${maxFilesPerThread} (max per thread)`, code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof maxFileSizeMB !== 'number' || maxFileSizeMB < 1 || maxFileSizeMB > 100) {
+        if (typeof maxFileSizeMB !== 'number' || !isFinite(maxFileSizeMB) || maxFileSizeMB < 1 || maxFileSizeMB > 100) {
           return NextResponse.json<ApiError>(
             { error: 'Max file size must be between 1 and 100 MB', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -601,14 +601,14 @@ export async function PUT(request: NextRequest) {
       case 'retention': {
         const { threadRetentionDays, storageAlertThreshold } = settings;
 
-        if (typeof threadRetentionDays !== 'number' || threadRetentionDays < 1 || threadRetentionDays > 365) {
+        if (typeof threadRetentionDays !== 'number' || !isFinite(threadRetentionDays) || threadRetentionDays < 1 || threadRetentionDays > 365) {
           return NextResponse.json<ApiError>(
             { error: 'Thread retention days must be between 1 and 365', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
 
-        if (typeof storageAlertThreshold !== 'number' || storageAlertThreshold < 50 || storageAlertThreshold > 100) {
+        if (typeof storageAlertThreshold !== 'number' || !isFinite(storageAlertThreshold) || storageAlertThreshold < 50 || storageAlertThreshold > 100) {
           return NextResponse.json<ApiError>(
             { error: 'Storage alert threshold must be between 50 and 100 percent', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -896,7 +896,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate topKForReranking (optional — omit to keep existing value)
-        if (topKForReranking !== undefined && (typeof topKForReranking !== 'number' || topKForReranking < 5 || topKForReranking > 100)) {
+        if (topKForReranking !== undefined && (typeof topKForReranking !== 'number' || !isFinite(topKForReranking) || topKForReranking < 5 || topKForReranking > 100)) {
           return NextResponse.json<ApiError>(
             { error: 'topKForReranking must be between 5 and 100', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -904,7 +904,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate minRerankerScore (optional — omit to keep existing value)
-        if (minRerankerScore !== undefined && (typeof minRerankerScore !== 'number' || minRerankerScore < 0 || minRerankerScore > 1)) {
+        if (minRerankerScore !== undefined && (typeof minRerankerScore !== 'number' || !isFinite(minRerankerScore) || minRerankerScore < 0 || minRerankerScore > 1)) {
           return NextResponse.json<ApiError>(
             { error: 'minRerankerScore must be between 0 and 1', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -912,7 +912,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate cacheTTLSeconds (optional — omit to keep existing value)
-        if (cacheTTLSeconds !== undefined && (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400)) {
+        if (cacheTTLSeconds !== undefined && (typeof cacheTTLSeconds !== 'number' || !isFinite(cacheTTLSeconds) || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400)) {
           return NextResponse.json<ApiError>(
             { error: 'cacheTTLSeconds must be between 0 and 86400', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -965,7 +965,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate extractionThreshold
-        if (typeof extractionThreshold !== 'number' || extractionThreshold < 1 || extractionThreshold > 50) {
+        if (typeof extractionThreshold !== 'number' || !isFinite(extractionThreshold) || extractionThreshold < 1 || extractionThreshold > 50) {
           return NextResponse.json<ApiError>(
             { error: 'Extraction threshold must be between 1 and 50', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -973,7 +973,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate maxFactsPerCategory
-        if (typeof maxFactsPerCategory !== 'number' || maxFactsPerCategory < 1 || maxFactsPerCategory > 100) {
+        if (typeof maxFactsPerCategory !== 'number' || !isFinite(maxFactsPerCategory) || maxFactsPerCategory < 1 || maxFactsPerCategory > 100) {
           return NextResponse.json<ApiError>(
             { error: 'Max facts per category must be between 1 and 100', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -981,7 +981,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate maxFactsPerQuery
-        if (typeof maxFactsPerQuery !== 'number' || maxFactsPerQuery < 1 || maxFactsPerQuery > 50) {
+        if (typeof maxFactsPerQuery !== 'number' || !isFinite(maxFactsPerQuery) || maxFactsPerQuery < 1 || maxFactsPerQuery > 50) {
           return NextResponse.json<ApiError>(
             { error: 'Max facts per query must be between 1 and 50', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -997,7 +997,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate extractionMaxTokens
-        if (typeof extractionMaxTokens !== 'number' || extractionMaxTokens < 100 || extractionMaxTokens > 8000) {
+        if (typeof extractionMaxTokens !== 'number' || !isFinite(extractionMaxTokens) || extractionMaxTokens < 100 || extractionMaxTokens > 8000) {
           return NextResponse.json<ApiError>(
             { error: 'Extraction max tokens must be between 100 and 8000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1005,7 +1005,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate factMaxAgeDays
-        if (typeof factMaxAgeDays !== 'number' || factMaxAgeDays < 0 || factMaxAgeDays > 365) {
+        if (typeof factMaxAgeDays !== 'number' || !isFinite(factMaxAgeDays) || factMaxAgeDays < 0 || factMaxAgeDays > 365) {
           return NextResponse.json<ApiError>(
             { error: 'Fact max age days must be between 0 and 365', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1051,7 +1051,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate tokenThreshold
-        if (typeof tokenThreshold !== 'number' || tokenThreshold < 1000 || tokenThreshold > 1000000) {
+        if (typeof tokenThreshold !== 'number' || !isFinite(tokenThreshold) || tokenThreshold < 1000 || tokenThreshold > 1000000) {
           return NextResponse.json<ApiError>(
             { error: 'Token threshold must be between 1,000 and 1,000,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1059,7 +1059,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate keepRecentMessages
-        if (typeof keepRecentMessages !== 'number' || keepRecentMessages < 1 || keepRecentMessages > 50) {
+        if (typeof keepRecentMessages !== 'number' || !isFinite(keepRecentMessages) || keepRecentMessages < 1 || keepRecentMessages > 50) {
           return NextResponse.json<ApiError>(
             { error: 'Keep recent messages must be between 1 and 50', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1067,7 +1067,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate summaryMaxTokens
-        if (typeof summaryMaxTokens !== 'number' || summaryMaxTokens < 100 || summaryMaxTokens > 10000) {
+        if (typeof summaryMaxTokens !== 'number' || !isFinite(summaryMaxTokens) || summaryMaxTokens < 100 || summaryMaxTokens > 10000) {
           return NextResponse.json<ApiError>(
             { error: 'Summary max tokens must be between 100 and 10,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1117,7 +1117,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate maxTotalTokens
-        if (typeof maxTotalTokens !== 'number' || maxTotalTokens < 500 || maxTotalTokens > 20000) {
+        if (typeof maxTotalTokens !== 'number' || !isFinite(maxTotalTokens) || maxTotalTokens < 500 || maxTotalTokens > 20000) {
           return NextResponse.json<ApiError>(
             { error: 'Max total tokens must be between 500 and 20,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1255,7 +1255,7 @@ export async function PUT(request: NextRequest) {
         const limitsUpdate: Record<string, number> = {};
 
         if (conversationHistoryMessages !== undefined) {
-          if (typeof conversationHistoryMessages !== 'number' || conversationHistoryMessages < 3 || conversationHistoryMessages > 50) {
+          if (typeof conversationHistoryMessages !== 'number' || !isFinite(conversationHistoryMessages) || conversationHistoryMessages < 3 || conversationHistoryMessages > 50) {
             return NextResponse.json<ApiError>(
               { error: 'Conversation history messages must be between 3 and 50', code: 'VALIDATION_ERROR' },
               { status: 400 }
@@ -1264,7 +1264,7 @@ export async function PUT(request: NextRequest) {
           limitsUpdate.conversationHistoryMessages = conversationHistoryMessages;
         }
         if (maxTotalToolCalls !== undefined) {
-          if (typeof maxTotalToolCalls !== 'number' || maxTotalToolCalls < 5 || maxTotalToolCalls > 200) {
+          if (typeof maxTotalToolCalls !== 'number' || !isFinite(maxTotalToolCalls) || maxTotalToolCalls < 5 || maxTotalToolCalls > 200) {
             return NextResponse.json<ApiError>(
               { error: 'Max total tool calls must be between 5 and 200', code: 'VALIDATION_ERROR' },
               { status: 400 }
@@ -1273,7 +1273,7 @@ export async function PUT(request: NextRequest) {
           limitsUpdate.maxTotalToolCalls = maxTotalToolCalls;
         }
         if (maxPerToolCalls !== undefined) {
-          if (typeof maxPerToolCalls !== 'number' || maxPerToolCalls < 1 || maxPerToolCalls > 50) {
+          if (typeof maxPerToolCalls !== 'number' || !isFinite(maxPerToolCalls) || maxPerToolCalls < 1 || maxPerToolCalls > 50) {
             return NextResponse.json<ApiError>(
               { error: 'Max per-tool calls must be between 1 and 50', code: 'VALIDATION_ERROR' },
               { status: 400 }
@@ -1309,7 +1309,7 @@ export async function PUT(request: NextRequest) {
         } = settings;
 
         // Validate promptOptimizationMaxTokens
-        if (typeof promptOptimizationMaxTokens !== 'number' || promptOptimizationMaxTokens < 100 || promptOptimizationMaxTokens > 8000) {
+        if (typeof promptOptimizationMaxTokens !== 'number' || !isFinite(promptOptimizationMaxTokens) || promptOptimizationMaxTokens < 100 || promptOptimizationMaxTokens > 8000) {
           return NextResponse.json<ApiError>(
             { error: 'Prompt optimization max tokens must be between 100 and 8,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1317,7 +1317,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate skillsMaxTotalTokens
-        if (typeof skillsMaxTotalTokens !== 'number' || skillsMaxTotalTokens < 500 || skillsMaxTotalTokens > 20000) {
+        if (typeof skillsMaxTotalTokens !== 'number' || !isFinite(skillsMaxTotalTokens) || skillsMaxTotalTokens < 500 || skillsMaxTotalTokens > 20000) {
           return NextResponse.json<ApiError>(
             { error: 'Skills max total tokens must be between 500 and 20,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1325,7 +1325,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate memoryExtractionMaxTokens
-        if (typeof memoryExtractionMaxTokens !== 'number' || memoryExtractionMaxTokens < 100 || memoryExtractionMaxTokens > 8000) {
+        if (typeof memoryExtractionMaxTokens !== 'number' || !isFinite(memoryExtractionMaxTokens) || memoryExtractionMaxTokens < 100 || memoryExtractionMaxTokens > 8000) {
           return NextResponse.json<ApiError>(
             { error: 'Memory extraction max tokens must be between 100 and 8,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1333,7 +1333,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate summaryMaxTokens
-        if (typeof summaryMaxTokens !== 'number' || summaryMaxTokens < 100 || summaryMaxTokens > 10000) {
+        if (typeof summaryMaxTokens !== 'number' || !isFinite(summaryMaxTokens) || summaryMaxTokens < 100 || summaryMaxTokens > 10000) {
           return NextResponse.json<ApiError>(
             { error: 'Summary max tokens must be between 100 and 10,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1341,7 +1341,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate systemPromptMaxTokens
-        if (typeof systemPromptMaxTokens !== 'number' || systemPromptMaxTokens < 500 || systemPromptMaxTokens > 4000) {
+        if (typeof systemPromptMaxTokens !== 'number' || !isFinite(systemPromptMaxTokens) || systemPromptMaxTokens < 500 || systemPromptMaxTokens > 4000) {
           return NextResponse.json<ApiError>(
             { error: 'System prompt max tokens must be between 500 and 4,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1349,7 +1349,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate categoryPromptMaxTokens
-        if (typeof categoryPromptMaxTokens !== 'number' || categoryPromptMaxTokens < 250 || categoryPromptMaxTokens > 2000) {
+        if (typeof categoryPromptMaxTokens !== 'number' || !isFinite(categoryPromptMaxTokens) || categoryPromptMaxTokens < 250 || categoryPromptMaxTokens > 2000) {
           return NextResponse.json<ApiError>(
             { error: 'Category prompt max tokens must be between 250 and 2,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1357,7 +1357,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate starterLabelMaxChars
-        if (typeof starterLabelMaxChars !== 'number' || starterLabelMaxChars < 20 || starterLabelMaxChars > 50) {
+        if (typeof starterLabelMaxChars !== 'number' || !isFinite(starterLabelMaxChars) || starterLabelMaxChars < 20 || starterLabelMaxChars > 50) {
           return NextResponse.json<ApiError>(
             { error: 'Starter label max chars must be between 20 and 50', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1365,7 +1365,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate starterPromptMaxChars
-        if (typeof starterPromptMaxChars !== 'number' || starterPromptMaxChars < 200 || starterPromptMaxChars > 1000) {
+        if (typeof starterPromptMaxChars !== 'number' || !isFinite(starterPromptMaxChars) || starterPromptMaxChars < 200 || starterPromptMaxChars > 1000) {
           return NextResponse.json<ApiError>(
             { error: 'Starter prompt max chars must be between 200 and 1,000', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1373,7 +1373,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // Validate maxStartersPerCategory
-        if (typeof maxStartersPerCategory !== 'number' || maxStartersPerCategory < 3 || maxStartersPerCategory > 10) {
+        if (typeof maxStartersPerCategory !== 'number' || !isFinite(maxStartersPerCategory) || maxStartersPerCategory < 3 || maxStartersPerCategory > 10) {
           return NextResponse.json<ApiError>(
             { error: 'Max starters per category must be between 3 and 10', code: 'VALIDATION_ERROR' },
             { status: 400 }
@@ -1416,7 +1416,7 @@ export async function PUT(request: NextRequest) {
 
         // Validate maxTokens - can be a number or 'default'
         if (maxTokens !== 'default') {
-          if (typeof maxTokens !== 'number' || maxTokens < 100 || maxTokens > 32000) {
+          if (typeof maxTokens !== 'number' || !isFinite(maxTokens) || maxTokens < 100 || maxTokens > 32000) {
             return NextResponse.json<ApiError>(
               { error: 'Max tokens must be between 100 and 32,000, or "default"', code: 'VALIDATION_ERROR' },
               { status: 400 }

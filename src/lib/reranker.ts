@@ -416,14 +416,12 @@ export async function rerankChunks(
   try {
     const cached = await getCachedQuery(cacheKey);
     if (cached) {
-      const cachedScores: number[] = JSON.parse(cached);
-      // Apply cached scores to chunks
+      // Cache stores only chunks that survived reranking, keyed by ID.
+      // Chunks absent from the map were filtered out by threshold and should remain filtered.
+      const cachedScores: Record<string, number> = JSON.parse(cached);
       return chunks
-        .map((chunk, i) => ({
-          ...chunk,
-          score: cachedScores[i] ?? chunk.score,
-        }))
-        .filter(c => c.score >= minScore)
+        .filter(c => c.id in cachedScores)
+        .map(c => ({ ...c, score: cachedScores[c.id] }))
         .sort((a, b) => b.score - a.score);
     }
   } catch {
@@ -481,12 +479,13 @@ export async function rerankChunks(
     rerankedChunks = chunksToRerank.filter(c => c.score >= minScore);
   }
 
-  // Cache the scores for future use
+  // Cache only the chunks that survived threshold filtering, keyed by ID.
+  // This prevents cache hits from resurrecting chunks that were correctly filtered out.
   try {
-    const scores = chunks.map(chunk => {
-      const reranked = rerankedChunks.find(r => r.id === chunk.id);
-      return reranked?.score ?? chunk.score;
-    });
+    const scores: Record<string, number> = {};
+    for (const chunk of rerankedChunks) {
+      scores[chunk.id] = chunk.score;
+    }
     await cacheQuery(cacheKey, JSON.stringify(scores), settings.cacheTTLSeconds);
   } catch {
     // Ignore cache errors

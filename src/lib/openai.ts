@@ -1076,7 +1076,9 @@ export async function generateResponseWithTools(
   excludeTools?: string[],
   imageCapabilities?: ImageCapabilities,
   modelOverride?: string,  // Optional model ID to override the default
-  enableClarification?: boolean  // Inject request_clarification meta-tool when preflight skill is active
+  enableClarification?: boolean,  // Inject request_clarification meta-tool when preflight skill is active
+  userId?: string,   // For cache isolation — prevents cross-user cache collisions
+  threadId?: string  // For cache isolation — prevents cross-thread cache collisions
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -1129,6 +1131,8 @@ export async function generateResponseWithTools(
     summaryContext,
     memoryContext,
     categorySlugs,
+    userId,
+    threadId,
   });
 
   // Log context info for debugging

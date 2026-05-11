@@ -398,20 +398,24 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy
-  import('../services/litellm-sync').then(({ syncAllModelsToLiteLLM }) =>
-    syncAllModelsToLiteLLM()
-      .then(r => {
-        if (r.synced > 0 || r.failed > 0) {
-          console.log(`[LiteLLM Sync] Startup: synced ${r.synced} models (${r.failed} failed)`);
-        }
-      })
-      .catch(err => console.warn('[LiteLLM Sync] Startup sync failed:', err))
-  );
+  import('../services/litellm-sync')
+    .then(({ syncAllModelsToLiteLLM }) =>
+      syncAllModelsToLiteLLM()
+        .then(r => {
+          if (r.synced > 0 || r.failed > 0) {
+            console.log(`[LiteLLM Sync] Startup: synced ${r.synced} models (${r.failed} failed)`);
+          }
+        })
+        .catch(err => console.warn('[LiteLLM Sync] Startup sync failed:', err))
+    )
+    .catch(err => console.warn('[LiteLLM Sync] Module load failed:', err));
 
   // Fire-and-forget: initialize automated backup scheduler
-  import('../services/backup-scheduler').then(({ initBackupScheduler }) =>
-    initBackupScheduler().catch(err => console.warn('[Backup] Scheduler init failed:', err))
-  );
+  import('../services/backup-scheduler')
+    .then(({ initBackupScheduler }) =>
+      initBackupScheduler().catch(err => console.warn('[Backup] Scheduler init failed:', err))
+    )
+    .catch(err => console.warn('[Backup] Module load failed:', err));
 }
 
 /**

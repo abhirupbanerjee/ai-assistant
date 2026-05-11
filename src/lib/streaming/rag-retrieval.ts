@@ -63,6 +63,7 @@ export interface ChunkTrajectoryData {
   wasSelected: boolean;
   rankBefore: number;
   rankAfter: number | null;
+  sourceType: 'vector' | 'user_upload';
 }
 
 /**
@@ -399,6 +400,9 @@ export async function performRAGRetrieval(
   const allPreRerank = [...globalChunks, ...userChunks];
   const allPostRerank = [...rerankedGlobalChunks, ...rerankedUserChunks];
 
+  // Track which chunk IDs belong to user uploads so we can label them correctly
+  const userChunkIds = new Set(userChunks.map(c => c.id));
+
   // Build a map of post-rerank chunks by their ID for quick lookup
   const postRerankMap = new Map<string, { score: number; index: number }>();
   allPostRerank.forEach((chunk, index) => {
@@ -418,6 +422,7 @@ export async function performRAGRetrieval(
         wasSelected: postRerank !== undefined,
         rankBefore: index + 1,
         rankAfter: postRerank !== undefined ? postRerank.index + 1 : null,
+        sourceType: userChunkIds.has(chunk.id) ? 'user_upload' as const : 'vector' as const,
       };
     })
     // Sort by rank after reranking (selected chunks first, then by rerank position)

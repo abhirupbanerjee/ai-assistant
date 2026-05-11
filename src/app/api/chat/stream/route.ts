@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
                   wasSelected: t.wasSelected,
                   rankBefore: t.rankBefore,
                   rankAfter: t.rankAfter,
-                  sourceType: 'vector' as const,
+                  sourceType: t.sourceType,
                 }));
                 await saveTrajectoryEntries(trajectoryEntries);
               } catch (trajectoryError) {
@@ -598,7 +598,9 @@ export async function POST(request: NextRequest) {
                   excludeTools,
                   imageCapabilities, // Image processing strategy
                   model, // Model to use (may change on fallback)
-                  enableClarification // Inject request_clarification tool when preflight skill active
+                  enableClarification, // Inject request_clarification tool when preflight skill active
+                  dbUser?.id?.toString(), // userId for cache isolation
+                  threadId,   // threadId for cache isolation
                 ),
                 onSwitch: (event: ModelSwitchEvent) => {
                   // Signal client to discard any partial streamed content from the failed model

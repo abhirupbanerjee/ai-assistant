@@ -146,34 +146,38 @@ export async function getTrajectorySummary(
 }
 
 /**
- * Clean up old trajectory entries (keep recent N per thread)
+ * Clean up old trajectory entries (keep recent N per thread, independently per thread)
  */
 export async function cleanupOldTrajectories(keepRecent: number = 100): Promise<number> {
   const db = await getDb();
-  
-  // Get IDs to keep
-  const idsToKeepResult = await db.selectFrom('citation_trajectories')
-    .select(['id', 'thread_id'])
-    .orderBy('created_at', 'desc')
-    .limit(keepRecent)
+
+  // Find all threads that have more entries than the limit
+  const threadRows = await db.selectFrom('citation_trajectories')
+    .select('thread_id')
+    .groupBy('thread_id')
+    .having(eb => eb.fn.count('id'), '>', keepRecent)
     .execute();
 
-  if (idsToKeepResult.length === 0) {
+  if (threadRows.length === 0) {
     return 0;
   }
 
-  // Delete entries not in the keep list for each thread
-  const threadIds = [...new Set(idsToKeepResult.map(row => row.thread_id))];
   let totalDeleted = 0;
 
-  for (const threadId of threadIds) {
-    const idsToKeepForThread = idsToKeepResult
-      .filter(row => row.thread_id === threadId)
-      .map(row => row.id);
+  // For each over-limit thread, keep only the N most recent entries
+  for (const { thread_id } of threadRows) {
+    const idsToKeep = await db.selectFrom('citation_trajectories')
+      .select('id')
+      .where('thread_id', '=', thread_id)
+      .orderBy('created_at', 'desc')
+      .limit(keepRecent)
+      .execute();
+
+    const keepIds = idsToKeep.map(r => r.id);
 
     const result = await db.deleteFrom('citation_trajectories')
-      .where('thread_id', '=', threadId)
-      .where('id', 'not in', idsToKeepForThread)
+      .where('thread_id', '=', thread_id)
+      .where('id', 'not in', keepIds)
       .execute();
 
     totalDeleted += result.length;
