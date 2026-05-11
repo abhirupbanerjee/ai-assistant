@@ -579,6 +579,7 @@ export default function FileUpload({
         disabled={disabled || !threadId}
         className="p-2 text-gray-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
         title="Attach content (File, Web URL, YouTube)"
+        aria-label="Attach content (File, Web URL, YouTube)"
         onMouseEnter={(e) => {
           if (!disabled && threadId) {
             e.currentTarget.style.color = 'var(--accent-color)';

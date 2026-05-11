@@ -1,13 +1,18 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState } from 'react';
-import { X, ChevronUp } from 'lucide-react';
+import { useRef, useEffect, useCallback } from 'react';
+import { X } from 'lucide-react';
+
+export interface ActiveFeatureBadge {
+  icon: React.ReactNode;
+  label: string;
+}
 
 interface ChipSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Number of active chips/toggles to show in the collapsed pill */
-  activeCount: number;
+  /** Active feature badges to show in the collapsed pill */
+  activeFeatures: ActiveFeatureBadge[];
   /** Chip slots from MessageInput */
   categoryChipSlot?: React.ReactNode;
   attachmentChipsSlot?: React.ReactNode;
@@ -26,7 +31,7 @@ interface ChipSheetProps {
 export default function ChipSheet({
   isOpen,
   onClose,
-  activeCount,
+  activeFeatures,
   categoryChipSlot,
   attachmentChipsSlot,
   modeChips,
@@ -76,19 +81,29 @@ export default function ChipSheet({
   }, [isOpen]);
 
   const hasAnyContent = categoryChipSlot || attachmentChipsSlot || modeChips || languageToneChips;
+  const hasActiveFeatures = activeFeatures.length > 0;
 
   return (
     <>
-      {/* Collapsed pill — shown when sheet is closed and there are active chips */}
-      {!isOpen && activeCount > 0 && (
+      {/* Collapsed icon pills — shown when sheet is closed and there are active features */}
+      {!isOpen && hasActiveFeatures && (
         <button
           onClick={onClose} // "onClose" actually opens it when collapsed
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 transition-colors"
-          title={`${activeCount} option${activeCount !== 1 ? 's' : ''} active — tap to view`}
-          aria-label={`${activeCount} option${activeCount !== 1 ? 's' : ''} active — tap to view`}
+          className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 transition-colors"
+          title={`${activeFeatures.length} option${activeFeatures.length !== 1 ? 's' : ''} active — tap to view`}
+          aria-label={`${activeFeatures.length} option${activeFeatures.length !== 1 ? 's' : ''} active — tap to view`}
         >
-          <ChevronUp size={12} />
-          <span>{activeCount} active</span>
+          <div className="flex items-center gap-1">
+            {activeFeatures.map((feature, index) => (
+              <span
+                key={index}
+                className="flex items-center justify-center w-5 h-5 bg-blue-100 text-blue-700 rounded-full"
+                title={feature.label}
+              >
+                {feature.icon}
+              </span>
+            ))}
+          </div>
         </button>
       )}
 
@@ -99,7 +114,7 @@ export default function ChipSheet({
           onClick={handleBackdropClick}
           role="dialog"
           aria-modal="true"
-          aria-label="Options panel"
+          aria-label="Chat Settings"
         >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/30" />
@@ -113,22 +128,23 @@ export default function ChipSheet({
           >
             {/* Handle bar */}
             <div className="sticky top-0 bg-white pt-3 pb-1 flex justify-center rounded-t-2xl z-10">
-              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+              <div className="w-10 h-1 bg-gray-400 rounded-full" />
             </div>
 
-            {/* Close button */}
-            <div className="absolute top-3 right-3 z-10">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-2 pb-3 border-b border-gray-100">
+              <span className="text-sm font-semibold text-gray-900">Chat Settings</span>
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
-                aria-label="Close options panel"
+                aria-label="Close settings"
               >
                 <X size={16} />
               </button>
             </div>
 
             {/* Content */}
-            <div ref={contentRef} className="px-4 pb-6 pt-2 space-y-3">
+            <div ref={contentRef} className="px-4 pb-6 pt-3 space-y-3">
               {/* Category + Attachment chips */}
               {(categoryChipSlot || attachmentChipsSlot) && (
                 <div className="flex flex-wrap items-center gap-2">

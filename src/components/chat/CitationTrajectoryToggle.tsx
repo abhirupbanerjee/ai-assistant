@@ -28,6 +28,8 @@ export default function CitationTrajectoryToggle({
         disabled={disabled}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        aria-pressed={enabled}
+        aria-label={enabled ? 'Citation trajectory enabled. Click to hide retrieval path.' : 'Enable citation trajectory to show how sources were ranked.'}
         className={`p-2 rounded-lg transition-colors ${
           enabled
             ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'

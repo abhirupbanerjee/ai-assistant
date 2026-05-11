@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { ArrowUp, AlertCircle, Loader2, X, Square, RotateCcw } from 'lucide-react';
+import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
 import InlineLanguageToneChips from './InlineLanguageToneChips';
-import ChipSheet from './ChipSheet';
+import ChipSheet, { type ActiveFeatureBadge } from './ChipSheet';
 
 import { ChatMode } from './ModeToggle';
 import { useToast } from '@/contexts/ToastContext';
@@ -81,11 +81,9 @@ export default function MessageInput({
       return 'normal';
     }
   });
-  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [lineCount, setLineCount] = useState(1);
-  const [lastFailedFile, setLastFailedFile] = useState<File | null>(null);
   const [chipSheetOpen, setChipSheetOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -96,13 +94,21 @@ export default function MessageInput({
   // Draft persistence
   const { clearDraft, restoredEvent, dismissRestoredEvent, draftSaveError, clearDraftSaveError } = useDraftPersistence(threadId, message, setMessage);
 
-  // Fire toast when draft is restored
+  // Fire toast when draft is restored or when draft save fails
   useEffect(() => {
     if (restoredEvent) {
       addToast('Draft restored', 'info', 4000);
       dismissRestoredEvent();
     }
   }, [restoredEvent, addToast, dismissRestoredEvent]);
+
+  // Fire toast for draft save errors
+  useEffect(() => {
+    if (draftSaveError) {
+      addToast(draftSaveError.message, 'error', 5000);
+      clearDraftSaveError();
+    }
+  }, [draftSaveError, addToast, clearDraftSaveError]);
 
 
   // Input state management (COMPACT/EXPANDED/FOCUSED-WRITE)
@@ -113,16 +119,29 @@ export default function MessageInput({
     lineCount,
   });
 
-  // Compute active chip count for ChipSheet collapsed pill
-  const activeChipCount = useMemo(() => {
-    let count = 0;
-    if (mode === 'autonomous') count++;
-    if (preferences.webSearchEnabled) count++;
-    if (preferences.targetLanguage !== 'en') count++;
-    if (preferences.responseTone !== 'default') count++;
-    if (currentUploads.length > 0) count++;
-    return count;
-  }, [mode, preferences.webSearchEnabled, preferences.targetLanguage, preferences.responseTone, currentUploads.length]);
+  // Compute active feature badges for ChipSheet collapsed pill
+  const activeFeatures = useMemo<ActiveFeatureBadge[]>(() => {
+    const features: ActiveFeatureBadge[] = [];
+    if (mode === 'autonomous') {
+      features.push({ icon: <Bot size={12} />, label: 'Autonomous' });
+    }
+    if (preferences.webSearchEnabled) {
+      features.push({ icon: <Globe size={12} />, label: 'Web Search' });
+    }
+    if (preferences.targetLanguage !== 'en') {
+      features.push({
+        icon: <span className="text-[10px] font-bold">{preferences.targetLanguage.toUpperCase()}</span>,
+        label: preferences.targetLanguage,
+      });
+    }
+    if (currentUploads.length > 0) {
+      features.push({
+        icon: <Paperclip size={12} />,
+        label: `${currentUploads.length} file${currentUploads.length !== 1 ? 's' : ''}`,
+      });
+    }
+    return features;
+  }, [mode, preferences.webSearchEnabled, preferences.targetLanguage, currentUploads.length]);
 
 
   // aria-live state announcements — announce input state transitions to screen readers
@@ -243,9 +262,7 @@ export default function MessageInput({
   const uploadFile = useCallback(async (file: File) => {
     if (!threadId) return;
 
-    setUploadError(null);
     setIsUploading(true);
-    setLastFailedFile(null);
 
     try {
       const formData = new FormData();
@@ -262,16 +279,14 @@ export default function MessageInput({
       } else {
         const errorData = await response.json();
         const errorMsg = errorData.error || 'Failed to upload file';
-        setUploadError(errorMsg);
-        setLastFailedFile(file);
+        addToast(errorMsg, 'error', 5000);
       }
     } catch (error) {
-      setUploadError('Failed to upload file. Please try again.');
-      setLastFailedFile(file);
+      addToast('Failed to upload file. Please try again.', 'error', 5000);
     } finally {
       setIsUploading(false);
     }
-  }, [threadId, onUploadComplete]);
+  }, [threadId, onUploadComplete, addToast]);
 
   // Handle paste event for file uploads
   const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -301,22 +316,6 @@ export default function MessageInput({
     }
   }, [threadId, uploadFile]);
 
-  // Uploads indicator
-  const UploadsIndicator = () =>
-    currentUploads.length > 0 ? (
-      <div className="flex items-center gap-2 mb-2 text-sm">
-        <span
-          className="px-2 py-1 rounded text-sm"
-          style={{
-            backgroundColor: 'var(--accent-light)',
-            color: 'var(--accent-text)',
-          }}
-        >
-          {currentUploads.length} file{currentUploads.length !== 1 ? 's' : ''} attached
-        </span>
-      </div>
-    ) : null;
-
   // Unified layout for both mobile and desktop
   return (
     <div className="bg-white p-4 safe-area-bottom transition-all duration-300" data-state={inputState}>
@@ -335,7 +334,7 @@ export default function MessageInput({
               <ChipSheet
                 isOpen={chipSheetOpen}
                 onClose={() => setChipSheetOpen(false)}
-                activeCount={activeChipCount}
+                activeFeatures={activeFeatures}
                 categoryChipSlot={categoryChipSlot}
                 attachmentChipsSlot={attachmentChipsSlot}
                 modeChips={
@@ -367,70 +366,7 @@ export default function MessageInput({
           </div>
         )}
 
-
-        <UploadsIndicator />
-
-        {/* Draft save error warning (e.g., localStorage quota exceeded) */}
-        {draftSaveError && (
-          <div className="mb-2 p-2 bg-yellow-50 text-yellow-700 rounded-lg text-sm" role="alert">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
-                <span>{draftSaveError.message}</span>
-              </div>
-              <button
-                onClick={clearDraftSaveError}
-                className="p-0.5 hover:bg-yellow-100 rounded flex-shrink-0"
-                aria-label="Dismiss warning"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Upload Error */}
-
-        {uploadError && (
-          <div className="mb-2 p-2 bg-red-50 text-red-600 rounded-lg text-sm" role="alert">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
-                <div>
-                  <div>{uploadError}</div>
-                  <div className="text-xs text-red-500 mt-1">
-                    Supported: PDF, PNG, JPG, WebP, TXT (max size from settings)
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {lastFailedFile && (
-                  <button
-                    onClick={() => uploadFile(lastFailedFile)}
-                    disabled={isUploading}
-                    className="p-0.5 hover:bg-red-100 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-                    title="Retry upload"
-                    aria-label="Retry upload"
-                  >
-                    <RotateCcw size={14} aria-hidden="true" />
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setUploadError(null);
-                    setLastFailedFile(null);
-                  }}
-                  className="p-0.5 hover:bg-red-100 rounded"
-                  aria-label="Dismiss error"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Uploading Indicator */}
+        {/* Uploading Indicator - kept inline as it's transient but active */}
         {isUploading && (
           <div className="mb-2 p-2 bg-blue-50 text-blue-600 rounded-lg text-sm flex items-center gap-2">
             <Loader2 size={14} className="animate-spin" />

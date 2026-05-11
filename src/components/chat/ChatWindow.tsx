@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
+import { RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
@@ -9,8 +9,6 @@ import MessageInput from './MessageInput';
 import CategoryChip from './CategoryChip';
 import AttachmentChipsRow from './AttachmentChipsRow';
 import Spinner from '@/components/ui/Spinner';
-import StarterButtons from './StarterButtons';
-import SuggestionGrid from './SuggestionGrid';
 import ProcessingIndicator from './ProcessingIndicator';
 
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
@@ -19,6 +17,7 @@ import PlanApprovalCard from './PlanApprovalCard';
 import { useScrollHide } from '@/hooks/useScrollHide';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import ChatWelcome from './ChatWelcome';
 
 
 interface WelcomeConfig {
@@ -88,7 +87,39 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
 
-  const [chatPreferences, setChatPreferences] = useState<ChatPreferences>(DEFAULT_CHAT_PREFERENCES);
+  // Load chat preferences from localStorage on mount, with validation
+  const [chatPreferences, setChatPreferencesState] = useState<ChatPreferences>(() => {
+    if (typeof window === 'undefined') return DEFAULT_CHAT_PREFERENCES;
+    try {
+      const saved = localStorage.getItem('policybot:pref:chatSettings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Validate and merge with defaults
+        return {
+          webSearchEnabled: typeof parsed.webSearchEnabled === 'boolean' ? parsed.webSearchEnabled : DEFAULT_CHAT_PREFERENCES.webSearchEnabled,
+          targetLanguage: typeof parsed.targetLanguage === 'string' ? parsed.targetLanguage : DEFAULT_CHAT_PREFERENCES.targetLanguage,
+          responseTone: typeof parsed.responseTone === 'string' ? parsed.responseTone : DEFAULT_CHAT_PREFERENCES.responseTone,
+          showCitationTrajectory: typeof parsed.showCitationTrajectory === 'boolean' ? parsed.showCitationTrajectory : DEFAULT_CHAT_PREFERENCES.showCitationTrajectory,
+        };
+      }
+    } catch {
+      // Invalid JSON, fall back to defaults
+    }
+    return DEFAULT_CHAT_PREFERENCES;
+  });
+
+  // Persist chat preferences to localStorage on change
+  const setChatPreferences = useCallback((prefs: ChatPreferences | ((prev: ChatPreferences) => ChatPreferences)) => {
+    setChatPreferencesState(prev => {
+      const newPrefs = typeof prefs === 'function' ? prefs(prev) : prefs;
+      try {
+        localStorage.setItem('policybot:pref:chatSettings', JSON.stringify(newPrefs));
+      } catch {
+        // localStorage may be unavailable or full
+      }
+      return newPrefs;
+    });
+  }, []);
   const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
   const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
 
@@ -627,42 +658,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         className="flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative"
       >
             {messages.length === 0 && archivedMessages.length === 0 && !loading && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
-                <h2 className="text-lg font-medium text-gray-900 mb-2">
-                  {welcomeContent.title}
-                </h2>
-                <p className="text-gray-500 max-w-md mb-6">
-                  {/* Show different message based on whether we have prompts */}
-                  {(starterPrompts.length > 0 || (globalStarterPrompts && globalStarterPrompts.length > 0))
-                    ? 'Click a quick start button below or type your own question.'
-                    : `${welcomeContent.message} or upload a document to check for compliance. Start by typing a question below.`
-                  }
-                </p>
-
-                {/* Category-specific Starter Prompts (from category data) */}
-                {starterPrompts.length > 0 && (
-                  <div className="max-w-2xl w-full">
-                    <StarterButtons
-                      starters={starterPrompts}
-                      onSelect={handleStarterSelect}
-                      disabled={loading || loadingStarters}
-                    />
-                  </div>
-                )}
-
-                {/* Global Starter Prompts (from branding) - show when no category */}
-                {/* SuggestionGrid handles empty arrays with internal DEFAULT_PROMPTS fallback */}
-                {!starterPrompts.length && (
-                  <div className="w-full">
-                    <SuggestionGrid
-                      starters={globalStarterPrompts || []}
-                      onSelect={handleStarterSelect}
-                      disabled={loading}
-                    />
-                  </div>
-                )}
-              </div>
+              <ChatWelcome
+                title={welcomeContent.title}
+                message={welcomeContent.message}
+                starterPrompts={starterPrompts}
+                globalStarterPrompts={globalStarterPrompts || []}
+                loadingStarters={loadingStarters}
+                loading={loading}
+                onStarterSelect={handleStarterSelect}
+              />
             )}
 
         {/* Archived messages (from before summarization) */}
@@ -937,7 +941,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         {isScrolledUp && (
           <button
             onClick={scrollToBottom}
-            className="sticky bottom-4 float-right mr-2 p-2 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all text-gray-600"
+            className="absolute bottom-4 right-4 p-2 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all text-gray-600"
             title="Scroll to bottom"
           >
             <ArrowDown size={16} />

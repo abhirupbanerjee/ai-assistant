@@ -45,7 +45,7 @@ export default function AttachmentChipsRow({
   };
 
   return (
-    <div role="list" className="contents">
+    <div role="list" className="flex flex-wrap items-center gap-2">
       {/* File uploads */}
       {allUploads.map((filename) => {
         const isPending = pendingUploads.includes(filename);
@@ -55,8 +55,8 @@ export default function AttachmentChipsRow({
             role="listitem"
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
               isPending
-                ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                : 'bg-green-100 text-green-700 border border-green-200'
+                ? 'bg-gray-100 text-gray-600 border border-gray-200'
+                : 'bg-blue-100 text-blue-700 border border-blue-200'
             }`}
           >
             <FileText size={12} className="shrink-0" aria-hidden="true" />
@@ -81,8 +81,8 @@ export default function AttachmentChipsRow({
             role="listitem"
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
               isPending
-                ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                : 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                ? 'bg-gray-100 text-gray-600 border border-gray-200'
+                : 'bg-blue-100 text-blue-700 border border-blue-200'
             }`}
           >
             {getSourceIcon(source.sourceType)}

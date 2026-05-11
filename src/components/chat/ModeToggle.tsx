@@ -35,9 +35,11 @@ export default function ModeToggle({
         disabled={isDisabled}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        aria-pressed={isAutonomous}
+        aria-label={isAutonomous ? 'Autonomous mode enabled. Click to disable.' : 'Enable autonomous mode. AI plans and executes multi-step tasks.'}
         className={`p-2 rounded-lg transition-colors ${
           isAutonomous
-            ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
             : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
         } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
@@ -54,7 +56,7 @@ export default function ModeToggle({
             </>
           ) : isAutonomous ? (
             <>
-              <span className="font-medium text-purple-300">Autonomous mode</span>
+              <span className="font-medium text-blue-300">Autonomous mode</span>
               <span className="text-gray-300"> enabled</span>
               <p className="text-gray-400 mt-0.5">Click to disable</p>
             </>

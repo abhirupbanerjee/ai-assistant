@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ModeToggle, { ChatMode } from './ModeToggle';
 import WebSearchToggle from './WebSearchToggle';
@@ -67,7 +67,7 @@ export default function PlusMenu({
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close menu when clicking outside
+  // Close menu when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -75,9 +75,19 @@ export default function PlusMenu({
       }
     };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
     }
   }, [isOpen]);
 
@@ -107,65 +117,91 @@ export default function PlusMenu({
          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
        >
          <Plus size={20} className={`transition-transform ${isOpen ? 'rotate-45' : ''}`} />
-         {/* Active features badge: green dot for toggles, number for uploads */}
-         {hasActiveFeatures && !isOpen && (
-           <div className="absolute -top-1 -right-1 flex items-center gap-0.5">
-             {activeToggles > 0 && (
-               <span className="w-2 h-2 bg-green-500 rounded-full" title="Active toggles" />
-             )}
-             {hasUploads && (
-               <span className="w-4 h-4 bg-blue-500 text-white text-[9px] font-medium rounded-full flex items-center justify-center">
-                 {currentUploads.length > 9 ? '9+' : currentUploads.length}
-               </span>
-             )}
-           </div>
-         )}
-       </button>
-
-      {/* Popup menu */}
-      {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 p-2 z-50">
-          {/* Tool buttons in a row */}
-          <div className="flex items-center gap-1">
-            <FileUpload
-              threadId={threadId}
-              currentUploads={currentUploads}
-              onUploadComplete={onUploadComplete}
-              onUrlSourceAdded={onUrlSourceAdded}
-              disabled={disabled}
-            />
-            <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} />
-            <WebSearchToggle
-              enabled={webSearchEnabled}
-              onToggle={onWebSearchToggle}
-              disabled={disabled}
-            />
-            <DynamicLanguageSelector
-              selectedLanguage={selectedLanguage}
-              onLanguageChange={onLanguageChange}
-              disabled={disabled}
-            />
-            <DynamicToneSelector
-              selectedTone={selectedTone}
-              onToneChange={onToneChange}
-              disabled={disabled}
-            />
-
-            <CitationTrajectoryToggle
-              enabled={showCitationTrajectory}
-              onToggle={onCitationTrajectoryToggle}
-              disabled={disabled}
-            />
-          </div>
-
-          {/* Upload count indicator */}
-          {currentUploads.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 text-center">
-              {currentUploads.length} file{currentUploads.length !== 1 ? 's' : ''} attached
+          {/* Active features badge: blue dot for toggles, number for uploads */}
+          {hasActiveFeatures && !isOpen && (
+            <div className="absolute -top-1 -right-1 flex items-center gap-0.5">
+              {activeToggles > 0 && (
+                <span className="w-2 h-2 bg-blue-500 rounded-full" title="Active toggles" />
+              )}
+              {hasUploads && (
+                <span className="w-4 h-4 bg-blue-500 text-white text-[9px] font-medium rounded-full flex items-center justify-center">
+                  {currentUploads.length > 9 ? '9+' : currentUploads.length}
+                </span>
+              )}
             </div>
           )}
-        </div>
-      )}
+       </button>
+
+       {/* Popup menu */}
+       {isOpen && (
+         <div className="absolute bottom-full left-0 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 p-3 z-50 min-w-[240px]">
+           {/* Header */}
+           <div className="flex items-center justify-between mb-3">
+             <span className="text-sm font-semibold text-gray-900">Chat Settings</span>
+             <button
+               onClick={() => setIsOpen(false)}
+               className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+               aria-label="Close settings"
+             >
+               <X size={16} />
+             </button>
+           </div>
+
+           {/* Capabilities Section */}
+           <div className="border-t border-gray-100 pt-2">
+             <div className="text-xs uppercase text-gray-500 font-medium mb-2">Capabilities</div>
+             <div className="flex items-center gap-2">
+               <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} />
+               <WebSearchToggle
+                 enabled={webSearchEnabled}
+                 onToggle={onWebSearchToggle}
+                 disabled={disabled}
+               />
+               <CitationTrajectoryToggle
+                 enabled={showCitationTrajectory}
+                 onToggle={onCitationTrajectoryToggle}
+                 disabled={disabled}
+               />
+             </div>
+           </div>
+
+           {/* Language & Tone Section */}
+           <div className="border-t border-gray-100 pt-2 mt-2">
+             <div className="text-xs uppercase text-gray-500 font-medium mb-2">Language & Tone</div>
+             <div className="space-y-2">
+               <DynamicLanguageSelector
+                 selectedLanguage={selectedLanguage}
+                 onLanguageChange={onLanguageChange}
+                 disabled={disabled}
+               />
+               <DynamicToneSelector
+                 selectedTone={selectedTone}
+                 onToneChange={onToneChange}
+                 disabled={disabled}
+               />
+             </div>
+           </div>
+
+           {/* Attachments Section */}
+           <div className="border-t border-gray-100 pt-2 mt-2">
+             <div className="text-xs uppercase text-gray-500 font-medium mb-2">Attachments</div>
+             <div className="flex items-center gap-2">
+               <FileUpload
+                 threadId={threadId}
+                 currentUploads={currentUploads}
+                 onUploadComplete={onUploadComplete}
+                 onUrlSourceAdded={onUrlSourceAdded}
+                 disabled={disabled}
+               />
+               <span className="text-sm text-gray-600">
+                 {currentUploads.length > 0
+                   ? `${currentUploads.length} file${currentUploads.length !== 1 ? 's' : ''} attached`
+                   : 'Add files, URLs, or YouTube'}
+               </span>
+             </div>
+           </div>
+         </div>
+       )}
     </div>
   );
 }
