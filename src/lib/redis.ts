@@ -127,6 +127,7 @@ export async function clearAllCache(): Promise<void> {
 
 /**
  * Cached user document data structure
+ * CRITICAL FIX: Includes full metadata to prevent source attribution loss on cache hit
  */
 export interface CachedUserDocData {
   chunks: Array<{
@@ -134,6 +135,10 @@ export interface CachedUserDocData {
     text: string;
     embedding: number[];
     pageNumber: number;
+    // Metadata fields required for proper source attribution
+    documentId: string;
+    source: string;
+    threadId?: string;
   }>;
   totalChunks?: number; // Original chunk count before MAX_USER_DOC_CHUNKS limit
   createdAt: number;

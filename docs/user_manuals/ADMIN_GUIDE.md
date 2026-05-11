@@ -1677,6 +1677,31 @@ The system automatically determines image handling based on model and OCR config
 | **Reranker** | Enable/disable reranking |
 | **Reranker Providers** | Priority-ordered list (BGE Large, Cohere, BGE Base, Local) |
 
+#### User Upload Threshold (NEW - May 2026)
+
+The minimum reranker score for user-uploaded documents is now configurable via environment variable:
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `USER_UPLOAD_MIN_RERANK_SCORE` | `0.30` | Minimum relevance score for user uploads (was 0.05). Prevents flooding context with irrelevant chunks from uploaded documents. |
+
+**Why this matters:** Previously, the threshold of 0.05 was barely any filtering, causing poor retrieval quality. The new default of 0.30 ensures only relevant chunks from user uploads are included. Set to a lower value (e.g., 0.15) if you want more permissive filtering, or higher (e.g., 0.50) for stricter filtering.
+
+#### Token Budget Management (NEW - May 2026)
+
+The RAG pipeline now proactively manages token budgets before sending to the LLM:
+
+1. **Token Counting**: Uses `tiktoken` to count tokens in the assembled prompt (system + history + RAG context + question)
+2. **Intelligent Truncation**: If the prompt exceeds the model's token budget, the system removes lowest-scored chunks first
+3. **Logging**: Truncation events are logged with before/after token counts: `[TokenBudget] Context truncated from X to Y tokens (budget: Z)`
+
+**Benefits:**
+- Prevents silent truncation by the API (which could cut off mid-chunk)
+- Ensures the most relevant chunks are always included
+- Provides visibility into context size via logs
+
+**No configuration needed** — this is automatic behavior enabled for all requests.
+
 ### Memory Settings
 
 The **Memory** section under Settings controls how Policy Bot extracts, stores, and retrieves user-specific facts across conversations. Memory enables the AI to personalize responses based on past interactions.

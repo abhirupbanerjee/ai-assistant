@@ -98,6 +98,15 @@ export interface VectorStoreClient {
    */
   deleteDocumentsFromAllCollections(ids: string[]): Promise<void>;
 
+  /**
+   * Fetch all chunks for a document from a collection by documentId payload filter.
+   * Used to copy existing embeddings to new collections without re-embedding.
+   */
+  getDocumentChunksByDocId(
+    collectionName: string,
+    documentId: string
+  ): Promise<{ id: string; vector: number[]; text: string; metadata: ChunkMetadata }[]>;
+
   // ============ Query Operations ============
 
   /**

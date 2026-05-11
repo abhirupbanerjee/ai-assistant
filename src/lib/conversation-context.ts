@@ -268,6 +268,8 @@ export function buildHistory(
  * @param summaryFingerprint - Hash of summary (if exists)
  * @param memoryFingerprint - Hash of memory context (if exists)
  * @param categorySlugs - Category slugs for the thread
+ * @param userId - User ID for cache isolation (security-critical)
+ * @param threadId - Thread ID for cache isolation (security-critical)
  * @returns Unique cache key
  */
 export function buildCacheKey(
@@ -276,9 +278,20 @@ export function buildCacheKey(
   historyFingerprint: string,
   summaryFingerprint: string | null,
   memoryFingerprint: string | null,
-  categorySlugs: string[]
+  categorySlugs: string[],
+  userId?: string,
+  threadId?: string
 ): string {
   const parts: string[] = [message];
+
+  // SECURITY: Always include userId and threadId to prevent cross-user cache collisions
+  // This ensures user A's cached responses are never served to user B
+  if (userId) {
+    parts.push(`uid:${userId}`);
+  }
+  if (threadId) {
+    parts.push(`tid:${threadId}`);
+  }
 
   // Add category context
   if (categorySlugs.length > 0) {

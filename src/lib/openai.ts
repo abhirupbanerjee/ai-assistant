@@ -23,6 +23,94 @@ import {
   type LocalEmbeddingModel,
 } from './local-embeddings';
 import { recordTokenUsage } from './token-logger';
+import { encoding_for_model, type TiktokenModel } from 'tiktoken';
+
+// ============ Token Budget Management ============
+
+/**
+ * Count tokens in a string using tiktoken
+ * Falls back to approximate count if tiktoken fails
+ */
+function countTokens(text: string, model: string = 'gpt-4o'): number {
+  try {
+    // Map model to tiktoken model name
+    const tiktokenModel = mapToTiktokenModel(model);
+    const encoder = encoding_for_model(tiktokenModel);
+    const tokens = encoder.encode(text);
+    encoder.free();
+    return tokens.length;
+  } catch {
+    // Fallback: approximate 4 chars per token
+    return Math.ceil(text.length / 4);
+  }
+}
+
+/**
+ * Map various model names to tiktoken model names
+ */
+function mapToTiktokenModel(model: string): TiktokenModel {
+  const modelLower = model.toLowerCase();
+  if (modelLower.includes('gpt-4o')) return 'gpt-4o';
+  if (modelLower.includes('gpt-4')) return 'gpt-4';
+  if (modelLower.includes('gpt-3.5')) return 'gpt-3.5-turbo';
+  return 'gpt-4o';
+}
+
+/**
+ * Truncate context to fit within token budget
+ * Removes lowest-scored chunks first
+ */
+function truncateContextToBudget(
+  context: string,
+  systemPrompt: string,
+  history: Message[],
+  userMessage: string,
+  maxTokens: number,
+  model: string
+): string {
+  // Calculate tokens for non-context parts
+  const systemTokens = countTokens(systemPrompt, model);
+  const historyTokens = history.reduce((sum, m) => sum + countTokens(m.content, model), 0);
+  const userMessageTokens = countTokens(userMessage, model);
+  const overheadTokens = 100; // Buffer for message formatting
+
+  const usedTokens = systemTokens + historyTokens + userMessageTokens + overheadTokens;
+  const availableTokens = maxTokens - usedTokens;
+
+  if (availableTokens <= 0) {
+    console.warn('[TokenBudget] No tokens available for context after accounting for system/history');
+    return '';
+  }
+
+  const contextTokens = countTokens(context, model);
+
+  if (contextTokens <= availableTokens) {
+    return context; // Context fits within budget
+  }
+
+  // Need to truncate - split by document sections and remove lowest scored
+  const sections = context.split('---\n\n');
+  let truncatedContext = '';
+  let currentTokens = 0;
+
+  // Keep adding sections until we hit the budget
+  for (const section of sections) {
+    const sectionTokens = countTokens(section, model);
+    if (currentTokens + sectionTokens <= availableTokens) {
+      truncatedContext += section + '---\n\n';
+      currentTokens += sectionTokens;
+    } else {
+      break;
+    }
+  }
+
+  console.warn(
+    `[TokenBudget] Context truncated from ${contextTokens} to ${currentTokens} tokens ` +
+    `(budget: ${availableTokens}, used: ${usedTokens})`
+  );
+
+  return truncatedContext.trim();
+}
 
 // ============ Fallback Tracking ============
 interface FallbackEvent {
@@ -1030,6 +1118,9 @@ export async function generateResponseWithTools(
     logger.warn(`Model ${effectiveModel} does not support tools, disabling`);
   }
 
+  // Get effective max tokens early for token budget management
+  const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
+
   // Build unified conversation context with anchors, follow-up detection, and cache keys
   const limitsSettings = await getLimitsSettings();
   const ctx = buildConversationContext(conversationHistory, userMessage, {
@@ -1084,8 +1175,19 @@ export async function generateResponseWithTools(
     anthropicMessages.push(...buildAnthropicHistory(historyForAPI));
   }
 
+  // DESIGN FIX: Apply token budget management to prevent silent truncation by API
+  // Calculate effective max tokens and truncate context if needed
+  const truncatedContext = truncateContextToBudget(
+    context,
+    systemPrompt,
+    historyForAPI,
+    userMessage,
+    effectiveMaxTokens,
+    effectiveModel
+  );
+
   // Format user message with proper context ordering (follow-up hint, summary, RAG)
-  const textContent = formatUserMessage(ctx, context, userMessage);
+  const textContent = formatUserMessage(ctx, truncatedContext, userMessage);
 
   if (images && images.length > 0) {
     // Determine image handling strategy based on capabilities
@@ -1265,9 +1367,6 @@ export async function generateResponseWithTools(
       }
     }
   }
-
-  // Get effective max tokens (uses per-model override if configured, otherwise preset default)
-  const effectiveMaxTokens = await getEffectiveMaxTokens(effectiveModel);
 
   // Ollama small models can't reliably handle most tools and the tool definitions
   // consume thousands of tokens. Keep only local-generation tools that don't need external APIs.

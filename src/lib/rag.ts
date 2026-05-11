@@ -216,13 +216,23 @@ export async function buildContext(
         cachedData = await getCachedUserDocEmbeddings(threadId, filename);
       }
 
-      let chunksWithEmbeddings: Array<{ id: string; text: string; embedding: number[]; pageNumber: number }>;
+      let chunksWithEmbeddings: Array<{ id: string; text: string; embedding: number[]; pageNumber: number; documentId: string; source: string; threadId?: string }>;
       let totalChunks: number;
 
       if (cachedData) {
         // Use cached embeddings
         logger.debug(`Using cached embeddings for ${filename}`, { threadId, chunkCount: cachedData.chunks.length });
-        chunksWithEmbeddings = cachedData.chunks;
+        // CRITICAL FIX: Map cached data to include full metadata for source attribution
+        chunksWithEmbeddings = cachedData.chunks.map(cachedChunk => ({
+          id: cachedChunk.id,
+          text: cachedChunk.text,
+          embedding: cachedChunk.embedding,
+          pageNumber: cachedChunk.pageNumber,
+          // Restore metadata from cache to prevent source attribution loss
+          documentId: cachedChunk.documentId,
+          source: cachedChunk.source,
+          threadId: cachedChunk.threadId,
+        }));
         // Use cached total or fallback to processed count
         totalChunks = cachedData.totalChunks ?? cachedData.chunks.length;
       } else {
@@ -232,7 +242,7 @@ export async function buildContext(
         const { text, pages } = await extractTextFromDocument(buffer, filename);
 
         // Create temporary chunks from user document with page info
-        const chunks = await chunkText(text, 'user-temp', filename, 'user', undefined, undefined, pages);
+        const chunks = await chunkText(text, 'user-temp', filename, 'user', threadId, undefined, pages);
         totalChunks = chunks.length;
 
         // Get embeddings for user document chunks
@@ -243,15 +253,19 @@ export async function buildContext(
 
         const chunkEmbeddings = await createEmbeddings(chunkTexts);
 
-        // Build chunks with embeddings
+        // Build chunks with embeddings - include full metadata for caching
         chunksWithEmbeddings = chunks.slice(0, MAX_USER_DOC_CHUNKS).map((chunk, i) => ({
           id: chunk.id,
           text: chunk.text,
           embedding: chunkEmbeddings[i],
           pageNumber: chunk.metadata.pageNumber,
+          // Include full metadata for proper source attribution and caching
+          documentId: chunk.metadata.documentId,
+          source: chunk.metadata.source,
+          threadId: chunk.metadata.threadId,
         }));
 
-        // Cache the embeddings for future queries (with total chunk count)
+        // Cache the embeddings for future queries (with total chunk count and full metadata)
         if (threadId && chunksWithEmbeddings.length > 0) {
           await cacheUserDocEmbeddings(threadId, filename, {
             chunks: chunksWithEmbeddings,
@@ -528,8 +542,18 @@ export async function ragQuery(
   // Extract sources from RAG (use reranked chunks for accurate scores)
   const sources = extractSources(rerankedGlobalChunks, rerankedUserChunks);
 
-  // Extract web sources from tool call results
-  const webSources = extractWebSourcesFromHistory(fullHistory);
+  // DESIGN FIX: Route web sources through reranker with threshold filtering
+  // Web results previously bypassed all relevance filtering - now they go through reranker
+  const webChunks = extractWebSourcesAsChunks(fullHistory);
+  const rerankedWebChunks = await rerankChunks(userMessage, webChunks, {
+    minScoreOverride: 0.3, // Apply minimum relevance threshold for web results
+  });
+  const webSources = rerankedWebChunks.map(chunk => ({
+    documentName: chunk.documentName,
+    pageNumber: chunk.pageNumber,
+    chunkText: chunk.text.substring(0, CHUNK_PREVIEW_LENGTH),
+    score: chunk.score,
+  }));
   sources.push(...webSources);
 
   // Extract generated documents from tool call results
@@ -555,6 +579,7 @@ export async function ragQuery(
 
 /**
  * Extract web search sources from tool call history
+ * DEPRECATED: Use extractWebSourcesAsChunks + rerankChunks for filtered web results
  */
 function extractWebSourcesFromHistory(
   history: OpenAI.Chat.ChatCompletionMessageParam[]
@@ -585,6 +610,44 @@ function extractWebSourcesFromHistory(
   }
 
   return webSources;
+}
+
+/**
+ * Extract web search results as RetrievedChunks for reranking
+ * DESIGN FIX: Converts web results to chunk format so they can be filtered by reranker
+ */
+function extractWebSourcesAsChunks(
+  history: OpenAI.Chat.ChatCompletionMessageParam[]
+): RetrievedChunk[] {
+  const webChunks: RetrievedChunk[] = [];
+
+  for (const msg of history) {
+    if (msg.role === 'tool') {
+      try {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const toolResult = JSON.parse(content);
+
+        if (toolResult.results && Array.isArray(toolResult.results)) {
+          for (let i = 0; i < toolResult.results.length; i++) {
+            const result = toolResult.results[i];
+            webChunks.push({
+              id: `web-${i}`,
+              text: result.content || '',
+              documentName: `[WEB] ${result.title || result.url}`,
+              pageNumber: 0, // N/A for web results
+              score: result.score || 0,
+              source: 'web' as const,
+            });
+          }
+        }
+      } catch (error) {
+        // Ignore JSON parse errors
+        logger.warn('Failed to parse tool result as web search chunks', { error });
+      }
+    }
+  }
+
+  return webChunks;
 }
 
 /**

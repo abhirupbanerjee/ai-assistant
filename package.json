@@ -48,6 +48,7 @@
     "next": "^16.1.6",
     "next-auth": "^4.24.11",
     "officeparser": "6.0.7",
+    "tiktoken": "^1.0.0",
     "openai": "6.25.0",
     "pdf-parse": "1.1.1",
     "pdfkit": "^0.17.2",

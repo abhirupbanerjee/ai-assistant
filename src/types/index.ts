@@ -398,7 +398,7 @@ export interface RetrievedChunk {
   readonly documentName: string;
   readonly pageNumber: number;
   readonly score: number;
-  readonly source: 'global' | 'user';
+  readonly source: 'global' | 'user' | 'web';
 }
 
 export interface RAGResponse {

@@ -203,6 +203,33 @@ export class QdrantVectorStore implements VectorStoreClient {
     // Ensure collection exists
     await this.createCollection(collectionName);
 
+    // CRITICAL FIX: Validate embedding dimensions match collection schema
+    // Silent dimension mismatch causes near-zero similarity scores with no error
+    if (embeddings.length > 0) {
+      const qdrant = getClient();
+      const collectionInfo = await qdrant.getCollection(collectionName);
+      const vectorConfig = collectionInfo.config.params.vectors;
+
+      if (!vectorConfig || typeof vectorConfig !== 'object' || !('size' in vectorConfig)) {
+        throw new Error(
+          `Could not determine vector size for collection "${collectionName}". ` +
+          `Collection may be misconfigured.`
+        );
+      }
+
+      const expectedSize = vectorConfig.size;
+      const actualSize = embeddings[0].length;
+
+      if (actualSize !== expectedSize) {
+        throw new Error(
+          `Vector dimension mismatch for collection "${collectionName}": ` +
+          `expected ${expectedSize} dimensions, got ${actualSize}. ` +
+          `This indicates the embedding model has changed since collection creation. ` +
+          `Delete and recreate the collection to fix this.`
+        );
+      }
+    }
+
     const qdrant = getClient();
 
     // Convert to Qdrant point format
@@ -287,6 +314,47 @@ export class QdrantVectorStore implements VectorStoreClient {
         // Collection may have issues
       }
     }
+  }
+
+  async getDocumentChunksByDocId(
+    collectionName: string,
+    documentId: string
+  ): Promise<{ id: string; vector: number[]; text: string; metadata: ChunkMetadata }[]> {
+    if (!(await this.collectionExists(collectionName))) {
+      return [];
+    }
+
+    const qdrant = getClient();
+    const results: { id: string; vector: number[]; text: string; metadata: ChunkMetadata }[] = [];
+    let offset: string | number | undefined = undefined;
+
+    do {
+      const response = await qdrant.scroll(collectionName, {
+        filter: {
+          must: [{ key: 'documentId', match: { value: documentId } }],
+        },
+        with_vector: true,
+        with_payload: true,
+        limit: 100,
+        ...(offset !== undefined ? { offset } : {}),
+      });
+
+      for (const point of response.points) {
+        const payload = point.payload || {};
+        const { text, originalId, ...metadata } = payload as Record<string, unknown>;
+        results.push({
+          id: (originalId as string) || String(point.id),
+          vector: point.vector as number[],
+          text: (text as string) || '',
+          metadata: metadata as unknown as ChunkMetadata,
+        });
+      }
+
+      const next = response.next_page_offset;
+      offset = (typeof next === 'string' || typeof next === 'number') ? next : undefined;
+    } while (offset !== undefined);
+
+    return results;
   }
 
   // ============ Query Operations ============

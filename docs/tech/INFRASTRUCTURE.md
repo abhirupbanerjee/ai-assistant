@@ -160,6 +160,9 @@ LITELLM_MASTER_KEY=sk-litellm-master-change-this
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
 
+# RAG Configuration (NEW - May 2026)
+# USER_UPLOAD_MIN_RERANK_SCORE=0.30  # Minimum relevance for user uploads (was 0.05)
+
 # Vector store provider
 VECTOR_STORE_PROVIDER=qdrant
 QDRANT_HOST=localhost

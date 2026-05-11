@@ -264,19 +264,34 @@ async function processDocumentAsync(
     const store = await getVectorStore();
     const collNames = getCollectionNames();
 
+    // CRITICAL FIX: Fetch collection list ONCE before batch loop
+    // Prevents race condition where new categories created during batch
+    // won't receive the document being ingested
+    const allCollections = await store.listCollections();
+
     // Create embeddings in batches
     const batchSize = 100;
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
+
+      // CRITICAL FIX: Validate embeddings array length matches texts array length
+      // Partial API failure can cause misalignment - wrong embeddings stored with wrong chunks
+      if (embeddings.length !== texts.length) {
+        throw new Error(
+          `Embedding batch mismatch: expected ${texts.length} embeddings, got ${embeddings.length}. ` +
+          `This indicates a partial API failure that would corrupt document data.`
+        );
+      }
+
       const metadatas = batch.map(c => c.metadata);
       const ids = batch.map(c => c.id);
 
       // Global documents go into global collection and all category collections
       if (isGlobal) {
         await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
-        const allCollections = await store.listCollections();
+        // Use pre-fetched collection list to avoid race condition
         for (const name of allCollections.filter(collNames.isCategory)) {
           await store.addDocuments(name, ids, embeddings, texts, metadatas);
         }
@@ -381,6 +396,11 @@ export async function ingestTextContent(
     const store = await getVectorStore();
     const collNames = getCollectionNames();
 
+    // CRITICAL FIX: Fetch collection list ONCE before batch loop (same as processDocumentAsync)
+    // Prevents race condition where new categories created during batch
+    // won't receive the document being ingested
+    const allCollections = await store.listCollections();
+
     // Create embeddings in batches
     const batchSize = 100;
     for (let i = 0; i < chunks.length; i += batchSize) {
@@ -393,8 +413,7 @@ export async function ingestTextContent(
       // Global documents go into global collection and all category collections
       if (isGlobal) {
         await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
-        // Also add to all existing category collections
-        const allCollections = await store.listCollections();
+        // Use pre-fetched collection list to avoid race condition
         for (const name of allCollections.filter(collNames.isCategory)) {
           await store.addDocuments(name, ids, embeddings, texts, metadatas);
         }
@@ -523,6 +542,10 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
     const { text, pages } = await extractText(buffer, mimeType, doc.filename);
     const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
+    // Fetch collection list once before the batch loop
+    const allCollections = doc.isGlobal ? await store.listCollections() : [];
+    const categoryCollections = allCollections.filter(collNames.isCategory);
+
     // Create embeddings in batches
     const batchSize = 100;
     for (let i = 0; i < chunks.length; i += batchSize) {
@@ -534,9 +557,7 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
 
       if (doc.isGlobal) {
         await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
-        // Also add to all existing category collections
-        const allCollections = await store.listCollections();
-        for (const name of allCollections.filter(collNames.isCategory)) {
+        for (const name of categoryCollections) {
           await store.addDocuments(name, ids, embeddings, texts, metadatas);
         }
       } else if (categorySlugs.length > 0) {
@@ -622,26 +643,45 @@ export async function updateDocumentCategories(
       await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
     }
 
-    // Re-add to new categories
+    // Re-add to new categories by reusing existing embeddings from the global collection
     if (newSlugs.length > 0) {
-      const globalDocsDir = getGlobalDocsDir();
-      const filePath = path.join(globalDocsDir, doc.filepath);
-      const buffer = await readFileBuffer(filePath);
-      const mimeType = getMimeTypeFromFilename(doc.filename);
-      const { text, pages } = await extractText(buffer, mimeType, doc.filename);
-      const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
+      const existingChunks = await store.getDocumentChunksByDocId(collNames.global, docId);
 
-      const batchSize = 100;
-      for (let i = 0; i < chunks.length; i += batchSize) {
-        const batch = chunks.slice(i, i + batchSize);
-        const texts = batch.map(c => c.text);
-        const embeddings = await createEmbeddings(texts);
-        const ids = batch.map(c => c.id);
-        const metadatas = batch.map(c => c.metadata);
+      if (existingChunks.length === 0) {
+        // Fallback: embeddings missing from vector store, do full re-extraction
+        console.warn(`[Ingest] No existing chunks found in vector store for doc ${docId}, falling back to full re-embed`);
+        const globalDocsDir = getGlobalDocsDir();
+        const filePath = path.join(globalDocsDir, doc.filepath);
+        const buffer = await readFileBuffer(filePath);
+        const mimeType = getMimeTypeFromFilename(doc.filename);
+        const { text, pages } = await extractText(buffer, mimeType, doc.filename);
+        const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
-        for (const slug of newSlugs) {
-          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+        const batchSize = 100;
+        for (let i = 0; i < chunks.length; i += batchSize) {
+          const batch = chunks.slice(i, i + batchSize);
+          const texts = batch.map(c => c.text);
+          const embeddings = await createEmbeddings(texts);
+          const ids = batch.map(c => c.id);
+          const metadatas = batch.map(c => c.metadata);
+          for (const slug of newSlugs) {
+            await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+          }
         }
+      } else {
+        // Copy existing vectors to new category collections — no re-embedding needed
+        const batchSize = 100;
+        for (let i = 0; i < existingChunks.length; i += batchSize) {
+          const batch = existingChunks.slice(i, i + batchSize);
+          const ids = batch.map(c => c.id);
+          const embeddings = batch.map(c => c.vector);
+          const texts = batch.map(c => c.text);
+          const metadatas = batch.map(c => c.metadata);
+          for (const slug of newSlugs) {
+            await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+          }
+        }
+        console.log(`[Ingest] Copied ${existingChunks.length} existing chunks to ${newSlugs.length} category collection(s) for doc ${docId}`);
       }
     }
   }
@@ -671,12 +711,19 @@ export async function toggleDocumentGlobal(
 
   // If document has embeddings and status is changing, need to re-index
   if (doc.chunk_count > 0 && doc.status === 'ready' && doc.isGlobal !== isGlobal) {
-    const globalDocsDir = getGlobalDocsDir();
-    const filePath = path.join(globalDocsDir, doc.filepath);
-    const buffer = await readFileBuffer(filePath);
-    const mimeType = getMimeTypeFromFilename(doc.filename);
-    const { text, pages } = await extractText(buffer, mimeType, doc.filename);
-    const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
+    // Fetch collection list once before any batch work
+    const allCollections = await store.listCollections();
+    const categoryCollections = allCollections.filter(collNames.isCategory);
+
+    // Determine source collection for existing embeddings
+    const sourceCollection = doc.isGlobal
+      ? collNames.global
+      : (() => {
+          const firstSlug = doc.categories[0]?.slug;
+          return firstSlug ? collNames.forCategory(firstSlug) : collNames.global;
+        })();
+
+    const existingChunks = await store.getDocumentChunksByDocId(sourceCollection, docId);
 
     // Delete from current locations
     if (doc.isGlobal) {
@@ -688,28 +735,59 @@ export async function toggleDocumentGlobal(
       }
     }
 
-    // Re-add to new locations
-    const batchSize = 100;
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
-      const texts = batch.map(c => c.text);
-      const embeddings = await createEmbeddings(texts);
-      const ids = batch.map(c => c.id);
-      const metadatas = batch.map(c => c.metadata);
+    if (existingChunks.length === 0) {
+      // Fallback: embeddings missing, do full re-extraction
+      console.warn(`[Ingest] No existing chunks found in vector store for doc ${docId}, falling back to full re-embed`);
+      const globalDocsDir = getGlobalDocsDir();
+      const filePath = path.join(globalDocsDir, doc.filepath);
+      const buffer = await readFileBuffer(filePath);
+      const mimeType = getMimeTypeFromFilename(doc.filename);
+      const { text, pages } = await extractText(buffer, mimeType, doc.filename);
+      const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
-      if (isGlobal) {
-        await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
-        // Also add to all existing category collections
-        const allCollections = await store.listCollections();
-        for (const name of allCollections.filter(collNames.isCategory)) {
-          await store.addDocuments(name, ids, embeddings, texts, metadatas);
-        }
-      } else {
-        const newSlugs = doc.categories.map(c => c.slug);
-        for (const slug of newSlugs) {
-          await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+      const batchSize = 100;
+      for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = chunks.slice(i, i + batchSize);
+        const texts = batch.map(c => c.text);
+        const embeddings = await createEmbeddings(texts);
+        const ids = batch.map(c => c.id);
+        const metadatas = batch.map(c => c.metadata);
+
+        if (isGlobal) {
+          await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
+          for (const name of categoryCollections) {
+            await store.addDocuments(name, ids, embeddings, texts, metadatas);
+          }
+        } else {
+          const newSlugs = doc.categories.map(c => c.slug);
+          for (const slug of newSlugs) {
+            await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+          }
         }
       }
+    } else {
+      // Copy existing vectors to new locations — no re-embedding needed
+      const batchSize = 100;
+      for (let i = 0; i < existingChunks.length; i += batchSize) {
+        const batch = existingChunks.slice(i, i + batchSize);
+        const ids = batch.map(c => c.id);
+        const embeddings = batch.map(c => c.vector);
+        const texts = batch.map(c => c.text);
+        const metadatas = batch.map(c => c.metadata);
+
+        if (isGlobal) {
+          await store.addDocuments(collNames.global, ids, embeddings, texts, metadatas);
+          for (const name of categoryCollections) {
+            await store.addDocuments(name, ids, embeddings, texts, metadatas);
+          }
+        } else {
+          const newSlugs = doc.categories.map(c => c.slug);
+          for (const slug of newSlugs) {
+            await store.addDocuments(collNames.forCategory(slug), ids, embeddings, texts, metadatas);
+          }
+        }
+      }
+      console.log(`[Ingest] Copied ${existingChunks.length} existing chunks for doc ${docId} (isGlobal: ${isGlobal})`);
     }
   }
 

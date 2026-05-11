@@ -167,6 +167,25 @@ To verify the fix is working:
 
 ---
 
+## Additional Reranker Fixes (May 2026)
+
+### Fix #6: Partial Results Padding
+**Issue:** Fireworks/Cohere reranker APIs occasionally return fewer results than submitted chunks, causing score misalignment.
+**Solution:** Added validation in `rerankWithFireworks()` to detect partial results and pad missing chunks with their original scores.
+**Location:** `src/lib/reranker.ts`, lines 143-156
+
+### Fix #10: Web Source Filtering
+**Issue:** Web search results (Tavily) bypassed all relevance filtering — all 10 results were appended to context regardless of relevance.
+**Solution:** Web results now route through `rerankChunks()` with a 0.3 minimum score threshold, same as KB chunks.
+**Location:** `src/lib/rag.ts`, `extractWebSourcesAsChunks()` function
+
+### Fix #11: Boost Applied Pre-Threshold
+**Issue:** Document boost was applied AFTER threshold filtering, inflating scores beyond probability range and breaking relative ordering.
+**Solution:** Moved boost application BEFORE threshold filtering. Changed from multiplicative (`score * factor`) to additive boost (`score + (factor-1)*score`) to preserve probability semantics.
+**Location:** `src/lib/reranker.ts`, lines 506-528
+
+---
+
 ## Future Improvements
 
 1. **Local Bi-encoder:** Consider replacing with a true cross-encoder (e.g., `all-MiniLM-L12-v2` fine-tuned for reranking) to avoid the no-op reranking issue

@@ -145,6 +145,26 @@ async function rerankWithFireworks(
 
   const data = await response.json() as { results: { index: number; relevance_score: number }[] };
 
+  // CRITICAL FIX: Validate that all chunks received scores
+  // Partial results cause score misalignment - missing chunks get wrong scores mapped to them
+  if (data.results.length !== chunks.length) {
+    console.warn(
+      `[Reranker] Fireworks returned ${data.results.length} results for ${chunks.length} chunks. ` +
+      `Padding missing chunks with original scores.`
+    );
+    // Create a map of indices that have results
+    const resultIndices = new Set(data.results.map(r => r.index));
+    // Add missing chunks with their original scores
+    for (let i = 0; i < chunks.length; i++) {
+      if (!resultIndices.has(i)) {
+        data.results.push({
+          index: i,
+          relevance_score: chunks[i].score, // Use original score
+        });
+      }
+    }
+  }
+
   const rerankedChunks: RetrievedChunk[] = data.results
     .filter((result) => result.relevance_score >= minScore)
     .map((result) => ({
@@ -306,9 +326,10 @@ async function rerankWithBGE(
        // BGE text-classification applies softmax across two labels:
        // LABEL_0 = not relevant, LABEL_1 = relevant
        // Results are sorted descending by score, so result[0] is always the highest-scoring label.
-       // We must explicitly find LABEL_1 (the "relevant" class) to get the true relevance probability.
+       // CRITICAL FIX: If LABEL_1 is not found, default to score 0 (not relevant), not result[0]
+       // Using result[0] when it's LABEL_0 would invert the ranking (not-relevant treated as relevant)
        const relevantResult = Array.isArray(result)
-         ? result.find(r => r.label === 'LABEL_1') ?? result[0]
+         ? result.find(r => r.label === 'LABEL_1')
          : null;
        const score = relevantResult?.score ?? 0;
 
@@ -471,40 +492,48 @@ export async function rerankChunks(
     // Ignore cache errors
   }
 
+  // DESIGN FIX: Apply boost BEFORE threshold filtering to preserve relative ordering
+  // Boosting after threshold can inflate scores beyond probability range and break ordering
+  let boostedReranked = rerankedChunks;
+  if (options?.boostDocuments?.length && rerankedChunks.length > 0) {
+    const boostFactor = options.boostFactor ?? 1.3;
+    let boostedCount = 0;
+
+    boostedReranked = rerankedChunks.map(chunk => {
+      if (options.boostDocuments!.includes(chunk.documentName)) {
+        boostedCount++;
+        // Use additive boost instead of multiplicative to preserve relative ordering
+        // Additive: score + (factor-1)*score = score * factor, but capped smoothly
+        const boostedScore = chunk.score + (chunk.score * (boostFactor - 1));
+        return {
+          ...chunk,
+          score: Math.min(boostedScore, 1.0), // Cap at 1.0
+        };
+      }
+      return chunk;
+    });
+
+    // Re-sort after boosting so boosted chunks are in correct positions
+    boostedReranked.sort((a, b) => b.score - a.score);
+
+    if (boostedCount > 0) {
+      console.log(`[Reranker] Boosted ${boostedCount} chunks from previous conversation (pre-threshold)`);
+    }
+  }
+
+  // Apply threshold filtering AFTER boost so boosted chunks can still pass
+  const filteredReranked = boostedReranked.filter(c => c.score >= minScore);
+
   // Combine reranked chunks with remaining (unranked) chunks
   // Filter remaining chunks by the same threshold
   const filteredRemaining = remainingChunks.filter(
     c => c.score >= minScore
   );
 
-  console.log(`[Reranker] After reranking: ${rerankedChunks.length} chunks passed threshold`);
+  console.log(`[Reranker] After reranking: ${filteredReranked.length} chunks passed threshold`);
 
   // Combine reranked and remaining chunks
-  let finalChunks = [...rerankedChunks, ...filteredRemaining];
-
-  // Apply boost for documents from previous conversation (follow-up context)
-  if (options?.boostDocuments?.length) {
-    const boostFactor = options.boostFactor ?? 1.3;
-    let boostedCount = 0;
-
-    finalChunks = finalChunks.map(chunk => {
-      if (options.boostDocuments!.includes(chunk.documentName)) {
-        boostedCount++;
-        return {
-          ...chunk,
-          score: Math.min(chunk.score * boostFactor, 1.0), // Cap at 1.0
-        };
-      }
-      return chunk;
-    });
-
-    // Re-sort after boosting
-    finalChunks.sort((a, b) => b.score - a.score);
-
-    if (boostedCount > 0) {
-      console.log(`[Reranker] Boosted ${boostedCount} chunks from previous conversation`);
-    }
-  }
+  const finalChunks = [...filteredReranked, ...filteredRemaining];
 
   return finalChunks;
 }

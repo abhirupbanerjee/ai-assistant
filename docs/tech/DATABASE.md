@@ -2004,6 +2004,62 @@ interface VectorDocument {
 }
 ```
 
+**Embedding Dimension Validation (NEW - May 2026):**
+When adding documents to Qdrant, the system now validates that embedding dimensions match the collection schema:
+
+```typescript
+// In addDocuments() - validates before insertion
+const collectionInfo = await qdrant.getCollection(collectionName);
+const expectedSize = collectionInfo.config.params.vectors.size;
+const actualSize = embeddings[0].length;
+
+if (actualSize !== expectedSize) {
+  throw new Error(
+    `Vector dimension mismatch: expected ${expectedSize}, got ${actualSize}. ` +
+    `This indicates the embedding model has changed since collection creation.`
+  );
+}
+```
+
+This prevents silent degradation when switching embedding models (e.g., from 3072d to 1536d).
+
+### Vector Store Operations
+
+**getDocumentChunksByDocId() (NEW - May 2026):**
+
+A new method was added to the `VectorStoreClient` interface to support efficient category reassignment without re-embedding:
+
+```typescript
+// Fetch all chunks for a document by documentId
+async getDocumentChunksByDocId(
+  collectionName: string,
+  documentId: string
+): Promise<{
+  id: string;
+  vector: number[];
+  text: string;
+  metadata: ChunkMetadata;
+}[]>
+```
+
+**Use Case:** When changing a document's categories, the system can now:
+1. Fetch existing embeddings from the source collection
+2. Copy them directly to new category collections
+3. Skip expensive re-extraction and re-embedding
+
+**Implementation:** Uses Qdrant's `scroll()` API with `documentId` payload filter and pagination:
+
+```typescript
+const response = await qdrant.scroll(collectionName, {
+  filter: {
+    must: [{ key: 'documentId', match: { value: documentId } }],
+  },
+  with_vector: true,
+  with_payload: true,
+  limit: 100,
+});
+```
+
 ### Chunking Strategy
 
 | Parameter | Default | Rationale |

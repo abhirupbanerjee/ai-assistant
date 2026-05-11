@@ -227,6 +227,8 @@ User Query
 
 **Web Search Integration**: If Tavily is enabled in admin settings, the LLM can automatically trigger web searches using OpenAI function calling. Results are cached separately in Redis with configurable TTL (60 seconds to 1 month).
 
+**Web Source Filtering (NEW - May 2026)**: Web search results now route through the same `rerankChunks()` pipeline as KB chunks, with a 0.3 minimum relevance threshold. Previously, all 10 Tavily results were appended to context regardless of relevance. Now only relevant web results are included.
+
 **Reranker Integration**: When enabled, retrieved chunks are re-scored using priority-based fallback:
 - **BGE Reranker Large** (`Xenova/bge-reranker-large`): Best accuracy cross-encoder (~670MB, local)
 - **Fireworks AI** (`qwen3-reranker-8b`): Fast API-based reranking via direct HTTP to `api.fireworks.ai/inference/v1/rerank`
@@ -235,6 +237,10 @@ User Query
 - **Local Bi-encoder** (`Xenova/all-MiniLM-L6-v2`): Legacy, less accurate (~90MB)
 
 Reranking improves result quality by using cross-encoder models to jointly score query+document pairs, then filtering by minimum score threshold. Providers are tried in priority order with automatic fallback.
+
+**Token Budget Management (NEW - May 2026)**: The RAG pipeline now proactively counts tokens using `tiktoken` before sending to the LLM. If the assembled prompt (system + history + RAG context + question) exceeds the model's token budget, the context is intelligently truncated by removing lowest-scored chunks first. This prevents silent truncation by the API and ensures the most relevant chunks are always included.
+
+**Embedding Dimension Validation (NEW - May 2026)**: When adding documents to Qdrant, the system now validates that embedding dimensions match the collection schema. If the embedding model has changed since collection creation (e.g., switching from 3072d to 1536d), an explicit error is thrown rather than silently degrading similarity scores to near-zero.
 
 ### 2.1 Multimodal/Vision Support
 
