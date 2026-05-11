@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Download, GitCommit, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Download, GitCommit, TrendingUp, TrendingDown, Minus, Globe } from 'lucide-react';
 import type { CitationTrajectoryEntry, TrajectorySummary } from '@/lib/db/citation-trajectory';
 
 interface CitationTrajectoryCardProps {
@@ -51,6 +51,11 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
     URL.revokeObjectURL(url);
   };
 
+  // Check if entry is a web source
+  const isWebSource = (entry: CitationTrajectoryEntry): boolean => {
+    return entry.sourceType === 'web';
+  };
+
   // Score bar color based on value
   const scoreColor = (score: number | null): string => {
     if (score === null) return 'bg-gray-200';
@@ -66,6 +71,14 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
     if (after < before) return <TrendingUp size={14} className="text-green-500" />;
     if (after > before) return <TrendingDown size={14} className="text-red-500" />;
     return <Minus size={14} className="text-gray-400" />;
+  };
+
+  // Strip [WEB] prefix from document name for display
+  const formatDocumentName = (entry: CitationTrajectoryEntry): string => {
+    if (isWebSource(entry)) {
+      return entry.documentName.replace(/^\[WEB\]\s*/i, '');
+    }
+    return entry.documentName;
   };
 
   return (
@@ -129,27 +142,41 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
           {/* Trajectory entries */}
           {summary && summary.entries.length > 0 && (
             <div className="space-y-1.5 max-h-80 overflow-y-auto">
-              {summary.entries.map((entry, i) => (
+              {summary.entries.map((entry, i) => {
+                const isWeb = isWebSource(entry);
+                return (
                 <div
                   key={i}
                   className={`rounded-lg px-3 py-2 text-xs ${
-                    entry.wasSelected
-                      ? 'bg-blue-50 border border-blue-100'
-                      : 'bg-gray-50 border border-gray-100'
+                    isWeb
+                      ? 'bg-purple-50 border border-purple-100'
+                      : entry.wasSelected
+                        ? 'bg-blue-50 border border-blue-100'
+                        : 'bg-gray-50 border border-gray-100'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium text-gray-700 truncate block">
-                        {entry.documentName}
-                      </span>
-                      {entry.pageNumber > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        {isWeb && <Globe size={12} className="text-purple-500 flex-shrink-0" />}
+                        <span className="font-medium text-gray-700 truncate block">
+                          {formatDocumentName(entry)}
+                        </span>
+                      </div>
+                      {isWeb ? (
+                        <span className="text-purple-400">Web Search Result</span>
+                      ) : entry.pageNumber > 0 ? (
                         <span className="text-gray-400">Page {entry.pageNumber}</span>
-                      )}
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {/* Selection badge */}
-                      {entry.wasSelected ? (
+                      {/* Source type badge */}
+                      {isWeb ? (
+                        <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium text-[10px] flex items-center gap-1">
+                          <Globe size={10} />
+                          Web
+                        </span>
+                      ) : entry.wasSelected ? (
                         <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium text-[10px]">
                           Selected
                         </span>
@@ -161,7 +188,8 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
                     </div>
                   </div>
 
-                  {/* Score bars */}
+                  {/* Score bars - only show for non-web sources */}
+                  {!isWeb && (
                   <div className="mt-1.5 flex items-center gap-3">
                     {/* Raw score */}
                     <div className="flex-1">
@@ -205,8 +233,19 @@ export default function CitationTrajectoryCard({ messageId, threadId }: Citation
                       </span>
                     </div>
                   </div>
+                  )}
+
+                  {/* Web source info line */}
+                  {isWeb && (
+                    <div className="mt-1.5 text-[10px] text-purple-400 flex items-center gap-1">
+                      <span>Retrieved via web search</span>
+                      <span className="text-gray-300">·</span>
+                      <span>Always included in context</span>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

@@ -631,6 +631,20 @@ export async function POST(request: NextRequest) {
             const llmMs = Date.now() - llmStart;
 
             // Extract web sources from tool history
+            const webTrajectoryEntries: Array<{
+              messageId: string;
+              threadId: string;
+              chunkId: string;
+              documentName: string;
+              pageNumber: number;
+              rawScore: number | null;
+              rerankedScore: number | null;
+              wasSelected: boolean;
+              rankBefore: number | null;
+              rankAfter: number | null;
+              sourceType: 'web';
+            }> = [];
+
             for (const msg of toolResult.fullHistory) {
               if (msg.role === 'tool') {
                 try {
@@ -638,17 +652,41 @@ export async function POST(request: NextRequest) {
                   const parsed = JSON.parse(content);
                   if (parsed.results && Array.isArray(parsed.results)) {
                     for (const result of parsed.results) {
+                      const docName = `[WEB] ${result.title || result.url}`;
                       webSources.push({
-                        documentName: `[WEB] ${result.title || result.url}`,
+                        documentName: docName,
                         pageNumber: 0,
                         chunkText: result.content?.substring(0, 200) || '',
                         score: result.score || 0,
+                      });
+                      // Save web search trajectory entry
+                      webTrajectoryEntries.push({
+                        messageId: assistantMessageId,
+                        threadId,
+                        chunkId: result.url || `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        documentName: docName,
+                        pageNumber: 0,
+                        rawScore: null,  // No vector score for web results
+                        rerankedScore: null,  // No reranker for web results
+                        wasSelected: true,  // Web results are always included in context
+                        rankBefore: null,
+                        rankAfter: null,
+                        sourceType: 'web',
                       });
                     }
                   }
                 } catch {
                   // Not a web search result
                 }
+              }
+            }
+
+            // Save web search trajectory entries
+            if (webTrajectoryEntries.length > 0) {
+              try {
+                saveTrajectoryEntries(webTrajectoryEntries);
+              } catch (trajectoryError) {
+                console.error('[Stream] Failed to save web trajectory data:', trajectoryError);
               }
             }
 

@@ -3,11 +3,18 @@
  *
  * Tracks the full retrieval path for each chunk: raw vector score → reranker score → final selection.
  * Enables the Citation Trajectory UI to show why each chunk was or wasn't included in context.
+ *
+ * Supports multiple source types:
+ * - 'vector': Knowledge base chunks with vector scores and reranker scores
+ * - 'user_upload': User-uploaded documents (PDF, DOCX, images via OCR)
+ * - 'web': Web search results from Tavily (no vector/reranker scores)
  */
 
 import { getDatabase } from './index';
 
 // ============ Types ============
+
+export type TrajectorySourceType = 'vector' | 'user_upload' | 'web';
 
 export interface CitationTrajectoryEntry {
   id: number;
@@ -21,6 +28,7 @@ export interface CitationTrajectoryEntry {
   wasSelected: boolean;          // 1 = made it into final context
   rankBefore: number | null;     // Position before reranking
   rankAfter: number | null;      // Position after reranking
+  sourceType: TrajectorySourceType; // Origin of this source
   createdAt: string;
 }
 
@@ -49,6 +57,7 @@ export function saveTrajectoryEntries(
     wasSelected: boolean;
     rankBefore: number | null;
     rankAfter: number | null;
+    sourceType?: TrajectorySourceType; // Defaults to 'vector' if not specified
   }>
 ): void {
   if (entries.length === 0) return;
@@ -58,8 +67,8 @@ export function saveTrajectoryEntries(
     INSERT INTO citation_trajectories (
       message_id, thread_id, chunk_id, document_name, page_number,
       raw_score, reranked_score, was_selected,
-      rank_before, rank_after
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      rank_before, rank_after, source_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = db.transaction((rows: typeof entries) => {
@@ -74,7 +83,8 @@ export function saveTrajectoryEntries(
         row.rerankedScore,
         row.wasSelected ? 1 : 0,
         row.rankBefore,
-        row.rankAfter
+        row.rankAfter,
+        row.sourceType || 'vector'
       );
     }
   });
@@ -94,10 +104,12 @@ export function getTrajectoryForMessage(
     SELECT
       id, message_id, thread_id, chunk_id, document_name, page_number,
       raw_score, reranked_score, was_selected,
-      rank_before, rank_after, created_at
+      rank_before, rank_after, source_type, created_at
     FROM citation_trajectories
     WHERE message_id = ? AND thread_id = ?
-    ORDER BY rank_after ASC, rank_before ASC
+    ORDER BY
+      CASE source_type WHEN 'web' THEN 0 ELSE 1 END,
+      rank_after ASC, rank_before ASC
   `).all(messageId, threadId) as Array<{
     id: number;
     message_id: string;
@@ -110,6 +122,7 @@ export function getTrajectoryForMessage(
     was_selected: number;
     rank_before: number | null;
     rank_after: number | null;
+    source_type: string;
     created_at: string;
   }>;
 
@@ -125,6 +138,7 @@ export function getTrajectoryForMessage(
     wasSelected: row.was_selected === 1,
     rankBefore: row.rank_before,
     rankAfter: row.rank_after,
+    sourceType: (row.source_type as TrajectorySourceType) || 'vector',
     createdAt: row.created_at,
   }));
 }

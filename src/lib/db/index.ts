@@ -1503,6 +1503,15 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Added credentials_enabled column to users');
   }
 
+  // Migration: Add source_type column to citation_trajectories for web search tracking
+  const citationTrajColumns = database.pragma('table_info(citation_trajectories)') as { name: string }[];
+  const citationTrajColumnNames = citationTrajColumns.map((c) => c.name);
+
+  if (!citationTrajColumnNames.includes('source_type')) {
+    database.exec('ALTER TABLE citation_trajectories ADD COLUMN source_type TEXT DEFAULT \'vector\'');
+    console.log('[DB Migration] Added source_type column to citation_trajectories');
+  }
+
   console.log('[DB Migration] Migrations completed successfully');
 }
 
