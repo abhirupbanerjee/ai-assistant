@@ -173,7 +173,7 @@ export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: b
       if (!res.ok) throw new Error('Failed to save settings');
 
       const data = await res.json();
-      const savedSettings = data.settings;
+      const savedSettings = data.reranker;
       setSettings(savedSettings);
       setEditedSettings({
         enabled: savedSettings.enabled,
