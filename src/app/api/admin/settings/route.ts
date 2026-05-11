@@ -254,7 +254,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (!user.isAdmin) {
+    if (user.role !== 'admin' && user.role !== 'superuser') {
       return NextResponse.json<ApiError>(
         { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }
@@ -580,13 +580,22 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = await setUploadLimits({
+        const uploadResult = await setUploadLimits({
           maxFilesPerInput,
           maxFilesPerThread,
           maxFileSizeMB,
           allowedTypes,
         }, user.email);
-        break;
+        await invalidateQueryCache();
+        const uploadMeta = await getSettingMetadata('upload-limits');
+        return NextResponse.json({
+          success: true,
+          uploadLimits: {
+            ...uploadResult,
+            updatedAt: uploadMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: uploadMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'retention': {
@@ -916,7 +925,7 @@ export async function PUT(request: NextRequest) {
           resetCohereClient();
         }
 
-        result = await setRerankerSettings({
+        const rerankerResult = await setRerankerSettings({
           ...(enabled !== undefined ? { enabled } : {}),
           ...(providers !== undefined ? { providers } : {}),
           ...(cohereApiKey !== undefined ? { cohereApiKey: cohereApiKey || undefined } : {}),
@@ -924,7 +933,16 @@ export async function PUT(request: NextRequest) {
           ...(minRerankerScore !== undefined ? { minRerankerScore } : {}),
           ...(cacheTTLSeconds !== undefined ? { cacheTTLSeconds } : {}),
         }, user.email);
-        break;
+        await invalidateQueryCache();
+        const rerankerMeta = await getSettingMetadata('reranker-settings');
+        return NextResponse.json({
+          success: true,
+          reranker: {
+            ...rerankerResult,
+            updatedAt: rerankerMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: rerankerMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'memory': {
@@ -994,7 +1012,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = await setMemorySettings({
+        const memoryResult = await setMemorySettings({
           enabled,
           extractionThreshold,
           maxFactsPerCategory,
@@ -1003,7 +1021,16 @@ export async function PUT(request: NextRequest) {
           extractionMaxTokens,
           factMaxAgeDays,
         }, user.email);
-        break;
+        await invalidateQueryCache();
+        const memoryMeta = await getSettingMetadata('memory-settings');
+        return NextResponse.json({
+          success: true,
+          memory: {
+            ...memoryResult,
+            updatedAt: memoryMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: memoryMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'summarization': {
@@ -1055,14 +1082,23 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = await setSummarizationSettings({
+        const summarizationResult = await setSummarizationSettings({
           enabled,
           tokenThreshold,
           keepRecentMessages,
           summaryMaxTokens,
           archiveOriginalMessages,
         }, user.email);
-        break;
+        await invalidateQueryCache();
+        const summarizationMeta = await getSettingMetadata('summarization-settings');
+        return NextResponse.json({
+          success: true,
+          summarization: {
+            ...summarizationResult,
+            updatedAt: summarizationMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: summarizationMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'skills': {
@@ -1246,8 +1282,17 @@ export async function PUT(request: NextRequest) {
           limitsUpdate.maxPerToolCalls = maxPerToolCalls;
         }
 
-        result = await setLimitsSettings(limitsUpdate, user.email);
-        break;
+        const limitsResult = await setLimitsSettings(limitsUpdate, user.email);
+        await invalidateQueryCache();
+        const limitsMeta = await getSettingMetadata('limits-settings');
+        return NextResponse.json({
+          success: true,
+          limits: {
+            ...limitsResult,
+            updatedAt: limitsMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: limitsMeta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'token-limits': {
@@ -1417,6 +1462,9 @@ export async function PUT(request: NextRequest) {
           'summarization-settings',
           'skills-settings',
           'ocr-settings',
+          'limits-settings',
+          'token-limits-settings',
+          'model-token-limits',
         ] as const;
 
         for (const key of settingKeys) {
