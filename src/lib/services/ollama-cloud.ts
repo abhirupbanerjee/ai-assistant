@@ -158,7 +158,7 @@ export async function discoverOllamaCloudModels(): Promise<DiscoveredModel[]> {
     throw new Error('Ollama Cloud API key not configured');
   }
 
-  const response = await fetch(`${OLLAMA_CLOUD_BASE_URL}/api/tags`, {
+  const response = await fetch(`${OLLAMA_CLOUD_BASE_URL}/tags`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
@@ -254,7 +254,7 @@ export async function callOllamaCloud(
     },
   };
 
-  return fetch(`${OLLAMA_CLOUD_BASE_URL}/api/chat`, {
+  return fetch(`${OLLAMA_CLOUD_BASE_URL}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
