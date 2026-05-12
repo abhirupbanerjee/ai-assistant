@@ -82,6 +82,9 @@ interface SettingsImpact {
   avgSimilarity: number;
   avgChunks: number;
   testCount: number;
+  similarityThreshold?: number | null;
+  topKChunks?: number | null;
+  maxContextChunks?: number | null;
 }
 
 interface Category {
