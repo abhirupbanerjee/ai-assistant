@@ -109,15 +109,22 @@ Output your result directly without JSON formatting.`;
 const DEFAULT_CHECKER_PROMPT = 'You are a quality checker. Evaluate task results objectively and provide confidence scores.';
 
 /** Map a provider ID from enabled_models to a valid agent provider value */
-function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' {
+function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud' {
   switch (providerId) {
     case 'gemini':
     case 'google':
       return 'gemini';
     case 'mistral':
       return 'mistral';
+    case 'anthropic':
+      return 'anthropic';
+    case 'fireworks':
+      return 'fireworks';
+    case 'ollama':
+      return 'ollama';
+    case 'ollama-cloud':
+      return 'ollama-cloud';
     default:
-      // All other providers (openai, anthropic, etc.) route through OpenAI client → LiteLLM proxy
       return 'openai';
   }
 }

@@ -8,7 +8,7 @@ import { getSetting, setSetting } from './config';
 import { getDefaultLLMModel, getModelPresetsFromConfig } from '../config-loader';
 
 export interface AgentModelConfig {
-  provider: 'openai' | 'gemini' | 'mistral';
+  provider: 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud';
   model: string;
   temperature: number;
   max_tokens?: number;
@@ -41,25 +41,25 @@ function getDefaultConfigs(): StoredAgentModelConfigs {
 
   return {
     planner: {
-      provider: geminiProvider as 'openai' | 'gemini' | 'mistral',
+      provider: geminiProvider as AgentModelConfig['provider'],
       model: geminiModel,
       temperature: 0.3,
       max_tokens: 8192, // Planner needs large output for per-item task lists
     },
     executor: {
-      provider: defaultProvider as 'openai' | 'gemini' | 'mistral',
+      provider: defaultProvider as AgentModelConfig['provider'],
       model: defaultModel,
       temperature: 0.4,
       max_tokens: 4096,
     },
     checker: {
-      provider: defaultProvider as 'openai' | 'gemini' | 'mistral',
+      provider: defaultProvider as AgentModelConfig['provider'],
       model: defaultModel,
       temperature: 0.2,
       max_tokens: 2048, // Checker outputs are small
     },
     summarizer: {
-      provider: defaultProvider as 'openai' | 'gemini' | 'mistral',
+      provider: defaultProvider as AgentModelConfig['provider'],
       model: defaultModel,
       temperature: 0.5,
       max_tokens: 4096,
@@ -121,7 +121,7 @@ export function setAgentModelConfigs(
  * Validate agent model configuration
  */
 export function validateAgentModelConfig(config: AgentModelConfig): boolean {
-  if (!config.provider || !['openai', 'gemini', 'mistral'].includes(config.provider)) {
+  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'ollama', 'ollama-cloud'].includes(config.provider)) {
     return false;
   }
   if (!config.model || config.model.trim() === '') {

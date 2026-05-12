@@ -1,16 +1,23 @@
 /**
  * LLM Router
  *
- * Routes LLM requests to appropriate provider (OpenAI, Gemini, Mistral)
+ * Routes LLM requests to appropriate provider (OpenAI, Gemini, Mistral, Anthropic, Fireworks, Ollama, Ollama Cloud)
  * Supports different models for different agent roles (planner, executor, checker, summarizer)
  */
 
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import type { ModelSpec, AgentModelConfig } from '@/types/agent';
-import { getApiKey } from '@/lib/provider-helpers';
+import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { recordTokenUsage } from '@/lib/token-logger';
+import { callOllamaCloud } from '@/lib/services/ollama-cloud';
+
+const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 
 let openaiClient: OpenAI | null = null;
+let anthropicClient: Anthropic | null = null;
+let fireworksClient: OpenAI | null = null;
+let ollamaClient: OpenAI | null = null;
 
 export interface LLMResponse {
   content: string;
@@ -47,6 +54,18 @@ export async function generateWithModel(
       break;
     case 'mistral':
       response = await generateMistral(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
+    case 'anthropic':
+      response = await generateAnthropic(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
+    case 'fireworks':
+      response = await generateFireworks(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
+    case 'ollama':
+      response = await generateOllama(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
+    case 'ollama-cloud':
+      response = await generateOllamaCloud(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
       break;
     default:
       throw new Error(`Unknown LLM provider: ${modelSpec.provider}`);
@@ -217,6 +236,195 @@ async function generateMistral(
 }
 
 /**
+ * Generate using Anthropic Claude (direct SDK, bypasses LiteLLM)
+ */
+async function generateAnthropic(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number,
+  maxTokens: number
+): Promise<LLMResponse> {
+  if (!anthropicClient) {
+    const apiKey = await getApiKey('anthropic');
+    anthropicClient = new Anthropic({ apiKey: apiKey || undefined });
+  }
+
+  // Strip anthropic/ prefix if present
+  const modelId = model.startsWith('anthropic/') ? model.slice('anthropic/'.length) : model;
+
+  const response = await anthropicClient.messages.create({
+    model: modelId,
+    system: systemPrompt || undefined,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens,
+    temperature,
+  });
+
+  const textBlock = response.content.find(b => b.type === 'text');
+  const content = (textBlock && 'text' in textBlock ? textBlock.text : '') || '';
+  const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
+
+  return {
+    content,
+    tokens_used: tokensUsed,
+    model: modelId,
+    provider: 'anthropic',
+  };
+}
+
+/**
+ * Generate using Fireworks AI (direct SDK, bypasses LiteLLM)
+ */
+async function generateFireworks(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number,
+  maxTokens: number
+): Promise<LLMResponse> {
+  if (!fireworksClient) {
+    const apiKey = await getApiKey('fireworks');
+    fireworksClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: FIREWORKS_BASE_URL,
+    });
+  }
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  // Fireworks requires stream=true for max_tokens > 4096
+  if (maxTokens > 4096) {
+    const stream = await fireworksClient.chat.completions.create({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+
+    let content = '';
+    let totalTokens = 0;
+    for await (const chunk of stream) {
+      content += chunk.choices[0]?.delta?.content || '';
+      if (chunk.usage) totalTokens = chunk.usage.total_tokens;
+    }
+
+    return { content, tokens_used: totalTokens, model, provider: 'fireworks' };
+  }
+
+  const response = await fireworksClient.chat.completions.create({
+    model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  });
+
+  return {
+    content: response.choices[0].message.content || '',
+    tokens_used: response.usage?.total_tokens || 0,
+    model,
+    provider: 'fireworks',
+  };
+}
+
+/**
+ * Generate using Ollama (local, direct SDK)
+ */
+async function generateOllama(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number,
+  maxTokens: number
+): Promise<LLMResponse> {
+  if (!ollamaClient) {
+    const apiBase = await getApiBase('ollama');
+    const baseURL = ((apiBase || 'http://localhost:11434').replace(/\/v1\/?$/, '')) + '/v1';
+    ollamaClient = new OpenAI({ apiKey: 'ollama', baseURL });
+  }
+
+  // Strip ollama- or ollama/ prefix for the API call
+  const ollamaModel = model.startsWith('ollama/') ? model.slice('ollama/'.length)
+    : model.startsWith('ollama-') ? model.slice('ollama-'.length)
+    : model;
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const response = await ollamaClient.chat.completions.create({
+    model: ollamaModel,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  });
+
+  return {
+    content: response.choices[0]?.message?.content || '',
+    tokens_used: response.usage?.total_tokens || 0,
+    model: ollamaModel,
+    provider: 'ollama',
+  };
+}
+
+/**
+ * Generate using Ollama Cloud (hosted Ollama API)
+ */
+async function generateOllamaCloud(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number,
+  maxTokens: number
+): Promise<LLMResponse> {
+  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const response = await callOllamaCloud(model, messages, { temperature, maxTokens });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Ollama Cloud API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json() as { message?: { content: string }; eval_count?: number; prompt_eval_count?: number };
+  const content = data.message?.content?.trim() || '';
+  const tokensUsed = (data.eval_count || 0) + (data.prompt_eval_count || 0);
+
+  return {
+    content,
+    tokens_used: tokensUsed,
+    model,
+    provider: 'ollama-cloud',
+  };
+}
+
+/**
+ * Detect the correct provider for a model ID based on its prefix.
+ * Used to assign the right provider for fallback models.
+ */
+function detectProvider(modelId: string): ModelSpec['provider'] {
+  if (modelId.startsWith('anthropic/') || modelId.startsWith('claude-')) return 'anthropic';
+  if (modelId.startsWith('fireworks/') || modelId.startsWith('accounts/fireworks')) return 'fireworks';
+  if (modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud')) return 'ollama-cloud';
+  if (modelId.startsWith('ollama-') || modelId.startsWith('ollama/')) return 'ollama';
+  if (modelId.startsWith('gemini')) return 'gemini';
+  if (modelId.startsWith('mistral') || modelId.startsWith('codestral') || modelId.startsWith('pixtral')) return 'mistral';
+  return 'openai';
+}
+
+/**
  * Generate with automatic fallback chain on recoverable errors.
  * Level 1: global default model (getDefaultLLMModel)
  * Level 2: universal fallback model (getLlmFallbackSettings)
@@ -257,7 +465,7 @@ export async function generateWithModelFallback(
       try {
         const fallbackSpec: ModelSpec = {
           model: fallbackModelId,
-          provider: 'openai', // All models route through LiteLLM proxy
+          provider: detectProvider(fallbackModelId),
           temperature: modelSpec.temperature,
           max_tokens: modelSpec.max_tokens,
         };
