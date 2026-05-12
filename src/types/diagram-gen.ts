@@ -24,7 +24,8 @@ export type MermaidDiagramType =
   | 'timeline'
   | 'block'
   | 'quadrant'
-  | 'architecture';
+  | 'architecture'
+  | 'gitGraph';
 
 export type FlowDirection = 'TD' | 'LR' | 'BT' | 'RL';
 
@@ -65,6 +66,8 @@ export interface DiagramGenerationResult {
   code?: string;
   /** Diagram type that was generated */
   diagramType?: MermaidDiagramType;
+  /** Number of retries used (0 = succeeded on first attempt) */
+  retryCount?: number;
   /** Error information */
   error?: {
     code: string;

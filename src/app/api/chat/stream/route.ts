@@ -379,29 +379,6 @@ export async function POST(request: NextRequest) {
             );
             const ragMs = Date.now() - ragStart;
 
-            // Save citation trajectory data (pre-rerank and post-rerank scores)
-            if (ragResult.trajectoryData && ragResult.trajectoryData.length > 0) {
-              try {
-                const trajectoryEntries = ragResult.trajectoryData.map(t => ({
-                  messageId: assistantMessageId,
-                  threadId,
-                  chunkId: t.chunkId,
-                  documentName: t.documentName,
-                  pageNumber: t.pageNumber,
-                  rawScore: t.rawScore,
-                  rerankedScore: t.rerankedScore,
-                  wasSelected: t.wasSelected,
-                  rankBefore: t.rankBefore,
-                  rankAfter: t.rankAfter,
-                  sourceType: t.sourceType,
-                }));
-                await saveTrajectoryEntries(trajectoryEntries);
-              } catch (trajectoryError) {
-                // Log but don't fail the request for trajectory saving errors
-                console.error('[Stream] Failed to save trajectory data:', trajectoryError);
-              }
-            }
-
             // Send sources from RAG
             send({ type: 'sources', data: ragResult.sources });
 
@@ -684,15 +661,6 @@ export async function POST(request: NextRequest) {
               }
             }
 
-             // Save web search trajectory entries
-             if (webTrajectoryEntries.length > 0) {
-               try {
-                 await saveTrajectoryEntries(webTrajectoryEntries);
-               } catch (trajectoryError) {
-                 console.error('[Stream] Failed to save web trajectory data:', trajectoryError);
-               }
-             }
-
             // Combine all sources
             const allSources = [...ragResult.sources, ...webSources];
 
@@ -790,6 +758,31 @@ export async function POST(request: NextRequest) {
 
             await addMessage(user.id, threadId, assistantMessage);
             await updateThreadTokenCount(threadId, countTokens(fullContent));
+
+            // Save trajectory data after message is persisted (FK: citation_trajectories.message_id → messages.id)
+            try {
+              const allTrajectoryEntries = [
+                ...(ragResult.trajectoryData ?? []).map(t => ({
+                  messageId: assistantMessageId,
+                  threadId,
+                  chunkId: t.chunkId,
+                  documentName: t.documentName,
+                  pageNumber: t.pageNumber,
+                  rawScore: t.rawScore,
+                  rerankedScore: t.rerankedScore,
+                  wasSelected: t.wasSelected,
+                  rankBefore: t.rankBefore,
+                  rankAfter: t.rankAfter,
+                  sourceType: t.sourceType,
+                })),
+                ...webTrajectoryEntries,
+              ];
+              if (allTrajectoryEntries.length > 0) {
+                await saveTrajectoryEntries(allTrajectoryEntries);
+              }
+            } catch (trajectoryError) {
+              console.error('[Stream] Failed to save trajectory data:', trajectoryError);
+            }
 
             // Link any generated outputs (documents, images, diagrams, podcasts) to this message
             // This must happen after addMessage since message_id is a foreign key

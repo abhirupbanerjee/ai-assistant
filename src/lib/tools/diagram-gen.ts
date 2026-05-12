@@ -182,7 +182,7 @@ async function executeDiagramGen(args: DiagramGenToolArgs): Promise<string> {
       model: 'system-default', // Model is determined at runtime
       diagramType: args.diagram_type,
       processingTimeMs,
-      retryCount: 0,
+      retryCount: result.retryCount ?? 0,
     },
   };
 
@@ -207,11 +207,11 @@ export const diagramGenTool: ToolDefinition = {
       description: `Generate a Mermaid diagram. Use this tool when the user asks for any visual diagram.
 
 Choose the right type:
-- flowchart: process flows, decision trees, workflows, step-by-step logic
+- flowchart: process flows, decision trees, workflows, step-by-step logic, data flow diagrams
 - sequence: system interactions over time, API calls, login flows, message exchanges between services
 - mindmap: brainstorming, topic breakdowns, hierarchical concepts
 - c4-context: high-level system architecture showing users, systems, and external dependencies
-- c4-container: internal architecture showing containers (web app, API, DB) inside a system
+- c4-container: internal architecture showing containers (web app, API, DB) inside a system — USE THIS for complex system architecture diagrams with many components
 - c4-component: internal components within a single container (services, modules)
 - c4-dynamic: runtime message flow with numbered steps between containers
 - c4-deployment: infrastructure deployment topology (cloud nodes, VPCs, servers)
@@ -224,9 +224,15 @@ Choose the right type:
 - stateDiagram: state machines, lifecycle flows (e.g. order status, auth states)
 - pie: proportional breakdowns, distribution of categories
 - journey: user experience flows with satisfaction scores per step
-- architecture: physical/logical infrastructure with labeled services, groups, and directional edges
+- architecture: simple physical infrastructure with ≤8 services and directional edges (beta — strict parser)
+- gitGraph: git branching history, commit flows, merges, and branch strategies
 
 The generated diagram will be rendered interactively in the chat with zoom and download options.
+
+IMPORTANT — choose carefully:
+- "architecture diagram", "system diagram", "data flow diagram" → use flowchart or c4-container, NOT architecture
+- architecture is a beta type limited to ≤8 simple physical services (e.g. a single server-to-db-to-cache topology)
+- For any architecture with agents, APIs, queues, or more than 5 components: use c4-container
 
 Do NOT use this for:
 - Simple ASCII text diagrams (use text formatting instead)
@@ -256,13 +262,14 @@ Do NOT use this for:
               'pie',
               'journey',
               'architecture',
+              'gitGraph',
             ],
             description: `Type of Mermaid diagram to generate:
-- flowchart: process steps, decisions, branching logic
+- flowchart: process steps, decisions, branching logic, data flow diagrams
 - sequence: messages/calls between actors/services over time
 - mindmap: hierarchical topic or concept breakdown
 - c4-context: system-level view (users + systems + external dependencies)
-- c4-container: internal containers within a system (web, API, DB layers)
+- c4-container: internal containers within a system (web, API, DB layers) — preferred for complex architectures
 - c4-component: components within a single container (services, modules, libraries)
 - c4-dynamic: numbered runtime message flow between containers (experimental)
 - c4-deployment: deployment topology (cloud nodes, VPCs, servers, containers) (experimental)
@@ -275,7 +282,8 @@ Do NOT use this for:
 - erDiagram: database entities and relationships
 - pie: percentage or proportional distribution
 - journey: user journey steps with satisfaction scores (1-5) per step
-- architecture: physical/logical infrastructure — services, groups, directional edges (beta)`,
+- architecture: simple physical infrastructure ≤8 services (beta — use c4-container for complex architectures)
+- gitGraph: git branching history, commits, merges, and branch strategies`,
           },
           description: {
             type: 'string',

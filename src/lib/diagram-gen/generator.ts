@@ -24,7 +24,7 @@ export const DIAGRAM_GEN_DEFAULTS: DiagramGenConfig = {
   temperature: 0.3, // Lower temperature for more deterministic output
   maxTokens: 1500, // Enough for complex diagrams
   validateSyntax: true,
-  maxRetries: 2,
+  maxRetries: 3, // 4 total attempts
   debugMode: false,
 };
 
@@ -47,26 +47,48 @@ export async function getDiagramGenConfig(): Promise<DiagramGenConfig> {
 
 // ===== LLM Client =====
 
-let openaiClient: OpenAI | null = null;
-
 async function getOpenAIClient(): Promise<OpenAI> {
-  if (!openaiClient) {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
-      : await getApiKey('openai');
+  // Read config fresh each call — avoids stale client after API key or base URL changes
+  const apiKey = process.env.OPENAI_BASE_URL
+    ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
+    : await getApiKey('openai');
 
-    if (!apiKey && !process.env.OPENAI_BASE_URL) {
-      throw new Error('OpenAI API key or LiteLLM proxy required for diagram generation');
-    }
-
-    openaiClient = new OpenAI({
-      apiKey: apiKey || 'dummy-key-for-litellm',
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-    });
+  if (!apiKey && !process.env.OPENAI_BASE_URL) {
+    throw new Error('OpenAI API key or LiteLLM proxy required for diagram generation');
   }
-  return openaiClient;
+
+  return new OpenAI({
+    apiKey: apiKey || 'dummy-key-for-litellm',
+    baseURL: process.env.OPENAI_BASE_URL || undefined,
+  });
+}
+
+// ===== Retry Guidance =====
+
+/**
+ * Build retry-specific prompt guidance based on attempt number.
+ * Progressive strategy: later attempts request simpler, more conservative output.
+ */
+function buildRetryGuidance(attempt: number, lastError: string): string {
+  const base = `\n\nPrevious attempt failed with: ${lastError}`;
+
+  if (attempt === 1) {
+    return base + '\nFix the specific error above and try again. Keep the same structure.';
+  }
+  if (attempt === 2) {
+    return (
+      base +
+      '\nSimplify the diagram — reduce to 8 or fewer nodes/elements. ' +
+      'Remove optional labels, notes, and complex nesting. Fix the error above.'
+    );
+  }
+  // attempt >= 3: last resort — use the example exactly
+  return (
+    base +
+    '\nUse the minimal example format shown above as a template. ' +
+    'Produce the simplest possible valid diagram for the request. ' +
+    'Do not add extra nodes, labels, or styling.'
+  );
 }
 
 // ===== Generation Function =====
@@ -105,21 +127,21 @@ export async function generateMermaidDiagram(
   let lastError: string | undefined;
   let retryCount = 0;
 
-  // Retry loop for validation failures
+  // Retry loop with progressive simplification
   while (retryCount <= config.maxRetries) {
     try {
+      const userContent =
+        lastError
+          ? user + buildRetryGuidance(retryCount, lastError)
+          : user;
+
       const response = await client.chat.completions.create({
         model,
         temperature: config.temperature,
         max_tokens: config.maxTokens,
         messages: [
           { role: 'system', content: system },
-          {
-            role: 'user',
-            content:
-              user +
-              (lastError ? `\n\nPrevious attempt failed: ${lastError}\nFix the issue and try again.` : ''),
-          },
+          { role: 'user', content: userContent },
         ],
       });
 
@@ -135,7 +157,7 @@ export async function generateMermaidDiagram(
       const code = sanitizeMermaidCode(rawCode);
 
       if (config.debugMode) {
-        console.log('[DiagramGen] Generated code:', code);
+        console.log(`[DiagramGen] Attempt ${retryCount + 1} code:`, code);
       }
 
       // Validate if enabled
@@ -154,11 +176,12 @@ export async function generateMermaidDiagram(
         }
       }
 
-      // Success!
+      // Success
       return {
         success: true,
         code,
         diagramType,
+        retryCount,
       };
     } catch (error) {
       lastError = error instanceof Error ? error.message : 'Unknown error';
@@ -173,6 +196,7 @@ export async function generateMermaidDiagram(
   // All retries exhausted
   return {
     success: false,
+    retryCount,
     error: {
       code: 'GENERATION_FAILED',
       message: `Failed to generate valid ${diagramType} diagram after ${config.maxRetries + 1} attempts`,

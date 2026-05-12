@@ -339,7 +339,10 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   architecture: {
     systemPrompt: `Generate a Mermaid architecture diagram (beta feature).
 - Start with: architecture-beta
-- Services: service id(icon)[Label] — valid icons: cloud, database, disk, internet, server
+- MAXIMUM 8 services total — this is a hard limit. For larger architectures use c4-container instead.
+- Services: service id(icon)[Label]
+  Icons MUST be one of EXACTLY: cloud, database, disk, internet, server
+  NEVER use: computer, api, network, browser, queue, cache, lb, loadbalancer, or any other icon name
 - Groups: group id(icon)[Label]
 - Nest a service/group inside a group: add "in parentGroupId" after the definition
 - Junctions (for multi-way connections): junction id
@@ -423,6 +426,30 @@ STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyph
     Rel(web, db, "Reads/Writes", "TCP/5432")`,
     prefix: 'C4Deployment',
   },
+
+  gitGraph: {
+    systemPrompt: `Generate a Mermaid git graph diagram.
+- Start with: gitGraph
+- Optional: gitGraph LR (left-to-right) or gitGraph TB (top-to-bottom)
+- Default branch is "main" — no need to declare it explicitly
+- Switch or create branches: branch name, checkout name
+- Commits: commit id: "message" or just commit
+- Merge: merge branchName
+- Cherry-pick: cherry-pick id: "commitId"
+- Keep branch names short, single-word identifiers (no spaces)
+- Max 10-12 commits total across all branches for readability`,
+    example: `gitGraph
+   commit id: "Initial commit"
+   commit id: "Add auth"
+   branch feature
+   checkout feature
+   commit id: "Add login"
+   commit id: "Add signup"
+   checkout main
+   merge feature
+   commit id: "Release v1.0"`,
+    prefix: 'gitGraph',
+  },
 };
 
 // ===== Helper Functions =====
@@ -469,11 +496,9 @@ export function buildGenerationPrompt(
     ? effectiveSystemPrompt 
     : MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt;
 
-  // Add direction for flowcharts (only if using default prompt)
-  if (!effectiveSystemPrompt && diagramType === 'flowchart' && direction) {
-    systemPrompt = systemPrompt.replace('{DIRECTION}', direction);
-  } else if (!effectiveSystemPrompt && diagramType === 'flowchart') {
-    systemPrompt = systemPrompt.replace('{DIRECTION}', 'TD');
+  // Replace {DIRECTION} in system prompt regardless of source (default or admin override)
+  if (diagramType === 'flowchart') {
+    systemPrompt = systemPrompt.replace('{DIRECTION}', direction || 'TD');
   }
 
   const userPrompt = `Generate a ${diagramType} diagram for:

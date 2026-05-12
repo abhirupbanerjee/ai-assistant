@@ -97,11 +97,14 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
 
 async function callFireworks(model: string, opts: InternalCompletionOptions): Promise<string> {
   const client = await getFireworksClient();
+  // Non-streaming OpenAI-compatible API requires stream=true for max_tokens > 4096.
+  // Cap at 4096 to avoid the error: "Requests with max_tokens > 4096 must have stream=true"
+  const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
   const response = await client.chat.completions.create({
     model,
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
-    max_tokens: opts.maxTokens ?? 2000,
+    max_tokens: maxTokens,
   });
   return response.choices[0]?.message?.content?.trim() || '';
 }

@@ -93,7 +93,9 @@ export async function POST(request: NextRequest) {
             }
           );
 
-          const parsed = JSON.parse(raw) as {
+          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error(`Non-JSON response from LLM: ${raw.slice(0, 80)}`);
+          const parsed = JSON.parse(jsonMatch[0]) as {
             toolCapable?: boolean;
             visionCapable?: boolean;
             parallelToolCapable?: boolean;
