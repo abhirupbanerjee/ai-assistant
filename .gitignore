@@ -60,6 +60,16 @@ next-env.d.ts
 coverage/
 .nyc_output/
 
+# Test scripts (not needed for production build)
+scripts/test-dashboard.ts
+scripts/test-dashboard-live.ts
+scripts/test-dashboard-grenada2.ts
+scripts/test-connectivity.ts
+scripts/test-document-extraction.ts
+scripts/test-html-rendering.ts
+scripts/test-litellm-config.ts
+scripts/test-litellm-connections.ts
+
 # Misc
 *.log
 *.pid
