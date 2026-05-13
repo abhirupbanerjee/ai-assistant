@@ -246,39 +246,6 @@ export function buildDashboardTemplateV2(
     }
     .kpi-tile:hover .kpi-tooltip-bubble,
     .kpi-tile:focus-within .kpi-tooltip-bubble { display: block; }
-    /* ── Chart Panel Insight Overlay ── */
-    .panel-has-insight { position: relative; overflow: hidden; }
-    .panel-insight-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(17, 24, 39, 0.82);
-      backdrop-filter: blur(2px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      z-index: 10;
-      border-radius: 10px;
-      pointer-events: none;
-    }
-    .panel-has-insight:hover .panel-insight-overlay { opacity: 1; pointer-events: auto; }
-    .panel-insight-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      padding: 20px 24px;
-      max-width: 340px;
-      text-align: center;
-    }
-    .panel-insight-icon { font-size: 1.6rem; line-height: 1; }
-    .panel-insight-text {
-      color: #f9fafb;
-      font-size: 0.88rem;
-      line-height: 1.55;
-      font-weight: 500;
-    }
     @media (max-width: 1100px) {
       .dash-shell { grid-template-columns: 1fr; }
       .dash-kpis, .dash-canvas, .dash-filters, .dash-data { grid-column: 1 / -1; }
@@ -291,9 +258,194 @@ export function buildDashboardTemplateV2(
       .dash-titlebar-search { width: 140px; }
       .dash-titlebar-org { display: none; }
     }
+    /* ── AI badge in title bar ── */
+    .dash-ai-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; font-size: 0.72rem; font-weight: 600; padding: 4px 10px; border-radius: 99px; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; }
+    /* ── Data button on chart panels ── */
+    .panel-title { display: flex; align-items: center; justify-content: space-between; }
+    .panel-title > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel-data-btn { flex-shrink: 0; background: none; border: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.78rem; width: 20px; height: 20px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-left: 6px; line-height: 1; padding: 0; }
+    .panel-data-btn:hover { background: #f3f4f6; color: #374151; border-color: #9ca3af; }
+    /* ── Data modal ── */
+    .dash-data-modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    .dash-data-modal-backdrop.open { display: flex; }
+    .dash-data-modal { background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); width: min(92vw, 860px); max-height: 82vh; display: flex; flex-direction: column; overflow: hidden; }
+    .dash-data-modal-header { padding: 14px 20px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 12px; }
+    .dash-data-modal-title { font-size: 0.95rem; font-weight: 700; color: #111827; flex: 1; min-width: 0; }
+    .dash-data-modal-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+    .dash-data-csv-btn { background: #2563eb; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .dash-data-csv-btn:hover { background: #1d4ed8; }
+    .dash-data-close-btn { background: none; border: 1px solid #e5e7eb; color: #6b7280; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
+    .dash-data-close-btn:hover { background: #f3f4f6; }
+    .dash-data-modal-body { overflow: auto; flex: 1; }
+    .dash-data-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    .dash-data-table th { background: #f9fafb; color: #374151; font-weight: 600; padding: 8px 14px; text-align: left; border-bottom: 2px solid #e5e7eb; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+    .dash-data-table td { padding: 7px 14px; border-bottom: 1px solid #f3f4f6; color: #1f2937; }
+    .dash-data-table tr:last-child td { border-bottom: none; }
+    .dash-data-table tr:hover td { background: #f9fafb; }
+    .dash-data-row-count { padding: 8px 20px; font-size: 0.75rem; color: #9ca3af; border-top: 1px solid #f3f4f6; text-align: right; flex-shrink: 0; }
+    /* ── Active filter pills (inside sidebar) ── */
+    .dash-active-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 14px; border-bottom: 1px solid #f3f4f6; }
+    .dash-active-filters:empty { display: none; }
+    .filter-pill { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 99px; display: inline-flex; align-items: center; gap: 6px; }
+    .filter-pill-x { cursor: pointer; color: #2563eb; line-height: 1; font-size: 0.9rem; }
+    .filter-pill-x:hover { color: #dc2626; }
+    /* ── Filter count badge in rail header ── */
+    .dash-filter-count { display: none; background: #2563eb; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
+    .dash-filter-count.visible { display: inline-block; }
+    /* ── Cross-filter & panel transitions ── */
+    .panel { transition: opacity 0.2s ease; }
+    .panel-filter-active { position: relative; }
+    .panel-filter-active::after { content: 'Filtered'; position: absolute; top: 8px; right: 8px; background: #3b82f6; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; pointer-events: none; z-index: 5; }
   `;
 
   const dashboardJs = `
+    /* ── Utilities ───────────────────────────────────────────────────────── */
+    function escHtml(s) {
+      return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function addAlpha(color, alpha) {
+      if (!color) return 'rgba(0,0,0,' + alpha + ')';
+      var c = String(color);
+      if (c.startsWith('rgba')) return c.replace(/[\\d.]+\\)$/, alpha + ')');
+      if (c.startsWith('#') && c.length >= 7) {
+        var r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16);
+        return 'rgba('+r+','+g+','+b+','+alpha+')';
+      }
+      return c;
+    }
+
+    /* ── Cross-chart selection state ─────────────────────────────────────── */
+    var __crossFilter = null;
+
+    function dashHighlightSourceChart(chart, selDataIndex, selDsIndex) {
+      var isPie = chart.config.type==='pie' || chart.config.type==='doughnut';
+      chart.data.datasets.forEach(function(ds, di) {
+        if (!ds._fullBg) ds._fullBg = ds.backgroundColor;
+        var colors = Array.isArray(ds._fullBg)
+          ? ds._fullBg.slice()
+          : chart.data.labels.map(function() { return ds._fullBg; });
+        ds.backgroundColor = colors.map(function(c, i) {
+          return (isPie ? i===selDataIndex : di===selDsIndex) ? c : addAlpha(c, 0.22);
+        });
+      });
+      chart.update('active');
+    }
+
+    function dashHighlightOtherChart(chart, raw, selLabel) {
+      chart.data.labels = raw.data.map(function(d) { return String(d[raw.x_field]||''); });
+      var isBar = chart.config.type==='bar';
+      raw.y_fields.forEach(function(field, di) {
+        var ds = chart.data.datasets[di];
+        if (!ds) return;
+        if (!ds._fullBg) ds._fullBg = ds.backgroundColor;
+        ds.data = raw.data.map(function(d) { return Number(d[field]||0); });
+        if (isBar) {
+          ds.backgroundColor = raw.data.map(function(d, i) {
+            var matched = String(d[raw.x_field]||'').toLowerCase() === selLabel.toLowerCase();
+            var base = Array.isArray(ds._fullBg) ? ds._fullBg[i % ds._fullBg.length] : ds._fullBg;
+            return matched ? base : addAlpha(base, 0.18);
+          });
+        }
+      });
+      chart.update('active');
+    }
+
+    function dashRestoreChartData(chartId) {
+      var raw = (window.__dashData||{})[chartId];
+      var chart = (window.__dashCharts||{})[chartId];
+      if (!raw || !chart) return;
+      chart.data.labels = raw.data.map(function(d) { return String(d[raw.x_field]||''); });
+      raw.y_fields.forEach(function(field, di) {
+        var ds = chart.data.datasets[di];
+        if (!ds) return;
+        ds.data = raw.data.map(function(d) { return Number(d[field]||0); });
+        if (ds._fullBg) { ds.backgroundColor = ds._fullBg; delete ds._fullBg; }
+      });
+      chart.update('active');
+    }
+
+    function dashUpdateCrossFilter() {
+      __crossFilter = window.__dashSelection || null;
+      Object.keys(window.__dashCharts||{}).forEach(function(chartId) {
+        var chart = (window.__dashCharts||{})[chartId];
+        var raw   = (window.__dashData||{})[chartId];
+        var panel = document.querySelector('[data-chart-id="' + chartId + '"]');
+        if (!__crossFilter) {
+          dashRestoreChartData(chartId);
+          if (panel) panel.classList.remove('panel-filter-active');
+          return;
+        }
+        if (chartId === __crossFilter.sourceChartId) {
+          dashHighlightSourceChart(chart, __crossFilter.dataIndex, __crossFilter.datasetIndex);
+          if (panel) panel.classList.add('panel-filter-active');
+        } else if (raw && raw.x_field === __crossFilter.field) {
+          dashHighlightOtherChart(chart, raw, __crossFilter.label);
+          if (panel) panel.classList.add('panel-filter-active');
+        }
+      });
+      dashRenderFilterPills();
+    }
+    window.dashUpdateCrossFilter = dashUpdateCrossFilter;
+
+    /* ── Filter pills strip ──────────────────────────────────────────────── */
+    function dashRenderFilterPills() {
+      var strip = document.getElementById('dash-active-filters');
+      if (!strip) return;
+      strip.innerHTML = '';
+      var count = 0;
+      document.querySelectorAll('.dash-filters input[type="checkbox"]:checked').forEach(function(cb) {
+        var tag = cb.getAttribute('data-tag');
+        if (!tag) return;
+        var lbl = cb.parentElement ? cb.parentElement.textContent.trim() : tag;
+        var pill = document.createElement('div');
+        pill.className = 'filter-pill';
+        pill.innerHTML = escHtml(lbl) + '<span class="filter-pill-x" data-tag="' + escHtml(tag) + '">&#x00D7;</span>';
+        pill.querySelector('.filter-pill-x').addEventListener('click', function() {
+          var t = this.getAttribute('data-tag');
+          var cbox = document.querySelector('.dash-filters input[data-tag="' + t + '"]');
+          if (cbox) { cbox.checked = false; dashApplyFilters(); }
+        });
+        strip.appendChild(pill);
+        count++;
+      });
+      if (__crossFilter) {
+        var pill = document.createElement('div');
+        pill.className = 'filter-pill';
+        pill.innerHTML = '&#x2736; ' + escHtml(__crossFilter.label) + '<span class="filter-pill-x">&#x00D7;</span>';
+        pill.querySelector('.filter-pill-x').addEventListener('click', function() {
+          window.__dashSelection = null;
+          dashUpdateCrossFilter();
+        });
+        strip.appendChild(pill);
+        count++;
+      }
+      var badge = document.getElementById('dash-filter-count');
+      if (badge) {
+        badge.textContent = String(count);
+        badge.classList.toggle('visible', count > 0);
+      }
+    }
+
+    /* ── Chart data filtering (slicer-driven row filter) ─────────────────── */
+    function dashFilterChartData(chartId, tagValues) {
+      var raw = (window.__dashData||{})[chartId];
+      var chart = (window.__dashCharts||{})[chartId];
+      if (!raw || !chart) return;
+      var filtered = raw.data.filter(function(row) {
+        var xv = String(row[raw.x_field]||'').toLowerCase();
+        return tagValues.some(function(tv) { return xv === tv || xv.indexOf(tv) !== -1; });
+      });
+      if (filtered.length === 0) filtered = raw.data;
+      chart.data.labels = filtered.map(function(d) { return String(d[raw.x_field]||''); });
+      raw.y_fields.forEach(function(field, di) {
+        if (chart.data.datasets[di]) {
+          chart.data.datasets[di].data = filtered.map(function(d) { return Number(d[field]||0); });
+        }
+      });
+      chart.update('active');
+    }
+
+    /* ── dashApplyFilters (panel visibility + data filtering) ────────────── */
     function dashApplyFilters() {
       var checkedTags = [];
       document.querySelectorAll('.dash-filters input[type="checkbox"]:checked').forEach(function(cb) {
@@ -308,23 +460,52 @@ export function buildDashboardTemplateV2(
         groups[prefix].push(tag);
       });
       var groupKeys = Object.keys(groups);
-      document.querySelectorAll('.panel[data-tags], .kpi-tile[data-tags]').forEach(function(el) {
-        var tagsAttr = el.getAttribute('data-tags') || '';
-        var tags = tagsAttr.split(/\\s+/).filter(Boolean);
-        var visible = true;
-        for (var i = 0; i < groupKeys.length; i++) {
-          var groupTags = groups[groupKeys[i]];
-          var matches = groupTags.some(function(gt) { return tags.indexOf(gt) !== -1; });
-          if (!matches) { visible = false; break; }
-        }
-        el.classList.toggle('panel-hidden', !visible);
+      var tagValues = checkedTags.map(function(t) {
+        var idx = t.indexOf(':');
+        return idx > 0 ? t.substring(idx+1).toLowerCase() : t.toLowerCase();
       });
+      document.querySelectorAll('.panel[data-tags]:not(.kpi-tile)').forEach(function(el) {
+        var tags = (el.getAttribute('data-tags')||'').toLowerCase().split(/\\s+/).filter(Boolean);
+        var visible = groupKeys.every(function(gk) {
+          var chartGroupTags = tags.filter(function(t) { return t.indexOf(gk + ':') === 0; });
+          if (chartGroupTags.length === 0) return true; // unrelated dimension — keep visible
+          return groups[gk].some(function(gt) { return chartGroupTags.indexOf(gt) !== -1; });
+        });
+        if (!visible) {
+          el.classList.add('panel-hidden');
+          el.classList.remove('panel-filter-active');
+          return;
+        }
+        el.classList.remove('panel-hidden');
+        (function(cid) {
+          if (!cid) return;
+          setTimeout(function() { var c = (window.__dashCharts||{})[cid]; if (c) c.resize(); }, 0);
+        }(el.getAttribute('data-chart-id')));
+        var chartId = el.getAttribute('data-chart-id');
+        if (chartId && el.getAttribute('data-filter-by-tags')==='true' &&
+            (window.__dashCharts||{})[chartId] && checkedTags.length > 0) {
+          dashFilterChartData(chartId, tagValues);
+          el.classList.add('panel-filter-active');
+        } else if (chartId && !__crossFilter) {
+          dashRestoreChartData(chartId);
+          el.classList.remove('panel-filter-active');
+        }
+      });
+      dashRenderFilterPills();
     }
+
     function dashClearFilters() {
-      document.querySelectorAll('.dash-filters input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
-      document.querySelectorAll('.dash-filters input[type="search"], .dash-filters input[type="date"]').forEach(function(inp) { inp.value = ''; });
-      document.querySelectorAll('.panel-hidden, .kpi-tile.panel-hidden').forEach(function(el) { el.classList.remove('panel-hidden'); });
+      document.querySelectorAll('.dash-filters input').forEach(function(inp) {
+        if (inp.type==='checkbox') inp.checked=false; else inp.value='';
+      });
+      document.querySelectorAll('.panel-hidden').forEach(function(el) { el.classList.remove('panel-hidden'); });
+      window.__dashSelection = null;
+      __crossFilter = null;
+      Object.keys(window.__dashCharts||{}).forEach(dashRestoreChartData);
+      document.querySelectorAll('.panel-filter-active').forEach(function(el) { el.classList.remove('panel-filter-active'); });
+      dashRenderFilterPills();
     }
+
     function dashSearch(query) {
       var lc = (query || '').toLowerCase().trim();
       document.querySelectorAll('.dash-canvas .panel').forEach(function(panel) {
@@ -337,6 +518,77 @@ export function buildDashboardTemplateV2(
         panel.classList.toggle('panel-hidden', !match);
       });
     }
+
+    document.addEventListener('DOMContentLoaded', dashRenderFilterPills);
+
+    /* ── Data Table Modal ──────────────────────────────────────────────── */
+    var __modalData = null;
+
+    function dashShowData(chartId) {
+      var canvas = document.getElementById(chartId);
+      if (!canvas) return;
+      var rawEncoded = canvas.getAttribute('data-raw-data');
+      if (!rawEncoded) return;
+      var raw;
+      try { raw = JSON.parse(atob(rawEncoded)); } catch(e) { return; }
+      var rows = raw.data || [];
+      var columns = rows.length > 0 ? Object.keys(rows[0]) : (raw.y_fields || []);
+      var panel = document.querySelector('[data-chart-id="' + chartId + '"]');
+      var titleEl = panel ? panel.querySelector('.panel-title span') : null;
+      var title = titleEl ? titleEl.textContent.trim() : 'Data';
+      __modalData = { title: title, rows: rows, columns: columns };
+      var thead = '<tr>' + columns.map(function(c) { return '<th>' + escHtml(String(c)) + '</th>'; }).join('') + '</tr>';
+      var tbody = rows.map(function(row) {
+        return '<tr>' + columns.map(function(c) {
+          var v = row[c];
+          return '<td>' + escHtml(v === null || v === undefined ? '—' : String(v)) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      document.getElementById('dash-data-modal-title').textContent = title;
+      document.getElementById('dash-data-modal-body').innerHTML =
+        '<table class="dash-data-table"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table>';
+      document.getElementById('dash-data-row-count').textContent =
+        rows.length + ' row' + (rows.length !== 1 ? 's' : '') + ' · ' + columns.length + ' column' + (columns.length !== 1 ? 's' : '');
+      document.getElementById('dash-data-modal-backdrop').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function dashHideData() {
+      document.getElementById('dash-data-modal-backdrop').classList.remove('open');
+      document.body.style.overflow = '';
+      __modalData = null;
+    }
+
+    function dashDownloadCsv() {
+      if (!__modalData) return;
+      var cols = __modalData.columns;
+      var lines = [cols.map(function(c) { return csvEscape(c); }).join(',')];
+      __modalData.rows.forEach(function(row) {
+        lines.push(cols.map(function(c) {
+          var v = row[c];
+          return csvEscape(v === null || v === undefined ? '' : String(v));
+        }).join(','));
+      });
+      var csv = lines.join('\\r\\n');
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = (__modalData.title || 'data').replace(/[^a-z0-9]+/gi, '_').toLowerCase() + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+    }
+
+    function csvEscape(v) {
+      var s = String(v);
+      if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dashHideData(); });
   `;
 
   const titleBarHtml = `
@@ -350,6 +602,7 @@ export function buildDashboardTemplateV2(
   <div class="dash-titlebar-right">
     <input type="search" class="dash-titlebar-search" placeholder="Search panels..." oninput="dashSearch(this.value)" aria-label="Search dashboard panels">
     <button class="dash-titlebar-action" onclick="window.print()" title="Print" aria-label="Print">⎙</button>
+    <span class="dash-ai-badge">⚡ AI Generated</span>
   </div>
 </header>`;
 
@@ -362,7 +615,7 @@ export function buildDashboardTemplateV2(
   ${vendorScripts}
   <style>${css}${dashboardCss}</style>
 </head>
-<body>
+<body data-page-type="dashboard">
   ${titleBarHtml}
   <div class="dash-shell">
     ${disclaimerHtml}
@@ -378,6 +631,19 @@ export function buildDashboardTemplateV2(
     Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}
   </footer>
   <script>${js}${dashboardJs}</script>
+  <div class="dash-data-modal-backdrop" id="dash-data-modal-backdrop" onclick="if(event.target===this)dashHideData()">
+    <div class="dash-data-modal">
+      <div class="dash-data-modal-header">
+        <span class="dash-data-modal-title" id="dash-data-modal-title">Data</span>
+        <div class="dash-data-modal-actions">
+          <button class="dash-data-csv-btn" onclick="dashDownloadCsv()">&#x2B07; Download CSV</button>
+          <button class="dash-data-close-btn" onclick="dashHideData()" title="Close">&#x00D7;</button>
+        </div>
+      </div>
+      <div class="dash-data-modal-body" id="dash-data-modal-body"></div>
+      <div class="dash-data-row-count" id="dash-data-row-count"></div>
+    </div>
+  </div>
 </body>
 </html>`;
 }

@@ -98,7 +98,7 @@ export function renderFiltersSidebar(seg: FiltersSegment): string {
     }
     const opts = (slicer.options || []).map((opt) => `
 <label class="filter-opt">
-  <input type="checkbox" data-tag="${escapeHtml(prefix + ':' + opt)}" onchange="dashApplyFilters()">
+  <input type="checkbox" data-tag="${escapeHtml((prefix + ':' + opt).toLowerCase())}" onchange="dashApplyFilters()">
   <span>${escapeHtml(opt)}</span>
 </label>`).join('');
     return `
@@ -111,9 +111,10 @@ export function renderFiltersSidebar(seg: FiltersSegment): string {
   return `
 <aside class="dash-filters" aria-label="Filters">
   <div class="dash-rail-header">
-    <span class="dash-rail-title">${escapeHtml(heading)}</span>
+    <span class="dash-rail-title">${escapeHtml(heading)}<span class="dash-filter-count" id="dash-filter-count"></span></span>
     <button class="dash-rail-clear" onclick="dashClearFilters()" aria-label="Clear filters">Clear</button>
   </div>
+  <div id="dash-active-filters" class="dash-active-filters"></div>
   <div class="dash-rail-body">${slicersHtml}</div>
 </aside>`;
 }
@@ -173,41 +174,45 @@ export function renderDashboardChartPanel(
     ? ` data-tags="${escapeHtml(seg.config.tags.join(' '))}"`
     : '';
 
-  // Insight overlay: shown on panel hover when notes are present
-  const insightHtml = seg.config.notes
-    ? `<div class="panel-insight-overlay" aria-label="Chart insight">
-        <div class="panel-insight-content">
-          <span class="panel-insight-icon">💡</span>
-          <span class="panel-insight-text">${escapeHtml(seg.config.notes)}</span>
-        </div>
-      </div>`
-    : '';
-
-  const hasInsight = !!seg.config.notes;
-  const insightClass = hasInsight ? ' panel-has-insight' : '';
-
   // Server-rendered: emit static <img> with data-URL
   if (rendered) {
     return `
-<div class="panel panel-${size}${insightClass}"${tagsAttr}>
-  ${seg.config.title ? `<div class="panel-title">${escapeHtml(seg.config.title)}</div>` : ''}
+<div class="panel panel-${size}"${tagsAttr}>
+  ${seg.config.title ? `<div class="panel-title"><span>${escapeHtml(seg.config.title)}</span></div>` : ''}
   <div class="panel-body chart-container" data-chart-wrapper="true">
     <img src="${rendered.pngDataUrl}" alt="${escapeHtml(rendered.title)}" style="width:100%;height:auto;display:block;" data-chart-image="true">
   </div>
-  ${insightHtml}
 </div>`;
   }
 
-  // Fallback: client-side Chart.js rendering
+  // Client-side Chart.js rendering (always used for dashboard; also fallback for other page types)
   const chartConfig = buildChartJsConfig(seg.config, id);
   const encodedConfig = Buffer.from(chartConfig, 'utf-8').toString('base64');
+  const rawDataJson = JSON.stringify({
+    data: seg.config.data,
+    x_field: seg.config.x_field,
+    y_fields: seg.config.y_fields,
+    recommended_chart: seg.config.recommended_chart,
+    series_mode: seg.config.series_mode,
+  });
+  const encodedRawData = Buffer.from(rawDataJson, 'utf-8').toString('base64');
+  const xFieldEsc = escapeHtml(seg.config.x_field);
+  const yFieldsEsc = escapeHtml(seg.config.y_fields.join(','));
   return `
-<div class="panel panel-${size}${insightClass}"${tagsAttr}>
-  ${seg.config.title ? `<div class="panel-title">${escapeHtml(seg.config.title)}</div>` : ''}
+<div class="panel panel-${size}"
+     data-chart-id="${id}"
+     data-x-field="${xFieldEsc}"
+     data-filter-by-tags="true"
+     ${tagsAttr}>
+  ${seg.config.title ? `<div class="panel-title"><span>${escapeHtml(seg.config.title)}</span><button class="panel-data-btn" onclick="dashShowData('${id}')" title="View data table">&#x22A1;</button></div>` : ''}
   <div class="panel-body chart-container" data-chart-wrapper="true">
-    <canvas id="${id}" data-chart-config="${encodedConfig}"></canvas>
+    <canvas id="${id}"
+            data-chart-config="${encodedConfig}"
+            data-raw-data="${encodedRawData}"
+            data-x-field="${xFieldEsc}"
+            data-y-fields="${yFieldsEsc}">
+    </canvas>
   </div>
-  ${insightHtml}
 </div>`;
 }
 

@@ -39,7 +39,8 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
 
   segments.forEach((seg, i) => {
     if (seg.type === 'chart') {
-      chartConfigs.push({ index: i, config: seg.config });
+      // Dashboard charts are rendered client-side as interactive canvas — skip Playwright PNG
+      if (pageType !== 'dashboard') chartConfigs.push({ index: i, config: seg.config });
     } else if (seg.type === 'mermaid') {
       diagramCodes.push({ index: i, code: seg.code });
     }

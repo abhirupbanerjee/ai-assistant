@@ -18,11 +18,6 @@ import { podcastGenTool } from './tools/podcast-gen';
 import { websiteAnalysisTool } from './tools/pagespeed';
 import { codeAnalysisTool } from './tools/sonarcloud';
 import { loadTestingTool } from './tools/loadtest';
-import { securityScanTool } from './tools/security-scan';
-import { sslScanTool } from './tools/ssl-scan';
-import { dnsScanTool } from './tools/dns-scan';
-import { cookieAuditTool } from './tools/cookie-audit';
-import { redirectAuditTool } from './tools/redirect-audit';
 import { fileToHtmlTool } from './tools/file-to-html';
 import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
@@ -124,11 +119,6 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   website_analysis: websiteAnalysisTool,
   code_analysis: codeAnalysisTool,
   load_testing: loadTestingTool,
-  security_scan: securityScanTool,
-  ssl_scan: sslScanTool,
-  dns_scan: dnsScanTool,
-  cookie_audit: cookieAuditTool,
-  redirect_audit: redirectAuditTool,
   file_to_html: fileToHtmlTool,
   html_gen: htmlGenTool,
 };
