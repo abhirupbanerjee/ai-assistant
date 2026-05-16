@@ -93,4 +93,7 @@ sqlite_export/
 .claude
 .codex
 AGENTS.md
+.vscode
+.next
+.agents
 
