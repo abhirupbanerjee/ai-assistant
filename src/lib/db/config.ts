@@ -333,7 +333,7 @@ export function getAvailableModels(): AvailableModel[] {
           name: model.displayName,
           description: `${model.providerId} model${model.toolCapable ? ' with tool support' : ''}${model.visionCapable ? ' and vision' : ''}`,
           provider: model.providerId as 'openai' | 'mistral' | 'gemini' | 'ollama',
-          defaultMaxTokens: model.maxInputTokens || 2000,
+          defaultMaxTokens: model.maxOutputTokens || 2000,
         }));
       }
     }

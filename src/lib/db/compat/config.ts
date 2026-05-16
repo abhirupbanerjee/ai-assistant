@@ -397,7 +397,7 @@ export async function getAvailableModels(): Promise<AvailableModel[]> {
           name: model.displayName,
           description: `${model.providerId} model${model.toolCapable ? ' with tool support' : ''}${model.visionCapable ? ' and vision' : ''}`,
           provider: model.providerId as AvailableModel['provider'],
-          defaultMaxTokens: model.maxInputTokens || 2000,
+          defaultMaxTokens: model.maxOutputTokens || 2000,
         }));
       }
     }

@@ -88,6 +88,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'At least one route must be enabled' }, { status: 400 });
     }
 
+    // Primary route must be enabled
+    const newPrimary = primaryRoute ?? current.primaryRoute;
+    const routeEnabled: Record<string, boolean> = {
+      route1: newR1, route2: newR2, route3: newR3, route4: newR4,
+    };
+    if (!routeEnabled[newPrimary]) {
+      return NextResponse.json({ error: 'Primary route must be enabled' }, { status: 400 });
+    }
+
     // Build update
     const updates: Partial<RoutesSettings> = {};
     if (route1Enabled !== undefined) updates.route1Enabled = route1Enabled;

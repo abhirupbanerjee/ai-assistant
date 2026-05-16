@@ -389,7 +389,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       // Update model state directly from response — avoids a second round-trip and
       // prevents fetchModels() failures from incorrectly reverting a successful save.
       const { model: updated } = await res.json() as { model: EnabledModel };
-      setEnabledModels(prev => prev.map(m => m.id === modelId ? updated : m));
+      setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, ...updated } : m));
       const labels: Record<string, string> = { toolCapable: 'Tools', visionCapable: 'Vision', parallelToolCapable: 'Parallel', thinkingCapable: 'Thinking' };
       showSuccess(`${labels[field] || field} ${!current ? 'enabled' : 'disabled'}`);
     } catch (err) {
@@ -649,7 +649,9 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vision</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parallel</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thinking</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Input</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <span title="Total context window capacity (input + output). This is stored for reference and does not currently affect inference.">Context Window <Info size={12} className="inline-block text-gray-400 ml-0.5" /></span>
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Output</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       {!readOnly && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
@@ -753,7 +755,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           <button
                             onClick={() => !readOnly && !routeOff && handleToggleCapability(model.id, 'thinkingCapable', model.thinkingCapable)}
                             disabled={readOnly || routeOff}
-                            title={routeOff ? 'Route is disabled' : model.thinkingCapable ? 'Thinking/reasoning enabled — click to disable' : 'Thinking/reasoning disabled — click to enable'}
+                            title={routeOff ? 'Route is disabled' : model.thinkingCapable ? 'Thinking/reasoning enabled — click to disable (informational only)' : 'Thinking/reasoning disabled — click to enable (informational only)'}
                             className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                               model.thinkingCapable
                                 ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
@@ -767,7 +769,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           )}
                         </td>
 
-                        {/* Max Input — inline edit */}
+                        {/* Context Window — inline edit */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {editingMaxInput === model.id ? (
                             <div>

@@ -35,7 +35,7 @@ const isRoute3Model = (id: string) =>
   id.startsWith('ollama-') || id.startsWith('ollama/');
 
 const isRoute4Model = (id: string) =>
-  id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
+  id.startsWith('ollama-cloud/');
 
 // ============ Component ============
 
@@ -154,6 +154,8 @@ export default function RoutesSettingsPanel() {
       setEdited(data.settings);
       setSuccess('Routes settings saved successfully');
       setTimeout(() => setSuccess(null), 3000);
+      // Refresh model validation warnings
+      fetchModelValidation();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
