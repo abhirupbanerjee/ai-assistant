@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, X, Search } from 'lucide-react';
 import type { UserSubscription } from '@/types';
 
@@ -93,11 +93,11 @@ export default function CategoryChip({
 
   const selectedCategory = subscriptions.find(s => s.categoryId === selectedCategoryId);
 
-  const filteredSubscriptions = useMemo(() => {
+  const filteredSubscriptions = (() => {
     if (!filterText.trim()) return subscriptions;
     const query = filterText.toLowerCase();
     return subscriptions.filter(s => s.categoryName.toLowerCase().includes(query));
-  }, [subscriptions, filterText]);
+  })();
 
   const handleSelect = (categoryId: number | null) => {
     if (categoryId !== null) {
