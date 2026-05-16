@@ -73,6 +73,7 @@ export const PROVIDERS = {
   ANTHROPIC: 'anthropic',
   DEEPSEEK: 'deepseek',
   FIREWORKS: 'fireworks',
+  MOONSHOT: 'moonshot',
   OLLAMA_CLOUD: 'ollama-cloud',
 } as const;
 
@@ -104,6 +105,10 @@ export const PROVIDER_ENV_VARS = {
   },
   fireworks: {
     apiKey: 'FIREWORKS_AI_API_KEY',
+  },
+  moonshot: {
+    apiKey: 'MOONSHOT_API_KEY',
+    apiBase: 'MOONSHOT_API_BASE',
   },
   'ollama-cloud': {
     apiKey: 'OLLAMA_API_KEY',

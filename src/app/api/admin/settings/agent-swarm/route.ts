@@ -12,65 +12,8 @@ import {
   type AgentSwarmSettings,
 } from '@/lib/db/compat/agent-swarm';
 import { getApiKey } from '@/lib/provider-helpers';
-
-interface MoonshotCapabilityResult {
-  apiKeyValid: boolean;
-  balance: number | null;
-  modelAvailable: boolean;
-  errors: string[];
-}
-
-async function checkMoonshotCapabilities(model: string): Promise<MoonshotCapabilityResult> {
-  const result: MoonshotCapabilityResult = {
-    apiKeyValid: false,
-    balance: null,
-    modelAvailable: false,
-    errors: [],
-  };
-
-  const apiKey = await getApiKey('moonshot');
-  if (!apiKey) {
-    result.errors.push('Moonshot API key not configured');
-    return result;
-  }
-
-  try {
-    // Check balance
-    const balanceRes = await fetch('https://api.moonshot.ai/v1/users/me/balance', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (balanceRes.ok) {
-      const balanceData = await balanceRes.json() as { data?: { total_balance?: number } };
-      result.apiKeyValid = true;
-      result.balance = balanceData.data?.total_balance ?? null;
-    } else {
-      result.errors.push(`Balance check failed: ${balanceRes.status}`);
-    }
-  } catch (err) {
-    result.errors.push(`Balance check error: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  try {
-    // Check available models
-    const modelsRes = await fetch('https://api.moonshot.ai/v1/models', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (modelsRes.ok) {
-      const modelsData = await modelsRes.json() as { data?: Array<{ id: string }> };
-      const availableModels = modelsData.data?.map(m => m.id) || [];
-      result.modelAvailable = availableModels.includes(model);
-      if (!result.modelAvailable) {
-        result.errors.push(`Model ${model} not available in this account`);
-      }
-    } else {
-      result.errors.push(`Models check failed: ${modelsRes.status}`);
-    }
-  } catch (err) {
-    result.errors.push(`Models check error: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  return result;
-}
+import { checkMoonshotCapabilities } from '@/lib/agent-swarm/capability-check';
+import type { MoonshotCapabilityResult } from '@/lib/agent-swarm/capability-check';
 
 export async function GET() {
   try {
@@ -120,6 +63,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { enabled, model, maxTokens, systemPrompt } = body;
 
+    // Strict enforcement: Agent Swarm is Kimi K2.6 only
+    if (model !== undefined && model !== 'kimi-k2.6') {
+      return NextResponse.json(
+        { error: 'Invalid model: Agent Swarm only supports kimi-k2.6' },
+        { status: 400 }
+      );
+    }
+
     // Validate inputs
     if (enabled === true) {
       const moonshotKey = await getApiKey('moonshot');
@@ -131,7 +82,7 @@ export async function POST(request: NextRequest) {
       }
 
       const capabilities = await checkMoonshotCapabilities(model || 'kimi-k2.6');
-      if (!capabilities.apiKeyValid) {
+      if (!capabilities.apiKeyValid || !capabilities.modelAvailable) {
         return NextResponse.json(
           { error: `Cannot enable agent swarm: ${capabilities.errors.join(', ')}` },
           { status: 400 }
@@ -155,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     const updates: Partial<AgentSwarmSettings> = {};
     if (enabled !== undefined) updates.enabled = enabled;
-    if (model !== undefined) updates.model = model;
+    // model is hard-coded to kimi-k2.6; do not persist from body
     if (maxTokens !== undefined) updates.maxTokens = maxTokens;
     if (systemPrompt !== undefined) updates.systemPrompt = systemPrompt;
 

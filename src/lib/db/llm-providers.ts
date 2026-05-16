@@ -66,7 +66,7 @@ const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: string }> =
   anthropic: { apiKey: 'ANTHROPIC_API_KEY' },
   deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
   fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
-  moonshot: { apiKey: 'MOONSHOT_API_KEY' },
+  moonshot: { apiKey: 'MOONSHOT_API_KEY', apiBase: 'MOONSHOT_API_BASE' },
 };
 
 // ============ Row Mapper ============

@@ -83,9 +83,10 @@ async function getOllamaClient(): Promise<OpenAI> {
 async function getMoonshotClient(): Promise<OpenAI> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
+    const { getMoonshotBaseUrl } = await import('./agent-swarm/moonshot-config');
     moonshotClient = new OpenAI({
       apiKey: apiKey || undefined,
-      baseURL: 'https://api.moonshot.cn/v1',
+      baseURL: await getMoonshotBaseUrl(),
     });
   }
   return moonshotClient;

@@ -7,6 +7,7 @@
  */
 
 import { getApiKey } from '@/lib/provider-helpers';
+import { getMoonshotBaseUrl } from './moonshot-config';
 
 export interface MoonshotCapabilityResult {
   apiKeyValid: boolean;
@@ -24,13 +25,14 @@ export async function checkMoonshotCapabilities(model: string = 'kimi-k2.6'): Pr
   };
 
   const apiKey = await getApiKey('moonshot');
+  const baseUrl = await getMoonshotBaseUrl();
   if (!apiKey) {
     result.errors.push('Moonshot API key not configured');
     return result;
   }
 
   try {
-    const balanceRes = await fetch('https://api.moonshot.ai/v1/users/me/balance', {
+    const balanceRes = await fetch(`${baseUrl}/users/me/balance`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (balanceRes.ok) {
@@ -45,7 +47,7 @@ export async function checkMoonshotCapabilities(model: string = 'kimi-k2.6'): Pr
   }
 
   try {
-    const modelsRes = await fetch('https://api.moonshot.ai/v1/models', {
+    const modelsRes = await fetch(`${baseUrl}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (modelsRes.ok) {

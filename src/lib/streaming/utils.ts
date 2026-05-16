@@ -78,6 +78,8 @@ const PHASE_MESSAGES: Record<StreamPhase, string> = {
   agent_summarizing: 'Generating summary...',
   awaiting_approval: 'Waiting for plan approval...',
   swarm_orchestrating: 'Coordinating agent swarm...',
+  swarm_tool_call: 'Executing swarm tool...',
+  swarm_tool_result: 'Tool result received',
   swarm_complete: 'Agent swarm complete',
   complete: 'Complete',
 };

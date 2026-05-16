@@ -324,7 +324,8 @@ async function getOllamaClient(): Promise<OpenAI> {
 
 /**
  * Check if a model ID refers to a Moonshot AI model.
- * These models bypass LiteLLM and connect directly to api.moonshot.cn.
+ * These models bypass LiteLLM and connect directly to Moonshot
+ * (base URL configurable via provider settings, default: api.moonshot.ai).
  */
 export function isMoonshotModel(model: string): boolean {
   return model.startsWith('moonshot/');
@@ -343,9 +344,10 @@ let moonshotClient: OpenAI | null = null;
 async function getMoonshotClient(): Promise<OpenAI> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
+    const { getMoonshotBaseUrl } = await import('./agent-swarm/moonshot-config');
     moonshotClient = new OpenAI({
       apiKey: apiKey || undefined,
-      baseURL: 'https://api.moonshot.cn/v1',
+      baseURL: await getMoonshotBaseUrl(),
       timeout: 300 * 1000, // 5 minutes — matches other clients
     });
   }

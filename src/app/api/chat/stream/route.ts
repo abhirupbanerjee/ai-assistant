@@ -328,40 +328,59 @@ export async function POST(request: NextRequest) {
 
           const assistantMessageId = uuidv4();
 
-          try {
-            const result = await executeSwarmWithStreaming(
-              openaiMessages,
-              {
-                model: swarmSettings.model,
-                maxTokens: swarmSettings.maxTokens,
-                temperature: swarmSettings.temperature,
-                systemPrompt: swarmSettings.systemPrompt,
-                categoryIds,
-              },
-              send
-            );
+          await runWithContextAsync(
+            {
+              threadId,
+              messageId: assistantMessageId,
+              categoryIds: categoryIds,
+              userId: user.id,
+              userMessage: message,
+            },
+            async () => {
+              try {
+                  const result = await executeSwarmWithStreaming(
+                  openaiMessages,
+                  {
+                    model: swarmSettings.model,
+                    maxTokens: swarmSettings.maxTokens,
+                    temperature: swarmSettings.temperature,
+                    systemPrompt: swarmSettings.systemPrompt,
+                    categoryIds,
+                    signal: request.signal,
+                  },
+                  send
+                );
 
-            const assistantMessage: Message = {
-              id: assistantMessageId,
-              role: 'assistant',
-              content: result.content,
-              timestamp: new Date(),
-              metadata: {
-                model: swarmSettings.model,
-                totalMs: Date.now() - requestStart,
-                completionTokens: countTokens(result.content),
-                tokensEstimated: true,
-              },
-            };
+                const assistantMessage: Message = {
+                  id: assistantMessageId,
+                  role: 'assistant',
+                  content: result.content,
+                  timestamp: new Date(),
+                  metadata: {
+                    model: swarmSettings.model,
+                    totalMs: Date.now() - requestStart,
+                    completionTokens: countTokens(result.content),
+                    tokensEstimated: true,
+                  },
+                };
 
-            await addMessage(user.id, threadId, assistantMessage);
-            await updateThreadTokenCount(threadId, countTokens(result.content));
+                await addMessage(user.id, threadId, assistantMessage);
+                await updateThreadTokenCount(threadId, countTokens(result.content));
 
-            send({ type: 'done', messageId: assistantMessageId, threadId });
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Swarm execution failed';
-            send({ type: 'error', code: 'UNKNOWN_ERROR', message: errorMsg, recoverable: false });
-          }
+                // Link any generated outputs (documents, images, etc.) to this message
+                try {
+                  await linkOutputsToMessage(threadId, assistantMessageId);
+                } catch (linkError) {
+                  console.error('[Stream] Failed to link swarm outputs to message:', linkError);
+                }
+
+                send({ type: 'done', messageId: assistantMessageId, threadId });
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : 'Swarm execution failed';
+                send({ type: 'error', code: 'UNKNOWN_ERROR', message: errorMsg, recoverable: false });
+              }
+            }
+          );
 
           cleanup();
           safeClose();

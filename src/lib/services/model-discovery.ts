@@ -7,6 +7,7 @@
 import { getProviderApiKey, getProviderApiBase } from '../db/compat/llm-providers';
 import { getEnabledModel } from '../db/compat/enabled-models';
 import { generateDisplayName, getProviderFromModelPath } from '../litellm-validator';
+import { getMoonshotBaseUrl } from '../agent-swarm/moonshot-config';
 
 // ============ Types ============
 
@@ -595,7 +596,8 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
  * Uses OpenAI-compatible /v1/models endpoint
  */
 async function discoverMoonshotModels(apiKey: string): Promise<DiscoveredModel[]> {
-  const response = await fetch('https://api.moonshot.cn/v1/models', {
+  const baseUrl = await getMoonshotBaseUrl();
+  const response = await fetch(`${baseUrl}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
 

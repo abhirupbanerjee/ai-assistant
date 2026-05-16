@@ -9,6 +9,7 @@
 import type { OpenAI } from 'openai';
 import { getApiKey } from '@/lib/provider-helpers';
 import { getSwarmTools, executeSwarmToolCall } from './tool-adapter';
+import { getMoonshotBaseUrl } from './moonshot-config';
 import type { StreamEvent } from '@/types/stream';
 
 export interface SwarmExecutionOptions {
@@ -18,6 +19,7 @@ export interface SwarmExecutionOptions {
   systemPrompt?: string;
   categoryIds?: number[];
   maxIterations?: number;
+  signal?: AbortSignal;
 }
 
 export interface SwarmExecutionResult {
@@ -83,13 +85,14 @@ export async function executeSwarmWithStreaming(
 
   const apiKey = await getApiKey('moonshot');
   if (!apiKey) {
-    send({ type: 'swarm_status', phase: 'error', message: 'Moonshot API key not configured' });
+    send({ type: 'error', code: 'NOT_CONFIGURED', message: 'Moonshot API key not configured', recoverable: false });
     throw new Error('Moonshot API key not configured');
   }
 
   // Lazy import OpenAI to avoid issues
   const { default: OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey, baseURL: 'https://api.moonshot.ai/v1' });
+  const baseUrl = await getMoonshotBaseUrl();
+  const client = new OpenAI({ apiKey, baseURL: baseUrl });
 
   const tools = await getSwarmTools(categoryIds);
   const toolDefinitions = tools.length > 0 ? tools.map(t => t.definition) : undefined;
@@ -105,9 +108,13 @@ export async function executeSwarmWithStreaming(
   let totalToolCalls = 0;
   const agentActivities: Array<{ agentName: string; activity: string; timestamp: number }> = [];
 
-  send({ type: 'swarm_status', phase: 'swarm_orchestrating', message: 'Coordinating agent swarm...' });
+  send({ type: 'status', phase: 'swarm_orchestrating', content: 'Coordinating agent swarm...' });
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    if (options.signal?.aborted) {
+      throw new Error('Swarm execution aborted');
+    }
+
     const stream = await client.chat.completions.create({
       model,
       messages: conversation,
@@ -118,7 +125,9 @@ export async function executeSwarmWithStreaming(
       // Preserve reasoning chains across multi-turn tool call loops.
       // Moonshot docs: dropping reasoning_content causes degradation.
       thinking: { type: 'enabled', keep: 'all' },
-    } as unknown as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
+    } as unknown as OpenAI.Chat.ChatCompletionCreateParamsStreaming, {
+      signal: options.signal,
+    });
 
     let iterationContent = '';
     let iterationReasoning = '';
@@ -183,29 +192,35 @@ export async function executeSwarmWithStreaming(
     if (toolCalls.length > 0) {
       totalToolCalls += toolCalls.length;
 
-      // Add assistant message with tool calls
+          // Add assistant message with tool calls and reasoning content
+      // Moonshot docs: preserving reasoning_content across turns prevents degradation
       conversation.push({
         role: 'assistant',
         content: iterationContent || null,
         tool_calls: toolCalls,
-      });
+        reasoning_content: iterationReasoning || undefined,
+      } as OpenAI.Chat.ChatCompletionMessageParam);
 
       // Execute each tool call
       for (const toolCall of toolCalls) {
         if (!toolCall) continue;
 
+        if (options.signal?.aborted) {
+          throw new Error('Swarm execution aborted');
+        }
+
         send({
-          type: 'swarm_status',
-          phase: 'tool_call',
-          message: `Executing ${(toolCall as OpenAI.Chat.ChatCompletionMessageFunctionToolCall).function.name}...`,
+          type: 'status',
+          phase: 'swarm_tool_call',
+          content: `Executing ${(toolCall as OpenAI.Chat.ChatCompletionMessageFunctionToolCall).function.name}...`,
         });
 
         const result = await executeSwarmToolCall(toolCall as OpenAI.Chat.ChatCompletionMessageFunctionToolCall, categoryIds);
 
         send({
-          type: 'swarm_status',
-          phase: 'tool_result',
-          message: `${result.displayName} completed`,
+          type: 'status',
+          phase: 'swarm_tool_result',
+          content: `${result.displayName} completed`,
         });
 
         // Add tool result to conversation
@@ -221,7 +236,7 @@ export async function executeSwarmWithStreaming(
     }
 
     // No tool calls - we're done
-    send({ type: 'swarm_status', phase: 'swarm_complete', message: 'Agent swarm complete' });
+    send({ type: 'status', phase: 'swarm_complete', content: 'Agent swarm complete' });
 
     return {
       content: finalContent,
@@ -233,7 +248,7 @@ export async function executeSwarmWithStreaming(
   }
 
   // Max iterations reached
-  send({ type: 'swarm_status', phase: 'swarm_complete', message: 'Agent swarm complete (max iterations)' });
+  send({ type: 'status', phase: 'swarm_complete', content: 'Agent swarm complete (max iterations)' });
 
   return {
     content: finalContent,

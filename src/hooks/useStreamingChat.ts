@@ -105,8 +105,6 @@ export interface StreamingState {
   hitlEvent: HitlClarificationEvent | null;
   /** HITL plan approval event (autonomous mode) */
   planApprovalEvent: PlanApprovalEvent | null;
-  /** Active swarm agents and their activities */
-  swarmAgents: Array<{ agentName: string; activity: string; timestamp: number }>;
 }
 
 export interface UseStreamingChatOptions {
@@ -204,7 +202,6 @@ const initialState: StreamingState = {
   preflightEvent: null,
   hitlEvent: null,
   planApprovalEvent: null,
-  swarmAgents: [],
 };
 
 // ============ Hook ============
@@ -653,28 +650,6 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
       }
 
-      case 'swarm_agent':
-        setState(prev => ({
-          ...prev,
-          swarmAgents: [
-            ...prev.swarmAgents,
-            { agentName: event.agentName, activity: event.activity, timestamp: Date.now() },
-          ],
-        }));
-        break;
-
-      case 'swarm_status':
-        setState(prev => ({
-          ...prev,
-          phase: event.phase as StreamPhase,
-          processingDetails: {
-            ...prev.processingDetails,
-            phase: event.phase as StreamPhase,
-            statusMessage: event.message,
-          },
-        }));
-        break;
-
       case 'chunk':
         // Use RAF batching for smooth updates
         contentBufferRef.current += event.content;
@@ -893,7 +868,6 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       preflightEvent: null,
       hitlEvent: null,
       planApprovalEvent: null,
-      swarmAgents: [],
       processingDetails: {
         ...prev.processingDetails,
         phase: 'complete',

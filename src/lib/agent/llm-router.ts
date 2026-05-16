@@ -458,9 +458,10 @@ async function generateMoonshot(
 ): Promise<LLMResponse> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
+    const { getMoonshotBaseUrl } = await import('@/lib/agent-swarm/moonshot-config');
     moonshotClient = new OpenAI({
       apiKey: apiKey || undefined,
-      baseURL: 'https://api.moonshot.cn/v1',
+      baseURL: await getMoonshotBaseUrl(),
     });
   }
 

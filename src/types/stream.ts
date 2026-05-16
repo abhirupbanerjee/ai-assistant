@@ -27,6 +27,8 @@ export type StreamPhase =
   | 'agent_summarizing' // Agent mode: Generating summary
   | 'awaiting_approval' // Agent mode: Waiting for user plan approval
   | 'swarm_orchestrating' // Swarm mode: Coordinating agents
+  | 'swarm_tool_call'     // Swarm mode: Executing a tool call
+  | 'swarm_tool_result'   // Swarm mode: Tool call completed
   | 'swarm_complete'      // Swarm mode: All agents done
   | 'complete';   // All done
 
@@ -187,7 +189,6 @@ export type StreamEvent =
 
   // Agent swarm events
   | { type: 'swarm_agent'; agentName: string; activity: string }
-  | { type: 'swarm_status'; phase: string; message: string }
 
   // Backend operation log (RAG steps, LLM switches, memory loading) for Operations UI section
   | { type: 'operation_log'; category: OperationCategory; message: string };
@@ -206,6 +207,7 @@ export type StreamErrorCode =
   // Workspace-specific error codes
   | 'FEATURE_DISABLED'
   | 'NOT_FOUND'
+  | 'NOT_CONFIGURED'
   | 'DISABLED'
   | 'DOMAIN_NOT_ALLOWED'
   | 'ACCESS_DENIED'

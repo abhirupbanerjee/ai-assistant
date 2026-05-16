@@ -319,11 +319,11 @@ export default function AgentSwarmSettingsTab() {
                 <input
                   type="text"
                   value={editedSettings.model}
-                  onChange={(e) => updateSetting('model', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="kimi-k2.6"
+                  readOnly
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
                 />
-                <p className="text-xs text-gray-500 mt-1">Recommended: kimi-k2.6</p>
+                <p className="text-xs text-gray-500 mt-1">Agent Swarm requires kimi-k2.6</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Max Output Tokens</label>

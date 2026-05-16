@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getApiKey } from '@/lib/provider-helpers';
+import { getMoonshotBaseUrl } from '@/lib/agent-swarm/moonshot-config';
 
 interface RouteHealth {
   route1: { healthy: boolean; latencyMs: number | null; error?: string };
@@ -113,7 +114,8 @@ async function checkMoonshotHealth(): Promise<{ healthy: boolean; latencyMs: num
 
   const start = Date.now();
   try {
-    const res = await fetch('https://api.moonshot.cn/v1/models', {
+    const baseUrl = await getMoonshotBaseUrl();
+    const res = await fetch(`${baseUrl}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(5000),
     });
