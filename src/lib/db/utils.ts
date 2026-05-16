@@ -68,6 +68,7 @@ export const DEFAULT_PROVIDERS: LLMProviderDefaults[] = [
   { id: 'deepseek', name: 'DeepSeek', apiKey: null, apiBase: null, enabled: true },
   { id: 'fireworks', name: 'Fireworks AI', apiKey: null, apiBase: null, enabled: true },
   { id: 'ollama-cloud', name: 'Ollama Cloud', apiKey: null, apiBase: null, enabled: true },
+  { id: 'moonshot', name: 'Moonshot AI', apiKey: null, apiBase: null, enabled: true },
 ];
 
 export function maskApiKey(apiKey: string | null): string {

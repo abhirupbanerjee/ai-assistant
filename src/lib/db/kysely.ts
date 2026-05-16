@@ -172,6 +172,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     .execute();
   console.log('[Kysely] Ensured Ollama Cloud provider exists');
 
+  // Seed Moonshot provider (added after initial setup)
+  await database
+    .insertInto('llm_providers')
+    .values({
+      id: 'moonshot',
+      name: 'Moonshot AI',
+      api_key: process.env['MOONSHOT_API_KEY'] || null,
+      api_base: process.env['MOONSHOT_API_BASE'] || null,
+      enabled: 1,
+    })
+    .onConflict(oc => oc.column('id').doNothing())
+    .execute();
+  console.log('[Kysely] Ensured Moonshot provider exists');
+
   // Migration: Create reindex_jobs table if it doesn't exist
   await sql`
     CREATE TABLE IF NOT EXISTS reindex_jobs (
