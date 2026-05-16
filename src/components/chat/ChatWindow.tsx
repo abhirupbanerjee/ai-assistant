@@ -34,7 +34,6 @@ interface ChatWindowProps {
   globalWelcome?: WelcomeConfig;
   categoryWelcome?: WelcomeConfig;
   globalStarterPrompts?: StarterPrompt[];
-  selectedCategoryId?: number | null;
   // Callbacks for artifacts data
   onArtifactsChange?: (data: {
     threadId: string | null;
@@ -70,7 +69,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   globalWelcome,
   categoryWelcome,
   globalStarterPrompts,
-  selectedCategoryId,
   onArtifactsChange,
   onInputFocus,
   onInputBlur,

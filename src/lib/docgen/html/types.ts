@@ -12,6 +12,7 @@ export interface HtmlOptions {
   metadata?: {
     author?: string;
     date?: string;
+    dataSource?: string;
   };
   /** Optional explicit page type. If omitted, auto-detection is used. */
   pageType?: HtmlPageType;
@@ -32,6 +33,7 @@ export interface HtmlSourceOptions {
   metadata?: {
     author?: string;
     date?: string;
+    dataSource?: string;
   };
   /** Optional output layout type. Defaults to 'documentation'. */
   pageType?: HtmlSourcePageType;
@@ -260,7 +262,7 @@ export interface DiagramSegment {
   diagramType: string;
 }
 
-export type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment | GanttSegment | RoadmapSegment | PlaybookSegment | BookSegment | ReportSegment;
+export type ContentSegment = MarkdownSegment | ChartSegment | DiagramSegment | KpiSegment | FiltersSegment | DataSegment | InsightsSegment | GanttSegment | RoadmapSegment | PlaybookSegment | BookSegment | ReportSegment;
 
 export interface ChartBlockConfig {
   title?: string;
@@ -270,6 +272,8 @@ export interface ChartBlockConfig {
   recommended_chart?: string;
   series_mode?: 'grouped' | 'stacked' | 'auto';
   notes?: string;
+  /** Short (≤ 12 words) caption shown under the chart title explaining what the chart shows. */
+  description?: string;
   /** Dashboard layout size hint: hero=8col, half=6col, third=4col, quarter=3col */
   size?: 'hero' | 'half' | 'third' | 'quarter';
   /** Panel zone: 'canvas' (default) or 'kpi' (renders as KPI tile) */
@@ -308,7 +312,8 @@ export interface FiltersBlockConfig {
 /** Data block — defines right-rail data/stats panel */
 export interface DataBlockConfig {
   title?: string;
-  items: Array<{
+  /** Optional: small label/value/note rows shown above the table */
+  items?: Array<{
     label: string;
     value: string;
     note?: string;
@@ -317,6 +322,24 @@ export interface DataBlockConfig {
     headers: string[];
     rows: string[][];
   };
+}
+
+/**
+ * Insights block — defines the AI-generated summary + bullet list shown in the right rail
+ * above any data table. Zone 4 of the 6-zone dashboard contract.
+ */
+export interface InsightsBlockConfig {
+  /** Optional title (defaults to "Insights") */
+  title?: string;
+  /** 1-3 sentence narrative summary of what the dashboard shows. */
+  summary?: string;
+  /** Short bullet points highlighting key findings (3-5 recommended). */
+  bullets?: string[];
+}
+
+export interface InsightsSegment {
+  type: 'insights';
+  config: InsightsBlockConfig;
 }
 
 export interface KpiSegment {

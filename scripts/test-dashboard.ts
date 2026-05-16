@@ -9,6 +9,8 @@ import * as fs from 'fs';
 process.env.APP_ROOT = path.resolve(__dirname, '..');
 
 import { generateHtml } from '../src/lib/docgen/html/generate';
+import { DEFAULT_BRANDING } from '../src/lib/docgen/branding';
+import { DEFAULT_DISCLAIMER_CONFIG } from '../src/lib/disclaimer';
 
 const content = `
 \`\`\`kpi
@@ -63,10 +65,11 @@ async function main() {
     content,
     pageType: 'dashboard',
     branding: {
-      orgName: 'Acme Corp',
+      ...DEFAULT_BRANDING,
+      organizationName: 'Acme Corp',
       primaryColor: '#2563eb',
     },
-    disclaimerConfig: { enabled: false },
+    disclaimerConfig: { ...DEFAULT_DISCLAIMER_CONFIG, enabled: false },
     metadata: { date: 'June 2025' },
   });
 

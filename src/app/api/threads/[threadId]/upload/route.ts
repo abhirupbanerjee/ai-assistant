@@ -210,6 +210,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const result = await saveUpload(user.id, threadId, file.name, buffer);
 
+    // Best-effort: expose uploaded CSV/TSV files to the existing data_source tool
+    // as thread-scoped, ephemeral data sources. Never block the upload response.
+    try {
+      const { registerUploadedCsvIfTabular } = await import('@/lib/data-sources/ephemeral-csv');
+      await registerUploadedCsvIfTabular({
+        threadId,
+        filePath: result.filePath,
+        originalFilename: file.name,
+        categoryIds: (thread.categories ?? []).map((c) => c.id),
+        uploadedBy: user.email,
+      });
+    } catch (err) {
+      console.warn('[Upload] Ephemeral CSV registration failed (non-fatal):', err);
+    }
+
     return NextResponse.json<UploadResponse>({
       filename: result.filename,
       size: file.size,
@@ -249,6 +264,19 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const uploadCount = await deleteUpload(user.id, threadId, filename);
+
+    // Best-effort: remove the matching ephemeral CSV registry row if present.
+    // deleteUpload already removes the file from disk.
+    try {
+      const { unregisterUploadedCsv } = await import('@/lib/data-sources/ephemeral-csv');
+      await unregisterUploadedCsv({
+        threadId,
+        filePath: filename,
+        deletedBy: user.email,
+      });
+    } catch (err) {
+      console.warn('[Upload] Ephemeral CSV unregister failed (non-fatal):', err);
+    }
 
     return NextResponse.json({
       success: true,

@@ -72,6 +72,7 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
   const date = metadata?.date || new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   });
+  const dataSourceLabel = metadata?.dataSource || '';
 
   // Assemble final HTML based on page type
   let html: string;
@@ -80,7 +81,7 @@ export async function generateHtml(options: HtmlOptions): Promise<HtmlResult> {
     // website uses the simple doc layout (hero enabled)
     html = buildSimpleDocTemplate('website', title, contentHtml, toc, branding, css, js, disclaimerHtml, date);
   } else if (pageType === 'dashboard') {
-    html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date, segments, serverResult ?? undefined);
+    html = buildDashboardTemplate(title, contentHtml, branding, css, js, disclaimerHtml, date, dataSourceLabel, segments, serverResult ?? undefined);
   } else if (pageType === 'book') {
     // Prefer JSON-driven path if a ```book block was parsed
     const bookSeg = segments.find((s): s is BookSegment => s.type === 'book');

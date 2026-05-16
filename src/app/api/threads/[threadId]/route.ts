@@ -58,6 +58,16 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { threadId } = await params;
+
+    // Best-effort: remove thread-scoped ephemeral CSV data sources before
+    // deleting the thread. Registry cleanup must not block thread deletion.
+    try {
+      const { cleanupEphemeralCsvsForThread } = await import('@/lib/data-sources/ephemeral-csv');
+      await cleanupEphemeralCsvsForThread(threadId, user.email);
+    } catch (err) {
+      console.warn('[Thread] Ephemeral CSV cleanup failed (non-fatal):', err);
+    }
+
     const result = await deleteThread(user.id, threadId);
 
     if (!result) {

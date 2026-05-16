@@ -33,7 +33,6 @@ function HomeContent() {
   const [brandingSubtitle, setBrandingSubtitle] = useState<string>('Ask questions about policy documents');
   const [globalWelcome, setGlobalWelcome] = useState<WelcomeConfig>({});
   const [globalStarterPrompts, setGlobalStarterPrompts] = useState<StarterPrompt[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [threadCount, setThreadCount] = useState(0);
   const isMobile = useIsMobile();
   const mobileMenu = useMobileMenuOptional();
@@ -108,14 +107,11 @@ function HomeContent() {
 
   const handleThreadSelect = useCallback((thread: Thread | null) => {
     setActiveThread(thread);
-    // Clear selected category when switching threads (let ChatWindow handle category-based welcome)
-    setSelectedCategoryId(null);
   }, []);
 
   const handleThreadCreated = useCallback((thread: Thread) => {
     setActiveThread(thread);
     setThreadCount(prev => prev + 1);
-    setSelectedCategoryId(null);
   }, []);
 
   const handleArtifactsChange = useCallback((data: {
@@ -199,19 +195,11 @@ function HomeContent() {
   // Handler for creating new thread from mobile header
   const handleNewThreadFromHeader = useCallback(() => {
     setActiveThread(null);
-    setSelectedCategoryId(null);
-  }, []);
-
-  // Handler for category change from header
-  const handleCategoryChange = useCallback((categoryId: number | null, categoryName: string) => {
-    setSelectedCategoryId(categoryId);
-    // Clear active thread when changing category
-    setActiveThread(null);
   }, []);
 
   return (
     <div className="fixed-layout bg-gray-50">
-      {/* Header - shows category dropdown + help link */}
+      {/* Header - shows help link */}
       <AppHeader
         title={getHeaderTitle()}
         isMobile={isMobile}
@@ -219,9 +207,6 @@ function HomeContent() {
         onOpenThreadsMenu={mobileMenu?.openThreadsMenu}
         onNewThread={handleNewThreadFromHeader}
         onHomeClick={handleNewThreadFromHeader}
-        userSubscriptions={userSubscriptions}
-        selectedCategoryId={selectedCategoryId}
-        onCategoryChange={handleCategoryChange}
       />
 
       {/* Content area */}
@@ -248,7 +233,6 @@ function HomeContent() {
               brandingSubtitle={brandingSubtitle}
               globalWelcome={globalWelcome}
               globalStarterPrompts={globalStarterPrompts}
-              selectedCategoryId={selectedCategoryId}
               onArtifactsChange={handleArtifactsChange}
               onInputFocus={handleInputFocus}
               onInputBlur={handleInputBlur}

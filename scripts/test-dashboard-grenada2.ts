@@ -8,6 +8,8 @@ import * as fs from 'fs';
 process.env.APP_ROOT = path.resolve(__dirname, '..');
 
 import { generateHtml } from '../src/lib/docgen/html/generate';
+import { DEFAULT_BRANDING } from '../src/lib/docgen/branding';
+import { DEFAULT_DISCLAIMER_CONFIG } from '../src/lib/disclaimer';
 
 // Budget by theme (computed from register × cost table):
 // Simplify Life (19 initiatives):  $29.31M
@@ -93,10 +95,11 @@ async function main() {
     content,
     pageType: 'dashboard',
     branding: {
-      orgName: 'Grenada DTA',
+      ...DEFAULT_BRANDING,
+      organizationName: 'Grenada DTA',
       primaryColor: '#1a5f2e',
     },
-    disclaimerConfig: { enabled: false },
+    disclaimerConfig: { ...DEFAULT_DISCLAIMER_CONFIG, enabled: false },
     metadata: { date: 'May 2026' },
   });
 

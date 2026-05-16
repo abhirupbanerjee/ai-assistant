@@ -2,6 +2,7 @@ import type { OpenAI } from 'openai';
 import { tavilyWebSearch } from './tools/tavily';
 import { documentGenerationTool } from './tools/docgen';
 import { dataSourceTool } from './tools/data-source';
+import { aggregateDataTool } from './tools/aggregate-data';
 import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction } from './tools/function-api';
 import { youtubeToolDefinition } from './tools/youtube';
 import { chartGenTool } from './tools/chart-gen';
@@ -103,6 +104,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   web_search: tavilyWebSearch,
   doc_gen: documentGenerationTool,
   data_source: dataSourceTool,
+  aggregate_data: aggregateDataTool,
   function_api: functionApiTool,
   youtube: youtubeToolDefinition,
   chart_gen: chartGenTool,

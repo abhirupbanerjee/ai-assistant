@@ -91,4 +91,6 @@ sqlite_export/
 
 # AI
 .claude
+.codex
+AGENTS.md
 

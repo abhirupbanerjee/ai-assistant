@@ -11,6 +11,7 @@ import { wouldToolSkillMatch } from '../db/compat/skills';
 import { callDataAPI } from '../data-sources/api-caller';
 import { queryCSVData, queryCSVDataWithAggregation } from '../data-sources/csv-handler';
 import { aggregateData } from '../data-sources/aggregation';
+import { parseEphemeralSourceName } from '../data-sources/ephemeral-csv';
 import { getRequestContext } from '../request-context';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type {
@@ -684,6 +685,20 @@ IMPORTANT FOR LARGE DATASETS:
             message: `Data source '${args.source_name}' is not available for the current categories`,
           },
         });
+      }
+
+      const ephemeral = parseEphemeralSourceName(args.source_name);
+      if (ephemeral) {
+        const { threadId: currentThreadId } = getRequestContext();
+        if (!currentThreadId || currentThreadId !== ephemeral.threadId) {
+          return JSON.stringify({
+            success: false,
+            error: {
+              code: 'ACCESS_DENIED',
+              message: `Data source '${args.source_name}' is scoped to a different thread`,
+            },
+          });
+        }
       }
 
       // Apply limit constraints

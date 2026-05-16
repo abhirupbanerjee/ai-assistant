@@ -424,7 +424,7 @@ export async function saveUpload(
   threadId: string,
   filename: string,
   buffer: Buffer
-): Promise<{ filename: string; uploadCount: number }> {
+): Promise<{ filename: string; filePath: string; uploadCount: number }> {
   const numericUserId = await getUserId(userId);
   if (!numericUserId) {
     throw new Error('User not found');
@@ -463,6 +463,7 @@ export async function saveUpload(
 
   return {
     filename: safeFilename,
+    filePath,
     uploadCount: newCount,
   };
 }

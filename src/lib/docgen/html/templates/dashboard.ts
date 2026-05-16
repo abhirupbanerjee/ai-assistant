@@ -8,7 +8,7 @@ import { escapeHtml } from '../markdown/escape';
 import { buildVendorScripts } from '../vendor-bundles';
 import { buildDocumentLayout } from '../layout/document-layout';
 import { DOCUMENT_LAYOUT_FLAGS } from '../layout/document-layout-flags';
-import { renderKpiTile, renderFiltersSidebar, renderDataPanel, renderDashboardChartPanel, renderDashboardDiagramPanel } from '../renderers/dashboard-renderers';
+import { renderKpiTile, renderFiltersSidebar, renderDataPanel, renderDashboardChartPanel, renderDashboardDiagramPanel, renderInsightsPanel, renderAutoInsights, renderEmptyFiltersRail } from '../renderers/dashboard-renderers';
 import { markdownToHtml } from '../markdown/markdown-to-html';
 import { createRenderContext } from '../renderers/segment-renderers';
 
@@ -20,13 +20,14 @@ export function buildDashboardTemplate(
   js: string,
   disclaimerHtml: string,
   date: string,
+  dataSourceLabel = '',
   segments?: ContentSegment[],
   serverResult?: ServerRenderResult,
 ): string {
   if (!segments) {
     return buildDocumentLayout(title, contentHtml, [], branding, css, js, disclaimerHtml, date, DOCUMENT_LAYOUT_FLAGS.dashboard);
   }
-  return buildDashboardTemplateV2(title, segments, branding, css, js, disclaimerHtml, date, serverResult);
+  return buildDashboardTemplateV2(title, segments, branding, css, js, disclaimerHtml, date, dataSourceLabel, serverResult);
 }
 
 export function buildDashboardTemplateV2(
@@ -37,6 +38,7 @@ export function buildDashboardTemplateV2(
   js: string,
   disclaimerHtml: string,
   date: string,
+  dataSourceLabel = '',
   serverResult?: ServerRenderResult,
 ): string {
   const primary = branding.primaryColor || '#003366';
@@ -49,10 +51,11 @@ export function buildDashboardTemplateV2(
   const kpiCounter = { value: 0 };
   const ctx = createRenderContext();
 
-  // Route segments into zones
+  // Route segments into zones (6-zone dashboard contract)
   const kpiSegments = segments.filter((s): s is import('../types').KpiSegment => s.type === 'kpi');
   const filterSegments = segments.filter((s): s is import('../types').FiltersSegment => s.type === 'filters');
   const dataSegments = segments.filter((s): s is import('../types').DataSegment => s.type === 'data');
+  const insightsSegments = segments.filter((s): s is import('../types').InsightsSegment => s.type === 'insights');
   const canvasSegments: ContentSegment[] = [];
   const noteSegments: import('../types').MarkdownSegment[] = [];
 
@@ -80,6 +83,25 @@ export function buildDashboardTemplateV2(
     }
   }
 
+  // Layer 5a: Hard caps per 6-zone contract. Truncate with warning, never fail.
+  const MAX_KPIS = 6;
+  const MAX_CHARTS = 6;
+  const MAX_FILTER_SLICERS = 4;
+  if (kpiSegments.length > MAX_KPIS) {
+    console.warn(`[Dashboard] Truncating ${kpiSegments.length} KPI tiles to ${MAX_KPIS}`);
+    kpiSegments.length = MAX_KPIS;
+  }
+  if (canvasSegments.length > MAX_CHARTS) {
+    console.warn(`[Dashboard] Truncating ${canvasSegments.length} chart panels to ${MAX_CHARTS}`);
+    canvasSegments.length = MAX_CHARTS;
+  }
+  filterSegments.forEach((fs) => {
+    if (fs.config.slicers.length > MAX_FILTER_SLICERS) {
+      console.warn(`[Dashboard] Truncating ${fs.config.slicers.length} slicers to ${MAX_FILTER_SLICERS}`);
+      fs.config.slicers.length = MAX_FILTER_SLICERS;
+    }
+  });
+
   const canvasHtml = canvasSegments.map((seg, i) => {
     // Find the original segment index in the full segments array for server result lookup
     const segIndex = segments.indexOf(seg);
@@ -94,33 +116,42 @@ export function buildDashboardTemplateV2(
     return '';
   }).join('\n');
 
+  // Zone 2 — KPI strip (always renders the container; placeholder if empty)
   const kpiRowHtml = kpiSegments.length > 0
     ? `<div class="dash-kpis">${kpiSegments.map((s) => renderKpiTile(s, kpiCounter)).join('\n')}</div>`
-    : '';
+    : `<div class="dash-kpis"><div class="kpi-tile panel dash-empty-tile"><div class="kpi-label">No KPIs</div><div class="kpi-value" style="font-size:1rem;color:#9ca3af;">Configure key metrics to display here.</div></div></div>`;
 
+  // Zone 3 — Left filter rail (always renders; placeholder when no slicers)
   const filtersHtml = filterSegments.length > 0
     ? filterSegments.map(renderFiltersSidebar).join('\n')
-    : '';
+    : renderEmptyFiltersRail();
 
+  // Zone 4 — Right rail (always renders): insights panel + optional data table below
+  const insightsHtml = insightsSegments.length > 0
+    ? renderInsightsPanel(insightsSegments[0])
+    : renderAutoInsights(kpiSegments.length, canvasSegments.length);
   const dataHtml = dataSegments.length > 0
     ? dataSegments.map(renderDataPanel).join('\n')
     : '';
+  const rightRailHtml = `<aside class="dash-data" aria-label="Insights and details">${insightsHtml}${dataHtml}</aside>`;
 
-  const notesHtml = noteSegments.length > 0
-    ? `<div class="panel panel-notes panel-hero"><div class="panel-title">Notes</div><div class="panel-body dash-notes">${noteSegments.map((s) => markdownToHtml(s.content)).join('\n')}</div></div>`
+  // Filter out orphan code-fence content that fell through from failed block parsing.
+  // A note segment whose content is *only* code fences (no prose around them) is almost
+  // always a parser fallback we should suppress to avoid raw JSON dumps in the dashboard.
+  const meaningfulNoteSegments = noteSegments.filter((s) => {
+    const stripped = s.content.replace(/^`{2,}[\s\S]*?^`{2,}\s*$/gm, '').trim();
+    return stripped.length > 0;
+  });
+  const notesHtml = meaningfulNoteSegments.length > 0
+    ? `<div class="panel panel-notes panel-hero"><div class="panel-title">Notes</div><div class="panel-body dash-notes">${meaningfulNoteSegments.map((s) => markdownToHtml(s.content)).join('\n')}</div></div>`
     : '';
 
-  const hasFilters = filtersHtml !== '';
-  const hasData = dataHtml !== '';
-  let gridCols: string;
-  if (hasFilters && hasData) gridCols = '240px 1fr 280px';
-  else if (hasFilters) gridCols = '240px 1fr';
-  else if (hasData) gridCols = '1fr 280px';
-  else gridCols = '1fr';
-
-  const canvasColStart = hasFilters ? '2' : '1';
-  const canvasColEnd = hasData ? (hasFilters ? '3' : '2') : '-1';
-  const dataColStart = hasFilters ? '3' : '2';
+  // 6-zone contract: left filter rail (Zone 3) and right rail (Zone 4) ALWAYS render.
+  // Grid layout is therefore fixed at 3 columns: filters | canvas | right-rail.
+  const gridCols = '240px 1fr 300px';
+  const canvasColStart = '2';
+  const canvasColEnd = '3';
+  const dataColStart = '3';
 
   const dashboardCss = `
     body { background: #f3f4f6; }
@@ -296,6 +327,32 @@ export function buildDashboardTemplateV2(
     .panel { transition: opacity 0.2s ease; }
     .panel-filter-active { position: relative; }
     .panel-filter-active::after { content: 'Filtered'; position: absolute; top: 8px; right: 8px; background: #3b82f6; color: #fff; font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; pointer-events: none; z-index: 5; }
+    /* ── Chart description (Zone 5 contract) ── */
+    .panel-description { font-size: 0.74rem; color: #6b7280; font-style: italic; margin: -4px 0 8px 0; line-height: 1.35; flex-shrink: 0; }
+    /* ── Insights panel (Zone 4 contract) ── */
+    .dash-insights-panel { padding: 0; border-bottom: 1px solid #f3f4f6; }
+    .dash-insights-panel:last-child { border-bottom: none; }
+    .dash-insights-summary { font-size: 0.82rem; line-height: 1.5; color: #1f2937; margin: 0 0 10px 0; }
+    .dash-insights-bullets { margin: 0; padding-left: 18px; }
+    .dash-insights-bullets li { font-size: 0.78rem; line-height: 1.45; color: #374151; margin-bottom: 6px; }
+    .dash-insights-bullets li:last-child { margin-bottom: 0; }
+    /* ── Empty-state placeholders (Zones 2 & 3 contract) ── */
+    .dash-empty-tile { background: #f9fafb; border: 1px dashed #e5e7eb; box-shadow: none; }
+    .dash-empty-tile .kpi-label { color: #9ca3af; }
+    .dash-empty-rail { font-size: 0.82rem; color: #9ca3af; font-style: italic; margin: 0; }
+    /* ── Export menu (header) ── */
+    .dash-export-wrap { position: relative; }
+    .dash-export-btn { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: #fff; padding: 6px 12px; border-radius: 18px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .dash-export-btn:hover { background: rgba(255,255,255,0.25); }
+    .dash-export-icon { font-size: 0.85rem; }
+    .dash-export-caret { font-size: 0.7rem; margin-left: 2px; }
+    .dash-export-menu { display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 200px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; padding: 6px; }
+    .dash-export-menu.open { display: block; }
+    .dash-export-menu button { display: block; width: 100%; background: none; border: none; padding: 8px 12px; text-align: left; font-size: 0.85rem; color: #1f2937; cursor: pointer; border-radius: 5px; font-family: inherit; }
+    .dash-export-menu button:hover { background: #f3f4f6; }
+    /* ── Footer disclaimer (Zone 6 contract) ── */
+    .dash-footer-line { color: #9ca3af; font-size: 0.75rem; margin-bottom: 4px; }
+    .dash-ai-disclaimer { color: #6b7280; font-size: 0.7rem; line-height: 1.5; max-width: 800px; margin: 0 auto; padding: 0 16px; }
   `;
 
   const dashboardJs = `
@@ -589,6 +646,123 @@ export function buildDashboardTemplateV2(
     }
 
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dashHideData(); });
+
+    /* ── Export menu (6-zone contract: header export action) ─────────────── */
+    function dashToggleExportMenu(ev) {
+      ev && ev.stopPropagation();
+      var menu = document.getElementById('dash-export-menu');
+      var btn = document.getElementById('dash-export-btn');
+      if (!menu) return;
+      var open = menu.classList.toggle('open');
+      if (btn) btn.setAttribute('aria-expanded', String(open));
+    }
+    document.addEventListener('click', function(e) {
+      var menu = document.getElementById('dash-export-menu');
+      var btn = document.getElementById('dash-export-btn');
+      if (!menu || !menu.classList.contains('open')) return;
+      if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
+      menu.classList.remove('open');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        var menu = document.getElementById('dash-export-menu');
+        if (menu) menu.classList.remove('open');
+      }
+    });
+
+    function dashExportFilename(ext) {
+      var t = document.querySelector('.dash-titlebar-title');
+      var base = (t ? t.textContent : 'dashboard').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+      return base + '.' + ext;
+    }
+
+    function dashExportHtml() {
+      // Save the currently rendered HTML by cloning the document and stripping the open menu.
+      var clone = document.documentElement.cloneNode(true);
+      var menu = clone.querySelector('#dash-export-menu');
+      if (menu) menu.classList.remove('open');
+      var html = '<!DOCTYPE html>\\n' + clone.outerHTML;
+      var blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = dashExportFilename('html');
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+      dashToggleExportMenu();
+    }
+
+    function dashExportPdf() {
+      // Fallback to browser print-to-PDF until the server endpoint is wired.
+      dashToggleExportMenu();
+      window.print();
+    }
+
+    function dashExportPng() {
+      // Best-effort PNG export of the dash-shell area using html2canvas if available,
+      // otherwise instruct the user to use the print/Save-as-image flow.
+      dashToggleExportMenu();
+      if (typeof html2canvas === 'function') {
+        var shell = document.querySelector('.dash-shell');
+        if (!shell) return;
+        html2canvas(shell, { backgroundColor: '#f3f4f6', scale: 2 }).then(function(canvas) {
+          canvas.toBlob(function(blob) {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = dashExportFilename('png');
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+          });
+        });
+      } else {
+        alert('PNG export requires html2canvas. Use "Save as HTML" or browser screenshot for now.');
+      }
+    }
+
+    function dashExportAllCsv() {
+      // Iterate every chart panel, decode its data-raw-data, write a multi-section CSV.
+      var panels = document.querySelectorAll('.dash-canvas .panel[data-chart-id]');
+      if (panels.length === 0) {
+        alert('No chart data to export.');
+        return;
+      }
+      var sections = [];
+      panels.forEach(function(panel) {
+        var titleEl = panel.querySelector('.panel-title span');
+        var title = titleEl ? titleEl.textContent.trim() : 'chart';
+        var canvas = panel.querySelector('canvas[data-raw-data]');
+        if (!canvas) return;
+        try {
+          var raw = JSON.parse(atob(canvas.getAttribute('data-raw-data')));
+          var rows = raw.data || [];
+          if (rows.length === 0) return;
+          var columns = Object.keys(rows[0]);
+          var lines = ['# ' + title];
+          lines.push(columns.map(csvEscape).join(','));
+          rows.forEach(function(row) {
+            lines.push(columns.map(function(c) {
+              var v = row[c];
+              return csvEscape(v === null || v === undefined ? '' : String(v));
+            }).join(','));
+          });
+          sections.push(lines.join('\\r\\n'));
+        } catch (e) { /* skip malformed */ }
+      });
+      var csv = sections.join('\\r\\n\\r\\n');
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = dashExportFilename('csv');
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+      dashToggleExportMenu();
+    }
   `;
 
   const titleBarHtml = `
@@ -601,6 +775,17 @@ export function buildDashboardTemplateV2(
   </div>
   <div class="dash-titlebar-right">
     <input type="search" class="dash-titlebar-search" placeholder="Search panels..." oninput="dashSearch(this.value)" aria-label="Search dashboard panels">
+    <div class="dash-export-wrap">
+      <button class="dash-export-btn" onclick="dashToggleExportMenu(event)" title="Export" aria-haspopup="true" aria-expanded="false" id="dash-export-btn">
+        <span class="dash-export-icon">⬇</span><span class="dash-export-label">Export</span><span class="dash-export-caret">▾</span>
+      </button>
+      <div class="dash-export-menu" id="dash-export-menu" role="menu">
+        <button role="menuitem" onclick="dashExportHtml()">Save as HTML</button>
+        <button role="menuitem" onclick="dashExportPdf()">Save as PDF</button>
+        <button role="menuitem" onclick="dashExportPng()">Save as PNG</button>
+        <button role="menuitem" onclick="dashExportAllCsv()">Download all data (CSV)</button>
+      </div>
+    </div>
     <button class="dash-titlebar-action" onclick="window.print()" title="Print" aria-label="Print">⎙</button>
     <span class="dash-ai-badge">⚡ AI Generated</span>
   </div>
@@ -622,13 +807,21 @@ export function buildDashboardTemplateV2(
     ${filtersHtml}
     ${kpiRowHtml}
     <div class="dash-canvas" id="dash-canvas">
-      ${canvasHtml}
+      ${canvasSegments.length > 0
+        ? canvasHtml
+        : '<div class="panel panel-hero"><div class="panel-title"><span>No charts configured</span></div><div class="panel-body" style="display:flex;align-items:center;justify-content:center;color:#9ca3af;font-style:italic;">Add chart blocks to populate this dashboard.</div></div>'}
       ${notesHtml}
     </div>
-    ${dataHtml}
+    ${rightRailHtml}
   </div>
   <footer class="dash-footer">
-    Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}
+    <div class="dash-footer-line">
+      Generated ${date}${orgName ? ' · ' + escapeHtml(orgName) : ''}${dataSourceLabel ? ' · Data source: ' + escapeHtml(dataSourceLabel) : ''}
+    </div>
+    <div class="dash-ai-disclaimer">
+      ⚡ AI-generated dashboard — numeric values aggregated server-side from the underlying data source.
+      Visual layout, narrative insights, and chart selection were generated by AI; review before sharing externally.
+    </div>
   </footer>
   <script>${js}${dashboardJs}</script>
   <div class="dash-data-modal-backdrop" id="dash-data-modal-backdrop" onclick="if(event.target===this)dashHideData()">

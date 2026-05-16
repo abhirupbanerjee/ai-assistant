@@ -1,7 +1,7 @@
 /**
  * Dashboard-specific panel renderers (KPI, Filters, Data, Dashboard Chart/Diagram).
  */
-import type { ChartSegment, DataSegment, DiagramSegment, FiltersSegment, KpiSegment } from '../types';
+import type { ChartSegment, DataSegment, DiagramSegment, FiltersSegment, InsightsSegment, KpiSegment } from '../types';
 import type { RenderedChart, RenderedDiagram } from '../server-renderer';
 import { escapeHtml } from '../markdown/escape';
 import { buildChartJsConfig } from '../charts/chartjs-config';
@@ -174,11 +174,17 @@ export function renderDashboardChartPanel(
     ? ` data-tags="${escapeHtml(seg.config.tags.join(' '))}"`
     : '';
 
+  // Short caption rendered under the chart title (Zone 5 contract: chart "description" field).
+  const descriptionHtml = seg.config.description
+    ? `<div class="panel-description">${escapeHtml(seg.config.description)}</div>`
+    : '';
+
   // Server-rendered: emit static <img> with data-URL
   if (rendered) {
     return `
 <div class="panel panel-${size}"${tagsAttr}>
   ${seg.config.title ? `<div class="panel-title"><span>${escapeHtml(seg.config.title)}</span></div>` : ''}
+  ${descriptionHtml}
   <div class="panel-body chart-container" data-chart-wrapper="true">
     <img src="${rendered.pngDataUrl}" alt="${escapeHtml(rendered.title)}" style="width:100%;height:auto;display:block;" data-chart-image="true">
   </div>
@@ -205,6 +211,7 @@ export function renderDashboardChartPanel(
      data-filter-by-tags="true"
      ${tagsAttr}>
   ${seg.config.title ? `<div class="panel-title"><span>${escapeHtml(seg.config.title)}</span><button class="panel-data-btn" onclick="dashShowData('${id}')" title="View data table">&#x22A1;</button></div>` : ''}
+  ${descriptionHtml}
   <div class="panel-body chart-container" data-chart-wrapper="true">
     <canvas id="${id}"
             data-chart-config="${encodedConfig}"
@@ -253,4 +260,64 @@ export function renderDashboardDiagramPanel(
     </div>
   </div>
 </div>`;
+}
+
+/**
+ * Render the right-rail Insights panel (Zone 4 of the 6-zone dashboard contract).
+ * Shows an AI-generated narrative summary + bullet points.
+ */
+export function renderInsightsPanel(seg: InsightsSegment): string {
+  const cfg = seg.config;
+  const heading = cfg.title || 'Insights';
+  const summaryHtml = cfg.summary
+    ? `<p class="dash-insights-summary">${escapeHtml(cfg.summary)}</p>`
+    : '';
+  const bulletsHtml = Array.isArray(cfg.bullets) && cfg.bullets.length > 0
+    ? `<ul class="dash-insights-bullets">${cfg.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>`
+    : '';
+  return `
+<div class="dash-insights-panel">
+  <div class="dash-rail-header">
+    <span class="dash-rail-title">${escapeHtml(heading)}</span>
+  </div>
+  <div class="dash-rail-body">
+    ${summaryHtml}
+    ${bulletsHtml}
+  </div>
+</div>`;
+}
+
+/**
+ * Auto-generate a minimal insights panel when the model didn't emit one.
+ * Used to keep Zone 4 always present per the 6-zone contract.
+ */
+export function renderAutoInsights(kpiCount: number, chartCount: number): string {
+  const summary = kpiCount > 0 || chartCount > 0
+    ? `Dashboard shows ${kpiCount} key metric${kpiCount === 1 ? '' : 's'} across ${chartCount} chart${chartCount === 1 ? '' : 's'}. Use the filters at left to narrow down. Click any chart panel for the underlying data table.`
+    : 'No data configured for this dashboard yet.';
+  return `
+<div class="dash-insights-panel">
+  <div class="dash-rail-header">
+    <span class="dash-rail-title">Insights</span>
+  </div>
+  <div class="dash-rail-body">
+    <p class="dash-insights-summary">${escapeHtml(summary)}</p>
+  </div>
+</div>`;
+}
+
+/**
+ * Render an empty filters rail placeholder when no ```filters block is provided.
+ * Used to keep Zone 3 always present per the 6-zone contract.
+ */
+export function renderEmptyFiltersRail(): string {
+  return `
+<aside class="dash-filters" aria-label="Filters">
+  <div class="dash-rail-header">
+    <span class="dash-rail-title">Filters</span>
+  </div>
+  <div class="dash-rail-body">
+    <p class="dash-empty-rail">No filters configured — showing all data.</p>
+  </div>
+</aside>`;
 }
