@@ -48,6 +48,7 @@ export const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: stri
   deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
   fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
   'ollama-cloud': { apiKey: 'OLLAMA_API_KEY' },
+  moonshot: { apiKey: 'MOONSHOT_API_KEY' },
 };
 
 // ============ CRUD Operations ============

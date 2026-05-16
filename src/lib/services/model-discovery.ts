@@ -53,6 +53,9 @@ const TOOL_CAPABLE_PATTERNS = [
   /^deepseek-v4-(flash|pro)/,
   // Legacy DeepSeek (chat only — deepseek-reasoner does not support tool_choice)
   /^deepseek-chat/,
+  // Moonshot / Kimi
+  /^kimi/,
+  /^moonshot/,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing
@@ -109,6 +112,8 @@ const THINKING_CAPABLE_PATTERNS = [
   /^qwq/,
   /^deepseek-r/,
   /^deepseek-v4-pro/,
+  // Moonshot / Kimi (future-proofing for reasoning mode exposure)
+  /^kimi-k2/,
   // OpenAI reasoning models
   /^o1/,
   /^o3/,
@@ -585,6 +590,35 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
   );
 }
 
+/**
+ * Discover models from Moonshot AI API
+ * Uses OpenAI-compatible /v1/models endpoint
+ */
+async function discoverMoonshotModels(apiKey: string): Promise<DiscoveredModel[]> {
+  const response = await fetch('https://api.moonshot.cn/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Moonshot API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json() as { data: Array<{ id: string }> };
+
+  const filtered = data.data.filter(m => isChatModel(m.id));
+  const models = await Promise.all(filtered.map(async m => ({
+    id: `moonshot/${m.id}`,
+    name: generateDisplayName(m.id),
+    provider: 'moonshot',
+    toolCapable: isToolCapable(m.id),
+    visionCapable: isVisionCapable(m.id),
+    maxInputTokens: getContextWindow(m.id),
+    maxOutputTokens: getDefaultOutputTokens('moonshot'),
+    isEnabled: !!(await getEnabledModel(`moonshot/${m.id}`)),
+  })));
+  return models.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ============ Main Discovery Function ============
 
 /**
@@ -679,6 +713,15 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         break;
       }
 
+      case 'moonshot': {
+        const apiKey = await getProviderApiKey('moonshot');
+        if (!apiKey) {
+          return { success: false, provider, models: [], error: 'API key not configured' };
+        }
+        models = await discoverMoonshotModels(apiKey);
+        break;
+      }
+
       default:
         return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
     }
@@ -723,7 +766,7 @@ export async function discoverAllModels(): Promise<{
   providers: Record<string, DiscoveryResult>;
   totalModels: number;
 }> {
-  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud'];
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud', 'moonshot'];
   const results: Record<string, DiscoveryResult> = {};
   let totalModels = 0;
 

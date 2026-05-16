@@ -23,13 +23,14 @@ interface RouteHealth {
   route2: {
     fireworks: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     claude: { configured: boolean };
+    moonshot: { configured: boolean; healthy?: boolean };
   };
 }
 
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/');
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/');
 
 const isRoute3Model = (id: string) =>
   id.startsWith('ollama-') || id.startsWith('ollama/');
@@ -356,7 +357,7 @@ export default function RoutesSettingsPanel() {
             <Zap size={20} className="text-orange-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 2: Direct Providers</h3>
-              <p className="text-xs text-gray-500">Fireworks AI, Claude (Anthropic) — bypasses LiteLLM</p>
+              <p className="text-xs text-gray-500">Fireworks AI, Claude (Anthropic), Moonshot AI — bypasses LiteLLM</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -377,6 +378,12 @@ export default function RoutesSettingsPanel() {
                   <><CheckCircle2 size={14} className="text-green-500" /> Claude OK</>
                 ) : (
                   <><XCircle size={14} className="text-gray-400" /> Claude not configured</>
+                )}
+                <span className="text-gray-300 mx-1">|</span>
+                {health.route2.moonshot.configured ? (
+                  <><CheckCircle2 size={14} className="text-green-500" /> Moonshot OK</>
+                ) : (
+                  <><XCircle size={14} className="text-gray-400" /> Moonshot not configured</>
                 )}
               </span>
             )}
@@ -427,7 +434,7 @@ export default function RoutesSettingsPanel() {
             </div>
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
-              Requires: <code className="bg-gray-100 px-1 rounded">FIREWORKS_AI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>
+              Requires: <code className="bg-gray-100 px-1 rounded">FIREWORKS_AI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>
             </div>
           </div>
         )}

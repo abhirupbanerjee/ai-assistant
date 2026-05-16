@@ -320,6 +320,38 @@ async function getOllamaClient(): Promise<OpenAI> {
   return ollamaClient;
 }
 
+// ============ Moonshot Direct Client ============
+
+/**
+ * Check if a model ID refers to a Moonshot AI model.
+ * These models bypass LiteLLM and connect directly to api.moonshot.cn.
+ */
+export function isMoonshotModel(model: string): boolean {
+  return model.startsWith('moonshot/');
+}
+
+/**
+ * Strip provider prefix from model ID for the Moonshot API.
+ * e.g. "moonshot/moonshot-v1-8k" → "moonshot-v1-8k"
+ */
+function getMoonshotModelId(model: string): string {
+  return model.startsWith('moonshot/') ? model.slice('moonshot/'.length) : model;
+}
+
+let moonshotClient: OpenAI | null = null;
+
+async function getMoonshotClient(): Promise<OpenAI> {
+  if (!moonshotClient) {
+    const apiKey = await getApiKey('moonshot');
+    moonshotClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: 'https://api.moonshot.cn/v1',
+      timeout: 300 * 1000, // 5 minutes — matches other clients
+    });
+  }
+  return moonshotClient;
+}
+
 /**
  * Add LiteLLM provider prefix to non-OpenAI embedding model names.
  * LiteLLM requires prefixes like `gemini/` or `mistral/` to route correctly.
@@ -1098,15 +1130,18 @@ export async function generateResponseWithTools(
   const useFireworksDirect = isFireworksModel(effectiveModel);
   const useOllamaDirect = isOllamaModel(effectiveModel);
   const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
+  const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
     : useOllamaCloudDirect ? 'Ollama Cloud directly'
+    : useMoonshotDirect ? 'Moonshot AI directly'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   const openai = useAnthropicDirect ? null
     : useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
+    : useMoonshotDirect ? await getMoonshotClient()
     : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
@@ -1412,7 +1447,9 @@ export async function generateResponseWithTools(
   }
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
-    model: useOllamaDirect ? getOllamaModelId(effectiveModel) : effectiveModel,
+    model: useOllamaDirect ? getOllamaModelId(effectiveModel)
+      : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
+      : effectiveModel,
     messages,
     tools,
     tool_choice: tools?.length ? effectiveToolChoice : undefined,

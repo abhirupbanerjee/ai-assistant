@@ -5,7 +5,7 @@
  * prompt optimization, translation) with multi-route fallback.
  *
  * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
- * Route 2: Fireworks AI direct + Claude (Anthropic) direct
+ * Route 2: Fireworks AI direct + Claude (Anthropic) direct + Moonshot AI direct
  * Route 3: Ollama direct (local / air-gapped)
  * Route 4: Ollama Cloud direct (hosted models)
  */
@@ -36,6 +36,7 @@ let litellmClient: OpenAI | null = null;
 let fireworksClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
 let ollamaClient: OpenAI | null = null;
+let moonshotClient: OpenAI | null = null;
 
 async function getLiteLLMClient(): Promise<OpenAI> {
   if (!litellmClient) {
@@ -77,6 +78,17 @@ async function getOllamaClient(): Promise<OpenAI> {
     });
   }
   return ollamaClient;
+}
+
+async function getMoonshotClient(): Promise<OpenAI> {
+  if (!moonshotClient) {
+    const apiKey = await getApiKey('moonshot');
+    moonshotClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: 'https://api.moonshot.cn/v1',
+    });
+  }
+  return moonshotClient;
 }
 
 // ============ Provider Callers ============
@@ -144,6 +156,21 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
   return response.choices[0]?.message?.content?.trim() || '';
 }
 
+async function callMoonshot(model: string, opts: InternalCompletionOptions): Promise<string> {
+  const client = await getMoonshotClient();
+  const moonshotModel = model.startsWith('moonshot/') ? model.slice('moonshot/'.length) : model;
+  // Non-streaming OpenAI-compatible API may require stream=true for max_tokens > 4096.
+  // Cap at 4096 to avoid the error.
+  const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
+  const response = await client.chat.completions.create({
+    model: moonshotModel,
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.3,
+    max_tokens: maxTokens,
+  });
+  return response.choices[0]?.message?.content?.trim() || '';
+}
+
 /**
  * Call Ollama Cloud for non-streaming internal completions.
  * Uses the native /api/chat endpoint via callOllamaCloud().
@@ -181,12 +208,16 @@ function isOllamaCloudModelFn(model: string): boolean {
   return isOllamaCloudModel(model);
 }
 
+function isMoonshotModel(model: string): boolean {
+  return model.startsWith('moonshot/');
+}
+
 // ============ Main Entry Point ============
 
 /**
  * Create a completion using the configured LLM route with automatic fallback.
  *
- * - Route 2 models (Claude, Fireworks) always go direct.
+ * - Route 2 models (Claude, Fireworks, Moonshot) always go direct.
  * - Route 3 models (Ollama) always go direct.
  * - Route 1 models go via LiteLLM; on failure, fall back to Route 2/3 if enabled.
  */
@@ -200,6 +231,9 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
   }
   if (isFireworksModel(model)) {
     return callFireworks(model, opts);
+  }
+  if (isMoonshotModel(model)) {
+    return callMoonshot(model, opts);
   }
 
   // Route 3 models → always direct to Ollama
@@ -222,7 +256,7 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
 
     console.warn('[llm-client] Route 1 failed, trying fallback routes:', err instanceof Error ? err.message : err);
 
-    // Try Route 2 first (Fireworks → Claude), then Route 3 (Ollama)
+    // Try Route 2 first (Fireworks → Claude → Moonshot), then Route 3 (Ollama)
     if (hasRoute2) {
       try {
         return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);

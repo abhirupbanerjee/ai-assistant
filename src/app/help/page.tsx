@@ -1120,7 +1120,7 @@ export default function HelpPage() {
                     <tr className="bg-gray-50">
                       <td className="px-4 py-2.5 font-medium text-gray-700">LLM Models</td>
                       <td className="px-4 py-2.5 text-gray-600">OpenAI (GPT-4.1, GPT-5 families), Google (Gemini 2.5, 3), Mistral (Large, Medium)</td>
-                      <td className="px-4 py-2.5 text-gray-600">Anthropic (Claude Opus, Sonnet, Haiku), Fireworks (MiniMax M2.5, Kimi K2.5)</td>
+                      <td className="px-4 py-2.5 text-gray-600">Anthropic (Claude Opus, Sonnet, Haiku), Fireworks (MiniMax M2.5, Kimi K2.5), Moonshot (Kimi K2.5, v1)</td>
                       <td className="px-4 py-2.5 text-gray-600">Ollama (Llama 3.2, Qwen3, GPT-OSS 20B)</td>
                     </tr>
                     <tr>

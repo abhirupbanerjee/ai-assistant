@@ -109,7 +109,7 @@ Output your result directly without JSON formatting.`;
 const DEFAULT_CHECKER_PROMPT = 'You are a quality checker. Evaluate task results objectively and provide confidence scores.';
 
 /** Map a provider ID from enabled_models to a valid agent provider value */
-function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud' {
+function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud' | 'moonshot' {
   switch (providerId) {
     case 'gemini':
     case 'google':
@@ -124,6 +124,8 @@ function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral
       return 'ollama';
     case 'ollama-cloud':
       return 'ollama-cloud';
+    case 'moonshot':
+      return 'moonshot';
     default:
       return 'openai';
   }

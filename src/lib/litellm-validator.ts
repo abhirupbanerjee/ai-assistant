@@ -288,6 +288,7 @@ export function getProviderFromModelPath(modelPath: string): string {
   if (lowerPath.startsWith('azure/')) return 'azure';
   if (lowerPath.startsWith('anthropic/')) return 'anthropic';
   if (lowerPath.startsWith('fireworks/') || lowerPath.startsWith('fireworks_ai/')) return 'fireworks';
+  if (lowerPath.startsWith('moonshot/')) return 'moonshot';
 
   // Default to openai for models without prefix
   return 'openai';

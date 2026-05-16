@@ -18,12 +18,29 @@ let openaiClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
 let fireworksClient: OpenAI | null = null;
 let ollamaClient: OpenAI | null = null;
+let moonshotClient: OpenAI | null = null;
+
+/**
+ * Extract <think>...</think> reasoning blocks from model output.
+ * Used by OpenAI-compatible providers (Fireworks, Moonshot, Ollama, etc.)
+ */
+function extractThinkTags(content: string): { visible: string; thinking: string } {
+  const match = content.match(/<think>([\s\S]*?)<\/think>/);
+  if (match) {
+    return {
+      visible: content.replace(match[0], '').replace(/^\n+/, '').trim(),
+      thinking: match[1].trim(),
+    };
+  }
+  return { visible: content, thinking: '' };
+}
 
 export interface LLMResponse {
   content: string;
   tokens_used: number;
   model: string;
   provider: string;
+  thinkingContent?: string;
 }
 
 /**
@@ -66,6 +83,9 @@ export async function generateWithModel(
       break;
     case 'ollama-cloud':
       response = await generateOllamaCloud(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
+    case 'moonshot':
+      response = await generateMoonshot(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
       break;
     default:
       throw new Error(`Unknown LLM provider: ${modelSpec.provider}`);
@@ -131,7 +151,8 @@ async function generateOpenAI(
       if (chunk.usage) totalTokens = chunk.usage.total_tokens;
     }
 
-    return { content, tokens_used: totalTokens, model, provider: 'openai' };
+    const { visible, thinking } = extractThinkTags(content);
+    return { content: visible, tokens_used: totalTokens, model, provider: 'openai', thinkingContent: thinking || undefined };
   }
 
   const response = await openaiClient.chat.completions.create({
@@ -141,11 +162,14 @@ async function generateOpenAI(
     max_tokens: maxTokens,
   });
 
+  const rawContent = response.choices[0].message.content || '';
+  const { visible, thinking } = extractThinkTags(rawContent);
   return {
-    content: response.choices[0].message.content || '',
+    content: visible,
     tokens_used: response.usage?.total_tokens || 0,
     model,
     provider: 'openai',
+    thinkingContent: thinking || undefined,
   };
 }
 
@@ -263,6 +287,8 @@ async function generateAnthropic(
 
   const textBlock = response.content.find(b => b.type === 'text');
   const content = (textBlock && 'text' in textBlock ? textBlock.text : '') || '';
+  const thinkingBlock = response.content.find(b => b.type === 'thinking');
+  const thinkingContent = (thinkingBlock && 'thinking' in thinkingBlock ? thinkingBlock.thinking : '') || '';
   const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0);
 
   return {
@@ -270,6 +296,7 @@ async function generateAnthropic(
     tokens_used: tokensUsed,
     model: modelId,
     provider: 'anthropic',
+    thinkingContent: thinkingContent || undefined,
   };
 }
 
@@ -315,7 +342,8 @@ async function generateFireworks(
       if (chunk.usage) totalTokens = chunk.usage.total_tokens;
     }
 
-    return { content, tokens_used: totalTokens, model, provider: 'fireworks' };
+    const { visible, thinking } = extractThinkTags(content);
+    return { content: visible, tokens_used: totalTokens, model, provider: 'fireworks', thinkingContent: thinking || undefined };
   }
 
   const response = await fireworksClient.chat.completions.create({
@@ -325,11 +353,14 @@ async function generateFireworks(
     max_tokens: maxTokens,
   });
 
+  const rawContent = response.choices[0].message.content || '';
+  const { visible, thinking } = extractThinkTags(rawContent);
   return {
-    content: response.choices[0].message.content || '',
+    content: visible,
     tokens_used: response.usage?.total_tokens || 0,
     model,
     provider: 'fireworks',
+    thinkingContent: thinking || undefined,
   };
 }
 
@@ -367,11 +398,14 @@ async function generateOllama(
     max_tokens: maxTokens,
   });
 
+  const rawContent = response.choices[0]?.message?.content || '';
+  const { visible, thinking } = extractThinkTags(rawContent);
   return {
-    content: response.choices[0]?.message?.content || '',
+    content: visible,
     tokens_used: response.usage?.total_tokens || 0,
     model: ollamaModel,
     provider: 'ollama',
+    thinkingContent: thinking || undefined,
   };
 }
 
@@ -402,11 +436,79 @@ async function generateOllamaCloud(
   const content = data.message?.content?.trim() || '';
   const tokensUsed = (data.eval_count || 0) + (data.prompt_eval_count || 0);
 
+  const { visible, thinking } = extractThinkTags(content);
   return {
-    content,
+    content: visible,
     tokens_used: tokensUsed,
     model,
     provider: 'ollama-cloud',
+    thinkingContent: thinking || undefined,
+  };
+}
+
+/**
+ * Generate using Moonshot AI (direct SDK, bypasses LiteLLM)
+ */
+async function generateMoonshot(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number,
+  maxTokens: number
+): Promise<LLMResponse> {
+  if (!moonshotClient) {
+    const apiKey = await getApiKey('moonshot');
+    moonshotClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: 'https://api.moonshot.cn/v1',
+    });
+  }
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const moonshotModel = model.startsWith('moonshot/') ? model.slice('moonshot/'.length) : model;
+
+  // Moonshot may require stream=true for max_tokens > 4096 (OpenAI-compatible behavior)
+  if (maxTokens > 4096) {
+    const stream = await moonshotClient.chat.completions.create({
+      model: moonshotModel,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+
+    let content = '';
+    let totalTokens = 0;
+    for await (const chunk of stream) {
+      content += chunk.choices[0]?.delta?.content || '';
+      if (chunk.usage) totalTokens = chunk.usage.total_tokens;
+    }
+
+    const { visible, thinking } = extractThinkTags(content);
+    return { content: visible, tokens_used: totalTokens, model: moonshotModel, provider: 'moonshot', thinkingContent: thinking || undefined };
+  }
+
+  const response = await moonshotClient.chat.completions.create({
+    model: moonshotModel,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  });
+
+  const rawContent = response.choices[0].message.content || '';
+  const { visible, thinking } = extractThinkTags(rawContent);
+  return {
+    content: visible,
+    tokens_used: response.usage?.total_tokens || 0,
+    model: moonshotModel,
+    provider: 'moonshot',
+    thinkingContent: thinking || undefined,
   };
 }
 
@@ -417,6 +519,7 @@ async function generateOllamaCloud(
 function detectProvider(modelId: string): ModelSpec['provider'] {
   if (modelId.startsWith('anthropic/') || modelId.startsWith('claude-')) return 'anthropic';
   if (modelId.startsWith('fireworks/') || modelId.startsWith('accounts/fireworks')) return 'fireworks';
+  if (modelId.startsWith('moonshot/')) return 'moonshot';
   if (modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud')) return 'ollama-cloud';
   if (modelId.startsWith('ollama-') || modelId.startsWith('ollama/')) return 'ollama';
   if (modelId.startsWith('gemini')) return 'gemini';

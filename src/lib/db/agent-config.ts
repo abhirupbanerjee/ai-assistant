@@ -121,7 +121,7 @@ export function setAgentModelConfigs(
  * Validate agent model configuration
  */
 export function validateAgentModelConfig(config: AgentModelConfig): boolean {
-  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'ollama', 'ollama-cloud'].includes(config.provider)) {
+  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'ollama', 'ollama-cloud', 'moonshot'].includes(config.provider)) {
     return false;
   }
   if (!config.model || config.model.trim() === '') {

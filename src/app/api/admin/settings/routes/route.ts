@@ -3,7 +3,7 @@
  *
  * Manages primary/fallback routing between LLM infrastructure paths.
  * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
- * Route 2: Direct providers (Fireworks AI, Claude/Anthropic)
+ * Route 2: Direct providers (Fireworks AI, Claude/Anthropic, Moonshot AI)
  * Route 3: Local / Ollama direct (air-gapped capable)
  * Route 4: Ollama Cloud direct (hosted models)
  */

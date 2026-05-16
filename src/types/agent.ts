@@ -57,7 +57,7 @@ export const DEFAULT_AGENT_BUDGET: AgentBudget = {
 
 // ============ Model Configuration ============
 
-export type LLMProvider = 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud';
+export type LLMProvider = 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud' | 'moonshot';
 
 export interface ModelSpec {
   provider: LLMProvider;
