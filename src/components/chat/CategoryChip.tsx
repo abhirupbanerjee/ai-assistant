@@ -62,14 +62,14 @@ export default function CategoryChip({
     setRecentCategoryIds(getRecentCategoryIds());
   }, []);
 
-  // Calculate dropdown position when opening
+  // Calculate dropdown position when opening (drop upward)
   useLayoutEffect(() => {
     if (!isOpen || !buttonRef.current) return;
 
     const updatePosition = () => {
       const rect = buttonRef.current!.getBoundingClientRect();
       setDropdownPos({
-        top: rect.bottom + 4,
+        top: rect.top,
         left: rect.left,
       });
     };
@@ -225,7 +225,7 @@ export default function CategoryChip({
           <div
             ref={portalDropdownRef}
             className="fixed w-max min-w-[14rem] bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] flex flex-col"
-            style={{ top: dropdownPos.top, left: dropdownPos.left }}
+            style={{ bottom: `calc(100vh - ${dropdownPos.top}px + 4px)`, left: dropdownPos.left }}
             role="listbox"
           >
             {/* Search input */}
