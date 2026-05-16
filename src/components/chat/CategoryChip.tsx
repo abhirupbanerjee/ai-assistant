@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { ChevronDown, X, Search } from 'lucide-react';
+import Portal from '@/components/ui/Portal';
 import type { UserSubscription } from '@/types';
 
 const RECENT_CATEGORIES_KEY = 'policybot:recentCategories';
@@ -50,7 +51,10 @@ export default function CategoryChip({
   const [isOpen, setIsOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
   const [recentCategoryIds, setRecentCategoryIds] = useState<number[]>([]);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const portalDropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Load recent categories on mount
@@ -58,10 +62,36 @@ export default function CategoryChip({
     setRecentCategoryIds(getRecentCategoryIds());
   }, []);
 
-  // Hide dropdown when clicking outside
+  // Calculate dropdown position when opening
+  useLayoutEffect(() => {
+    if (!isOpen || !buttonRef.current) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current!.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    };
+
+    updatePosition();
+
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen]);
+
+  // Hide dropdown when clicking outside (wrapper OR portal dropdown)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inWrapper = wrapperRef.current?.contains(target) ?? false;
+      const inPortal = portalDropdownRef.current?.contains(target) ?? false;
+      if (!inWrapper && !inPortal) {
         setIsOpen(false);
       }
     };
@@ -78,6 +108,7 @@ export default function CategoryChip({
       setTimeout(() => searchInputRef.current?.focus(), 0);
     } else {
       setFilterText('');
+      setDropdownPos(null);
     }
   }, [isOpen]);
 
@@ -127,8 +158,9 @@ export default function CategoryChip({
     .filter(Boolean) as UserSubscription[];
 
   return (
-    <div className="relative inline-flex items-center gap-2 flex-wrap" ref={dropdownRef}>
+    <div className="inline-flex items-center gap-2 flex-wrap" ref={wrapperRef}>
       <button
+        ref={buttonRef}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || readOnly}
         className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
@@ -187,51 +219,58 @@ export default function CategoryChip({
         </span>
       )}
 
-      {/* Dropdown menu */}
-      {isOpen && subscriptions.length > 1 && (
-        <div className="absolute top-full left-0 mt-1 w-max min-w-[14rem] bg-white rounded-lg shadow-lg border border-gray-200 z-50 flex flex-col" role="listbox">
-          {/* Search input */}
-          <div className="px-2 py-1.5 border-b border-gray-100 flex items-center gap-2 sticky top-0 bg-white rounded-t-lg">
-            <Search size={14} className="text-gray-400 shrink-0" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              placeholder="Search categories..."
-              className="w-full text-sm outline-none bg-transparent text-gray-700 placeholder-gray-400"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setIsOpen(false);
-                }
-              }}
-            />
+      {/* Portal dropdown — rendered at body level with fixed positioning */}
+      {isOpen && subscriptions.length > 1 && dropdownPos && (
+        <Portal>
+          <div
+            ref={portalDropdownRef}
+            className="fixed w-max min-w-[14rem] bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] flex flex-col"
+            style={{ top: dropdownPos.top, left: dropdownPos.left }}
+            role="listbox"
+          >
+            {/* Search input */}
+            <div className="px-2 py-1.5 border-b border-gray-100 flex items-center gap-2 sticky top-0 bg-white rounded-t-lg">
+              <Search size={14} className="text-gray-400 shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                placeholder="Search categories..."
+                className="w-full text-sm outline-none bg-transparent text-gray-700 placeholder-gray-400"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setIsOpen(false);
+                  }
+                }}
+              />
+            </div>
+            {/* Scrollable list */}
+            <div className="overflow-y-auto max-h-60">
+              {filteredSubscriptions.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-gray-400 text-center">
+                  No categories found
+                </div>
+              ) : (
+                filteredSubscriptions.map((sub) => (
+                  <button
+                    key={sub.categoryId}
+                    onClick={() => handleSelect(sub.categoryId)}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                      selectedCategoryId === sub.categoryId
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                    role="option"
+                    aria-selected={selectedCategoryId === sub.categoryId}
+                  >
+                    {sub.categoryName}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-          {/* Scrollable list */}
-          <div className="overflow-y-auto max-h-60">
-            {filteredSubscriptions.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-gray-400 text-center">
-                No categories found
-              </div>
-            ) : (
-              filteredSubscriptions.map((sub) => (
-                <button
-                  key={sub.categoryId}
-                  onClick={() => handleSelect(sub.categoryId)}
-                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                    selectedCategoryId === sub.categoryId
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                  role="option"
-                  aria-selected={selectedCategoryId === sub.categoryId}
-                >
-                  {sub.categoryName}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
+        </Portal>
       )}
     </div>
   );
