@@ -449,7 +449,13 @@ export type SettingKey =
   // LLM Routes
   | 'routes-settings'
   // Speech (STT + TTS)
-  | 'speech-settings';
+  | 'speech-settings'
+  // Agent Swarm
+  | 'agent_swarm_enabled'
+  | 'agent_swarm_model'
+  | 'agent_swarm_max_tokens'
+  | 'agent_swarm_temperature'
+  | 'agent_swarm_system_prompt';
 
 // ============ Speech Settings Types ============
 

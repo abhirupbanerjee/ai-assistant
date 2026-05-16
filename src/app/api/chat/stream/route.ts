@@ -9,6 +9,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import type { OpenAI } from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread } from '@/lib/db/compat';
@@ -43,6 +44,8 @@ import {
 } from '@/lib/llm-fallback';
 import { getAutonomousModeEnabled } from '@/lib/db/compat/agent-config';
 import { executeAutonomousWithStreaming } from '@/lib/agent/streaming-executor';
+import { executeSwarmWithStreaming } from '@/lib/agent-swarm';
+import { getAgentSwarmEnabled, getAgentSwarmSettings } from '@/lib/db/compat';
 
 // Route segment config for long-running autonomous tasks
 // 1800s (30 min) matches Traefik proxy timeout for autonomous mode.
@@ -124,8 +127,16 @@ export async function POST(request: NextRequest) {
         }
 
         // Validate mode
-        if (mode !== 'normal' && mode !== 'autonomous') {
+        if (mode !== 'normal' && mode !== 'autonomous' && mode !== 'swarm') {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Invalid mode', recoverable: false });
+          cleanup();
+          safeClose();
+          return;
+        }
+
+        // Role check for swarm mode (admin/superuser only)
+        if (mode === 'swarm' && user.role !== 'admin' && user.role !== 'superuser') {
+          send({ type: 'error', code: 'FORBIDDEN', message: 'Swarm mode requires admin or superuser access', recoverable: false });
           cleanup();
           safeClose();
           return;
@@ -271,6 +282,87 @@ export async function POST(request: NextRequest) {
           );
 
           // Autonomous mode complete - cleanup and return
+          cleanup();
+          safeClose();
+          return;
+        }
+
+        // ============ SWARM MODE BRANCH ============
+        if (mode === 'swarm') {
+          const swarmEnabled = await getAgentSwarmEnabled();
+          if (!swarmEnabled) {
+            send({ type: 'error', code: 'FEATURE_DISABLED', message: 'Agent Swarm has been disabled by admin', recoverable: false });
+            cleanup();
+            safeClose();
+            return;
+          }
+
+          const swarmSettings = await getAgentSwarmSettings();
+          const categoryIds = thread.categories?.map(c => c.id) || [];
+
+          // Convert conversation history to OpenAI format
+          const openaiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+          const history = await getMessages(user.id, threadId, 50);
+          for (const msg of history.slice(0, -1)) { // Exclude the just-added user message
+            if (msg.role === 'tool' && msg.tool_call_id) {
+              openaiMessages.push({
+                role: 'tool',
+                tool_call_id: msg.tool_call_id,
+                content: msg.content,
+              });
+            } else if (msg.role === 'assistant' && msg.tool_calls) {
+              openaiMessages.push({
+                role: 'assistant',
+                content: msg.content,
+                tool_calls: msg.tool_calls as OpenAI.Chat.ChatCompletionMessageToolCall[],
+              });
+            } else {
+              openaiMessages.push({
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+              });
+            }
+          }
+          // Add current user message
+          openaiMessages.push({ role: 'user', content: message });
+
+          const assistantMessageId = uuidv4();
+
+          try {
+            const result = await executeSwarmWithStreaming(
+              openaiMessages,
+              {
+                model: swarmSettings.model,
+                maxTokens: swarmSettings.maxTokens,
+                temperature: swarmSettings.temperature,
+                systemPrompt: swarmSettings.systemPrompt,
+                categoryIds,
+              },
+              send
+            );
+
+            const assistantMessage: Message = {
+              id: assistantMessageId,
+              role: 'assistant',
+              content: result.content,
+              timestamp: new Date(),
+              metadata: {
+                model: swarmSettings.model,
+                totalMs: Date.now() - requestStart,
+                completionTokens: countTokens(result.content),
+                tokensEstimated: true,
+              },
+            };
+
+            await addMessage(user.id, threadId, assistantMessage);
+            await updateThreadTokenCount(threadId, countTokens(result.content));
+
+            send({ type: 'done', messageId: assistantMessageId, threadId });
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Swarm execution failed';
+            send({ type: 'error', code: 'UNKNOWN_ERROR', message: errorMsg, recoverable: false });
+          }
+
           cleanup();
           safeClose();
           return;

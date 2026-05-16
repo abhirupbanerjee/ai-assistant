@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip } from 'lucide-react';
+import { ArrowUp, Loader2, Square, Bot, Users, Globe, Paperclip } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
@@ -37,6 +37,8 @@ interface MessageInputProps {
   onPreferencesChange: (preferences: ChatPreferences) => void;
   // Autonomous mode admin control
   autonomousAdminDisabled?: boolean;
+  // Agent swarm admin control
+  swarmAdminDisabled?: boolean;
   // Model readiness — false when no valid model is available for the active route
   modelReady?: boolean;
   onModelStatusChange?: (ready: boolean) => void;
@@ -61,6 +63,7 @@ export default function MessageInput({
   preferences,
   onPreferencesChange,
   autonomousAdminDisabled,
+  swarmAdminDisabled,
   modelReady = true,
   onModelStatusChange,
   isStreaming = false,
@@ -124,6 +127,9 @@ export default function MessageInput({
     const features: ActiveFeatureBadge[] = [];
     if (mode === 'autonomous') {
       features.push({ icon: <Bot size={12} />, label: 'Autonomous' });
+    }
+    if (mode === 'swarm') {
+      features.push({ icon: <Users size={12} />, label: 'Swarm' });
     }
     if (preferences.webSearchEnabled) {
       features.push({ icon: <Globe size={12} />, label: 'Web Search' });
@@ -344,6 +350,7 @@ export default function MessageInput({
                     webSearchEnabled={preferences.webSearchEnabled}
                     onWebSearchToggle={handleWebSearchToggle}
                     autonomousAdminDisabled={autonomousAdminDisabled}
+                    swarmAdminDisabled={swarmAdminDisabled}
                     disabled={disabled}
                   />
                 }
@@ -405,6 +412,7 @@ export default function MessageInput({
               mode={mode}
               onModeChange={setMode}
               autonomousAdminDisabled={autonomousAdminDisabled}
+              swarmAdminDisabled={swarmAdminDisabled}
               webSearchEnabled={preferences.webSearchEnabled}
               onWebSearchToggle={handleWebSearchToggle}
               selectedLanguage={preferences.targetLanguage}

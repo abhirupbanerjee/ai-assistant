@@ -30,6 +30,7 @@ interface PlusMenuProps {
   mode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
   autonomousAdminDisabled?: boolean;
+  swarmAdminDisabled?: boolean;
   // WebSearchToggle props
   webSearchEnabled: boolean;
   onWebSearchToggle: (enabled: boolean) => void;
@@ -54,6 +55,7 @@ export default function PlusMenu({
   mode,
   onModeChange,
   autonomousAdminDisabled,
+  swarmAdminDisabled,
   webSearchEnabled,
   onWebSearchToggle,
   selectedLanguage,
@@ -94,14 +96,15 @@ export default function PlusMenu({
    // Count active toggles (excluding uploads which are shown separately)
    const activeToggles = [
      mode === 'autonomous',
+     mode === 'swarm',
      webSearchEnabled,
      selectedLanguage !== 'en',
      selectedTone !== 'default',
      showCitationTrajectory,
-   ].filter(Boolean).length;
+   ].filter(Boolean);
 
    const hasUploads = currentUploads.length > 0;
-   const hasActiveFeatures = activeToggles > 0 || hasUploads;
+   const hasActiveFeatures = activeToggles.length > 0 || hasUploads;
 
    return (
      <div ref={menuRef} className="relative">
@@ -120,7 +123,7 @@ export default function PlusMenu({
           {/* Active features badge: blue dot for toggles, number for uploads */}
           {hasActiveFeatures && !isOpen && (
             <div className="absolute -top-1 -right-1 flex items-center gap-0.5">
-              {activeToggles > 0 && (
+              {activeToggles.length > 0 && (
                 <span className="w-2 h-2 bg-blue-500 rounded-full" title="Active toggles" />
               )}
               {hasUploads && (
@@ -151,7 +154,7 @@ export default function PlusMenu({
            <div className="border-t border-gray-100 pt-2">
              <div className="text-xs uppercase text-gray-500 font-medium mb-2">Capabilities</div>
              <div className="flex items-center gap-2">
-               <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} />
+               <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} swarmAdminDisabled={swarmAdminDisabled} />
                <WebSearchToggle
                  enabled={webSearchEnabled}
                  onToggle={onWebSearchToggle}

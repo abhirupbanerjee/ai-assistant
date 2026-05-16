@@ -33,6 +33,7 @@ import SystemPromptSettings from '@/components/admin/prompts/SystemPromptSetting
 import CategoryPromptsSettings from '@/components/admin/prompts/CategoryPromptsSettings';
 import BrandingSettingsTab from '@/components/admin/BrandingSettings';
 import AgentSettingsTab from '@/components/admin/AgentSettings';
+import AgentSwarmSettingsTab from '@/components/admin/AgentSwarmSettings';
 import TokenLimitsSettingsTab from '@/components/admin/tokens/TokenLimitsSettings';
 import TokenUsageDashboard from '@/components/admin/TokenUsageDashboard';
 
@@ -114,7 +115,7 @@ type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' |
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type AgentsSection = 'config' | 'bots';
+type AgentsSection = 'config' | 'bots' | 'swarm';
 type TokensSection = 'memory' | 'summarization' | 'limits';
 type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup';
 
@@ -253,7 +254,7 @@ interface SystemStats {
 }
 
 const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup'];
-const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
+const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots', 'swarm'];
 
 function AdminPageContent() {
   const router = useRouter();
@@ -1248,6 +1249,9 @@ function AdminPageContent() {
           <>
             {agentsSection === 'config' && (
               <AgentSettingsTab />
+            )}
+            {agentsSection === 'swarm' && (
+              <AgentSwarmSettingsTab />
             )}
             {agentsSection === 'bots' && (
               selectedAgentBotId ? (

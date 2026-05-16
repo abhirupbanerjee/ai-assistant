@@ -105,6 +105,8 @@ export interface StreamingState {
   hitlEvent: HitlClarificationEvent | null;
   /** HITL plan approval event (autonomous mode) */
   planApprovalEvent: PlanApprovalEvent | null;
+  /** Active swarm agents and their activities */
+  swarmAgents: Array<{ agentName: string; activity: string; timestamp: number }>;
 }
 
 export interface UseStreamingChatOptions {
@@ -122,7 +124,7 @@ export interface UseStreamingChatReturn {
   /** Current streaming state */
   state: StreamingState;
   /** Send a message and start streaming */
-  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous', preferences?: ChatPreferences) => Promise<void>;
+  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous' | 'swarm', preferences?: ChatPreferences) => Promise<void>;
   /** Abort current streaming */
   abort: () => void;
   /** Toggle processing details expansion */
@@ -202,6 +204,7 @@ const initialState: StreamingState = {
   preflightEvent: null,
   hitlEvent: null,
   planApprovalEvent: null,
+  swarmAgents: [],
 };
 
 // ============ Hook ============
@@ -650,6 +653,28 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
       }
 
+      case 'swarm_agent':
+        setState(prev => ({
+          ...prev,
+          swarmAgents: [
+            ...prev.swarmAgents,
+            { agentName: event.agentName, activity: event.activity, timestamp: Date.now() },
+          ],
+        }));
+        break;
+
+      case 'swarm_status':
+        setState(prev => ({
+          ...prev,
+          phase: event.phase as StreamPhase,
+          processingDetails: {
+            ...prev.processingDetails,
+            phase: event.phase as StreamPhase,
+            statusMessage: event.message,
+          },
+        }));
+        break;
+
       case 'chunk':
         // Use RAF batching for smooth updates
         contentBufferRef.current += event.content;
@@ -724,7 +749,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   /**
    * Send message and start streaming
    */
-  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' = 'normal', preferences?: ChatPreferences) => {
+  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' | 'swarm' = 'normal', preferences?: ChatPreferences) => {
     // Abort any existing stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -868,6 +893,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       preflightEvent: null,
       hitlEvent: null,
       planApprovalEvent: null,
+      swarmAgents: [],
       processingDetails: {
         ...prev.processingDetails,
         phase: 'complete',

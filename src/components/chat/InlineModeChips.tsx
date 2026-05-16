@@ -9,6 +9,7 @@ interface InlineModeChipsProps {
   webSearchEnabled: boolean;
   onWebSearchToggle: (enabled: boolean) => void;
   autonomousAdminDisabled?: boolean;
+  swarmAdminDisabled?: boolean;
   disabled?: boolean;
   /** If true, render vertically (for bottom sheet); otherwise horizontal (for inline) */
   vertical?: boolean;
@@ -20,6 +21,7 @@ export default function InlineModeChips({
   webSearchEnabled,
   onWebSearchToggle,
   autonomousAdminDisabled,
+  swarmAdminDisabled,
   disabled,
   vertical = false,
 }: InlineModeChipsProps) {
@@ -34,6 +36,7 @@ export default function InlineModeChips({
         onModeChange={onModeChange}
         disabled={disabled}
         adminDisabled={autonomousAdminDisabled}
+        swarmAdminDisabled={swarmAdminDisabled}
       />
       <WebSearchToggle
         enabled={webSearchEnabled}

@@ -35,7 +35,7 @@ type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' |
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type AgentsSection = 'config' | 'bots';
+type AgentsSection = 'config' | 'bots' | 'swarm';
 type TokensSection = 'memory' | 'summarization' | 'limits';
 type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup';
 
@@ -76,6 +76,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
     submenu: [
       { id: 'config', label: 'Agent Config' },
       { id: 'bots', label: 'Agent Bots' },
+      { id: 'swarm', label: 'Agent Swarm' },
     ]
   },
   { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },

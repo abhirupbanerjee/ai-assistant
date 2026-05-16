@@ -6,6 +6,7 @@ import type { Message, MessageMetadata, Thread, UserSubscription, Source, Messag
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
+import type { ChatMode } from './ModeToggle';
 import CategoryChip from './CategoryChip';
 import AttachmentChipsRow from './AttachmentChipsRow';
 import Spinner from '@/components/ui/Spinner';
@@ -119,6 +120,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     });
   }, []);
   const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
+  const [swarmAdminDisabled, setSwarmAdminDisabled] = useState(true); // default disabled until verified
   const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
 
   // Expose methods to parent via ref
@@ -320,6 +322,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         }
       })
       .catch(() => { /* default to enabled */ });
+
+    fetch('/api/settings/agent-swarm')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          setSwarmAdminDisabled(!(data.enabled && data.moonshotConfigured && data.allowedForUser));
+        }
+      })
+      .catch(() => { /* default to disabled */ });
   }, []);
 
   // Ref to track if a send is in progress (prevents race condition with activeThread change)
@@ -513,7 +524,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     return null;
   }, [onThreadCreated, pendingCategoryId]);
 
-  const sendMessage = useCallback(async (content: string, mode?: 'normal' | 'autonomous', preferences?: ChatPreferences) => {
+  const sendMessage = useCallback(async (content: string, mode?: ChatMode, preferences?: ChatPreferences) => {
     setError(null);
 
     // Set sending flag BEFORE createThread (which may trigger onThreadCreated → activeThread change)
@@ -961,6 +972,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            preferences={chatPreferences}
            onPreferencesChange={setChatPreferences}
            autonomousAdminDisabled={autonomousAdminDisabled}
+           swarmAdminDisabled={swarmAdminDisabled}
            onFocus={onInputFocus}
            onBlur={onInputBlur}
             categoryChipSlot={
