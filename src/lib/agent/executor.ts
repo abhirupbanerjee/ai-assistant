@@ -9,11 +9,11 @@
  * - Tool execution (document generation, image generation, web search)
  */
 
-import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig } from '@/types/agent';
+import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig, ModelSpec } from '@/types/agent';
 import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import type { ResolvedSkills } from '../skills/types';
-import { generateWithModel, generateWithModelFallback, getModelForRole } from './llm-router';
+import { generateWithModelFallback, getModelForRole } from './llm-router';
 import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
 import { transitionTaskState, getTaskPlan } from '../db/compat/task-plans';
@@ -150,6 +150,15 @@ async function resolveCategorySkills(plan: AgentPlan, taskDescription: string, c
 // ============ Tool Detection ============
 
 type ExecutorToolType = 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen' | 'xlsx_gen' | 'pptx_gen' | 'podcast_gen' | 'diagram_gen';
+type ExecutorProfileUsed = NonNullable<AgentTask['executor_profile']>;
+type ExecutorRouting = { model: ModelSpec; profileUsed: ExecutorProfileUsed };
+type TaskExecutionPayload = {
+  content: string;
+  tokens_used?: number;
+  llm_calls?: number;
+  web_searches?: number;
+  model_used?: string;
+};
 
 const TOOL_REGISTRY: Record<ExecutorToolType, { explicitTypes: string[]; keywords: string[] }> = {
   doc_gen:     { explicitTypes: ['document', 'doc_gen', 'generate_document'], keywords: ['document', 'report', 'word', 'docx', 'pdf', 'memo', 'letter', 'brief'] },
@@ -236,6 +245,95 @@ function detectToolForTask(task: AgentTask, planId?: string): string | null {
   return null;
 }
 
+export function resolveExecutorModelForTask(
+  task: AgentTask,
+  modelConfig: AgentModelConfig
+): ExecutorRouting {
+  const configuredProfiles = modelConfig.executor_profiles;
+  const defaultModel = configuredProfiles?.default || getModelForRole('executor', modelConfig);
+
+  const availableProfileKeys = new Set(
+    Object.keys(configuredProfiles || {})
+  ) as Set<NonNullable<AgentTask['executor_profile']>>;
+
+  const resolveFromProfile = (
+    profile: ExecutorProfileUsed
+  ): ExecutorRouting => {
+    const profileModel = configuredProfiles?.[profile];
+    if (!profileModel) {
+      if (profile !== 'default') {
+        console.warn(
+          `[Executor] Requested executor profile "${profile}" is not configured. Falling back to default profile.`
+        );
+      }
+      return { model: defaultModel, profileUsed: 'default' };
+    }
+    return { model: profileModel, profileUsed: profile };
+  };
+
+  if (task.executor_profile) {
+    return resolveFromProfile(task.executor_profile);
+  }
+
+  const inferredProfile = inferExecutorProfileForTask(task, availableProfileKeys);
+  return resolveFromProfile(inferredProfile);
+}
+
+function inferExecutorProfileForTask(
+  task: AgentTask,
+  availableProfiles: Set<ExecutorProfileUsed>
+): ExecutorProfileUsed {
+  const type = task.type.toLowerCase();
+  const text = `${task.description} ${task.target} ${task.expected_output || ''}`.toLowerCase();
+  const dependencyCount = task.dependencies?.length || 0;
+  const isArtifactTask = [
+    'document',
+    'image',
+    'chart',
+    'spreadsheet',
+    'presentation',
+    'podcast',
+    'diagram',
+    'doc_gen',
+    'image_gen',
+    'chart_gen',
+    'xlsx_gen',
+    'pptx_gen',
+    'podcast_gen',
+    'diagram_gen',
+  ].includes(type);
+
+  if (isArtifactTask && availableProfiles.has('artifact_generation')) {
+    return 'artifact_generation';
+  }
+
+  const likelyLongContext = dependencyCount >= 3
+    || text.length > 1200
+    || /\b(comprehensive|across|all|full|end-to-end|detailed|multi-step|cross-cutting)\b/.test(text);
+  if (likelyLongContext && availableProfiles.has('long_context')) {
+    return 'long_context';
+  }
+
+  const deepReasoningType = ['compare', 'synthesize', 'validate'].includes(type);
+  const deepReasoningText = /\b(compare|trade-?off|evaluate|risk|root cause|scenario|decision|architecture)\b/.test(text);
+  if ((deepReasoningType || deepReasoningText) && availableProfiles.has('deep_reasoning')) {
+    return 'deep_reasoning';
+  }
+
+  const fastLowCostType = ['extract', 'search', 'summarize'].includes(type);
+  const fastLowCostText = /\b(extract|list|summarize|quick|brief|short)\b/.test(text);
+  if ((fastLowCostType || fastLowCostText) && availableProfiles.has('fast_low_cost')) {
+    return 'fast_low_cost';
+  }
+
+  if (availableProfiles.has('default')) {
+    return 'default';
+  }
+
+  // Should not happen (default profile is required), but keep fail-safe.
+  return 'default';
+}
+
 // ============ Tool Execution Callbacks ============
 
 export interface ExecutorCallbacks {
@@ -275,9 +373,24 @@ export async function executeTask(
     };
   }
 
+  const selectionTask: AgentTask = {
+    ...task,
+    type: freshTask?.type || task.type,
+    target: freshTask?.target || task.target,
+    description: freshTask?.description || task.description,
+    dependencies: Array.isArray(freshTask?.dependencies) ? freshTask.dependencies : task.dependencies,
+    priority: typeof freshTask?.priority === 'number' ? freshTask.priority : task.priority,
+    status: (freshTask?.status as AgentTask['status']) || task.status,
+    executor_profile: freshTask?.executor_profile || task.executor_profile,
+  };
+  const executorSelection = resolveExecutorModelForTask(selectionTask, modelConfig);
+
   // Mark as running and save state history
   try {
-    await transitionTaskState(planId, task.id, 'running');
+    await transitionTaskState(planId, task.id, 'running', {
+      executor_profile: executorSelection.profileUsed,
+      executor_model_used: executorSelection.model.model,
+    });
   } catch (error) {
     return {
       success: false,
@@ -293,7 +406,7 @@ export async function executeTask(
 
     // Perform task execution with timeout enforcement
     const result = await Promise.race([
-      performTaskExecution(task, plan, modelConfig, callbacks),
+      performTaskExecution(task, plan, modelConfig, callbacks, executorSelection),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Task execution timed out after ${timeoutMinutes} minutes`)), timeoutMs)
       ),
@@ -313,6 +426,7 @@ export async function executeTask(
         confidence_score: checkResult.confidence_score,
         tokens_used: totalTokens,
         llm_calls: totalLlmCalls,
+        executor_model_used: result.model_used,
       });
 
       return {
@@ -331,6 +445,7 @@ export async function executeTask(
         review_notes: checkResult.notes,
         tokens_used: totalTokens,
         llm_calls: totalLlmCalls,
+        executor_model_used: result.model_used,
       });
 
       return {
@@ -347,9 +462,12 @@ export async function executeTask(
   } catch (error) {
     // FAIL-FAST: No retries, skip on first failure
     const errorMsg = error instanceof Error ? error.message : String(error);
+    const fallbackModel = executorSelection.model.model;
 
     await transitionTaskState(plan.id, task.id, 'skipped', {
       error: errorMsg,
+      executor_profile: executorSelection.profileUsed,
+      executor_model_used: fallbackModel,
     });
 
     return {
@@ -367,17 +485,19 @@ async function performTaskExecution(
   task: AgentTask,
   plan: AgentPlan,
   modelConfig: AgentModelConfig,
-  callbacks?: ExecutorCallbacks
-): Promise<{ content: string; tokens_used?: number; llm_calls?: number; web_searches?: number }> {
+  callbacks?: ExecutorCallbacks,
+  executorSelection?: ExecutorRouting
+): Promise<TaskExecutionPayload> {
   // Detect if this task requires a tool
   // On retry with fallback strategy, skip tool detection and use LLM instead
   const isRetryWithFallback = task.retry_count && task.retry_count > 0 &&
     (task.retry_strategy === 'fallback_ascii_diagram' || task.retry_strategy === 'fallback_text_description');
 
   const toolType = isRetryWithFallback ? null : detectToolForTask(task, plan.id);
+  const { model: taskExecutorModel } = executorSelection || resolveExecutorModelForTask(task, modelConfig);
 
   if (toolType) {
-    return executeToolForTask(task, plan, modelConfig, toolType, callbacks);
+    return executeToolForTask(task, plan, taskExecutorModel, toolType, callbacks);
   }
 
   // Default: LLM-based execution
@@ -420,7 +540,7 @@ async function performTaskExecution(
   }
 
   // Get executor model (with escalation on retries)
-  let executorModel = getModelForRole('executor', modelConfig);
+  let executorModel: ModelSpec = taskExecutorModel;
 
   if (task.retry_count && task.retry_count > 0) {
     try {
@@ -456,6 +576,7 @@ async function performTaskExecution(
     tokens_used: response.tokens_used,
     llm_calls: 1,
     web_searches: webSearches,
+    model_used: response.model || executorModel.model,
   };
 }
 
@@ -465,10 +586,10 @@ async function performTaskExecution(
 async function executeToolForTask(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig,
+  executorModel: ModelSpec,
   toolType: string,
   callbacks?: ExecutorCallbacks
-): Promise<{ content: string; tokens_used?: number; llm_calls?: number; web_searches?: number }> {
+): Promise<TaskExecutionPayload> {
   const startTime = Date.now();
 
   // Get display name for the tool (static map for built-in tools, dynamic for others)
@@ -489,38 +610,41 @@ async function executeToolForTask(
   callbacks?.onToolStart?.(toolType, displayName);
 
   try {
-    let result: string;
+    let result: TaskExecutionPayload;
 
     switch (toolType) {
       case 'doc_gen':
-        result = await executeDocGenTool(task, plan, modelConfig, callbacks);
+        result = await executeDocGenTool(task, plan, executorModel, callbacks);
         break;
       case 'image_gen':
-        result = await executeImageGenTool(task, plan, modelConfig, callbacks);
+        result = { content: await executeImageGenTool(task, plan, callbacks) };
         break;
       case 'chart_gen':
         // Charts are visual artifacts — route through image generation with chart context
-        result = await executeImageGenTool(task, plan, modelConfig, callbacks);
+        result = { content: await executeImageGenTool(task, plan, callbacks) };
         break;
       case 'xlsx_gen':
-        result = await executeXlsxGenTool(task, plan, modelConfig, callbacks);
+        result = await executeXlsxGenTool(task, plan, executorModel, callbacks);
         break;
       case 'pptx_gen':
-        result = await executePptxGenTool(task, plan, modelConfig, callbacks);
+        result = await executePptxGenTool(task, plan, executorModel, callbacks);
         break;
       case 'podcast_gen':
-        result = await executePodcastGenTool(task, plan, modelConfig, callbacks);
+        result = await executePodcastGenTool(task, plan, executorModel, callbacks);
         break;
       case 'diagram_gen':
-        result = await executeDiagramGenTool(task, plan, modelConfig, callbacks);
+        result = await executeDiagramGenTool(task, plan, executorModel, callbacks);
         break;
       case 'web_search':
-        result = await executeWebSearchTool(task, callbacks);
+        result = {
+          content: await executeWebSearchTool(task, callbacks),
+          web_searches: 1,
+        };
         break;
       default:
         // Generic bridge — handles any AVAILABLE_TOOLS tool
         if (AVAILABLE_TOOLS[toolType]) {
-          result = await executeGenericTool(task, toolType, callbacks);
+          result = { content: await executeGenericTool(task, toolType, callbacks) };
         } else {
           throw new Error(`Unknown tool type: ${toolType}`);
         }
@@ -529,12 +653,11 @@ async function executeToolForTask(
     const duration = Date.now() - startTime;
     callbacks?.onToolEnd?.(toolType, true, duration);
 
-    const toolLlmCalls = ['doc_gen', 'image_gen', 'chart_gen', 'xlsx_gen', 'pptx_gen', 'podcast_gen', 'diagram_gen'].includes(toolType) ? 1 : 0;
     return {
-      content: result,
-      tokens_used: 0, // Tool helper LLM token usage is not surfaced here yet.
-      llm_calls: toolLlmCalls,
-      web_searches: toolType === 'web_search' ? 1 : 0,
+      ...result,
+      tokens_used: result.tokens_used || 0,
+      llm_calls: result.llm_calls || 0,
+      web_searches: result.web_searches || 0,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -550,9 +673,9 @@ async function executeToolForTask(
 async function executeDocGenTool(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig,
+  executorModel: ModelSpec,
   callbacks?: ExecutorCallbacks
-): Promise<string> {
+): Promise<TaskExecutionPayload> {
   // Resolve skills for this plan's category context
   const skillPrompt = await resolveSkillsForTask(plan, task, callbacks);
 
@@ -565,8 +688,6 @@ async function executeDocGenTool(
 
   // First, generate the document content using LLM
   const contentPrompt = buildDocContentPrompt(task, plan);
-  const executorModel = getModelForRole('executor', modelConfig);
-
   const contentResponse = await generateWithModelFallback(executorModel, contentPrompt, {
     systemPrompt: docSystemPrompt,
     temperature: 0.4,
@@ -604,7 +725,12 @@ async function executeDocGenTool(
     );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    return `Document generation failed: ${errorMsg}`;
+    return {
+      content: `Document generation failed: ${errorMsg}`,
+      tokens_used: contentResponse.tokens_used,
+      llm_calls: 1,
+      model_used: contentResponse.model || executorModel.model,
+    };
   }
 
   // Parse result and emit artifact event
@@ -627,12 +753,27 @@ async function executeDocGenTool(
         data: docInfo,
       });
 
-      return `Document generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})\nDownload: ${parsed.document.downloadUrl}`;
+      return {
+        content: `Document generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})\nDownload: ${parsed.document.downloadUrl}`,
+        tokens_used: contentResponse.tokens_used,
+        llm_calls: 1,
+        model_used: contentResponse.model || executorModel.model,
+      };
     } else {
-      return `Document generation failed: ${parsed.error || 'Unknown error'}`;
+      return {
+        content: `Document generation failed: ${parsed.error || 'Unknown error'}`,
+        tokens_used: contentResponse.tokens_used,
+        llm_calls: 1,
+        model_used: contentResponse.model || executorModel.model,
+      };
     }
   } catch {
-    return result;
+    return {
+      content: result,
+      tokens_used: contentResponse.tokens_used,
+      llm_calls: 1,
+      model_used: contentResponse.model || executorModel.model,
+    };
   }
 }
 
@@ -642,7 +783,6 @@ async function executeDocGenTool(
 async function executeImageGenTool(
   task: AgentTask,
   plan: AgentPlan,
-  _modelConfig: AgentModelConfig,
   callbacks?: ExecutorCallbacks
 ): Promise<string> {
   // Build image prompt from task and context
@@ -801,19 +941,23 @@ async function executeGenericTool(
 async function executeXlsxGenTool(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig,
+  executorModel: ModelSpec,
   callbacks?: ExecutorCallbacks
-): Promise<string> {
+): Promise<TaskExecutionPayload> {
   // Use LLM to generate structured spreadsheet data from task context
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Generate spreadsheet data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "filename": "...", "sheets": [{ "name": "...", "headers": [...], "rows": [[...], ...] }] }`;
-  const executorModel = getModelForRole('executor', modelConfig);
   const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.3 });
 
   try {
     const extracted = extractJSON(response.content);
     if (!extracted.found) {
-      return `Spreadsheet generation failed: could not find JSON in LLM response`;
+      return {
+        content: `Spreadsheet generation failed: could not find JSON in LLM response`,
+        tokens_used: response.tokens_used,
+        llm_calls: 1,
+        model_used: response.model || executorModel.model,
+      };
     }
     const data = JSON.parse(extracted.json);
     // Normalize: LLM may return "title" instead of "filename"
@@ -829,7 +973,12 @@ async function executeXlsxGenTool(
         // LLM returned flat structure instead of sheets array
         data.sheets = [{ name: 'Sheet1', headers: data.headers, rows: data.rows }];
       } else {
-        return `Spreadsheet generation failed: LLM returned invalid sheets format (expected array, got ${typeof data.sheets})`;
+        return {
+          content: `Spreadsheet generation failed: LLM returned invalid sheets format (expected array, got ${typeof data.sheets})`,
+          tokens_used: response.tokens_used,
+          llm_calls: 1,
+          model_used: response.model || executorModel.model,
+        };
       }
     }
     // Ensure each sheet has required fields
@@ -850,11 +999,26 @@ async function executeXlsxGenTool(
     const parsed = JSON.parse(result);
     if (parsed.success && parsed.document) {
       callbacks?.onArtifact?.({ type: 'artifact', subtype: 'document', data: parsed.document });
-      return `Spreadsheet generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`;
+      return {
+        content: `Spreadsheet generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`,
+        tokens_used: response.tokens_used,
+        llm_calls: 1,
+        model_used: response.model || executorModel.model,
+      };
     }
-    return `Spreadsheet generation failed: ${parsed.error || 'Unknown error'}`;
+    return {
+      content: `Spreadsheet generation failed: ${parsed.error || 'Unknown error'}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   } catch (error) {
-    return `Spreadsheet generation failed: ${error instanceof Error ? error.message : 'could not parse structured data from LLM response'}`;
+    return {
+      content: `Spreadsheet generation failed: ${error instanceof Error ? error.message : 'could not parse structured data from LLM response'}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   }
 }
 
@@ -864,18 +1028,22 @@ async function executeXlsxGenTool(
 async function executePptxGenTool(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig,
+  executorModel: ModelSpec,
   callbacks?: ExecutorCallbacks
-): Promise<string> {
+): Promise<TaskExecutionPayload> {
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Generate presentation slide data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "slides": [{ "title": "...", "content": "...", "notes": "..." }] }`;
-  const executorModel = getModelForRole('executor', modelConfig);
   const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.4 });
 
   try {
     const extracted = extractJSON(response.content);
     if (!extracted.found) {
-      return `Presentation generation failed: could not find JSON in LLM response`;
+      return {
+        content: `Presentation generation failed: could not find JSON in LLM response`,
+        tokens_used: response.tokens_used,
+        llm_calls: 1,
+        model_used: response.model || executorModel.model,
+      };
     }
     const data = JSON.parse(extracted.json);
     const threadId = (plan as any).thread_id || (plan as any).threadId;
@@ -889,11 +1057,26 @@ async function executePptxGenTool(
     const parsed = JSON.parse(result);
     if (parsed.success && parsed.document) {
       callbacks?.onArtifact?.({ type: 'artifact', subtype: 'document', data: parsed.document });
-      return `Presentation generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`;
+      return {
+        content: `Presentation generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})`,
+        tokens_used: response.tokens_used,
+        llm_calls: 1,
+        model_used: response.model || executorModel.model,
+      };
     }
-    return `Presentation generation failed: ${parsed.error || 'Unknown error'}`;
+    return {
+      content: `Presentation generation failed: ${parsed.error || 'Unknown error'}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   } catch (error) {
-    return `Presentation generation failed: ${error instanceof Error ? error.message : 'could not parse structured data from LLM response'}`;
+    return {
+      content: `Presentation generation failed: ${error instanceof Error ? error.message : 'could not parse structured data from LLM response'}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   }
 }
 
@@ -903,12 +1086,11 @@ async function executePptxGenTool(
 async function executePodcastGenTool(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig,
+  executorModel: ModelSpec,
   callbacks?: ExecutorCallbacks
-): Promise<string> {
+): Promise<TaskExecutionPayload> {
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Write a podcast script for: ${task.description}\n\n${depContext}\n\nWrite a natural, conversational script suitable for text-to-speech narration. 2-5 minutes length.`;
-  const executorModel = getModelForRole('executor', modelConfig);
   const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.5 });
 
   try {
@@ -920,11 +1102,26 @@ async function executePodcastGenTool(
 
     if (result.success && result.podcastHint) {
       callbacks?.onArtifact?.({ type: 'artifact', subtype: 'podcast', data: result.podcastHint });
-      return `Podcast generated: ${result.podcastHint.filename || 'podcast.mp3'}`;
+      return {
+        content: `Podcast generated: ${result.podcastHint.filename || 'podcast.mp3'}`,
+        tokens_used: response.tokens_used,
+        llm_calls: 1,
+        model_used: response.model || executorModel.model,
+      };
     }
-    return `Podcast generation failed: ${result.message || 'Unknown error'}`;
+    return {
+      content: `Podcast generation failed: ${result.message || 'Unknown error'}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   } catch (error) {
-    return `Podcast generation failed: ${error instanceof Error ? error.message : String(error)}`;
+    return {
+      content: `Podcast generation failed: ${error instanceof Error ? error.message : String(error)}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   }
 }
 
@@ -934,12 +1131,11 @@ async function executePodcastGenTool(
 async function executeDiagramGenTool(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig,
+  executorModel: ModelSpec,
   callbacks?: ExecutorCallbacks
-): Promise<string> {
+): Promise<TaskExecutionPayload> {
   const depContext = buildDependencyContext(task, plan);
   const prompt = `Generate a Mermaid diagram definition for: ${task.description}\n\n${depContext}\n\nRespond with valid Mermaid syntax only (no markdown fences).`;
-  const executorModel = getModelForRole('executor', modelConfig);
   const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.3 });
 
   try {
@@ -957,11 +1153,26 @@ async function executeDiagramGenTool(
     const parsed = JSON.parse(result);
     if (parsed.success && parsed.diagram) {
       callbacks?.onArtifact?.({ type: 'artifact', subtype: 'diagram', data: parsed.diagram });
-      return `Diagram generated: ${parsed.diagram.title || 'diagram'}`;
+      return {
+        content: `Diagram generated: ${parsed.diagram.title || 'diagram'}`,
+        tokens_used: response.tokens_used,
+        llm_calls: 1,
+        model_used: response.model || executorModel.model,
+      };
     }
-    return `Diagram generation failed: ${parsed.error || 'Unknown error'}`;
+    return {
+      content: `Diagram generation failed: ${parsed.error || 'Unknown error'}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   } catch (error) {
-    return `Diagram generation failed: ${error instanceof Error ? error.message : String(error)}`;
+    return {
+      content: `Diagram generation failed: ${error instanceof Error ? error.message : String(error)}`,
+      tokens_used: response.tokens_used,
+      llm_calls: 1,
+      model_used: response.model || executorModel.model,
+    };
   }
 }
 

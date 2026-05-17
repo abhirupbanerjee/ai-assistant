@@ -19,7 +19,7 @@ import type {
 } from '@/types/agent';
 import type { StreamEvent } from '@/types/stream';
 import { createPlan } from './planner';
-import { executeTask, type ExecutorCallbacks } from './executor';
+import { executeTask, resolveExecutorModelForTask, type ExecutorCallbacks } from './executor';
 import { generateSummary } from './summarizer';
 import { GlobalBudgetTracker } from './budget-tracker';
 import { detectStuckPlan, getReadyTasks } from './dependency-validator';
@@ -237,12 +237,16 @@ async function executeTasksInOrder(
 
     // Sort wave by priority (highest first) for consistent ordering
     wave.sort((a, b) => (b.priority || 1) - (a.priority || 1));
+    const routedWave = wave.map((task) => ({
+      ...task,
+      executor_profile: resolveExecutorModelForTask(task, modelConfig).profileUsed,
+    }));
 
     // 4. Notify wave and task starts
-    if (wave.length > 1) {
-      callbacks?.onWaveStarted?.(waveCount, wave.length, wave.map(t => t.id));
+    if (routedWave.length > 1) {
+      callbacks?.onWaveStarted?.(waveCount, routedWave.length, routedWave.map(t => t.id));
     }
-    for (const task of wave) {
+    for (const task of routedWave) {
       callbacks?.onTaskStarted?.(task);
     }
 
@@ -256,17 +260,17 @@ async function executeTasksInOrder(
 
     let waveResults: { task: AgentTask; result: ExecutionResult }[];
 
-    if (wave.length === 1) {
+    if (routedWave.length === 1) {
       // Single task — no Promise.allSettled overhead
-      const task = wave[0];
+      const task = routedWave[0];
       const cb: ExecutorCallbacks = { ...baseCallbacks, onChecking: () => callbacks?.onTaskChecking?.(task) };
       const result = await executeTask(task, currentPlan, modelConfig, cb);
       waveResults = [{ task, result }];
     } else {
       // Parallel wave execution
-      console.log(`[Orchestrator] Executing wave ${waveCount}: ${wave.length} tasks in parallel [${wave.map(t => t.id).join(', ')}]`);
+      console.log(`[Orchestrator] Executing wave ${waveCount}: ${routedWave.length} tasks in parallel [${routedWave.map(t => t.id).join(', ')}]`);
       const settled = await Promise.allSettled(
-        wave.map((task) => {
+        routedWave.map((task) => {
           const cb: ExecutorCallbacks = { ...baseCallbacks, onChecking: () => callbacks?.onTaskChecking?.(task) };
           return executeTask(task, currentPlan, modelConfig, cb)
             .then((result) => ({ task, result }));
@@ -276,7 +280,7 @@ async function executeTasksInOrder(
         s.status === 'fulfilled'
           ? s.value
           : {
-              task: wave[i],
+              task: routedWave[i],
               result: {
                 success: false,
                 error: (s.reason as Error)?.message || 'Task execution failed',
@@ -356,12 +360,24 @@ async function executeTasksInOrder(
         try {
           const replanResult = await createPlan(
             freshPlan?.originalRequest || '',
-            { replanContext: failedTasks },
+            {
+              replanContext: failedTasks,
+              executorProfiles: Object.entries(modelConfig.executor_profiles || {}).map(([name, spec]) => ({
+                name: name as 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private',
+                provider: spec.provider,
+                model: spec.model,
+                notes: name === 'default' ? 'baseline executor profile' : undefined,
+              })),
+            },
             modelConfig
           );
 
           if (replanResult.tasks.length > 0) {
-            await resetFailedTasks(plan.id, failedTasks.map(t => t.id), replanResult.tasks);
+            const routedReplacementTasks = replanResult.tasks.map((task) => ({
+              ...task,
+              executor_profile: resolveExecutorModelForTask(task, modelConfig).profileUsed,
+            }));
+            await resetFailedTasks(plan.id, failedTasks.map(t => t.id), routedReplacementTasks);
             await incrementBudgetUsage(plan.id, {
               llm_calls: replanResult.llm_calls || 0,
               tokens_used: replanResult.tokens_used || 0,
@@ -662,9 +678,21 @@ export async function createAndExecuteAutonomousPlan(
       console.warn('[Orchestrator] Failed to fetch tool definitions for planner:', err);
     }
 
+    const executorProfiles = Object.entries(planConfig.modelConfig.executor_profiles || {})
+      .map(([name, spec]) => ({
+        name: name as 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private',
+        provider: spec.provider,
+        model: spec.model,
+        notes: name === 'default' ? 'baseline executor profile' : undefined,
+      }));
+
     // Phase 1b: Creating task plan
     callbacks?.onPlanning?.();
-    const planResult = await createPlan(userRequest, { ...context, skillCatalog, resolvedSkillContext, availableTools }, planConfig.modelConfig);
+    const planResult = await createPlan(
+      userRequest,
+      { ...context, skillCatalog, resolvedSkillContext, availableTools, executorProfiles },
+      planConfig.modelConfig
+    );
 
     if (planResult.error || planResult.tasks.length === 0) {
       const error = planResult.error || 'Failed to create plan';
@@ -676,12 +704,17 @@ export async function createAndExecuteAutonomousPlan(
       };
     }
 
+    const plannedTasks = planResult.tasks.map((task) => ({
+      ...task,
+      executor_profile: resolveExecutorModelForTask(task, planConfig.modelConfig).profileUsed,
+    }));
+
     // Create plan in database
     const planId = await createAutonomousPlan(
       planConfig.threadId,
       planConfig.userId,
       planResult.title,
-      planResult.tasks.map((t) => ({
+      plannedTasks.map((t) => ({
         id: t.id,
         description: t.description,
         type: t.type,
@@ -692,6 +725,8 @@ export async function createAndExecuteAutonomousPlan(
         execution_hint: t.execution_hint,
         skill_ids: t.skill_ids,
         tool_name: t.tool_name,
+        executor_profile: t.executor_profile,
+        executor_profile_reason: t.executor_profile_reason,
         retry_count: 0,
       })),
       {
@@ -710,13 +745,13 @@ export async function createAndExecuteAutonomousPlan(
     }
 
     // Phase 1c: Plan ready - notify user with task count
-    callbacks?.onPlanReady?.(planResult.tasks.length);
+    callbacks?.onPlanReady?.(plannedTasks.length);
 
     // Phase 1d: HITL plan approval (conditional)
     const hitlMinTasks = planConfig.hitlMinTasks ?? 5;
     const shouldRequestApproval = callbacks?.onPlanApprovalNeeded
       && planConfig.hitlEnabled !== false
-      && planResult.tasks.length >= hitlMinTasks;
+      && plannedTasks.length >= hitlMinTasks;
 
     if (shouldRequestApproval) {
       let approvalAttempts = 0;
@@ -745,7 +780,7 @@ export async function createAndExecuteAutonomousPlan(
         console.log(`[Orchestrator] Re-planning (attempt ${approvalAttempts}) with feedback: ${approval.feedback}`);
         const revisedResult = await createPlan(
           userRequest,
-          { ...context, skillCatalog, resolvedSkillContext, availableTools, planningFeedback: approval.feedback },
+          { ...context, skillCatalog, resolvedSkillContext, availableTools, executorProfiles, planningFeedback: approval.feedback },
           planConfig.modelConfig
         );
 
@@ -754,14 +789,19 @@ export async function createAndExecuteAutonomousPlan(
           break;
         }
 
-        await replacePlanTasks(planId, revisedResult.tasks, revisedResult.title);
+        const revisedTasks = revisedResult.tasks.map((task) => ({
+          ...task,
+          executor_profile: resolveExecutorModelForTask(task, planConfig.modelConfig).profileUsed,
+        }));
+
+        await replacePlanTasks(planId, revisedTasks, revisedResult.title);
         if (revisedResult.llm_calls || revisedResult.tokens_used) {
           await incrementBudgetUsage(planId, {
             llm_calls: revisedResult.llm_calls || 0,
             tokens_used: revisedResult.tokens_used || 0,
           });
         }
-        callbacks?.onPlanReady?.(revisedResult.tasks.length);
+        callbacks?.onPlanReady?.(revisedTasks.length);
         // Loop → show revised plan for approval
       }
     }

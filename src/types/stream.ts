@@ -104,6 +104,8 @@ export interface PlanApprovalEvent {
     target: string;
     description: string;
     tool_name?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile_reason?: string;
     dependencies: number[];
   }>;
   timeoutMs: number;
@@ -154,10 +156,37 @@ export type StreamEvent =
   | { type: 'error'; code: StreamErrorCode; message: string; recoverable: boolean }
 
   // Autonomous mode events
-  | { type: 'agent_plan_created'; plan_id: string; title: string; task_count: number; tasks: Array<{ id: number; description: string; type: string }> }
+  | {
+      type: 'agent_plan_created';
+      plan_id: string;
+      title: string;
+      task_count: number;
+      tasks: Array<{
+        id: number;
+        description: string;
+        type: string;
+        executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+        executor_profile_reason?: string;
+      }>;
+    }
   | { type: 'agent_wave_started'; wave_number: number; task_count: number; task_ids: number[] }
-  | { type: 'agent_task_started'; task_id: number; description: string; task_type: string }
-  | { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number; result?: string; checkerNotes?: string }
+  | {
+      type: 'agent_task_started';
+      task_id: number;
+      description: string;
+      task_type: string;
+      executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    }
+  | {
+      type: 'agent_task_completed';
+      task_id: number;
+      status: 'done' | 'skipped' | 'needs_review';
+      confidence?: number;
+      result?: string;
+      checkerNotes?: string;
+      executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      executor_model_used?: string;
+    }
   | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
   | { type: 'agent_budget_exceeded'; message: string }
   | { type: 'agent_task_summary'; task_id: number; summary: string }

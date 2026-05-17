@@ -954,6 +954,8 @@ export {
   // Types
   type AgentModelConfig,
   type StoredAgentModelConfigs,
+  type ExecutorProfileName,
+  type ExecutorModelProfiles,
   type StreamingConfig,
   // Streaming Config
   getStreamingConfig,
@@ -961,6 +963,8 @@ export {
   // Agent Model Config
   getAgentModelConfigs,
   setAgentModelConfigs,
+  getExecutorModelProfiles,
+  setExecutorModelProfiles,
   validateAgentModelConfig,
   // Summarizer System Prompt
   getSummarizerSystemPrompt,

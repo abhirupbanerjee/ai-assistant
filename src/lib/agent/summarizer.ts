@@ -6,7 +6,7 @@
  */
 
 import type { AgentPlan, AgentModelConfig } from '@/types/agent';
-import { generateWithModel, getModelForRole } from './llm-router';
+import { generateWithModelFallback, getModelForRole } from './llm-router';
 import { getSummarizerSystemPrompt } from '@/lib/db/compat/agent-config';
 
 /**
@@ -30,7 +30,7 @@ export async function generateSummary(
     const systemPrompt = await getSummarizerSystemPrompt();
 
     // Generate summary
-    const response = await generateWithModel(summarizerModel, prompt, {
+    const response = await generateWithModelFallback(summarizerModel, prompt, {
       systemPrompt,
       temperature: 0.5, // Moderate creativity for natural language
     });
@@ -173,7 +173,7 @@ ${taskList}
 Write a brief opening (2-3 sentences) explaining what you'll do for the user. Be conversational, first person. Do NOT list every task — just give a high-level overview of the approach.`;
 
   try {
-    const response = await generateWithModel(summarizerModel, prompt, {
+    const response = await generateWithModelFallback(summarizerModel, prompt, {
       systemPrompt: PROGRESSIVE_SYSTEM_PROMPT,
       temperature: 0.5,
       maxTokens: 300,
@@ -219,7 +219,7 @@ ${truncatedResult}
 Write the NEXT section (1-4 paragraphs) incorporating this new information. Continue naturally from where you left off. Use headings, bullet points, or tables where appropriate. Present the actual findings and content — not commentary about the step.`;
 
   try {
-    const response = await generateWithModel(summarizerModel, prompt, {
+    const response = await generateWithModelFallback(summarizerModel, prompt, {
       systemPrompt: PROGRESSIVE_SYSTEM_PROMPT,
       temperature: 0.5,
       maxTokens: 1500,
@@ -259,7 +259,7 @@ ${gapNote}
 Write a brief conclusion (2-4 sentences) that wraps up the response. If there were generated files mentioned above, list them clearly at the end. Do NOT repeat the content — just summarize key takeaways and next steps if applicable.`;
 
   try {
-    const response = await generateWithModel(summarizerModel, prompt, {
+    const response = await generateWithModelFallback(summarizerModel, prompt, {
       systemPrompt: PROGRESSIVE_SYSTEM_PROMPT,
       temperature: 0.5,
       maxTokens: 500,

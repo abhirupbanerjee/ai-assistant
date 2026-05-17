@@ -423,6 +423,7 @@ export type SettingKey =
   | 'agent_task_timeout_minutes'
   | 'agent_model_planner'
   | 'agent_model_executor'
+  | 'agent_executor_model_profiles'
   | 'agent_model_checker'
   | 'agent_model_summarizer'
   | 'agent_summarizer_system_prompt'

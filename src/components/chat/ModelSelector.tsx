@@ -18,11 +18,20 @@ interface EnabledModel {
 interface ModelSelectorProps {
   threadId: string | null;
   disabled?: boolean;
+  pendingModelId?: string | null;
+  onPendingModelChange?: (modelId: string | null) => void;
   onModelStatusChange?: (ready: boolean) => void;
   onModelInfoChange?: (model: EnabledModel | null, ready: boolean) => void;
 }
 
-export default function ModelSelector({ threadId, disabled, onModelStatusChange, onModelInfoChange }: ModelSelectorProps) {
+export default function ModelSelector({
+  threadId,
+  disabled,
+  pendingModelId,
+  onPendingModelChange,
+  onModelStatusChange,
+  onModelInfoChange,
+}: ModelSelectorProps) {
   const [availableModels, setAvailableModels] = useState<EnabledModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [effectiveModel, setEffectiveModel] = useState<string>('');
@@ -67,12 +76,20 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange,
           const data = await response.json();
           const models = data.models || [];
           setAvailableModels(models);
-          // No thread = no effective model to validate, but need at least 1 model
-          const hasDefault = models.some((m: EnabledModel) => m.isDefault);
-          setEffectiveModelValid(models.length > 0 && hasDefault);
           const defaultModel = models.find((m: EnabledModel) => m.isDefault);
-          setEffectiveModel(defaultModel?.id || '');
-          updateModelStatus(models, models.length > 0 && hasDefault, defaultModel?.id || null);
+          const pendingModel = pendingModelId
+            ? models.find((m: EnabledModel) => m.id === pendingModelId)
+            : null;
+          const nextEffectiveModel = pendingModel?.id || defaultModel?.id || '';
+          const isValid = nextEffectiveModel
+            ? models.some((m: EnabledModel) => m.id === nextEffectiveModel)
+            : false;
+
+          setSelectedModel(pendingModel?.id || null);
+          setGlobalDefault(defaultModel?.id || '');
+          setEffectiveModel(nextEffectiveModel);
+          setEffectiveModelValid(isValid);
+          updateModelStatus(models, isValid, nextEffectiveModel || null);
         }
       } else {
         const response = await fetch(`/api/threads/${threadId}/model`);
@@ -93,7 +110,7 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange,
     } finally {
       setIsLoading(false);
     }
-  }, [threadId, updateModelStatus]);
+  }, [pendingModelId, threadId, updateModelStatus]);
 
   useEffect(() => {
     loadThreadModel();
@@ -101,7 +118,25 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange,
 
   // Handle model change
   const handleModelChange = async (newModelId: string) => {
-    if (!threadId || isChanging) return;
+    if (isChanging) return;
+
+    // Before a thread exists, keep the choice locally and let ChatWindow persist
+    // it when the first message creates the thread.
+    if (!threadId) {
+      const modelToSet = newModelId === 'default' ? null : newModelId;
+      const nextEffectiveModel = modelToSet || globalDefault || availableModels.find((m) => m.isDefault)?.id || '';
+      const isValid = nextEffectiveModel
+        ? availableModels.some((m) => m.id === nextEffectiveModel)
+        : false;
+
+      setSelectedModel(modelToSet);
+      setEffectiveModel(nextEffectiveModel);
+      setEffectiveModelValid(isValid);
+      onPendingModelChange?.(modelToSet);
+      updateModelStatus(availableModels, isValid, nextEffectiveModel || null);
+      setShowDropdown(false);
+      return;
+    }
 
     setIsChanging(true);
     try {

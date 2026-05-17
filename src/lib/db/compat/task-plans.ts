@@ -388,7 +388,22 @@ export async function createAutonomousPlan(
   threadId: string,
   userId: string,
   title: string,
-  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; priority?: number; execution_hint?: string; skill_ids?: number[]; tool_name?: string; retry_count?: number }[],
+  tasks: {
+    id: number;
+    description: string;
+    type: string;
+    target: string;
+    dependencies?: number[];
+    expected_output?: string;
+    priority?: number;
+    execution_hint?: string;
+    skill_ids?: number[];
+    tool_name?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile_reason?: string;
+    executor_model_used?: string;
+    retry_count?: number;
+  }[],
   options: {
     categorySlug?: string;
     budget?: Record<string, unknown>;
@@ -412,6 +427,9 @@ export async function createAutonomousPlan(
     ...(t.execution_hint ? { execution_hint: t.execution_hint } : {}),
     ...(t.skill_ids?.length ? { skill_ids: t.skill_ids } : {}),
     ...(t.tool_name ? { tool_name: t.tool_name } : {}),
+    ...(t.executor_profile ? { executor_profile: t.executor_profile } : {}),
+    ...(t.executor_profile_reason ? { executor_profile_reason: t.executor_profile_reason } : {}),
+    ...(t.executor_model_used ? { executor_model_used: t.executor_model_used } : {}),
     retry_count: t.retry_count ?? 0,
   }));
 
@@ -527,6 +545,8 @@ export async function transitionTaskState(
     retry_count?: number;
     retry_context?: string;
     retry_strategy?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_model_used?: string;
   }
 ): Promise<void> {
   await transaction(async (trx) => {
@@ -575,6 +595,8 @@ export async function transitionTaskState(
     if (extras?.retry_count !== undefined) task.retry_count = extras.retry_count;
     if (extras?.retry_context !== undefined) task.retry_context = extras.retry_context;
     if (extras?.retry_strategy !== undefined) task.retry_strategy = extras.retry_strategy;
+    if (extras?.executor_profile !== undefined) task.executor_profile = extras.executor_profile;
+    if (extras?.executor_model_used !== undefined) task.executor_model_used = extras.executor_model_used;
 
     // Calculate updated stats
     const stats = {
@@ -851,6 +873,9 @@ export async function replacePlanTasks(
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile_reason?: string;
+    executor_model_used?: string;
   }>,
   newTitle?: string
 ): Promise<void> {
@@ -898,6 +923,9 @@ export async function replaceFailedTasks(
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile_reason?: string;
+    executor_model_used?: string;
   }>
 ): Promise<void> {
   await transaction(async (trx) => {
@@ -956,6 +984,9 @@ export async function resetFailedTasks(
     expected_output?: string;
     priority?: number;
     tool_name?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile_reason?: string;
+    executor_model_used?: string;
   }>
 ): Promise<void> {
   await transaction(async (trx) => {
@@ -981,6 +1012,12 @@ export async function resetFailedTasks(
         if (replacement.expected_output) task.expected_output = replacement.expected_output;
         if (replacement.priority) task.priority = replacement.priority;
         if (replacement.tool_name) task.tool_name = replacement.tool_name;
+        if (replacement.executor_profile) task.executor_profile = replacement.executor_profile;
+        else delete task.executor_profile;
+        if (replacement.executor_profile_reason) task.executor_profile_reason = replacement.executor_profile_reason;
+        else delete task.executor_profile_reason;
+        if (replacement.executor_model_used) task.executor_model_used = replacement.executor_model_used;
+        else delete task.executor_model_used;
       }
 
       // Reset execution state — fresh start

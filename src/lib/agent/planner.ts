@@ -8,7 +8,7 @@
  */
 
 import type { AgentTask, AgentModelConfig, PlannerResponse } from '@/types/agent';
-import { generateWithModel, getModelForRole } from './llm-router';
+import { generateWithModelFallback, getModelForRole } from './llm-router';
 import { parsePlannerResponse } from './json-parser';
 import { validateDependencyGraph } from './dependency-validator';
 import { getPlannerSystemPrompt } from '../db/compat/agent-config';
@@ -41,6 +41,12 @@ export async function createPlan(
       toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
     };
     availableTools?: { name: string; description: string }[];
+    executorProfiles?: Array<{
+      name: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      provider: string;
+      model: string;
+      notes?: string;
+    }>;
     planningFeedback?: string;
     replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
   },
@@ -56,7 +62,7 @@ export async function createPlan(
     const systemPrompt = await getPlannerSystemPrompt();
 
     // Generate plan
-    const response = await generateWithModel(plannerModel, prompt, {
+    const response = await generateWithModelFallback(plannerModel, prompt, {
       systemPrompt,
       temperature: 0.3, // Moderate creativity for planning
     });
@@ -105,6 +111,8 @@ export async function createPlan(
       execution_hint: t.execution_hint,
       skill_ids: t.skill_ids,
       tool_name: t.tool_name,
+      executor_profile: t.executor_profile,
+      executor_profile_reason: t.executor_profile_reason,
     }));
 
     // Self-reflection: check plan quality for complex plans (≥4 tasks)
@@ -129,6 +137,8 @@ export async function createPlan(
           execution_hint: t.execution_hint,
           skill_ids: t.skill_ids,
           tool_name: t.tool_name,
+          executor_profile: t.executor_profile,
+          executor_profile_reason: t.executor_profile_reason,
         }));
         console.log(`[Planner] Reflection refined plan: ${tasks.length} → ${finalTasks.length} tasks`);
       }
@@ -204,7 +214,7 @@ If ANY check is FAIL, provide the corrected JSON plan (full plan with title and 
 If ALL checks PASS, respond with: {"reflection": "pass"}`;
 
   try {
-    const response = await generateWithModel(plannerModel, prompt, {
+    const response = await generateWithModelFallback(plannerModel, prompt, {
       systemPrompt: 'You are a plan quality reviewer. Check the plan against the checklist and either confirm it passes or provide a corrected plan.',
       temperature: 0.2,
     });
@@ -247,6 +257,12 @@ function buildPlannerPrompt(
       toolHints: { tool_name: string; force_mode: string; skill_name: string }[];
     };
     availableTools?: { name: string; description: string }[];
+    executorProfiles?: Array<{
+      name: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      provider: string;
+      model: string;
+      notes?: string;
+    }>;
     planningFeedback?: string;
     replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
   }
@@ -315,6 +331,22 @@ For each task, include a "skill_ids" array with the IDs of skills that should be
     }
     prompt += `\nWhen a task directly maps to one of these tools, include "tool_name": "<name>" in the task JSON. The executor will call the tool automatically. Only set tool_name for tasks that need a specific tool — analytical tasks (analyze, search, compare, summarize) should NOT have tool_name.\n`;
     prompt += `If a matched skill's prompt mentions specific tool names (e.g., "security_scan(url)"), create separate tasks for each tool with the corresponding tool_name.\n`;
+  }
+
+  if (context.executorProfiles?.length) {
+    prompt += `\n**Executor Model Profiles (set "executor_profile" when helpful):**\n`;
+    for (const profile of context.executorProfiles) {
+      const notes = profile.notes ? ` - ${profile.notes}` : '';
+      prompt += `- \`${profile.name}\`: ${profile.model} (${profile.provider})${notes}\n`;
+    }
+    prompt += `\nSet "executor_profile" on tasks that benefit from a specific profile and optionally add "executor_profile_reason". If uncertain, use "default".\n`;
+    prompt += `Profile guidance:
+- fast_low_cost: extract/search/summarize or simple transformation tasks
+- deep_reasoning: compare/synthesize/validate or complex decision analysis
+- long_context: tasks combining many dependencies or large context windows
+- artifact_generation: document/image/chart/spreadsheet/presentation/podcast/diagram tasks
+- local_private: sensitive workloads requiring local/private execution path
+`;
   }
 
   prompt += `

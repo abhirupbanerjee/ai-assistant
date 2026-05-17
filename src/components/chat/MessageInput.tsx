@@ -40,6 +40,8 @@ interface MessageInputProps {
   autonomousAdminDisabled?: boolean;
   // Model readiness — false when no valid model is available for the active route
   modelReady?: boolean;
+  pendingModelId?: string | null;
+  onPendingModelChange?: (modelId: string | null) => void;
   onModelStatusChange?: (ready: boolean) => void;
   // Streaming state
   isStreaming?: boolean;
@@ -68,6 +70,8 @@ export default function MessageInput({
   onPreferencesChange,
   autonomousAdminDisabled,
   modelReady = true,
+  pendingModelId,
+  onPendingModelChange,
   onModelStatusChange,
   isStreaming = false,
   onAbort,
@@ -470,6 +474,8 @@ export default function MessageInput({
           {/* Center: Model selector */}
           <ModelSelector
             threadId={threadId}
+            pendingModelId={pendingModelId}
+            onPendingModelChange={onPendingModelChange}
             onModelStatusChange={onModelStatusChange}
             onModelInfoChange={handleModelInfoChange}
           />

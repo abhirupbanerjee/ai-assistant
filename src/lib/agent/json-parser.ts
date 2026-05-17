@@ -43,6 +43,18 @@ export const PLANNER_RESPONSE_SCHEMA = {
           execution_hint: { type: 'string', enum: ['parallel', 'sequential', 'wave_barrier'] },
           skill_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, default: [] },
           tool_name: { type: 'string' },
+          executor_profile: {
+            type: 'string',
+            enum: [
+              'default',
+              'fast_low_cost',
+              'deep_reasoning',
+              'long_context',
+              'artifact_generation',
+              'local_private',
+            ],
+          },
+          executor_profile_reason: { type: 'string' },
         },
       },
     },
@@ -169,7 +181,7 @@ async function repairWithLLM(
   schema?: string
 ): Promise<string> {
   // Lazy import to avoid circular dependencies
-  const { generateWithModel } = await import('./llm-router');
+  const { generateWithModelFallback } = await import('./llm-router');
 
   const prompt = `Fix this JSON response.
 
@@ -184,7 +196,7 @@ ${context ? `Context: ${context}\n` : ''}
 Output ONLY valid corrected JSON matching the schema.`;
 
   try {
-    const response = await generateWithModel(model, prompt, {
+    const response = await generateWithModelFallback(model, prompt, {
       systemPrompt: 'You are a JSON repair assistant. Output only valid JSON, no explanations.',
       temperature: 0.1,
     });

@@ -56,7 +56,8 @@ function parseMessage(msg: DbMessage): ParsedMessage {
 export async function createThread(
   userId: number,
   title: string = 'New Conversation',
-  categoryIds: number[] = []
+  categoryIds: number[] = [],
+  selectedModel: string | null = null
 ): Promise<DbThread> {
   const threadId = uuidv4();
 
@@ -67,6 +68,7 @@ export async function createThread(
         id: threadId,
         user_id: userId,
         title,
+        selected_model: selectedModel,
       })
       .execute();
 

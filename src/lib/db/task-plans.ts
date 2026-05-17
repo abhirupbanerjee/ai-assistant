@@ -35,6 +35,9 @@ export interface Task {
   execution_hint?: string;
   skill_ids?: number[];
   tool_name?: string;
+  executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+  executor_profile_reason?: string;
+  executor_model_used?: string;
   tokens_used?: number;
   llm_calls?: number;
   started_at?: string;
@@ -420,7 +423,22 @@ export function createAutonomousPlan(
   threadId: string,
   userId: string,
   title: string,
-  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; priority?: number; execution_hint?: string; skill_ids?: number[]; tool_name?: string; retry_count?: number }[],
+  tasks: {
+    id: number;
+    description: string;
+    type: string;
+    target: string;
+    dependencies?: number[];
+    expected_output?: string;
+    priority?: number;
+    execution_hint?: string;
+    skill_ids?: number[];
+    tool_name?: string;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile_reason?: string;
+    executor_model_used?: string;
+    retry_count?: number;
+  }[],
   options: {
     categorySlug?: string;
     budget?: Record<string, unknown>;
@@ -444,6 +462,9 @@ export function createAutonomousPlan(
     ...(t.execution_hint ? { execution_hint: t.execution_hint } : {}),
     ...(t.skill_ids?.length ? { skill_ids: t.skill_ids } : {}),
     ...(t.tool_name ? { tool_name: t.tool_name } : {}),
+    ...(t.executor_profile ? { executor_profile: t.executor_profile } : {}),
+    ...(t.executor_profile_reason ? { executor_profile_reason: t.executor_profile_reason } : {}),
+    ...(t.executor_model_used ? { executor_model_used: t.executor_model_used } : {}),
     retry_count: t.retry_count ?? 0,
   }));
 
@@ -541,6 +562,8 @@ export function transitionTaskState(
     review_notes?: string;
     tokens_used?: number;
     llm_calls?: number;
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_model_used?: string;
   }
 ): void {
   const plan = getTaskPlan(planId);
@@ -582,6 +605,8 @@ export function transitionTaskState(
   if (extras?.review_notes !== undefined) task.review_notes = extras.review_notes;
   if (extras?.tokens_used !== undefined) task.tokens_used = extras.tokens_used;
   if (extras?.llm_calls !== undefined) task.llm_calls = extras.llm_calls;
+  if (extras?.executor_profile !== undefined) task.executor_profile = extras.executor_profile;
+  if (extras?.executor_model_used !== undefined) task.executor_model_used = extras.executor_model_used;
 
   // Calculate updated stats
   const stats = {

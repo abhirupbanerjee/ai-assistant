@@ -9,7 +9,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt, getExecutorSystemPrompt, setExecutorSystemPrompt, getCheckerSystemPrompt, setCheckerSystemPrompt, getAutonomousModeEnabled, setAutonomousModeEnabled } from '@/lib/db/compat';
+import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt, getExecutorSystemPrompt, setExecutorSystemPrompt, getCheckerSystemPrompt, setCheckerSystemPrompt, getAutonomousModeEnabled, setAutonomousModeEnabled, getExecutorModelProfiles, setExecutorModelProfiles } from '@/lib/db/compat';
+
+const EXECUTOR_PROFILE_KEYS = [
+  'fast_low_cost',
+  'deep_reasoning',
+  'long_context',
+  'artifact_generation',
+  'local_private',
+] as const;
 
 export async function GET() {
   try {
@@ -31,6 +39,7 @@ export async function GET() {
     const executorSystemPrompt = await getExecutorSystemPrompt();
     const checkerSystemPrompt = await getCheckerSystemPrompt();
     const autonomousModeEnabled = await getAutonomousModeEnabled();
+    const executorModelProfiles = await getExecutorModelProfiles(modelConfigs.executor);
 
     const settings = {
       autonomousModeEnabled,
@@ -44,6 +53,7 @@ export async function GET() {
       executorModel: modelConfigs.executor,
       checkerModel: modelConfigs.checker,
       summarizerModel: modelConfigs.summarizer,
+      executorModelProfiles,
       summarizerSystemPrompt,
       plannerSystemPrompt,
       executorSystemPrompt,
@@ -93,6 +103,7 @@ export async function POST(request: NextRequest) {
       executorModel,
       checkerModel,
       summarizerModel,
+      executorModelProfiles,
       summarizerSystemPrompt,
       plannerSystemPrompt,
       executorSystemPrompt,
@@ -154,6 +165,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (executorModelProfiles && typeof executorModelProfiles === 'object') {
+      for (const profileKey of EXECUTOR_PROFILE_KEYS) {
+        const profile = executorModelProfiles[profileKey];
+        if (profile !== undefined && profile !== null && !validateAgentModelConfig(profile)) {
+          return NextResponse.json(
+            { error: `Invalid executor model profile: ${profileKey}` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     // Validate ranges
     if (
       budgetMaxLlmCalls < 1 ||
@@ -211,6 +234,27 @@ export async function POST(request: NextRequest) {
       },
       user.email
     );
+
+    // Save executor model profiles (backward-compatible: keep default in sync with executorModel)
+    let finalExecutorModelProfiles;
+    if (executorModelProfiles && typeof executorModelProfiles === 'object') {
+      finalExecutorModelProfiles = await setExecutorModelProfiles(
+        {
+          ...executorModelProfiles,
+          default: executorModel,
+        },
+        user.email
+      );
+    } else {
+      const existingProfiles = await getExecutorModelProfiles(executorModel);
+      finalExecutorModelProfiles = await setExecutorModelProfiles(
+        {
+          ...existingProfiles,
+          default: executorModel,
+        },
+        user.email
+      );
+    }
 
     // Save summarizer system prompt (if provided)
     if (typeof summarizerSystemPrompt === 'string') {
@@ -283,6 +327,7 @@ export async function POST(request: NextRequest) {
         executorModel,
         checkerModel,
         summarizerModel,
+        executorModelProfiles: finalExecutorModelProfiles,
         summarizerSystemPrompt: finalSummarizerPrompt,
         plannerSystemPrompt: finalPlannerPrompt,
         executorSystemPrompt: finalExecutorPrompt,

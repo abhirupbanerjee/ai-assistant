@@ -607,6 +607,7 @@ function detectProvider(modelId: string): ModelSpec['provider'] {
  * Generate with automatic fallback chain on recoverable errors.
  * Level 1: global default model (getDefaultLLMModel)
  * Level 2: universal fallback model (getLlmFallbackSettings)
+ * Max attempts are capped by llm-fallback-settings.maxRetryAttempts.
  */
 export async function generateWithModelFallback(
   modelSpec: ModelSpec,
@@ -629,6 +630,7 @@ export async function generateWithModelFallback(
 
     const globalDefault = getDefaultLLMModel();
     const fallbackSettings = await getLlmFallbackSettings();
+    const maxRetryAttempts = Math.max(1, Math.min(3, Number(fallbackSettings.maxRetryAttempts || 2)));
     const universalFallback = fallbackSettings.universalFallback;
 
     // Deduplicate: skip models that are same as the failed one
@@ -639,8 +641,9 @@ export async function generateWithModelFallback(
     if (universalFallback && universalFallback !== modelSpec.model && universalFallback !== globalDefault) {
       fallbackChain.push(universalFallback);
     }
+    const allowedFallbacks = fallbackChain.slice(0, Math.max(0, maxRetryAttempts - 1));
 
-    for (const fallbackModelId of fallbackChain) {
+    for (const fallbackModelId of allowedFallbacks) {
       try {
         const fallbackSpec: ModelSpec = {
           model: fallbackModelId,
@@ -669,7 +672,7 @@ export async function generateWithModelFallback(
 /**
  * Get model spec for a specific agent role
  */
-export function getModelForRole(role: keyof AgentModelConfig, config: AgentModelConfig): ModelSpec {
+export function getModelForRole(role: 'planner' | 'executor' | 'checker' | 'summarizer', config: AgentModelConfig): ModelSpec {
   return config[role];
 }
 

@@ -88,6 +88,11 @@ export default function PlanApprovalCard({
     return colorMap[type] || 'bg-gray-100 text-gray-600';
   };
 
+  const formatExecutorProfile = (profile?: string): string => {
+    if (!profile) return '';
+    return profile.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+  };
+
   if (submitted) {
     return (
       <div className="my-3 p-4 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-500">
@@ -126,6 +131,14 @@ export default function PlanApprovalCard({
               {task.type}
             </span>
             <span className="text-gray-700 leading-snug">{task.description}</span>
+            {task.executor_profile && (
+              <span
+                className="px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 shrink-0"
+                title={task.executor_profile_reason || 'Planner-selected executor profile'}
+              >
+                {formatExecutorProfile(task.executor_profile)}
+              </span>
+            )}
             {task.tool_name && (
               <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500 shrink-0">
                 <Wrench className="w-3 h-3" />

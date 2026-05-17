@@ -9,7 +9,7 @@ import type { StreamEvent } from '@/types/stream';
 import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/types/agent';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
-import { getAgentModelConfigs } from '../db/compat/agent-config';
+import { getAgentModelConfigs, getExecutorModelProfiles } from '../db/compat/agent-config';
 import { getSetting } from '../db/compat/config';
 import { incrementBudgetUsage } from '../db/compat/task-plans';
 import { generatePlanIntro, generateIncrementalSummary, generateConclusion, regenerateAccumulatedContent } from './summarizer';
@@ -72,11 +72,13 @@ export async function executeAutonomousWithStreaming(
 ): Promise<AutonomousExecutionResult> {
   // Get model config from database (admin-configured)
   const modelConfigs = await getAgentModelConfigs();
+  const executorProfiles = await getExecutorModelProfiles(modelConfigs.executor);
   const modelConfig: AgentModelConfig = {
     planner: modelConfigs.planner,
     executor: modelConfigs.executor,
     checker: modelConfigs.checker,
     summarizer: modelConfigs.summarizer,
+    executor_profiles: executorProfiles,
   };
 
   // Load HITL plan approval settings
@@ -150,6 +152,8 @@ export async function executeAutonomousWithStreaming(
                 target: t.target,
                 description: t.description,
                 tool_name: t.tool_name,
+                executor_profile: t.executor_profile,
+                executor_profile_reason: t.executor_profile_reason,
                 dependencies: t.dependencies,
               })),
               timeoutMs: hitlTimeoutMs,
@@ -196,6 +200,8 @@ export async function executeAutonomousWithStreaming(
               id: t.id,
               description: t.description,
               type: t.type,
+              executor_profile: t.executor_profile,
+              executor_profile_reason: t.executor_profile_reason,
             })),
           });
 
@@ -248,6 +254,7 @@ export async function executeAutonomousWithStreaming(
             task_id: task.id,
             description: task.description,
             task_type: task.type,
+            executor_profile: task.executor_profile,
           });
           // Update status message to show which task is executing
           sendEvent({
@@ -281,6 +288,8 @@ export async function executeAutonomousWithStreaming(
             confidence: result.confidence,
             result: result.result,           // Executor output text
             checkerNotes: task.review_notes, // Checker's assessment notes
+            executor_profile: task.executor_profile,
+            executor_model_used: task.executor_model_used,
           });
 
           // Generate and stream incremental summary for completed tasks (skip needs_review — low-confidence content)

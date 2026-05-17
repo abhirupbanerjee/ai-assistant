@@ -37,6 +37,9 @@ export interface AutonomousTaskState {
   description: string;
   type: string;
   status: 'pending' | 'running' | 'done' | 'skipped' | 'needs_review' | 'error';
+  executorProfile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+  executorProfileReason?: string;
+  executorModelUsed?: string;
   confidence?: number;
   result?: string;
   checkerNotes?: string;
@@ -405,6 +408,8 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
               id: t.id,
               description: t.description,
               type: t.type,
+              executorProfile: t.executor_profile,
+              executorProfileReason: t.executor_profile_reason,
               status: 'pending' as const,
             })) || Array.from({ length: event.task_count }, (_, i) => ({
               id: i + 1,
@@ -431,7 +436,13 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
               ...prev.autonomousPlan,
               tasks: prev.autonomousPlan.tasks.map(task =>
                 task.id === event.task_id
-                  ? { ...task, description: event.description, type: event.task_type, status: 'running' as const }
+                  ? {
+                      ...task,
+                      description: event.description,
+                      type: event.task_type,
+                      executorProfile: event.executor_profile || task.executorProfile,
+                      status: 'running' as const,
+                    }
                   : task
               ),
             },
@@ -455,6 +466,8 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
                       confidence: event.confidence,
                       result: event.result,
                       checkerNotes: event.checkerNotes,
+                      executorProfile: event.executor_profile || task.executorProfile,
+                      executorModelUsed: event.executor_model_used || task.executorModelUsed,
                     }
                   : task
               ),

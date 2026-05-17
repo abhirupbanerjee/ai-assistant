@@ -129,32 +129,94 @@ export function getUnhealthyModels(): Array<{ modelId: string; expiresAt: Date }
 export function isRecoverableApiError(error: Error): FallbackReason | null {
   const msg = error.message.toLowerCase();
 
+  // Guardrail: local validation/programming errors should not trigger model fallback
+  if (
+    msg.includes('schema validation failed')
+    || msg.includes('json parse error')
+    || msg.includes('no json found')
+    || msg.includes('unknown llm provider')
+    || msg.includes('invalid input:')
+  ) {
+    return null;
+  }
+
   // Rate limiting
   if (msg.includes('rate limit') || msg.includes('429') || msg.includes('too many requests')) {
     return 'rate_limit';
   }
 
   // Quota/billing issues
-  if (msg.includes('quota') || msg.includes('billing') || msg.includes('insufficient') ||
-      msg.includes('exceeded') || msg.includes('limit reached')) {
+  if (
+    msg.includes('quota')
+    || msg.includes('billing')
+    || msg.includes('insufficient_quota')
+    || msg.includes('payment required')
+    || msg.includes('402')
+  ) {
     return 'quota_exceeded';
   }
 
   // Model not found/available
-  if (msg.includes('model') && (msg.includes('not found') || msg.includes('does not exist') ||
-      msg.includes('unavailable') || msg.includes('not available'))) {
+  if (
+    (msg.includes('model') && (
+      msg.includes('not found')
+      || msg.includes('does not exist')
+      || msg.includes('unavailable')
+      || msg.includes('not available')
+      || msg.includes('not deployed')
+      || msg.includes('deployment not found')
+    ))
+    || msg.includes('resource not found')
+  ) {
     return 'model_unavailable';
   }
 
-  // Authentication errors
-  if (msg.includes('unauthorized') || msg.includes('invalid api key') ||
-      msg.includes('401') || msg.includes('authentication') || msg.includes('invalid key')) {
+  // Authentication/authorization errors
+  if (
+    msg.includes('unauthorized')
+    || msg.includes('forbidden')
+    || msg.includes('authentication')
+    || msg.includes('authorization')
+    || msg.includes('invalid api key')
+    || msg.includes('invalid key')
+    || msg.includes('invalid token')
+    || msg.includes('token expired')
+    || msg.includes('expired token')
+    || msg.includes('jwt expired')
+    || msg.includes('permission denied')
+    || msg.includes('access denied')
+    || msg.includes('insufficient permissions')
+    || msg.includes('unauthenticated')
+    || msg.includes('401')
+    || msg.includes('403')
+  ) {
     return 'auth_error';
   }
 
-  // Network/server errors
-  if (msg.includes('timeout') || msg.includes('network') || msg.includes('econnrefused') ||
-      msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504')) {
+  // Network/server/provider availability errors
+  if (
+    msg.includes('timeout')
+    || msg.includes('timed out')
+    || msg.includes('network')
+    || msg.includes('econnrefused')
+    || msg.includes('econnreset')
+    || msg.includes('enotfound')
+    || msg.includes('eai_again')
+    || msg.includes('socket hang up')
+    || msg.includes('service unavailable')
+    || msg.includes('temporarily unavailable')
+    || msg.includes('upstream')
+    || msg.includes('bad gateway')
+    || msg.includes('gateway timeout')
+    || msg.includes('internal server error')
+    || msg.includes('overloaded')
+    || msg.includes('overload')
+    || msg.includes('api unavailable')
+    || msg.includes('500')
+    || msg.includes('502')
+    || msg.includes('503')
+    || msg.includes('504')
+  ) {
     return 'api_error';
   }
 

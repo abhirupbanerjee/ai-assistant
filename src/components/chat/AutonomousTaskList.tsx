@@ -108,6 +108,11 @@ function TaskItem({
   isLast: boolean;
   onSkip?: () => void;
 }) {
+  const formatExecutorProfile = (profile?: string): string => {
+    if (!profile) return '';
+    return profile.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+  };
+
   return (
     <div className="flex items-start gap-3">
       {/* Status line */}
@@ -130,6 +135,11 @@ function TaskItem({
           <div className="flex items-center gap-2">
             {getTaskTypeIcon(task.type)}
             <span className="font-medium text-gray-700">{task.description}</span>
+            {task.executorProfile && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                {formatExecutorProfile(task.executorProfile)}
+              </span>
+            )}
           </div>
           {/* Skip button for pending tasks */}
           {task.status === 'pending' && onSkip && (
@@ -157,6 +167,11 @@ function TaskItem({
         {task.confidence !== undefined && task.status === 'done' && (
           <div className="mt-1 text-xs text-gray-500">
             Confidence: {task.confidence}%
+          </div>
+        )}
+        {task.executorModelUsed && (
+          <div className="mt-1 text-xs text-gray-500">
+            Model: {task.executorModelUsed}
           </div>
         )}
 

@@ -122,6 +122,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   }, []);
   const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
   const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
+  const [pendingModelId, setPendingModelId] = useState<string | null>(null);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -343,6 +344,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     setPendingUrlSources([]);
 
     if (activeThread) {
+      setPendingModelId(null);
       setThreadId(activeThread.id);
       loadThread(activeThread.id);
       if (activeThread.isSummarized) {
@@ -352,6 +354,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         setArchivedMessages([]);
       }
     } else {
+      setPendingModelId(null);
       setThreadId(null);
       setMessages([]);
       setUploads([]);
@@ -493,9 +496,12 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const createThread = useCallback(async (): Promise<string | null> => {
     try {
-      const body: { categoryIds?: number[] } = {};
+      const body: { categoryIds?: number[]; selectedModel?: string } = {};
       if (pendingCategoryId) {
         body.categoryIds = [pendingCategoryId];
+      }
+      if (pendingModelId) {
+        body.selectedModel = pendingModelId;
       }
 
       const response = await fetch('/api/threads', {
@@ -514,7 +520,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       console.error('Failed to create thread:', err);
     }
     return null;
-  }, [onThreadCreated, pendingCategoryId]);
+  }, [onThreadCreated, pendingCategoryId, pendingModelId]);
 
   const sendMessage = useCallback(async (content: string, mode?: ChatMode, preferences?: ChatPreferences) => {
     setError(null);
@@ -956,6 +962,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            onSend={sendMessage}
            disabled={loading}
            modelReady={modelReady}
+           pendingModelId={pendingModelId}
+           onPendingModelChange={setPendingModelId}
            onModelStatusChange={setModelReady}
            threadId={threadId}
            currentUploads={pendingUploads}

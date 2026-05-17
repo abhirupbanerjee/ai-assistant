@@ -12,6 +12,23 @@ interface AgentModelConfig {
   max_tokens?: number;
 }
 
+type ExecutorProfileKey =
+  | 'default'
+  | 'fast_low_cost'
+  | 'deep_reasoning'
+  | 'long_context'
+  | 'artifact_generation'
+  | 'local_private';
+
+interface ExecutorModelProfiles {
+  default: AgentModelConfig;
+  fast_low_cost?: AgentModelConfig;
+  deep_reasoning?: AgentModelConfig;
+  long_context?: AgentModelConfig;
+  artifact_generation?: AgentModelConfig;
+  local_private?: AgentModelConfig;
+}
+
 interface AgentSettings {
   autonomousModeEnabled: boolean;
   budgetMaxLlmCalls: number;
@@ -24,6 +41,7 @@ interface AgentSettings {
   executorModel: AgentModelConfig;
   checkerModel: AgentModelConfig;
   summarizerModel: AgentModelConfig;
+  executorModelProfiles: ExecutorModelProfiles;
   summarizerSystemPrompt: string;
   plannerSystemPrompt: string;
   executorSystemPrompt: string;
@@ -48,6 +66,32 @@ interface EnabledModel {
 }
 
 const MODEL_KEYS = ['plannerModel', 'executorModel', 'checkerModel', 'summarizerModel'] as const;
+const EXECUTOR_PROFILE_KEYS: ExecutorProfileKey[] = [
+  'default',
+  'fast_low_cost',
+  'deep_reasoning',
+  'long_context',
+  'artifact_generation',
+  'local_private',
+];
+
+const EXECUTOR_PROFILE_LABELS: Record<ExecutorProfileKey, string> = {
+  default: 'Default (Required)',
+  fast_low_cost: 'Fast / Low Cost',
+  deep_reasoning: 'Deep Reasoning',
+  long_context: 'Long Context',
+  artifact_generation: 'Artifact Generation',
+  local_private: 'Local / Private',
+};
+
+const EXECUTOR_PROFILE_HINTS: Record<ExecutorProfileKey, string> = {
+  default: 'Fallback baseline for all executor tasks.',
+  fast_low_cost: 'Use for extraction/summarization and low-complexity tasks.',
+  deep_reasoning: 'Use for complex analysis/comparison tasks.',
+  long_context: 'Use when tasks require large dependency/context windows.',
+  artifact_generation: 'Use for doc/chart/spreadsheet/presentation generation tasks.',
+  local_private: 'Use for air-gapped or sensitive workloads.',
+};
 
 /** Role-specific hints for recommended models */
 const MODEL_ROLE_HINTS: Record<typeof MODEL_KEYS[number], string> = {
@@ -133,6 +177,16 @@ function mapProviderForAgent(providerId: string): 'openai' | 'gemini' | 'mistral
   }
 }
 
+function ensureExecutorProfiles(
+  executorModel: AgentModelConfig,
+  profiles?: Partial<ExecutorModelProfiles>
+): ExecutorModelProfiles {
+  return {
+    ...profiles,
+    default: executorModel,
+  };
+}
+
 export default function AgentSettingsTab() {
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [editedSettings, setEditedSettings] = useState<Omit<AgentSettings, 'updatedAt' | 'updatedBy'> | null>(null);
@@ -192,6 +246,7 @@ export default function AgentSettingsTab() {
         executorModel: data.executorModel,
         checkerModel: data.checkerModel,
         summarizerModel: data.summarizerModel,
+        executorModelProfiles: ensureExecutorProfiles(data.executorModel, data.executorModelProfiles),
         summarizerSystemPrompt: data.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
         plannerSystemPrompt: data.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
         executorSystemPrompt: data.executorSystemPrompt ?? DEFAULT_EXECUTOR_PROMPT,
@@ -253,6 +308,7 @@ export default function AgentSettingsTab() {
         executorModel: settings.executorModel,
         checkerModel: settings.checkerModel,
         summarizerModel: settings.summarizerModel,
+        executorModelProfiles: ensureExecutorProfiles(settings.executorModel, settings.executorModelProfiles),
         summarizerSystemPrompt: settings.summarizerSystemPrompt ?? DEFAULT_SUMMARIZER_PROMPT,
         plannerSystemPrompt: settings.plannerSystemPrompt ?? DEFAULT_PLANNER_PROMPT,
         executorSystemPrompt: settings.executorSystemPrompt ?? DEFAULT_EXECUTOR_PROMPT,
@@ -284,9 +340,19 @@ export default function AgentSettingsTab() {
     value: string | number | undefined
   ) => {
     if (editedSettings) {
+      const nextModel = { ...editedSettings[modelKey], [field]: value };
+      if (modelKey === 'executorModel') {
+        setEditedSettings({
+          ...editedSettings,
+          executorModel: nextModel,
+          executorModelProfiles: ensureExecutorProfiles(nextModel, editedSettings.executorModelProfiles),
+        });
+        setIsModified(true);
+        return;
+      }
       setEditedSettings({
         ...editedSettings,
-        [modelKey]: { ...editedSettings[modelKey], [field]: value }
+        [modelKey]: nextModel
       });
       setIsModified(true);
     }
@@ -297,9 +363,85 @@ export default function AgentSettingsTab() {
     if (!editedSettings) return;
     const selectedModel = availableModels.find(m => m.id === modelId);
     const provider = selectedModel ? mapProviderForAgent(selectedModel.providerId) : editedSettings[modelKey].provider;
+    const nextModel = { ...editedSettings[modelKey], model: modelId, provider };
+    if (modelKey === 'executorModel') {
+      setEditedSettings({
+        ...editedSettings,
+        executorModel: nextModel,
+        executorModelProfiles: ensureExecutorProfiles(nextModel, editedSettings.executorModelProfiles),
+      });
+      setIsModified(true);
+      return;
+    }
     setEditedSettings({
       ...editedSettings,
-      [modelKey]: { ...editedSettings[modelKey], model: modelId, provider }
+      [modelKey]: nextModel
+    });
+    setIsModified(true);
+  };
+
+  const setExecutorProfileEnabled = (profileKey: ExecutorProfileKey, enabled: boolean) => {
+    if (!editedSettings || profileKey === 'default') return;
+
+    const nextProfiles: ExecutorModelProfiles = { ...editedSettings.executorModelProfiles };
+    if (enabled) {
+      nextProfiles[profileKey] = nextProfiles[profileKey] || { ...editedSettings.executorModel };
+    } else {
+      delete nextProfiles[profileKey];
+    }
+
+    setEditedSettings({
+      ...editedSettings,
+      executorModelProfiles: ensureExecutorProfiles(editedSettings.executorModel, nextProfiles),
+    });
+    setIsModified(true);
+  };
+
+  const updateExecutorProfileConfig = (
+    profileKey: ExecutorProfileKey,
+    field: keyof AgentModelConfig,
+    value: string | number | undefined
+  ) => {
+    if (!editedSettings) return;
+
+    if (profileKey === 'default') {
+      updateModelConfig('executorModel', field, value);
+      return;
+    }
+
+    const current = editedSettings.executorModelProfiles[profileKey] || { ...editedSettings.executorModel };
+    const nextProfiles: ExecutorModelProfiles = {
+      ...editedSettings.executorModelProfiles,
+      [profileKey]: { ...current, [field]: value },
+    };
+
+    setEditedSettings({
+      ...editedSettings,
+      executorModelProfiles: ensureExecutorProfiles(editedSettings.executorModel, nextProfiles),
+    });
+    setIsModified(true);
+  };
+
+  const handleExecutorProfileModelSelect = (profileKey: ExecutorProfileKey, modelId: string) => {
+    if (!editedSettings) return;
+
+    if (profileKey === 'default') {
+      handleModelSelect('executorModel', modelId);
+      return;
+    }
+
+    const current = editedSettings.executorModelProfiles[profileKey] || { ...editedSettings.executorModel };
+    const selectedModel = availableModels.find(m => m.id === modelId);
+    const provider = selectedModel ? mapProviderForAgent(selectedModel.providerId) : current.provider;
+
+    const nextProfiles: ExecutorModelProfiles = {
+      ...editedSettings.executorModelProfiles,
+      [profileKey]: { ...current, model: modelId, provider },
+    };
+
+    setEditedSettings({
+      ...editedSettings,
+      executorModelProfiles: ensureExecutorProfiles(editedSettings.executorModel, nextProfiles),
     });
     setIsModified(true);
   };
@@ -576,6 +718,112 @@ export default function AgentSettingsTab() {
                         )}
                       </div>
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Executor Model Profiles */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <h3 className="font-medium text-gray-900">Executor Model Profiles</h3>
+              <p className="text-sm text-gray-500">Planner can assign these profiles per task based on complexity, latency, and output requirements</p>
+            </div>
+            <div className="p-6 space-y-6">
+              {EXECUTOR_PROFILE_KEYS.map((profileKey) => {
+                const isDefault = profileKey === 'default';
+                const profileConfig = isDefault
+                  ? editedSettings.executorModelProfiles.default
+                  : editedSettings.executorModelProfiles[profileKey];
+                const isEnabled = isDefault || Boolean(profileConfig);
+                const currentModel = profileConfig || editedSettings.executorModel;
+                const isKnownModel = availableModels.some(m => m.id === currentModel.model);
+
+                return (
+                  <div key={profileKey} className="border rounded-lg p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-900">{EXECUTOR_PROFILE_LABELS[profileKey]}</h4>
+                        <p className="text-xs text-gray-500 mt-1">{EXECUTOR_PROFILE_HINTS[profileKey]}</p>
+                        {isDefault && (
+                          <p className="text-xs text-blue-600 mt-1">Uses the Executor Model from the section above and is always enabled.</p>
+                        )}
+                      </div>
+                      {!isDefault && (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isEnabled}
+                          onClick={() => setExecutorProfileEnabled(profileKey, !isEnabled)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            isEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              isEnabled ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      )}
+                    </div>
+
+                    {isEnabled && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                        <div className="lg:col-span-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
+                          <select
+                            value={currentModel.model}
+                            onChange={(e) => handleExecutorProfileModelSelect(profileKey, e.target.value)}
+                            disabled={isDefault}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
+                          >
+                            {!isKnownModel && currentModel.model && (
+                              <option value={currentModel.model}>
+                                {currentModel.model} ({currentModel.provider})
+                              </option>
+                            )}
+                            {Object.entries(modelsByProvider).map(([providerId, models]) => (
+                              <optgroup key={providerId} label={providerId}>
+                                {models.map((model) => (
+                                  <option key={model.id} value={model.id}>
+                                    {model.displayName}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                          <span className="text-xs text-gray-400 mt-1 block">
+                            Provider: {currentModel.provider}
+                          </span>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Temperature</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={currentModel.temperature}
+                            onChange={(e) => updateExecutorProfileConfig(profileKey, 'temperature', parseFloat(e.target.value) || 0)}
+                            disabled={isDefault}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Max Tokens</label>
+                          <input
+                            type="number"
+                            value={currentModel.max_tokens || ''}
+                            onChange={(e) => updateExecutorProfileConfig(profileKey, 'max_tokens', parseInt(e.target.value, 10) || undefined)}
+                            disabled={isDefault}
+                            placeholder="4096"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

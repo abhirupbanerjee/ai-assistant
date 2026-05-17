@@ -134,14 +134,15 @@ function toMessage(parsed: ParsedMessage): Message {
 export async function createThread(
   userId: string, // email
   title?: string,
-  categoryIds?: number[]
+  categoryIds?: number[],
+  selectedModel?: string | null
 ): Promise<Thread> {
   const numericUserId = await getUserId(userId);
   if (!numericUserId) {
     throw new Error('User not found');
   }
 
-  const dbThread = await dbCreateThread(numericUserId, title || 'New Thread', categoryIds || []);
+  const dbThread = await dbCreateThread(numericUserId, title || 'New Thread', categoryIds || [], selectedModel || null);
 
   // Sync categories to Postgres compat layer (already written by dbCreateThread in compat mode)
   // No need for separate compat sync since we now import from compat directly

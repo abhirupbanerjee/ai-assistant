@@ -5,6 +5,7 @@
  */
 
 import { getSetting, setSetting } from './config';
+import { validateAgentModelConfig as validateModelConfig } from '../utils';
 
 // ============================================================================
 // Re-export types
@@ -16,6 +17,38 @@ import type { AgentModelConfig, StoredAgentModelConfigs, StreamingConfig } from 
 
 // Re-export pure validation function (no DB access)
 export { validateAgentModelConfig } from '../utils';
+
+export type ExecutorProfileName =
+  | 'default'
+  | 'fast_low_cost'
+  | 'deep_reasoning'
+  | 'long_context'
+  | 'artifact_generation'
+  | 'local_private';
+
+export interface ExecutorModelProfiles {
+  default: AgentModelConfig;
+  fast_low_cost?: AgentModelConfig;
+  deep_reasoning?: AgentModelConfig;
+  long_context?: AgentModelConfig;
+  artifact_generation?: AgentModelConfig;
+  local_private?: AgentModelConfig;
+}
+
+const EXECUTOR_PROFILE_KEYS: ExecutorProfileName[] = [
+  'default',
+  'fast_low_cost',
+  'deep_reasoning',
+  'long_context',
+  'artifact_generation',
+  'local_private',
+];
+
+function sanitizeModelSpec(value: unknown): AgentModelConfig | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as AgentModelConfig;
+  return validateModelConfig(candidate) ? candidate : undefined;
+}
 
 // ============================================================================
 // Streaming Configuration
@@ -200,6 +233,75 @@ export async function setAgentModelConfigs(
   await setSetting('agent_model_executor', JSON.stringify(configs.executor), updatedBy);
   await setSetting('agent_model_checker', JSON.stringify(configs.checker), updatedBy);
   await setSetting('agent_model_summarizer', JSON.stringify(configs.summarizer), updatedBy);
+}
+
+/**
+ * Get executor model profiles from database.
+ * Backward-compatible: if no profiles are stored, return only `default`
+ * using the currently configured executor model.
+ */
+export async function getExecutorModelProfiles(
+  defaultExecutor?: AgentModelConfig
+): Promise<ExecutorModelProfiles> {
+  const fallbackDefault = defaultExecutor || (await getAgentModelConfigs()).executor;
+  const raw = await getSetting('agent_executor_model_profiles', '');
+  if (!raw) return { default: fallbackDefault };
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const profiles: Partial<ExecutorModelProfiles> = {};
+
+    for (const key of EXECUTOR_PROFILE_KEYS) {
+      const value = sanitizeModelSpec(parsed[key]);
+      if (value) {
+        profiles[key] = value;
+      }
+    }
+
+    return {
+      ...profiles,
+      default: profiles.default || fallbackDefault,
+    } as ExecutorModelProfiles;
+  } catch (error) {
+    console.warn('[Agent Config] Failed to parse executor profiles, using default only:', error);
+    return { default: fallbackDefault };
+  }
+}
+
+/**
+ * Save executor model profiles to database.
+ * Requires a valid `default` profile and validates all optional profiles.
+ */
+export async function setExecutorModelProfiles(
+  profiles: ExecutorModelProfiles,
+  updatedBy: string
+): Promise<ExecutorModelProfiles> {
+  const defaultProfile = sanitizeModelSpec(profiles.default);
+  if (!defaultProfile) {
+    throw new Error('Invalid default executor profile');
+  }
+
+  const sanitized: ExecutorModelProfiles = {
+    default: defaultProfile,
+  };
+
+  for (const key of EXECUTOR_PROFILE_KEYS) {
+    if (key === 'default') continue;
+    const rawProfile = profiles[key];
+    if (rawProfile === undefined || rawProfile === null) continue;
+
+    const candidate = sanitizeModelSpec(rawProfile);
+    if (!candidate) {
+      throw new Error(`Invalid executor profile: ${key}`);
+    }
+
+    if (candidate) {
+      sanitized[key] = candidate;
+    }
+  }
+
+  await setSetting('agent_executor_model_profiles', JSON.stringify(sanitized), updatedBy);
+  return sanitized;
 }
 
 // ============================================================================

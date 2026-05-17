@@ -232,6 +232,7 @@ export interface TranscribeRequest {
 export interface CreateThreadRequest {
   title?: string;
   categoryIds?: number[];
+  selectedModel?: string | null;
 }
 
 export interface UpdateThreadRequest {

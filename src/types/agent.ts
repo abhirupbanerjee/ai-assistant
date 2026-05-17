@@ -61,6 +61,14 @@ export const DEFAULT_AGENT_BUDGET: AgentBudget = {
 
 export type LLMProvider = 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot';
 
+export type ExecutorProfileName =
+  | 'default'
+  | 'fast_low_cost'
+  | 'deep_reasoning'
+  | 'long_context'
+  | 'artifact_generation'
+  | 'local_private';
+
 export interface ModelSpec {
   provider: LLMProvider;
   model: string;
@@ -68,11 +76,21 @@ export interface ModelSpec {
   max_tokens?: number;
 }
 
+export interface ExecutorModelProfiles {
+  default: ModelSpec;
+  fast_low_cost?: ModelSpec;
+  deep_reasoning?: ModelSpec;
+  long_context?: ModelSpec;
+  artifact_generation?: ModelSpec;
+  local_private?: ModelSpec;
+}
+
 export interface AgentModelConfig {
   planner: ModelSpec;
   executor: ModelSpec;
   checker: ModelSpec;
   summarizer: ModelSpec;
+  executor_profiles?: ExecutorModelProfiles;
 }
 
 
@@ -109,6 +127,11 @@ export interface AgentTask {
   skill_ids?: number[];
   // Tool name from planner — specifies which AVAILABLE_TOOLS tool to execute
   tool_name?: string;
+  // Optional planner-selected executor profile for task-specific model routing
+  executor_profile?: ExecutorProfileName;
+  executor_profile_reason?: string;
+  // Actual model ID used by executor for this task (for audit/debugging)
+  executor_model_used?: string;
 }
 
 export interface AgentConfig {
@@ -243,6 +266,8 @@ export interface PlannerResponse {
     execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
     skill_ids?: number[];
     tool_name?: string;
+    executor_profile?: ExecutorProfileName;
+    executor_profile_reason?: string;
   }>;
   context?: Record<string, unknown>;
 }

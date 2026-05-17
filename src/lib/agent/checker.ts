@@ -10,7 +10,7 @@
  */
 
 import type { AgentTask, CheckerResult, AgentModelConfig } from '@/types/agent';
-import { generateWithModel, getModelForRole } from './llm-router';
+import { generateWithModelFallback, getModelForRole } from './llm-router';
 import { parseCheckerResponse } from './json-parser';
 import { getSetting } from '../db/compat/config';
 import { getCheckerSystemPrompt } from '../db/compat/agent-config';
@@ -301,7 +301,7 @@ export async function checkTaskQuality(
     const checkerPrompt = await getCheckerSystemPrompt();
 
     // Generate evaluation
-    const response = await generateWithModel(checkerModel, prompt, {
+    const response = await generateWithModelFallback(checkerModel, prompt, {
       systemPrompt: checkerPrompt,
       temperature: 0.2, // Low temperature for consistency
     });

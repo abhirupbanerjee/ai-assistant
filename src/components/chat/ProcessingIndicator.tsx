@@ -276,6 +276,11 @@ function getTaskStatusColor(status: AutonomousTaskState['status']) {
   }
 }
 
+function formatExecutorProfile(profile?: AutonomousTaskState['executorProfile']): string {
+  if (!profile) return '';
+  return profile.split('_').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+}
+
 function AgentTaskItem({ task, isLast, onSkip }: {
   task: AutonomousTaskState;
   isLast: boolean;
@@ -294,6 +299,11 @@ function AgentTaskItem({ task, isLast, onSkip }: {
           <div className="flex items-center gap-1.5">
             {getTaskTypeIcon(task.type)}
             <span className="font-medium text-gray-700">{task.description}</span>
+            {task.executorProfile && (
+              <span className="px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-medium">
+                {formatExecutorProfile(task.executorProfile)}
+              </span>
+            )}
           </div>
           {task.status === 'pending' && onSkip && (
             <button
@@ -307,6 +317,9 @@ function AgentTaskItem({ task, isLast, onSkip }: {
         </div>
         {task.confidence !== undefined && task.status === 'done' && (
           <div className="mt-0.5 text-gray-500">Confidence: {task.confidence}%</div>
+        )}
+        {task.executorModelUsed && (
+          <div className="mt-0.5 text-[11px] text-gray-500">Model: {task.executorModelUsed}</div>
         )}
         {task.status === 'needs_review' && (
           <div className="mt-0.5 text-amber-600">Needs review (confidence: {task.confidence}%)</div>
