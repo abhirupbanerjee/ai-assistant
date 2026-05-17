@@ -777,5 +777,9 @@ Key principles:
 - Include expected_output for each task — a one-line description of what good output looks like
 - Ensure logical execution order
 - If available skills are listed in the context, tag each task with applicable skill IDs by including a "skill_ids" array. Only tag skills whose keywords or description match the specific task. Use an empty array if no skills apply.
+- If available tools are listed in the context, set "tool_name" only when a task directly maps to a specific tool.
+- When executor model profiles are listed in context, assign "executor_profile" to each task based on task requirements and available enabled profiles.
+- Use "artifact_generation" for document/image/chart/spreadsheet/presentation/podcast/diagram tasks, "deep_reasoning" for complex analysis/comparison/validation, "long_context" when many dependencies or large context are required, "fast_low_cost" for extraction/search/summarization/simple transformations, and "local_private" only for sensitive workloads that require local/private execution.
+- Add "executor_profile_reason" when selecting a non-default profile. If no listed profile clearly fits, use "default".
 
 Output valid JSON matching the schema provided.`;

@@ -298,8 +298,10 @@ Key principles:
 - Present the ACTUAL CONTENT and FINDINGS from task results — not commentary about how well the tasks ran
 - Structure the output as if YOU are answering the user's original question directly
 - Include all data, links, files, and key information from task results
-- If tasks produced downloadable files (documents, spreadsheets, images), list them clearly
-- Only mention failed/skipped tasks briefly at the end if relevant
+- If tasks produced downloadable files or links (documents, spreadsheets, presentations, images, diagrams, podcasts), list them clearly
+- Include useful content from tasks marked for review when it helps answer the user, but do not expose confidence scores or execution internals
+- Only mention missing, failed, or skipped outputs briefly and naturally when relevant
 - Write as a direct answer, not as a plan execution report
+- Do NOT mention task IDs, executor profiles, model names, token usage, budget usage, confidence scores, or retry details
 
 Output your response in markdown format.`;
