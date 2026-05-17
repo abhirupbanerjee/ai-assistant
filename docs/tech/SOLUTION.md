@@ -1170,7 +1170,7 @@ LLM Response Stream
 **Behavior:**
 - Reasoning tokens are stripped before display but may be logged for debugging
 - Users see clean final answers without the internal chain-of-thought
-- Enable by selecting a thinking-capable model in Admin > Settings > LLM
+- Enable by selecting a thinking-capable model in Admin > Settings > LLM and turning on the planner Thinking / Reasoning toggle in Admin > Settings > Agent Config
 
 ---
 
@@ -1178,7 +1178,7 @@ LLM Response Stream
 
 The Autonomous Agent enables multi-step task execution with planning, execution, quality checking, and summarization. This feature is currently in **beta**.
 
-> **⚠️ Beta Feature:** Enable via Admin > Settings > Agent. Resource-intensive.
+> **⚠️ Beta Feature:** Enable via Admin > Settings > Agent Config. Resource-intensive.
 
 #### Architecture
 
@@ -1239,8 +1239,8 @@ The agent enforces resource limits per execution:
 
 | Budget Type | Description | Configuration |
 |-------------|-------------|---------------|
-| **Token Limit** | Maximum tokens across all agent calls | Admin > Settings > Agent |
-| **Cost Limit** | Maximum cost in dollars | Admin > Settings > Agent |
+| **Token Limit** | Maximum tokens across all agent calls | Admin > Settings > Agent Config |
+| **Cost Limit** | Maximum cost in dollars | Admin > Settings > Agent Config |
 | **Task Limit** | Maximum tasks per plan | Default: 10 |
 | **Retry Limit** | Max retries per task on quality failure | Default: 2 |
 

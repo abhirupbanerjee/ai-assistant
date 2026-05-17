@@ -29,11 +29,13 @@ Policy Bot supports two operational modes to handle different user requirements:
 - Quality-critical outputs requiring validation
 - Tasks requiring task decomposition and planning
 
+Planner reasoning and executor model selection are configured in Admin Settings → Agent Config. When the selected planner model is marked thinking-capable in Admin Settings → LLM, a planner-only Thinking / Reasoning toggle becomes available.
+
 ### 1.3 How to Access
 
 - **Normal Mode**: Default mode in chat input box
 - **Autonomous Mode**: Toggle available in chat input box (labeled "+- autonomous mode")
-- **Configuration**: Admin Settings → Agent → Agent Config
+- **Configuration**: Admin Settings → Agent Config
 
 ---
 
@@ -60,11 +62,14 @@ User Request
      ▼                                                        ▼
 ┌──────────────────┐                              ┌──────────────────┐
 │    PLANNER       │                              │   EXECUTOR       │
-│ (Claude Sonnet   │                              │ (MiniMax M2.5)   │
-│     4.6)         │                              │                  │
+│ (Configurable    │                              │ (Configurable    │
+│  planner model)  │                              │  executor model) │
+│                  │                              │                  │
 │                  │                              │                  │
 │ • Task decompo-  │                              │ • Tool execution │
 │   sition         │                              │ • Code generation│
+│ • Optional       │                              │ • Profile-based  │
+│   reasoning      │                              │   routing        │
 │ • DAG creation   │                              │ • Result handling│
 │ • Self-reflection│                              │                  │
 └──────────────────┘                              └──────────────────┘
@@ -166,9 +171,9 @@ User Request
 
 ### 3.2 Planner
 
-**Model:** Claude Sonnet 4.6 (Anthropic)
+**Model:** Configurable in Admin Settings → Agent Config, typically a thinking-capable planner model
 
-**Fallback chain:** `gemini-2.5-pro` → `gemini-2.5-flash` → global default
+**Planner control:** The planner can use optional reasoning when the selected model supports thinking. It can also assign task-level `executor_profile` values to route work to specialized executor models for low-cost, deep reasoning, long-context, or artifact-generation tasks.
 
 **Responsibilities:**
 - Decompose user request into structured tasks
@@ -185,9 +190,9 @@ User Request
 
 ### 3.3 Executor
 
-**Model:** MiniMax M2.5 (via Fireworks — `fireworks/minimax-m2p5`)
+**Model:** Configurable in Admin Settings → Agent Config
 
-**Fallback chain:** `fireworks/minimax-m2p7` → `fireworks/kimi-k2p5` → global default
+**Executor control:** The executor model is configurable in Admin Settings → Agent Config, and the planner can route specific tasks to executor profiles such as `fast_low_cost`, `deep_reasoning`, `long_context`, and `artifact_generation`.
 
 **Responsibilities:**
 - Execute each task in the plan using appropriate tools
@@ -204,7 +209,7 @@ User Request
 
 ### 3.4 Checker
 
-**Model:** GPT-4.1 Mini (OpenAI)
+**Model:** Configurable in Admin Settings → Agent Config
 
 **Responsibilities:**
 - Validate task execution results
@@ -222,7 +227,7 @@ User Request
 
 ### 3.5 Summarizer
 
-**Model:** GPT-4.1 Mini (OpenAI)
+**Model:** Configurable in Admin Settings → Agent Config
 
 **Responsibilities:**
 - Synthesize final output from all task results
@@ -231,7 +236,7 @@ User Request
 - Ensure coherent narrative from subtasks
 
 **Key Features:**
-- Long-context synthesis (temperature: 0.5, max tokens: 4096)
+- Long-context synthesis using the configured summarizer model
 - Structured output formatting
 - Result aggregation from DAG execution
 - Progressive streaming support (`generatePlanIntro`, `generateIncrementalSummary`, `generateConclusion`)
@@ -240,24 +245,26 @@ User Request
 
 ## 4. LLM Configuration
 
-### 4.1 Current Model Assignments
+### 4.1 Default Model Assignments
 
-| Agent Role | Model | Provider | Purpose |
-|------------|-------|----------|---------|
+These defaults are configurable in Admin Settings → Agent Config and may differ by deployment.
+
+| Agent Role | Default Model Example | Provider | Purpose |
+|------------|----------------------|----------|---------|
 | Orchestrator | None (Coordinator) | — | Pure coordination — no LLM needed |
-| Planner | Claude Sonnet 4.6 | Anthropic | Task decomposition, reasoning |
-| Executor | MiniMax M2.5 | MiniMax/Fireworks | Tool execution, code generation |
-| Checker | GPT-4.1 Mini | OpenAI | Quality validation, confidence scoring |
-| Summarizer | GPT-4.1 Mini | OpenAI | Output synthesis |
+| Planner | Thinking-capable planner model | Configurable | Task decomposition, optional reasoning |
+| Executor | Executor model | Configurable | Tool execution, code generation |
+| Checker | Checker model | Configurable | Quality validation, confidence scoring |
+| Summarizer | Summarizer model | Configurable | Output synthesis |
 
 ### 4.2 Model Selection Rationale
 
-| Agent Role | Model Selection | Rationale |
-|------------|-----------------|-----------|
-| Planner | Claude Sonnet 4.6 | Best-in-class for structured reasoning, chain-of-thought decomposition, self-critique |
-| Executor | MiniMax M2.5 | Strong tool-calling capabilities, cost-effective for execution tasks |
-| Checker | GPT-4.1 Mini | Fast quality evaluation, sufficient for confidence scoring, cost-optimized |
-| Summarizer | GPT-4.1 Mini | Fast synthesis, sufficient for consolidation tasks, cost-optimized |
+| Agent Role | Selection Guideline | Rationale |
+|------------|---------------------|-----------|
+| Planner | Thinking-capable model when available | Best for structured reasoning, decomposition, and self-critique |
+| Executor | Specialized executor profile | Best matches task complexity, latency, privacy, or artifact requirements |
+| Checker | Faster/smaller validation model | Fast quality evaluation, sufficient for confidence scoring |
+| Summarizer | Strong synthesis model | Fast synthesis and consolidation of task results |
 
 ### 4.3 Fallback Chain
 

@@ -161,7 +161,7 @@ Widgets showing recent system activity:
 | **Memory** | User memory extraction, semantic retrieval, and temporal filtering |
 | **Summarization** | Thread summarization settings |
 | **Limits** | Conversation history, upload limits |
-| **Agent** | Autonomous agent budget, quality threshold, timeout settings |
+| **Agent** | Autonomous agent budget, quality threshold, timeout settings, model assignments, executor profiles, planner reasoning toggle |
 | **Superuser** | Superuser quota and permissions |
 | **Backup** | Database backup and restore |
 | **Branding** | Bot name, icon, accent color, PWA settings |

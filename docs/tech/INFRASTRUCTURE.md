@@ -1069,7 +1069,7 @@ When the Autonomous Agent feature is enabled, additional resources are consumed:
 - Enable agent mode only when needed (not default)
 - Set conservative budget limits (tokens and cost)
 - Use faster/cheaper models for checker (e.g., gpt-4.1-mini)
-- Monitor token usage via Admin > Settings > Agent
+- Monitor token usage via Admin > Settings > Agent Config
 - Consider rate limiting concurrent agent sessions
 
 **Budget Limits (Defaults):**

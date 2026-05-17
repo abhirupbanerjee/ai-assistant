@@ -2,7 +2,7 @@
 
 **An open-source, interoperable AI platform for governments, ministries, and enterprises.**
 
-Deploy AI-powered solutions across your organization while maintaining complete control over your data, infrastructure, and AI providers. No vendor lock-in. No data leaves your premises. No ML expertise required.
+Deploy AI-powered solutions across your organization while maintaining complete control over your data, infrastructure, and AI providers. No vendor lock-in. Core data stays on your infrastructure, while cloud LLM routes remain available for approved non-sensitive workloads. No ML expertise required.
 
 ## Why Policy Bot?
 
@@ -12,9 +12,9 @@ Policy Bot solves this by providing:
 
 | Requirement | How We Deliver |
 |-------------|----------------|
-| **Data Sovereignty** | All data remains on your infrastructure—databases, vector stores, and files never leave your control |
+| **Data Sovereignty** | Databases, vector stores, and files stay under your control; cloud LLM routes are opt-in for approved non-sensitive workloads |
 | **Open Source** | Polyform NonCommercial licensed, fully auditable code with no proprietary dependencies |
-| **Interoperability** | Switch AI providers freely (OpenAI, Anthropic, Mistral, Gemini, DeepSeek, Fireworks, or local Ollama) |
+| **Interoperability** | Switch AI providers freely (OpenAI, Anthropic, Mistral, Gemini, DeepSeek, Fireworks, Moonshot, Ollama, Ollama Cloud) |
 | **No Lock-In** | Standard PostgreSQL database, portable vector stores, exportable configurations |
 | **Zero ML Complexity** | Admin dashboard handles all AI configuration—no data scientists required |
 | **Enterprise Security** | Role-based access, department isolation, audit trails, SSO integration |
@@ -43,7 +43,7 @@ Built with enterprise-grade, open-source technologies:
 - **Next.js 16** - Modern React 19 framework with server-side rendering and App Router
 - **PostgreSQL** - Battle-tested relational database via Kysely ORM (SQLite fully removed)
 - **Qdrant** - Open-source vector database for semantic search
-- **LiteLLM** - Unified gateway to 100+ LLM providers (Claude models use direct Anthropic SDK for reliable tool calling)
+- **LiteLLM** - Unified gateway to 100+ LLM providers (Claude uses direct Anthropic SDK; Fireworks, DeepSeek, Moonshot, and Ollama routes are handled directly where needed)
 - **Redis** - High-performance caching and session management
 - **Traefik** - Production-ready reverse proxy with automatic TLS
 - **Ollama** - Local LLM inference for air-gapped / sensitive deployments
@@ -52,10 +52,10 @@ Built with enterprise-grade, open-source technologies:
 
 ### Core Features
 - **RAG-Powered Q&A** - Natural language queries with source citations
-- **Multi-Provider LLM** - OpenAI, Anthropic Claude (direct SDK), DeepSeek, Mistral, Gemini, Fireworks AI, Ollama via LiteLLM
-- **Two-Route Architecture** - Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled for resilience, cost control, and compliance
+- **Multi-Provider LLM** - OpenAI, Anthropic Claude (direct SDK), DeepSeek, Mistral, Gemini, Fireworks AI, Moonshot AI, Ollama, and Ollama Cloud
+- **Multi-Route Architecture** - Route 1 (LiteLLM), Route 2 (Direct: Anthropic, Fireworks, DeepSeek, Moonshot), Route 3 (Local Ollama), and Route 4 (Ollama Cloud) independently toggled for resilience, cost control, and compliance
 - **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
-- **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking)
+- **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking, Kimi K2-family models)
 - **Voice Input** - Configurable STT with 4 providers (OpenAI Whisper, Fireworks, Mistral Voxtral, Gemini), route-based fallback, admin-configurable recording limits
 - **Speech Settings** - Unified admin panel for STT/TTS provider management with primary/fallback per route
 - **Streaming Responses** - Real-time chat with typing indicators
@@ -85,7 +85,7 @@ Built with enterprise-grade, open-source technologies:
 - **Thread Summarization** - Compress long conversations
 - **Reranking** - BGE cross-encoder (large/base), Fireworks AI Qwen3 Reranker, Cohere API, or local bi-encoder via Transformers.js
 - **Preflight Clarification (HITL)** - Main LLM pauses before responding to ask a focused question when the query is ambiguous; sees full RAG context + conversation history before deciding, so it only asks when genuinely needed
-- **Autonomous Agent** - Multi-step task planning with budget controls and quality checks
+- **Autonomous Agent** - Multi-step task planning with budget controls, quality checks, and configurable planner/executor/checker/summarizer prompts
 
 ### Collaboration
 - **Thread Sharing** - Share conversations via secure links with expiration
@@ -318,6 +318,8 @@ Policy Bot integrates with several external services. All are optional except LL
 | **Google Gemini** | [ai.google.dev](https://ai.google.dev/) | Gemini 2.5 Pro/Flash, 1M context, Thinking | Ollama (local models) |
 | **Ollama** | [ollama.ai](https://ollama.ai) | Local models (Llama, Qwen, Mistral, Phi) | N/A (is the local option) |
 | **Fireworks AI** | [fireworks.ai](https://fireworks.ai/account/api-keys) | Open-source models: MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 (dev/test) | Ollama (local models) |
+| **Moonshot AI** | [platform.moonshot.cn](https://platform.moonshot.cn/) | Kimi models via direct Route 2 access | Ollama (local models) |
+| **Ollama Cloud** | [ollama.com](https://ollama.com/settings/keys) | Hosted Ollama models via direct Route 4 access | N/A (hosted Ollama route) |
 
 ### Provider Selection Guidelines
 
@@ -326,8 +328,9 @@ Choose provider tier based on data sensitivity and task complexity:
 | Provider Tier | Use Case | Data Classification |
 |---|---|---|
 | **Ollama** (Local) | Simple RAG, document lookup, basic Q&A, non-complex queries | ✅ Government-sensitive / classified — data never leaves your network |
-| **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs |
+| **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek, Moonshot | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs |
 | **Fireworks AI** | Developer testing of open-source models | Development / test environments only — not for production sensitive data |
+| **Ollama Cloud** | Hosted Ollama models | Public / non-sensitive data only — requests route through Ollama Cloud |
 
 > **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.
 >
@@ -397,7 +400,10 @@ DEEPSEEK_API_KEY=sk-...            # DeepSeek Reasoner, Chat
 GEMINI_API_KEY=...                 # Gemini 2.5 Pro/Flash, Thinking
 MISTRAL_API_KEY=...                # Mistral Large 3, Small 3.2
 FIREWORKS_AI_API_KEY=...           # Fireworks open-source models (dev/test)
+MOONSHOT_API_KEY=...               # Moonshot Kimi models (direct Route 2)
+MOONSHOT_API_BASE=...              # Optional custom Moonshot endpoint
 OLLAMA_API_BASE=http://localhost:11434  # Local Ollama (or host.docker.internal)
+OLLAMA_API_KEY=...                 # Ollama Cloud hosted models (Route 4)
 
 # Production Auth (at least one)
 AZURE_AD_CLIENT_ID=...

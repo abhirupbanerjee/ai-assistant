@@ -1099,16 +1099,34 @@ export interface SummarizationSettings {
 
 export interface AgentSettings {
   enabled: boolean;           // Enable autonomous agent (default: false, beta)
-  plannerModel: string;       // Model for task planning (inherits main model)
-  executorModel: string;      // Model for task execution (inherits main model)
-  checkerModel: string;       // Model for quality checking (often faster model)
-  summarizerModel: string;    // Model for summarization (inherits main model)
+  plannerModel: AgentModelConfig; // Model for task planning
+  executorModel: AgentModelConfig; // Model for task execution
+  checkerModel: AgentModelConfig;  // Model for quality checking
+  summarizerModel: AgentModelConfig; // Model for summarization
+  executorModelProfiles?: ExecutorModelProfiles; // Planner-selectable executor profiles
   maxTokens: number;          // Max tokens per agent execution
   maxCost: number;            // Max cost in dollars per execution
   maxTasks: number;           // Max tasks per plan (default: 10)
   qualityThreshold: number;   // Min quality score 0.0-1.0 (default: 0.7)
   maxRetries: number;         // Retries per task (default: 2)
   streamProgress: boolean;    // Stream progress events to UI (default: true)
+}
+
+export interface AgentModelConfig {
+  provider: 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot';
+  model: string;
+  temperature: number;
+  max_tokens?: number;
+  thinking_enabled?: boolean; // Planner-only reasoning toggle
+}
+
+export interface ExecutorModelProfiles {
+  default: AgentModelConfig;
+  fast_low_cost?: AgentModelConfig;
+  deep_reasoning?: AgentModelConfig;
+  long_context?: AgentModelConfig;
+  artifact_generation?: AgentModelConfig;
+  local_private?: AgentModelConfig;
 }
 
 export interface LimitsSettings {

@@ -702,7 +702,7 @@ function_api_categories (api_id, category_id)
 
 **What it is:** Configuration for the Autonomous Agent system that enables multi-step task execution with planning, execution, quality checking, and summarization.
 
-> **⚠️ Beta Feature:** The Autonomous Agent is currently in beta. Enable via Admin > Settings > Agent.
+> **⚠️ Beta Feature:** The Autonomous Agent is currently in beta. Enable via Admin > Settings > Agent Config.
 
 ### Storage
 - **Settings:** `settings['agent-settings']` - Agent configuration
@@ -710,14 +710,32 @@ function_api_categories (api_id, category_id)
 ### Configuration Structure
 
 ```typescript
+interface AgentModelConfig {
+  provider: 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot';
+  model: string;
+  temperature: number;
+  max_tokens?: number;
+  thinking_enabled?: boolean;   // Planner-only reasoning toggle (shown when the selected model is thinking-capable)
+}
+
+interface ExecutorModelProfiles {
+  default: AgentModelConfig;
+  fast_low_cost?: AgentModelConfig;
+  deep_reasoning?: AgentModelConfig;
+  long_context?: AgentModelConfig;
+  artifact_generation?: AgentModelConfig;
+  local_private?: AgentModelConfig;
+}
+
 interface AgentSettings {
   enabled: boolean;              // Master on/off switch
 
   // Model assignments
-  plannerModel: string;          // Model for task planning
-  executorModel: string;         // Model for task execution
-  checkerModel: string;          // Model for quality checking
-  summarizerModel: string;       // Model for final summarization
+  plannerModel: AgentModelConfig;          // Model for task planning
+  executorModel: AgentModelConfig;         // Model for task execution
+  checkerModel: AgentModelConfig;          // Model for quality checking
+  summarizerModel: AgentModelConfig;       // Model for final summarization
+  executorModelProfiles?: ExecutorModelProfiles; // Planner-selectable executor profiles
 
   // Budget limits
   maxTokens: number;             // Max tokens per agent execution
@@ -741,6 +759,8 @@ interface AgentSettings {
 | **Executor** | Execute individual tasks with tool access | Inherits main model |
 | **Checker** | Validate response quality | Often faster/cheaper model |
 | **Summarizer** | Combine outputs into final response | Inherits main model |
+
+The planner can also choose a task-specific `executor_profile` when the request benefits from a different executor model. Planner reasoning can be enabled only for planner models marked thinking-capable in the LLM settings.
 
 ### Event Types
 
@@ -778,4 +798,4 @@ The agent streams these events during execution:
 | `rag-settings` | Retrieval parameters |
 | `memory-settings` | User memory extraction |
 | `summarization-settings` | Thread summarization |
-| `agent-settings` | Autonomous agent configuration (beta) |
+| `agent-settings` | Autonomous agent configuration (beta), including planner/executor/checker/summarizer model assignments and executor profiles |
