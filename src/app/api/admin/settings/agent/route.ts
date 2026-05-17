@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt, getExecutorSystemPrompt, setExecutorSystemPrompt, getCheckerSystemPrompt, setCheckerSystemPrompt, getAutonomousModeEnabled, setAutonomousModeEnabled, getExecutorModelProfiles, setExecutorModelProfiles } from '@/lib/db/compat';
+import { getEnabledModel } from '@/lib/db/compat/enabled-models';
 
 const EXECUTOR_PROFILE_KEYS = [
   'fast_low_cost',
@@ -177,6 +178,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const plannerEnabledModel = await getEnabledModel(plannerModel.model);
+    const sanitizedPlannerModel = plannerEnabledModel?.thinkingCapable
+      ? plannerModel
+      : { ...plannerModel, thinking_enabled: false };
+
     // Validate ranges
     if (
       budgetMaxLlmCalls < 1 ||
@@ -227,7 +233,7 @@ export async function POST(request: NextRequest) {
     // Save model configurations
     await setAgentModelConfigs(
       {
-        planner: plannerModel,
+        planner: sanitizedPlannerModel,
         executor: executorModel,
         checker: checkerModel,
         summarizer: summarizerModel,
@@ -323,7 +329,7 @@ export async function POST(request: NextRequest) {
         confidenceThreshold,
         budgetMaxDurationMinutes,
         taskTimeoutMinutes,
-        plannerModel,
+        plannerModel: sanitizedPlannerModel,
         executorModel,
         checkerModel,
         summarizerModel,

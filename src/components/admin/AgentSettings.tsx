@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Save, RotateCcw } from 'lucide-react';
+import { Brain, Save, RotateCcw } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -10,6 +10,7 @@ interface AgentModelConfig {
   model: string;
   temperature: number;
   max_tokens?: number;
+  thinking_enabled?: boolean;
 }
 
 type ExecutorProfileKey =
@@ -62,6 +63,7 @@ interface EnabledModel {
   displayName: string;
   toolCapable: boolean;
   visionCapable: boolean;
+  thinkingCapable: boolean;
   enabled: boolean;
 }
 
@@ -296,10 +298,15 @@ export default function AgentSettingsTab() {
 
     try {
       setIsSaving(true);
+      const plannerSelection = availableModels.find(m => m.id === editedSettings.plannerModel.model);
+      const plannerModel = plannerSelection?.thinkingCapable
+        ? editedSettings.plannerModel
+        : { ...editedSettings.plannerModel, thinking_enabled: false };
+      const payload = { ...editedSettings, plannerModel };
       const res = await fetch('/api/admin/settings/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editedSettings),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error('Failed to save agent settings');
@@ -357,7 +364,7 @@ export default function AgentSettingsTab() {
   const updateModelConfig = (
     modelKey: typeof MODEL_KEYS[number],
     field: keyof AgentModelConfig,
-    value: string | number | undefined
+    value: string | number | boolean | undefined
   ) => {
     if (editedSettings) {
       const nextModel = { ...editedSettings[modelKey], [field]: value };
@@ -383,7 +390,12 @@ export default function AgentSettingsTab() {
     if (!editedSettings) return;
     const selectedModel = availableModels.find(m => m.id === modelId);
     const provider = selectedModel ? mapProviderForAgent(selectedModel.providerId) : editedSettings[modelKey].provider;
-    const nextModel = { ...editedSettings[modelKey], model: modelId, provider };
+    const nextModel = {
+      ...editedSettings[modelKey],
+      model: modelId,
+      provider,
+      ...(modelKey === 'plannerModel' && selectedModel?.thinkingCapable !== true ? { thinking_enabled: false } : {}),
+    };
     if (modelKey === 'executorModel') {
       setEditedSettings({
         ...editedSettings,
@@ -420,7 +432,7 @@ export default function AgentSettingsTab() {
   const updateExecutorProfileConfig = (
     profileKey: ExecutorProfileKey,
     field: keyof AgentModelConfig,
-    value: string | number | undefined
+    value: string | number | boolean | undefined
   ) => {
     if (!editedSettings) return;
 
@@ -670,7 +682,9 @@ export default function AgentSettingsTab() {
             <div className="p-6 space-y-6">
               {MODEL_KEYS.map((modelKey) => {
                 const currentModel = editedSettings[modelKey];
-                const isKnownModel = availableModels.some(m => m.id === currentModel.model);
+                const selectedModel = availableModels.find(m => m.id === currentModel.model);
+                const isKnownModel = Boolean(selectedModel);
+                const showPlannerThinking = modelKey === 'plannerModel' && selectedModel?.thinkingCapable === true;
 
                 return (
                   <div key={modelKey} className="border-b pb-6 last:border-b-0 last:pb-0">
@@ -738,6 +752,36 @@ export default function AgentSettingsTab() {
                         )}
                       </div>
                     </div>
+                    {showPlannerThinking && (
+                      <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                              <Brain size={16} className="text-blue-600" />
+                              Thinking / Reasoning
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1">
+                              Available because this planner model is marked Thinking: On in LLM Settings.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={Boolean(currentModel.thinking_enabled)}
+                            onClick={() => updateModelConfig('plannerModel', 'thinking_enabled', !Boolean(currentModel.thinking_enabled))}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                              currentModel.thinking_enabled ? 'bg-blue-600' : 'bg-gray-200'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                currentModel.thinking_enabled ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

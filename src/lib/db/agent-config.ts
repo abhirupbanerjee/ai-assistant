@@ -12,6 +12,7 @@ export interface AgentModelConfig {
   model: string;
   temperature: number;
   max_tokens?: number;
+  thinking_enabled?: boolean;
 }
 
 export interface StoredAgentModelConfigs {
@@ -89,6 +90,7 @@ export function getAgentModelConfigs(): StoredAgentModelConfigs {
         ...defaults,           // Start with defaults (includes max_tokens)
         ...parsed,             // Override with stored values
         max_tokens: parsed.max_tokens ?? defaults.max_tokens, // Ensure max_tokens has a value
+        thinking_enabled: typeof parsed.thinking_enabled === 'boolean' ? parsed.thinking_enabled : defaults.thinking_enabled ?? false,
       };
     };
 
@@ -128,6 +130,9 @@ export function validateAgentModelConfig(config: AgentModelConfig): boolean {
     return false;
   }
   if (typeof config.temperature !== 'number' || config.temperature < 0 || config.temperature > 2) {
+    return false;
+  }
+  if (config.thinking_enabled !== undefined && typeof config.thinking_enabled !== 'boolean') {
     return false;
   }
   return true;

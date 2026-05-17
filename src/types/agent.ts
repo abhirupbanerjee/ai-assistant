@@ -74,6 +74,7 @@ export interface ModelSpec {
   model: string;
   temperature: number;
   max_tokens?: number;
+  thinking_enabled?: boolean;
 }
 
 export interface ExecutorModelProfiles {

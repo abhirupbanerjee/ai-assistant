@@ -487,6 +487,7 @@ export interface AgentModelConfigForValidation {
   model: string;
   temperature: number;
   max_tokens?: number;
+  thinking_enabled?: boolean;
 }
 
 export function validateAgentModelConfig(config: AgentModelConfigForValidation): boolean {
@@ -497,6 +498,9 @@ export function validateAgentModelConfig(config: AgentModelConfigForValidation):
     return false;
   }
   if (typeof config.temperature !== 'number' || config.temperature < 0 || config.temperature > 2) {
+    return false;
+  }
+  if (config.thinking_enabled !== undefined && typeof config.thinking_enabled !== 'boolean') {
     return false;
   }
   return true;

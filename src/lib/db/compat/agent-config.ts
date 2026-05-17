@@ -207,6 +207,7 @@ export async function getAgentModelConfigs(): Promise<StoredAgentModelConfigs> {
         ...defaults,
         ...parsed,
         max_tokens: parsed.max_tokens ?? defaults.max_tokens,
+        thinking_enabled: typeof parsed.thinking_enabled === 'boolean' ? parsed.thinking_enabled : defaults.thinking_enabled ?? false,
       };
     };
 

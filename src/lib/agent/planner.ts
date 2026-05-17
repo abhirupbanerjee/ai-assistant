@@ -65,6 +65,7 @@ export async function createPlan(
     const response = await generateWithModelFallback(plannerModel, prompt, {
       systemPrompt,
       temperature: 0.3, // Moderate creativity for planning
+      thinkingEnabled: plannerModel.thinking_enabled === true,
     });
     let tokensUsed = response.tokens_used || 0;
     let llmCalls = 1;
@@ -217,6 +218,7 @@ If ALL checks PASS, respond with: {"reflection": "pass"}`;
     const response = await generateWithModelFallback(plannerModel, prompt, {
       systemPrompt: 'You are a plan quality reviewer. Check the plan against the checklist and either confirm it passes or provide a corrected plan.',
       temperature: 0.2,
+      thinkingEnabled: plannerModel.thinking_enabled === true,
     });
     const usage = { tokens_used: response.tokens_used || 0, llm_calls: 1 };
 

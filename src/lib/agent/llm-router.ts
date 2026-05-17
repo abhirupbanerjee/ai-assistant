@@ -11,6 +11,12 @@ import type { ModelSpec, AgentModelConfig } from '@/types/agent';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { recordTokenUsage } from '@/lib/token-logger';
 import { callOllamaCloud } from '@/lib/services/ollama-cloud';
+import {
+  buildThinkingRequestProfile,
+  isUnsupportedThinkingParamError,
+  stripThinkingRequestParams,
+} from '@/lib/llm-thinking';
+import { isModelThinkingCapable } from '@/lib/db/compat/enabled-models';
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
@@ -45,64 +51,167 @@ export interface LLMResponse {
   thinkingContent?: string;
 }
 
+type GenerateOptions = {
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  thinkingEnabled?: boolean;
+  forcePlain?: boolean;
+};
+
+type PreparedGenerationOptions = {
+  systemPrompt: string;
+  temperature: number;
+  maxTokens: number;
+  requestParams: Record<string, unknown>;
+};
+
+function normalizeModelId(modelId: string): string {
+  let id = modelId.toLowerCase().trim();
+  id = id.replace(/^(ollama-cloud\/|ollama[-/]|litellm\/|openai\/|anthropic\/|deepseek\/|moonshot\/|mistral\/|gemini\/|google\/|fireworks\/)/, '');
+  const lastSlash = id.lastIndexOf('/');
+  if (lastSlash !== -1) id = id.slice(lastSlash + 1);
+  return id.replace(/:.*$/, '');
+}
+
+function isTemperatureLockedModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return id.startsWith('gpt-5') || id.startsWith('kimi-k2.6') || id.startsWith('kimi-k2p6');
+}
+
+function isTemperatureParamError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('temperature') &&
+    (
+      message.includes('unsupported') ||
+      message.includes('invalid') ||
+      message.includes('only 1 is allowed') ||
+      message.includes('only the default') ||
+      message.includes('does not support')
+    )
+  );
+}
+
+function isRequestParamCompatibilityError(
+  error: unknown,
+  requestParams: Record<string, unknown>
+): boolean {
+  return isTemperatureParamError(error) || (Object.keys(requestParams).length > 0 && isUnsupportedThinkingParamError(error));
+}
+
+async function prepareGenerationOptions(
+  modelSpec: ModelSpec,
+  options: GenerateOptions = {}
+): Promise<PreparedGenerationOptions> {
+  const systemPrompt = options.systemPrompt || '';
+  const requestedTemperature = options.temperature ?? modelSpec.temperature;
+  const temperature = isTemperatureLockedModel(modelSpec.model) ? 1 : requestedTemperature;
+  const rawMaxTokens = options.maxTokens ?? modelSpec.max_tokens ?? 4096;
+  const maxTokens = Math.min(rawMaxTokens, 32000);
+  const thinkingEnabled = options.thinkingEnabled ?? modelSpec.thinking_enabled ?? false;
+
+  let requestParams: Record<string, unknown> = {};
+  if (!options.forcePlain && thinkingEnabled) {
+    const thinkingCapable = await isModelThinkingCapable(modelSpec.model);
+    const profile = buildThinkingRequestProfile({
+      modelId: modelSpec.model,
+      thinkingCapable,
+      thinkingEnabled,
+      maxTokens,
+    });
+    requestParams = profile.requestParams;
+    if (modelSpec.provider === 'gemini' && requestParams.reasoning_effort) {
+      requestParams = { thinkingConfig: { thinkingBudget: -1 } };
+    }
+  }
+
+  return { systemPrompt, temperature, maxTokens, requestParams };
+}
+
 /**
  * Generate text using specified model
  */
 export async function generateWithModel(
   modelSpec: ModelSpec,
   prompt: string,
-  options: {
-    systemPrompt?: string;
-    temperature?: number;
-    maxTokens?: number;
-  } = {}
+  options: GenerateOptions = {}
 ): Promise<LLMResponse> {
-  const { systemPrompt = '', temperature = modelSpec.temperature, maxTokens: rawMaxTokens = modelSpec.max_tokens || 4096 } = options;
+  const prepared = await prepareGenerationOptions(modelSpec, options);
 
-  // Cap max_tokens to prevent API rejection from misconfigured values
-  // 32000 is safe for all supported models (gpt-4.1-mini supports 32768)
-  const maxTokens = Math.min(rawMaxTokens, 32000);
+  try {
+    const response = await dispatchGenerateWithModel(modelSpec, prompt, prepared);
+    recordTokenUsage({
+      category: 'autonomous',
+      model: response.model,
+      totalTokens: response.tokens_used,
+    });
+    return response;
+  } catch (error) {
+    if (!options.forcePlain && isRequestParamCompatibilityError(error, prepared.requestParams)) {
+      console.warn('[LLM Router] Retrying model with safe/default request parameters', {
+        model: modelSpec.model,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const plainPrepared = await prepareGenerationOptions(modelSpec, {
+        ...options,
+        temperature: 1,
+        thinkingEnabled: false,
+        forcePlain: true,
+      });
+      const response = await dispatchGenerateWithModel(modelSpec, prompt, {
+        ...plainPrepared,
+        requestParams: stripThinkingRequestParams(plainPrepared.requestParams),
+      });
+      recordTokenUsage({
+        category: 'autonomous',
+        model: response.model,
+        totalTokens: response.tokens_used,
+      });
+      return response;
+    }
+    throw error;
+  }
+}
 
+async function dispatchGenerateWithModel(
+  modelSpec: ModelSpec,
+  prompt: string,
+  prepared: PreparedGenerationOptions
+): Promise<LLMResponse> {
+  const { systemPrompt, temperature, maxTokens, requestParams } = prepared;
   let response: LLMResponse;
   switch (modelSpec.provider) {
     case 'openai':
-      response = await generateOpenAI(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateOpenAI(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'gemini':
-      response = await generateGemini(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateGemini(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'mistral':
-      response = await generateMistral(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateMistral(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'anthropic':
-      response = await generateAnthropic(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateAnthropic(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'fireworks':
-      response = await generateFireworks(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateFireworks(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'deepseek':
-      response = await generateDeepSeek(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateDeepSeek(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'ollama':
-      response = await generateOllama(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateOllama(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'ollama-cloud':
-      response = await generateOllamaCloud(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateOllamaCloud(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     case 'moonshot':
-      response = await generateMoonshot(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      response = await generateMoonshot(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
     default:
       throw new Error(`Unknown LLM provider: ${modelSpec.provider}`);
   }
-
-  // Log token usage for all autonomous LLM calls
-  recordTokenUsage({
-    category: 'autonomous',
-    model: response.model,
-    totalTokens: response.tokens_used,
-  });
-
   return response;
 }
 
@@ -114,7 +223,8 @@ async function generateOpenAI(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!openaiClient) {
     // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
@@ -145,9 +255,10 @@ async function generateOpenAI(
       messages,
       temperature,
       max_tokens: maxTokens,
+      ...requestParams,
       stream: true,
       stream_options: { include_usage: true },
-    });
+    } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
 
     let content = '';
     let totalTokens = 0;
@@ -165,7 +276,8 @@ async function generateOpenAI(
     messages,
     temperature,
     max_tokens: maxTokens,
-  });
+    ...requestParams,
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
   const rawContent = response.choices[0].message.content || '';
   const { visible, thinking } = extractThinkTags(rawContent);
@@ -186,7 +298,8 @@ async function generateGemini(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   const { GoogleGenAI } = await import('@google/genai');
 
@@ -206,6 +319,7 @@ async function generateGemini(
     config: {
       temperature,
       maxOutputTokens: maxTokens,
+      ...requestParams,
     },
   });
 
@@ -229,7 +343,8 @@ async function generateMistral(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   const { Mistral } = await import('@mistralai/mistralai');
 
@@ -251,7 +366,8 @@ async function generateMistral(
     messages,
     temperature,
     maxTokens,
-  });
+    ...requestParams,
+  } as Parameters<typeof client.chat.complete>[0]);
 
   const messageContent = response.choices?.[0]?.message?.content;
   const content = typeof messageContent === 'string' ? messageContent : '';
@@ -272,7 +388,8 @@ async function generateAnthropic(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!anthropicClient) {
     const apiKey = await getApiKey('anthropic');
@@ -288,6 +405,7 @@ async function generateAnthropic(
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
     temperature,
+    ...(requestParams.thinking ? { thinking: requestParams.thinking as Anthropic.ThinkingConfigParam } : {}),
   });
 
   const textBlock = response.content.find(b => b.type === 'text');
@@ -313,7 +431,8 @@ async function generateFireworks(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!fireworksClient) {
     const apiKey = await getApiKey('fireworks');
@@ -339,9 +458,10 @@ async function generateFireworks(
       messages,
       temperature,
       max_tokens: maxTokens,
+      ...requestParams,
       stream: true,
       stream_options: { include_usage: true },
-    });
+    } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
 
     let content = '';
     let totalTokens = 0;
@@ -359,7 +479,8 @@ async function generateFireworks(
     messages,
     temperature,
     max_tokens: maxTokens,
-  });
+    ...requestParams,
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
   const rawContent = response.choices[0].message.content || '';
   const { visible, thinking } = extractThinkTags(rawContent);
@@ -380,7 +501,8 @@ async function generateOllama(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!ollamaClient) {
     const apiBase = await getApiBase('ollama');
@@ -404,7 +526,8 @@ async function generateOllama(
     messages,
     temperature,
     max_tokens: maxTokens,
-  });
+    ...requestParams,
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
   const rawContent = response.choices[0]?.message?.content || '';
   const { visible, thinking } = extractThinkTags(rawContent);
@@ -425,7 +548,8 @@ async function generateOllamaCloud(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
   if (systemPrompt) {
@@ -433,7 +557,11 @@ async function generateOllamaCloud(
   }
   messages.push({ role: 'user', content: prompt });
 
-  const response = await callOllamaCloud(model, messages, { temperature, maxTokens });
+  const response = await callOllamaCloud(model, messages, {
+    temperature,
+    maxTokens,
+    think: typeof requestParams.think === 'boolean' ? requestParams.think : undefined,
+  });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
@@ -462,7 +590,8 @@ async function generateMoonshot(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
@@ -488,9 +617,10 @@ async function generateMoonshot(
       messages,
       temperature,
       max_tokens: maxTokens,
+      ...requestParams,
       stream: true,
       stream_options: { include_usage: true },
-    });
+    } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
 
     let content = '';
     let totalTokens = 0;
@@ -508,7 +638,8 @@ async function generateMoonshot(
     messages,
     temperature,
     max_tokens: maxTokens,
-  });
+    ...requestParams,
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
   const rawContent = response.choices[0].message.content || '';
   const { visible, thinking } = extractThinkTags(rawContent);
@@ -529,7 +660,8 @@ async function generateDeepSeek(
   prompt: string,
   systemPrompt: string,
   temperature: number,
-  maxTokens: number
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!deepseekClient) {
     const apiKey = await getApiKey('deepseek');
@@ -554,9 +686,10 @@ async function generateDeepSeek(
       messages,
       temperature,
       max_tokens: maxTokens,
+      ...requestParams,
       stream: true,
       stream_options: { include_usage: true },
-    });
+    } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
 
     let content = '';
     let totalTokens = 0;
@@ -574,7 +707,8 @@ async function generateDeepSeek(
     messages,
     temperature,
     max_tokens: maxTokens,
-  });
+    ...requestParams,
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
   const rawContent = response.choices[0].message.content || '';
   const { visible, thinking } = extractThinkTags(rawContent);
@@ -612,7 +746,7 @@ function detectProvider(modelId: string): ModelSpec['provider'] {
 export async function generateWithModelFallback(
   modelSpec: ModelSpec,
   prompt: string,
-  options: { systemPrompt?: string; temperature?: number; maxTokens?: number } = {}
+  options: GenerateOptions = {}
 ): Promise<LLMResponse> {
   try {
     return await generateWithModel(modelSpec, prompt, options);
