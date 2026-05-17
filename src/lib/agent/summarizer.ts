@@ -19,7 +19,7 @@ import { getSummarizerSystemPrompt } from '@/lib/db/compat/agent-config';
 export async function generateSummary(
   plan: AgentPlan,
   modelConfig: AgentModelConfig
-): Promise<{ summary: string; tokens_used: number }> {
+): Promise<{ summary: string; tokens_used: number; llm_calls: number }> {
   const prompt = buildSummaryPrompt(plan);
 
   try {
@@ -38,12 +38,14 @@ export async function generateSummary(
     return {
       summary: response.content,
       tokens_used: response.tokens_used,
+      llm_calls: 1,
     };
   } catch (error) {
     console.error('[Summarizer] Error generating summary:', error);
     return {
       summary: generateFallbackSummary(plan),
       tokens_used: 0,
+      llm_calls: 1,
     };
   }
 }
@@ -159,7 +161,7 @@ export async function generatePlanIntro(
   planTitle: string,
   tasks: { description: string; type: string }[],
   modelConfig: AgentModelConfig
-): Promise<{ content: string; tokens_used: number }> {
+): Promise<{ content: string; tokens_used: number; llm_calls: number }> {
   const summarizerModel = getModelForRole('summarizer', modelConfig);
   const taskList = tasks.map((t, i) => `${i + 1}. ${t.description}`).join('\n');
 
@@ -176,10 +178,10 @@ Write a brief opening (2-3 sentences) explaining what you'll do for the user. Be
       temperature: 0.5,
       maxTokens: 300,
     });
-    return { content: response.content, tokens_used: response.tokens_used };
+    return { content: response.content, tokens_used: response.tokens_used, llm_calls: 1 };
   } catch (error) {
     console.error('[Summarizer] Plan intro failed:', error);
-    return { content: `I'll work on this for you — I've planned ${tasks.length} steps to address your request.`, tokens_used: 0 };
+    return { content: `I'll work on this for you — I've planned ${tasks.length} steps to address your request.`, tokens_used: 0, llm_calls: 1 };
   }
 }
 
@@ -192,14 +194,14 @@ export async function generateIncrementalSummary(
   contentSoFar: string,
   newTask: { description: string; result: string; type: string },
   modelConfig: AgentModelConfig
-): Promise<{ content: string; tokens_used: number }> {
+): Promise<{ content: string; tokens_used: number; llm_calls: number }> {
   const summarizerModel = getModelForRole('summarizer', modelConfig);
 
   // For tool outputs (file generation), just report the result directly
   const isToolOutput = /(?:Document|Spreadsheet|Presentation|Image|Diagram|Podcast) generated:/i.test(newTask.result);
   if (isToolOutput) {
     // Extract the file info and return a simple note — no LLM call needed
-    return { content: newTask.result, tokens_used: 0 };
+    return { content: newTask.result, tokens_used: 0, llm_calls: 0 };
   }
 
   // Truncate inputs to avoid huge prompts
@@ -222,12 +224,12 @@ Write the NEXT section (1-4 paragraphs) incorporating this new information. Cont
       temperature: 0.5,
       maxTokens: 1500,
     });
-    return { content: response.content, tokens_used: response.tokens_used };
+    return { content: response.content, tokens_used: response.tokens_used, llm_calls: 1 };
   } catch (error) {
     console.error('[Summarizer] Incremental summary failed:', error);
     // Fallback: return a trimmed version of the raw result
     const preview = newTask.result.substring(0, 500);
-    return { content: `**${newTask.description}**\n\n${preview}${newTask.result.length > 500 ? '...' : ''}`, tokens_used: 0 };
+    return { content: `**${newTask.description}**\n\n${preview}${newTask.result.length > 500 ? '...' : ''}`, tokens_used: 0, llm_calls: 1 };
   }
 }
 
@@ -240,7 +242,7 @@ export async function generateConclusion(
   contentSoFar: string,
   failedTypes: string[],
   modelConfig: AgentModelConfig
-): Promise<{ content: string; tokens_used: number }> {
+): Promise<{ content: string; tokens_used: number; llm_calls: number }> {
   const summarizerModel = getModelForRole('summarizer', modelConfig);
 
   const truncatedContent = contentSoFar.length > 3000 ? '...' + contentSoFar.slice(-3000) : contentSoFar;
@@ -262,10 +264,10 @@ Write a brief conclusion (2-4 sentences) that wraps up the response. If there we
       temperature: 0.5,
       maxTokens: 500,
     });
-    return { content: response.content, tokens_used: response.tokens_used };
+    return { content: response.content, tokens_used: response.tokens_used, llm_calls: 1 };
   } catch (error) {
     console.error('[Summarizer] Conclusion failed:', error);
-    return { content: '', tokens_used: 0 };
+    return { content: '', tokens_used: 0, llm_calls: 1 };
   }
 }
 

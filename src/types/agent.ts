@@ -11,7 +11,9 @@ export type AgentPlanStatus =
   | 'active'
   | 'completed'
   | 'cancelled'
-  | 'failed';
+  | 'failed'
+  | 'paused'
+  | 'stopped';
 
 export type AgentTaskStatus =
   | 'pending'
@@ -174,6 +176,7 @@ export interface ExecutionResult {
   retry_suggestion?: string;
   tokens_used?: number;
   llm_calls?: number;
+  web_searches?: number;
 }
 
 export interface CheckerResult {
@@ -181,6 +184,7 @@ export interface CheckerResult {
   confidence_score: number; // 0-100
   notes: string;
   tokens_used?: number;
+  llm_calls?: number;
   retry_suggestion?: string; // Alternative approach for retry (Phase 2.6c)
 }
 

@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
 interface AgentModelConfig {
-  provider: 'openai' | 'gemini' | 'mistral';
+  provider: 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot';
   model: string;
   temperature: number;
   max_tokens?: number;
@@ -487,13 +487,14 @@ export default function AgentSettingsTab() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Confidence Threshold</label>
                 <input
                   type="number"
-                  step="0.1"
+                  step="1"
                   min="0"
-                  max="1"
+                  max="100"
                   value={editedSettings.confidenceThreshold}
-                  onChange={(e) => updateSetting('confidenceThreshold', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('confidenceThreshold', parseInt(e.target.value, 10) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="text-xs text-gray-500 mt-1">Checker approval threshold (0-100%)</p>
               </div>
             </div>
           </div>

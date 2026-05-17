@@ -11,6 +11,7 @@ import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
 import { getAgentModelConfigs } from '../db/compat/agent-config';
 import { getSetting } from '../db/compat/config';
+import { incrementBudgetUsage } from '../db/compat/task-plans';
 import { generatePlanIntro, generateIncrementalSummary, generateConclusion, regenerateAccumulatedContent } from './summarizer';
 import { createPlanApprovalResolver } from '../streaming/plan-approval-resolver';
 
@@ -23,6 +24,26 @@ export interface AutonomousExecutionResult {
   planId: string;
   generatedDocuments: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
+}
+
+async function recordStreamingSummarizerUsage(
+  plan: { id: string; budget_used?: { llm_calls?: number; tokens_used?: number; web_searches?: number } },
+  usage: { tokens_used?: number; llm_calls?: number }
+): Promise<void> {
+  const llmCalls = usage.llm_calls || 0;
+  const tokensUsed = usage.tokens_used || 0;
+  if (!plan?.id || (!llmCalls && !tokensUsed)) return;
+
+  await incrementBudgetUsage(plan.id, {
+    llm_calls: llmCalls,
+    tokens_used: tokensUsed,
+  });
+
+  plan.budget_used = {
+    llm_calls: (plan.budget_used?.llm_calls || 0) + llmCalls,
+    tokens_used: (plan.budget_used?.tokens_used || 0) + tokensUsed,
+    web_searches: plan.budget_used?.web_searches || 0,
+  };
 }
 
 /**
@@ -62,6 +83,13 @@ export async function executeAutonomousWithStreaming(
   const hitlEnabled = (await getSetting('agent_hitl_enabled', 'true')) === 'true';
   const hitlMinTasks = parseInt(await getSetting('agent_hitl_min_tasks', '5'), 10);
   const hitlTimeoutMs = parseInt(await getSetting('agent_hitl_timeout_seconds', '300'), 10) * 1000;
+  const budget = planConfig.budget || {
+    max_llm_calls: parseInt(await getSetting('agent_budget_max_llm_calls', '500'), 10),
+    max_tokens: parseInt(await getSetting('agent_budget_max_tokens', '2000000'), 10),
+    max_web_searches: parseInt(await getSetting('agent_budget_max_web_searches', '100'), 10),
+    max_duration_minutes: parseInt(await getSetting('agent_budget_max_duration_minutes', '30'), 10),
+    task_timeout_minutes: parseInt(await getSetting('agent_task_timeout_minutes', '5'), 10),
+  };
 
   // Collect artifacts during execution for persistence
   const collectedDocuments: GeneratedDocumentInfo[] = [];
@@ -78,7 +106,7 @@ export async function executeAutonomousWithStreaming(
         threadId: planConfig.threadId,
         userId: planConfig.userId,
         categorySlug: planConfig.categorySlug,
-        budget: planConfig.budget,
+        budget,
         modelConfig,
         hitlEnabled,
         hitlMinTasks,
@@ -179,6 +207,7 @@ export async function executeAutonomousWithStreaming(
                 plan.tasks.map(t => ({ description: t.description, type: t.type })),
                 modelConfig
               );
+              await recordStreamingSummarizerUsage(plan, intro);
               if (intro.content) {
                 sendEvent({ type: 'chunk', content: intro.content + '\n\n' });
                 accumulatedContent += intro.content + '\n\n';
@@ -262,6 +291,7 @@ export async function executeAutonomousWithStreaming(
                 { description: task.description, result: result.result, type: task.type },
                 modelConfig
               );
+              await recordStreamingSummarizerUsage({ id: planId }, section);
               if (section.content) {
                 sendEvent({ type: 'chunk', content: section.content + '\n\n' });
                 accumulatedContent += section.content + '\n\n';
@@ -357,6 +387,7 @@ export async function executeAutonomousWithStreaming(
             const conclusion = await generateConclusion(
               userRequest, accumulatedContent, failedTypes, modelConfig
             );
+            await recordStreamingSummarizerUsage(plan, conclusion);
             if (conclusion.content) {
               sendEvent({ type: 'chunk', content: '\n---\n\n' + conclusion.content });
               accumulatedContent += '\n---\n\n' + conclusion.content;

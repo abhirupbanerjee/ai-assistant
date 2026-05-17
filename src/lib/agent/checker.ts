@@ -317,6 +317,7 @@ export async function checkTaskQuality(
         confidence_score: 0,
         notes: `Parse failed, manual review needed: ${parseResult.error}`,
         tokens_used: response.tokens_used,
+        llm_calls: 1,
       };
     }
 
@@ -330,6 +331,7 @@ export async function checkTaskQuality(
         confidence_score: confidence,
         notes: notes || 'Meets quality threshold',
         tokens_used: response.tokens_used,
+        llm_calls: 1,
       };
     }
 
@@ -339,6 +341,7 @@ export async function checkTaskQuality(
       confidence_score: confidence,
       notes: notes || `Confidence ${confidence}% below threshold ${threshold}%`,
       tokens_used: response.tokens_used,
+      llm_calls: 1,
       retry_suggestion: suggestRetryStrategy(task, result, confidence),
     };
   } catch (error) {
@@ -349,6 +352,7 @@ export async function checkTaskQuality(
       confidence_score: 0,
       notes: `Checker error: ${error instanceof Error ? error.message : String(error)}`,
       tokens_used: 0,
+      llm_calls: 1,
       retry_suggestion: suggestRetryStrategy(task, result, 0),
     };
   }

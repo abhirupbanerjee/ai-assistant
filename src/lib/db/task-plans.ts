@@ -10,16 +10,33 @@ import { execute, queryOne, queryAll } from './index';
 
 // ============ Types ============
 
-export type TaskStatus = 'pending' | 'in_progress' | 'complete' | 'failed' | 'skipped';
+export type TaskStatus = 'pending' | 'in_progress' | 'running' | 'complete' | 'done' | 'failed' | 'skipped' | 'needs_review';
 export type PlanStatus = 'active' | 'completed' | 'cancelled' | 'failed' | 'paused' | 'stopped';
 
 export interface Task {
   id: number;
   description: string;
   status: TaskStatus;
+  type?: string;
+  target?: string;
+  priority?: number;
+  dependencies?: number[];
+  expected_output?: string;
+  confidence_score?: number;
   result?: string;
   error?: string;
   reason?: string;
+  review_notes?: string;
+  state_history?: Array<{ status: string; timestamp: string; details?: Record<string, unknown> }>;
+  execution_started_at?: string;
+  retry_count?: number;
+  retry_context?: string;
+  retry_strategy?: string;
+  execution_hint?: string;
+  skill_ids?: number[];
+  tool_name?: string;
+  tokens_used?: number;
+  llm_calls?: number;
   started_at?: string;
   completed_at?: string;
 }
@@ -45,6 +62,10 @@ export interface TaskPlan {
   stoppedAt?: string;
   stopReason?: string;
   originalRequest?: string;
+  original_request?: string;
+  budget?: Record<string, unknown>;
+  budget_used?: Record<string, unknown>;
+  model_config?: Record<string, unknown>;
 }
 
 export interface TaskPlanStats {
@@ -78,12 +99,27 @@ interface DbTaskPlan {
   resumed_at: string | null;
   stopped_at: string | null;
   stop_reason: string | null;
+  budget_json: string | null;
+  budget_used_json: string | null;
+  model_config_json: string | null;
+  original_request: string | null;
 }
 
 // ============ Mappers ============
 
 function mapDbToTaskPlan(row: DbTaskPlan): TaskPlan {
   const tasksData = JSON.parse(row.tasks_json) as { tasks: Task[] };
+  const parseObject = (value: string | null): Record<string, unknown> | undefined => {
+    if (!value) return undefined;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const originalRequest = row.original_request || undefined;
+
   return {
     id: row.id,
     threadId: row.thread_id,
@@ -104,6 +140,11 @@ function mapDbToTaskPlan(row: DbTaskPlan): TaskPlan {
     resumedAt: row.resumed_at || undefined,
     stoppedAt: row.stopped_at || undefined,
     stopReason: row.stop_reason || undefined,
+    originalRequest,
+    original_request: originalRequest,
+    budget: parseObject(row.budget_json),
+    budget_used: parseObject(row.budget_used_json),
+    model_config: parseObject(row.model_config_json),
   };
 }
 
@@ -379,11 +420,12 @@ export function createAutonomousPlan(
   threadId: string,
   userId: string,
   title: string,
-  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[] }[],
+  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; priority?: number; execution_hint?: string; skill_ids?: number[]; tool_name?: string; retry_count?: number }[],
   options: {
     categorySlug?: string;
     budget?: Record<string, unknown>;
     modelConfig?: Record<string, unknown>;
+    originalRequest?: string;
   } = {}
 ): string {
   const id = `plan_${nanoid(12)}`;
@@ -396,12 +438,23 @@ export function createAutonomousPlan(
     description: t.description,
     status: 'pending' as const,
     dependencies: t.dependencies || [],
-    priority: 1,
+    priority: t.priority || 1,
     state_history: [],
+    ...(t.expected_output ? { expected_output: t.expected_output } : {}),
+    ...(t.execution_hint ? { execution_hint: t.execution_hint } : {}),
+    ...(t.skill_ids?.length ? { skill_ids: t.skill_ids } : {}),
+    ...(t.tool_name ? { tool_name: t.tool_name } : {}),
+    retry_count: t.retry_count ?? 0,
   }));
 
   const tasksJson = JSON.stringify({ tasks: fullTasks });
-  const budgetJson = JSON.stringify(options.budget || { max_llm_calls: 100, max_tokens: 500000 });
+  const budgetJson = JSON.stringify(options.budget || {
+    max_llm_calls: 100,
+    max_tokens: 500000,
+    max_web_searches: 20,
+    max_duration_minutes: 30,
+    task_timeout_minutes: 5,
+  });
   const budgetUsedJson = JSON.stringify({ llm_calls: 0, tokens_used: 0, web_searches: 0 });
   const modelConfigJson = JSON.stringify(options.modelConfig || {});
 
@@ -409,9 +462,9 @@ export function createAutonomousPlan(
     `INSERT INTO task_plans (
       id, thread_id, user_id, category_slug, title, tasks_json,
       status, total_tasks, completed_tasks, failed_tasks,
-      mode, budget_json, budget_used_json, model_config_json,
+      mode, budget_json, budget_used_json, model_config_json, original_request,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, 'autonomous', ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, 'autonomous', ?, ?, ?, ?, ?, ?)`,
     [
       id,
       threadId,
@@ -423,6 +476,7 @@ export function createAutonomousPlan(
       budgetJson,
       budgetUsedJson,
       modelConfigJson,
+      options.originalRequest || null,
       now,
       now,
     ]

@@ -13,6 +13,14 @@ import { parsePlannerResponse } from './json-parser';
 import { validateDependencyGraph } from './dependency-validator';
 import { getPlannerSystemPrompt } from '../db/compat/agent-config';
 
+export interface PlanCreationResult {
+  tasks: AgentTask[];
+  title: string;
+  error?: string;
+  tokens_used?: number;
+  llm_calls?: number;
+}
+
 /**
  * Create a task plan from user request
  *
@@ -37,7 +45,7 @@ export async function createPlan(
     replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
   },
   modelConfig: AgentModelConfig
-): Promise<{ tasks: AgentTask[]; title: string; error?: string }> {
+): Promise<PlanCreationResult> {
   const prompt = buildPlannerPrompt(userRequest, context);
 
   try {
@@ -52,6 +60,8 @@ export async function createPlan(
       systemPrompt,
       temperature: 0.3, // Moderate creativity for planning
     });
+    let tokensUsed = response.tokens_used || 0;
+    let llmCalls = 1;
 
     // Parse with schema validation
     const parseResult = await parsePlannerResponse(response.content, plannerModel);
@@ -73,6 +83,8 @@ export async function createPlan(
           retry_count: 0,
         }],
         title: 'Analysis Plan',
+        tokens_used: tokensUsed,
+        llm_calls: llmCalls,
       };
     }
 
@@ -99,9 +111,11 @@ export async function createPlan(
     let finalTasks = tasks;
     if (tasks.length >= 4) {
       const reflectionResult = await reflectOnPlan(userRequest, parseResult.data, modelConfig);
-      if (reflectionResult) {
+      tokensUsed += reflectionResult.tokens_used || 0;
+      llmCalls += reflectionResult.llm_calls || 0;
+      if (reflectionResult.plan) {
         // Reflection returned a corrected plan — use it
-        finalTasks = reflectionResult.tasks.map((t) => ({
+        finalTasks = reflectionResult.plan.tasks.map((t) => ({
           id: t.id,
           type: t.type,
           target: t.target,
@@ -129,6 +143,8 @@ export async function createPlan(
         tasks: [],
         title,
         error: `Invalid dependencies: ${validation.errors.join('; ')}`,
+        tokens_used: tokensUsed,
+        llm_calls: llmCalls,
       };
     }
 
@@ -137,13 +153,15 @@ export async function createPlan(
       console.warn('[Planner] Dependency warnings:', validation.warnings);
     }
 
-    return { tasks: finalTasks, title };
+    return { tasks: finalTasks, title, tokens_used: tokensUsed, llm_calls: llmCalls };
   } catch (error) {
     console.error('[Planner] Error creating plan:', error);
     return {
       tasks: [],
       title: 'Error',
       error: `Planning error: ${error instanceof Error ? error.message : String(error)}`,
+      tokens_used: 0,
+      llm_calls: 0,
     };
   }
 }
@@ -161,7 +179,7 @@ async function reflectOnPlan(
   userRequest: string,
   plan: PlannerResponse,
   modelConfig: AgentModelConfig
-): Promise<PlannerResponse | null> {
+): Promise<{ plan: PlannerResponse | null; tokens_used: number; llm_calls: number }> {
   const plannerModel = getModelForRole('planner', modelConfig);
 
   const prompt = `Reflect on this generated plan. For each check, answer PASS or FAIL with a brief reason:
@@ -190,26 +208,27 @@ If ALL checks PASS, respond with: {"reflection": "pass"}`;
       systemPrompt: 'You are a plan quality reviewer. Check the plan against the checklist and either confirm it passes or provide a corrected plan.',
       temperature: 0.2,
     });
+    const usage = { tokens_used: response.tokens_used || 0, llm_calls: 1 };
 
     // Check if reflection passed
     if (response.content.includes('"reflection"') && response.content.includes('"pass"')) {
       console.log('[Planner] Reflection passed — plan is good');
-      return null;
+      return { plan: null, ...usage };
     }
 
     // Try to parse corrected plan
     const correctedResult = await parsePlannerResponse(response.content, plannerModel);
     if (correctedResult.success) {
       console.log('[Planner] Reflection returned corrected plan');
-      return correctedResult.data;
+      return { plan: correctedResult.data, ...usage };
     }
 
     // Parse failed — use original plan
     console.warn('[Planner] Reflection parse failed, keeping original plan:', correctedResult.error);
-    return null;
+    return { plan: null, ...usage };
   } catch (error) {
     console.error('[Planner] Reflection error, keeping original plan:', error);
-    return null;
+    return { plan: null, tokens_used: 0, llm_calls: 0 };
   }
 }
 

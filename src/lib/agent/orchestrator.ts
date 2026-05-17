@@ -288,10 +288,11 @@ async function executeTasksInOrder(
     // 6. Process results SEQUENTIALLY (budget, events, retries)
     for (const { task, result } of waveResults) {
       // Budget usage
-      if (result.tokens_used || result.llm_calls) {
+      if (result.tokens_used || result.llm_calls || result.web_searches) {
         await incrementBudgetUsage(plan.id, {
           llm_calls: result.llm_calls || 0,
           tokens_used: result.tokens_used || 0,
+          web_searches: result.web_searches || 0,
         });
       }
 
@@ -361,7 +362,10 @@ async function executeTasksInOrder(
 
           if (replanResult.tasks.length > 0) {
             await resetFailedTasks(plan.id, failedTasks.map(t => t.id), replanResult.tasks);
-            await incrementBudgetUsage(plan.id, { llm_calls: 1, tokens_used: 0 });
+            await incrementBudgetUsage(plan.id, {
+              llm_calls: replanResult.llm_calls || 0,
+              tokens_used: replanResult.tokens_used || 0,
+            });
             console.log(`[Orchestrator] Re-planned: reset ${failedTasks.length} tasks with improved descriptions`);
           }
         } catch (e) {
@@ -434,7 +438,7 @@ async function generatePlanSummary(
 
     // Track summarizer LLM usage
     await incrementBudgetUsage(plan.id, {
-      llm_calls: 1,
+      llm_calls: summaryResult.llm_calls || 0,
       tokens_used: summaryResult.tokens_used,
     });
 
@@ -684,6 +688,7 @@ export async function createAndExecuteAutonomousPlan(
         target: t.target,
         dependencies: t.dependencies,
         expected_output: t.expected_output,
+        priority: t.priority,
         execution_hint: t.execution_hint,
         skill_ids: t.skill_ids,
         tool_name: t.tool_name,
@@ -696,6 +701,13 @@ export async function createAndExecuteAutonomousPlan(
         originalRequest: userRequest,
       }
     );
+
+    if (planResult.llm_calls || planResult.tokens_used) {
+      await incrementBudgetUsage(planId, {
+        llm_calls: planResult.llm_calls || 0,
+        tokens_used: planResult.tokens_used || 0,
+      });
+    }
 
     // Phase 1c: Plan ready - notify user with task count
     callbacks?.onPlanReady?.(planResult.tasks.length);
@@ -743,6 +755,12 @@ export async function createAndExecuteAutonomousPlan(
         }
 
         await replacePlanTasks(planId, revisedResult.tasks, revisedResult.title);
+        if (revisedResult.llm_calls || revisedResult.tokens_used) {
+          await incrementBudgetUsage(planId, {
+            llm_calls: revisedResult.llm_calls || 0,
+            tokens_used: revisedResult.tokens_used || 0,
+          });
+        }
         callbacks?.onPlanReady?.(revisedResult.tasks.length);
         // Loop → show revised plan for approval
       }

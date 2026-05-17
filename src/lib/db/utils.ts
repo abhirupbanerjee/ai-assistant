@@ -411,7 +411,7 @@ export const MAX_STARTER_PROMPT_LENGTH = 500;
 // Task plan utilities
 // ============================================================================
 
-export type TaskStatus = 'pending' | 'in_progress' | 'complete' | 'failed' | 'skipped';
+export type TaskStatus = 'pending' | 'in_progress' | 'running' | 'complete' | 'done' | 'failed' | 'skipped' | 'needs_review';
 
 export interface TaskPlanStats {
   total: number;
@@ -427,8 +427,8 @@ export function calculateStats(tasks: { status: TaskStatus }[]): TaskPlanStats {
   const stats = {
     total: tasks.length,
     pending: tasks.filter((t) => t.status === 'pending').length,
-    in_progress: tasks.filter((t) => t.status === 'in_progress').length,
-    complete: tasks.filter((t) => t.status === 'complete').length,
+    in_progress: tasks.filter((t) => t.status === 'in_progress' || t.status === 'running').length,
+    complete: tasks.filter((t) => t.status === 'complete' || t.status === 'done').length,
     failed: tasks.filter((t) => t.status === 'failed').length,
     skipped: tasks.filter((t) => t.status === 'skipped').length,
     progress_percent: 0,
@@ -490,7 +490,7 @@ export interface AgentModelConfigForValidation {
 }
 
 export function validateAgentModelConfig(config: AgentModelConfigForValidation): boolean {
-  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'ollama', 'ollama-cloud'].includes(config.provider)) {
+  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'deepseek', 'ollama', 'ollama-cloud', 'moonshot'].includes(config.provider)) {
     return false;
   }
   if (!config.model || config.model.trim() === '') {

@@ -16,7 +16,7 @@ import type { ResolvedSkills } from '../skills/types';
 import { generateWithModel, generateWithModelFallback, getModelForRole } from './llm-router';
 import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
-import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/compat/task-plans';
+import { transitionTaskState, getTaskPlan } from '../db/compat/task-plans';
 import { getExecutorSystemPrompt } from '../db/compat/agent-config';
 import { documentGenerationTool } from '../tools/docgen';
 import { imageGenTool } from '../tools/image-gen';
@@ -299,25 +299,11 @@ export async function executeTask(
       ),
     ]);
 
-    // Track LLM usage
-    if (result.tokens_used) {
-      await incrementBudgetUsage(plan.id, {
-        llm_calls: result.llm_calls || 1,
-        tokens_used: result.tokens_used,
-      });
-    }
-
     // Quality check with 80% threshold
     callbacks?.onChecking?.();
     const checkResult = await checkTaskQuality(task, result.content, modelConfig);
-
-    // Track checker LLM usage
-    if (checkResult.tokens_used) {
-      await incrementBudgetUsage(plan.id, {
-        llm_calls: 1,
-        tokens_used: checkResult.tokens_used,
-      });
-    }
+    const totalTokens = (result.tokens_used || 0) + (checkResult.tokens_used || 0);
+    const totalLlmCalls = (result.llm_calls || 0) + (checkResult.llm_calls || 0);
 
     // Handle check result
     if (checkResult.status === 'approved') {
@@ -325,16 +311,17 @@ export async function executeTask(
       await transitionTaskState(plan.id, task.id, 'done', {
         result: result.content,
         confidence_score: checkResult.confidence_score,
-        tokens_used: result.tokens_used,
-        llm_calls: result.llm_calls,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
       });
 
       return {
         success: true,
         result: result.content,
         confidence: checkResult.confidence_score,
-        tokens_used: result.tokens_used,
-        llm_calls: result.llm_calls,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
+        web_searches: result.web_searches,
       };
     } else {
       // Low confidence - mark as needs_review
@@ -342,8 +329,8 @@ export async function executeTask(
         result: result.content,
         confidence_score: checkResult.confidence_score,
         review_notes: checkResult.notes,
-        tokens_used: result.tokens_used,
-        llm_calls: result.llm_calls,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
       });
 
       return {
@@ -352,8 +339,9 @@ export async function executeTask(
         result: result.content,
         confidence: checkResult.confidence_score,
         retry_suggestion: checkResult.retry_suggestion,
-        tokens_used: result.tokens_used,
-        llm_calls: result.llm_calls,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
+        web_searches: result.web_searches,
       };
     }
   } catch (error) {
@@ -380,7 +368,7 @@ async function performTaskExecution(
   plan: AgentPlan,
   modelConfig: AgentModelConfig,
   callbacks?: ExecutorCallbacks
-): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
+): Promise<{ content: string; tokens_used?: number; llm_calls?: number; web_searches?: number }> {
   // Detect if this task requires a tool
   // On retry with fallback strategy, skip tool detection and use LLM instead
   const isRetryWithFallback = task.retry_count && task.retry_count > 0 &&
@@ -394,6 +382,7 @@ async function performTaskExecution(
 
   // Default: LLM-based execution
   let prompt = buildExecutionPrompt(task, plan);
+  let webSearches = 0;
 
   // Handle retry strategies that augment the prompt
   if (task.retry_count && task.retry_count > 0 && task.retry_strategy) {
@@ -408,6 +397,7 @@ async function performTaskExecution(
           { ...task, target: task.target || task.description } as AgentTask,
           callbacks
         );
+        webSearches += 1;
         prompt += `\n\n**Additional web search context (added on retry):**\n${searchResult}`;
       } catch {
         prompt += '\n\n**Note: Web search augmentation was attempted but failed. Use available context to improve the response.**';
@@ -465,6 +455,7 @@ async function performTaskExecution(
     content: response.content,
     tokens_used: response.tokens_used,
     llm_calls: 1,
+    web_searches: webSearches,
   };
 }
 
@@ -477,7 +468,7 @@ async function executeToolForTask(
   modelConfig: AgentModelConfig,
   toolType: string,
   callbacks?: ExecutorCallbacks
-): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
+): Promise<{ content: string; tokens_used?: number; llm_calls?: number; web_searches?: number }> {
   const startTime = Date.now();
 
   // Get display name for the tool (static map for built-in tools, dynamic for others)
@@ -538,10 +529,12 @@ async function executeToolForTask(
     const duration = Date.now() - startTime;
     callbacks?.onToolEnd?.(toolType, true, duration);
 
+    const toolLlmCalls = ['doc_gen', 'image_gen', 'chart_gen', 'xlsx_gen', 'pptx_gen', 'podcast_gen', 'diagram_gen'].includes(toolType) ? 1 : 0;
     return {
       content: result,
-      tokens_used: 0, // Tools don't use tokens directly
-      llm_calls: toolType === 'doc_gen' || toolType === 'image_gen' ? 1 : 0, // Content generation uses LLM
+      tokens_used: 0, // Tool helper LLM token usage is not surfaced here yet.
+      llm_calls: toolLlmCalls,
+      web_searches: toolType === 'web_search' ? 1 : 0,
     };
   } catch (error) {
     const duration = Date.now() - startTime;

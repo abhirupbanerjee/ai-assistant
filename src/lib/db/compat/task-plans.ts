@@ -48,6 +48,17 @@ interface DbTaskPlanRow {
 
 function mapDbToTaskPlan(row: DbTaskPlanRow): TaskPlan {
   const tasksData = JSON.parse(row.tasks_json) as { tasks: Task[] };
+  const parseObject = (value: string | null): Record<string, unknown> | undefined => {
+    if (!value) return undefined;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const originalRequest = row.original_request || undefined;
+
   return {
     id: row.id,
     threadId: row.thread_id,
@@ -67,7 +78,11 @@ function mapDbToTaskPlan(row: DbTaskPlanRow): TaskPlan {
     resumedAt: row.resumed_at || undefined,
     stoppedAt: row.stopped_at || undefined,
     stopReason: row.stop_reason || undefined,
-    originalRequest: row.original_request || undefined,
+    originalRequest,
+    original_request: originalRequest,
+    budget: parseObject(row.budget_json),
+    budget_used: parseObject(row.budget_used_json),
+    model_config: parseObject(row.model_config_json),
   };
 }
 
@@ -373,7 +388,7 @@ export async function createAutonomousPlan(
   threadId: string,
   userId: string,
   title: string,
-  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; execution_hint?: string; skill_ids?: number[]; tool_name?: string; retry_count?: number }[],
+  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[]; expected_output?: string; priority?: number; execution_hint?: string; skill_ids?: number[]; tool_name?: string; retry_count?: number }[],
   options: {
     categorySlug?: string;
     budget?: Record<string, unknown>;
@@ -391,7 +406,7 @@ export async function createAutonomousPlan(
     description: t.description,
     status: 'pending' as const,
     dependencies: t.dependencies || [],
-    priority: 1,
+    priority: t.priority || 1,
     state_history: [],
     ...(t.expected_output ? { expected_output: t.expected_output } : {}),
     ...(t.execution_hint ? { execution_hint: t.execution_hint } : {}),
@@ -401,7 +416,13 @@ export async function createAutonomousPlan(
   }));
 
   const tasksJson = JSON.stringify({ tasks: fullTasks });
-  const budgetJson = JSON.stringify(options.budget || { max_llm_calls: 100, max_tokens: 500000 });
+  const budgetJson = JSON.stringify(options.budget || {
+    max_llm_calls: 100,
+    max_tokens: 500000,
+    max_web_searches: 20,
+    max_duration_minutes: 30,
+    task_timeout_minutes: 5,
+  });
   const budgetUsedJson = JSON.stringify({ llm_calls: 0, tokens_used: 0, web_searches: 0 });
   const modelConfigJson = JSON.stringify(options.modelConfig || {});
 
@@ -826,6 +847,7 @@ export async function replacePlanTasks(
     target: string;
     dependencies?: number[];
     expected_output?: string;
+    priority?: number;
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
@@ -837,7 +859,7 @@ export async function replacePlanTasks(
     status: 'pending',
     state_history: [],
     retry_count: 0,
-    priority: t.id, // Use task order as priority
+    priority: t.priority || 1,
     dependencies: t.dependencies || [],
   }));
 
@@ -872,6 +894,7 @@ export async function replaceFailedTasks(
     target: string;
     dependencies?: number[];
     expected_output?: string;
+    priority?: number;
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
@@ -899,7 +922,7 @@ export async function replaceFailedTasks(
       dependencies: [],
       state_history: [],
       retry_count: 0,
-      priority: 1,
+      priority: t.priority || 1,
     }));
 
     data.tasks.push(...fullNewTasks);
@@ -931,6 +954,7 @@ export async function resetFailedTasks(
     type: string;
     target?: string;
     expected_output?: string;
+    priority?: number;
     tool_name?: string;
   }>
 ): Promise<void> {
@@ -955,6 +979,7 @@ export async function resetFailedTasks(
         task.type = replacement.type;
         if (replacement.target) task.target = replacement.target;
         if (replacement.expected_output) task.expected_output = replacement.expected_output;
+        if (replacement.priority) task.priority = replacement.priority;
         if (replacement.tool_name) task.tool_name = replacement.tool_name;
       }
 
@@ -981,7 +1006,7 @@ export async function resetFailedTasks(
           state_history: [],
           retry_count: 0,
           replan_count: 0,
-          priority: 1,
+          priority: replacementTasks[i].priority || 1,
         });
       }
     }
