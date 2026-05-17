@@ -22,6 +22,7 @@ interface RouteHealth {
   route1: { healthy: boolean; latencyMs: number | null; error?: string };
   route2: {
     fireworks: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
+    deepseek: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     claude: { configured: boolean };
     moonshot: { configured: boolean; healthy?: boolean };
   };
@@ -30,7 +31,7 @@ interface RouteHealth {
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/');
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
 
 const isRoute3Model = (id: string) =>
   id.startsWith('ollama-') || id.startsWith('ollama/');
@@ -281,7 +282,7 @@ export default function RoutesSettingsPanel() {
             <Server size={20} className="text-gray-600" />
             <div>
               <h3 className="font-medium text-gray-900">Route 1: LiteLLM Proxy</h3>
-              <p className="text-xs text-gray-500">OpenAI, Gemini, Mistral, DeepSeek, Ollama</p>
+              <p className="text-xs text-gray-500">OpenAI, Gemini, Mistral, Ollama</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -357,7 +358,7 @@ export default function RoutesSettingsPanel() {
             <Zap size={20} className="text-orange-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 2: Direct Providers</h3>
-              <p className="text-xs text-gray-500">Fireworks AI, Claude (Anthropic), Moonshot AI — bypasses LiteLLM</p>
+              <p className="text-xs text-gray-500">Fireworks AI, DeepSeek, Claude (Anthropic), Moonshot AI — bypasses LiteLLM</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -372,6 +373,16 @@ export default function RoutesSettingsPanel() {
                   )
                 ) : (
                   <><XCircle size={14} className="text-gray-400" /> Fireworks not configured</>
+                )}
+                <span className="text-gray-300 mx-1">|</span>
+                {health.route2.deepseek.configured ? (
+                  health.route2.deepseek.healthy ? (
+                    <><CheckCircle2 size={14} className="text-green-500" /> DeepSeek OK{health.route2.deepseek.latencyMs != null && <span className="text-gray-400">({health.route2.deepseek.latencyMs}ms)</span>}</>
+                  ) : (
+                    <><XCircle size={14} className="text-red-500" /> DeepSeek: {health.route2.deepseek.error || 'Unreachable'}</>
+                  )
+                ) : (
+                  <><XCircle size={14} className="text-gray-400" /> DeepSeek not configured</>
                 )}
                 <span className="text-gray-300 mx-1">|</span>
                 {health.route2.claude.configured ? (
@@ -434,7 +445,7 @@ export default function RoutesSettingsPanel() {
             </div>
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
-              Requires: <code className="bg-gray-100 px-1 rounded">FIREWORKS_AI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>
+              Requires: <code className="bg-gray-100 px-1 rounded">FIREWORKS_AI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">DEEPSEEK_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>
             </div>
           </div>
         )}

@@ -1,16 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, Users } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
-export type ChatMode = 'normal' | 'autonomous' | 'swarm';
+export type ChatMode = 'normal' | 'autonomous';
 
 interface ModeToggleProps {
   mode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
   disabled?: boolean;
   adminDisabled?: boolean;
-  swarmAdminDisabled?: boolean;
 }
 
 export default function ModeToggle({
@@ -18,26 +17,16 @@ export default function ModeToggle({
   onModeChange,
   disabled,
   adminDisabled,
-  swarmAdminDisabled,
 }: ModeToggleProps) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const isDisabled = disabled || (mode === 'autonomous' && adminDisabled) || (mode === 'swarm' && swarmAdminDisabled);
+  const isDisabled = disabled || (mode === 'autonomous' && adminDisabled);
 
   const cycleMode = () => {
     if (disabled) return;
-    // Cycle: normal → autonomous → swarm → normal
-    // Skip modes that are admin-disabled
+    // Cycle: normal -> autonomous -> normal
     if (mode === 'normal') {
       if (!adminDisabled) {
         onModeChange('autonomous');
-      } else if (!swarmAdminDisabled) {
-        onModeChange('swarm');
-      }
-    } else if (mode === 'autonomous') {
-      if (!swarmAdminDisabled) {
-        onModeChange('swarm');
-      } else {
-        onModeChange('normal');
       }
     } else {
       onModeChange('normal');
@@ -53,27 +42,10 @@ export default function ModeToggle({
         </>
       );
     }
-    if (mode === 'swarm' && swarmAdminDisabled) {
-      return (
-        <>
-          <span className="font-medium text-amber-300">Agent swarm disabled</span>
-          <p className="text-gray-400 mt-0.5">Contact your administrator to enable it</p>
-        </>
-      );
-    }
     if (mode === 'autonomous') {
       return (
         <>
           <span className="font-medium text-blue-300">Autonomous mode</span>
-          <span className="text-gray-300"> enabled</span>
-          <p className="text-gray-400 mt-0.5">Click to switch to agent swarm</p>
-        </>
-      );
-    }
-    if (mode === 'swarm') {
-      return (
-        <>
-          <span className="font-medium text-purple-300">Agent swarm mode</span>
           <span className="text-gray-300"> enabled</span>
           <p className="text-gray-400 mt-0.5">Click to switch to normal chat</p>
         </>
@@ -82,7 +54,7 @@ export default function ModeToggle({
     return (
       <>
         <span className="font-medium">Chat mode</span>
-        <p className="text-gray-400 mt-0.5">Click to enable autonomous or swarm mode</p>
+        <p className="text-gray-400 mt-0.5">Click to enable autonomous mode</p>
       </>
     );
   };
@@ -97,21 +69,17 @@ export default function ModeToggle({
         onMouseLeave={() => setShowTooltip(false)}
         aria-pressed={mode !== 'normal'}
         aria-label={
-          mode === 'swarm'
-            ? 'Agent swarm mode enabled. Click to disable.'
-            : mode === 'autonomous'
+          mode === 'autonomous'
             ? 'Autonomous mode enabled. Click to disable.'
             : 'Enable advanced mode. AI plans and executes multi-step tasks.'
         }
         className={`p-2 rounded-lg transition-colors ${
-          mode === 'swarm'
-            ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-            : mode === 'autonomous'
+          mode === 'autonomous'
             ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
             : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
         } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
-        {mode === 'swarm' ? <Users size={20} /> : <Bot size={20} />}
+        <Bot size={20} />
       </button>
 
       {/* Tooltip */}

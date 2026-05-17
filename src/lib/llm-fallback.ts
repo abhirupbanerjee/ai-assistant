@@ -191,7 +191,12 @@ export async function isLiteLLMProxyHealthy(): Promise<boolean> {
  * Check if a model belongs to Route 2 (direct cloud providers, bypasses LiteLLM)
  */
 export function isRoute2Model(model: string): boolean {
-  return model.startsWith('anthropic/') || model.startsWith('claude-') || model.startsWith('fireworks/') || model.startsWith('moonshot/');
+  return model.startsWith('anthropic/')
+    || model.startsWith('claude-')
+    || model.startsWith('fireworks/')
+    || model.startsWith('moonshot/')
+    || model.startsWith('deepseek-')
+    || model.startsWith('deepseek/');
 }
 
 /**
@@ -241,7 +246,7 @@ export async function buildModelsToTry(
     // Route-aware: append cross-route fallback models if other routes are enabled
     const routesSettings = await getRoutesSettings();
     if (routesSettings.route2Enabled && !isRoute2Model(selectedModel!)) {
-      const route2Fallbacks = ['fireworks/minimax-m2p5', 'claude-haiku-4-5-20251001', 'moonshot/moonshot-v1-8k'];
+      const route2Fallbacks = ['fireworks/minimax-m2p5', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
       for (const fb of route2Fallbacks) {
         if (!models.includes(fb) && isModelHealthy(fb)) {
           models.push(fb);
@@ -291,7 +296,7 @@ export async function buildModelsToTry(
   if (routesSettings.route2Enabled) {
     const proxyHealthy = await isLiteLLMProxyHealthy();
     if (!proxyHealthy || switchReason === 'model_unavailable') {
-      const route2Fallbacks = ['fireworks/minimax-m2p5', 'claude-haiku-4-5-20251001', 'moonshot/moonshot-v1-8k'];
+      const route2Fallbacks = ['fireworks/minimax-m2p5', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
       for (const fb of route2Fallbacks) {
         if (!models.includes(fb) && isModelHealthy(fb)) {
           models.push(fb);

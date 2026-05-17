@@ -110,7 +110,7 @@ Policy Bot solves this by providing:
   supportedLLMs: [
     { provider: 'OpenAI', models: 'GPT-4.1, GPT-5.x, embeddings' },
     { provider: 'Anthropic', models: 'Claude Sonnet/Haiku/Opus 4.5, 1M context' },
-    { provider: 'DeepSeek', models: 'Reasoner, Chat' },
+    { provider: 'DeepSeek', models: 'DeepSeek V4 Pro, DeepSeek V4 Flash' },
     { provider: 'Mistral', models: 'Large 3, Small 3.2, vision, OCR' },
     { provider: 'Google Gemini', models: '2.5 Pro/Flash, 1M context' },
     { provider: 'Ollama', models: 'Local models (Llama, Qwen, Mistral, Phi)' },
@@ -857,7 +857,7 @@ export default function WelcomeScreen({
                         <tr className="bg-gray-50">
                           <td className="px-4 py-2.5 font-medium text-gray-700">LLM Models</td>
                           <td className="px-4 py-2.5 text-gray-600">OpenAI (GPT-4.1, GPT-5 families), Google (Gemini 2.5, 3), Mistral (Large, Medium)</td>
-                          <td className="px-4 py-2.5 text-gray-600">Anthropic (Claude Opus, Sonnet, Haiku), Fireworks (MiniMax M2.5, Kimi K2.5), Moonshot (Kimi K2.5, v1)</td>
+                          <td className="px-4 py-2.5 text-gray-600">Anthropic (Claude Opus, Sonnet, Haiku), Fireworks (MiniMax M2.5, Kimi K2.5), DeepSeek (V4 Pro/Flash), Moonshot (Kimi K2.5)</td>
                           <td className="px-4 py-2.5 text-gray-600">Ollama (Llama 3.2, Qwen3, GPT-OSS 20B)</td>
                         </tr>
                         <tr>

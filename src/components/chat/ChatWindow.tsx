@@ -99,6 +99,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           targetLanguage: typeof parsed.targetLanguage === 'string' ? parsed.targetLanguage : DEFAULT_CHAT_PREFERENCES.targetLanguage,
           responseTone: typeof parsed.responseTone === 'string' ? parsed.responseTone : DEFAULT_CHAT_PREFERENCES.responseTone,
           showCitationTrajectory: typeof parsed.showCitationTrajectory === 'boolean' ? parsed.showCitationTrajectory : DEFAULT_CHAT_PREFERENCES.showCitationTrajectory,
+          thinkingEnabled: typeof parsed.thinkingEnabled === 'boolean' ? parsed.thinkingEnabled : DEFAULT_CHAT_PREFERENCES.thinkingEnabled,
         };
       }
     } catch {
@@ -120,7 +121,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     });
   }, []);
   const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
-  const [swarmAdminDisabled, setSwarmAdminDisabled] = useState(true); // default disabled until verified
   const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
 
   // Expose methods to parent via ref
@@ -323,14 +323,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       })
       .catch(() => { /* default to enabled */ });
 
-    fetch('/api/settings/agent-swarm')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data) {
-          setSwarmAdminDisabled(!(data.enabled && data.moonshotConfigured && data.allowedForUser));
-        }
-      })
-      .catch(() => { /* default to disabled */ });
   }, []);
 
   // Ref to track if a send is in progress (prevents race condition with activeThread change)
@@ -972,7 +964,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            preferences={chatPreferences}
            onPreferencesChange={setChatPreferences}
            autonomousAdminDisabled={autonomousAdminDisabled}
-           swarmAdminDisabled={swarmAdminDisabled}
            onFocus={onInputFocus}
            onBlur={onInputBlur}
             categoryChipSlot={

@@ -26,10 +26,6 @@ export type StreamPhase =
   | 'agent_checking'   // Agent mode: Quality checking task
   | 'agent_summarizing' // Agent mode: Generating summary
   | 'awaiting_approval' // Agent mode: Waiting for user plan approval
-  | 'swarm_orchestrating' // Swarm mode: Coordinating agents
-  | 'swarm_tool_call'     // Swarm mode: Executing a tool call
-  | 'swarm_tool_result'   // Swarm mode: Tool call completed
-  | 'swarm_complete'      // Swarm mode: All agents done
   | 'complete';   // All done
 
 // ============ Skill & Tool Tracking ============
@@ -187,9 +183,6 @@ export type StreamEvent =
   | { type: 'stream_reset' }
   | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string }
 
-  // Agent swarm events
-  | { type: 'swarm_agent'; agentName: string; activity: string }
-
   // Backend operation log (RAG steps, LLM switches, memory loading) for Operations UI section
   | { type: 'operation_log'; category: OperationCategory; message: string };
 
@@ -275,6 +268,7 @@ export interface ChatPreferences {
   targetLanguage: string;
   responseTone: string;
   showCitationTrajectory: boolean;
+  thinkingEnabled: boolean;
 }
 
 /**
@@ -285,6 +279,7 @@ export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   targetLanguage: 'en',
   responseTone: 'default',
   showCitationTrajectory: true,
+  thinkingEnabled: false,
 };
 
 // ============ Request/Response Types ============
@@ -295,13 +290,14 @@ export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
 export interface StreamChatRequest {
   message: string;
   threadId: string;
-  mode?: 'normal' | 'autonomous' | 'swarm'; // Optional mode selection (defaults to 'normal')
+  mode?: 'normal' | 'autonomous'; // Optional mode selection (defaults to 'normal')
   modelConfigPreset?: string; // For autonomous mode: 'default', 'quality', 'economy', 'compliance'
   // Chat preferences
   webSearchEnabled?: boolean; // default: true (follows admin setting)
   targetLanguage?: string; // e.g., 'es', 'fr', defaults to 'en'
   responseTone?: string; // e.g., 'concise', 'formal', defaults to 'default'
   showCitationTrajectory?: boolean; // default: true
+  thinkingEnabled?: boolean; // default: false unless model-specific UI default enables it
 }
 
 /**

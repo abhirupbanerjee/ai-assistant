@@ -6,8 +6,9 @@
 
 import { getProviderApiKey, getProviderApiBase } from '../db/compat/llm-providers';
 import { getEnabledModel } from '../db/compat/enabled-models';
+import { isLikelyThinkingCapableModel } from '@/lib/llm-thinking';
 import { generateDisplayName, getProviderFromModelPath } from '../litellm-validator';
-import { getMoonshotBaseUrl } from '../agent-swarm/moonshot-config';
+import { getMoonshotBaseUrl } from '../moonshot-config';
 
 // ============ Types ============
 
@@ -52,8 +53,6 @@ const TOOL_CAPABLE_PATTERNS = [
   /^claude/,
   // DeepSeek V4 (flash and pro both support tool calling)
   /^deepseek-v4-(flash|pro)/,
-  // Legacy DeepSeek (chat only — deepseek-reasoner does not support tool_choice)
-  /^deepseek-chat/,
   // Moonshot / Kimi
   /^kimi/,
   /^moonshot/,
@@ -99,7 +98,7 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
 ];
 // NOT parallel capable (default=0 in DB):
 //   gpt-5 (base) — 90% failure rate on parallel calls
-//   deepseek-chat — weak multi-turn tool calling
+//   legacy DeepSeek models are intentionally excluded
 //   ollama models — generally unreliable
 //   o1, o3, o4 — reasoning models, tool_choice restrictions
 
@@ -108,17 +107,19 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
 const THINKING_CAPABLE_PATTERNS = [
   // Anthropic Claude — native thinking blocks
   /^claude/,
+  // OpenAI GPT-5 family (excluding o-series in isLikelyThinkingCapableModel)
+  /^gpt-5/,
   // Think-tag models — <think>…</think> parsed via parseThinkChunk()
   /^qwen3/,
   /^qwq/,
-  /^deepseek-r/,
   /^deepseek-v4-pro/,
+  /^deepseek-reasoner/,
   // Moonshot / Kimi (future-proofing for reasoning mode exposure)
   /^kimi-k2/,
-  // OpenAI reasoning models
-  /^o1/,
-  /^o3/,
-  /^o4/,
+  // Other exposed-reasoning families
+  /^gpt-oss/,
+  /^gemini-2\.5/,
+  /^magistral/,
 ];
 
 // Known context window sizes
@@ -197,7 +198,7 @@ export function isThinkTagModel(modelId: string): boolean {
   if (lastSlash !== -1) id = id.slice(lastSlash + 1);
   // Strip version/tag suffixes (e.g. ":8b", ":latest", "-instruct")
   id = id.replace(/:.*$/, '');
-  return /^(qwen3|qwq|deepseek-r|deepseek-v4-pro)/.test(id);
+  return /^(qwen3|qwq|deepseek-v4-pro)/.test(id);
 }
 
 function isToolCapable(modelId: string): boolean {
@@ -219,7 +220,7 @@ function isParallelToolCapable(modelId: string): boolean {
 
 function isThinkingCapable(modelId: string): boolean {
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
-  return THINKING_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
+  return THINKING_CAPABLE_PATTERNS.some(pattern => pattern.test(id)) || isLikelyThinkingCapableModel(modelId);
 }
 
 function getContextWindow(modelId: string): number | null {
@@ -250,8 +251,6 @@ function getContextWindow(modelId: string): number | null {
     [/^mistral-small/, 32000],
     [/^claude/, 1000000],
     [/^deepseek-v4/, 1048576],
-    [/^deepseek-r/, 64000],
-    [/^deepseek/, 128000],
   ];
 
   for (const [pattern, value] of familyPatterns) {
@@ -501,7 +500,8 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
 
   const data = await response.json() as { data: Array<{ id: string }> };
 
-  const filtered = data.data.filter(m => isChatModel(m.id));
+  const allowedDeepSeekModels = new Set(['deepseek-v4-pro', 'deepseek-v4-flash']);
+  const filtered = data.data.filter(m => isChatModel(m.id) && allowedDeepSeekModels.has(m.id));
   const models = await Promise.all(filtered.map(async m => ({
     id: m.id,
     name: generateDisplayName(m.id),
@@ -510,8 +510,7 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
     // DeepSeek does NOT support vision
     visionCapable: false,
     maxInputTokens: getContextWindow(m.id),
-    // V4 models support 16384 output tokens; legacy models use provider default (8000)
-    maxOutputTokens: /^deepseek-v4/.test(m.id) ? 16384 : getDefaultOutputTokens('deepseek'),
+    maxOutputTokens: 16384,
     isEnabled: !!(await getEnabledModel(m.id)),
   })));
   return models.sort((a, b) => a.name.localeCompare(b.name));
@@ -532,6 +531,14 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
   }
 
   const FIREWORKS_MODELS = [
+    {
+      id: 'fireworks/minimax-m2p5',
+      name: 'MiniMax M2.5',
+      toolCapable: true,
+      visionCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
     {
       id: 'fireworks/glm-5p1',
       name: 'GLM-5.1',

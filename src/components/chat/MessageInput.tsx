@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { ArrowUp, Loader2, Square, Bot, Users, Globe, Paperclip } from 'lucide-react';
+import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
@@ -17,6 +17,7 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
 import { useInputState } from '@/hooks/useInputState';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { isDefaultThinkingEnabledModel } from '@/lib/llm-thinking';
 
 interface UrlSourceInfo {
   filename: string;
@@ -37,8 +38,6 @@ interface MessageInputProps {
   onPreferencesChange: (preferences: ChatPreferences) => void;
   // Autonomous mode admin control
   autonomousAdminDisabled?: boolean;
-  // Agent swarm admin control
-  swarmAdminDisabled?: boolean;
   // Model readiness — false when no valid model is available for the active route
   modelReady?: boolean;
   onModelStatusChange?: (ready: boolean) => void;
@@ -53,6 +52,11 @@ interface MessageInputProps {
   attachmentChipsSlot?: React.ReactNode;
 }
 
+interface CurrentModelInfo {
+  id: string;
+  thinkingCapable: boolean;
+}
+
 export default function MessageInput({
   onSend,
   disabled,
@@ -63,7 +67,6 @@ export default function MessageInput({
   preferences,
   onPreferencesChange,
   autonomousAdminDisabled,
-  swarmAdminDisabled,
   modelReady = true,
   onModelStatusChange,
   isStreaming = false,
@@ -88,6 +91,8 @@ export default function MessageInput({
   const [isFocused, setIsFocused] = useState(false);
   const [lineCount, setLineCount] = useState(1);
   const [chipSheetOpen, setChipSheetOpen] = useState(false);
+  const [currentModelInfo, setCurrentModelInfo] = useState<CurrentModelInfo | null>(null);
+  const lastModelIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
@@ -128,11 +133,11 @@ export default function MessageInput({
     if (mode === 'autonomous') {
       features.push({ icon: <Bot size={12} />, label: 'Autonomous' });
     }
-    if (mode === 'swarm') {
-      features.push({ icon: <Users size={12} />, label: 'Swarm' });
-    }
     if (preferences.webSearchEnabled) {
       features.push({ icon: <Globe size={12} />, label: 'Web Search' });
+    }
+    if (currentModelInfo?.thinkingCapable && preferences.thinkingEnabled) {
+      features.push({ icon: <Brain size={12} />, label: 'Thinking' });
     }
     if (preferences.targetLanguage !== 'en') {
       features.push({
@@ -147,7 +152,7 @@ export default function MessageInput({
       });
     }
     return features;
-  }, [mode, preferences.webSearchEnabled, preferences.targetLanguage, currentUploads.length]);
+  }, [mode, preferences.webSearchEnabled, preferences.thinkingEnabled, preferences.targetLanguage, currentUploads.length, currentModelInfo?.thinkingCapable]);
 
 
   // aria-live state announcements — announce input state transitions to screen readers
@@ -199,6 +204,29 @@ export default function MessageInput({
   const handleCitationTrajectoryToggle = useCallback((enabled: boolean) => {
     onPreferencesChange({ ...preferences, showCitationTrajectory: enabled });
   }, [preferences, onPreferencesChange]);
+
+  const handleThinkingToggle = useCallback(() => {
+    if (!currentModelInfo?.thinkingCapable) return;
+    onPreferencesChange({ ...preferences, thinkingEnabled: !preferences.thinkingEnabled });
+  }, [currentModelInfo?.thinkingCapable, onPreferencesChange, preferences]);
+
+  const handleModelInfoChange = useCallback((model: { id: string; thinkingCapable?: boolean } | null, ready: boolean) => {
+    const nextModel = model && ready
+      ? { id: model.id, thinkingCapable: Boolean(model.thinkingCapable) }
+      : null;
+    setCurrentModelInfo(nextModel);
+
+    const nextModelId = nextModel?.id ?? null;
+    if (lastModelIdRef.current === nextModelId) return;
+    lastModelIdRef.current = nextModelId;
+
+    const nextThinkingEnabled = nextModel?.thinkingCapable
+      ? isDefaultThinkingEnabledModel(nextModel.id)
+      : false;
+    if (preferences.thinkingEnabled !== nextThinkingEnabled) {
+      onPreferencesChange({ ...preferences, thinkingEnabled: nextThinkingEnabled });
+    }
+  }, [onPreferencesChange, preferences]);
 
   const handleSubmit = useCallback(() => {
     if (message.trim() && !isSubmitDisabled) {
@@ -350,7 +378,6 @@ export default function MessageInput({
                     webSearchEnabled={preferences.webSearchEnabled}
                     onWebSearchToggle={handleWebSearchToggle}
                     autonomousAdminDisabled={autonomousAdminDisabled}
-                    swarmAdminDisabled={swarmAdminDisabled}
                     disabled={disabled}
                   />
                 }
@@ -412,7 +439,6 @@ export default function MessageInput({
               mode={mode}
               onModeChange={setMode}
               autonomousAdminDisabled={autonomousAdminDisabled}
-              swarmAdminDisabled={swarmAdminDisabled}
               webSearchEnabled={preferences.webSearchEnabled}
               onWebSearchToggle={handleWebSearchToggle}
               selectedLanguage={preferences.targetLanguage}
@@ -422,10 +448,31 @@ export default function MessageInput({
               showCitationTrajectory={preferences.showCitationTrajectory}
               onCitationTrajectoryToggle={handleCitationTrajectoryToggle}
             />
+            {currentModelInfo?.thinkingCapable && (
+              <button
+                type="button"
+                onClick={handleThinkingToggle}
+                disabled={disabled || !modelReady}
+                className={`p-2 rounded-lg transition-colors ${
+                  preferences.thinkingEnabled
+                    ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                } ${disabled || !modelReady ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={preferences.thinkingEnabled ? 'Thinking mode on' : 'Thinking mode off'}
+                aria-label={preferences.thinkingEnabled ? 'Disable thinking mode' : 'Enable thinking mode'}
+                aria-pressed={preferences.thinkingEnabled}
+              >
+                <Brain size={18} />
+              </button>
+            )}
           </div>
 
           {/* Center: Model selector */}
-          <ModelSelector threadId={threadId} onModelStatusChange={onModelStatusChange} />
+          <ModelSelector
+            threadId={threadId}
+            onModelStatusChange={onModelStatusChange}
+            onModelInfoChange={handleModelInfoChange}
+          />
 
           {/* Right action: Send or Stop (during streaming) */}
           {isStreaming ? (

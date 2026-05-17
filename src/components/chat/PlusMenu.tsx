@@ -30,7 +30,6 @@ interface PlusMenuProps {
   mode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
   autonomousAdminDisabled?: boolean;
-  swarmAdminDisabled?: boolean;
   // WebSearchToggle props
   webSearchEnabled: boolean;
   onWebSearchToggle: (enabled: boolean) => void;
@@ -55,7 +54,6 @@ export default function PlusMenu({
   mode,
   onModeChange,
   autonomousAdminDisabled,
-  swarmAdminDisabled,
   webSearchEnabled,
   onWebSearchToggle,
   selectedLanguage,
@@ -96,7 +94,6 @@ export default function PlusMenu({
    // Count active toggles (excluding uploads which are shown separately)
    const activeToggles = [
      mode === 'autonomous',
-     mode === 'swarm',
      webSearchEnabled,
      selectedLanguage !== 'en',
      selectedTone !== 'default',
@@ -154,7 +151,7 @@ export default function PlusMenu({
            <div className="border-t border-gray-100 pt-2">
              <div className="text-xs uppercase text-gray-500 font-medium mb-2">Capabilities</div>
              <div className="flex items-center gap-2">
-               <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} swarmAdminDisabled={swarmAdminDisabled} />
+               <ModeToggle mode={mode} onModeChange={onModeChange} disabled={disabled} adminDisabled={autonomousAdminDisabled} />
                <WebSearchToggle
                  enabled={webSearchEnabled}
                  onToggle={onWebSearchToggle}

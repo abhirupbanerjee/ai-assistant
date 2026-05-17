@@ -60,8 +60,8 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   moonshot: ['LLM'],
 };
 
-const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral', 'deepseek'];
-const ROUTE_2_PROVIDERS = ['fireworks', 'anthropic', 'moonshot'];
+const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral'];
+const ROUTE_2_PROVIDERS = ['fireworks', 'deepseek', 'anthropic', 'moonshot'];
 const ROUTE_3_PROVIDERS = ['ollama'];
 const ROUTE_4_PROVIDERS = ['ollama-cloud'];
 const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks', 'ollama'];

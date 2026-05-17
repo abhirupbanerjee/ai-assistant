@@ -241,6 +241,7 @@ export async function callOllamaCloud(
     temperature?: number;
     maxTokens?: number;
     stream?: boolean;
+    think?: boolean;
   }
 ): Promise<Response> {
   const apiKey = await getOllamaCloudApiKey();
@@ -261,6 +262,7 @@ export async function callOllamaCloud(
     model: actualModel,
     messages: ollamaMessages,
     stream: options?.stream ?? false,
+    ...(options?.think !== undefined ? { think: options.think } : {}),
     options: {
       temperature: options?.temperature ?? 0.7,
       ...(options?.maxTokens ? { num_predict: options.maxTokens } : {}),

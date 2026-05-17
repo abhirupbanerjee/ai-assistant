@@ -1,11 +1,17 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { isThinkTagModel } from '@/lib/services/model-discovery';
+import {
+  buildThinkingRequestProfile,
+  isUnsupportedThinkingParamError,
+  stripThinkingRequestParams,
+  type ThinkingRequestProfile,
+} from '@/lib/llm-thinking';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
-import { isModelParallelToolCapable } from './db/compat/enabled-models';
+import { isModelParallelToolCapable, isModelThinkingCapable } from './db/compat/enabled-models';
 import { getToolDisplayName, getStreamingConfigMs } from './streaming/utils';
 import { getToolDefinitions, executeTool, REQUEST_CLARIFICATION_TOOL } from './tools';
 import { resolveToolRouting } from './tool-routing';
@@ -250,6 +256,12 @@ export function isFireworksModel(model: string): boolean {
   return model.startsWith('fireworks/');
 }
 
+function getFireworksModelId(model: string): string {
+  return model.startsWith('fireworks/')
+    ? `accounts/fireworks/models/${model.slice('fireworks/'.length)}`
+    : model;
+}
+
 let fireworksClient: OpenAI | null = null;
 
 async function getFireworksClient(): Promise<OpenAI> {
@@ -332,8 +344,16 @@ export function isMoonshotModel(model: string): boolean {
 }
 
 /**
+ * Check if a model ID refers to a DeepSeek model.
+ * These models bypass LiteLLM and connect directly to DeepSeek.
+ */
+export function isDeepSeekModel(model: string): boolean {
+  return model.startsWith('deepseek-') || model.startsWith('deepseek/');
+}
+
+/**
  * Strip provider prefix from model ID for the Moonshot API.
- * e.g. "moonshot/moonshot-v1-8k" → "moonshot-v1-8k"
+ * e.g. "moonshot/kimi-k2p5" → "kimi-k2p5"
  */
 function getMoonshotModelId(model: string): string {
   return model.startsWith('moonshot/') ? model.slice('moonshot/'.length) : model;
@@ -344,7 +364,7 @@ let moonshotClient: OpenAI | null = null;
 async function getMoonshotClient(): Promise<OpenAI> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
-    const { getMoonshotBaseUrl } = await import('./agent-swarm/moonshot-config');
+    const { getMoonshotBaseUrl } = await import('./moonshot-config');
     moonshotClient = new OpenAI({
       apiKey: apiKey || undefined,
       baseURL: await getMoonshotBaseUrl(),
@@ -352,6 +372,29 @@ async function getMoonshotClient(): Promise<OpenAI> {
     });
   }
   return moonshotClient;
+}
+
+/**
+ * Strip provider prefix from model ID for the DeepSeek API.
+ * e.g. "deepseek/deepseek-v4-flash" → "deepseek-v4-flash"
+ */
+function getDeepSeekModelId(model: string): string {
+  return model.startsWith('deepseek/') ? model.slice('deepseek/'.length) : model;
+}
+
+let deepseekClient: OpenAI | null = null;
+
+async function getDeepSeekClient(): Promise<OpenAI> {
+  if (!deepseekClient) {
+    const apiKey = await getApiKey('deepseek');
+    const apiBase = await getApiBase('deepseek');
+    deepseekClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: (apiBase || 'https://api.deepseek.com/v1').replace(/\/+$/, ''),
+      timeout: 300 * 1000, // 5 minutes — matches other clients
+    });
+  }
+  return deepseekClient;
 }
 
 /**
@@ -745,6 +788,7 @@ async function streamAnthropicCompletion(
     temperature?: number;
     tools?: Anthropic.Tool[];
     tool_choice?: Anthropic.ToolChoice;
+    thinking?: Anthropic.ThinkingConfigParam;
   },
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
@@ -789,6 +833,7 @@ async function streamAnthropicCompletion(
       ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
       ...(params.tools?.length ? { tools: params.tools } : {}),
       ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
+      ...(params.thinking ? { thinking: params.thinking } : {}),
     };
 
     const stream = client.messages.stream(createParams, { signal: controller.signal });
@@ -921,6 +966,14 @@ async function streamOneCompletion(
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
 
+      const reasoningDelta = (delta as typeof delta & { reasoning_content?: string; reasoning?: string; thinking?: string }).reasoning_content
+        || (delta as typeof delta & { reasoning_content?: string; reasoning?: string; thinking?: string }).reasoning
+        || (delta as typeof delta & { reasoning_content?: string; reasoning?: string; thinking?: string }).thinking;
+      if (reasoningDelta) {
+        thinkingContent += reasoningDelta;
+        onThinkingChunk?.(reasoningDelta);
+      }
+
       if (delta.content) {
         if (thinkModel) {
           const { visible, thinking } = parseThinkChunk(delta.content, thinkState);
@@ -981,6 +1034,35 @@ async function streamOneCompletion(
   return { content: content || null, tool_calls, thinkingContent: thinkingContent || null, totalTokens: streamTotalTokens };
 }
 
+type StreamCompletionResult = Awaited<ReturnType<typeof streamOneCompletion>>;
+
+async function streamOneCompletionWithThinkingRetry(
+  openai: OpenAI,
+  params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
+  thinkingProfile: ThinkingRequestProfile,
+  onChunk?: (text: string) => void,
+  onThinkingChunk?: (text: string) => void,
+): Promise<StreamCompletionResult> {
+  try {
+    return await streamOneCompletion(openai, params, onChunk, onThinkingChunk);
+  } catch (error) {
+    if (Object.keys(thinkingProfile.requestParams).length > 0 && isUnsupportedThinkingParamError(error)) {
+      logger.warn('Retrying LLM request without thinking parameters', {
+        model: params.model,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const plainParams = stripThinkingRequestParams(params as unknown as Record<string, unknown>);
+      return streamOneCompletion(
+        openai,
+        plainParams as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
+        onChunk,
+        onThinkingChunk,
+      );
+    }
+    throw error;
+  }
+}
+
 // ============ Ollama Cloud Streaming ============
 
 /**
@@ -997,8 +1079,10 @@ async function streamOllamaCloudCompletion(
   options?: {
     temperature?: number;
     maxTokens?: number;
+    think?: boolean;
   },
   onChunk?: (text: string) => void,
+  onThinkingChunk?: (text: string) => void,
 ): Promise<{ content: string | null; tool_calls: undefined; thinkingContent: string | null; totalTokens: number }> {
   const controller = new AbortController();
   let wasAborted = false;
@@ -1022,12 +1106,14 @@ async function streamOllamaCloudCompletion(
   };
 
   let content = '';
+  let thinkingContent = '';
   let totalTokens = 0;
 
   try {
     const response = await callOllamaCloud(model, messages, {
       temperature: options?.temperature,
       maxTokens: options?.maxTokens,
+      think: options?.think,
       stream: true,
     });
 
@@ -1068,6 +1154,10 @@ async function streamOllamaCloudCompletion(
             content += parsed.message.content;
             onChunk?.(parsed.message.content);
           }
+          if (parsed.message?.thinking) {
+            thinkingContent += parsed.message.thinking;
+            onThinkingChunk?.(parsed.message.thinking);
+          }
         } catch {
           // Skip malformed JSON lines
         }
@@ -1092,7 +1182,7 @@ async function streamOllamaCloudCompletion(
     if (timeoutId) clearTimeout(timeoutId);
   }
 
-  return { content: content || null, tool_calls: undefined, thinkingContent: null, totalTokens };
+  return { content: content || null, tool_calls: undefined, thinkingContent: thinkingContent || null, totalTokens };
 }
 
 export async function generateResponseWithTools(
@@ -1112,7 +1202,8 @@ export async function generateResponseWithTools(
   modelOverride?: string,  // Optional model ID to override the default
   enableClarification?: boolean,  // Inject request_clarification meta-tool when preflight skill is active
   userId?: string,   // For cache isolation — prevents cross-user cache collisions
-  threadId?: string  // For cache isolation — prevents cross-thread cache collisions
+  threadId?: string,  // For cache isolation — prevents cross-thread cache collisions
+  thinkingEnabled: boolean = false
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -1133,17 +1224,20 @@ export async function generateResponseWithTools(
   const useOllamaDirect = isOllamaModel(effectiveModel);
   const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
+  const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
     : useOllamaCloudDirect ? 'Ollama Cloud directly'
     : useMoonshotDirect ? 'Moonshot AI directly'
+    : useDeepSeekDirect ? 'DeepSeek API directly'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   const openai = useAnthropicDirect ? null
     : useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
+    : useDeepSeekDirect ? await getDeepSeekClient()
     : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
@@ -1448,9 +1542,36 @@ export async function generateResponseWithTools(
     tools = [...(tools || []), REQUEST_CLARIFICATION_TOOL];
   }
 
+  const modelThinkingCapable = await isModelThinkingCapable(effectiveModel);
+  const baseThinkingProfile = buildThinkingRequestProfile({
+    modelId: effectiveModel,
+    thinkingCapable: modelThinkingCapable,
+    thinkingEnabled,
+    maxTokens: effectiveMaxTokens,
+    toolsEnabled: Boolean(tools?.length),
+  });
+  const disableClaudeThinkingForTools = useAnthropicDirect && baseThinkingProfile.enabled && Boolean(tools?.length);
+  if (disableClaudeThinkingForTools) {
+    logger.warn('Claude thinking disabled for tool turn because thinking block preservation is not complete', {
+      model: effectiveModel,
+    });
+  }
+  const thinkingProfile = disableClaudeThinkingForTools
+    ? buildThinkingRequestProfile({
+        modelId: effectiveModel,
+        thinkingCapable: modelThinkingCapable,
+        thinkingEnabled,
+        maxTokens: effectiveMaxTokens,
+        toolsEnabled: Boolean(tools?.length),
+        forcePlain: true,
+      })
+    : baseThinkingProfile;
+
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
-    model: useOllamaDirect ? getOllamaModelId(effectiveModel)
+    model: useFireworksDirect ? getFireworksModelId(effectiveModel)
+      : useOllamaDirect ? getOllamaModelId(effectiveModel)
       : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
+      : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
       : effectiveModel,
     messages,
     tools,
@@ -1458,6 +1579,7 @@ export async function generateResponseWithTools(
     max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
     ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
+    ...thinkingProfile.requestParams,
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
 
   // First API call — streaming so content tokens are forwarded via onChunk if no tool calls
@@ -1475,6 +1597,7 @@ export async function generateResponseWithTools(
         temperature: llmSettings.temperature,
         tools: convertToolsToAnthropic(tools),
         tool_choice: tools?.length ? convertToolChoiceToAnthropic(effectiveToolChoice) : undefined,
+        thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
       },
       callbacks?.onChunk,
       callbacks?.onThinkingChunk,
@@ -1493,12 +1616,14 @@ export async function generateResponseWithTools(
       {
         temperature: llmSettings.temperature,
         maxTokens: effectiveMaxTokens,
+        think: thinkingProfile.enabled ? Boolean(thinkingProfile.requestParams.think) : undefined,
       },
       callbacks?.onChunk,
+      callbacks?.onThinkingChunk,
     );
     accumulatedTokens += responseMessage.totalTokens;
   } else {
-    responseMessage = await streamOneCompletion(openai!, completionParams, callbacks?.onChunk, callbacks?.onThinkingChunk);
+    responseMessage = await streamOneCompletionWithThinkingRetry(openai!, completionParams, thinkingProfile, callbacks?.onChunk, callbacks?.onThinkingChunk);
     accumulatedTokens += responseMessage.totalTokens;
   }
 
@@ -1523,11 +1648,15 @@ export async function generateResponseWithTools(
     logger.debug(`Tool call iteration ${iterations}, total calls ${totalToolCalls}/${maxTotalToolCalls}`);
 
     // Add assistant's tool call message (OpenAI format for fullHistory)
-    messages.push({
+    const assistantToolMessage: OpenAI.Chat.ChatCompletionAssistantMessageParam & { reasoning_content?: string } = {
       role: 'assistant',
       content: responseMessage.content,
       tool_calls: responseMessage.tool_calls,
-    });
+    };
+    if (thinkingProfile.requiresThinkingStatePreservation && responseMessage.thinkingContent) {
+      assistantToolMessage.reasoning_content = responseMessage.thinkingContent;
+    }
+    messages.push(assistantToolMessage);
 
     // Add assistant's tool call message (Anthropic format for API calls)
     if (useAnthropicDirect) {
@@ -1894,19 +2023,21 @@ export async function generateResponseWithTools(
           tool_choice: toolChoiceAppliedByRouting
             ? convertToolChoiceToAnthropic('auto')
             : convertToolChoiceToAnthropic(effectiveToolChoice),
+          thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
         },
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
       accumulatedTokens += responseMessage.totalTokens;
     } else {
-      responseMessage = await streamOneCompletion(
+      responseMessage = await streamOneCompletionWithThinkingRetry(
         openai!,
         {
           ...completionParams,
           messages,
           tool_choice: toolChoiceAppliedByRouting ? 'auto' : completionParams.tool_choice,
         },
+        thinkingProfile,
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
@@ -1930,6 +2061,7 @@ export async function generateResponseWithTools(
           max_tokens: effectiveMaxTokens,
           temperature: llmSettings.temperature,
           // No tools — force text-only response
+          thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
         },
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
@@ -1940,7 +2072,7 @@ export async function generateResponseWithTools(
         ...messages,
         { role: 'user' as const, content: maxToolsMsg },
       ];
-      responseMessage = await streamOneCompletion(
+      responseMessage = await streamOneCompletionWithThinkingRetry(
         openai!,
         {
           model: completionParams.model,
@@ -1949,7 +2081,9 @@ export async function generateResponseWithTools(
           temperature: completionParams.temperature,
           tools: completionParams.tools,
           tool_choice: 'none',
+          ...thinkingProfile.requestParams,
         },
+        thinkingProfile,
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );
@@ -1977,6 +2111,7 @@ export async function generateResponseWithTools(
           temperature: llmSettings.temperature,
           tools: convertToolsToAnthropic(tools),
           // Don't set tool_choice — Anthropic handles this via the message flow
+          thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
         },
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
@@ -1993,7 +2128,7 @@ export async function generateResponseWithTools(
       // Make final LLM call for summary
       // Anthropic requires tools array when messages contain tool_calls/tool responses
       // Use tool_choice: 'none' to prevent new tool calls
-      const summaryResponse = await streamOneCompletion(
+      const summaryResponse = await streamOneCompletionWithThinkingRetry(
         openai!,
         {
           model: completionParams.model,
@@ -2002,7 +2137,9 @@ export async function generateResponseWithTools(
           temperature: completionParams.temperature,
           tools: completionParams.tools,
           tool_choice: 'none',
+          ...thinkingProfile.requestParams,
         },
+        thinkingProfile,
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
       );

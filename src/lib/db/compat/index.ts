@@ -979,15 +979,6 @@ export {
   setAutonomousModeEnabled,
 } from './agent-config';
 
-// ============ Agent Swarm ============
-export {
-  type AgentSwarmSettings,
-  getAgentSwarmEnabled,
-  setAgentSwarmEnabled,
-  getAgentSwarmSettings,
-  setAgentSwarmSettings,
-} from './agent-swarm';
-
 // ============ RAG Testing ============
 export {
   // Types

@@ -18,6 +18,7 @@ import {
   type UpdateEnabledModelInput,
 } from '@/lib/db/compat/enabled-models';
 import { setLlmSettings, getLlmSettings } from '@/lib/db/compat/config';
+import { syncModelToLiteLLM } from '@/lib/services/litellm-sync';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -99,6 +100,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         console.warn('[Enabled Model] Failed to sync llm-settings.model:', err);
       }
     }
+
+    syncModelToLiteLLM(model).catch(err =>
+      console.warn(`[LiteLLM Sync] Failed to sync updated model ${model.id}:`, err)
+    );
 
     return NextResponse.json({ model });
   } catch (error) {

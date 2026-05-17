@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Wrench, Eye, Check, RefreshCw, AlertCircle } from 'lucide-react';
+import { Search, Wrench, Eye, Check, RefreshCw, AlertCircle, Brain } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -22,6 +22,8 @@ interface DiscoveredModel {
   provider: string;
   toolCapable: boolean;
   visionCapable: boolean;
+  parallelToolCapable?: boolean;
+  thinkingCapable?: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number;
   isEnabled: boolean;
@@ -187,6 +189,8 @@ export default function ModelDiscoveryModal({
           displayName: m.name,
           toolCapable: m.toolCapable,
           visionCapable: m.visionCapable,
+          parallelToolCapable: m.parallelToolCapable,
+          thinkingCapable: m.thinkingCapable,
           maxInputTokens: m.maxInputTokens,
           maxOutputTokens: getModelOutputTokens(m),
         }));
@@ -405,6 +409,11 @@ export default function ModelDiscoveryModal({
                             {model.visionCapable && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700" title="Vision">
                                 <Eye size={10} className="mr-0.5" />
+                              </span>
+                            )}
+                            {model.thinkingCapable && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700" title="Thinking">
+                                <Brain size={10} className="mr-0.5" />
                               </span>
                             )}
                             {model.maxInputTokens && (

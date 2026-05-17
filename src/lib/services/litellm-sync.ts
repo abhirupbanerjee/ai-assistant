@@ -107,6 +107,7 @@ export async function syncModelToLiteLLM(
     providerId: string;
     toolCapable?: boolean;
     visionCapable?: boolean;
+    thinkingCapable?: boolean;
     maxInputTokens?: number | null;
   },
   existingModelIds?: Map<string, string[]>,
@@ -149,6 +150,7 @@ export async function syncModelToLiteLLM(
     model_info: {
       supports_function_calling: model.toolCapable ?? false,
       supports_vision: model.visionCapable ?? false,
+      supports_reasoning: model.thinkingCapable ?? false,
       ...(model.maxInputTokens ? { max_input_tokens: model.maxInputTokens } : {}),
     },
   };
@@ -230,6 +232,7 @@ export async function syncAllModelsToLiteLLM(): Promise<{ synced: number; failed
       providerId: model.providerId,
       toolCapable: model.toolCapable,
       visionCapable: model.visionCapable,
+      thinkingCapable: model.thinkingCapable,
       maxInputTokens: model.maxInputTokens,
     }, existingModelIds);
 

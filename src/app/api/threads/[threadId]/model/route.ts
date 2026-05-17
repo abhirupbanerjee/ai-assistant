@@ -4,7 +4,7 @@ import { getThread } from '@/lib/threads';
 import { updateThreadModel, getEffectiveModelForThread, getThreadById } from '@/lib/db/compat';
 import { getActiveModels, getDefaultModel, getEnabledModel } from '@/lib/db/compat/enabled-models';
 import { getRoutesSettings } from '@/lib/db/compat/config';
-import { isRoute2Model, isRoute3Model } from '@/lib/llm-fallback';
+import { isRoute2Model, isRoute3Model, isRoute4Model } from '@/lib/llm-fallback';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -45,6 +45,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const allModels = await getActiveModels();
     const routesSettings = await getRoutesSettings();
     const availableModels = allModels.filter(m => {
+      if (isRoute4Model(m.id)) return routesSettings.route4Enabled;
       if (isRoute3Model(m.id)) return routesSettings.route3Enabled;
       if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
       return routesSettings.route1Enabled;

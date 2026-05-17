@@ -770,6 +770,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           targetLanguage: preferences?.targetLanguage,
           responseTone: preferences?.responseTone,
           showCitationTrajectory: preferences?.showCitationTrajectory,
+          thinkingEnabled: preferences?.thinkingEnabled,
         }),
         signal: abortControllerRef.current.signal,
       });

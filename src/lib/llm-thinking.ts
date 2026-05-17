@@ -1,0 +1,152 @@
+export type ThinkingStreamField = 'reasoning_content' | 'thinking' | 'think_tags';
+
+export interface ThinkingRequestProfile {
+  capable: boolean;
+  enabled: boolean;
+  defaultEnabled: boolean;
+  requestParams: Record<string, unknown>;
+  streamFields: ThinkingStreamField[];
+  requiresThinkingStatePreservation: boolean;
+}
+
+function normalizeModelId(modelId: string): string {
+  let id = modelId.toLowerCase().trim();
+  id = id.replace(/^(ollama-cloud\/|ollama[-/]|litellm\/|openai\/|anthropic\/|deepseek\/|moonshot\/|mistral\/|gemini\/|google\/)/, '');
+  const lastSlash = id.lastIndexOf('/');
+  if (lastSlash !== -1) id = id.slice(lastSlash + 1);
+  return id.replace(/:.*$/, '');
+}
+
+export function isOpenAIOFamilyModel(modelId: string): boolean {
+  return /^o\d/i.test(normalizeModelId(modelId));
+}
+
+export function isNonOOpenAIGpt5Model(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return id.startsWith('gpt-5') && !isOpenAIOFamilyModel(id);
+}
+
+export function isDefaultThinkingEnabledModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6');
+}
+
+export function isLikelyThinkingCapableModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  if (isOpenAIOFamilyModel(id)) return false;
+
+  return [
+    /^gpt-5/,
+    /^claude/,
+    /^qwen3/,
+    /^qwq/,
+    /^deepseek-v4-pro/,
+    /^deepseek-reasoner/,
+    /^kimi-k2/,
+    /^gpt-oss/,
+    /^gemini-2\.5/,
+    /^magistral/,
+    /^mistral-(small|medium).*reason/,
+  ].some((pattern) => pattern.test(id));
+}
+
+function isClaudeModel(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return id.startsWith('anthropic/') || id.startsWith('claude-') || normalizeModelId(modelId).startsWith('claude');
+}
+
+function isDeepSeekThinkingModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return id.startsWith('deepseek-v4-pro') || id.startsWith('deepseek-reasoner');
+}
+
+function isKimiThinkingModel(modelId: string): boolean {
+  return normalizeModelId(modelId).startsWith('kimi-k2');
+}
+
+function isOllamaModel(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return id.startsWith('ollama/') || id.startsWith('ollama-') || id.startsWith('ollama-cloud/');
+}
+
+function isReasoningEffortModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return isNonOOpenAIGpt5Model(id) || id.startsWith('gemini-2.5') || id.startsWith('magistral') || id.startsWith('mistral-');
+}
+
+export function buildThinkingRequestProfile(options: {
+  modelId: string;
+  thinkingCapable?: boolean;
+  thinkingEnabled?: boolean;
+  maxTokens?: number;
+  toolsEnabled?: boolean;
+  forcePlain?: boolean;
+}): ThinkingRequestProfile {
+  const capable = Boolean(options.thinkingCapable) && isLikelyThinkingCapableModel(options.modelId) && !isOpenAIOFamilyModel(options.modelId);
+  const defaultEnabled = capable && isDefaultThinkingEnabledModel(options.modelId);
+  const enabled = capable && Boolean(options.thinkingEnabled) && !options.forcePlain;
+  const requestParams: Record<string, unknown> = {};
+  const streamFields = new Set<ThinkingStreamField>();
+  let requiresThinkingStatePreservation = false;
+
+  if (!capable) {
+    return { capable, enabled: false, defaultEnabled, requestParams, streamFields: [], requiresThinkingStatePreservation };
+  }
+
+  streamFields.add('think_tags');
+
+  if (!enabled) {
+    if (isNonOOpenAIGpt5Model(options.modelId)) {
+      requestParams.reasoning_effort = 'none';
+    }
+    return { capable, enabled: false, defaultEnabled, requestParams, streamFields: Array.from(streamFields), requiresThinkingStatePreservation };
+  }
+
+  if (isClaudeModel(options.modelId)) {
+    requiresThinkingStatePreservation = true;
+    const maxTokens = Math.max(options.maxTokens ?? 4096, 2048);
+    const budgetTokens = Math.max(1024, Math.min(4096, maxTokens - 1024));
+    requestParams.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+    streamFields.add('thinking');
+  } else if (isDeepSeekThinkingModel(options.modelId)) {
+    requiresThinkingStatePreservation = true;
+    requestParams.thinking = { type: 'enabled' };
+    requestParams.reasoning_effort = 'high';
+    streamFields.add('reasoning_content');
+  } else if (isKimiThinkingModel(options.modelId)) {
+    requiresThinkingStatePreservation = true;
+    requestParams.thinking = { type: 'enabled', keep: 'all' };
+    streamFields.add('reasoning_content');
+  } else if (isOllamaModel(options.modelId)) {
+    requestParams.think = true;
+    streamFields.add('thinking');
+    streamFields.add('reasoning_content');
+  } else if (isReasoningEffortModel(options.modelId)) {
+    requestParams.reasoning_effort = 'high';
+    streamFields.add('reasoning_content');
+  }
+
+  return { capable, enabled, defaultEnabled, requestParams, streamFields: Array.from(streamFields), requiresThinkingStatePreservation };
+}
+
+export function stripThinkingRequestParams<T extends Record<string, unknown>>(params: T): T {
+  const clone = { ...params };
+  delete clone.reasoning_effort;
+  delete clone.thinking;
+  delete clone.think;
+  return clone;
+}
+
+export function isUnsupportedThinkingParamError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('reasoning_effort') ||
+    message.includes('reasoning effort') ||
+    message.includes('thinking') ||
+    message.includes('think') ||
+    message.includes('unsupported') ||
+    message.includes('unknown parameter') ||
+    message.includes('extra inputs') ||
+    message.includes('400')
+  );
+}

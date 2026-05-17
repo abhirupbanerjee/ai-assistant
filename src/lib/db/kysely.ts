@@ -249,14 +249,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // Migration: Seed new Fireworks models added to litellm_config.yaml
   const newFireworksModels = [
     {
-      id: 'fireworks/deepseek-v4-pro',
-      display_name: 'DeepSeek V4 Pro (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 0,
-      max_input_tokens: 1048576,
-      max_output_tokens: 16384,
-    },
-    {
       id: 'fireworks/glm-5p1',
       display_name: 'GLM-5.1 (Fireworks)',
       tool_capable: 0,
@@ -302,8 +294,12 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] Seeded new Fireworks models');
 
   // Migration: Remove retired Fireworks models
-  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/qwen3-coder-480b-a35b-instruct', 'fireworks/qwen3-vl-30b-a3b-thinking')`.execute(database);
-  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, qwen3-coder-480b, qwen3-vl-30b-a3b-thinking)');
+  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/deepseek-v4-pro', 'fireworks/qwen3-coder-480b-a35b-instruct', 'fireworks/qwen3-vl-30b-a3b-thinking')`.execute(database);
+  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, deepseek-v4-pro, qwen3-coder-480b, qwen3-vl-30b-a3b-thinking)');
+
+  // Migration: Remove deprecated DeepSeek legacy models
+  await sql`DELETE FROM enabled_models WHERE id IN ('deepseek-chat', 'deepseek-reasoner')`.execute(database);
+  console.log('[Kysely] Removed deprecated DeepSeek legacy models (deepseek-chat, deepseek-reasoner)');
 
   // Migration: Remove gpt-4o-mini-transcribe (transcription model, not a chat LLM)
   await sql`DELETE FROM enabled_models WHERE id = 'gpt-4o-mini-transcribe'`.execute(database);
@@ -361,6 +357,17 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS parallel_tool_capable INTEGER DEFAULT 0`.execute(database);
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS thinking_capable INTEGER DEFAULT 0`.execute(database);
   console.log('[Kysely] Ensured parallel_tool_capable and thinking_capable columns exist');
+  await sql`
+    UPDATE enabled_models
+    SET thinking_capable = 1
+    WHERE (
+        id IN ('deepseek-v4-pro', 'deepseek/deepseek-v4-pro', 'fireworks/kimi-k2p6', 'moonshot/kimi-k2p6')
+        OR id LIKE 'gpt-5%'
+        OR id LIKE 'openai/gpt-5%'
+      )
+      AND thinking_capable = 0
+  `.execute(database);
+  console.log('[Kysely] Ensured default thinking models are marked capable');
 
   // Migration: Update thread_outputs and workspace_outputs file_type CHECK constraints to include 'html'
   // First, update any rows with file_types that would violate the new constraint to a valid type

@@ -384,9 +384,9 @@ function getHardcodedDefaults(): AppConfig {
         cacheEnabled: true,
         cacheTTLSeconds: 3600,
       },
-      'fireworks/kimi-k2p6': {
-        name: 'Kimi K2.6 via Fireworks (Route 2 Fallback)',
-        description: 'Kimi K2.6 via Fireworks AI — 131K context, tool calling, vision, bypasses LiteLLM',
+      'fireworks/minimax-m2p5': {
+        name: 'MiniMax M2.5 via Fireworks (Route 2 Fallback)',
+        description: 'MiniMax M2.5 via Fireworks AI — direct Route 2 fallback, bypasses LiteLLM',
         provider: 'fireworks',
         temperature: 0.2,
         maxTokens: 4000,
@@ -399,9 +399,9 @@ function getHardcodedDefaults(): AppConfig {
         cacheEnabled: true,
         cacheTTLSeconds: 3600,
       },
-      'moonshot/moonshot-v1-8k': {
-        name: 'Moonshot v1 8K (Route 2 Fallback)',
-        description: 'Moonshot AI direct — fast, reliable, bypasses LiteLLM via OpenAI-compatible API',
+      'moonshot/kimi-k2p5': {
+        name: 'Moonshot Kimi K2.5 (Route 2 Fallback)',
+        description: 'Moonshot Kimi K2.5 direct — bypasses LiteLLM via OpenAI-compatible API',
         provider: 'moonshot',
         temperature: 0.2,
         maxTokens: 4000,

@@ -13,12 +13,14 @@ import { recordTokenUsage } from '@/lib/token-logger';
 import { callOllamaCloud } from '@/lib/services/ollama-cloud';
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 
 let openaiClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
 let fireworksClient: OpenAI | null = null;
 let ollamaClient: OpenAI | null = null;
 let moonshotClient: OpenAI | null = null;
+let deepseekClient: OpenAI | null = null;
 
 /**
  * Extract <think>...</think> reasoning blocks from model output.
@@ -77,6 +79,9 @@ export async function generateWithModel(
       break;
     case 'fireworks':
       response = await generateFireworks(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
+      break;
+    case 'deepseek':
+      response = await generateDeepSeek(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
       break;
     case 'ollama':
       response = await generateOllama(modelSpec.model, prompt, systemPrompt, temperature, maxTokens);
@@ -323,11 +328,14 @@ async function generateFireworks(
     messages.push({ role: 'system', content: systemPrompt });
   }
   messages.push({ role: 'user', content: prompt });
+  const fireworksModel = model.startsWith('fireworks/')
+    ? `accounts/fireworks/models/${model.slice('fireworks/'.length)}`
+    : model;
 
   // Fireworks requires stream=true for max_tokens > 4096
   if (maxTokens > 4096) {
     const stream = await fireworksClient.chat.completions.create({
-      model,
+      model: fireworksModel,
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -343,11 +351,11 @@ async function generateFireworks(
     }
 
     const { visible, thinking } = extractThinkTags(content);
-    return { content: visible, tokens_used: totalTokens, model, provider: 'fireworks', thinkingContent: thinking || undefined };
+    return { content: visible, tokens_used: totalTokens, model: fireworksModel, provider: 'fireworks', thinkingContent: thinking || undefined };
   }
 
   const response = await fireworksClient.chat.completions.create({
-    model,
+    model: fireworksModel,
     messages,
     temperature,
     max_tokens: maxTokens,
@@ -358,7 +366,7 @@ async function generateFireworks(
   return {
     content: visible,
     tokens_used: response.usage?.total_tokens || 0,
-    model,
+    model: fireworksModel,
     provider: 'fireworks',
     thinkingContent: thinking || undefined,
   };
@@ -458,7 +466,7 @@ async function generateMoonshot(
 ): Promise<LLMResponse> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
-    const { getMoonshotBaseUrl } = await import('@/lib/agent-swarm/moonshot-config');
+    const { getMoonshotBaseUrl } = await import('@/lib/moonshot-config');
     moonshotClient = new OpenAI({
       apiKey: apiKey || undefined,
       baseURL: await getMoonshotBaseUrl(),
@@ -514,12 +522,79 @@ async function generateMoonshot(
 }
 
 /**
+ * Generate using DeepSeek (direct SDK, bypasses LiteLLM)
+ */
+async function generateDeepSeek(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number,
+  maxTokens: number
+): Promise<LLMResponse> {
+  if (!deepseekClient) {
+    const apiKey = await getApiKey('deepseek');
+    const apiBase = await getApiBase('deepseek');
+    deepseekClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL: (apiBase || DEEPSEEK_BASE_URL).replace(/\/+$/, ''),
+    });
+  }
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const deepseekModel = model.startsWith('deepseek/') ? model.slice('deepseek/'.length) : model;
+
+  if (maxTokens > 4096) {
+    const stream = await deepseekClient.chat.completions.create({
+      model: deepseekModel,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+
+    let content = '';
+    let totalTokens = 0;
+    for await (const chunk of stream) {
+      content += chunk.choices[0]?.delta?.content || '';
+      if (chunk.usage) totalTokens = chunk.usage.total_tokens;
+    }
+
+    const { visible, thinking } = extractThinkTags(content);
+    return { content: visible, tokens_used: totalTokens, model: deepseekModel, provider: 'deepseek', thinkingContent: thinking || undefined };
+  }
+
+  const response = await deepseekClient.chat.completions.create({
+    model: deepseekModel,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  });
+
+  const rawContent = response.choices[0].message.content || '';
+  const { visible, thinking } = extractThinkTags(rawContent);
+  return {
+    content: visible,
+    tokens_used: response.usage?.total_tokens || 0,
+    model: deepseekModel,
+    provider: 'deepseek',
+    thinkingContent: thinking || undefined,
+  };
+}
+
+/**
  * Detect the correct provider for a model ID based on its prefix.
  * Used to assign the right provider for fallback models.
  */
 function detectProvider(modelId: string): ModelSpec['provider'] {
   if (modelId.startsWith('anthropic/') || modelId.startsWith('claude-')) return 'anthropic';
   if (modelId.startsWith('fireworks/') || modelId.startsWith('accounts/fireworks')) return 'fireworks';
+  if (modelId.startsWith('deepseek-') || modelId.startsWith('deepseek/')) return 'deepseek';
   if (modelId.startsWith('moonshot/')) return 'moonshot';
   if (modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud')) return 'ollama-cloud';
   if (modelId.startsWith('ollama-') || modelId.startsWith('ollama/')) return 'ollama';

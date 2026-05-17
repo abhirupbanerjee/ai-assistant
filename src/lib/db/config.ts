@@ -239,8 +239,8 @@ export interface LlmFallbackSettings {
  * Controls primary/fallback routing between LiteLLM proxy and direct providers
  */
 export interface RoutesSettings {
-  route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
-  route2Enabled: boolean;                  // Route 2: Direct providers (Fireworks AI, Claude/Anthropic, Moonshot AI)
+  route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral)
+  route2Enabled: boolean;                  // Route 2: Direct providers (Fireworks AI, DeepSeek, Claude/Anthropic, Moonshot AI)
   route3Enabled: boolean;                  // Route 3: Local / Ollama direct (air-gapped capable)
   route4Enabled: boolean;                  // Route 4: Ollama Cloud direct (hosted models)
   primaryRoute: 'route1' | 'route2' | 'route3' | 'route4';  // Which route is primary (others become fallback)
@@ -449,13 +449,7 @@ export type SettingKey =
   // LLM Routes
   | 'routes-settings'
   // Speech (STT + TTS)
-  | 'speech-settings'
-  // Agent Swarm
-  | 'agent_swarm_enabled'
-  | 'agent_swarm_model'
-  | 'agent_swarm_max_tokens'
-  | 'agent_swarm_temperature'
-  | 'agent_swarm_system_prompt';
+  | 'speech-settings';
 
 // ============ Speech Settings Types ============
 

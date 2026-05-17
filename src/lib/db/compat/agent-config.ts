@@ -118,14 +118,16 @@ export async function getAgentModelConfigs(): Promise<StoredAgentModelConfigs> {
       ? 'gpt-4.1-mini'
       : defaultModel;
 
-  const mapProvider = (model: string): 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'ollama' | 'ollama-cloud' => {
+  const mapProvider = (model: string): 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot' => {
     const provider = presets[model]?.provider;
     if (provider === 'gemini' || provider === 'google') return 'gemini';
     if (provider === 'mistral') return 'mistral';
     if (provider === 'anthropic') return 'anthropic';
     if (provider === 'fireworks') return 'fireworks';
+    if (provider === 'deepseek') return 'deepseek';
     if (provider === 'ollama') return 'ollama';
     if (provider === 'ollama-cloud') return 'ollama-cloud';
+    if (provider === 'moonshot') return 'moonshot';
     return 'openai'; // OpenAI and other unknown providers route through LiteLLM
   };
 

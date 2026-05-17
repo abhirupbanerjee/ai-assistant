@@ -4,8 +4,8 @@
  * Shared utility for internal services (memory extraction, summarization,
  * prompt optimization, translation) with multi-route fallback.
  *
- * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral, DeepSeek)
- * Route 2: Fireworks AI direct + Claude (Anthropic) direct + Moonshot AI direct
+ * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral)
+ * Route 2: Fireworks AI direct + DeepSeek direct + Moonshot AI direct + Claude (Anthropic) direct
  * Route 3: Ollama direct (local / air-gapped)
  * Route 4: Ollama Cloud direct (hosted models)
  */
@@ -18,7 +18,10 @@ import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './se
 
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
-const FIREWORKS_FALLBACK_MODEL = 'accounts/fireworks/models/minimax-m2p5';
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
+const FIREWORKS_FALLBACK_MODEL = 'fireworks/minimax-m2p5';
+const DEEPSEEK_FALLBACK_MODEL = 'deepseek-v4-flash';
+const MOONSHOT_FALLBACK_MODEL = 'moonshot/kimi-k2p5';
 const CLAUDE_FALLBACK_MODEL = 'claude-haiku-4-5-20251001';
 
 // ============ Types ============
@@ -37,6 +40,7 @@ let fireworksClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
 let ollamaClient: OpenAI | null = null;
 let moonshotClient: OpenAI | null = null;
+let deepseekClient: OpenAI | null = null;
 
 async function getLiteLLMClient(): Promise<OpenAI> {
   if (!litellmClient) {
@@ -83,13 +87,26 @@ async function getOllamaClient(): Promise<OpenAI> {
 async function getMoonshotClient(): Promise<OpenAI> {
   if (!moonshotClient) {
     const apiKey = await getApiKey('moonshot');
-    const { getMoonshotBaseUrl } = await import('./agent-swarm/moonshot-config');
+    const { getMoonshotBaseUrl } = await import('./moonshot-config');
     moonshotClient = new OpenAI({
       apiKey: apiKey || undefined,
       baseURL: await getMoonshotBaseUrl(),
     });
   }
   return moonshotClient;
+}
+
+async function getDeepSeekClient(): Promise<OpenAI> {
+  if (!deepseekClient) {
+    const apiKey = await getApiKey('deepseek');
+    const apiBase = await getApiBase('deepseek');
+    const baseURL = (apiBase || DEEPSEEK_BASE_URL).replace(/\/+$/, '');
+    deepseekClient = new OpenAI({
+      apiKey: apiKey || undefined,
+      baseURL,
+    });
+  }
+  return deepseekClient;
 }
 
 // ============ Provider Callers ============
@@ -110,11 +127,14 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
 
 async function callFireworks(model: string, opts: InternalCompletionOptions): Promise<string> {
   const client = await getFireworksClient();
+  const fireworksModel = model.startsWith('fireworks/')
+    ? `accounts/fireworks/models/${model.slice('fireworks/'.length)}`
+    : model;
   // Non-streaming OpenAI-compatible API requires stream=true for max_tokens > 4096.
   // Cap at 4096 to avoid the error: "Requests with max_tokens > 4096 must have stream=true"
   const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
   const response = await client.chat.completions.create({
-    model,
+    model: fireworksModel,
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
     max_tokens: maxTokens,
@@ -172,6 +192,19 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
   return response.choices[0]?.message?.content?.trim() || '';
 }
 
+async function callDeepSeek(model: string, opts: InternalCompletionOptions): Promise<string> {
+  const client = await getDeepSeekClient();
+  const deepseekModel = model.startsWith('deepseek/') ? model.slice('deepseek/'.length) : model;
+  const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
+  const response = await client.chat.completions.create({
+    model: deepseekModel,
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.3,
+    max_tokens: maxTokens,
+  });
+  return response.choices[0]?.message?.content?.trim() || '';
+}
+
 /**
  * Call Ollama Cloud for non-streaming internal completions.
  * Uses the native /api/chat endpoint via callOllamaCloud().
@@ -213,12 +246,16 @@ function isMoonshotModel(model: string): boolean {
   return model.startsWith('moonshot/');
 }
 
+function isDeepSeekModel(model: string): boolean {
+  return model.startsWith('deepseek-') || model.startsWith('deepseek/');
+}
+
 // ============ Main Entry Point ============
 
 /**
  * Create a completion using the configured LLM route with automatic fallback.
  *
- * - Route 2 models (Claude, Fireworks, Moonshot) always go direct.
+ * - Route 2 models (Fireworks, DeepSeek, Moonshot, Claude) always go direct.
  * - Route 3 models (Ollama) always go direct.
  * - Route 1 models go via LiteLLM; on failure, fall back to Route 2/3 if enabled.
  */
@@ -233,9 +270,8 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
   if (isFireworksModel(model)) {
     return callFireworks(model, opts);
   }
-  if (isMoonshotModel(model)) {
-    return callMoonshot(model, opts);
-  }
+  if (isMoonshotModel(model)) return callMoonshot(model, opts);
+  if (isDeepSeekModel(model)) return callDeepSeek(model, opts);
 
   // Route 3 models → always direct to Ollama
   if (isOllamaModel(model)) {
@@ -257,16 +293,26 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
 
     console.warn('[llm-client] Route 1 failed, trying fallback routes:', err instanceof Error ? err.message : err);
 
-    // Try Route 2 first (Fireworks → Claude → Moonshot), then Route 3 (Ollama)
+    // Try Route 2 first (Fireworks → DeepSeek → Moonshot → Claude), then Route 3 (Ollama)
     if (hasRoute2) {
       try {
         return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
       } catch (fwErr) {
         console.warn('[llm-client] Fireworks fallback failed:', fwErr instanceof Error ? fwErr.message : fwErr);
         try {
-          return await callAnthropic(CLAUDE_FALLBACK_MODEL, opts);
-        } catch (claudeErr) {
-          console.warn('[llm-client] Claude fallback failed:', claudeErr instanceof Error ? claudeErr.message : claudeErr);
+          return await callDeepSeek(DEEPSEEK_FALLBACK_MODEL, opts);
+        } catch (deepseekErr) {
+          console.warn('[llm-client] DeepSeek fallback failed:', deepseekErr instanceof Error ? deepseekErr.message : deepseekErr);
+          try {
+            return await callMoonshot(MOONSHOT_FALLBACK_MODEL, opts);
+          } catch (moonshotErr) {
+            console.warn('[llm-client] Moonshot fallback failed:', moonshotErr instanceof Error ? moonshotErr.message : moonshotErr);
+            try {
+              return await callAnthropic(CLAUDE_FALLBACK_MODEL, opts);
+            } catch (claudeErr) {
+              console.warn('[llm-client] Claude fallback failed:', claudeErr instanceof Error ? claudeErr.message : claudeErr);
+            }
+          }
         }
       }
     }

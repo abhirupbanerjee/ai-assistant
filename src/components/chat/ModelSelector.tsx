@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Check, ChevronDown, Loader2, Wrench, Eye, AlertTriangle } from 'lucide-react';
+import { Bot, Check, ChevronDown, Loader2, Wrench, Eye, AlertTriangle, Brain } from 'lucide-react';
 
 interface EnabledModel {
   id: string;
@@ -9,6 +9,7 @@ interface EnabledModel {
   displayName: string;
   toolCapable: boolean;
   visionCapable: boolean;
+  thinkingCapable: boolean;
   maxInputTokens: number | null;
   isDefault: boolean;
   enabled: boolean;
@@ -18,9 +19,10 @@ interface ModelSelectorProps {
   threadId: string | null;
   disabled?: boolean;
   onModelStatusChange?: (ready: boolean) => void;
+  onModelInfoChange?: (model: EnabledModel | null, ready: boolean) => void;
 }
 
-export default function ModelSelector({ threadId, disabled, onModelStatusChange }: ModelSelectorProps) {
+export default function ModelSelector({ threadId, disabled, onModelStatusChange, onModelInfoChange }: ModelSelectorProps) {
   const [availableModels, setAvailableModels] = useState<EnabledModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [effectiveModel, setEffectiveModel] = useState<string>('');
@@ -44,11 +46,15 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange 
   }, []);
 
   // Notify parent of model readiness
-  const updateModelStatus = useCallback((models: EnabledModel[], isValid: boolean) => {
+  const updateModelStatus = useCallback((models: EnabledModel[], isValid: boolean, modelId?: string | null) => {
     // Ready if: models available AND effective model is valid (or no thread yet but models exist)
     const ready = models.length > 0 && isValid;
     onModelStatusChange?.(ready);
-  }, [onModelStatusChange]);
+    const currentModel = modelId
+      ? models.find((m) => m.id === modelId) ?? null
+      : models.find((m) => m.isDefault) ?? null;
+    onModelInfoChange?.(ready ? currentModel : null, ready);
+  }, [onModelInfoChange, onModelStatusChange]);
 
   // Load thread model when thread changes
   const loadThreadModel = useCallback(async () => {
@@ -64,7 +70,9 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange 
           // No thread = no effective model to validate, but need at least 1 model
           const hasDefault = models.some((m: EnabledModel) => m.isDefault);
           setEffectiveModelValid(models.length > 0 && hasDefault);
-          updateModelStatus(models, models.length > 0 && hasDefault);
+          const defaultModel = models.find((m: EnabledModel) => m.isDefault);
+          setEffectiveModel(defaultModel?.id || '');
+          updateModelStatus(models, models.length > 0 && hasDefault, defaultModel?.id || null);
         }
       } else {
         const response = await fetch(`/api/threads/${threadId}/model`);
@@ -77,7 +85,7 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange 
           setEffectiveModel(data.effectiveModel || '');
           setEffectiveModelValid(isValid);
           setGlobalDefault(data.globalDefault || '');
-          updateModelStatus(models, isValid);
+          updateModelStatus(models, isValid, data.effectiveModel || null);
         }
       }
     } catch (error) {
@@ -113,7 +121,7 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange 
         // After changing model, check if the new effective model is in available list
         const isValid = availableModels.some(m => m.id === data.effectiveModel);
         setEffectiveModelValid(isValid);
-        updateModelStatus(availableModels, isValid);
+        updateModelStatus(availableModels, isValid, data.effectiveModel || null);
       } else {
         const error = await response.json();
         console.error('Failed to change model:', error);
@@ -270,6 +278,11 @@ export default function ModelSelector({ threadId, disabled, onModelStatusChange 
                     {model.visionCapable && (
                       <span title="Vision capable">
                         <Eye size={12} className="flex-shrink-0 text-purple-500" />
+                      </span>
+                    )}
+                    {model.thinkingCapable && (
+                      <span title="Thinking capable">
+                        <Brain size={12} className="flex-shrink-0 text-emerald-500" />
                       </span>
                     )}
                   </div>

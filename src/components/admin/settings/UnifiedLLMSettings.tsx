@@ -62,10 +62,10 @@ type SectionId = 'providers' | 'models' | 'overview';
 
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
-const ROUTE_2_PROVIDERS = new Set(['fireworks', 'anthropic', 'moonshot']);
+const ROUTE_2_PROVIDERS = new Set(['fireworks', 'anthropic', 'moonshot', 'deepseek']);
 const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/');
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
 
 const ROUTE_3_PROVIDERS = new Set(['ollama']);
 const isRoute3Provider = (id: string) => ROUTE_3_PROVIDERS.has(id);
