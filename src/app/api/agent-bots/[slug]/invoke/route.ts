@@ -30,7 +30,7 @@ import {
   notifyJobFailed,
   formatOutputsForWebhook,
 } from '@/lib/agent-bot/webhook';
-import { getJobWithOutputs, getActiveAgentBotBySlug } from '@/lib/db/compat';
+import { getJobWithOutputs, getActiveAgentBotBySlug, listApiKeys, createApiKey } from '@/lib/db/compat';
 import { getCurrentUser } from '@/lib/auth';
 import type { InvokeRequest, InvokeResponse, AsyncJobResponse, AgentBotError, RateLimitInfo } from '@/types/agent-bot';
 
@@ -95,23 +95,15 @@ export async function POST(
       return agentBotErrors.agentBotNotFound();
     }
     agentBot = bot;
-    // Create mock API key for admin testing
-    apiKey = {
-      id: 'admin-test',
-      agent_bot_id: bot.id,
-      name: 'Admin Test',
-      key_prefix: 'admin',
-      key_hash: '',
-      permissions: ['invoke'] as string[],
-      rate_limit_rpm: 9999,
-      rate_limit_rpd: 99999,
-      expires_at: null,
-      last_used_at: null,
-      is_active: true,
-      created_by: 'admin',
-      created_at: new Date().toISOString(),
-      revoked_at: null,
-    };
+
+    // Find or create a real admin-test API key for this bot
+    const keys = await listApiKeys(bot.id);
+    let testKey = keys.find((k) => k.name === 'Admin Test' && k.created_by === 'system');
+    if (!testKey) {
+      const result = await createApiKey(bot.id, { name: 'Admin Test' }, 'system');
+      testKey = result.apiKey;
+    }
+    apiKey = testKey;
     rateLimitInfo = createMockRateLimitInfo();
   } else {
     // 1. Authenticate request
@@ -174,7 +166,9 @@ export async function POST(
       const job = await createAsyncJob(agentBot, apiKey, body, version);
 
       // Record usage (will be updated with actual tokens later)
-      await recordUsage(authContext, 0, false);
+      if (!adminTestMode) {
+        await recordUsage(authContext, 0, false);
+      }
 
       // Process in background (fire and forget)
       processAsyncJob(
@@ -200,7 +194,9 @@ export async function POST(
     const result = await executeInvocation(agentBot, apiKey, body);
 
     // Record usage
-    await recordUsage(authContext, result.tokenUsage?.totalTokens || 0, !result.success);
+    if (!adminTestMode) {
+      await recordUsage(authContext, result.tokenUsage?.totalTokens || 0, !result.success);
+    }
 
     if (!result.success) {
       const response = agentBotErrors.processingError(result.error?.message);
@@ -222,7 +218,9 @@ export async function POST(
     console.error('[AgentBot] Invoke error:', error);
 
     // Record error
-    await recordUsage(authContext, 0, true);
+    if (!adminTestMode) {
+      await recordUsage(authContext, 0, true);
+    }
 
     const errorMessage = error instanceof Error ? error.message : 'Internal error';
     return agentBotErrors.processingError(errorMessage);

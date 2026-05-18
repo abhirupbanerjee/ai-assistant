@@ -409,7 +409,7 @@ export function validateRequest(
     if (!fileResult.valid) {
       allErrors.push(...fileResult.errors);
     }
-  } else if (config.inputSchema.files.required) {
+  } else if (config.inputSchema.files?.required) {
     allErrors.push({
       field: 'files',
       message: 'At least one file is required',
