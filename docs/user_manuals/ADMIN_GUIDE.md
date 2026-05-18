@@ -1462,8 +1462,8 @@ The **API Keys** section is the default landing page under Settings. It consolid
 Keys are organized into four groups:
 
 **LLM Providers** — grouped by routing:
-- **Route 1 (LiteLLM Proxy):** OpenAI, Gemini, Mistral, DeepSeek, Ollama
-- **Route 2 (Direct):** Fireworks AI, Anthropic
+- **Route 1 (LiteLLM Proxy):** OpenAI, Gemini, Mistral, Ollama
+- **Route 2 (Direct):** Anthropic, Fireworks AI, DeepSeek, Moonshot
 
 Each provider shows capability tags indicating what it supports:
 
@@ -1560,8 +1560,8 @@ The **Routes** section controls which LLM provider paths are active. Policy Bot 
 
 | Route | Providers | Connection |
 |-------|-----------|------------|
-| **Route 1** | OpenAI, Gemini, Mistral, DeepSeek, Ollama | Via LiteLLM proxy |
-| **Route 2** | Anthropic (Claude), Fireworks AI | Direct SDK / API |
+| **Route 1** | OpenAI, Gemini, Mistral, Ollama | Via LiteLLM proxy |
+| **Route 2** | Anthropic (Claude), Fireworks AI, DeepSeek, Moonshot | Direct SDK / API |
 
 | Setting | Description |
 |---------|-------------|

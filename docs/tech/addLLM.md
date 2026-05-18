@@ -87,8 +87,8 @@ New models are automatically classified into one of two routes based on their ID
 
 | Route | Model ID Prefixes | Provider IDs |
 |-------|------------------|--------------|
-| **Route 1** (LiteLLM) | All others | `openai`, `gemini`, `mistral`, `deepseek`, `ollama` |
-| **Route 2** (Direct) | `anthropic/`, `claude-`, `fireworks/` | `anthropic`, `fireworks` |
+| **Route 1** (LiteLLM) | All others | `openai`, `gemini`, `mistral`, `ollama` |
+| **Route 2** (Direct) | `anthropic/`, `claude-`, `fireworks/`, `moonshot/`, `deepseek-`, `deepseek/` | `anthropic`, `fireworks`, `moonshot`, `deepseek` |
 
 If you add a new provider, update the route classification in `UnifiedLLMSettings.tsx` (`ROUTE_2_PROVIDERS`, `isRoute2Model`) and the chat API model filters. See [features/routes.md](../features/routes.md) for architecture details.
 
@@ -132,6 +132,8 @@ Model Configuration Priority:
 Models enabled via the Admin UI are **automatically registered with the LiteLLM proxy** — no YAML edits or LiteLLM restarts required.
 
 > **Anthropic Claude Note**: Claude models are still registered with LiteLLM (for non-chat services like embeddings), but **chat completions with tool calling bypass LiteLLM entirely** via the `@anthropic-ai/sdk`. This is automatic — `isClaudeModel()` in `openai.ts` detects models with `anthropic/` or `claude-` prefix and routes them to the Anthropic SDK directly. No additional configuration needed beyond having `ANTHROPIC_API_KEY` set.
+>
+> **DeepSeek / Moonshot Note**: These providers are also **skipped from LiteLLM auto-sync** because chat routes them directly via their OpenAI-compatible APIs (Route 2). They do not need entries in `litellm_config.yaml` for Policy Bot chat to work.
 
 ```
 Auto-Sync Flow:
@@ -162,16 +164,18 @@ Auto-Sync Flow:
 - On **app startup**: all active models from DB are re-registered (since LiteLLM's in-memory store is lost on restart when `store_model_in_db: false`)
 - Models already in YAML are unaffected — `/model/new` returns "already exists" which is silently accepted
 
-**Sync Exceptions — Fireworks AI and Ollama:**
+**Sync Exceptions — Fireworks AI, Ollama, DeepSeek, and Moonshot:**
 
-Two providers are intentionally **skipped** from auto-sync and must be defined manually in `litellm_config.yaml`:
+These providers are intentionally **skipped** from auto-sync:
 
 | Provider | Reason | DB model ID | LiteLLM format needed |
 |----------|--------|------------|----------------------|
 | **Fireworks AI** | ID format mismatch — auto-sync can't reconstruct the full path | `fireworks/minimax-m2p5` | `fireworks_ai/accounts/fireworks/models/minimax-m2p5` |
 | **Ollama** | No API key — uses `api_base` instead; DB model IDs match actual Ollama model names | `qwen3:4b` | `ollama/qwen3:4b` + `api_base` |
+| **DeepSeek** | Chat always routes direct (Route 2) — sync would create unused LiteLLM entries | `deepseek-v4-flash` | `deepseek/deepseek-v4-flash` |
+| **Moonshot** | Chat always routes direct (Route 2) — sync would create unused LiteLLM entries | `moonshot/kimi-k2p5` | `moonshot/kimi-k2p5` |
 
-For both providers the sync function returns `true` (treated as success) since the models are already registered via YAML. Auto-syncing them would create broken duplicate entries with incorrect model paths.
+For Fireworks and Ollama, the sync function returns `true` (treated as success) since the models are already registered via YAML. For DeepSeek and Moonshot, the sync skips them because Policy Bot chat bypasses LiteLLM entirely and uses their native OpenAI-compatible APIs directly.
 
 **Requirements:**
 - `LITELLM_MASTER_KEY` env var must be set
@@ -649,6 +653,8 @@ Check startup logs for confirmation:
 
 #### DeepSeek
 
+> **Note:** DeepSeek is a **Route 2 (direct)** provider in Policy Bot. The following YAML is only needed if you want LiteLLM to proxy DeepSeek for external consumers; Policy Bot chat bypasses LiteLLM and calls DeepSeek directly.
+
 ```yaml
 - model_name: deepseek-chat
   litellm_params:
@@ -891,7 +897,6 @@ const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
   anthropic: { prefix: 'anthropic/', envKey: 'ANTHROPIC_API_KEY' },
   gemini:    { prefix: 'gemini/',    envKey: 'GEMINI_API_KEY' },
   mistral:   { prefix: 'mistral/',   envKey: 'MISTRAL_API_KEY' },
-  deepseek:  { prefix: 'deepseek/',  envKey: 'DEEPSEEK_API_KEY' },
   ollama:    { prefix: 'ollama/',    envKey: '' },
   cohere:    { prefix: 'cohere/',    envKey: 'COHERE_API_KEY' },  // ADD THIS
 };

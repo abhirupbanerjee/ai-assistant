@@ -9,8 +9,8 @@ Policy Bot supports fully air-gapped deployments where no external API calls lea
 Route 3 is the dedicated offline route. It connects directly to a local Ollama server (`ollama:11434/v1`) using the OpenAI SDK, bypassing both LiteLLM and all cloud APIs.
 
 ```
-Route 1: LiteLLM Proxy (:4000)  →  OpenAI, Gemini, Mistral, DeepSeek     (cloud)
-Route 2: Direct SDKs             →  Anthropic, Fireworks AI                (cloud)
+Route 1: LiteLLM Proxy (:4000)  →  OpenAI, Gemini, Mistral                (cloud)
+Route 2: Direct SDKs             →  Anthropic, Fireworks AI, DeepSeek, Moonshot (cloud)
 Route 3: Local / Ollama          →  Ollama (:11434/v1 direct)             (offline)
 ```
 

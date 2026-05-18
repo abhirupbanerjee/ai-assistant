@@ -8,8 +8,8 @@ Policy Bot routes LLM requests through three independent paths, giving admins fi
 
 | Route | Path | Providers | Connection |
 |-------|------|-----------|------------|
-| **Route 1** | LiteLLM Proxy (port 4000) | OpenAI, Gemini, Mistral, DeepSeek | Via LiteLLM gateway |
-| **Route 2** | Direct SDKs | Anthropic (Claude), Fireworks AI | Native SDK / direct API |
+| **Route 1** | LiteLLM Proxy (port 4000) | OpenAI, Gemini, Mistral | Via LiteLLM gateway |
+| **Route 2** | Direct SDKs | Anthropic (Claude), Fireworks AI, DeepSeek, Moonshot | Native SDK / direct API |
 | **Route 3** | Local / Ollama | Ollama | OpenAI SDK → ollama:11434/v1 direct |
 
 All three routes can run simultaneously for maximum availability, or any can be disabled independently. For air-gapped deployments, enable only Route 3. See [air-gapped-deployment.md](air-gapped-deployment.md) for the full offline capabilities reference.
@@ -35,9 +35,10 @@ Models and providers are classified by ID pattern matching:
 | `openai` | Route 1 |
 | `gemini` | Route 1 |
 | `mistral` | Route 1 |
-| `deepseek` | Route 1 |
 | `anthropic` | Route 2 |
+| `deepseek` | Route 2 |
 | `fireworks` | Route 2 |
+| `moonshot` | Route 2 |
 | `ollama` | Route 3 |
 
 ### Model Classification
@@ -47,6 +48,9 @@ Models and providers are classified by ID pattern matching:
 | `anthropic/` | Route 2 | `anthropic/claude-sonnet-4-5-20250514` |
 | `claude-` | Route 2 | `claude-haiku-4-5-20251001` |
 | `fireworks/` | Route 2 | `fireworks/minimax-m2p5` |
+| `moonshot/` | Route 2 | `moonshot/kimi-k2p5` |
+| `deepseek-` | Route 2 | `deepseek-v4-flash` |
+| `deepseek/` | Route 2 | `deepseek/deepseek-v4-pro` |
 | `ollama-` | Route 3 | `ollama-llama3.2` |
 | `ollama/` | Route 3 | `ollama/qwen3:4b` |
 | All other | Route 1 | `gpt-4o`, `gemini-2.0-flash` |

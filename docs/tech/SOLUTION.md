@@ -99,8 +99,8 @@ The four tiers above are grouped into three independently-togglable routes for o
 
 | Route | Tiers | Providers | Connection |
 |-------|-------|-----------|------------|
-| **Route 1** | Tier 1 (LiteLLM) | OpenAI, Gemini, Mistral, DeepSeek | Via LiteLLM proxy |
-| **Route 2** | Tier 1b (Claude Direct) + Fireworks chat | Anthropic, Fireworks AI | Native SDK / direct API |
+| **Route 1** | Tier 1 (LiteLLM) | OpenAI, Gemini, Mistral | Via LiteLLM proxy |
+| **Route 2** | Tier 1b (Direct SDKs) | Anthropic, Fireworks AI, DeepSeek, Moonshot | Native SDK / direct API |
 | **Route 3** | Local / Ollama | Ollama | OpenAI SDK → ollama:11434/v1 direct |
 
 Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). All three routes can be active simultaneously for cross-route failover. For air-gapped deployments, enable only Route 3. See [features/routes.md](../features/routes.md) and [features/air-gapped-deployment.md](../features/air-gapped-deployment.md) for full details.

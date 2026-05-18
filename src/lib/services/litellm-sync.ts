@@ -20,7 +20,7 @@ const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
   anthropic: { prefix: 'anthropic/', envKey: 'ANTHROPIC_API_KEY' },
   gemini:    { prefix: 'gemini/',    envKey: 'GEMINI_API_KEY' },
   mistral:   { prefix: 'mistral/',   envKey: 'MISTRAL_API_KEY' },
-  deepseek:  { prefix: 'deepseek/',  envKey: 'DEEPSEEK_API_KEY' },
+  moonshot:  { prefix: '',           envKey: 'MOONSHOT_API_KEY' }, // DB IDs already include moonshot/ prefix
   ollama:    { prefix: 'ollama/',    envKey: '' }, // Uses api_base instead
 };
 
@@ -121,10 +121,11 @@ export async function syncModelToLiteLLM(
     return false;
   }
 
-  // Providers managed via litellm_config.yaml — skip dynamic sync
+  // Providers managed via litellm_config.yaml or direct Route 2 — skip dynamic sync
   // Ollama: YAML model names (e.g. "qwen2.5:3b") don't match DB IDs (e.g. "ollama-qwen2.5")
   // Fireworks: LiteLLM format ("fireworks_ai/accounts/fireworks/models/...") differs from DB IDs
-  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud') {
+  // DeepSeek: Chat always routes direct (Route 2); sync would create unused LiteLLM entries
+  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek') {
     return true;
   }
 
