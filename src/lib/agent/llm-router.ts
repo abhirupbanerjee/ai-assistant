@@ -15,6 +15,9 @@ import {
   buildThinkingRequestProfile,
   isUnsupportedThinkingParamError,
   stripThinkingRequestParams,
+  isTemperatureLockedModel,
+  isTemperatureParamError,
+  getEffectiveTemperature,
 } from '@/lib/llm-thinking';
 import { isModelThinkingCapable } from '@/lib/db/compat/enabled-models';
 
@@ -66,32 +69,7 @@ type PreparedGenerationOptions = {
   requestParams: Record<string, unknown>;
 };
 
-function normalizeModelId(modelId: string): string {
-  let id = modelId.toLowerCase().trim();
-  id = id.replace(/^(ollama-cloud\/|ollama[-/]|litellm\/|openai\/|anthropic\/|deepseek\/|moonshot\/|mistral\/|gemini\/|google\/|fireworks\/)/, '');
-  const lastSlash = id.lastIndexOf('/');
-  if (lastSlash !== -1) id = id.slice(lastSlash + 1);
-  return id.replace(/:.*$/, '');
-}
 
-function isTemperatureLockedModel(modelId: string): boolean {
-  const id = normalizeModelId(modelId);
-  return id.startsWith('gpt-5') || id.startsWith('kimi-k2.6') || id.startsWith('kimi-k2p6');
-}
-
-function isTemperatureParamError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return (
-    message.includes('temperature') &&
-    (
-      message.includes('unsupported') ||
-      message.includes('invalid') ||
-      message.includes('only 1 is allowed') ||
-      message.includes('only the default') ||
-      message.includes('does not support')
-    )
-  );
-}
 
 function isRequestParamCompatibilityError(
   error: unknown,
@@ -106,7 +84,7 @@ async function prepareGenerationOptions(
 ): Promise<PreparedGenerationOptions> {
   const systemPrompt = options.systemPrompt || '';
   const requestedTemperature = options.temperature ?? modelSpec.temperature;
-  const temperature = isTemperatureLockedModel(modelSpec.model) ? 1 : requestedTemperature;
+  const temperature = getEffectiveTemperature(modelSpec.model, requestedTemperature);
   const rawMaxTokens = options.maxTokens ?? modelSpec.max_tokens ?? 4096;
   const maxTokens = Math.min(rawMaxTokens, 32000);
   const thinkingEnabled = options.thinkingEnabled ?? modelSpec.thinking_enabled ?? false;
@@ -782,7 +760,7 @@ export async function generateWithModelFallback(
         const fallbackSpec: ModelSpec = {
           model: fallbackModelId,
           provider: detectProvider(fallbackModelId),
-          temperature: modelSpec.temperature,
+          temperature: getEffectiveTemperature(fallbackModelId, modelSpec.temperature),
           max_tokens: modelSpec.max_tokens,
         };
         console.log(`[LLM Router] Falling back to ${fallbackModelId}`);

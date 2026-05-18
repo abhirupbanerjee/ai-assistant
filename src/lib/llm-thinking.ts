@@ -26,6 +26,32 @@ export function isNonOOpenAIGpt5Model(modelId: string): boolean {
   return id.startsWith('gpt-5') && !isOpenAIOFamilyModel(id);
 }
 
+export function isTemperatureLockedModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return (
+    id.startsWith('gpt-5')
+    || id.startsWith('kimi-k2.6')
+    || id.startsWith('kimi-k2p6')
+    || id.startsWith('kimi-k2.5')
+    || id.startsWith('kimi-k2p5')
+    || id.startsWith('deepseek-v4-pro')
+    || id.startsWith('deepseek-reasoner')
+  );
+}
+
+export function isTemperatureUnsupportedModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  // OpenAI o-series does not accept temperature at all
+  return isOpenAIOFamilyModel(id);
+}
+
+export function getEffectiveTemperature(modelId: string, requestedTemperature: number): number {
+  if (isTemperatureUnsupportedModel(modelId)) {
+    return requestedTemperature; // Caller must strip the param entirely
+  }
+  return isTemperatureLockedModel(modelId) ? 1 : requestedTemperature;
+}
+
 export function isDefaultThinkingEnabledModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6');
@@ -135,6 +161,20 @@ export function stripThinkingRequestParams<T extends Record<string, unknown>>(pa
   delete clone.thinking;
   delete clone.think;
   return clone;
+}
+
+export function isTemperatureParamError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('temperature') &&
+    (
+      message.includes('unsupported') ||
+      message.includes('invalid') ||
+      message.includes('only 1 is allowed') ||
+      message.includes('only the default') ||
+      message.includes('does not support')
+    )
+  );
 }
 
 export function isUnsupportedThinkingParamError(error: unknown): boolean {

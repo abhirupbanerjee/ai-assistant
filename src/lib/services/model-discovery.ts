@@ -198,7 +198,7 @@ export function isThinkTagModel(modelId: string): boolean {
   if (lastSlash !== -1) id = id.slice(lastSlash + 1);
   // Strip version/tag suffixes (e.g. ":8b", ":latest", "-instruct")
   id = id.replace(/:.*$/, '');
-  return /^(qwen3|qwq|deepseek-v4-pro)/.test(id);
+  return /^(qwen3|qwq|deepseek-v4-pro|kimi-k2|gpt-oss)/.test(id);
 }
 
 function isToolCapable(modelId: string): boolean {

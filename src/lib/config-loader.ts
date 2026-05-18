@@ -13,6 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { isTemperatureLockedModel, isTemperatureUnsupportedModel } from './llm-thinking';
 
 // Lazy imports to avoid circular dependency
 // These functions don't depend on loadConfig, so they're safe to call
@@ -403,7 +404,22 @@ function getHardcodedDefaults(): AppConfig {
         name: 'Moonshot Kimi K2.5 (Route 2 Fallback)',
         description: 'Moonshot Kimi K2.5 direct — bypasses LiteLLM via OpenAI-compatible API',
         provider: 'moonshot',
-        temperature: 0.2,
+        temperature: 1,
+        maxTokens: 4000,
+        topKChunks: 20,
+        maxContextChunks: 15,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'fireworks/kimi-k2p6': {
+        name: 'Fireworks Kimi K2.6 (Route 2 Fallback)',
+        description: 'Kimi K2.6 via Fireworks AI — reasoning model with temperature lock',
+        provider: 'fireworks',
+        temperature: 1,
         maxTokens: 4000,
         topKChunks: 20,
         maxContextChunks: 15,
@@ -719,6 +735,15 @@ function getDefaultSettingsForTier(modelId: string): {
   maxContextChunks: number;
 } {
   const id = modelId.toLowerCase();
+
+  // Reasoning / thinking models — temperature is locked by provider
+  if (
+    isTemperatureLockedModel(modelId)
+    || isTemperatureUnsupportedModel(modelId)
+    || id.includes('reasoner')
+  ) {
+    return { temperature: 1, maxTokens: 8000, topKChunks: 25, maxContextChunks: 20 };
+  }
 
   // High-performance models (pro, large)
   if (id.includes('pro') || id.includes('large')) {

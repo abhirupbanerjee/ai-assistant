@@ -15,6 +15,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings, getRoutesSettings } from './db/compat/config';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
+import { getEffectiveTemperature, isTemperatureUnsupportedModel } from './llm-thinking';
 
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
@@ -116,10 +117,11 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
   // Non-streaming OpenAI API requires stream=true for max_tokens > 4096.
   // Cap at 4096 to avoid the error: "Requests with max_tokens > 4096 must have stream=true"
   const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.3,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
   return response.choices[0]?.message?.content?.trim() || '';
@@ -133,10 +135,11 @@ async function callFireworks(model: string, opts: InternalCompletionOptions): Pr
   // Non-streaming OpenAI-compatible API requires stream=true for max_tokens > 4096.
   // Cap at 4096 to avoid the error: "Requests with max_tokens > 4096 must have stream=true"
   const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: fireworksModel,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.3,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
   return response.choices[0]?.message?.content?.trim() || '';
@@ -150,12 +153,13 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
     .filter(m => m.role !== 'system')
     .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await client.messages.create({
     model: model.startsWith('anthropic/') ? model.slice('anthropic/'.length) : model,
     system: systemMsg || undefined,
     messages: conversationMsgs,
     max_tokens: opts.maxTokens ?? 2000,
-    temperature: opts.temperature ?? 0.3,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
   });
 
   const textBlock = response.content.find(b => b.type === 'text');
@@ -168,10 +172,11 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
   const ollamaModel = model.startsWith('ollama/') ? model.slice('ollama/'.length)
     : model.startsWith('ollama-') ? model.slice('ollama-'.length)
     : model;
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: ollamaModel,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.3,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: opts.maxTokens ?? 2000,
   });
   return response.choices[0]?.message?.content?.trim() || '';
@@ -183,10 +188,11 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
   // Non-streaming OpenAI-compatible API may require stream=true for max_tokens > 4096.
   // Cap at 4096 to avoid the error.
   const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: moonshotModel,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.3,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
   return response.choices[0]?.message?.content?.trim() || '';
@@ -196,10 +202,11 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
   const client = await getDeepSeekClient();
   const deepseekModel = model.startsWith('deepseek/') ? model.slice('deepseek/'.length) : model;
   const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await client.chat.completions.create({
     model: deepseekModel,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.3,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
   return response.choices[0]?.message?.content?.trim() || '';
@@ -210,8 +217,9 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
  * Uses the native /api/chat endpoint via callOllamaCloud().
  */
 async function callOllamaCloudDirect(model: string, opts: InternalCompletionOptions): Promise<string> {
+  const baseTemp = opts.temperature ?? 0.3;
   const response = await callOllamaCloud(model, opts.messages, {
-    temperature: opts.temperature,
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     maxTokens: opts.maxTokens,
   });
 

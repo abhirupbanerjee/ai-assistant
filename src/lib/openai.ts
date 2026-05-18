@@ -5,6 +5,9 @@ import {
   buildThinkingRequestProfile,
   isUnsupportedThinkingParamError,
   stripThinkingRequestParams,
+  getEffectiveTemperature,
+  isTemperatureUnsupportedModel,
+  isTemperatureParamError,
   type ThinkingRequestProfile,
 } from '@/lib/llm-thinking';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
@@ -624,7 +627,7 @@ export async function generateResponse(
     model: isOllama ? getOllamaModelId(llmSettings.model) : llmSettings.model,
     messages,
     max_tokens: effectiveMaxTokens,
-    temperature: llmSettings.temperature,
+    temperature: isTemperatureUnsupportedModel(llmSettings.model) ? undefined : getEffectiveTemperature(llmSettings.model, llmSettings.temperature),
     ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
@@ -1059,6 +1062,30 @@ async function streamOneCompletionWithThinkingRetry(
         onThinkingChunk,
       );
     }
+    const currentTemp = params.temperature;
+    if (isTemperatureParamError(error) && currentTemp != null) {
+      const safeTemperature = isTemperatureUnsupportedModel(params.model)
+        ? undefined
+        : getEffectiveTemperature(params.model, currentTemp);
+      if (safeTemperature !== params.temperature || safeTemperature === undefined) {
+        logger.warn('Retrying LLM request with temperature correction', {
+          model: params.model,
+          original: params.temperature,
+          corrected: safeTemperature,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        const correctedParams = { ...params, temperature: safeTemperature };
+        if (safeTemperature === undefined) {
+          delete (correctedParams as Record<string, unknown>).temperature;
+        }
+        return streamOneCompletion(
+          openai,
+          correctedParams as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
+          onChunk,
+          onThinkingChunk,
+        );
+      }
+    }
     throw error;
   }
 }
@@ -1217,6 +1244,9 @@ export async function generateResponseWithTools(
 
   // Use model override if provided, otherwise use default from settings
   const effectiveModel = modelOverride || llmSettings.model;
+  const effectiveTemperature = isTemperatureUnsupportedModel(effectiveModel)
+    ? undefined
+    : getEffectiveTemperature(effectiveModel, llmSettings.temperature);
 
   // Detect direct-route models — bypass LiteLLM
   const useAnthropicDirect = isClaudeModel(effectiveModel);
@@ -1567,6 +1597,16 @@ export async function generateResponseWithTools(
       })
     : baseThinkingProfile;
 
+  // Gemini does not accept reasoning_effort — rewrite to native thinkingConfig
+  const geminiModel = /^gemini[-/]/.test(effectiveModel);
+  if (geminiModel && thinkingProfile.requestParams.reasoning_effort) {
+    thinkingProfile.requestParams = {
+      ...thinkingProfile.requestParams,
+      reasoning_effort: undefined,
+      thinkingConfig: { thinkingBudget: -1 },
+    };
+  }
+
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
     model: useFireworksDirect ? getFireworksModelId(effectiveModel)
       : useOllamaDirect ? getOllamaModelId(effectiveModel)
@@ -1577,7 +1617,7 @@ export async function generateResponseWithTools(
     tools,
     tool_choice: tools?.length ? effectiveToolChoice : undefined,
     max_tokens: effectiveMaxTokens,
-    temperature: llmSettings.temperature,
+    temperature: effectiveTemperature,
     ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
     ...thinkingProfile.requestParams,
   } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
@@ -1594,7 +1634,7 @@ export async function generateResponseWithTools(
         messages: anthropicMessages,
         system: systemPrompt,
         max_tokens: effectiveMaxTokens,
-        temperature: llmSettings.temperature,
+        temperature: effectiveTemperature,
         tools: convertToolsToAnthropic(tools),
         tool_choice: tools?.length ? convertToolChoiceToAnthropic(effectiveToolChoice) : undefined,
         thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
@@ -1614,7 +1654,7 @@ export async function generateResponseWithTools(
       effectiveModel,
       ollamaMessages,
       {
-        temperature: llmSettings.temperature,
+        temperature: effectiveTemperature,
         maxTokens: effectiveMaxTokens,
         think: thinkingProfile.enabled ? Boolean(thinkingProfile.requestParams.think) : undefined,
       },
@@ -2018,7 +2058,7 @@ export async function generateResponseWithTools(
           messages: anthropicMessages,
           system: systemPrompt,
           max_tokens: effectiveMaxTokens,
-          temperature: llmSettings.temperature,
+          temperature: effectiveTemperature,
           tools: convertToolsToAnthropic(tools),
           tool_choice: toolChoiceAppliedByRouting
             ? convertToolChoiceToAnthropic('auto')
@@ -2059,7 +2099,7 @@ export async function generateResponseWithTools(
           messages: anthropicMessages,
           system: systemPrompt,
           max_tokens: effectiveMaxTokens,
-          temperature: llmSettings.temperature,
+          temperature: effectiveTemperature,
           // No tools — force text-only response
           thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
         },
@@ -2108,7 +2148,7 @@ export async function generateResponseWithTools(
           messages: anthropicMessages,
           system: systemPrompt,
           max_tokens: effectiveMaxTokens,
-          temperature: llmSettings.temperature,
+          temperature: effectiveTemperature,
           tools: convertToolsToAnthropic(tools),
           // Don't set tool_choice — Anthropic handles this via the message flow
           thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,

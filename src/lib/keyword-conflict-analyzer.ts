@@ -9,6 +9,7 @@ import { getAllSkills, getCategoriesForSkill } from '@/lib/db/compat/skills';
 import { getAllRoutingRules } from '@/lib/db/compat/tool-routing';
 import { getLlmSettings } from '@/lib/db/compat/config';
 import getOpenAI from '@/lib/openai';
+import { getEffectiveTemperature, isTemperatureUnsupportedModel } from '@/lib/llm-thinking';
 import type {
   KeywordSource,
   ConflictReport,
@@ -430,7 +431,7 @@ export async function analyzeKeywordConflicts(
       { role: 'user', content: prompt },
     ],
     max_tokens: MAX_TOKENS,
-    temperature: 0.3, // Low temperature for consistent analysis
+    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, 0.3),
     response_format: { type: 'json_object' },
   });
 
