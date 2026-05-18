@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
 import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
+import { normalizeBaseUrl } from '@/lib/url-utils';
 import type { AgentBotVersionWithRelations } from '@/types/agent-bot';
 
 interface RouteParams {
@@ -76,7 +77,8 @@ function generatePostmanCollection(
   version: AgentBotVersionWithRelations | null,
   baseUrl: string
 ) {
-  const apiUrl = `${baseUrl}/api/agent-bots/${agentBot.slug}`;
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const apiUrl = `${normalizedBaseUrl}/api/agent-bots/${agentBot.slug}`;
 
   // Build input example
   const inputExample = version?.input_schema?.parameters?.reduce(

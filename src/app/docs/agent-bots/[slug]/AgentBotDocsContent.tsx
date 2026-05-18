@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Download, Copy, Check, FileJson, FileText, Code } from 'lucide-react';
 import type { AgentBot, AgentBotVersionWithRelations } from '@/types/agent-bot';
 import { ALL_OUTPUT_TYPES, ALLOWED_FILE_TYPES } from '@/lib/constants/agent-bot-config';
+import { normalizeBaseUrl } from '@/lib/url-utils';
 
 interface AgentBotDocsContentProps {
   agentBot: AgentBot;
@@ -25,7 +26,8 @@ export default function AgentBotDocsContent({
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [selectedLang, setSelectedLang] = useState<'curl' | 'python' | 'javascript'>('curl');
 
-  const apiBaseUrl = `${baseUrl}/api/agent-bots/${agentBot.slug}`;
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const apiBaseUrl = `${normalizedBaseUrl}/api/agent-bots/${agentBot.slug}`;
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);

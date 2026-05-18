@@ -39,9 +39,11 @@ interface ApiKey {
 
 interface ApiKeyManagerProps {
   agentBotId: string;
+  agentBotName: string;
+  agentBotSlug: string;
 }
 
-export default function ApiKeyManager({ agentBotId }: ApiKeyManagerProps) {
+export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }: ApiKeyManagerProps) {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,14 @@ export default function ApiKeyManager({ agentBotId }: ApiKeyManagerProps) {
   const [expiresInDays, setExpiresInDays] = useState<number | ''>('');
   const [isCreating, setIsCreating] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedTarget, setCopiedTarget] = useState<'key' | 'curl' | null>(null);
+  const apiBaseUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/api/agent-bots/${agentBotSlug}`
+    : `/api/agent-bots/${agentBotSlug}`;
+  const testCurl = `curl -X POST "${apiBaseUrl}/invoke" \\
+  -H "Authorization: Bearer ${newFullKey || 'YOUR_API_KEY'}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"input":{"query":"what is life"},"outputType":"json"}'`;
 
   // Load API keys
   const loadApiKeys = useCallback(async () => {
@@ -156,9 +165,15 @@ export default function ApiKeyManager({ agentBotId }: ApiKeyManagerProps) {
   const handleCopy = async () => {
     if (newFullKey) {
       await navigator.clipboard.writeText(newFullKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedTarget('key');
+      setTimeout(() => setCopiedTarget(null), 2000);
     }
+  };
+
+  const handleCopyCurl = async () => {
+    await navigator.clipboard.writeText(testCurl);
+    setCopiedTarget('curl');
+    setTimeout(() => setCopiedTarget(null), 2000);
   };
 
   // Format relative time
@@ -433,7 +448,7 @@ export default function ApiKeyManager({ agentBotId }: ApiKeyManagerProps) {
               onClick={handleCopy}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             >
-              {copied ? (
+              {copiedTarget === 'key' ? (
                 <Check className="w-5 h-5 text-green-500" />
               ) : (
                 <Copy className="w-5 h-5" />
@@ -442,14 +457,29 @@ export default function ApiKeyManager({ agentBotId }: ApiKeyManagerProps) {
           </div>
 
           <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Usage Example:
-            </p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Test cURL for {agentBotName}:
+              </p>
+              <button
+                onClick={handleCopyCurl}
+                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                {copiedTarget === 'curl' ? (
+                  <>
+                    <Check className="w-3 h-3 text-green-500" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    Copy cURL
+                  </>
+                )}
+              </button>
+            </div>
             <pre className="text-xs text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap">
-              {`curl -X POST /api/agent-bots/[slug]/invoke \\
-  -H "Authorization: Bearer ${newFullKey?.substring(0, 20)}..." \\
-  -H "Content-Type: application/json" \\
-  -d '{"input": {"query": "..."}, "outputType": "json"}'`}
+              {testCurl}
             </pre>
           </div>
 

@@ -216,7 +216,13 @@ export default function AgentBotDetail({ botId, onBack }: AgentBotDetailProps) {
       {/* Tab Content */}
       <div>
         {activeTab === 'versions' && <VersionList agentBotId={bot.id} />}
-        {activeTab === 'api-keys' && <ApiKeyManager agentBotId={bot.id} />}
+        {activeTab === 'api-keys' && (
+          <ApiKeyManager
+            agentBotId={bot.id}
+            agentBotName={bot.name}
+            agentBotSlug={bot.slug}
+          />
+        )}
         {activeTab === 'test' && <AgentBotTester agentBot={bot} />}
         {activeTab === 'analytics' && <AgentBotAnalytics agentBotId={bot.id} />}
         {activeTab === 'docs' && (

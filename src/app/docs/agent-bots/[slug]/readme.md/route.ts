@@ -13,6 +13,7 @@ import { getUserRole, getUserId } from '@/lib/users';
 import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
 import type { AgentBotVersionWithRelations } from '@/types/agent-bot';
 import { ALLOWED_FILE_TYPES, ALL_OUTPUT_TYPES } from '@/lib/constants/agent-bot-config';
+import { normalizeBaseUrl } from '@/lib/url-utils';
 
 interface RouteParams {
   params: Promise<{ slug: string }>;
@@ -77,7 +78,8 @@ function generateMarkdownReadme(
   version: AgentBotVersionWithRelations | null,
   baseUrl: string
 ): string {
-  const apiUrl = `${baseUrl}/api/agent-bots/${agentBot.slug}`;
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const apiUrl = `${normalizedBaseUrl}/api/agent-bots/${agentBot.slug}`;
 
   // Build input example
   const inputExample = version?.input_schema?.parameters?.reduce(
@@ -288,7 +290,7 @@ X-RateLimit-Remaining-Day: 847
 
 ---
 
-[Full documentation](${baseUrl}/docs/agent-bots/${agentBot.slug})
+[Full documentation](${normalizedBaseUrl}/docs/agent-bots/${agentBot.slug})
 `;
 
   return md;

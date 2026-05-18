@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserRole, getUserId } from '@/lib/users';
 import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
+import { normalizeBaseUrl } from '@/lib/url-utils';
 import type { AgentBotVersionWithRelations } from '@/types/agent-bot';
 
 interface RouteParams {
@@ -76,6 +77,7 @@ function generateOpenApiSpec(
   version: AgentBotVersionWithRelations | null,
   baseUrl: string
 ) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const inputProperties: Record<string, unknown> = {};
   const requiredParams: string[] = [];
 
@@ -98,7 +100,7 @@ function generateOpenApiSpec(
     },
     servers: [
       {
-        url: `${baseUrl}/api/agent-bots/${agentBot.slug}`,
+        url: `${normalizedBaseUrl}/api/agent-bots/${agentBot.slug}`,
       },
     ],
     security: [
