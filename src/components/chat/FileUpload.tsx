@@ -168,7 +168,7 @@ export default function FileUpload({
 
   // Upload settings fetched from admin config (Admin → Settings → File Upload)
   const [allowedTypes, setAllowedTypes] = useState<string[]>([]);
-  const [maxFileSizeMB, setMaxFileSizeMB] = useState(10);
+  const [maxFileSizeMB, setMaxFileSizeMB] = useState(25);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Check if URL extraction and image processing is available

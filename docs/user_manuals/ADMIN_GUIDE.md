@@ -1245,7 +1245,7 @@ Override global LLM settings for this workspace:
 |---------|-------------|
 | **Voice Input** | Enable microphone input |
 | **File Upload** | Allow file attachments |
-| **Max File Size** | Maximum upload size in MB |
+| **Max File Size** | Maximum upload size in MB (default 25 MB) |
 
 #### Embed-Specific Settings
 
@@ -1683,9 +1683,9 @@ The minimum reranker score for user-uploaded documents is now configurable via e
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `USER_UPLOAD_MIN_RERANK_SCORE` | `0.30` | Minimum relevance score for user uploads (was 0.05). Prevents flooding context with irrelevant chunks from uploaded documents. |
+| `USER_UPLOAD_MIN_RERANK_SCORE` | `0.30` | Minimum relevance score for general user-upload retrieval. Explicit requests about an uploaded/attached document bypass this filter so the upload is still available for review and summarization. |
 
-**Why this matters:** Previously, the threshold of 0.05 was barely any filtering, causing poor retrieval quality. The new default of 0.30 ensures only relevant chunks from user uploads are included. Set to a lower value (e.g., 0.15) if you want more permissive filtering, or higher (e.g., 0.50) for stricter filtering.
+**Why this matters:** Previously, the threshold of 0.05 was barely any filtering, causing poor retrieval quality. The default of 0.30 keeps general user-upload retrieval focused, while explicit attached-file summary/review prompts still include uploaded content. Set to a lower value (e.g., 0.15) if you want more permissive general filtering, or higher (e.g., 0.50) for stricter filtering.
 
 #### Token Budget Management (NEW - May 2026)
 

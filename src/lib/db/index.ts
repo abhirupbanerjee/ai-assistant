@@ -1993,7 +1993,7 @@ function initializeDefaultSettings(database: Database.Database): void {
     'upload-limits': {
       maxFilesPerInput: 5,
       maxFilesPerThread: 10,
-      maxFileSizeMB: 10,
+      maxFileSizeMB: 25,
       allowedTypes: [
         // Documents
         'application/pdf',

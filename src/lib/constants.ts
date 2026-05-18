@@ -16,6 +16,12 @@ export const MAX_USER_DOC_CHUNKS = 10;
 /** Maximum user chunks returned in RAG context */
 export const MAX_USER_CHUNKS_RETURNED = 5;
 
+/** Maximum chunks to process when the user explicitly asks about an uploaded document */
+export const MAX_USER_DOC_CHUNKS_FOR_SUMMARY = 40;
+
+/** Maximum uploaded-document chunks returned for explicit document review/summary requests */
+export const MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY = 20;
+
 /** Character limit for chunk preview in sources */
 export const CHUNK_PREVIEW_LENGTH = 200;
 

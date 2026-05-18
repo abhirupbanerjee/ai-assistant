@@ -151,6 +151,11 @@ export async function POST(request: NextRequest) {
         const dbUser = await getUserByEmail(user.email);
         const memorySettings = await getMemorySettings();
         const summarizationSettings = await getSummarizationSettings();
+        const uploadDetails = await getUploadDetails(user.id, threadId);
+        const attachmentFilenames = [
+          ...uploadDetails.documents.map(d => d.filename),
+          ...uploadDetails.images.map(i => i.filename),
+        ];
 
         // Create and save user message
         const userMessageId = uuidv4();
@@ -158,6 +163,7 @@ export async function POST(request: NextRequest) {
           id: userMessageId,
           role: 'user',
           content: message,
+          attachments: attachmentFilenames.length > 0 ? attachmentFilenames : undefined,
           timestamp: new Date(),
         };
         await addMessage(user.id, threadId, userMessage);
@@ -300,9 +306,6 @@ export async function POST(request: NextRequest) {
         if (summaryContext) {
           send({ type: 'operation_log', category: 'memory', message: 'Loading conversation summary' });
         }
-
-        // Get user uploads - separate images from documents
-        const uploadDetails = await getUploadDetails(user.id, threadId);
 
         // Check image processing capabilities for the actual model being used
         const llmSettings = await getLlmSettings();

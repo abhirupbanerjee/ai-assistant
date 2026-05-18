@@ -471,7 +471,7 @@ function getHardcodedDefaults(): AppConfig {
     upload: {
       maxFilesPerInput: 5,
       maxFilesPerThread: 10,
-      maxFileSizeMB: 10,
+      maxFileSizeMB: 25,
       allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'application/json'],
     },
     retention: {

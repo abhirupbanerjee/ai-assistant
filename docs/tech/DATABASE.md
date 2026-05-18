@@ -1039,7 +1039,7 @@ export interface TavilySettings {
 
 export interface UploadLimits {
   maxFilesPerThread: number;   // Max files per thread (default: 5)
-  maxFileSizeMB: number;       // Max file size in MB (default: 10)
+  maxFileSizeMB: number;       // Max file size in MB (default: 25)
   allowedTypes: string[];      // MIME types (default: ['application/pdf'])
 }
 
@@ -2554,7 +2554,7 @@ docker run --rm -v policy-bot_qdrant_data:/data -v $BACKUP_DIR:/backup \
 
 | Constraint | Admin File Upload | Admin Text Upload | Super User File Upload | Super User Text Upload | User Uploads |
 |------------|-------------------|-------------------|------------------------|------------------------|--------------|
-| Max file size | 50 MB | 10 MB | 50 MB | 10 MB | 5 MB |
+| Max file size | 50 MB | 10 MB | 50 MB | 10 MB | Configurable (default 25 MB) |
 | Allowed types | PDF, DOCX, XLSX, PPTX, images | Text (.txt) | PDF only | Text (.txt) | PDF only |
 | Max per thread | N/A | N/A | N/A | N/A | 3 files |
 | Min content length | N/A | 10 chars | N/A | 10 chars | N/A |

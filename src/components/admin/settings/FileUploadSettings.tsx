@@ -68,7 +68,7 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
       const uploadData = data.uploadLimits || {
         maxFilesPerInput: 5,
         maxFilesPerThread: 10,
-        maxFileSizeMB: 10,
+        maxFileSizeMB: 25,
         allowedTypes: [],
       };
 
@@ -195,7 +195,7 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
   const displaySettings = editedSettings || {
     maxFilesPerInput: 5,
     maxFilesPerThread: 10,
-    maxFileSizeMB: 10,
+    maxFileSizeMB: 25,
     allowedTypes: [] as string[],
   };
 

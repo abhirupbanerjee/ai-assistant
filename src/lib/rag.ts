@@ -119,16 +119,53 @@ export interface UserDocTruncation {
   includedChunks: number;
 }
 
+export interface UserDocExtractionError {
+  filename: string;
+  message: string;
+}
+
+export interface BuildContextOptions {
+  userDocMaxChunks?: number;
+  userDocReturnChunks?: number;
+  sampleUserDocChunks?: boolean;
+}
+
+function selectUserDocumentChunks<T>(chunks: T[], limit: number, sampleAcrossDocument: boolean): T[] {
+  if (chunks.length <= limit) {
+    return chunks;
+  }
+
+  if (!sampleAcrossDocument || limit <= 1) {
+    return chunks.slice(0, limit);
+  }
+
+  const selected: T[] = [];
+  const used = new Set<number>();
+  const lastIndex = chunks.length - 1;
+
+  for (let i = 0; i < limit; i++) {
+    const index = Math.round((i * lastIndex) / (limit - 1));
+    if (!used.has(index)) {
+      used.add(index);
+      selected.push(chunks[index]);
+    }
+  }
+
+  return selected;
+}
+
 export async function buildContext(
   queryEmbedding: number[],
   userDocPaths: string[] = [],
   additionalEmbeddings: number[][] = [],
   settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number },
-  categorySlugs?: string[]
+  categorySlugs?: string[],
+  options: BuildContextOptions = {}
 ): Promise<{
   globalChunks: RetrievedChunk[];
   userChunks: RetrievedChunk[];
   userDocTruncations: UserDocTruncation[];
+  userDocErrors: UserDocExtractionError[];
 }> {
   // Use provided settings or fetch from SQLite config
   const ragSettings = settings || await getRagSettings();
@@ -202,6 +239,10 @@ export async function buildContext(
   // Process user documents if provided
   const userChunks: RetrievedChunk[] = [];
   const userDocTruncations: UserDocTruncation[] = [];
+  const userDocErrors: UserDocExtractionError[] = [];
+  const userDocMaxChunks = options.userDocMaxChunks ?? MAX_USER_DOC_CHUNKS;
+  const userDocReturnChunks = options.userDocReturnChunks ?? MAX_USER_CHUNKS_RETURNED;
+  const sampleUserDocChunks = options.sampleUserDocChunks ?? false;
 
   for (const docPath of userDocPaths) {
     try {
@@ -214,6 +255,14 @@ export async function buildContext(
       let cachedData: CachedUserDocData | null = null;
       if (threadId) {
         cachedData = await getCachedUserDocEmbeddings(threadId, filename);
+        if (cachedData) {
+          const expectedChunkCount = cachedData.totalChunks
+            ? Math.min(cachedData.totalChunks, userDocMaxChunks)
+            : userDocMaxChunks;
+          if (cachedData.chunks.length < expectedChunkCount) {
+            cachedData = null;
+          }
+        }
       }
 
       let chunksWithEmbeddings: Array<{ id: string; text: string; embedding: number[]; pageNumber: number; documentId: string; source: string; threadId?: string }>;
@@ -244,17 +293,22 @@ export async function buildContext(
         // Create temporary chunks from user document with page info
         const chunks = await chunkText(text, 'user-temp', filename, 'user', threadId, undefined, pages);
         totalChunks = chunks.length;
+        const selectedChunks = selectUserDocumentChunks(chunks, userDocMaxChunks, sampleUserDocChunks);
 
         // Get embeddings for user document chunks
-        const chunkTexts = chunks.slice(0, MAX_USER_DOC_CHUNKS).map(c => c.text);
+        const chunkTexts = selectedChunks.map(c => c.text);
         if (chunkTexts.length === 0) {
+          userDocErrors.push({
+            filename,
+            message: getUploadExtractionErrorMessage(filename),
+          });
           continue;
         }
 
         const chunkEmbeddings = await createEmbeddings(chunkTexts);
 
         // Build chunks with embeddings - include full metadata for caching
-        chunksWithEmbeddings = chunks.slice(0, MAX_USER_DOC_CHUNKS).map((chunk, i) => ({
+        chunksWithEmbeddings = selectedChunks.map((chunk, i) => ({
           id: chunk.id,
           text: chunk.text,
           embedding: chunkEmbeddings[i],
@@ -279,8 +333,8 @@ export async function buildContext(
       // Track chunks matched for this document
       let matchedChunks = 0;
 
-      // Calculate similarity with query - user docs bypass the threshold since the user
-      // explicitly uploaded them for this conversation (reranker also uses bypassThreshold)
+      // Calculate similarity with query. Filtering happens later in reranking, where
+      // explicit attached-file requests can keep low-scoring chunks available.
       for (const chunk of chunksWithEmbeddings) {
         const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
         matchedChunks++;
@@ -303,14 +357,19 @@ export async function buildContext(
       });
     } catch (error) {
       logger.error(`Failed to process user document: ${docPath}`, error);
+      const filename = docPath.split('/').pop() || 'user-document';
+      userDocErrors.push({
+        filename,
+        message: getUploadExtractionErrorMessage(filename, error),
+      });
     }
   }
 
   // Sort user chunks by relevance
   userChunks.sort((a, b) => b.score - a.score);
 
-  // Update truncation stats with final included counts (after MAX_USER_CHUNKS_RETURNED limit)
-  const finalUserChunks = userChunks.slice(0, MAX_USER_CHUNKS_RETURNED);
+  // Update truncation stats with final included counts (after user document return limit)
+  const finalUserChunks = userChunks.slice(0, userDocReturnChunks);
   const finalIncludedByDoc = new Map<string, number>();
   for (const chunk of finalUserChunks) {
     finalIncludedByDoc.set(chunk.documentName, (finalIncludedByDoc.get(chunk.documentName) || 0) + 1);
@@ -321,7 +380,18 @@ export async function buildContext(
     truncation.includedChunks = finalIncludedByDoc.get(truncation.filename) || 0;
   }
 
-  return { globalChunks, userChunks: finalUserChunks, userDocTruncations };
+  return { globalChunks, userChunks: finalUserChunks, userDocTruncations, userDocErrors };
+}
+
+function getUploadExtractionErrorMessage(filename: string, error?: unknown): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.pdf')) {
+    return 'PDF text could not be extracted. The file may be scanned, image-only, protected, or require OCR.';
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return 'No text content could be extracted from this upload.';
 }
 
 /**

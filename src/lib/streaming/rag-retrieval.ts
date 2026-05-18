@@ -8,7 +8,7 @@
 import type { Source, StreamEvent, SkillInfo, UploadExtractionState, Message } from '@/types';
 import type { RetrievedChunk } from '@/types';
 import { createEmbeddings } from '../openai';
-import { buildContext, type UserDocTruncation } from '../rag';
+import { buildContext } from '../rag';
 import { rerankChunks } from '../reranker';
 import { getRagSettings, getAcronymMappings } from '../db/compat/config';
 import { getResolvedSystemPrompt } from '../db/compat/category-prompts';
@@ -17,7 +17,13 @@ import { resolveSkills } from '../skills/resolver';
 import { getAvailableDataSourcesDescription } from '../tools/data-source';
 import { getToolDefinitions } from '../tools';
 import { ragLogger as logger } from '../logger';
-import { MAX_QUERY_EXPANSIONS, CHUNK_PREVIEW_LENGTH, USER_UPLOAD_MIN_RERANK_SCORE } from '../constants';
+import {
+  MAX_QUERY_EXPANSIONS,
+  CHUNK_PREVIEW_LENGTH,
+  USER_UPLOAD_MIN_RERANK_SCORE,
+  MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
+  MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
+} from '../constants';
 import { detectFollowUp } from '../conversation-context';
 
 /**
@@ -120,23 +126,68 @@ async function expandQueries(originalQuery: string, enabled: boolean): Promise<s
 /**
  * Format chunks into context string for LLM
  */
-function formatContext(globalChunks: RetrievedChunk[], userChunks: RetrievedChunk[]): string {
+function isUploadDirectedQuery(userMessage: string, hasUploads: boolean): boolean {
+  if (!hasUploads) return false;
+
+  const message = userMessage.toLowerCase();
+  const mentionsUpload = /\b(attached|attachment|uploaded|upload|provided|selected)\b/.test(message);
+  const mentionsDocument = /\b(pdf|file|document|doc|upload|attachment)\b/.test(message);
+  const asksForDocumentWork = /\b(summarise|summarize|summary|review|analyse|analyze|explain|read|extract|outline|describe)\b/.test(message);
+
+  if (mentionsUpload && mentionsDocument) return true;
+  if (asksForDocumentWork && mentionsDocument) return true;
+  if (asksForDocumentWork && /\b(this|that|it)\b/.test(message)) return true;
+
+  return false;
+}
+
+function formatUploadErrors(errors: Array<{ filename: string; message: string }>): string {
+  if (errors.length === 0) return '';
+
+  let context = '=== USER UPLOADED DOCUMENT EXTRACTION STATUS ===\n\n';
+  for (const error of errors) {
+    context += `[Source: ${error.filename}]\n`;
+    context += `${error.message}\n\n---\n\n`;
+  }
+  return context;
+}
+
+function formatContext(
+  globalChunks: RetrievedChunk[],
+  userChunks: RetrievedChunk[],
+  options: {
+    prioritizeUploads?: boolean;
+    uploadErrors?: Array<{ filename: string; message: string }>;
+  } = {}
+): string {
   let context = '';
 
-  if (globalChunks.length > 0) {
-    context += '=== KNOWLEDGE BASE DOCUMENTS ===\n\n';
-    for (const chunk of globalChunks) {
-      context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
-      context += `${chunk.text}\n\n---\n\n`;
-    }
-  }
-
-  if (userChunks.length > 0) {
+  const addUserChunks = () => {
+    if (userChunks.length === 0) return;
     context += '=== USER UPLOADED DOCUMENT ===\n\n';
     for (const chunk of userChunks) {
       context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
       context += `${chunk.text}\n\n---\n\n`;
     }
+  };
+
+  const addGlobalChunks = () => {
+    if (globalChunks.length === 0) return;
+    context += '=== KNOWLEDGE BASE DOCUMENTS ===\n\n';
+    for (const chunk of globalChunks) {
+      context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
+      context += `${chunk.text}\n\n---\n\n`;
+    }
+  };
+
+  if (options.prioritizeUploads) {
+    addUserChunks();
+    context += formatUploadErrors(options.uploadErrors || []);
+    addGlobalChunks();
+  } else {
+    addGlobalChunks();
+    addUserChunks();
+    context += formatUploadErrors(options.uploadErrors || []);
   }
 
   if (!context) {
@@ -184,8 +235,9 @@ export async function performRAGRetrieval(
 ): Promise<RAGRetrievalResult> {
   const ragSettings = await getRagSettings();
   const { queryExpansionEnabled } = ragSettings;
+  const uploadDirected = isUploadDirectedQuery(userMessage, userDocPaths.length > 0);
 
-  logger.debug('Starting RAG retrieval', { categorySlugs, userDocPaths: userDocPaths.length });
+  logger.debug('Starting RAG retrieval', { categorySlugs, userDocPaths: userDocPaths.length, uploadDirected });
 
   // Resolve category IDs
   const categoryIds = categorySlugs.length > 0
@@ -202,12 +254,17 @@ export async function performRAGRetrieval(
 
   // Build context from documents
   send?.({ type: 'operation_log', category: 'rag', message: 'Searching vector database' });
-  const { globalChunks, userChunks, userDocTruncations } = await buildContext(
+  const { globalChunks, userChunks, userDocTruncations, userDocErrors } = await buildContext(
     primaryEmbedding,
     userDocPaths,
     additionalEmbeddings,
     ragSettings,
-    categorySlugs.length > 0 ? categorySlugs : undefined
+    categorySlugs.length > 0 ? categorySlugs : undefined,
+    uploadDirected ? {
+      userDocMaxChunks: MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
+      userDocReturnChunks: MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
+      sampleUserDocChunks: true,
+    } : undefined
   );
 
   // Detect follow-up and extract previous sources for boosting
@@ -230,12 +287,17 @@ export async function performRAGRetrieval(
   // Apply reranking with boost for follow-up context
   send?.({ type: 'operation_log', category: 'rag', message: 'Reranking search results' });
   const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
-  // User uploads use a low threshold (0.05) to filter obviously irrelevant uploads
-  // while still respecting user intent to include uploaded documents
   if (userChunks.length > 0) {
-    send?.({ type: 'operation_log', category: 'rag', message: 'Ranking user documents' });
+    send?.({
+      type: 'operation_log',
+      category: 'rag',
+      message: uploadDirected ? 'Reviewing uploaded document content' : 'Ranking user documents',
+    });
   }
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { minScoreOverride: USER_UPLOAD_MIN_RERANK_SCORE, boostDocuments });
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, {
+    minScoreOverride: uploadDirected ? 0 : USER_UPLOAD_MIN_RERANK_SCORE,
+    boostDocuments,
+  });
 
   // Emit truncation warnings for documents with content cut off
   if (send && userDocTruncations.length > 0) {
@@ -247,11 +309,17 @@ export async function performRAGRetrieval(
       if (wasProcessingTruncated || wasContextTruncated) {
         let message = '';
         if (wasProcessingTruncated && wasContextTruncated) {
-          message = `Large document: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections, using ${truncation.includedChunks} in context`;
+          message = uploadDirected
+            ? `Partial document used: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections, using ${truncation.includedChunks} in context`
+            : `Large document: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections, using ${truncation.includedChunks} in context`;
         } else if (wasProcessingTruncated) {
-          message = `Large document: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections`;
+          message = uploadDirected
+            ? `Partial document used: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections`
+            : `Large document: processed ${truncation.processedChunks} of ${truncation.totalChunks} sections`;
         } else {
-          message = `Using ${truncation.includedChunks} of ${truncation.processedChunks} relevant sections`;
+          message = uploadDirected
+            ? `Partial document used: using ${truncation.includedChunks} of ${truncation.processedChunks} available sections`
+            : `Using ${truncation.includedChunks} of ${truncation.processedChunks} relevant sections`;
         }
 
         send({
@@ -272,6 +340,7 @@ export async function performRAGRetrieval(
   if (send && userDocPaths.length > 0) {
     // Group chunks by document to get content stats
     const docStats = new Map<string, { totalLength: number; preview: string }>();
+    const errorsByFilename = new Map(userDocErrors.map(error => [error.filename, error.message]));
     for (const chunk of rerankedUserChunks) {
       const existing = docStats.get(chunk.documentName);
       if (existing) {
@@ -294,6 +363,7 @@ export async function performRAGRetrieval(
 
       // Find matching doc stats
       const stats = docStats.get(filename);
+      const extractionError = errorsByFilename.get(filename);
 
       return {
         filename,
@@ -301,7 +371,7 @@ export async function performRAGRetrieval(
         status: stats ? 'success' : 'error',
         contentLength: stats?.totalLength,
         contentPreview: stats?.preview,
-        error: stats ? undefined : 'No content extracted',
+        error: stats ? undefined : extractionError || 'No content extracted from this upload',
       };
     });
 
@@ -312,7 +382,10 @@ export async function performRAGRetrieval(
   }
 
   // Format context
-  const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
+  const context = formatContext(rerankedGlobalChunks, rerankedUserChunks, {
+    prioritizeUploads: uploadDirected,
+    uploadErrors: userDocErrors,
+  });
 
   // Extract sources
   const sources = extractSources(rerankedGlobalChunks, rerankedUserChunks);
@@ -335,6 +408,10 @@ export async function performRAGRetrieval(
 
   if (resolvedSkills.combinedPrompt) {
     systemPrompt = `${systemPrompt}\n\n${resolvedSkills.combinedPrompt}`;
+  }
+
+  if (uploadDirected) {
+    systemPrompt = `${systemPrompt}\n\nThe user is asking about uploaded files in this conversation. Prioritize the USER UPLOADED DOCUMENT context over the general knowledge base. If uploaded document content is partial or extraction failed, state that clearly instead of saying there was no attachment.`;
   }
 
   // Inject data source descriptions
