@@ -23,6 +23,8 @@ interface RAGSettings {
   cacheTTLSeconds: number;
   chunkingStrategy: 'recursive' | 'semantic';
   semanticBreakpointThreshold: number;
+  hybridSearchEnabled: boolean;
+  llmQueryRewritingEnabled: boolean;
   updatedAt: string;
   updatedBy: string;
 }
@@ -144,6 +146,8 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         cacheTTLSeconds: 3600,
         chunkingStrategy: 'recursive',
         semanticBreakpointThreshold: 0.5,
+        hybridSearchEnabled: false,
+        llmQueryRewritingEnabled: false,
       };
 
       setSettings(ragData);
@@ -158,6 +162,8 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         cacheTTLSeconds: ragData.cacheTTLSeconds,
         chunkingStrategy: ragData.chunkingStrategy || 'recursive',
         semanticBreakpointThreshold: ragData.semanticBreakpointThreshold ?? 0.5,
+        hybridSearchEnabled: ragData.hybridSearchEnabled ?? false,
+        llmQueryRewritingEnabled: ragData.llmQueryRewritingEnabled ?? false,
       });
 
       if (data.embedding) {
@@ -369,6 +375,8 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         cacheTTLSeconds: settings.cacheTTLSeconds,
         chunkingStrategy: settings.chunkingStrategy,
         semanticBreakpointThreshold: settings.semanticBreakpointThreshold,
+        hybridSearchEnabled: settings.hybridSearchEnabled ?? false,
+        llmQueryRewritingEnabled: settings.llmQueryRewritingEnabled ?? false,
       });
       setIsModified(false);
     }
@@ -782,7 +790,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
                 </div>
               )}
             </div>
-            <div className="flex gap-6 pt-4 border-t">
+            <div className="flex flex-wrap gap-6 pt-4 border-t">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -801,7 +809,32 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
                 />
                 <span className="text-sm text-gray-700">Response Caching</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editedSettings.hybridSearchEnabled}
+                  onChange={(e) => handleChange('hybridSearchEnabled', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Hybrid Search (BM25 + Dense)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editedSettings.llmQueryRewritingEnabled}
+                  onChange={(e) => handleChange('llmQueryRewritingEnabled', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">LLM Query Rewriting</span>
+              </label>
             </div>
+            {editedSettings.hybridSearchEnabled && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  Hybrid search requires re-indexing existing documents to generate sparse vectors. New documents will be indexed automatically.
+                </p>
+              </div>
+            )}
             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
                 Chunk size/overlap changes only affect new documents. Use &quot;Refresh All&quot; on the Documents tab to reindex existing documents.

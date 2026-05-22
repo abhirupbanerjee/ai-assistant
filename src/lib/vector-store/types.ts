@@ -109,25 +109,37 @@ export interface VectorStoreClient {
 
   // ============ Query Operations ============
 
-  /**
-   * Query a single collection
-   */
-  query(
-    collectionName: string,
-    queryEmbedding: number[],
-    nResults: number,
-    filter?: Record<string, unknown>
-  ): Promise<VectorQueryResult>;
+   /**
+    * Query a single collection
+    * @param scoreThreshold - Optional minimum similarity threshold (0-1). If provided, overrides default.
+    * @param hybridSearch - If true, also search sparse vectors (BM25) and merge via RRF.
+    * @param queryText - Original query text (required for sparse vector tokenization when hybridSearch is true).
+    */
+   query(
+     collectionName: string,
+     queryEmbedding: number[],
+     nResults: number,
+     filter?: Record<string, unknown>,
+     scoreThreshold?: number,
+     hybridSearch?: boolean,
+     queryText?: string
+   ): Promise<VectorQueryResult>;
 
-  /**
-   * Query multiple collections and merge results (deduplicated, sorted by score)
-   */
-  queryMultipleCollections(
-    collectionNames: string[],
-    queryEmbedding: number[],
-    nResults: number,
-    filter?: Record<string, unknown>
-  ): Promise<VectorQueryResult>;
+   /**
+    * Query multiple collections and merge results (deduplicated, sorted by score)
+    * @param scoreThreshold - Optional minimum similarity threshold (0-1). If provided, overrides default.
+    * @param hybridSearch - If true, also search sparse vectors (BM25) and merge via RRF.
+    * @param queryText - Original query text (required for sparse vector tokenization when hybridSearch is true).
+    */
+   queryMultipleCollections(
+     collectionNames: string[],
+     queryEmbedding: number[],
+     nResults: number,
+     filter?: Record<string, unknown>,
+     scoreThreshold?: number,
+     hybridSearch?: boolean,
+     queryText?: string
+   ): Promise<VectorQueryResult>;
 }
 
 /**

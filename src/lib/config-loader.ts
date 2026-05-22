@@ -69,6 +69,8 @@ export interface RagConfig {
   queryExpansionEnabled: boolean;
   cacheEnabled: boolean;
   cacheTTLSeconds: number;
+  hybridSearchEnabled: boolean;
+  llmQueryRewritingEnabled: boolean;
 }
 
 export interface EmbeddingConfig {
@@ -447,6 +449,8 @@ function getHardcodedDefaults(): AppConfig {
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
+      hybridSearchEnabled: false,
+      llmQueryRewritingEnabled: false,
     },
     embedding: {
       model: 'text-embedding-3-large',

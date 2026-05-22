@@ -6,6 +6,7 @@
  */
 
 import { createEmbeddings, generateResponseWithTools } from './openai';
+import { createInternalCompletion } from './llm-client';
 import type { OpenAI } from 'openai';
 import { getVectorStore, getCollectionNames } from './vector-store';
 import {
@@ -36,9 +37,61 @@ import {
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from '@/types';
 
 /**
+ * Rewrite a query using an LLM to generate semantic variations.
+ * Results are cached in Redis for 1 hour.
+ * Gracefully returns empty array on any failure.
+ */
+async function rewriteQueryWithLLM(query: string): Promise<string[]> {
+  try {
+    const cacheKey = 'query-rewrite:' + hashQuery(query);
+    const cached = await getCachedQuery(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as string[];
+        if (Array.isArray(parsed) && parsed.every(q => typeof q === 'string')) {
+          return parsed;
+        }
+      } catch {
+        // Invalid cache, continue with LLM call
+      }
+    }
+
+    const prompt = `Generate 3-5 alternative phrasings for the search query below.
+Return ONLY a JSON array of strings. No markdown.
+Query: "${query}"`;
+
+    const response = await createInternalCompletion({
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant that generates search query variations. Always return a valid JSON array of strings.' },
+        { role: 'user', content: prompt },
+      ],
+      maxTokens: 256,
+      temperature: 0.3,
+    });
+
+    // Extract JSON array from response (may be wrapped in markdown code blocks)
+    const jsonMatch = response.match(/\[[\s\S]*?\]/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : response;
+    const variations = JSON.parse(jsonStr) as string[];
+
+    if (!Array.isArray(variations) || !variations.every(q => typeof q === 'string')) {
+      return [];
+    }
+
+    // Cache for 1 hour
+    await cacheQuery(cacheKey, JSON.stringify(variations), 3600);
+
+    return variations;
+  } catch (err) {
+    logger.warn('LLM query rewriting failed, falling back to acronym-only expansion', { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  }
+}
+
+/**
  * Generate expanded queries to improve retrieval coverage
  */
-async function expandQueries(originalQuery: string, enabled: boolean): Promise<string[]> {
+export async function expandQueries(originalQuery: string, enabled: boolean, llmRewritingEnabled: boolean = false): Promise<string[]> {
   const queries = [originalQuery];
 
   if (!enabled) {
@@ -59,6 +112,16 @@ async function expandQueries(originalQuery: string, enabled: boolean): Promise<s
       }
       if (lowerQuery.includes(expansion.toLowerCase())) {
         queries.push(originalQuery.replace(new RegExp(expansion, 'gi'), acronym.toUpperCase()));
+      }
+    }
+  }
+
+  // LLM-based semantic rewriting (opt-in)
+  if (llmRewritingEnabled) {
+    const rewritten = await rewriteQueryWithLLM(originalQuery);
+    for (const variation of rewritten) {
+      if (!queries.includes(variation)) {
+        queries.push(variation);
       }
     }
   }
@@ -158,9 +221,10 @@ export async function buildContext(
   queryEmbedding: number[],
   userDocPaths: string[] = [],
   additionalEmbeddings: number[][] = [],
-  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number },
+  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number; hybridSearchEnabled?: boolean },
   categorySlugs?: string[],
-  options: BuildContextOptions = {}
+  options: BuildContextOptions = {},
+  queryText?: string
 ): Promise<{
   globalChunks: RetrievedChunk[];
   userChunks: RetrievedChunk[];
@@ -199,10 +263,16 @@ export async function buildContext(
 
     logger.debug('Querying collections', { collectionsToQuery });
 
+    // Pass the similarity threshold to the vector store for consistent filtering
+    // This ensures Qdrant's pre-filter threshold matches RAG's post-filter threshold
     const results = await store.queryMultipleCollections(
       collectionsToQuery,
       embedding,
-      topKChunks
+      topKChunks,
+      undefined, // filter
+      similarityThreshold, // scoreThreshold
+      ragSettings.hybridSearchEnabled, // hybridSearch
+      queryText // queryText for sparse vector tokenization
     );
 
     logger.debug('Query returned', {
@@ -495,7 +565,7 @@ export async function ragQuery(
 
   // Get RAG settings from SQLite config
   const ragSettings = await getRagSettings();
-  const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled } = ragSettings;
+  const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled, llmQueryRewritingEnabled } = ragSettings;
 
   // Include category info in cache key for category-specific results
   const cacheKeyBase = categorySlugs?.length
@@ -516,7 +586,7 @@ export async function ragQuery(
   }
 
   // Expand query for better retrieval (if enabled)
-  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled);
+  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled, llmQueryRewritingEnabled);
 
   // Create embeddings for all queries
   const allQueryEmbeddings = await createEmbeddings(expandedQueries);
@@ -529,7 +599,9 @@ export async function ragQuery(
     userDocPaths,
     additionalEmbeddings,
     ragSettings,
-    categorySlugs
+    categorySlugs,
+    undefined,
+    userMessage
   );
 
   // Detect follow-up and extract previous sources for boosting

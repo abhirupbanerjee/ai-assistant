@@ -8,7 +8,7 @@
 import type { Source, StreamEvent, SkillInfo, UploadExtractionState, Message } from '@/types';
 import type { RetrievedChunk } from '@/types';
 import { createEmbeddings } from '../openai';
-import { buildContext } from '../rag';
+import { buildContext, expandQueries } from '../rag';
 import { rerankChunks } from '../reranker';
 import { getRagSettings, getAcronymMappings } from '../db/compat/config';
 import { getResolvedSystemPrompt } from '../db/compat/category-prompts';
@@ -94,33 +94,6 @@ export interface RAGRetrievalResult {
   toolRoutingMatches: ToolRoutingMatch[];
   /** Citation trajectory data (pre-rerank and post-rerank scores) */
   trajectoryData?: ChunkTrajectoryData[];
-}
-
-/**
- * Expand queries using acronym mappings
- */
-async function expandQueries(originalQuery: string, enabled: boolean): Promise<string[]> {
-  const queries = [originalQuery];
-
-  if (!enabled) {
-    return queries;
-  }
-
-  const lowerQuery = originalQuery.toLowerCase();
-  const acronymExpansions = await getAcronymMappings();
-
-  for (const [acronym, expansions] of Object.entries(acronymExpansions)) {
-    for (const expansion of expansions) {
-      if (lowerQuery.includes(acronym.toLowerCase())) {
-        queries.push(originalQuery.replace(new RegExp(acronym, 'gi'), expansion));
-      }
-      if (lowerQuery.includes(expansion.toLowerCase())) {
-        queries.push(originalQuery.replace(new RegExp(expansion, 'gi'), acronym.toUpperCase()));
-      }
-    }
-  }
-
-  return queries.slice(0, MAX_QUERY_EXPANSIONS);
 }
 
 /**
@@ -234,7 +207,7 @@ export async function performRAGRetrieval(
   conversationHistory: Message[] = []
 ): Promise<RAGRetrievalResult> {
   const ragSettings = await getRagSettings();
-  const { queryExpansionEnabled } = ragSettings;
+  const { queryExpansionEnabled, llmQueryRewritingEnabled } = ragSettings;
   const uploadDirected = isUploadDirectedQuery(userMessage, userDocPaths.length > 0);
 
   logger.debug('Starting RAG retrieval', { categorySlugs, userDocPaths: userDocPaths.length, uploadDirected });
@@ -245,7 +218,7 @@ export async function performRAGRetrieval(
     : [];
 
   // Expand query for better retrieval
-  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled);
+  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled, llmQueryRewritingEnabled);
 
   // Create embeddings for all queries
   const allQueryEmbeddings = await createEmbeddings(expandedQueries);
@@ -264,7 +237,8 @@ export async function performRAGRetrieval(
       userDocMaxChunks: MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
       userDocReturnChunks: MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
       sampleUserDocChunks: true,
-    } : undefined
+    } : undefined,
+    userMessage
   );
 
   // Detect follow-up and extract previous sources for boosting

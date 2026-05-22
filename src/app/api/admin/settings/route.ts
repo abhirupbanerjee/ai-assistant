@@ -287,6 +287,8 @@ export async function PUT(request: NextRequest) {
           cacheTTLSeconds,
           chunkingStrategy,
           semanticBreakpointThreshold,
+          hybridSearchEnabled,
+          llmQueryRewritingEnabled,
         } = settings;
 
         if (typeof topKChunks !== 'number' || !isFinite(topKChunks) || topKChunks < 1 || topKChunks > 50) {
@@ -360,6 +362,8 @@ export async function PUT(request: NextRequest) {
           cacheTTLSeconds,
           chunkingStrategy: chunkingStrategy || 'recursive',
           semanticBreakpointThreshold: semanticBreakpointThreshold ?? 0.5,
+          hybridSearchEnabled: Boolean(hybridSearchEnabled),
+          llmQueryRewritingEnabled: Boolean(llmQueryRewritingEnabled),
         }, user.email);
         break;
       }

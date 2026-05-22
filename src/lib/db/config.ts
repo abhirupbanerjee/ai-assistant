@@ -37,6 +37,8 @@ export interface RagSettings {
   cacheTTLSeconds: number;
   chunkingStrategy: 'recursive' | 'semantic';  // Chunking algorithm (default: 'recursive')
   semanticBreakpointThreshold: number;         // Sensitivity for semantic chunking (0.3-0.8, default: 0.5)
+  hybridSearchEnabled: boolean;
+  llmQueryRewritingEnabled: boolean;
 }
 
 export interface LlmSettings {
@@ -609,6 +611,9 @@ export function getRagSettings(): RagSettings {
     // Provide defaults for new chunking fields if not in config
     chunkingStrategy: 'recursive',
     semanticBreakpointThreshold: 0.5,
+    // Provide defaults for new hybrid/rewriting fields if not in config
+    hybridSearchEnabled: false,
+    llmQueryRewritingEnabled: false,
     // Override with database settings if present
     ...dbSettings,
   };

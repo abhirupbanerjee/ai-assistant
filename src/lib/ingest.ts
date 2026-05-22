@@ -12,6 +12,7 @@ import { RecursiveTextSplitter } from './chunking/recursive-splitter';
 import path from 'path';
 import { createEmbeddings } from './openai';
 import { SemanticChunker } from './chunking/semantic-chunker';
+import { extractHeadings, enrichChunkWithHeading } from './chunking/heading-extractor';
 import { getVectorStore, getCollectionNames } from './vector-store';
 import { readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, writeFileBuffer } from './storage';
 import { getRagSettings } from './db/compat/config';
@@ -116,6 +117,9 @@ export async function chunkText(
     console.log(`[Ingest] Using semantic chunking (threshold: ${settings.semanticBreakpointThreshold})`);
   }
 
+  // Extract headings from full text for context enrichment
+  const headings = extractHeadings(text);
+
   // If we have page information, chunk each page separately to preserve page numbers
   if (pages && pages.length > 0) {
     const allChunks: DocumentChunk[] = [];
@@ -127,9 +131,12 @@ export async function chunkText(
       const pageChunks = await splitTextFn(page.text);
 
       for (const chunkText of pageChunks) {
+        // Enrich chunk with nearest heading context
+        const enrichedText = enrichChunkWithHeading(chunkText, text, headings);
+
         allChunks.push({
           id: `${documentId}-chunk-${chunkIndex}`,
-          text: chunkText,
+          text: enrichedText,
           metadata: {
             documentId,
             documentName,
@@ -150,19 +157,24 @@ export async function chunkText(
   // Fallback: chunk without page info (all page 1)
   const chunks = await splitTextFn(text);
 
-  return chunks.map((chunk, index) => ({
-    id: `${documentId}-chunk-${index}`,
-    text: chunk,
-    metadata: {
-      documentId,
-      documentName,
-      pageNumber: 1,
-      chunkIndex: index,
-      source,
-      threadId,
-      userId,
-    },
-  }));
+  return chunks.map((chunk, index) => {
+    // Enrich chunk with nearest heading context
+    const enrichedText = enrichChunkWithHeading(chunk, text, headings);
+
+    return {
+      id: `${documentId}-chunk-${index}`,
+      text: enrichedText,
+      metadata: {
+        documentId,
+        documentName,
+        pageNumber: 1,
+        chunkIndex: index,
+        source,
+        threadId,
+        userId,
+      },
+    };
+  });
 }
 
 /**
