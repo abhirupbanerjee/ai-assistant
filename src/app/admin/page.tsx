@@ -25,6 +25,7 @@ import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
 import SpeechSettingsTab from '@/components/admin/settings/SpeechSettings';
+import DisplaySettingsPanel from '@/components/admin/settings/DisplaySettingsPanel';
 import DashboardPage from '@/components/admin/dashboard/DashboardPage';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
@@ -116,7 +117,7 @@ type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type AgentsSection = 'config' | 'bots';
 type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup';
+type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -252,7 +253,7 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
 const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
 
 function AdminPageContent() {
@@ -1174,6 +1175,12 @@ function AdminPageContent() {
               {settingsSection === 'cache' && (
                 <CacheSettingsTab />
               )}
+
+              {/* Display Section */}
+              {settingsSection === 'display' && (
+                <DisplaySettingsPanel />
+              )}
+
               {/* Branding, Backup, Agent, Memory, Summarization, Limits, and Superuser moved to other tabs */}
           </>
         )}

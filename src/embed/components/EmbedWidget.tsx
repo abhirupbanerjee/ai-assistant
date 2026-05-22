@@ -27,6 +27,7 @@ export function EmbedWidget({
 }: EmbedWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [showSources, setShowSources] = useState(true);
 
   const {
     messages,
@@ -53,6 +54,18 @@ export function EmbedWidget({
       });
     }
   }, [isOpen, initialized, initialize]);
+
+  // Fetch display settings on mount
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/api/settings/display`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && typeof data.sourcesEnabled === 'boolean') {
+          setShowSources(data.sourcesEnabled);
+        }
+      })
+      .catch(() => { /* default to enabled */ });
+  }, [apiBaseUrl]);
 
   // Calculate position styles
   const positionStyles: React.CSSProperties = {
@@ -112,6 +125,7 @@ export function EmbedWidget({
                 onSendMessage={sendMessage}
                 onClearMessages={clearMessages}
                 onClose={handleClose}
+                showSources={showSources}
               />
             </div>
           ) : error ? (

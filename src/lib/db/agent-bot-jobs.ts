@@ -47,6 +47,7 @@ function rowToJob(row: AgentBotJobRow): AgentBotJob {
     error_code: row.error_code,
     processing_time_ms: row.processing_time_ms,
     token_usage_json: row.token_usage_json ? JSON.parse(row.token_usage_json) : null,
+    sources_json: row.sources_json ? JSON.parse(row.sources_json) : null,
     created_at: row.created_at,
     expires_at: row.expires_at,
   };

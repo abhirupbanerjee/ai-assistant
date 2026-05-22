@@ -98,6 +98,11 @@ export async function GET(
         return item;
       });
 
+      // Add sources if available
+      if (job.sources_json) {
+        response.sources = job.sources_json;
+      }
+
       // Add token usage and processing time
       if (job.token_usage_json) {
         response.tokenUsage = job.token_usage_json;

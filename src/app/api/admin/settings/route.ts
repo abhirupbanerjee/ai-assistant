@@ -37,6 +37,8 @@ import {
   BRANDING_ICONS,
   getDefaultSystemPrompt,
   setPWASettings,
+  getDisplaySettings,
+  setDisplaySettings,
 } from '@/lib/db/compat';
 import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
@@ -100,6 +102,7 @@ export async function GET() {
     const limitsSettings = await getLimitsSettings();
     const tokenLimitsSettings = await getTokenLimitsSettings();
     const ocrSettings = await getOcrSettings();
+    const displaySettings = await getDisplaySettings();
 
     // Get metadata for last updated info
     const ragMeta = await getSettingMetadata('rag-settings');
@@ -116,6 +119,7 @@ export async function GET() {
     const uploadMeta = await getSettingMetadata('upload-limits');
     const retentionMeta = await getSettingMetadata('retention-settings');
     const ocrMeta = await getSettingMetadata('ocr-settings');
+    const displayMeta = await getSettingMetadata('display-settings');
 
     return NextResponse.json({
       rag: {
@@ -213,6 +217,11 @@ export async function GET() {
           'azure-di': Boolean((ocrSettings.azureDiEndpoint && ocrSettings.azureDiKey) || (process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY)),
           'pdf-parse': true,
         },
+      },
+      display: {
+        ...displaySettings,
+        updatedAt: displayMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: displayMeta?.updatedBy || 'system',
       },
       availableModels: await getAvailableModels(),
       brandingIcons: BRANDING_ICONS,
@@ -1449,6 +1458,39 @@ export async function PUT(request: NextRequest) {
         });
       }
 
+      case 'display': {
+        const { sourcesEnabled, citationTrajectoryEnabled } = settings;
+
+        if (sourcesEnabled !== undefined && typeof sourcesEnabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'sourcesEnabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (citationTrajectoryEnabled !== undefined && typeof citationTrajectoryEnabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'citationTrajectoryEnabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = await setDisplaySettings({
+          ...(sourcesEnabled !== undefined ? { sourcesEnabled } : {}),
+          ...(citationTrajectoryEnabled !== undefined ? { citationTrajectoryEnabled } : {}),
+        }, user.email);
+
+        const displayMeta = await getSettingMetadata('display-settings');
+        return NextResponse.json({
+          success: true,
+          display: {
+            ...result,
+            updatedAt: displayMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: displayMeta?.updatedBy || user.email,
+          },
+        });
+      }
+
       case 'restoreAllDefaults': {
         // Delete all settings from SQLite to fall back to JSON config defaults
         const settingKeys = [
@@ -1468,6 +1510,7 @@ export async function PUT(request: NextRequest) {
           'ocr-settings',
           'limits-settings',
           'token-limits-settings',
+          'display-settings',
           'model-token-limits',
         ] as const;
 

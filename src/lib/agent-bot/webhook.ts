@@ -89,7 +89,8 @@ export function buildCompletedPayload(
   agentBotSlug: string,
   outputs: InvokeOutputItem[],
   tokenUsage?: TokenUsage,
-  processingTimeMs?: number
+  processingTimeMs?: number,
+  sources?: unknown[]
 ): WebhookPayload {
   return {
     event: 'job.completed',
@@ -98,6 +99,7 @@ export function buildCompletedPayload(
     agentBotSlug,
     status: 'completed',
     outputs,
+    sources: sources as WebhookPayload['sources'],
     tokenUsage,
     processingTimeMs,
     timestamp: new Date().toISOString(),
@@ -285,7 +287,8 @@ export async function notifyJobCompleted(
     agentBotSlug,
     outputs,
     tokenUsage,
-    processingTimeMs
+    processingTimeMs,
+    job.sources_json || undefined
   );
 
   return deliverWebhook(

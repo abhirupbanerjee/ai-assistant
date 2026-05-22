@@ -40,6 +40,7 @@ function rowToVersion(row: AgentBotVersionRow): AgentBotVersion {
     temperature: row.temperature,
     max_tokens: row.max_tokens,
     is_active: row.is_active === 1,
+    include_sources: row.include_sources === 1,
     created_by: row.created_by,
     created_at: row.created_at,
     updated_at: row.updated_at,

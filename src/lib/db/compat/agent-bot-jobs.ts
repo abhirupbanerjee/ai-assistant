@@ -66,6 +66,11 @@ function rowToJob(row: AgentBotJobRow): AgentBotJob {
           ? JSON.parse(row.token_usage_json)
           : row.token_usage_json)
       : null,
+    sources_json: row.sources_json
+      ? (typeof row.sources_json === 'string'
+          ? JSON.parse(row.sources_json)
+          : row.sources_json)
+      : null,
     created_at: row.created_at,
     expires_at: row.expires_at,
   };
@@ -201,7 +206,8 @@ export async function startJob(id: string): Promise<AgentBotJob | null> {
 export async function completeJob(
   id: string,
   tokenUsage?: TokenUsage,
-  processingTimeMs?: number
+  processingTimeMs?: number,
+  sourcesJson?: unknown[]
 ): Promise<AgentBotJob | null> {
   const db = await getDb();
   await db
@@ -211,6 +217,7 @@ export async function completeJob(
       completed_at: sql`NOW()`,
       token_usage_json: tokenUsage ? JSON.stringify(tokenUsage) : null,
       processing_time_ms: processingTimeMs ?? null,
+      sources_json: sourcesJson ? JSON.stringify(sourcesJson) : null,
     })
     .where('id', '=', id)
     .execute();

@@ -70,6 +70,7 @@ import type {
   SttRouteConfig,
   TtsProviderConfig,
 } from '../config';
+import type { DisplaySettings } from '@/types/stream';
 
 import type { ToolConfig } from '../tool-config';
 
@@ -780,6 +781,32 @@ export async function setSpeechSettings(
   }
 
   await setSetting('speech-settings', merged, updatedBy);
+  return merged;
+}
+
+// ============ Display Settings ============
+
+const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
+  sourcesEnabled: true,
+  citationTrajectoryEnabled: true,
+};
+
+export async function getDisplaySettings(): Promise<DisplaySettings> {
+  const stored = await getSetting<Partial<DisplaySettings>>('display-settings');
+  if (!stored) return DEFAULT_DISPLAY_SETTINGS;
+  return { ...DEFAULT_DISPLAY_SETTINGS, ...stored };
+}
+
+export async function setDisplaySettings(
+  settings: Partial<DisplaySettings>,
+  updatedBy?: string
+): Promise<DisplaySettings> {
+  const current = await getDisplaySettings();
+  const merged: DisplaySettings = {
+    sourcesEnabled: settings.sourcesEnabled ?? current.sourcesEnabled,
+    citationTrajectoryEnabled: settings.citationTrajectoryEnabled ?? current.citationTrajectoryEnabled,
+  };
+  await setSetting('display-settings', merged, updatedBy);
   return merged;
 }
 

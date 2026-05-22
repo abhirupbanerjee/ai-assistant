@@ -44,6 +44,6 @@ export default async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     // Include /e/ routes (for embed CSP headers) + all protected routes
-    '/((?!api/auth|api/w/|api/agent-bots|api/branding|auth/signin|auth/error|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons).*)',
+    '/((?!api/auth|api/w/|api/agent-bots|api/branding|api/settings/autonomous|api/settings/display|auth/signin|auth/error|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons).*)',
   ],
 };

@@ -8,6 +8,8 @@
  * - Integration with skills, categories, and tools
  */
 
+import type { Source } from './index';
+
 // ============================================================================
 // Core Types
 // ============================================================================
@@ -66,6 +68,7 @@ export interface AgentBotVersion {
   temperature: number | null;
   max_tokens: number | null;
   is_active: boolean;
+  include_sources: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -219,6 +222,7 @@ export interface AgentBotJob {
   error_code: string | null;
   processing_time_ms: number | null;
   token_usage_json: TokenUsage | null;
+  sources_json: Source[] | null;
   created_at: string;
   expires_at: string | null;
 }
@@ -305,6 +309,7 @@ export interface InvokeResponse {
   jobId: string;
   status?: JobStatus;
   outputs?: InvokeOutputItem[];
+  sources?: Source[];
   tokenUsage?: TokenUsage;
   processingTimeMs?: number;
   usedFallback?: boolean; // True if the primary output type failed and fallback was used
@@ -328,6 +333,7 @@ export interface JobStatusResponse {
   jobId: string;
   status: JobStatus;
   outputs?: InvokeOutputItem[];
+  sources?: Source[];
   tokenUsage?: TokenUsage;
   processingTimeMs?: number;
   error?: {
@@ -346,6 +352,7 @@ export interface WebhookPayload {
   agentBotSlug: string;
   status: JobStatus;
   outputs?: InvokeOutputItem[];
+  sources?: Source[];
   tokenUsage?: TokenUsage;
   processingTimeMs?: number;
   error?: {
@@ -432,6 +439,7 @@ export interface CreateAgentBotVersionInput {
   llm_model?: string;
   temperature?: number;
   max_tokens?: number;
+  include_sources?: boolean;
   category_ids?: number[];
   skill_ids?: number[];
   tools?: { tool_name: string; is_enabled: boolean; config_override?: Record<string, unknown> }[];
@@ -447,6 +455,7 @@ export interface UpdateAgentBotVersionInput {
   llm_model?: string;
   temperature?: number;
   max_tokens?: number;
+  include_sources?: boolean;
   category_ids?: number[];
   skill_ids?: number[];
   tools?: { tool_name: string; is_enabled: boolean; config_override?: Record<string, unknown> }[];
@@ -488,6 +497,7 @@ export interface AgentBotVersionRow {
   temperature: number | null;
   max_tokens: number | null;
   is_active: number;
+  include_sources: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -528,6 +538,7 @@ export interface AgentBotJobRow {
   error_code: string | null;
   processing_time_ms: number | null;
   token_usage_json: string | null;
+  sources_json: string | null;
   created_at: string;
   expires_at: string | null;
 }

@@ -7,6 +7,7 @@ import FileUpload from './FileUpload';
 import ModeToggle, { ChatMode } from './ModeToggle';
 import WebSearchToggle from './WebSearchToggle';
 import CitationTrajectoryToggle from './CitationTrajectoryToggle';
+import SourcesToggle from './SourcesToggle';
 
 // Lazy-load LanguageSelector and ToneSelector (rarely used on first interaction)
 const DynamicLanguageSelector = dynamic(() => import('./LanguageSelector'), { ssr: false });
@@ -42,6 +43,12 @@ interface PlusMenuProps {
   // CitationTrajectoryToggle props
   showCitationTrajectory: boolean;
   onCitationTrajectoryToggle: (enabled: boolean) => void;
+  // SourcesToggle props
+  showSources: boolean;
+  onSourcesToggle: (enabled: boolean) => void;
+  adminSourcesDisabled?: boolean;
+  // CitationTrajectoryToggle admin control
+  adminCitationTrajectoryDisabled?: boolean;
   // General
   disabled?: boolean;
 }
@@ -62,6 +69,10 @@ export default function PlusMenu({
   onToneChange,
   showCitationTrajectory,
   onCitationTrajectoryToggle,
+  showSources,
+  onSourcesToggle,
+  adminSourcesDisabled,
+  adminCitationTrajectoryDisabled,
   disabled,
 }: PlusMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -157,10 +168,17 @@ export default function PlusMenu({
                  onToggle={onWebSearchToggle}
                  disabled={disabled}
                />
-               <CitationTrajectoryToggle
-                 enabled={showCitationTrajectory}
-                 onToggle={onCitationTrajectoryToggle}
+                <CitationTrajectoryToggle
+                  enabled={showCitationTrajectory}
+                  onToggle={onCitationTrajectoryToggle}
+                  disabled={disabled}
+                  adminDisabled={adminCitationTrajectoryDisabled}
+                />
+               <SourcesToggle
+                 enabled={showSources}
+                 onToggle={onSourcesToggle}
                  disabled={disabled}
+                 adminDisabled={adminSourcesDisabled}
                />
              </div>
            </div>

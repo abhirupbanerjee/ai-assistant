@@ -104,6 +104,9 @@ export {
   type SttProviderConfig,
   type SttRouteConfig,
   type TtsProviderConfig,
+  // Display Settings
+  getDisplaySettings,
+  setDisplaySettings,
   // Constants
   DEFAULT_PWA_SETTINGS,
   DEFAULT_OCR_SETTINGS,

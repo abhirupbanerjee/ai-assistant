@@ -22,6 +22,7 @@ import {
   addJobFile,
   updateJobInputFiles,
   updateFileExtractionStatus,
+  getDisplaySettings,
 } from '@/lib/db/compat';
 import { generateResponseWithTools } from '@/lib/openai';
 import { performRAGRetrieval } from '@/lib/streaming';
@@ -41,7 +42,7 @@ import type {
   OutputType,
   TokenUsage,
 } from '@/types/agent-bot';
-import type { Message } from '@/types';
+import type { Message, Source } from '@/types';
 
 // ============================================================================
 // Types
@@ -60,6 +61,7 @@ export interface ExecutionResult {
   success: boolean;
   job: AgentBotJob;
   outputs: InvokeOutputItem[];
+  sources?: Source[];
   tokenUsage?: TokenUsage;
   processingTimeMs: number;
   error?: {
@@ -138,12 +140,12 @@ export async function buildSystemPrompt(version: AgentBotVersionWithRelations): 
 export async function buildRagContext(
   version: AgentBotVersionWithRelations,
   userQuery: string
-): Promise<string> {
+): Promise<{ context: string; sources: Source[] }> {
   // Use category names as slugs for RAG retrieval
   const categorySlugs = version.category_names || [];
 
   if (categorySlugs.length === 0) {
-    return '';
+    return { context: '', sources: [] };
   }
 
   try {
@@ -158,10 +160,13 @@ export async function buildRagContext(
       [] // Empty conversation history for single-turn API
     );
 
-    return ragResult.context;
+    return {
+      context: ragResult.context,
+      sources: ragResult.sources,
+    };
   } catch (error) {
     console.error('[Executor] RAG query failed:', error);
-    return '';
+    return { context: '', sources: [] };
   }
 }
 
@@ -200,10 +205,12 @@ async function executeLlm(
   ctx: ExecutionContext,
   systemPrompt: string,
   ragContext: string,
+  ragSources: Source[],
   userMessage: string
 ): Promise<{
   content: string;
   tokenUsage?: TokenUsage;
+  sources: Source[];
 }> {
   const { version } = ctx;
 
@@ -239,6 +246,7 @@ async function executeLlm(
 
   return {
     content: result.content,
+    sources: ragSources,
     tokenUsage: {
       promptTokens,
       completionTokens,
@@ -387,10 +395,10 @@ export async function executeInvocation(
     const systemPrompt = await buildSystemPrompt(version);
 
     // 7. Build RAG context from categories
-    const ragContext = await buildRagContext(version, userMessage);
+    const ragResult = await buildRagContext(version, userMessage);
 
     // 8. Execute LLM
-    const llmResult = await executeLlm(ctx, systemPrompt, ragContext, userMessage);
+    const llmResult = await executeLlm(ctx, systemPrompt, ragResult.context, ragResult.sources, userMessage);
 
     // 9. Generate output using the output generator module
     const generatedOutput = await generateOutputFile({
@@ -414,7 +422,10 @@ export async function executeInvocation(
 
     // 11. Complete job
     const processingTimeMs = Date.now() - startTime;
-    const completedJob = await completeJob(job.id, llmResult.tokenUsage, processingTimeMs);
+    const globalDisplaySettings = await getDisplaySettings();
+    const effectiveIncludeSources = globalDisplaySettings.sourcesEnabled && version.include_sources;
+    const sourcesToStore = effectiveIncludeSources ? llmResult.sources : undefined;
+    const completedJob = await completeJob(job.id, llmResult.tokenUsage, processingTimeMs, sourcesToStore);
 
     // 12. Format output for response
     const outputs: InvokeOutputItem[] = [
@@ -433,6 +444,7 @@ export async function executeInvocation(
       success: true,
       job: completedJob || job,
       outputs,
+      sources: sourcesToStore,
       tokenUsage: llmResult.tokenUsage,
       processingTimeMs,
     };

@@ -98,6 +98,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           webSearchEnabled: typeof parsed.webSearchEnabled === 'boolean' ? parsed.webSearchEnabled : DEFAULT_CHAT_PREFERENCES.webSearchEnabled,
           targetLanguage: typeof parsed.targetLanguage === 'string' ? parsed.targetLanguage : DEFAULT_CHAT_PREFERENCES.targetLanguage,
           responseTone: typeof parsed.responseTone === 'string' ? parsed.responseTone : DEFAULT_CHAT_PREFERENCES.responseTone,
+          showSources: typeof parsed.showSources === 'boolean' ? parsed.showSources : DEFAULT_CHAT_PREFERENCES.showSources,
           showCitationTrajectory: typeof parsed.showCitationTrajectory === 'boolean' ? parsed.showCitationTrajectory : DEFAULT_CHAT_PREFERENCES.showCitationTrajectory,
           thinkingEnabled: typeof parsed.thinkingEnabled === 'boolean' ? parsed.thinkingEnabled : DEFAULT_CHAT_PREFERENCES.thinkingEnabled,
         };
@@ -121,6 +122,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     });
   }, []);
   const [autonomousAdminDisabled, setAutonomousAdminDisabled] = useState(false);
+  const [displaySettings, setDisplaySettings] = useState({ sourcesEnabled: true, citationTrajectoryEnabled: true });
   const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
 
@@ -324,7 +326,23 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       })
       .catch(() => { /* default to enabled */ });
 
+    // Fetch display settings (sources + citation trajectory)
+    fetch('/api/settings/display')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          setDisplaySettings({
+            sourcesEnabled: data.sourcesEnabled ?? true,
+            citationTrajectoryEnabled: data.citationTrajectoryEnabled ?? true,
+          });
+        }
+      })
+      .catch(() => { /* default to enabled */ });
   }, []);
+
+  // Effective display flags (admin override AND-gated with user preference)
+  const effectiveShowSources = displaySettings.sourcesEnabled && chatPreferences.showSources;
+  const effectiveShowCitationTrajectory = displaySettings.citationTrajectoryEnabled && chatPreferences.showCitationTrajectory;
 
   // Ref to track if a send is in progress (prevents race condition with activeThread change)
   const isSendingRef = useRef(false);
@@ -722,7 +740,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             key={`archived-${message.id}`}
             message={message}
             threadId={threadId}
-            showCitationTrajectory={chatPreferences.showCitationTrajectory}
+            showSources={effectiveShowSources}
+            showCitationTrajectory={effectiveShowCitationTrajectory}
           />
         ))}
 
@@ -742,7 +761,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             key={message.id}
             message={message}
             threadId={threadId}
-            showCitationTrajectory={chatPreferences.showCitationTrajectory}
+            showSources={effectiveShowSources}
+            showCitationTrajectory={effectiveShowCitationTrajectory}
             onRegenerate={
               message.role === 'assistant' && !streamingState.isStreaming
                 ? () => {
@@ -1012,6 +1032,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            preferences={chatPreferences}
            onPreferencesChange={setChatPreferences}
            autonomousAdminDisabled={autonomousAdminDisabled}
+           adminSourcesDisabled={!displaySettings.sourcesEnabled}
+           adminCitationTrajectoryDisabled={!displaySettings.citationTrajectoryEnabled}
            onFocus={onInputFocus}
            onBlur={onInputBlur}
             categoryChipSlot={

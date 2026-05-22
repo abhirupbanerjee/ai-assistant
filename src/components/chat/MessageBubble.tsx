@@ -56,11 +56,13 @@ interface MessageBubbleProps {
   onRegenerate?: () => void;
   /** Thread ID for citation trajectory card */
   threadId?: string | null;
+  /** Whether to show source documents */
+  showSources?: boolean;
   /** Whether to show citation trajectory card */
   showCitationTrajectory?: boolean;
 }
 
-export default function MessageBubble({ message, isStreaming = false, onRegenerate, threadId, showCitationTrajectory = true }: MessageBubbleProps) {
+export default function MessageBubble({ message, isStreaming = false, onRegenerate, threadId, showSources = true, showCitationTrajectory = true }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -228,7 +230,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
           </div>
         )}
 
-        {sortedSources.length > 0 && (
+        {sortedSources.length > 0 && showSources && (
           <div
             className={`mt-3 pt-3 border-t ${isUser ? '' : 'border-gray-300'}`}
             style={isUser ? { borderColor: 'rgba(255, 255, 255, 0.3)' } : undefined}

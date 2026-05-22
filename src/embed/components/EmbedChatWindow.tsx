@@ -16,6 +16,7 @@ interface EmbedChatWindowProps {
   onSendMessage: (content: string) => void;
   onClearMessages: () => void;
   onClose: () => void;
+  showSources?: boolean;
 }
 
 export function EmbedChatWindow({
@@ -26,6 +27,7 @@ export function EmbedChatWindow({
   onSendMessage,
   onClearMessages,
   onClose,
+  showSources = true,
 }: EmbedChatWindowProps) {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -121,7 +123,7 @@ export function EmbedChatWindow({
         ) : (
           <>
             {messages.map((message) => (
-              <EmbedMessage key={message.id} message={message} />
+              <EmbedMessage key={message.id} message={message} showSources={showSources} />
             ))}
             <div ref={messagesEndRef} />
           </>

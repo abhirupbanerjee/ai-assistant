@@ -296,6 +296,7 @@ export interface ChatPreferences {
   webSearchEnabled: boolean;
   targetLanguage: string;
   responseTone: string;
+  showSources: boolean;
   showCitationTrajectory: boolean;
   thinkingEnabled: boolean;
 }
@@ -307,9 +308,20 @@ export const DEFAULT_CHAT_PREFERENCES: ChatPreferences = {
   webSearchEnabled: true,
   targetLanguage: 'en',
   responseTone: 'default',
+  showSources: true,
   showCitationTrajectory: true,
   thinkingEnabled: false,
 };
+
+/**
+ * Global display settings controlled by admin
+ */
+export interface DisplaySettings {
+  sourcesEnabled: boolean;
+  citationTrajectoryEnabled: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
 
 // ============ Request/Response Types ============
 

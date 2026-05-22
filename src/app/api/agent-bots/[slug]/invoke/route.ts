@@ -240,6 +240,10 @@ export async function POST(
       processingTimeMs: result.processingTimeMs,
     };
 
+    if (result.sources) {
+      response.sources = result.sources;
+    }
+
     const nextResponse = NextResponse.json(response);
     return addRateLimitHeaders(nextResponse, rateLimitInfo);
   } catch (error) {

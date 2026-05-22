@@ -42,6 +42,7 @@ interface Version {
   llm_model: string | null;
   temperature: number | null;
   max_tokens: number | null;
+  include_sources: boolean;
   created_by: string;
   created_at: string;
   categories?: Array<{ id: number; name: string }>;
@@ -131,6 +132,7 @@ export default function VersionEditor({
   const [versionLabel, setVersionLabel] = useState(version?.version_label || '');
   const [isDefault, setIsDefault] = useState(version?.is_default || false);
   const [isActive, setIsActive] = useState(version?.is_active ?? true);
+  const [includeSources, setIncludeSources] = useState(version?.include_sources ?? false);
   const [systemPrompt, setSystemPrompt] = useState(version?.system_prompt || '');
   const [llmModel, setLlmModel] = useState(version?.llm_model || '');
   const [temperature, setTemperature] = useState<number | ''>(version?.temperature ?? '');
@@ -378,6 +380,7 @@ export default function VersionEditor({
         version_label: versionLabel.trim() || undefined,
         is_default: isDefault,
         is_active: isActive,
+        include_sources: includeSources,
         input_schema: inputSchema,
         output_config: outputConfig,
         system_prompt: systemPrompt.trim() || undefined,
@@ -754,6 +757,24 @@ export default function VersionEditor({
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Include RAG Sources */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={includeSources}
+                  onChange={(e) => setIncludeSources(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Include RAG Sources in Response
+                </span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 ml-6">
+                When enabled, API responses will include the source documents that were retrieved for RAG context.
+              </p>
             </div>
           </div>
         )}

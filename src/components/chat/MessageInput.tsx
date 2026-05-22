@@ -38,6 +38,9 @@ interface MessageInputProps {
   onPreferencesChange: (preferences: ChatPreferences) => void;
   // Autonomous mode admin control
   autonomousAdminDisabled?: boolean;
+  // Sources display admin control
+  adminSourcesDisabled?: boolean;
+  adminCitationTrajectoryDisabled?: boolean;
   // Model readiness — false when no valid model is available for the active route
   modelReady?: boolean;
   pendingModelId?: string | null;
@@ -69,6 +72,8 @@ export default function MessageInput({
   preferences,
   onPreferencesChange,
   autonomousAdminDisabled,
+  adminSourcesDisabled,
+  adminCitationTrajectoryDisabled,
   modelReady = true,
   pendingModelId,
   onPendingModelChange,
@@ -207,6 +212,10 @@ export default function MessageInput({
 
   const handleCitationTrajectoryToggle = useCallback((enabled: boolean) => {
     onPreferencesChange({ ...preferences, showCitationTrajectory: enabled });
+  }, [preferences, onPreferencesChange]);
+
+  const handleSourcesToggle = useCallback((enabled: boolean) => {
+    onPreferencesChange({ ...preferences, showSources: enabled });
   }, [preferences, onPreferencesChange]);
 
   const handleThinkingToggle = useCallback(() => {
@@ -451,6 +460,10 @@ export default function MessageInput({
               onToneChange={handleToneChange}
               showCitationTrajectory={preferences.showCitationTrajectory}
               onCitationTrajectoryToggle={handleCitationTrajectoryToggle}
+              showSources={preferences.showSources}
+              onSourcesToggle={handleSourcesToggle}
+              adminSourcesDisabled={adminSourcesDisabled}
+              adminCitationTrajectoryDisabled={adminCitationTrajectoryDisabled}
             />
             {currentModelInfo?.thinkingCapable && (
               <button

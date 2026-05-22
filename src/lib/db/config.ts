@@ -452,7 +452,9 @@ export type SettingKey =
   // LLM Routes
   | 'routes-settings'
   // Speech (STT + TTS)
-  | 'speech-settings';
+  | 'speech-settings'
+  // Display (Sources + Citation Trajectory)
+  | 'display-settings';
 
 // ============ Speech Settings Types ============
 

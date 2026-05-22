@@ -51,6 +51,7 @@ function rowToVersion(row: AgentBotVersionRow): AgentBotVersion {
     temperature: row.temperature,
     max_tokens: row.max_tokens,
     is_active: row.is_active === 1,
+    include_sources: row.include_sources === 1,
     created_by: row.created_by,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -263,6 +264,7 @@ export async function createVersion(
       temperature: input.temperature ?? null,
       max_tokens: input.max_tokens ?? null,
       is_active: 1,
+      include_sources: input.include_sources !== false ? 1 : 0,
       created_by: createdBy,
     })
     .execute();
@@ -341,6 +343,10 @@ export async function updateVersion(
 
   if (updates.max_tokens !== undefined) {
     updateData.max_tokens = updates.max_tokens;
+  }
+
+  if (updates.include_sources !== undefined) {
+    updateData.include_sources = updates.include_sources ? 1 : 0;
   }
 
   await db
@@ -520,6 +526,7 @@ export async function duplicateVersion(
     llm_model: updates?.llm_model ?? source.llm_model ?? undefined,
     temperature: updates?.temperature ?? source.temperature ?? undefined,
     max_tokens: updates?.max_tokens ?? source.max_tokens ?? undefined,
+    include_sources: updates?.include_sources ?? source.include_sources,
     category_ids: updates?.category_ids || source.category_ids,
     skill_ids: updates?.skill_ids || source.skill_ids,
     tools:

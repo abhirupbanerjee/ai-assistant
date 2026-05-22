@@ -793,6 +793,7 @@ export interface AgentBotVersionsTable {
   temperature: number | null;
   max_tokens: number | null;
   is_active: Generated<number>;
+  include_sources: Generated<number>;
   created_by: string;
   created_at: Generated<string>;
   updated_at: Generated<string>;
@@ -869,6 +870,7 @@ export interface AgentBotJobsTable {
   error_code: string | null;
   processing_time_ms: number | null;
   token_usage_json: string | null;
+  sources_json: string | null;
   created_at: Generated<string>;
   expires_at: string | null;
 }

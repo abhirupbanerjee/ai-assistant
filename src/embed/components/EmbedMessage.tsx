@@ -9,10 +9,11 @@ import type { EmbedMessage as EmbedMessageType } from '../types';
 
 interface EmbedMessageProps {
   message: EmbedMessageType;
+  showSources?: boolean;
 }
 
-export function EmbedMessage({ message }: EmbedMessageProps) {
-  const [showSources, setShowSources] = useState(false);
+export function EmbedMessage({ message, showSources: showSourcesProp = true }: EmbedMessageProps) {
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const isUser = message.role === 'user';
 
   // Simple markdown-like rendering
@@ -45,11 +46,11 @@ export function EmbedMessage({ message }: EmbedMessageProps) {
         </div>
       )}
 
-      {!isUser && message.sources && message.sources.length > 0 && !message.isStreaming && (
+      {!isUser && showSourcesProp && message.sources && message.sources.length > 0 && !message.isStreaming && (
         <div className="policybot-embed-sources">
           <button
             className="policybot-embed-sources-toggle"
-            onClick={() => setShowSources(!showSources)}
+            onClick={() => setSourcesExpanded(!sourcesExpanded)}
           >
             <svg
               viewBox="0 0 24 24"
@@ -57,7 +58,7 @@ export function EmbedMessage({ message }: EmbedMessageProps) {
               stroke="currentColor"
               strokeWidth="2"
               style={{
-                transform: showSources ? 'rotate(90deg)' : 'rotate(0deg)',
+                transform: sourcesExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                 transition: 'transform 0.2s',
               }}
             >
@@ -66,7 +67,7 @@ export function EmbedMessage({ message }: EmbedMessageProps) {
             {message.sources.length} source{message.sources.length !== 1 ? 's' : ''}
           </button>
 
-          {showSources && (
+          {sourcesExpanded && (
             <div className="policybot-embed-sources-list">
               {message.sources.slice(0, 3).map((source, idx) => (
                 <div key={idx} className="policybot-embed-source-item">

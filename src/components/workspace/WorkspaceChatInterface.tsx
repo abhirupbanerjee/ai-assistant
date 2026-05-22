@@ -52,6 +52,7 @@ interface WorkspaceChatInterfaceProps {
   sessionId: string | null;
   onSendMessage: (message: string, attachments?: string[]) => void;
   onRetry?: () => void;
+  showSources?: boolean;
 }
 
 export function WorkspaceChatInterface({
@@ -71,6 +72,7 @@ export function WorkspaceChatInterface({
   sessionId,
   onSendMessage,
   onRetry,
+  showSources = true,
 }: WorkspaceChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
@@ -182,6 +184,7 @@ export function WorkspaceChatInterface({
                 key={message.id}
                 message={message}
                 primaryColor={primaryColor}
+                showSources={showSources}
               />
             ))}
 
@@ -197,6 +200,7 @@ export function WorkspaceChatInterface({
                   isStreaming: true,
                 }}
                 primaryColor={primaryColor}
+                showSources={showSources}
               />
             )}
 
@@ -331,10 +335,11 @@ function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
 interface MessageBubbleProps {
   message: WorkspaceChatMessage;
   primaryColor: string;
+  showSources?: boolean;
 }
 
-function MessageBubble({ message, primaryColor }: MessageBubbleProps) {
-  const [showSources, setShowSources] = useState(false);
+function MessageBubble({ message, primaryColor, showSources: showSourcesProp = true }: MessageBubbleProps) {
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const isUser = message.role === 'user';
 
   return (
@@ -365,17 +370,17 @@ function MessageBubble({ message, primaryColor }: MessageBubbleProps) {
         </div>
 
         {/* Sources */}
-        {!isUser && message.sources && message.sources.length > 0 && !message.isStreaming && (
+        {!isUser && showSourcesProp && message.sources && message.sources.length > 0 && !message.isStreaming && (
           <div className="mt-2 pt-2 border-t border-gray-200">
             <button
-              onClick={() => setShowSources(!showSources)}
+              onClick={() => setSourcesExpanded(!sourcesExpanded)}
               className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
             >
-              <span>{showSources ? '▼' : '▶'}</span>
+              <span>{sourcesExpanded ? '▼' : '▶'}</span>
               {message.sources.length} source{message.sources.length !== 1 ? 's' : ''}
             </button>
 
-            {showSources && (
+            {sourcesExpanded && (
               <div className="mt-2 space-y-1">
                 {message.sources.slice(0, 5).map((source, idx) => (
                   <div

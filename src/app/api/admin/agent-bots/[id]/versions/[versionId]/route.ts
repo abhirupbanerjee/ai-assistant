@@ -73,6 +73,7 @@ interface UpdateVersionRequest {
   llm_model?: string;
   temperature?: number;
   max_tokens?: number;
+  include_sources?: boolean;
   category_ids?: number[];
   skill_ids?: number[];
   tools?: Array<{
@@ -139,6 +140,7 @@ export async function PATCH(
       llm_model: body.llm_model,
       temperature: body.temperature,
       max_tokens: body.max_tokens,
+      include_sources: body.include_sources,
       category_ids: body.category_ids,
       skill_ids: body.skill_ids,
       tools: body.tools,
