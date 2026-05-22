@@ -1016,7 +1016,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_bot_jobs_created ON agent_bot_jobs(created_
 CREATE TABLE IF NOT EXISTS agent_bot_job_outputs (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL,
-  output_type TEXT NOT NULL CHECK (output_type IN ('text', 'json', 'pdf', 'docx', 'xlsx', 'pptx', 'image', 'podcast', 'md')),
+  output_type TEXT NOT NULL CHECK (output_type IN ('text', 'json', 'pdf', 'docx', 'xlsx', 'pptx', 'image', 'podcast', 'md', 'chart', 'diagram')),
   content TEXT,
   filename TEXT,
   filepath TEXT,

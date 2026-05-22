@@ -9,6 +9,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
 import {
   getDefaultVersion,
   getVersionByNumber,
@@ -18,12 +19,17 @@ import {
   completeJob,
   failJob,
   addJobOutput,
+  addJobFile,
+  updateJobInputFiles,
+  updateFileExtractionStatus,
 } from '@/lib/db/compat';
 import { generateResponseWithTools } from '@/lib/openai';
 import { performRAGRetrieval } from '@/lib/streaming';
 import { getSkillById } from '@/lib/db/compat/skills';
 import { getToolDefinitions, AVAILABLE_TOOLS, isToolEnabled } from '@/lib/tools';
 import { generateOutput as generateOutputFile } from './output-generator';
+import { getUploadedFile, removeUploadedFile, moveUploadedFileToPermanent } from './uploaded-files';
+import { extractText } from '@/lib/document-extractor';
 import type {
   AgentBot,
   AgentBotApiKey,
@@ -193,15 +199,13 @@ export function getExcludedTools(enabledTools: string[]): string[] {
 async function executeLlm(
   ctx: ExecutionContext,
   systemPrompt: string,
-  ragContext: string
+  ragContext: string,
+  userMessage: string
 ): Promise<{
   content: string;
   tokenUsage?: TokenUsage;
 }> {
-  const { version, request } = ctx;
-
-  // Build user message from input
-  const userMessage = formatUserInput(request.input);
+  const { version } = ctx;
 
   // Empty conversation history for single-turn API calls
   const conversationHistory: Message[] = [];
@@ -329,7 +333,46 @@ export async function executeInvocation(
   // 4. Start job
   await startJob(job.id);
 
+  let userMessage = formatUserInput(request.input);
+
   try {
+    // Process uploaded files
+    if (request.files && request.files.length > 0) {
+      let fileContext = '';
+      for (const fileId of request.files) {
+        const fileInfo = getUploadedFile(fileId);
+        if (!fileInfo) {
+          throw new Error(`Uploaded file '${fileId}' not found or expired`);
+        }
+
+        const buffer = fs.readFileSync(fileInfo.filepath);
+        const extraction = await extractText(buffer, fileInfo.mimeType, fileInfo.originalFilename);
+
+        const permanent = await moveUploadedFileToPermanent(fileId, job.id);
+        if (!permanent) {
+          throw new Error(`Failed to persist uploaded file '${fileId}'`);
+        }
+
+        const jobFile = await addJobFile({
+          jobId: job.id,
+          originalFilename: permanent.originalFilename,
+          storedFilepath: permanent.filepath,
+          fileSize: permanent.fileSize,
+          mimeType: permanent.mimeType,
+        });
+
+        await updateFileExtractionStatus(jobFile.id, 'ready', extraction.text);
+
+        fileContext += `\n\n--- Content from ${permanent.originalFilename} ---\n${extraction.text}`;
+      }
+
+      await updateJobInputFiles(job.id, request.files);
+
+      if (fileContext) {
+        userMessage = `${fileContext.trim()}\n\n${userMessage}`;
+      }
+    }
+
     // 5. Build execution context
     const ctx: ExecutionContext = {
       agentBot,
@@ -344,11 +387,10 @@ export async function executeInvocation(
     const systemPrompt = await buildSystemPrompt(version);
 
     // 7. Build RAG context from categories
-    const userQuery = formatUserInput(request.input);
-    const ragContext = await buildRagContext(version, userQuery);
+    const ragContext = await buildRagContext(version, userMessage);
 
     // 8. Execute LLM
-    const llmResult = await executeLlm(ctx, systemPrompt, ragContext);
+    const llmResult = await executeLlm(ctx, systemPrompt, ragContext, userMessage);
 
     // 9. Generate output using the output generator module
     const generatedOutput = await generateOutputFile({
@@ -411,6 +453,13 @@ export async function executeInvocation(
         code: 'PROCESSING_ERROR',
       },
     };
+  } finally {
+    // Clean up any remaining temp files
+    if (request.files && request.files.length > 0) {
+      for (const fileId of request.files) {
+        removeUploadedFile(fileId);
+      }
+    }
   }
 }
 
@@ -425,7 +474,7 @@ export async function createAsyncJob(
 ): Promise<AgentBotJob> {
   const outputType = request.outputType || version.output_config.defaultType;
 
-  return await createJob({
+  const job = await createJob({
     agentBotId: agentBot.id,
     versionId: version.id,
     apiKeyId: apiKey.id,
@@ -434,6 +483,12 @@ export async function createAsyncJob(
     webhookUrl: request.webhookUrl,
     webhookSecret: request.webhookSecret,
   });
+
+  if (request.files && request.files.length > 0) {
+    await updateJobInputFiles(job.id, request.files);
+  }
+
+  return job;
 }
 
 // ============================================================================
@@ -454,6 +509,8 @@ function getMimeType(outputType: OutputType): string {
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     image: 'image/png',
     podcast: 'audio/mpeg',
+    chart: 'image/png',
+    diagram: 'image/svg+xml',
   };
   return mimeTypes[outputType] || 'application/octet-stream';
 }

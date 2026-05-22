@@ -19,7 +19,9 @@ import {
   validateRequest,
   formatValidationErrors,
   getEffectiveOutputType,
+  type FileValidationInput,
 } from '@/lib/agent-bot/validator';
+import { getUploadedFile } from '@/lib/agent-bot/uploaded-files';
 import {
   executeInvocation,
   resolveVersion,
@@ -32,6 +34,7 @@ import {
 } from '@/lib/agent-bot/webhook';
 import { getJobWithOutputs, getActiveAgentBotBySlug, listApiKeys, createApiKey } from '@/lib/db/compat';
 import { getCurrentUser } from '@/lib/auth';
+import { runWithContextAsync } from '@/lib/request-context';
 import type { InvokeRequest, InvokeResponse, AsyncJobResponse, AgentBotError, RateLimitInfo } from '@/types/agent-bot';
 
 // ============================================================================
@@ -139,9 +142,30 @@ export async function POST(
     }
 
     // 4. Validate input against schema
+    // Build file validation inputs from uploaded file IDs
+    let fileValidationInputs: FileValidationInput[] | undefined;
+    if (body.files && body.files.length > 0) {
+      fileValidationInputs = [];
+      for (const fileId of body.files) {
+        const fileInfo = getUploadedFile(fileId);
+        if (!fileInfo) {
+          const response = agentBotErrors.inputValidationError(
+            `Uploaded file '${fileId}' not found or expired`
+          );
+          return addRateLimitHeaders(response, rateLimitInfo);
+        }
+        fileValidationInputs.push({
+          filename: fileInfo.originalFilename,
+          size: fileInfo.fileSize,
+          mimeType: fileInfo.mimeType,
+        });
+      }
+    }
+
     const validationResult = validateRequest(
       {
         input: body.input || {},
+        files: fileValidationInputs,
         outputType: body.outputType,
       },
       {
@@ -176,7 +200,8 @@ export async function POST(
         agentBot,
         apiKey,
         body,
-        request.url
+        request.url,
+        version.category_ids
       ).catch((error) => {
         console.error('[AgentBot] Async job processing failed:', error);
       });
@@ -191,7 +216,10 @@ export async function POST(
     }
 
     // ================== SYNC EXECUTION ==================
-    const result = await executeInvocation(agentBot, apiKey, body);
+    const result = await runWithContextAsync(
+      { categoryIds: version.category_ids },
+      () => executeInvocation(agentBot, apiKey, body)
+    );
 
     // Record usage
     if (!adminTestMode) {
@@ -239,7 +267,8 @@ async function processAsyncJob(
   agentBot: { id: string; slug: string },
   apiKey: { id: string; agent_bot_id: string },
   request: InvokeRequest,
-  requestUrl: string
+  requestUrl: string,
+  categoryIds: number[]
 ): Promise<void> {
   try {
     // Get the full API key and bot objects
@@ -252,8 +281,11 @@ async function processAsyncJob(
       throw new Error('Failed to load agent bot or API key');
     }
 
-    // Execute the invocation
-    const result = await executeInvocation(fullAgentBot, fullApiKey, request);
+    // Execute the invocation with request context for tool access
+    const result = await runWithContextAsync(
+      { categoryIds },
+      () => executeInvocation(fullAgentBot, fullApiKey, request)
+    );
 
     // Get base URL for webhook
     const url = new URL(requestUrl);

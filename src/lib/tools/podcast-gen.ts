@@ -668,19 +668,31 @@ Select the best matching voice for each role.`;
   };
 }
 
-// ===== Main Generation Function =====
+// ===== Raw Buffer Generation (no DB save) =====
+
+export interface PodcastBufferResult {
+  success: boolean;
+  buffer: Buffer;
+  duration: number;
+  format: AudioFormat;
+  provider: TTSProvider;
+  model: string;
+  voice: string;
+  style: 'formal' | 'conversational' | 'news';
+  length: 'short' | 'medium' | 'long';
+  formatterResult: FormatterResult;
+  error?: { code: string; message: string };
+}
 
 /**
- * Generate a podcast from text content
- * @param args - Tool arguments (topic, content, style, length)
- * @param configOverride - Optional skill-level config override
+ * Generate a podcast audio buffer without saving to database.
+ * Used by agent-bot output generator where no thread context exists.
  */
-export async function generatePodcast(
+export async function generatePodcastBuffer(
   args: PodcastGenToolArgs,
   configOverride?: Record<string, unknown>
-): Promise<PodcastGenResponse> {
+): Promise<PodcastBufferResult> {
   const baseConfig = await getPodcastGenConfig();
-  const startTime = Date.now();
 
   // Merge skill-level config override with global config
   let config: PodcastGenConfig = baseConfig;
@@ -700,6 +712,15 @@ export async function generatePodcast(
   if (config.activeProvider === 'none') {
     return {
       success: false,
+      buffer: Buffer.alloc(0),
+      duration: 0,
+      format: config.outputFormat,
+      provider: config.activeProvider as TTSProvider,
+      model: '',
+      voice: '',
+      style: config.defaultStyle,
+      length: config.defaultLength,
+      formatterResult: { script: '', estimatedDuration: 0, wordCount: 0 },
       error: {
         code: 'DISABLED',
         message: 'Podcast generation is disabled. Configure a TTS provider in Admin settings.',
@@ -707,28 +728,19 @@ export async function generatePodcast(
     };
   }
 
-  // Check Speech settings TTS provider is enabled globally
-  try {
-    const { getSpeechSettings } = await import('@/lib/db/compat/config');
-    const speechSettings = await getSpeechSettings();
-    const ttsProvider = config.activeProvider as 'openai' | 'gemini';
-    if (speechSettings.tts.providers[ttsProvider] && !speechSettings.tts.providers[ttsProvider].enabled) {
-      return {
-        success: false,
-        error: {
-          code: 'PROVIDER_DISABLED',
-          message: `${ttsProvider === 'openai' ? 'OpenAI' : 'Gemini'} TTS is disabled in Speech settings. Enable it in Admin > Settings > Speech.`,
-        },
-      };
-    }
-  } catch {
-    // If speech settings unavailable, fall through to existing checks
-  }
-
   // Validate selected provider is enabled in podcast config
   if (config.activeProvider === 'openai' && !config.providers.openai.enabled) {
     return {
       success: false,
+      buffer: Buffer.alloc(0),
+      duration: 0,
+      format: config.outputFormat,
+      provider: 'openai',
+      model: '',
+      voice: '',
+      style: config.defaultStyle,
+      length: config.defaultLength,
+      formatterResult: { script: '', estimatedDuration: 0, wordCount: 0 },
       error: {
         code: 'PROVIDER_DISABLED',
         message: 'OpenAI TTS provider is not enabled.',
@@ -739,6 +751,15 @@ export async function generatePodcast(
   if (config.activeProvider === 'gemini' && !config.providers.gemini.enabled) {
     return {
       success: false,
+      buffer: Buffer.alloc(0),
+      duration: 0,
+      format: 'wav',
+      provider: 'gemini',
+      model: '',
+      voice: '',
+      style: config.defaultStyle,
+      length: config.defaultLength,
+      formatterResult: { script: '', estimatedDuration: 0, wordCount: 0 },
       error: {
         code: 'PROVIDER_DISABLED',
         message: 'Gemini TTS provider is not enabled.',
@@ -761,17 +782,14 @@ export async function generatePodcast(
     let providerVoice: string;
 
     if (provider === 'gemini') {
-      // Gemini path: Multi-speaker dialogue format + Gemini TTS
       const geminiConfig = config.providers.gemini;
 
-      // Step 0: Auto-select voices if enabled
       if (geminiConfig.autoSelectVoices && (geminiConfig.hostAccent || geminiConfig.expertAccent)) {
         const selectedVoices = await selectVoicesWithLLM(args.topic, geminiConfig);
         geminiConfig.hostVoice = selectedVoices.hostVoice;
         geminiConfig.expertVoice = selectedVoices.expertVoice;
       }
 
-      // Step 1: Format content for dialogue (if multi-speaker) or single narrator
       if (geminiConfig.multiSpeaker) {
         formatterResult = await formatContentForDialogue(args.content, style, length);
       } else {
@@ -781,6 +799,15 @@ export async function generatePodcast(
       if (!formatterResult.script) {
         return {
           success: false,
+          buffer: Buffer.alloc(0),
+          duration: 0,
+          format: 'wav',
+          provider,
+          model: '',
+          voice: '',
+          style,
+          length,
+          formatterResult,
           error: {
             code: 'FORMAT_ERROR',
             message: 'Failed to format content for audio',
@@ -788,7 +815,6 @@ export async function generatePodcast(
         };
       }
 
-      // Append AI disclaimer to script if enabled
       const disclaimerConfig = await getDisclaimerConfigIfEnabled();
       if (disclaimerConfig) {
         const disclaimerLine = geminiConfig.multiSpeaker
@@ -797,22 +823,29 @@ export async function generatePodcast(
         formatterResult.script += disclaimerLine;
       }
 
-      // Step 2: Generate audio with Gemini TTS
       const geminiResult = await generateAudioWithGemini(formatterResult.script, config);
       buffer = geminiResult.buffer;
       duration = geminiResult.duration;
-      actualFormat = geminiResult.format;  // 'wav' for Gemini
+      actualFormat = geminiResult.format;
       providerModel = geminiConfig.model;
       providerVoice = geminiConfig.multiSpeaker
         ? `${geminiConfig.hostVoice}/${geminiConfig.expertVoice}`
         : geminiConfig.hostVoice;
     } else {
-      // OpenAI path: Single narrator + OpenAI TTS
       formatterResult = await formatContentForAudio(args.content, style, length, config);
 
       if (!formatterResult.script) {
         return {
           success: false,
+          buffer: Buffer.alloc(0),
+          duration: 0,
+          format: config.outputFormat,
+          provider,
+          model: '',
+          voice: '',
+          style,
+          length,
+          formatterResult,
           error: {
             code: 'FORMAT_ERROR',
             message: 'Failed to format content for audio',
@@ -820,63 +853,137 @@ export async function generatePodcast(
         };
       }
 
-      // Append AI disclaimer to script if enabled
       const disclaimerConfig = await getDisclaimerConfigIfEnabled();
       if (disclaimerConfig) {
         formatterResult.script += `\n\n${disclaimerConfig.fullText}.`;
       }
 
-      // Step 2: Generate audio with OpenAI TTS
       const openaiResult = await generateAudioWithOpenAI(formatterResult.script, config);
       buffer = openaiResult.buffer;
       duration = openaiResult.duration;
-      actualFormat = config.outputFormat;  // 'mp3' for OpenAI
+      actualFormat = config.outputFormat;
       providerModel = config.providers.openai.model;
       providerVoice = config.providers.openai.voice;
     }
 
-    // Step 3: Save to disk and database
-    const saved = await savePodcast(
+    return {
+      success: true,
       buffer,
+      duration,
+      format: actualFormat,
+      provider,
+      model: providerModel,
+      voice: providerVoice,
+      style,
+      length,
+      formatterResult,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('[PodcastGen] Generation failed:', errorMessage);
+
+    let errorCode = 'GENERATION_ERROR';
+    if (errorMessage.includes('API key')) {
+      errorCode = 'INVALID_API_KEY';
+    } else if (errorMessage.includes('rate limit')) {
+      errorCode = 'RATE_LIMIT';
+    }
+
+    return {
+      success: false,
+      buffer: Buffer.alloc(0),
+      duration: 0,
+      format: config.outputFormat,
+      provider: config.activeProvider as TTSProvider,
+      model: '',
+      voice: '',
+      style: config.defaultStyle,
+      length: config.defaultLength,
+      formatterResult: { script: '', estimatedDuration: 0, wordCount: 0 },
+      error: {
+        code: errorCode,
+        message: errorMessage,
+      },
+    };
+  }
+}
+
+// ===== Main Generation Function (with DB save) =====
+
+/**
+ * Generate a podcast from text content
+ * @param args - Tool arguments (topic, content, style, length)
+ * @param configOverride - Optional skill-level config override
+ */
+export async function generatePodcast(
+  args: PodcastGenToolArgs,
+  configOverride?: Record<string, unknown>
+): Promise<PodcastGenResponse> {
+  const startTime = Date.now();
+  const rawResult = await generatePodcastBuffer(args, configOverride);
+
+  if (!rawResult.success || rawResult.error) {
+    return {
+      success: false,
+      error: rawResult.error || { code: 'GENERATION_ERROR', message: 'Unknown error' },
+    };
+  }
+
+  try {
+    const baseConfig = await getPodcastGenConfig();
+    let config: PodcastGenConfig = baseConfig;
+    if (configOverride) {
+      const overrideProviders = configOverride.providers as Record<string, Record<string, unknown>> | undefined;
+      config = {
+        ...baseConfig,
+        ...configOverride,
+        providers: {
+          openai: { ...baseConfig.providers.openai, ...(overrideProviders?.openai || {}) },
+          gemini: { ...baseConfig.providers.gemini, ...(overrideProviders?.gemini || {}) },
+        },
+      } as PodcastGenConfig;
+    }
+
+    const saved = await savePodcast(
+      rawResult.buffer,
       args,
       config,
-      formatterResult,
-      duration,
-      actualFormat,
-      provider,
-      providerModel,
-      providerVoice
+      rawResult.formatterResult,
+      rawResult.duration,
+      rawResult.format,
+      rawResult.provider,
+      rawResult.model,
+      rawResult.voice
     );
 
     const processingTimeMs = Date.now() - startTime;
     console.log(`[PodcastGen] Completed in ${processingTimeMs}ms: ${saved.downloadUrl}`);
 
-    // Build response with podcast hint for frontend
     const podcastHint: PodcastHint = {
       id: saved.id,
-      filename: `${args.topic.substring(0, 50)}_podcast.${actualFormat}`,
-      duration,
-      format: actualFormat,
+      filename: `${args.topic.substring(0, 50)}_podcast.${rawResult.format}`,
+      duration: rawResult.duration,
+      format: rawResult.format,
       downloadUrl: saved.downloadUrl,
-      streamUrl: saved.downloadUrl, // Same endpoint, browser will stream
+      streamUrl: saved.downloadUrl,
     };
 
     return {
       success: true,
-      message: `Podcast generated successfully (${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}). Do NOT call podcast_gen again unless the user explicitly requests another podcast.`,
+      message: `Podcast generated successfully (${Math.floor(rawResult.duration / 60)}:${(rawResult.duration % 60).toString().padStart(2, '0')}). Do NOT call podcast_gen again unless the user explicitly requests another podcast.`,
       podcastHint,
       metadata: {
-        provider,
-        model: providerModel,
-        voice: providerVoice,
-        style,
-        length,
+        provider: rawResult.provider,
+        model: rawResult.model,
+        voice: rawResult.voice,
+        style: rawResult.style,
+        length: rawResult.length,
         processingTimeMs,
       },
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    console.error('[PodcastGen] Generation failed:', errorMessage);
+    console.error('[PodcastGen] Save failed:', errorMessage);
 
     let errorCode = 'GENERATION_ERROR';
     if (errorMessage.includes('API key')) {

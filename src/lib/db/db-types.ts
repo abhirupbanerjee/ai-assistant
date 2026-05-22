@@ -882,7 +882,7 @@ export type AgentBotJobUpdate = Updateable<AgentBotJobsTable>;
 export interface AgentBotJobOutputsTable {
   id: string;
   job_id: string;
-  output_type: 'text' | 'json' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'podcast' | 'md';
+  output_type: 'text' | 'json' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'podcast' | 'md' | 'chart' | 'diagram';
   content: string | null;
   filename: string | null;
   filepath: string | null;

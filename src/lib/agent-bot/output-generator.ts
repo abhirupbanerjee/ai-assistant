@@ -14,7 +14,14 @@ import { generatePdf } from '@/lib/docgen/pdf-builder';
 import { generateDocx } from '@/lib/docgen/docx-builder';
 import { generateMd } from '@/lib/docgen/md-builder';
 import { generateXlsx } from '@/lib/xlsxgen/xlsx-builder';
+import { generatePptx } from '@/lib/pptxgen/pptx-builder';
 import type { SheetDefinition } from '@/types/xlsx-gen';
+import type { SlideDefinition } from '@/types/pptx-gen';
+import type { ChartBlockConfig } from '@/lib/docgen/html/types';
+import { serverRenderAll } from '@/lib/docgen/html/server-renderer';
+import { generateMermaidDiagram } from '@/lib/diagram-gen/generator';
+import { generateImageBuffer } from '@/lib/image-gen/provider-factory';
+import { generatePodcastBuffer } from '@/lib/tools/podcast-gen';
 import {
   getOutputDirectory,
   type BrandingConfig,
@@ -335,15 +342,19 @@ export async function generateOutput(params: GenerateOutputParams): Promise<Gene
       });
 
     case 'pptx':
+      return generatePptxOutput({ content, jobId, title, branding });
+
     case 'image':
+      return generateImageOutput({ content, jobId, title });
+
     case 'podcast':
-      // These require more complex processing
-      // For now, return the content as text with a note
-      return {
-        type: outputType,
-        content: `Output type '${outputType}' generation not yet implemented. Raw content:\n\n${content}`,
-        mimeType: getMimeType(outputType),
-      };
+      return generatePodcastOutput({ content, jobId, title });
+
+    case 'chart':
+      return generateChartOutput({ content, jobId, title });
+
+    case 'diagram':
+      return generateDiagramOutput({ content, jobId, title });
 
     default:
       return generateTextOutput(content);
@@ -368,6 +379,8 @@ function getMimeType(outputType: string): string {
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     image: 'image/png',
     podcast: 'audio/mpeg',
+    chart: 'image/png',
+    diagram: 'image/svg+xml',
   };
   return mimeTypes[outputType] || 'application/octet-stream';
 }
@@ -434,6 +447,321 @@ function extractTableData(content: string): SheetDefinition | null {
   }
 
   return null;
+}
+
+// ============================================================================
+// PPTX Generation
+// ============================================================================
+
+function parseMarkdownToSlides(content: string): SlideDefinition[] {
+  const slides: SlideDefinition[] = [];
+  const lines = content.split('\n');
+  let currentTitle = '';
+  let currentContent: string[] = [];
+  let inCodeBlock = false;
+
+  function flushSlide() {
+    if (currentTitle || currentContent.length > 0) {
+      if (slides.length === 0 && currentTitle) {
+        // First slide is title slide
+        slides.push({
+          type: 'title',
+          title: currentTitle,
+          content: currentContent.join('\n').trim() || undefined,
+        });
+      } else {
+        slides.push({
+          type: 'content',
+          title: currentTitle || 'Slide',
+          content: currentContent.join('\n').trim() || undefined,
+        });
+      }
+    }
+    currentTitle = '';
+    currentContent = [];
+  }
+
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      currentContent.push(line);
+      continue;
+    }
+
+    if (!inCodeBlock) {
+      const h1Match = line.match(/^#\s+(.+)$/);
+      const h2Match = line.match(/^##\s+(.+)$/);
+      if (h1Match || h2Match) {
+        flushSlide();
+        currentTitle = (h1Match || h2Match)![1].trim();
+        continue;
+      }
+    }
+
+    currentContent.push(line);
+  }
+
+  flushSlide();
+
+  // If no slides parsed, create a single content slide
+  if (slides.length === 0) {
+    slides.push({
+      type: 'content',
+      title: 'Presentation',
+      content: content.trim(),
+    });
+  }
+
+  return slides;
+}
+
+async function generatePptxOutput(params: {
+  content: string;
+  jobId: string;
+  title?: string;
+  branding?: Partial<BrandingConfig>;
+}): Promise<GeneratedOutput> {
+  const { content, jobId, title, branding } = params;
+  const outputDir = getAgentBotOutputDirectory();
+  const filename = generateFilename(title || 'presentation', 'pptx', jobId);
+  const filepath = path.join(outputDir, filename);
+
+  const slides = parseMarkdownToSlides(content);
+
+  const result = await generatePptx({
+    title: title || 'Presentation',
+    slides,
+    theme: 'corporate',
+    colorScheme: branding?.primaryColor
+      ? { primary: branding.primaryColor, secondary: '#666666', accent: '#003366' }
+      : undefined,
+    organizationName: branding?.organizationName,
+  });
+
+  fs.writeFileSync(filepath, result.buffer);
+
+  return {
+    type: 'pptx',
+    filename,
+    filepath,
+    fileSize: result.fileSize,
+    mimeType: getMimeType('pptx'),
+  };
+}
+
+// ============================================================================
+// Image Generation
+// ============================================================================
+
+async function generateImageOutput(params: {
+  content: string;
+  jobId: string;
+  title?: string;
+}): Promise<GeneratedOutput> {
+  const { content, jobId, title } = params;
+  const prompt = content.substring(0, 2000);
+
+  const result = await generateImageBuffer({
+    prompt: prompt || 'A professional illustration',
+    style: 'illustration',
+  });
+
+  if (!result.success || result.error) {
+    return generateTextOutput(
+      `Image generation failed: ${result.error?.message || 'Unknown error'}\n\n${content}`
+    );
+  }
+
+  const outputDir = getAgentBotOutputDirectory();
+  const ext = result.metadata.format === 'webp' ? 'webp' : 'png';
+  const filename = generateFilename(title || 'image', ext, jobId);
+  const filepath = path.join(outputDir, filename);
+
+  fs.writeFileSync(filepath, result.buffer);
+
+  return {
+    type: 'image',
+    filename,
+    filepath,
+    fileSize: result.metadata.sizeBytes,
+    mimeType: ext === 'webp' ? 'image/webp' : 'image/png',
+  };
+}
+
+// ============================================================================
+// Podcast Generation
+// ============================================================================
+
+async function generatePodcastOutput(params: {
+  content: string;
+  jobId: string;
+  title?: string;
+}): Promise<GeneratedOutput> {
+  const { content, jobId, title } = params;
+
+  const result = await generatePodcastBuffer({
+    topic: title || 'Generated Podcast',
+    content: content.substring(0, 4000),
+    style: 'conversational',
+    length: 'medium',
+  });
+
+  if (!result.success || result.error) {
+    return generateTextOutput(
+      `Podcast generation failed: ${result.error?.message || 'Unknown error'}\n\n${content}`
+    );
+  }
+
+  const outputDir = getAgentBotOutputDirectory();
+  const ext = result.format;
+  const filename = generateFilename(title || 'podcast', ext, jobId);
+  const filepath = path.join(outputDir, filename);
+
+  fs.writeFileSync(filepath, result.buffer);
+
+  return {
+    type: 'podcast',
+    filename,
+    filepath,
+    fileSize: result.buffer.length,
+    mimeType: ext === 'wav' ? 'audio/wav' : 'audio/mpeg',
+  };
+}
+
+// ============================================================================
+// Chart Generation
+// ============================================================================
+
+function extractChartData(content: string): { data: Record<string, unknown>[]; xField: string; yFields: string[] } | null {
+  // Try to find JSON array in content
+  const jsonMatches = content.match(/```(?:json)?\s*([\s\S]*?)```|\[\s*\{[\s\S]*?\}\s*\]/g);
+  if (!jsonMatches) return null;
+
+  for (const match of jsonMatches) {
+    const cleaned = match.replace(/```(?:json)?\s*|```/g, '').trim();
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null) {
+        const keys = Object.keys(parsed[0]);
+        const xField = keys.find(k => typeof parsed[0][k] === 'string') || keys[0];
+        const yFields = keys.filter(k => k !== xField && typeof parsed[0][k] === 'number');
+        if (yFields.length > 0) {
+          return { data: parsed, xField, yFields };
+        }
+      }
+    } catch {
+      // Continue to next match
+    }
+  }
+
+  return null;
+}
+
+async function generateChartOutput(params: {
+  content: string;
+  jobId: string;
+  title?: string;
+}): Promise<GeneratedOutput> {
+  const { content, jobId, title } = params;
+
+  const chartData = extractChartData(content);
+  if (!chartData) {
+    return generateTextOutput(
+      `Chart generation requires structured data in JSON format. No valid data found in content.\n\n${content}`
+    );
+  }
+
+  const config: ChartBlockConfig = {
+    title: title || 'Chart',
+    data: chartData.data,
+    x_field: chartData.xField,
+    y_fields: chartData.yFields,
+    recommended_chart: 'auto',
+  };
+
+  const renderResult = await serverRenderAll(
+    [{ index: 0, config }],
+    []
+  );
+
+  const renderedChart = renderResult.charts.get(0);
+  if (!renderedChart) {
+    return generateTextOutput(
+      `Chart rendering failed. Ensure Playwright is available.\n\n${content}`
+    );
+  }
+
+  // Extract base64 from data URL
+  const base64Match = renderedChart.pngDataUrl.match(/^data:image\/png;base64,(.+)$/);
+  if (!base64Match) {
+    return generateTextOutput('Chart rendering produced invalid output.');
+  }
+
+  const buffer = Buffer.from(base64Match[1], 'base64');
+  const outputDir = getAgentBotOutputDirectory();
+  const filename = generateFilename(title || 'chart', 'png', jobId);
+  const filepath = path.join(outputDir, filename);
+
+  fs.writeFileSync(filepath, buffer);
+
+  return {
+    type: 'chart',
+    filename,
+    filepath,
+    fileSize: buffer.length,
+    mimeType: 'image/png',
+  };
+}
+
+// ============================================================================
+// Diagram Generation
+// ============================================================================
+
+async function generateDiagramOutput(params: {
+  content: string;
+  jobId: string;
+  title?: string;
+}): Promise<GeneratedOutput> {
+  const { content, jobId, title } = params;
+
+  const diagramResult = await generateMermaidDiagram(
+    'flowchart',
+    content.substring(0, 2000),
+    undefined,
+    title
+  );
+
+  if (!diagramResult.success || !diagramResult.code) {
+    return generateTextOutput(
+      `Diagram generation failed: ${diagramResult.error?.message || 'Unknown error'}\n\n${content}`
+    );
+  }
+
+  const renderResult = await serverRenderAll(
+    [],
+    [{ index: 0, code: diagramResult.code }]
+  );
+
+  const renderedDiagram = renderResult.diagrams.get(0);
+  if (!renderedDiagram) {
+    return generateTextOutput(
+      `Diagram rendering failed. Ensure Playwright is available.\n\nMermaid code:\n\n${diagramResult.code}`
+    );
+  }
+
+  const outputDir = getAgentBotOutputDirectory();
+  const filename = generateFilename(title || 'diagram', 'svg', jobId);
+  const filepath = path.join(outputDir, filename);
+
+  fs.writeFileSync(filepath, renderedDiagram.svg);
+
+  return {
+    type: 'diagram',
+    filename,
+    filepath,
+    fileSize: renderedDiagram.svg.length,
+    mimeType: 'image/svg+xml',
+  };
 }
 
 /**

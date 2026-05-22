@@ -369,23 +369,42 @@ async function saveImage(
   };
 }
 
-// ===== Main Generation Function =====
+// ===== Raw Buffer Generation (no DB save) =====
+
+export interface ImageBufferResult {
+  success: boolean;
+  buffer: Buffer;
+  thumbnail?: Buffer;
+  provider: ImageProvider;
+  model: string;
+  enhancedPrompt: string;
+  revisedPrompt?: string;
+  metadata: {
+    width: number;
+    height: number;
+    format: string;
+    sizeBytes: number;
+  };
+  error?: { code: string; message: string };
+}
 
 /**
- * Generate an image using the configured provider
- *
- * @param args - Tool arguments from LLM
- * @returns Generation result with image hint for frontend
+ * Generate an image buffer without saving to database.
+ * Used by agent-bot output generator where no thread context exists.
  */
-export async function generateImage(
+export async function generateImageBuffer(
   args: ImageGenToolArgs
-): Promise<ImageGenResponse> {
+): Promise<ImageBufferResult> {
   const config = await getImageGenConfig();
 
-  // Check if enabled
   if (config.activeProvider === 'none') {
     return {
       success: false,
+      buffer: Buffer.alloc(0),
+      provider: 'openai',
+      model: '',
+      enhancedPrompt: '',
+      metadata: { width: 0, height: 0, format: '', sizeBytes: 0 },
       error: {
         code: 'DISABLED',
         message: 'Image generation is disabled by administrator',
@@ -393,20 +412,15 @@ export async function generateImage(
     };
   }
 
-  const startTime = Date.now();
-
   try {
-    // Select provider
     const provider = selectProvider(args, config);
     const providerConfig = config.providers[provider];
 
     console.log(`[ImageGen] Using provider: ${provider}`);
     console.log(`[ImageGen] Original prompt: "${args.prompt.substring(0, 50)}..."`);
 
-    // Enhance prompt
     const enhancedPrompt = enhancePrompt(args, config);
 
-    // Generate image with selected provider
     let rawBuffer: Buffer;
     let revisedPrompt: string | undefined;
 
@@ -423,13 +437,10 @@ export async function generateImage(
         providerConfig as typeof config.providers.gemini
       );
       rawBuffer = result.buffer;
-      // Gemini doesn't return revised prompt
     }
 
-    const generationTimeMs = Date.now() - startTime;
     console.log(`[ImageGen] Raw image received (${rawBuffer.length} bytes)`);
 
-    // Process and optimize image
     const processingOptions: ProcessingOptions = {
       maxDimension: config.imageProcessing.maxDimension,
       format: config.imageProcessing.format,
@@ -438,40 +449,116 @@ export async function generateImage(
       thumbnailSize: config.imageProcessing.thumbnailSize,
     };
 
-    // Get disclaimer config for watermarking
     const disclaimerConfig = await getDisclaimerConfigIfEnabled();
-
     const processed = await processImage(rawBuffer, processingOptions, disclaimerConfig);
 
     console.log(
       `[ImageGen] Processed: ${processed.metadata.originalWidth}x${processed.metadata.originalHeight} → ${processed.metadata.width}x${processed.metadata.height}, ${processed.metadata.sizeBytes} bytes`
     );
 
-    // Save to disk and database
     const model =
       provider === 'openai'
         ? config.providers.openai.model
         : config.providers.gemini.model;
 
-    const savedImage = await saveImage(
-      processed.main,
-      processed.thumbnail,
-      args,
+    return {
+      success: true,
+      buffer: processed.main,
+      thumbnail: processed.thumbnail,
       provider,
       model,
-      config,
-      {
+      enhancedPrompt,
+      revisedPrompt,
+      metadata: {
         width: processed.metadata.width,
         height: processed.metadata.height,
         format: processed.metadata.format,
         sizeBytes: processed.metadata.sizeBytes,
-        enhancedPrompt,
-        revisedPrompt,
-        generationTimeMs,
+      },
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error occurred';
+
+    console.error('[ImageGen] Generation failed:', errorMessage);
+
+    let errorCode = 'GENERATION_ERROR';
+    if (errorMessage.includes('API key')) {
+      errorCode = 'INVALID_API_KEY';
+    } else if (errorMessage.includes('rate limit')) {
+      errorCode = 'RATE_LIMIT';
+    } else if (errorMessage.includes('rejected') || errorMessage.includes('declined')) {
+      errorCode = 'CONTENT_REJECTED';
+    }
+
+    return {
+      success: false,
+      buffer: Buffer.alloc(0),
+      provider: 'openai',
+      model: '',
+      enhancedPrompt: '',
+      metadata: { width: 0, height: 0, format: '', sizeBytes: 0 },
+      error: {
+        code: errorCode,
+        message: errorMessage,
+      },
+    };
+  }
+}
+
+// ===== Main Generation Function (with DB save) =====
+
+/**
+ * Generate an image using the configured provider
+ *
+ * @param args - Tool arguments from LLM
+ * @returns Generation result with image hint for frontend
+ */
+export async function generateImage(
+  args: ImageGenToolArgs
+): Promise<ImageGenResponse> {
+  const startTime = Date.now();
+  const config = await getImageGenConfig();
+
+  // Check if enabled
+  if (config.activeProvider === 'none') {
+    return {
+      success: false,
+      error: {
+        code: 'DISABLED',
+        message: 'Image generation is disabled by administrator',
+      },
+    };
+  }
+
+  const rawResult = await generateImageBuffer(args);
+
+  if (!rawResult.success || rawResult.error) {
+    return {
+      success: false,
+      error: rawResult.error || { code: 'GENERATION_ERROR', message: 'Unknown error' },
+    };
+  }
+
+  try {
+    const savedImage = await saveImage(
+      rawResult.buffer,
+      rawResult.thumbnail,
+      args,
+      rawResult.provider,
+      rawResult.model,
+      config,
+      {
+        width: rawResult.metadata.width,
+        height: rawResult.metadata.height,
+        format: rawResult.metadata.format,
+        sizeBytes: rawResult.metadata.sizeBytes,
+        enhancedPrompt: rawResult.enhancedPrompt,
+        revisedPrompt: rawResult.revisedPrompt,
+        generationTimeMs: Date.now() - startTime,
       }
     );
 
-    // Build response with imageHint for frontend rendering
     const imageHint: ImageHint = {
       id: savedImage.id,
       url: savedImage.url,
@@ -487,11 +574,11 @@ export async function generateImage(
       message: 'Image generated successfully. Do NOT call image_gen again unless the user explicitly requests another image.',
       imageHint,
       metadata: {
-        provider,
-        model,
+        provider: rawResult.provider,
+        model: rawResult.model,
         prompt: args.prompt,
-        enhancedPrompt,
-        revisedPrompt,
+        enhancedPrompt: rawResult.enhancedPrompt,
+        revisedPrompt: rawResult.revisedPrompt,
         processingTimeMs: Date.now() - startTime,
       },
     };
@@ -499,9 +586,8 @@ export async function generateImage(
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error occurred';
 
-    console.error('[ImageGen] Generation failed:', errorMessage);
+    console.error('[ImageGen] Save failed:', errorMessage);
 
-    // Determine error code based on message
     let errorCode = 'GENERATION_ERROR';
     if (errorMessage.includes('API key')) {
       errorCode = 'INVALID_API_KEY';

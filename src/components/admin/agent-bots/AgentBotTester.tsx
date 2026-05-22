@@ -604,7 +604,7 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
 
               {/* Outputs */}
               {testResult.outputs?.map((output, index) => {
-                const isFileType = ['pdf', 'docx', 'xlsx', 'pptx', 'image', 'podcast'].includes(output.type);
+                const isFileType = ['pdf', 'docx', 'xlsx', 'pptx', 'image', 'podcast', 'chart', 'diagram'].includes(output.type);
 
                 return (
                   <div key={index} className="space-y-2">

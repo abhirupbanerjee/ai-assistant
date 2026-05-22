@@ -152,7 +152,7 @@ export default function VersionEditor({
 
   // Output config state
   const [enabledOutputTypes, setEnabledOutputTypes] = useState<string[]>(
-    version?.output_config?.enabledTypes || ['text', 'json']
+    version?.output_config?.enabledTypes || ['text', 'json', 'md']
   );
   const [defaultOutputType, setDefaultOutputType] = useState(
     version?.output_config?.defaultType || 'text'
@@ -183,15 +183,17 @@ export default function VersionEditor({
 
   // Compute available output types based on enabled tools
   // Base types (text, json, md) are always available
-  // Tool-dependent types (pdf, xlsx, etc.) only available if the tool is enabled
+  // Tool-dependent types are shown but greyed out when their tool is disabled
   const availableOutputTypes = useMemo(() => {
     const enabledToolNames = enabledTools;
-    const toolTypes = TOOL_OUTPUT_TYPES.filter(
-      (type) => type.toolRequired && enabledToolNames.includes(type.toolRequired)
-    );
+    const toolTypes = TOOL_OUTPUT_TYPES.map((type) => ({
+      ...type,
+      toolRequired: type.toolRequired as string | null,
+      disabled: type.toolRequired ? !enabledToolNames.includes(type.toolRequired) : false,
+    }));
     return [
-      ...BASE_OUTPUT_TYPES.map((t) => ({ ...t, toolRequired: null as string | null })),
-      ...toolTypes.map((t) => ({ ...t, toolRequired: t.toolRequired as string | null })),
+      ...BASE_OUTPUT_TYPES.map((t) => ({ ...t, toolRequired: null as string | null, disabled: false })),
+      ...toolTypes,
     ];
   }, [enabledTools]);
 
@@ -282,7 +284,8 @@ export default function VersionEditor({
   };
 
   // Toggle output type
-  const toggleOutputType = (type: string) => {
+  const toggleOutputType = (type: string, disabled?: boolean) => {
+    if (disabled) return;
     if (enabledOutputTypes.includes(type)) {
       const newTypes = enabledOutputTypes.filter((t) => t !== type);
       setEnabledOutputTypes(newTypes);
@@ -654,25 +657,28 @@ export default function VersionEditor({
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Enabled Output Types
               </label>
-              {availableOutputTypes.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  Enable tools (like Document Generator, Excel Generator) to unlock additional output types.
-                </p>
-              ) : null}
               <div className="grid grid-cols-3 gap-2">
                 {availableOutputTypes.map((type) => (
                   <label
                     key={type.id}
-                    className={`flex items-start gap-2 p-2 rounded border cursor-pointer ${
-                      enabledOutputTypes.includes(type.id)
+                    title={type.disabled ? `Enable ${type.toolRequired} tool to unlock` : undefined}
+                    className={`flex items-start gap-2 p-2 rounded border ${
+                      type.disabled
+                        ? 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700'
+                        : 'cursor-pointer'
+                    } ${
+                      !type.disabled && enabledOutputTypes.includes(type.id)
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
+                        : !type.disabled
+                          ? 'border-gray-200 dark:border-gray-700'
+                          : ''
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={enabledOutputTypes.includes(type.id)}
-                      onChange={() => toggleOutputType(type.id)}
+                      disabled={type.disabled}
+                      onChange={() => toggleOutputType(type.id, type.disabled)}
                       className="rounded mt-0.5"
                     />
                     <div>
@@ -681,7 +687,9 @@ export default function VersionEditor({
                       </span>
                       <p className="text-xs text-gray-500">{type.description}</p>
                       {type.toolRequired && (
-                        <p className="text-xs text-blue-500">Requires: {type.toolRequired}</p>
+                        <p className={`text-xs ${type.disabled ? 'text-gray-400' : 'text-blue-500'}`}>
+                          {type.disabled ? `Locked: enable ${type.toolRequired}` : `Requires: ${type.toolRequired}`}
+                        </p>
                       )}
                     </div>
                   </label>

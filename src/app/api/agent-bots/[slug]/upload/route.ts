@@ -17,39 +17,16 @@ import {
   isAuthError,
   agentBotErrors,
 } from '@/lib/agent-bot/auth';
+import {
+  getAgentBotUploadsDir,
+  registerUploadedFile,
+} from '@/lib/agent-bot/uploaded-files';
 import { ensureDir } from '@/lib/storage';
 import { getCurrentUser } from '@/lib/auth';
 
 // ============================================================================
-// Constants
-// ============================================================================
-
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const AGENT_BOT_UPLOADS_DIR = path.join(DATA_DIR, 'agent-bot-uploads');
-
-// Temp file expiry (1 hour)
-const TEMP_FILE_TTL_MS = 60 * 60 * 1000;
-
-// In-memory map of file IDs to file info (for temp files before invoke)
-const tempFileMap = new Map<string, {
-  filepath: string;
-  originalFilename: string;
-  mimeType: string;
-  fileSize: number;
-  agentBotId: string;
-  createdAt: Date;
-}>();
-
-// ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Get upload directory for temp files
- */
-function getAgentBotUploadsDir(): string {
-  return path.join(AGENT_BOT_UPLOADS_DIR, 'temp');
-}
 
 /**
  * Check if admin test mode is enabled
@@ -68,23 +45,6 @@ async function isAdminTest(request: NextRequest): Promise<boolean> {
     return false;
   }
 }
-
-/**
- * Clean up expired temp files
- */
-function cleanupExpiredFiles(): void {
-  const now = Date.now();
-  for (const [fileId, info] of tempFileMap.entries()) {
-    if (now - info.createdAt.getTime() > TEMP_FILE_TTL_MS) {
-      // Delete file and remove from map
-      fs.unlink(info.filepath).catch(() => {});
-      tempFileMap.delete(fileId);
-    }
-  }
-}
-
-// Run cleanup every 10 minutes
-setInterval(cleanupExpiredFiles, 10 * 60 * 1000);
 
 // ============================================================================
 // Route Handlers
@@ -140,12 +100,22 @@ export async function POST(
       return agentBotErrors.fileValidationError('No file provided');
     }
 
-    // Validate file type
+    // Validate file type (supports wildcards like "image/*")
     const allowedTypes = fileConfig.allowedTypes || [];
-    if (allowedTypes.length > 0 && !allowedTypes.includes(file.type)) {
-      return agentBotErrors.fileValidationError(
-        `File type '${file.type}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
-      );
+    if (allowedTypes.length > 0) {
+      const isAllowed = allowedTypes.some((allowed) => {
+        if (allowed.endsWith('/*')) {
+          const prefix = allowed.slice(0, -1);
+          return file.type.startsWith(prefix);
+        }
+        return file.type === allowed;
+      });
+
+      if (!isAllowed) {
+        return agentBotErrors.fileValidationError(
+          `File type '${file.type}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
+        );
+      }
     }
 
     // Validate file size
@@ -171,13 +141,12 @@ export async function POST(
     await fs.writeFile(filepath, buffer);
 
     // Store file info in temp map
-    tempFileMap.set(fileId, {
+    registerUploadedFile(fileId, {
       filepath,
       originalFilename: file.name,
       mimeType: file.type,
       fileSize: file.size,
       agentBotId: agentBot.id,
-      createdAt: new Date(),
     });
 
     return NextResponse.json({
@@ -192,50 +161,6 @@ export async function POST(
       { error: 'Failed to upload file', code: 'UPLOAD_ERROR' },
       { status: 500 }
     );
-  }
-}
-
-// ============================================================================
-// Export file lookup for executor
-// ============================================================================
-
-/**
- * Get uploaded file info by ID
- */
-export function getUploadedFile(fileId: string): {
-  filepath: string;
-  originalFilename: string;
-  mimeType: string;
-  fileSize: number;
-  agentBotId: string;
-} | null {
-  const info = tempFileMap.get(fileId);
-  if (!info) return null;
-
-  // Check if expired
-  if (Date.now() - info.createdAt.getTime() > TEMP_FILE_TTL_MS) {
-    fs.unlink(info.filepath).catch(() => {});
-    tempFileMap.delete(fileId);
-    return null;
-  }
-
-  return {
-    filepath: info.filepath,
-    originalFilename: info.originalFilename,
-    mimeType: info.mimeType,
-    fileSize: info.fileSize,
-    agentBotId: info.agentBotId,
-  };
-}
-
-/**
- * Remove uploaded file after processing
- */
-export function removeUploadedFile(fileId: string): void {
-  const info = tempFileMap.get(fileId);
-  if (info) {
-    fs.unlink(info.filepath).catch(() => {});
-    tempFileMap.delete(fileId);
   }
 }
 
