@@ -459,7 +459,7 @@ export default function ApiKeysSettings() {
           fetch('/api/admin/settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'ocr', ...ocrBody }),
+            body: JSON.stringify({ type: 'ocr', settings: ocrBody }),
           })
         );
       }
@@ -470,7 +470,7 @@ export default function ApiKeysSettings() {
           fetch('/api/admin/settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'reranker', cohereApiKey: editedCohereKey }),
+            body: JSON.stringify({ type: 'reranker', settings: { cohereApiKey: editedCohereKey } }),
           })
         );
       }
