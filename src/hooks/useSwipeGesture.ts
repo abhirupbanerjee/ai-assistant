@@ -11,12 +11,30 @@ interface SwipeConfig {
   disabled?: boolean;
 }
 
+function isInsideHorizontalScroller(el: EventTarget | null): boolean {
+  let node = el as Node | null;
+  while (node && node !== document.body) {
+    if (node instanceof HTMLElement) {
+      const style = window.getComputedStyle(node);
+      if (
+        (style.overflowX === 'auto' || style.overflowX === 'scroll') &&
+        node.scrollWidth > node.clientWidth
+      ) {
+        return true;
+      }
+    }
+    node = node.parentNode;
+  }
+  return false;
+}
+
 export function useSwipeGesture(config: SwipeConfig) {
   const { onSwipeLeft, onSwipeRight, threshold = 50, edgeWidth = 30, rightEdgeOnly = false, disabled = false } = config;
 
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const startedFromEdge = useRef(false);
+  const isSwipingIgnored = useRef(false);
 
   const onSwipeLeftRef = useRef(onSwipeLeft);
   const onSwipeRightRef = useRef(onSwipeRight);
@@ -30,6 +48,12 @@ export function useSwipeGesture(config: SwipeConfig) {
     if (disabled) return;
 
     const handleTouchStart = (e: TouchEvent) => {
+      if (isInsideHorizontalScroller(e.target)) {
+        isSwipingIgnored.current = true;
+        return;
+      }
+      isSwipingIgnored.current = false;
+
       touchStartX.current = e.touches[0].clientX;
       touchStartY.current = e.touches[0].clientY;
       
@@ -43,6 +67,8 @@ export function useSwipeGesture(config: SwipeConfig) {
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
+      if (isSwipingIgnored.current) return;
+
       const touchEndX = e.changedTouches[0].clientX;
       const touchEndY = e.changedTouches[0].clientY;
 

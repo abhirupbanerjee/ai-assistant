@@ -329,6 +329,24 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Ref to track if a send is in progress (prevents race condition with activeThread change)
   const isSendingRef = useRef(false);
 
+  const loadThread = useCallback(async (id: string) => {
+    try {
+      const response = await fetch(`/api/threads/${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setMessages(data.messages.map((m: Message) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        })));
+        setUploads(data.uploads || []);
+
+        // Task plan info is now shown via per-task progressive updates in the chat (Phase 1.4)
+      }
+    } catch (err) {
+      console.error('Failed to load thread:', err);
+    }
+  }, []);
+
   // Load thread messages when active thread changes
   useEffect(() => {
     // CRITICAL: If a send is in progress (e.g. starter prompt on new thread),
@@ -361,7 +379,47 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       setSummaryData(null);
       setArchivedMessages([]);
     }
-  }, [activeThread, resetStreaming]);
+  }, [activeThread, resetStreaming, loadThread]);
+
+  // Recover from backgrounding on mobile: reload thread state when returning to tab
+  const errorRef = useRef(error);
+  errorRef.current = error;
+  const streamingStateRef = useRef(streamingState);
+  streamingStateRef.current = streamingState;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  const threadIdRef = useRef(threadId);
+  threadIdRef.current = threadId;
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      const currentThreadId = threadIdRef.current;
+      if (!currentThreadId) return;
+
+      const state = streamingStateRef.current;
+      const hadError = errorRef.current || state.error;
+      const wasStreaming = state.isStreaming;
+      const seemsStuck = loadingRef.current && !state.isStreaming && !errorRef.current && !state.error;
+
+      if (hadError || wasStreaming || seemsStuck) {
+        loadThread(currentThreadId)
+          .then(() => {
+            setError(null);
+            resetStreaming();
+          })
+          .catch(() => {})
+          .finally(() => {
+            setLoading(false);
+          });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadThread, resetStreaming]);
 
 
   // Load starter prompts and category welcome for single-category threads
@@ -475,24 +533,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     setIsScrolledUp(false);
   }, []);
-
-  const loadThread = async (id: string) => {
-    try {
-      const response = await fetch(`/api/threads/${id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data.messages.map((m: Message) => ({
-          ...m,
-          timestamp: new Date(m.timestamp),
-        })));
-        setUploads(data.uploads || []);
-
-        // Task plan info is now shown via per-task progressive updates in the chat (Phase 1.4)
-      }
-    } catch (err) {
-      console.error('Failed to load thread:', err);
-    }
-  };
 
   const createThread = useCallback(async (): Promise<string | null> => {
     try {
