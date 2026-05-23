@@ -39,6 +39,7 @@ export interface RagSettings {
   semanticBreakpointThreshold: number;         // Sensitivity for semantic chunking (0.3-0.8, default: 0.5)
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
+  contextualEnrichmentEnabled: boolean;
 }
 
 export interface LlmSettings {
@@ -143,7 +144,7 @@ export const DEFAULT_RERANKER_SETTINGS: RerankerSettings = {
     { provider: 'cohere', enabled: true },
     { provider: 'fireworks', enabled: true },
     { provider: 'bge-base', enabled: true },
-    { provider: 'local', enabled: true },
+    { provider: 'local', enabled: false }, // Bi-encoder provides limited value over vector search; BGE cross-encoders are preferred
   ],
   topKForReranking: 50,
   minRerankerScore: 0.3,
@@ -622,6 +623,7 @@ export function getRagSettings(): RagSettings {
     // Provide defaults for new hybrid/rewriting fields if not in config
     hybridSearchEnabled: false,
     llmQueryRewritingEnabled: false,
+    contextualEnrichmentEnabled: false,
     // Override with database settings if present
     ...dbSettings,
   };

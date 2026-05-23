@@ -58,7 +58,7 @@ const RERANKER_PROVIDER_INFO: Record<RerankerProvider, { label: string; descript
   },
   'local': {
     label: 'Local Bi-encoder',
-    description: 'Legacy model, less accurate (~90MB)',
+    description: 'Legacy bi-encoder. Provides limited improvement over vector search. BGE cross-encoders are preferred.',
     route: 'Route 3 (Local)',
   },
 };
@@ -69,7 +69,7 @@ const DEFAULT_PROVIDERS: RerankerProviderConfig[] = [
   { provider: 'cohere', enabled: true },
   { provider: 'fireworks', enabled: true },
   { provider: 'bge-base', enabled: true },
-  { provider: 'local', enabled: true },
+  { provider: 'local', enabled: false },
 ];
 
 export default function RerankerSettingsTab({ readOnly = false }: { readOnly?: boolean }) {

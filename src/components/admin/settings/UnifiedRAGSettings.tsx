@@ -25,6 +25,7 @@ interface RAGSettings {
   semanticBreakpointThreshold: number;
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
+  contextualEnrichmentEnabled: boolean;
   updatedAt: string;
   updatedBy: string;
 }
@@ -148,6 +149,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         semanticBreakpointThreshold: 0.5,
         hybridSearchEnabled: false,
         llmQueryRewritingEnabled: false,
+        contextualEnrichmentEnabled: false,
       };
 
       setSettings(ragData);
@@ -164,6 +166,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         semanticBreakpointThreshold: ragData.semanticBreakpointThreshold ?? 0.5,
         hybridSearchEnabled: ragData.hybridSearchEnabled ?? false,
         llmQueryRewritingEnabled: ragData.llmQueryRewritingEnabled ?? false,
+        contextualEnrichmentEnabled: ragData.contextualEnrichmentEnabled ?? false,
       });
 
       if (data.embedding) {
@@ -377,6 +380,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         semanticBreakpointThreshold: settings.semanticBreakpointThreshold,
         hybridSearchEnabled: settings.hybridSearchEnabled ?? false,
         llmQueryRewritingEnabled: settings.llmQueryRewritingEnabled ?? false,
+        contextualEnrichmentEnabled: settings.contextualEnrichmentEnabled ?? false,
       });
       setIsModified(false);
     }
@@ -826,6 +830,15 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm text-gray-700">LLM Query Rewriting</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editedSettings.contextualEnrichmentEnabled}
+                  onChange={(e) => handleChange('contextualEnrichmentEnabled', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Contextual Chunk Enrichment</span>
               </label>
             </div>
             {editedSettings.hybridSearchEnabled && (

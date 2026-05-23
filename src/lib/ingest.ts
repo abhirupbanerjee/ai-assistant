@@ -132,7 +132,12 @@ export async function chunkText(
 
       for (const chunkText of pageChunks) {
         // Enrich chunk with nearest heading context
-        const enrichedText = enrichChunkWithHeading(chunkText, text, headings);
+        let enrichedText = enrichChunkWithHeading(chunkText, text, headings);
+
+        // Lightweight contextual enrichment: prepend document name for better retrieval context
+        if (settings.contextualEnrichmentEnabled) {
+          enrichedText = `[Document: ${documentName}]\n${enrichedText}`;
+        }
 
         allChunks.push({
           id: `${documentId}-chunk-${chunkIndex}`,
@@ -159,7 +164,12 @@ export async function chunkText(
 
   return chunks.map((chunk, index) => {
     // Enrich chunk with nearest heading context
-    const enrichedText = enrichChunkWithHeading(chunk, text, headings);
+    let enrichedText = enrichChunkWithHeading(chunk, text, headings);
+
+    // Lightweight contextual enrichment: prepend document name for better retrieval context
+    if (settings.contextualEnrichmentEnabled) {
+      enrichedText = `[Document: ${documentName}]\n${enrichedText}`;
+    }
 
     return {
       id: `${documentId}-chunk-${index}`,
