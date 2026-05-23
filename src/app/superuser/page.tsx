@@ -9,7 +9,7 @@ import Spinner from '@/components/ui/Spinner';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
-import SuperuserSidebarMenu from '@/components/superuser/SuperuserSidebarMenu';
+import SuperuserSidebarMenu, { type TabType, type SettingsSection } from '@/components/superuser/SuperuserSidebarMenu';
 import UnifiedLLMSettings from '@/components/admin/settings/UnifiedLLMSettings';
 import UnifiedRAGSettings from '@/components/admin/settings/UnifiedRAGSettings';
 import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
@@ -111,8 +111,7 @@ interface SubscribedCategory {
 }
 
 // Valid tab types for URL parameter validation
-type SuperuserTabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agent' | 'settings';
-const VALID_TABS: SuperuserTabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'agent', 'settings'];
+const VALID_TABS: TabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'agent', 'settings'];
 
 function SuperUserPageContent() {
   const router = useRouter();
@@ -150,14 +149,14 @@ function SuperUserPageContent() {
 
   // Active tab state - initialize from URL parameter
   const tabParam = searchParams.get('tab');
-  const initialTab = tabParam && VALID_TABS.includes(tabParam as SuperuserTabType) ? tabParam as SuperuserTabType : 'dashboard';
-  const [activeTab, setActiveTab] = useState<SuperuserTabType>(initialTab);
+  const initialTab = tabParam && VALID_TABS.includes(tabParam as TabType) ? tabParam as TabType : 'dashboard';
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
   // Sync URL tab parameter to state
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && VALID_TABS.includes(tab as SuperuserTabType)) {
-      setActiveTab(tab as SuperuserTabType);
+    if (tab && VALID_TABS.includes(tab as TabType)) {
+      setActiveTab(tab as TabType);
     }
   }, [searchParams]);
 

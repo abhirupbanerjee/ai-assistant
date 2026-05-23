@@ -120,6 +120,7 @@ type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' |
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
+type TokensSection = 'memory' | 'summarization' | 'limits';
 
 interface RerankerSettings {
   enabled: boolean;
@@ -1013,14 +1014,12 @@ function AdminPageContent() {
         documentsSection={documentsSection}
         usersSection={usersSection}
         promptsSection={promptsSection}
-        tokensSection={tokensSection}
         settingsSection={settingsSection}
         userRole={userRole}
         onTabChange={handleTabChange}
         onDocumentsChange={setDocumentsSection}
         onUsersChange={setUsersSection}
         onPromptsChange={setPromptsSection}
-        onTokensChange={setTokensSection}
         onSettingsChange={handleSettingsChange}
       />
 
