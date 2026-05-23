@@ -29,15 +29,13 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'usage' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'workspaces' | 'settings';
 
 // Section types for expandable menus
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type AgentsSection = 'config' | 'bots';
-type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -59,7 +57,6 @@ interface MenuConfigItem {
 // ============================================================================
 
 const MENU_CONFIG: MenuConfigItem[] = [
-  { id: 'branding', label: 'Branding', icon: Palette, expandable: false },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, expandable: false },
   { id: 'categories', label: 'Categories', icon: FolderOpen, expandable: false },
   { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
@@ -68,24 +65,17 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'tools', label: 'Tools', icon: Wrench, expandable: false },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
-  {
-    id: 'agents',
-    label: 'Agents',
-    icon: Bot,
-    expandable: true,
-    submenu: [
-      { id: 'config', label: 'Agent Config' },
-      { id: 'bots', label: 'Agent Bots' },
-    ]
-  },
-  { id: 'tokens', label: 'Tokens', icon: Coins, expandable: false },
-  { id: 'usage', label: 'Usage', icon: BarChart3, expandable: false },
+  { id: 'autonomous-mode', label: 'Autonomous Mode', icon: Bot, expandable: false },
+  { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
     icon: Settings,
     expandable: true,
     submenu: [
+      { id: 'branding', label: 'Branding' },
+      { id: 'tokens', label: 'Tokens' },
+      { id: 'usage', label: 'Usage' },
       { id: 'api-keys', label: 'API Keys' },
       { id: 'routes', label: 'Routes' },
       { id: 'llm', label: 'LLM' },
@@ -131,15 +121,6 @@ export const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
   { id: 'category-prompts', label: 'Category Prompts' },
 ];
 
-export const AGENTS_SUBMENU: { id: AgentsSection; label: string }[] =
-  getMenuConfig('agents')?.submenu as { id: AgentsSection; label: string }[] || [];
-
-export const TOKENS_SUBMENU: { id: TokensSection; label: string }[] = [
-  { id: 'memory', label: 'Memory' },
-  { id: 'summarization', label: 'Summarization' },
-  { id: 'limits', label: 'Limits' },
-];
-
 export const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] =
   getMenuConfig('settings')?.submenu as { id: SettingsSection; label: string }[] || [];
 
@@ -167,16 +148,12 @@ interface AdminSidebarMenuProps {
   documentsSection: DocumentsSection;
   usersSection: UsersSection;
   promptsSection: PromptsSection;
-  agentsSection: AgentsSection;
-  tokensSection: TokensSection;
   settingsSection: SettingsSection;
   userRole?: 'admin' | 'superuser' | 'user';
   onTabChange: (tab: TabType) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
-  onAgentsChange: (section: AgentsSection) => void;
-  onTokensChange: (section: TokensSection) => void;
   onSettingsChange: (section: SettingsSection) => void;
 }
 
@@ -189,16 +166,12 @@ export default function AdminSidebarMenu({
   documentsSection,
   usersSection,
   promptsSection,
-  agentsSection,
-  tokensSection,
   settingsSection,
   userRole = 'admin',
   onTabChange,
   onDocumentsChange,
   onUsersChange,
   onPromptsChange,
-  onAgentsChange,
-  onTokensChange,
   onSettingsChange,
 }: AdminSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -226,8 +199,6 @@ export default function AdminSidebarMenu({
       case 'documents': return documentsSection;
       case 'users': return usersSection;
       case 'prompts': return promptsSection;
-      case 'agents': return agentsSection;
-      case 'tokens': return tokensSection;
       case 'settings': return settingsSection;
       default: return '';
     }
@@ -245,16 +216,10 @@ export default function AdminSidebarMenu({
       case 'users':
         onUsersChange(sectionId as UsersSection);
         break;
-      case 'prompts':
-        onPromptsChange(sectionId as PromptsSection);
-        break;
-      case 'agents':
-        onAgentsChange(sectionId as AgentsSection);
-        break;
-      case 'tokens':
-        onTokensChange(sectionId as TokensSection);
-        break;
-      case 'settings':
+        case 'prompts':
+          onPromptsChange(sectionId as PromptsSection);
+          break;
+        case 'settings':
         onSettingsChange(sectionId as SettingsSection);
         break;
     }
@@ -474,4 +439,4 @@ export default function AdminSidebarMenu({
 }
 
 // Export types for use in admin/page.tsx
-export type { TabType, DocumentsSection, UsersSection, PromptsSection, AgentsSection, TokensSection, SettingsSection };
+export type { TabType, DocumentsSection, UsersSection, PromptsSection, SettingsSection };

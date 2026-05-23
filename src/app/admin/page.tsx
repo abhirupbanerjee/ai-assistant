@@ -10,6 +10,7 @@ import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import AdminSidebarMenu, { type SettingsSection as SidebarSettingsSection } from '@/components/admin/AdminSidebarMenu';
+// AgentsSection type removed - now separate L1 tabs for autonomous-mode and agent
 import FileUploadSettings from '@/components/admin/settings/FileUploadSettings';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import WorkspacesTab from '@/components/admin/WorkspacesTab';
@@ -111,13 +112,11 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'branding' | 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agents' | 'tokens' | 'usage' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'workspaces' | 'settings';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type AgentsSection = 'config' | 'bots';
-type TokensSection = 'memory' | 'summarization' | 'limits';
-type SettingsSection = 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
@@ -253,15 +252,13 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
-const VALID_AGENTS_SECTIONS: AgentsSection[] = ['config', 'bots'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['branding', 'tokens', 'usage', 'api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
 
 function AdminPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab') as TabType | null;
   const sectionParam = searchParams.get('section');
-  const agentSectionParam = searchParams.get('agentSection');
   const [activeTab, setActiveTab] = useState<TabType>(tabParam || 'dashboard');
   const [userRole, setUserRole] = useState<'admin' | 'superuser' | 'user'>('admin');
 
@@ -270,11 +267,6 @@ function AdminPageContent() {
   const [documentsSection, setDocumentsSection] = useState<DocumentsSection>('documents');
   const [usersSection, setUsersSection] = useState<UsersSection>('management');
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('system-prompt');
-  const [agentsSection, setAgentsSection] = useState<AgentsSection>(
-    VALID_AGENTS_SECTIONS.includes(agentSectionParam as AgentsSection)
-      ? (agentSectionParam as AgentsSection)
-      : 'config'
-  );
   const [tokensSection, setTokensSection] = useState<TokensSection>('memory');
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(
     VALID_SETTINGS_SECTIONS.includes(sectionParam as SettingsSection)
@@ -304,13 +296,6 @@ function AdminPageContent() {
     setActiveTab('settings');
     setSettingsSection(section);
     router.push(`/admin?tab=settings&section=${section}`, { scroll: false });
-  }, [router]);
-
-  // Handle agents section change - updates both state and URL so section survives remounts
-  const handleAgentsChange = useCallback((section: AgentsSection) => {
-    setActiveTab('agents');
-    setAgentsSection(section);
-    router.push(`/admin?tab=agents&agentSection=${section}`, { scroll: false });
   }, [router]);
 
   const toggleUsersSection = (section: UsersSection) => {
@@ -566,27 +551,25 @@ function AdminPageContent() {
   useEffect(() => {
     const tab = searchParams.get('tab');
     const section = searchParams.get('section');
-    const agentSection = searchParams.get('agentSection');
     if (tab) {
-      // Handle legacy agent URLs
-      if (tab === 'agent') {
-        setActiveTab('agents');
-        setAgentsSection('config');
-        router.replace('/admin?tab=agents&agentSection=config', { scroll: false });
-      } else if (tab === 'agent-bots') {
-        setActiveTab('agents');
-        setAgentsSection('bots');
-        router.replace('/admin?tab=agents&agentSection=bots', { scroll: false });
+      // Handle legacy agent URLs - redirect to new autonomous-mode tab
+      if (tab === 'agent' || tab === 'agents' || tab === 'agent-bots') {
+        if (tab === 'agent-bots') {
+          setActiveTab('agent');
+          router.replace('/admin?tab=agent', { scroll: false });
+        } else if (tab === 'agent') {
+          setActiveTab('autonomous-mode');
+          router.replace('/admin?tab=autonomous-mode', { scroll: false });
+        } else {
+          setActiveTab('autonomous-mode');
+          router.replace('/admin?tab=autonomous-mode', { scroll: false });
+        }
       } else {
         setActiveTab(tab as TabType);
       }
       // Sync settings section from URL
       if (tab === 'settings' && section && VALID_SETTINGS_SECTIONS.includes(section as SettingsSection)) {
         setSettingsSection(section as SettingsSection);
-      }
-      // Sync agents section from URL
-      if (tab === 'agents' && agentSection && VALID_AGENTS_SECTIONS.includes(agentSection as AgentsSection)) {
-        setAgentsSection(agentSection as AgentsSection);
       }
     }
   }, [searchParams, router]); // Only depend on searchParams and router
@@ -1025,23 +1008,21 @@ function AdminPageContent() {
       {/* Main Layout with Sidebar */}
       <div className="flex flex-1 min-h-0">
         {/* Sidebar Navigation */}
-        <AdminSidebarMenu
-          activeTab={activeTab}
-          documentsSection={documentsSection}
-          usersSection={usersSection}
-          promptsSection={promptsSection}
-          agentsSection={agentsSection}
-          tokensSection={tokensSection}
-          settingsSection={settingsSection}
-          userRole={userRole}
-          onTabChange={handleTabChange}
-          onDocumentsChange={setDocumentsSection}
-          onUsersChange={setUsersSection}
-          onPromptsChange={setPromptsSection}
-          onAgentsChange={handleAgentsChange}
-          onTokensChange={setTokensSection}
-          onSettingsChange={handleSettingsChange}
-        />
+          <AdminSidebarMenu
+        activeTab={activeTab}
+        documentsSection={documentsSection}
+        usersSection={usersSection}
+        promptsSection={promptsSection}
+        tokensSection={tokensSection}
+        settingsSection={settingsSection}
+        userRole={userRole}
+        onTabChange={handleTabChange}
+        onDocumentsChange={setDocumentsSection}
+        onUsersChange={setUsersSection}
+        onPromptsChange={setPromptsSection}
+        onTokensChange={setTokensSection}
+        onSettingsChange={handleSettingsChange}
+      />
 
         {/* Main Content */}
         <main className="flex-1 min-h-0 p-4 md:p-6 overflow-auto">
@@ -1145,6 +1126,80 @@ function AdminPageContent() {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <>
+              {/* Branding Section */}
+              {settingsSection === 'branding' && <BrandingSettingsTab />}
+
+              {/* Tokens Section - Memory, Summarization, Limits accordion */}
+              {settingsSection === 'tokens' && (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => toggleTokensSection('memory')}
+                      className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Coins size={20} className="text-gray-600" />
+                        <div className="text-left">
+                          <h2 className="font-semibold text-gray-900">Memory</h2>
+                          <p className="text-sm text-gray-500">Configure conversation memory settings</p>
+                        </div>
+                      </div>
+                      {expandedTokensSections.has('memory') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+                    </button>
+                    {expandedTokensSections.has('memory') && (
+                      <div className="border-t">
+                        <MemorySettingsTab />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => toggleTokensSection('summarization')}
+                      className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Coins size={20} className="text-gray-600" />
+                        <div className="text-left">
+                          <h2 className="font-semibold text-gray-900">Summarization</h2>
+                          <p className="text-sm text-gray-500">Configure summarization behavior</p>
+                        </div>
+                      </div>
+                      {expandedTokensSections.has('summarization') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+                    </button>
+                    {expandedTokensSections.has('summarization') && (
+                      <div className="border-t">
+                        <SummarizationSettingsTab />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => toggleTokensSection('limits')}
+                      className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Coins size={20} className="text-gray-600" />
+                        <div className="text-left">
+                          <h2 className="font-semibold text-gray-900">Token Limits</h2>
+                          <p className="text-sm text-gray-500">Configure token usage limits</p>
+                        </div>
+                      </div>
+                      {expandedTokensSections.has('limits') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+                    </button>
+                    {expandedTokensSections.has('limits') && (
+                      <div className="border-t">
+                        <TokenLimitsSettingsTab />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Usage Section - Token Usage Dashboard */}
+              {settingsSection === 'usage' && <TokenUsageDashboard />}
+
               {/* API Keys Section */}
               {settingsSection === 'api-keys' && <ApiKeysSettings />}
               {/* Routes Settings Section */}
@@ -1154,8 +1209,6 @@ function AdminPageContent() {
 
               {/* RAG Settings Section */}
               {settingsSection === 'rag' && <UnifiedRAGSettings />}
-
-              {/* Branding moved to top-level tab */}
 
               {/* Reranker Section */}
               {settingsSection === 'reranker' && <RerankerSettingsTab />}
@@ -1169,8 +1222,6 @@ function AdminPageContent() {
               {/* Speech (STT + TTS) Section */}
               {settingsSection === 'speech' && <SpeechSettingsTab />}
 
-              {/* Memory, Summarization, Limits, and Agent sections removed from Settings - content in Tokens and Agent tabs */}
-
               {/* Cache Section */}
               {settingsSection === 'cache' && (
                 <CacheSettingsTab />
@@ -1181,7 +1232,10 @@ function AdminPageContent() {
                 <DisplaySettingsPanel />
               )}
 
-              {/* Branding, Backup, Agent, Memory, Summarization, Limits, and Superuser moved to other tabs */}
+              {/* Backup Section */}
+              {settingsSection === 'backup' && (
+                <BackupTab />
+              )}
           </>
         )}
 
@@ -1250,113 +1304,25 @@ function AdminPageContent() {
           <WorkspacesTab isAdmin={true} />
         )}
 
-        {/* Agents Tab - expandable with config/bots sections */}
-        {activeTab === 'agents' && (
-          <>
-            {agentsSection === 'config' && (
-              <AgentSettingsTab />
-            )}
-            {agentsSection === 'bots' && (
-              selectedAgentBotId ? (
-                <AgentBotDetail
-                  botId={selectedAgentBotId}
-                  onBack={() => setSelectedAgentBotId(null)}
-                />
-              ) : (
-                <AgentBotsManagement
-                  onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
-                />
-              )
-            )}
-          </>
+        {/* Autonomous Mode Tab (L1 menu item) */}
+        {activeTab === 'autonomous-mode' && (
+          <AgentSettingsTab />
         )}
 
-        {/* Backup Tab (now under Settings) */}
-        {activeTab === 'settings' && settingsSection === 'backup' && (
-          <BackupTab />
+        {/* Agent Tab (L1 menu item) - bot management */}
+        {activeTab === 'agent' && (
+          selectedAgentBotId ? (
+            <AgentBotDetail
+              botId={selectedAgentBotId}
+              onBack={() => setSelectedAgentBotId(null)}
+            />
+          ) : (
+            <AgentBotsManagement
+              onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
+            />
+          )
         )}
 
-        {/* Branding Tab (promoted from Settings) */}
-        {activeTab === 'branding' && (
-          <BrandingSettingsTab />
-        )}
-
-        {/* Tokens Tab - Memory, Summarization, Limits */}
-        {/* Tokens Tab - Accordion UI */}
-        {activeTab === 'tokens' && (
-          <div className="space-y-4">
-            {/* Memory Settings Accordion */}
-            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-              <button
-                onClick={() => toggleTokensSection('memory')}
-                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Coins size={20} className="text-gray-600" />
-                  <div className="text-left">
-                    <h2 className="font-semibold text-gray-900">Memory</h2>
-                    <p className="text-sm text-gray-500">Configure conversation memory settings</p>
-                  </div>
-                </div>
-                {expandedTokensSections.has('memory') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
-              </button>
-              {expandedTokensSections.has('memory') && (
-                <div className="border-t">
-                  <MemorySettingsTab />
-                </div>
-              )}
-            </div>
-
-            {/* Summarization Settings Accordion */}
-            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-              <button
-                onClick={() => toggleTokensSection('summarization')}
-                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Coins size={20} className="text-gray-600" />
-                  <div className="text-left">
-                    <h2 className="font-semibold text-gray-900">Summarization</h2>
-                    <p className="text-sm text-gray-500">Configure summarization behavior</p>
-                  </div>
-                </div>
-                {expandedTokensSections.has('summarization') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
-              </button>
-              {expandedTokensSections.has('summarization') && (
-                <div className="border-t">
-                  <SummarizationSettingsTab />
-                </div>
-              )}
-            </div>
-
-            {/* Token Limits Accordion */}
-            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-              <button
-                onClick={() => toggleTokensSection('limits')}
-                className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Coins size={20} className="text-gray-600" />
-                  <div className="text-left">
-                    <h2 className="font-semibold text-gray-900">Token Limits</h2>
-                    <p className="text-sm text-gray-500">Configure token usage limits</p>
-                  </div>
-                </div>
-                {expandedTokensSections.has('limits') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
-              </button>
-              {expandedTokensSections.has('limits') && (
-                <div className="border-t">
-                  <TokenLimitsSettingsTab />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Usage Tab - Token Usage Dashboard */}
-        {activeTab === 'usage' && (
-          <TokenUsageDashboard />
-        )}
         </main>
       </div>
 

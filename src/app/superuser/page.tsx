@@ -111,8 +111,8 @@ interface SubscribedCategory {
 }
 
 // Valid tab types for URL parameter validation
-type SuperuserTabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agent-bots' | 'settings';
-const VALID_TABS: SuperuserTabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'agent-bots', 'settings'];
+type SuperuserTabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'skills' | 'workspaces' | 'agent' | 'settings';
+const VALID_TABS: SuperuserTabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'agent', 'settings'];
 
 function SuperUserPageContent() {
   const router = useRouter();
@@ -1016,8 +1016,8 @@ function SuperUserPageContent() {
           <WorkspacesTab isAdmin={false} />
         )}
 
-        {/* Agent Bots Section */}
-        {activeTab === 'agent-bots' && (
+        {/* Agent Section */}
+        {activeTab === 'agent' && (
           <SuperuserAgentBotsList />
         )}
 
