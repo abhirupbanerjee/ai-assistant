@@ -28,6 +28,7 @@ import { runWithContextAsync } from '../request-context';
 import { resolveSkills } from '../skills/resolver';
 import { getCategoryBySlug } from '../db/compat/categories';
 import { AVAILABLE_TOOLS, isToolEnabled } from '../tools';
+import { isToolEnabledForCategory } from '../db/compat/category-tool-config';
 
 // ============ Skills Resolution ============
 
@@ -158,6 +159,8 @@ type TaskExecutionPayload = {
   llm_calls?: number;
   web_searches?: number;
   model_used?: string;
+  /** Names of tools executed during this task */
+  tools_used?: string[];
 };
 
 const TOOL_REGISTRY: Record<ExecutorToolType, { explicitTypes: string[]; keywords: string[] }> = {
@@ -337,8 +340,8 @@ function inferExecutorProfileForTask(
 // ============ Tool Execution Callbacks ============
 
 export interface ExecutorCallbacks {
-  onToolStart?: (name: string, displayName: string) => void;
-  onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
+  onToolStart?: (name: string, displayName: string, taskId?: number) => void;
+  onToolEnd?: (name: string, success: boolean, duration: number, error?: string, taskId?: number) => void;
   onArtifact?: (event: StreamEvent) => void;
   onChecking?: () => void; // When checker validates task result
   onSkillsLoaded?: (skills: { name: string; triggerReason: 'always' | 'category' | 'keyword' }[]) => void;
@@ -436,6 +439,7 @@ export async function executeTask(
         tokens_used: totalTokens,
         llm_calls: totalLlmCalls,
         web_searches: result.web_searches,
+        tools_used: result.tools_used,
       };
     } else {
       // Low confidence - mark as needs_review
@@ -457,6 +461,7 @@ export async function executeTask(
         tokens_used: totalTokens,
         llm_calls: totalLlmCalls,
         web_searches: result.web_searches,
+        tools_used: result.tools_used,
       };
     }
   } catch (error) {
@@ -577,6 +582,7 @@ async function performTaskExecution(
     llm_calls: 1,
     web_searches: webSearches,
     model_used: response.model || executorModel.model,
+    tools_used: [],
   };
 }
 
@@ -607,7 +613,7 @@ async function executeToolForTask(
   const displayName = toolDisplayNames[toolType]
     || AVAILABLE_TOOLS[toolType]?.displayName
     || toolType;
-  callbacks?.onToolStart?.(toolType, displayName);
+  callbacks?.onToolStart?.(toolType, displayName, task.id);
 
   try {
     let result: TaskExecutionPayload;
@@ -644,20 +650,21 @@ async function executeToolForTask(
       default:
         // Generic bridge — handles any AVAILABLE_TOOLS tool
         if (AVAILABLE_TOOLS[toolType]) {
-          result = { content: await executeGenericTool(task, toolType, callbacks) };
+          result = { content: await executeGenericTool(task, plan, toolType, executorModel, callbacks) };
         } else {
           throw new Error(`Unknown tool type: ${toolType}`);
         }
     }
 
     const duration = Date.now() - startTime;
-    callbacks?.onToolEnd?.(toolType, true, duration);
+    callbacks?.onToolEnd?.(toolType, true, duration, undefined, task.id);
 
     return {
       ...result,
       tokens_used: result.tokens_used || 0,
       llm_calls: result.llm_calls || 0,
       web_searches: result.web_searches || 0,
+      tools_used: [toolType],
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -896,13 +903,33 @@ async function executeWebSearchTool(
  */
 async function executeGenericTool(
   task: AgentTask,
+  plan: AgentPlan,
   toolName: string,
+  executorModel: ModelSpec,
   callbacks?: ExecutorCallbacks
 ): Promise<string> {
-  const enabled = await isToolEnabled(toolName);
-  if (!enabled) {
+  // 1. Check global enablement
+  const globallyEnabled = await isToolEnabled(toolName);
+  if (!globallyEnabled) {
     return JSON.stringify({ success: false, errorCode: 'TOOL_DISABLED',
-      message: `Tool "${toolName}" is not enabled` });
+      message: `Tool "${toolName}" is not enabled globally` });
+  }
+
+  // 2. Check per-category enablement
+  const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
+  if (categorySlug) {
+    try {
+      const category = await getCategoryBySlug(categorySlug);
+      if (category) {
+        const categoryEnabled = await isToolEnabledForCategory(toolName, category.id);
+        if (!categoryEnabled) {
+          return JSON.stringify({ success: false, errorCode: 'TOOL_DISABLED',
+            message: `Tool "${toolName}" is disabled for category "${categorySlug}"` });
+        }
+      }
+    } catch {
+      // Non-fatal: if category check fails, proceed with global check result
+    }
   }
 
   const tool = AVAILABLE_TOOLS[toolName];
@@ -910,29 +937,73 @@ async function executeGenericTool(
     return `Tool "${toolName}" not found in registry`;
   }
 
-  // Extract URL from task target (covers all URL-based tools)
+  // 3. Build arguments using the tool's function definition schema
+  if (tool.definition?.function?.parameters) {
+    try {
+      const schema = tool.definition.function.parameters;
+      const argPrompt = buildToolArgumentPrompt(task, toolName, tool.definition.function.description || '', schema);
+      const argResponse = await generateWithModelFallback(executorModel, argPrompt, {
+        systemPrompt: 'You are a tool argument extractor. Output ONLY valid JSON that matches the provided schema. Do not include markdown fences, explanations, or any text outside the JSON.',
+        temperature: 0.1,
+        maxTokens: 1000,
+      });
+
+      const parsed = extractJSON(argResponse.content);
+      if (parsed.found && parsed.json) {
+        try {
+          const args = JSON.parse(parsed.json);
+          if (typeof args === 'object' && args !== null) {
+            console.log(`[Executor] Generic tool bridge: ${toolName} with schema-driven args`);
+            return await tool.execute(args);
+          }
+        } catch {
+          // Invalid JSON from extraction, fall through to fallback
+        }
+      }
+    } catch (e) {
+      console.warn(`[Executor] Schema-driven argument extraction failed for ${toolName}, falling back:`, e);
+    }
+  }
+
+  // 4. Fallback: URL extraction for URL-based tools
   const urlMatch = task.target.match(/https?:\/\/[^\s,)]+/);
   let url: string;
 
   if (urlMatch) {
     url = urlMatch[0];
   } else {
-    // Extract domain from target — first token only, strip description text
-    // e.g. "gea.abhirup.app - SSL/TLS Configuration" → "gea.abhirup.app"
     url = task.target.trim().split(/[\s,]+/)[0];
     if (!url.includes('://')) {
       url = `https://${url}`;
     }
   }
 
-  // Build args — URL-based tools get { url }, tool-specific enrichment
   const args: Record<string, unknown> = { url };
   if (toolName === 'website_analysis') {
     args.accessibilityAudit = true;
   }
 
-  console.log(`[Executor] Generic tool bridge: ${toolName}(${url})`);
+  console.log(`[Executor] Generic tool bridge: ${toolName}(${url}) [fallback]`);
   return await tool.execute(args);
+}
+
+function buildToolArgumentPrompt(
+  task: AgentTask,
+  toolName: string,
+  toolDescription: string,
+  schema: Record<string, unknown>
+): string {
+  return `Extract arguments for the tool "${toolName}" from the task below.
+
+Tool description: ${toolDescription}
+
+Required JSON schema:
+${JSON.stringify(schema, null, 2)}
+
+Task description: ${task.description}
+Task target: ${task.target || '(none)'}
+
+Output ONLY a JSON object matching the schema. Use null for optional fields when not applicable.`;
 }
 
 /**

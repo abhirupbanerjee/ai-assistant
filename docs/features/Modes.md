@@ -28,6 +28,7 @@ Policy Bot supports two operational modes to handle different user requirements:
 - Tasks with dependencies between subtasks
 - Quality-critical outputs requiring validation
 - Tasks requiring task decomposition and planning
+- Tasks that benefit from iterative reasoning within a single step (subagent ReAct loops)
 
 Planner reasoning and executor model selection are configured in Admin Settings → Agent Config. When the selected planner model is marked thinking-capable in Admin Settings → LLM, a planner-only Thinking / Reasoning toggle becomes available.
 
@@ -43,7 +44,7 @@ Planner reasoning and executor model selection are configured in Admin Settings 
 
 ### 2.1 High-Level Architecture
 
-The autonomous mode implements a Plan-and-Execute pattern with hierarchical agent coordination:
+The autonomous mode implements a Plan-and-Execute pattern with hierarchical agent coordination. Tasks marked `subagent_enabled` run an internal ReAct loop (think → act → observe → repeat) instead of single-shot execution:
 
 ```
 User Request
@@ -55,6 +56,7 @@ User Request
 │  • Load task plan from database                             │
 │  • Initialize budget tracker                                │
 │  • Coordinate execution loop                                │
+│  • Route subagent-enabled tasks to ReAct loop              │
 │  • Handle progress callbacks                                │
 └─────────────────────────────────────────────────────────────┘
      │
@@ -65,13 +67,15 @@ User Request
 │ (Configurable    │                              │ (Configurable    │
 │  planner model)  │                              │  executor model) │
 │                  │                              │                  │
-│                  │                              │                  │
-│ • Task decompo-  │                              │ • Tool execution │
-│   sition         │                              │ • Code generation│
+│                  │                              │ • Tool execution │
+│ • Task decompo-  │                              │ • Subagent ReAct │
+│   sition         │                              │   loop (optional)│
 │ • Optional       │                              │ • Profile-based  │
 │   reasoning      │                              │   routing        │
 │ • DAG creation   │                              │ • Result handling│
 │ • Self-reflection│                              │                  │
+│ • subagent_      │                              │                  │
+│   enabled flags  │                              │                  │
 └──────────────────┘                              └──────────────────┘
      │                                                    │
      │                                                    ▼
@@ -200,9 +204,12 @@ User Request
 - Manage code generation and execution
 - Stream progress updates back to orchestrator
 - Handle tool-specific errors and retries
+- Run subagent ReAct loops for tasks marked `subagent_enabled`
 
 **Key Features:**
 - 8 tool types: `doc_gen`, `image_gen`, `chart_gen`, `xlsx_gen`, `pptx_gen`, `podcast_gen`, `diagram_gen`, `web_search`
+- **Subagent ReAct loop** (optional, per-task): multi-turn LLM reasoning with tool calling, up to admin-configured max iterations (default 5)
+- **Tool safety classification**: `subagentSafe` flag on all 21 tools — safe tools (read-only: `web_search`, `code_analysis`, etc.) run freely; unsafe tools (generative: `doc_gen`, `image_gen`, etc.) trigger HITL pause for approval
 - Code generation for dynamic tasks (temperature: 0.4, max tokens: 4096)
 - Streaming response handling
 - Tool result parsing and validation
@@ -317,13 +324,29 @@ Task Execution → Confidence Score
 
 - Budget tracker initialized per plan from database settings
 - Tracks: LLM calls (default 500), total tokens (default 2M), web searches (default 100), duration (default 30 min), task timeout (default 5 min)
+- **Subagent budget allocation**: Each subagent task receives a configurable percentage (default 25%) of the plan-level token budget, tracked independently with 80% warning threshold
 - Warning thresholds: 50% (medium), 75% (high), 100% (hard stop)
 - Global budget pool shared across all concurrent agents
 - 2-second TTL cache prevents excessive DB queries
+- Live cost tracking: per-model pricing from `enabled_models` table, emitted via `agent_cost_update` SSE events
 
 ---
 
-## 6. Best Practices Validation
+## 6. Subagent Configuration (Admin Settings)
+
+Configured in **Admin Settings → Autonomous Mode → Subagent Configuration**:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| Enable subagent mode | Toggle | `false` | Master on/off for multi-turn ReAct subagents |
+| Default tasks to subagent mode | Toggle | `false` | Planner marks new tasks as `subagent_enabled` by default |
+| Require HITL for unsafe subagent tools | Toggle | `true` | Pause execution before generative/costly tools |
+| Max iterations per task | Number | `5` | ReAct loop ceiling (1–20) |
+| Budget allocation (%) | Number | `25` | Percentage of plan budget allocated per subagent task |
+
+---
+
+## 7. Best Practices Validation
 
 | Best Practice | Implementation | Status |
 |---------------|----------------|--------|
@@ -332,24 +355,30 @@ Task Execution → Confidence Score
 | Separation of planning from execution | Distinct agents for each phase | Aligned |
 | Hierarchical communication | Orchestrator coordinates sequential flow | Aligned |
 | Fault tolerance | Retry strategies, fallback chains | Aligned |
-| Budget enforcement | Budget tracker at each stage | Aligned |
-| Human-in-the-loop checkpoint | 80% confidence threshold for auto-approval | Aligned |
-| Observability | Task status tracking, progress callbacks | Aligned |
-| Tool allowlists | Tool detection by task type | Aligned |
+| Budget enforcement | Budget tracker at each stage + per-task subagent budgets | Aligned |
+| Human-in-the-loop checkpoint | Plan-level HITL + **tool-level HITL** for unsafe subagent tools | Aligned |
+| Observability | Task status tracking, progress callbacks, **subagent live telemetry** | Aligned |
+| Tool allowlists | Tool detection by task type + `subagentSafe` classification | Aligned |
 
 ---
 
-## 7. Key Files
+## 8. Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/lib/agent/orchestrator.ts` | Main orchestration loop, task coordination |
-| `src/lib/agent/planner.ts` | Task decomposition, DAG creation, self-reflection |
-| `src/lib/agent/executor.ts` | Tool execution, code generation |
+| `src/lib/agent/orchestrator.ts` | Main orchestration loop, task coordination, subagent routing |
+| `src/lib/agent/planner.ts` | Task decomposition, DAG creation, self-reflection, `subagent_enabled` flags |
+| `src/lib/agent/executor.ts` | Tool execution, code generation, generic tool bridge |
+| `src/lib/agent/subagent.ts` | **Subagent ReAct loop engine** — multi-turn LLM tool calling |
+| `src/lib/agent/subagent-budget.ts` | Per-task budget allocation for subagent loops |
 | `src/lib/agent/checker.ts` | Quality validation, confidence scoring |
 | `src/lib/agent/summarizer.ts` | Output synthesis, progressive streaming |
 | `src/lib/agent/llm-router.ts` | Model routing, fallback chain |
 | `src/lib/agent/budget-tracker.ts` | Global budget enforcement |
 | `src/lib/agent/dependency-validator.ts` | DAG validation, cycle detection |
-| `src/lib/agent/streaming-executor.ts` | SSE streaming integration |
-| `src/lib/db/compat/agent-config.ts` | Model config, system prompts, admin settings |
+| `src/lib/agent/streaming-executor.ts` | SSE streaming integration, subagent config loading |
+| `src/lib/agent/cost-tracker.ts` | Live cumulative cost tracking with per-model pricing |
+| `src/streaming/subagent-approval-resolver.ts` | In-memory HITL resolver for subagent tool approvals |
+| `src/components/chat/SubagentPanel.tsx` | Live subagent telemetry UI (iterations, thinking, cost) |
+| `src/components/chat/SubagentApprovalCard.tsx` | HITL approval card for unsafe subagent tools |
+| `src/lib/db/compat/agent-config.ts` | Model config, system prompts, admin settings, subagent config |

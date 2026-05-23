@@ -9,11 +9,12 @@ import type { StreamEvent } from '@/types/stream';
 import type { AgentModelConfig, AgentPlan, AgentTask, ExecutionResult } from '@/types/agent';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { createAndExecuteAutonomousPlan } from './orchestrator';
-import { getAgentModelConfigs, getExecutorModelProfiles } from '../db/compat/agent-config';
+import { getAgentModelConfigs, getExecutorModelProfiles, getSubagentConfig } from '../db/compat/agent-config';
 import { getSetting } from '../db/compat/config';
 import { incrementBudgetUsage } from '../db/compat/task-plans';
 import { generatePlanIntro, generateIncrementalSummary, generateConclusion, regenerateAccumulatedContent } from './summarizer';
 import { createPlanApprovalResolver } from '../streaming/plan-approval-resolver';
+import CostTracker from './cost-tracker';
 
 /**
  * Result of autonomous execution including collected artifacts
@@ -85,6 +86,10 @@ export async function executeAutonomousWithStreaming(
   const hitlEnabled = (await getSetting('agent_hitl_enabled', 'true')) === 'true';
   const hitlMinTasks = parseInt(await getSetting('agent_hitl_min_tasks', '5'), 10);
   const hitlTimeoutMs = parseInt(await getSetting('agent_hitl_timeout_seconds', '300'), 10) * 1000;
+
+  // Load subagent configuration
+  const subagentConfig = await getSubagentConfig();
+
   const budget = planConfig.budget || {
     max_llm_calls: parseInt(await getSetting('agent_budget_max_llm_calls', '500'), 10),
     max_tokens: parseInt(await getSetting('agent_budget_max_tokens', '2000000'), 10),
@@ -98,6 +103,9 @@ export async function executeAutonomousWithStreaming(
   const collectedImages: GeneratedImageInfo[] = [];
   let planId = '';
   let accumulatedContent = ''; // Progressive response content streamed to user
+
+  // Cost tracker for per-task cost accumulation
+  const costTracker = new CostTracker((event) => sendEvent(event));
 
   // Execute autonomous plan with streaming callbacks
   try {
@@ -113,6 +121,7 @@ export async function executeAutonomousWithStreaming(
         hitlEnabled,
         hitlMinTasks,
         hitlTimeoutMs,
+        subagentConfig,
       },
       {
         // Planning phase callbacks - user-friendly progress messages
@@ -281,6 +290,11 @@ export async function executeAutonomousWithStreaming(
                 ? 'needs_review'
                 : 'done';
 
+          // Track cost for this task
+          if (task.executor_model_used && result.tokens_used) {
+            await costTracker.addCost(task.id, task.executor_model_used, result.tokens_used);
+          }
+
           sendEvent({
             type: 'agent_task_completed',
             task_id: task.id,
@@ -290,6 +304,11 @@ export async function executeAutonomousWithStreaming(
             checkerNotes: task.review_notes, // Checker's assessment notes
             executor_profile: task.executor_profile,
             executor_model_used: task.executor_model_used,
+            // Per-task telemetry
+            tokens_used: result.tokens_used || 0,
+            llm_calls: result.llm_calls || 0,
+            web_searches: result.web_searches || 0,
+            tools_used: result.tools_used,
           });
 
           // Generate and stream incremental summary for completed tasks (skip needs_review — low-confidence content)
@@ -320,15 +339,24 @@ export async function executeAutonomousWithStreaming(
         },
 
         // Tool execution callbacks for streaming artifacts
-        onToolStart: (name: string, displayName: string) => {
+        onToolStart: (name: string, displayName: string, taskId?: number) => {
           sendEvent({
             type: 'tool_start',
             name,
             displayName,
           });
+          // Emit per-task tool start event for SubagentPanel visualization
+          if (taskId !== undefined) {
+            sendEvent({
+              type: 'agent_task_tool_start',
+              task_id: taskId,
+              tool_name: name,
+              displayName,
+            });
+          }
         },
 
-        onToolEnd: (name: string, success: boolean, duration?: number, error?: string) => {
+        onToolEnd: (name: string, success: boolean, duration?: number, error?: string, taskId?: number) => {
           sendEvent({
             type: 'tool_end',
             name,
@@ -336,6 +364,16 @@ export async function executeAutonomousWithStreaming(
             duration,
             error,
           });
+          // Emit per-task tool end event for SubagentPanel visualization
+          if (taskId !== undefined) {
+            sendEvent({
+              type: 'agent_task_tool_end',
+              task_id: taskId,
+              tool_name: name,
+              success,
+              duration: duration || 0,
+            });
+          }
         },
 
         onArtifact: (event: StreamEvent) => {

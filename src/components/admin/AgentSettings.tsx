@@ -53,6 +53,11 @@ interface AgentSettings {
   streamingKeepaliveInterval: number;
   streamingMaxDuration: number;
   streamingToolTimeout: number;
+  subagentEnabled: boolean;
+  subagentDefaultOn: boolean;
+  subagentMaxIterations: number;
+  subagentBudgetRatio: number;
+  subagentHitlEnabled: boolean;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -279,6 +284,11 @@ export default function AgentSettingsTab() {
         streamingKeepaliveInterval: data.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: data.streamingMaxDuration ?? 300,
         streamingToolTimeout: data.streamingToolTimeout ?? 60,
+        subagentEnabled: data.subagentEnabled ?? false,
+        subagentDefaultOn: data.subagentDefaultOn ?? false,
+        subagentMaxIterations: data.subagentMaxIterations ?? 5,
+        subagentBudgetRatio: data.subagentBudgetRatio ?? 25,
+        subagentHitlEnabled: data.subagentHitlEnabled ?? true,
       });
       setError(null);
     } catch (err) {
@@ -346,6 +356,11 @@ export default function AgentSettingsTab() {
         streamingKeepaliveInterval: settings.streamingKeepaliveInterval ?? 10,
         streamingMaxDuration: settings.streamingMaxDuration ?? 300,
         streamingToolTimeout: settings.streamingToolTimeout ?? 60,
+        subagentEnabled: settings.subagentEnabled ?? false,
+        subagentDefaultOn: settings.subagentDefaultOn ?? false,
+        subagentMaxIterations: settings.subagentMaxIterations ?? 5,
+        subagentBudgetRatio: settings.subagentBudgetRatio ?? 25,
+        subagentHitlEnabled: settings.subagentHitlEnabled ?? true,
       });
       setIsModified(false);
     }
@@ -542,6 +557,112 @@ export default function AgentSettingsTab() {
               </div>
               {!editedSettings.autonomousModeEnabled && (
                 <p className="text-xs text-amber-600 mt-2">Autonomous mode is currently disabled. Users will see the toggle greyed out with an admin notice.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Subagent Configuration */}
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <h3 className="font-medium text-gray-900">Subagent Configuration</h3>
+              <p className="text-sm text-gray-500">Enable multi-turn ReAct subagents for complex tasks with tool-calling loops</p>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Enable subagent mode</label>
+                  <p className="text-xs text-gray-500 mt-0.5">When enabled, tasks can use a multi-turn ReAct loop instead of single-shot execution</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={editedSettings.subagentEnabled}
+                  onClick={() => updateSetting('subagentEnabled', !editedSettings.subagentEnabled)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    editedSettings.subagentEnabled ? 'bg-indigo-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      editedSettings.subagentEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {editedSettings.subagentEnabled && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Default tasks to subagent mode</label>
+                      <p className="text-xs text-gray-500 mt-0.5">When enabled, the planner will mark tasks as subagent-enabled by default</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={editedSettings.subagentDefaultOn}
+                      onClick={() => updateSetting('subagentDefaultOn', !editedSettings.subagentDefaultOn)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                        editedSettings.subagentDefaultOn ? 'bg-indigo-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          editedSettings.subagentDefaultOn ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Require HITL for unsafe subagent tools</label>
+                      <p className="text-xs text-gray-500 mt-0.5">Pause subagent execution and ask for approval before generative/costly tools</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={editedSettings.subagentHitlEnabled}
+                      onClick={() => updateSetting('subagentHitlEnabled', !editedSettings.subagentHitlEnabled)}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                        editedSettings.subagentHitlEnabled ? 'bg-indigo-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          editedSettings.subagentHitlEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Max iterations per task</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={editedSettings.subagentMaxIterations}
+                        onChange={(e) => updateSetting('subagentMaxIterations', parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Maximum ReAct loops per subagent task (1-20)</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Budget allocation (%)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={editedSettings.subagentBudgetRatio}
+                        onChange={(e) => updateSetting('subagentBudgetRatio', parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Percentage of plan budget allocated to each subagent task</p>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>

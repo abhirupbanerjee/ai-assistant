@@ -275,6 +275,7 @@ When `AUTH_DISABLED=true` in environment:
 | POST | `/api/autonomous/{planId}/resume` | Yes | Owner | Resume paused plan |
 | POST | `/api/autonomous/{planId}/stop` | Yes | Owner | Stop autonomous plan |
 | POST | `/api/autonomous/{planId}/tasks/{taskId}/skip` | Yes | Owner | Skip task in plan |
+| POST | `/api/agent/subagent/approve` | Yes | — | Approve/deny/modify subagent tool call |
 
 ---
 
@@ -5308,6 +5309,43 @@ Skip a specific pending task in an autonomous plan.
 | 400 | "Cannot skip task with status '...'" | INVALID_STATE | Task must be pending |
 | 400 | "Invalid task ID" | VALIDATION_ERROR | Task ID must be numeric |
 | 404 | "Task not found" | NOT_FOUND | Verify task ID |
+
+---
+
+### 29. Subagent Tool Approval
+
+Approve, deny, or modify an unsafe tool call within a subagent ReAct loop. This endpoint is used by the HITL (Human-in-the-Loop) flow when a subagent attempts to execute a tool marked `subagentSafe: false`.
+
+#### `POST /api/agent/subagent/approve`
+
+**Authentication**: Required
+
+**Request Body**:
+
+```typescript
+{
+  task_id: number;              // Task ID within the subagent loop
+  action: "approve" | "deny" | "modify";
+  modified_args?: Record<string, unknown>;  // Required when action = "modify"
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  resolved: boolean;            // true if the approval was applied to a pending request
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "task_id is required" | VALIDATION_ERROR | Include task_id in request body |
+| 401 | "Unauthorized" | AUTH_REQUIRED | User must be authenticated |
+| 500 | "Failed to process approval" | SERVICE_ERROR | Check server logs |
 
 ---
 

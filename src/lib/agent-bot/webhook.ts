@@ -8,6 +8,7 @@
  */
 
 import { createHmac } from 'crypto';
+import { fetchWithSsrfGuard, validateUrlIsPublic } from '@/lib/ssrf-guard';
 import type {
   WebhookPayload,
   AgentBotJob,
@@ -182,6 +183,17 @@ export async function deliverWebhook(
   const payloadString = JSON.stringify(payload);
   const signature = generateSignature(payloadString, config.secret);
 
+  // SSRF guard: block private/internal IP ranges
+  try {
+    await validateUrlIsPublic(config.url);
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'SSRF guard rejected webhook URL',
+      attempts: 0,
+    };
+  }
+
   let lastError: string | undefined;
   let lastStatusCode: number | undefined;
 
@@ -196,19 +208,23 @@ export async function deliverWebhook(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const response = await fetch(config.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Agent-Bot-Signature': signature,
-          'X-Agent-Bot-Event': payload.event,
-          'X-Agent-Bot-Job-Id': payload.jobId,
-          'X-Agent-Bot-Delivery-Attempt': (attempt + 1).toString(),
-          'User-Agent': 'AgentBot-Webhook/1.0',
+      const { response } = await fetchWithSsrfGuard(
+        config.url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Agent-Bot-Signature': signature,
+            'X-Agent-Bot-Event': payload.event,
+            'X-Agent-Bot-Job-Id': payload.jobId,
+            'X-Agent-Bot-Delivery-Attempt': (attempt + 1).toString(),
+            'User-Agent': 'AgentBot-Webhook/1.0',
+          },
+          body: payloadString,
+          signal: controller.signal,
         },
-        body: payloadString,
-        signal: controller.signal,
-      });
+        { maxRedirects: 5, followRedirects: true }
+      );
 
       clearTimeout(timeoutId);
       lastStatusCode = response.status;
@@ -236,6 +252,13 @@ export async function deliverWebhook(
 
       lastError = `HTTP ${response.status}: ${response.statusText}`;
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith('SSRF guard')) {
+        return {
+          success: false,
+          error: error.message,
+          attempts: attempt + 1,
+        };
+      }
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           lastError = 'Request timeout';

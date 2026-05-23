@@ -1,14 +1,25 @@
 /**
- * Streaming Types for Chat API
+ * Stream Event Types
  *
- * Defines SSE event types for real-time streaming responses,
- * progressive disclosure UI state, and processing metadata.
+ * Server-Sent Event types for chat streaming, including status updates,
+ * tool execution tracking, artifacts, RAG sources, autonomous mode events,
+ * and compliance events.
  */
 
-import type { Source, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization, DiagramHint, PodcastHint } from './index';
-import type { ComplianceDecision, HitlClarificationEvent, PreflightClarificationEvent } from './compliance';
-import type { FallbackReason, ModelSwitchEvent } from '@/lib/llm-fallback';
-
+import type {
+  Source,
+  GeneratedDocumentInfo,
+  GeneratedImageInfo,
+  MessageVisualization,
+  DiagramHint,
+  PodcastHint,
+} from './index';
+import type {
+  ComplianceDecision,
+  HitlClarificationEvent,
+  PreflightClarificationEvent,
+} from './compliance';
+import type { FallbackReason } from '@/lib/llm-fallback';
 
 // ============ Stream Phases ============
 
@@ -17,16 +28,24 @@ import type { FallbackReason, ModelSwitchEvent } from '@/lib/llm-fallback';
  */
 export type StreamPhase =
   | 'init'        // Connection established
+  | 'idle'
+  | 'thinking'
+  | 'reasoning'
+  | 'planning'
   | 'rag'         // RAG retrieval in progress
   | 'clarifying_question' // Pre-flight: waiting for user clarification
   | 'tools'       // Executing tool calls
+  | 'memory'
+  | 'streaming'
   | 'generating'  // Streaming LLM response
   | 'agent_planning'   // Agent mode: Creating task plan
   | 'agent_executing'  // Agent mode: Executing tasks
   | 'agent_checking'   // Agent mode: Quality checking task
   | 'agent_summarizing' // Agent mode: Generating summary
   | 'awaiting_approval' // Agent mode: Waiting for user plan approval
-  | 'complete';   // All done
+  | 'compliance'
+  | 'complete'    // All done
+  | 'error';
 
 // ============ Skill & Tool Tracking ============
 
@@ -35,22 +54,71 @@ export type StreamPhase =
  */
 export interface SkillInfo {
   name: string;
-  triggerReason?: 'always' | 'category' | 'keyword';
+  triggerReason: 'always' | 'category' | 'keyword';
 }
 
-/**
- * Operation log category for backend event tracking
- */
-export type OperationCategory = 'rag' | 'llm' | 'tool' | 'memory';
+// ============ Supporting Types ============
 
 /**
- * Operation log entry for the unified Operations section in ProcessingIndicator
+ * Operation log entry for backend operations
  */
 export interface OperationLogEntry {
-  category: OperationCategory;
-  message: string;
   timestamp: number;
+  /** Category of the operation */
+  category: OperationCategory;
+  /** Human-readable description of the operation */
+  message: string;
 }
+
+/**
+ * Operation categories for backend operation logs
+ */
+export type OperationCategory =
+  | 'rag'
+  | 'llm'
+  | 'memory'
+  | 'tool'
+  | 'upload'
+  | 'system'
+  | 'compliance'
+  | 'plan'
+  | 'agent';
+
+/**
+ * Human-readable labels for operation categories
+ */
+export const OPERATION_CATEGORY_LABELS: Record<OperationCategory, string> = {
+  rag: 'Knowledge Retrieval',
+  llm: 'AI Model',
+  memory: 'Memory',
+  tool: 'Tool',
+  upload: 'Upload',
+  system: 'System',
+  compliance: 'Compliance',
+  plan: 'Planning',
+  agent: 'Agent',
+};
+
+/**
+ * User-friendly status messages for streaming phases
+ */
+export const PHASE_MESSAGES: Record<string, string> = {
+  idle: 'Waiting...',
+  thinking: 'Thinking...',
+  reasoning: 'Reasoning...',
+  planning: 'Planning...',
+  tools: 'Running tools...',
+  rag: 'Searching knowledge base...',
+  memory: 'Loading context...',
+  streaming: 'Generating response...',
+  complete: 'Complete',
+  error: 'Error',
+  agent_planning: 'Planning tasks...',
+  agent_executing: 'Executing tasks...',
+  agent_summarizing: 'Generating summary...',
+  awaiting_approval: 'Waiting for approval...',
+  compliance: 'Checking compliance...',
+};
 
 /**
  * Tool execution state for UI tracking
@@ -62,6 +130,8 @@ export interface ToolExecutionState {
   startTime?: number;
   duration?: number;
   error?: string;
+  /** Optional arguments passed to the tool (for richer display) */
+  args?: Record<string, unknown>;
 }
 
 /**
@@ -186,6 +256,14 @@ export type StreamEvent =
       checkerNotes?: string;
       executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
       executor_model_used?: string;
+      /** Per-task token usage */
+      tokens_used?: number;
+      /** Per-task LLM call count */
+      llm_calls?: number;
+      /** Per-task web search count */
+      web_searches?: number;
+      /** Per-task tools executed (names only) */
+      tools_used?: string[];
     }
   | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
   | { type: 'agent_budget_exceeded'; message: string }
@@ -193,6 +271,21 @@ export type StreamEvent =
   | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }
   | { type: 'agent_error'; error: string }
   | { type: 'agent_replanning'; plan_id: string; failed_task_count: number; message: string }
+
+  // Autonomous mode — per-task tool tracking (Subagent Panel)
+  | { type: 'agent_task_tool_start'; task_id: number; tool_name: string; displayName: string; args?: Record<string, unknown> }
+  | { type: 'agent_task_tool_end'; task_id: number; tool_name: string; success: boolean; duration: number }
+  | { type: 'agent_task_progress'; task_id: number; message: string }
+
+  // Autonomous mode — cost tracking
+  | { type: 'agent_cost_update'; task_id: number; task_cost: number; cumulative_cost: number }
+
+  // Subagent loop events
+  | { type: 'subagent_step'; task_id: number; iteration: number; tool_name: string; args: Record<string, unknown> }
+  | { type: 'subagent_thinking'; task_id: number; thought: string }
+  | { type: 'subagent_budget_warning'; task_id: number; pct: number }
+  | { type: 'subagent_complete'; task_id: number; result: string; iterations: number; hit_limit: boolean }
+  | { type: 'subagent_human_approval_needed'; task_id: number; request: { tool_name: string; arguments: Record<string, unknown>; reasoning: string; risk_level: 'low' | 'medium' | 'high' } }
 
   // Autonomous mode HITL — plan approval
   | { type: 'hitl_plan_approval'; data: PlanApprovalEvent }
@@ -384,3 +477,4 @@ export interface StreamingCallbacks {
   /** Called when the LLM invokes request_clarification. Pauses the stream, shows HITL UI, resolves with user's answer or null. */
   onClarification?: (question: string, options: string[], allowFreeText: boolean) => Promise<string | null>;
 }
+

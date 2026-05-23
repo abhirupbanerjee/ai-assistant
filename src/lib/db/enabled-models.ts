@@ -19,6 +19,8 @@ export interface EnabledModel {
   thinkingCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;  // Max tokens for LLM output
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
   isDefault: boolean;
   enabled: boolean;        // false = disabled/hidden
   providerEnabled?: boolean; // Whether the provider is enabled (for UI display)
@@ -37,6 +39,8 @@ interface EnabledModelRow {
   thinking_capable: number;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
+  input_cost_per_1m: number | null;
+  output_cost_per_1m: number | null;
   is_default: number;
   enabled: number;
   provider_enabled?: number;
@@ -55,6 +59,8 @@ export interface CreateEnabledModelInput {
   thinkingCapable?: boolean;
   maxInputTokens?: number;
   maxOutputTokens?: number;
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
   isDefault?: boolean;
   enabled?: boolean;
   sortOrder?: number;
@@ -68,6 +74,8 @@ export interface UpdateEnabledModelInput {
   thinkingCapable?: boolean;
   maxInputTokens?: number;
   maxOutputTokens?: number;
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
   isDefault?: boolean;
   enabled?: boolean;
   sortOrder?: number;
@@ -86,6 +94,8 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     thinkingCapable: row.thinking_capable === 1,
     maxInputTokens: row.max_input_tokens,
     maxOutputTokens: row.max_output_tokens,
+    inputCostPer1M: row.input_cost_per_1m,
+    outputCostPer1M: row.output_cost_per_1m,
     isDefault: row.is_default === 1,
     enabled: row.enabled === 1,
     providerEnabled: row.provider_enabled !== undefined ? row.provider_enabled === 1 : undefined,

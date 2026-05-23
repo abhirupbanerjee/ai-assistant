@@ -458,3 +458,61 @@ export async function setAutonomousModeEnabled(
 ): Promise<void> {
   await setSetting('agent_autonomous_enabled', String(enabled), updatedBy);
 }
+
+// ============================================================================
+// Subagent Configuration
+// ============================================================================
+
+export interface SubagentConfig {
+  enabled: boolean;
+  defaultOn: boolean;
+  maxIterations: number;
+  budgetRatio: number;
+  hitlEnabled: boolean;
+}
+
+const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
+  enabled: false,
+  defaultOn: false,
+  maxIterations: 5,
+  budgetRatio: 25,
+  hitlEnabled: true,
+};
+
+/**
+ * Get subagent configuration from database
+ */
+export async function getSubagentConfig(): Promise<SubagentConfig> {
+  try {
+    const enabled = (await getSetting('agent_subagent_enabled', 'false')) === 'true';
+    const defaultOn = (await getSetting('agent_subagent_default_on', 'false')) === 'true';
+    const maxIterations = parseInt(await getSetting('agent_subagent_max_iterations', '5'), 10);
+    const budgetRatio = parseInt(await getSetting('agent_subagent_budget_ratio', '25'), 10);
+    const hitlEnabled = (await getSetting('agent_subagent_hitl_enabled', 'true')) === 'true';
+
+    return {
+      enabled,
+      defaultOn,
+      maxIterations: Number.isNaN(maxIterations) ? 5 : Math.max(1, Math.min(20, maxIterations)),
+      budgetRatio: Number.isNaN(budgetRatio) ? 25 : Math.max(1, Math.min(100, budgetRatio)),
+      hitlEnabled,
+    };
+  } catch (error) {
+    console.error('[Agent Config] Error loading subagent config:', error);
+    return DEFAULT_SUBAGENT_CONFIG;
+  }
+}
+
+/**
+ * Save subagent configuration to database
+ */
+export async function setSubagentConfig(
+  config: SubagentConfig,
+  updatedBy: string
+): Promise<void> {
+  await setSetting('agent_subagent_enabled', String(config.enabled), updatedBy);
+  await setSetting('agent_subagent_default_on', String(config.defaultOn), updatedBy);
+  await setSetting('agent_subagent_max_iterations', String(config.maxIterations), updatedBy);
+  await setSetting('agent_subagent_budget_ratio', String(config.budgetRatio), updatedBy);
+  await setSetting('agent_subagent_hitl_enabled', String(config.hitlEnabled), updatedBy);
+}

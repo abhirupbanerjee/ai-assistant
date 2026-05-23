@@ -17,6 +17,7 @@ import * as tls from 'tls';
 import { getToolConfig } from '../db/compat/tool-config';
 import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
+import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 
 // ========================================================================
@@ -311,13 +312,16 @@ async function fetchHeadersForSecurity(url: string): Promise<Headers> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (SecurityAudit/1.0)' },
-    });
-    return res.headers;
+    const { response } = await fetchWithSsrfGuard(
+      url,
+      {
+        method: 'GET',
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (SecurityAudit/1.0)' },
+      },
+      { maxRedirects: 5, followRedirects: true }
+    );
+    return response.headers;
   } finally {
     clearTimeout(timer);
   }
@@ -849,8 +853,11 @@ async function runCookieAudit(url: string, config: { rateLimitPerDay: number; fo
   const rateCheck = await checkCookieRateLimit(config);
   if (!rateCheck.allowed) throw new Error(rateCheck.reason);
 
-  const response = await fetch(url, { redirect: config.followRedirects ? 'follow' : 'manual', headers: { 'User-Agent': 'PolicyBot-CookieAudit/1.0' } });
-  const finalUrl = response.url || url;
+  const { response, finalUrl } = await fetchWithSsrfGuard(
+    url,
+    { headers: { 'User-Agent': 'PolicyBot-CookieAudit/1.0' } },
+    { followRedirects: config.followRedirects, maxRedirects: 10 }
+  );
   const cookieHeaders: string[] = response.headers.getSetCookie();
   const cookies = cookieHeaders.map(parseCookieHeader);
   const allIssues = cookies.flatMap(c => c.issues);
@@ -900,17 +907,24 @@ async function followRedirects(startUrl: string, maxHops: number, timeoutMs: num
       break;
     }
     visited.add(currentUrl);
+    await validateUrlIsPublic(currentUrl);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(currentUrl, { redirect: 'manual', signal: controller.signal, headers: { 'User-Agent': 'PolicyBot-RedirectAudit/1.0' } });
+      const { response: res } = await fetchWithSsrfGuard(
+        currentUrl,
+        { redirect: 'manual', signal: controller.signal, headers: { 'User-Agent': 'PolicyBot-RedirectAudit/1.0' } },
+        { followRedirects: false }
+      );
       clearTimeout(timer);
       const protocol: 'http' | 'https' = currentUrl.startsWith('https') ? 'https' : 'http';
       hops.push({ order: i + 1, url: currentUrl, statusCode: res.status, protocol });
       if (res.status < 300 || res.status >= 400) break;
       const location = res.headers.get('location');
       if (!location) break;
-      currentUrl = new URL(location, currentUrl).href;
+      const nextUrl = new URL(location, currentUrl).href;
+      await validateUrlIsPublic(nextUrl);
+      currentUrl = nextUrl;
     } catch (err) {
       clearTimeout(timer);
       if ((err as Error).name === 'AbortError') {
@@ -1148,6 +1162,16 @@ export const websiteAnalysisTool: ToolDefinition = {
     } catch {
       return JSON.stringify({ success: false, error: 'Invalid URL format' });
     }
+    // SSRF guard: block private/internal IP ranges
+    try {
+      await validateUrlIsPublic(url);
+    } catch (err) {
+      return JSON.stringify({
+        success: false,
+        error: err instanceof Error ? err.message : 'SSRF guard rejected the URL',
+      });
+    }
+
     void parsedUrl;
 
     const categoryIds = (options as { categoryIds?: number[] })?.categoryIds || [];

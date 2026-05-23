@@ -43,6 +43,14 @@ export interface AutonomousTaskState {
   confidence?: number;
   result?: string;
   checkerNotes?: string;
+  /** Per-task telemetry */
+  tokensUsed?: number;
+  llmCalls?: number;
+  webSearches?: number;
+  toolsUsed?: string[];
+  cost?: number;
+  /** Current action being performed by the task (e.g. "read_file(path=src/lib/tools.ts)") */
+  currentAction?: string;
 }
 
 /** Autonomous plan state for UI display */
@@ -89,6 +97,8 @@ export interface StreamingState {
   podcasts: PodcastHint[];
   /** Autonomous plan state (for autonomous mode) */
   autonomousPlan: AutonomousPlanState | null;
+  /** Cumulative cost for autonomous mode */
+  totalCost: number;
   /** Budget warning info (for autonomous mode) */
   budgetWarning: { level: 'medium' | 'high'; percentage: number; message: string } | null;
   /** Error message if any */
@@ -108,6 +118,8 @@ export interface StreamingState {
   hitlEvent: HitlClarificationEvent | null;
   /** HITL plan approval event (autonomous mode) */
   planApprovalEvent: PlanApprovalEvent | null;
+  /** HITL subagent tool approval event */
+  subagentApprovalEvent: { taskId: number; toolName: string; args: Record<string, unknown>; reasoning: string; riskLevel: 'low' | 'medium' | 'high' } | null;
 }
 
 export interface UseStreamingChatOptions {
@@ -141,6 +153,8 @@ export interface UseStreamingChatReturn {
   stopPlan: (reason?: string) => Promise<boolean>;
   /** Skip a specific task in the autonomous plan */
   skipTask: (taskId: number, reason?: string) => Promise<boolean>;
+  /** Approve or deny a subagent tool execution request */
+  approveSubagentTool: (taskId: number, action: 'approve' | 'deny' | 'modify', modifiedArgs?: Record<string, unknown>) => Promise<boolean>;
 }
 
 // ============ Tool Action Messages ============
@@ -196,6 +210,7 @@ const initialState: StreamingState = {
   diagrams: [],
   podcasts: [],
   autonomousPlan: null,
+  totalCost: 0,
   budgetWarning: null,
   error: null,
   errorRecoverable: false,
@@ -205,6 +220,7 @@ const initialState: StreamingState = {
   preflightEvent: null,
   hitlEvent: null,
   planApprovalEvent: null,
+  subagentApprovalEvent: null,
 };
 
 // ============ Hook ============
@@ -468,12 +484,35 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
                       checkerNotes: event.checkerNotes,
                       executorProfile: event.executor_profile || task.executorProfile,
                       executorModelUsed: event.executor_model_used || task.executorModelUsed,
+                      // Per-task telemetry
+                      tokensUsed: event.tokens_used ?? task.tokensUsed,
+                      llmCalls: event.llm_calls ?? task.llmCalls,
+                      webSearches: event.web_searches ?? task.webSearches,
+                      toolsUsed: event.tools_used ?? task.toolsUsed,
                     }
                   : task
               ),
             },
           };
         });
+        break;
+      }
+
+      case 'agent_cost_update': {
+        setState(prev => ({
+          ...prev,
+          totalCost: event.cumulative_cost,
+          autonomousPlan: prev.autonomousPlan
+            ? {
+                ...prev.autonomousPlan,
+                tasks: prev.autonomousPlan.tasks.map(task =>
+                  task.id === event.task_id
+                    ? { ...task, cost: event.task_cost }
+                    : task
+                ),
+              }
+            : null,
+        }));
         break;
       }
 
@@ -571,6 +610,65 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
+      case 'agent_task_tool_start':
+        // Update task with current action (tool name + args)
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? {
+                      ...task,
+                      currentAction: event.args
+                        ? `${event.displayName}(${Object.entries(event.args).map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`).join(', ')})`
+                        : event.displayName,
+                    }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
+      case 'agent_task_tool_end':
+        // Clear current action on tool end
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, currentAction: undefined }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
+      case 'agent_task_progress':
+        // Update task with progress message
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, currentAction: event.message }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
       case 'agent_task_skipped':
         // Handle task skipped
         setState(prev => {
@@ -587,6 +685,68 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             },
           };
         });
+        break;
+
+      case 'subagent_step':
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, currentAction: `${event.tool_name}(${Object.entries(event.args).map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`).join(', ')})` }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
+      case 'subagent_thinking':
+        // Thinking content is streamed via chunks — no special state needed
+        break;
+
+      case 'subagent_budget_warning':
+        setState(prev => ({
+          ...prev,
+          budgetWarning: {
+            level: event.pct >= 90 ? 'high' : 'medium',
+            percentage: event.pct,
+            message: `Subagent budget at ${event.pct}%`,
+          },
+        }));
+        break;
+
+      case 'subagent_complete':
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, status: 'done', currentAction: undefined }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
+      case 'subagent_human_approval_needed':
+        setState(prev => ({
+          ...prev,
+          subagentApprovalEvent: {
+            taskId: event.task_id,
+            toolName: event.request.tool_name,
+            args: event.request.arguments,
+            reasoning: event.request.reasoning,
+            riskLevel: event.request.risk_level,
+          },
+        }));
         break;
 
       case 'hitl_preflight':
@@ -1059,6 +1219,32 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     }
   }, [state.activePlanId]);
 
+  const approveSubagentTool = useCallback(async (
+    taskId: number,
+    action: 'approve' | 'deny' | 'modify',
+    modifiedArgs?: Record<string, unknown>
+  ): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/agent/subagent/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId, action, modified_args: modifiedArgs }),
+      });
+
+      if (response.ok) {
+        setState(prev => ({ ...prev, subagentApprovalEvent: null }));
+        return true;
+      } else {
+        const error = await response.json();
+        console.error('[useStreamingChat] Subagent approval failed:', error);
+        return false;
+      }
+    } catch (error) {
+      console.error('[useStreamingChat] Subagent approval error:', error);
+      return false;
+    }
+  }, []);
+
   return {
     state,
     sendMessage,
@@ -1069,6 +1255,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     resumePlan,
     stopPlan,
     skipTask,
+    approveSubagentTool,
   };
 }
 

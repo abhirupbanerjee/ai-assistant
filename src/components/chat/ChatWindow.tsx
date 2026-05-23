@@ -11,10 +11,12 @@ import CategoryChip from './CategoryChip';
 import AttachmentChipsRow from './AttachmentChipsRow';
 import Spinner from '@/components/ui/Spinner';
 import ProcessingIndicator from './ProcessingIndicator';
+import SubagentPanel from './SubagentPanel';
 
 import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
 import HitlClarificationCard from './HitlClarificationCard';
 import PlanApprovalCard from './PlanApprovalCard';
+import SubagentApprovalCard from './SubagentApprovalCard';
 import { useScrollHide } from '@/hooks/useScrollHide';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -258,6 +260,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     resumePlan,
     stopPlan,
     skipTask,
+    approveSubagentTool,
   } = useStreamingChat({
     onComplete: handleStreamComplete,
     onError: handleStreamError,
@@ -799,6 +802,31 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             onStop={() => stopPlan()}
             autonomousPlan={streamingState.autonomousPlan}
             onSkipTask={(taskId) => skipTask(taskId)}
+          />
+        )}
+
+        {/* Subagent Panel — card-based task visualization (autonomous mode) */}
+        {isAutonomousMode && streamingState.autonomousPlan && (
+          <SubagentPanel
+            plan={streamingState.autonomousPlan}
+            totalCost={streamingState.totalCost}
+            isPaused={streamingState.isPaused}
+            isStopped={streamingState.isStopped}
+            onSkipTask={(taskId) => skipTask(taskId)}
+          />
+        )}
+
+        {/* Subagent Tool Approval Card */}
+        {streamingState.subagentApprovalEvent && (
+          <SubagentApprovalCard
+            taskId={streamingState.subagentApprovalEvent.taskId}
+            toolName={streamingState.subagentApprovalEvent.toolName}
+            args={streamingState.subagentApprovalEvent.args}
+            reasoning={streamingState.subagentApprovalEvent.reasoning}
+            riskLevel={streamingState.subagentApprovalEvent.riskLevel}
+            onApprove={(taskId) => approveSubagentTool(taskId, 'approve')}
+            onDeny={(taskId) => approveSubagentTool(taskId, 'deny')}
+            onModify={(taskId, modifiedArgs) => approveSubagentTool(taskId, 'modify', modifiedArgs)}
           />
         )}
 

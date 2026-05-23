@@ -1192,6 +1192,7 @@ User Request (complex task)
 │  ┌─────────────────┐                                            │
 │  │    PLANNER      │──── Decomposes request into task plan     │
 │  │  (LLM Model)    │     Creates ordered task list              │
+│  │                 │     Optionally flags subagent tasks        │
 │  └─────────────────┘                                            │
 │           │                                                     │
 │           ▼                                                     │
@@ -1208,6 +1209,15 @@ User Request (complex task)
 │  │           │    ◀───Retry──────┤ (if below threshold)     │    │
 │  │           ▼                   │                          │    │
 │  │    Next Task ─────────────────┘                          │    │
+│  │                                                          │    │
+│  │  [Subagent path for subagent_enabled tasks]              │    │
+│  │    ┌─────────────────────────────────────────┐            │    │
+│  │    │  SUBAGENT ReAct LOOP (≤N iterations)   │            │    │
+│  │    │  • LLM decides with tool schema        │            │    │
+│  │    │  • Safe tools execute immediately      │            │    │
+│  │    │  • Unsafe tools → HITL approval        │            │    │
+│  │    │  • Observation injected → repeat       │            │    │
+│  │    └─────────────────────────────────────────┘            │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │           │                                                     │
 │           ▼                                                     │
@@ -1218,6 +1228,7 @@ User Request (complex task)
 │           │                                                     │
 │           ▼                                                     │
 │  Budget Tracking: Token count + cost limit enforcement          │
+│  Subagent Budget: Per-task allocation from plan budget          │
 └─────────────────────────────────────────────────────────────────┘
     │
     ▼
@@ -1228,8 +1239,9 @@ Final Response with sources
 
 | Component | Purpose | LLM Model |
 |-----------|---------|-----------|
-| **Planner** | Decompose complex requests into ordered tasks | Configurable (default: main model) |
-| **Executor** | Execute individual tasks with tool access | Configurable (default: main model) |
+| **Planner** | Decompose complex requests into ordered tasks; optionally flag tasks for subagent mode | Configurable (default: main model) |
+| **Executor** | Execute individual tasks with tool access; route subagent-enabled tasks to ReAct loop | Configurable (default: main model) |
+| **Subagent** | Multi-turn ReAct loop within a single task (think → act → observe → repeat) | Same as executor |
 | **Checker** | Validate response quality and completeness | Configurable (often faster model) |
 | **Summarizer** | Combine task outputs into coherent response | Configurable (default: main model) |
 
@@ -1243,6 +1255,8 @@ The agent enforces resource limits per execution:
 | **Cost Limit** | Maximum cost in dollars | Admin > Settings > Agent Config |
 | **Task Limit** | Maximum tasks per plan | Default: 10 |
 | **Retry Limit** | Max retries per task on quality failure | Default: 2 |
+| **Subagent Iteration Limit** | Max ReAct loops per subagent task | Admin > Settings > Agent Config (1–20, default: 5) |
+| **Subagent Budget Ratio** | Percentage of plan budget per subagent task | Admin > Settings > Agent Config (1–100%, default: 25%) |
 
 #### Quality Checking
 
@@ -1276,6 +1290,12 @@ The agent streams progress updates to the UI:
 | `quality_check` | Quality score for task |
 | `budget_warning` | Approaching limit |
 | `budget_exceeded` | Execution stopped |
+| `agent_cost_update` | Live per-task cost update (cumulative) |
+| `subagent_step` | Subagent executed a tool (iteration, tool name, args) |
+| `subagent_thinking` | Subagent reasoning content |
+| `subagent_budget_warning` | Subagent task approaching budget limit |
+| `subagent_complete` | Subagent task finished |
+| `subagent_human_approval_needed` | HITL pause for unsafe tool in subagent loop |
 | `summary_started` | Final summarization began |
 | `complete` | Agent finished |
 
@@ -1286,18 +1306,24 @@ The agent streams progress updates to the UI:
 | **Pause** | Temporarily halt execution |
 | **Resume** | Continue paused execution |
 | **Stop** | Cancel and return partial results |
+| **Approve Tool** | Approve an unsafe subagent tool call |
+| **Deny Tool** | Reject an unsafe subagent tool call |
+| **Modify Tool** | Edit arguments and approve a subagent tool call |
 
 #### Implementation Files
 
 - **Agent Core:** `src/lib/agent/index.ts`
 - **Planner:** `src/lib/agent/planner.ts`
 - **Executor:** `src/lib/agent/executor.ts`
+- **Subagent:** `src/lib/agent/subagent.ts` — ReAct loop engine
+- **Subagent Budget:** `src/lib/agent/subagent-budget.ts` — Per-task budget allocation
 - **Checker:** `src/lib/agent/checker.ts`
 - **Summarizer:** `src/lib/agent/summarizer.ts`
 - **Budget Tracker:** `src/lib/agent/budget.ts`
+- **Cost Tracker:** `src/lib/agent/cost-tracker.ts` — Live cost tracking with DB pricing
 - **Types:** `src/lib/agent/types.ts`
 - **Streaming:** `src/lib/agent/streaming.ts`
-- **UI Component:** `src/components/chat/AgentProgress.tsx`
+- **UI Components:** `src/components/chat/AgentProgress.tsx`, `src/components/chat/SubagentPanel.tsx`, `src/components/chat/SubagentApprovalCard.tsx`
 - **Settings UI:** `src/components/admin/settings/AgentSettings.tsx`
 
 ---

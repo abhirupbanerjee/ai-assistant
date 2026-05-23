@@ -7,6 +7,7 @@
 import { safeDecrypt } from '../encryption';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getToolConfig } from '../db/compat/tool-config';
+import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
 import type {
   DataAPIConfig,
   DataAPIParameter,
@@ -84,8 +85,35 @@ export async function callDataAPI(
       }
     }
 
+    // SSRF guard: block private/internal IP ranges
+    try {
+      await validateUrlIsPublic(url);
+    } catch (err) {
+      return {
+        success: false,
+        data: null,
+        metadata: {
+          source: config.name,
+          sourceType: 'api',
+          fetchedAt: new Date().toISOString(),
+          cached: false,
+          recordCount: 0,
+          fields: [],
+          executionTimeMs: Date.now() - startTime,
+        },
+        error: {
+          code: 'SSRF_BLOCKED',
+          message: err instanceof Error ? err.message : 'SSRF guard rejected the URL',
+          details: 'The configured data source URL resolves to a private or reserved IP range.',
+        },
+      };
+    }
+
     // Make the request
-    const response = await fetch(url, requestOptions);
+    const { response } = await fetchWithSsrfGuard(url, requestOptions, {
+      maxRedirects: 5,
+      followRedirects: true,
+    });
 
     // Check response status
     if (!response.ok) {

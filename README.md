@@ -47,6 +47,8 @@ Built with enterprise-grade, open-source technologies:
 - **Redis** - High-performance caching and session management
 - **Traefik** - Production-ready reverse proxy with automatic TLS
 - **Ollama** - Local LLM inference for air-gapped / sensitive deployments
+- **Playwright** - Server-side Chromium for chart/diagram rendering in generated HTML
+- **ONNX Runtime + Transformers.js** - Local BGE cross-encoder rerankers
 
 ## Capabilities
 
@@ -71,7 +73,7 @@ Built with enterprise-grade, open-source technologies:
 - **Compliance Checking** - Compare user documents against policies
 
 ### Access Control
-- **Three-Tier Roles** - Admin > SuperUser > User hierarchy
+- **Three-Tier Roles** - Admin > Superuser > User hierarchy (superusers are category-scoped)
 - **Category Subscriptions** - Users access only subscribed categories
 - **Multi-Provider Auth** - Azure AD, Google OAuth, and email/password credentials
 - **Flexible Authentication** - Credentials login enabled by default for fresh deployments, can be disabled after OAuth setup
@@ -144,12 +146,14 @@ Expose your AI capabilities as a programmatic API for external systems, apps, an
 
 ### Autonomous Agent (Beta)
 - **Task Planning** - Decompose complex requests into multi-step plans
-- **Budget Tracking** - Enforce token and cost limits per execution
+- **Subagent ReAct Loops** - Multi-turn reasoning within a single task (think → act → observe → repeat), with admin-configurable iteration limits and per-task budget allocation
+- **Tool Safety Gating** - `subagentSafe` classification on all 21 tools; unsafe tools (generative/costly) trigger human-in-the-loop approval before execution
+- **Budget Tracking** - Enforce token and cost limits per execution, with live per-model cost tracking
 - **Quality Checking** - Automated validation with confidence thresholds
-- **Streaming Progress** - Real-time updates on plan execution status
+- **Streaming Progress** - Real-time updates on plan execution status, including subagent step telemetry and thinking content
 - **Pause/Resume/Stop** - Control agent execution mid-flight
 
-> **Note:** Autonomous Mode is currently in beta. Enable via Admin > Settings > Agent.
+> **Note:** Autonomous Mode is currently in beta. Enable via Admin > Settings > Agent. Subagent mode can be enabled separately in Admin > Settings > Agent > Subagent Configuration.
 
 ### Progressive Web App (PWA)
 - **Installable** - Add to home screen (mobile) or desktop
@@ -175,28 +179,33 @@ policy-bot/
 │   │   │   ├── chat/           # RAG chat (streaming + HITL)
 │   │   │   ├── threads/        # Thread CRUD + file uploads + sharing
 │   │   │   ├── admin/          # Admin endpoints (documents, users, categories, settings, agent-bots)
-│   │   │   ├── superuser/      # SuperUser endpoints (global scope)
+│   │   │   ├── superuser/      # Superuser endpoints (global scope)
 │   │   │   ├── user/           # User-scoped endpoints
 │   │   │   ├── autonomous/     # Autonomous agent plan control (pause/resume/stop)
 │   │   │   ├── agent-bots/     # Public agent bot invocation API
 │   │   │   └── w/[slug]/       # Workspace API endpoints
 │   │   ├── admin/              # Admin dashboard UI
-│   │   ├── superuser/          # SuperUser dashboard UI
+│   │   ├── superuser/          # Superuser dashboard UI
 │   │   ├── [slug]/             # Standalone workspace pages
 │   │   ├── e/[slug]/           # Hosted embed workspace pages
-│   │   └── page.tsx            # Chat interface
+│   │   └── page.tsx            # Landing page (redirects authenticated users → /chat)
 │   ├── components/             # React components
 │   │   ├── chat/               # Chat UI (messages, input, sources)
 │   │   ├── admin/              # Admin dashboard components
 │   │   ├── workspace/          # Workspace components (embed + standalone)
 │   │   └── ui/                 # Shared UI components
+│   ├── hooks/                  # 11 custom React hooks
+│   ├── contexts/               # 2 React contexts (mobile menu, toast)
+│   ├── embed/                  # 10 files — Standalone embed widget (iframe-friendly)
+│   ├── scripts/                # 2 runtime scripts (cleanup, reindex)
+│   ├── middleware.ts           # Auth redirects, embed CSP headers
 │   ├── lib/                    # Core libraries
 │   │   ├── db/                 # Database layer — PostgreSQL via Kysely
-│   │   │   ├── compat/         # 31 async modules (all DB access goes here)
+│   │   │   ├── compat/         # 33 async modules (all DB access goes here)
 │   │   │   ├── schema/         # PostgreSQL schema + LiteLLM DB init SQL
 │   │   │   ├── kysely.ts       # Kysely instance factory (Postgres-only)
 │   │   │   └── db-types.ts     # TypeScript types for all tables
-│   │   ├── tools/              # 23+ tool implementations
+│   │   ├── tools/              # 22 tool implementations
 │   │   ├── agent/              # Autonomous agent (planner, executor, checker, summarizer)
 │   │   ├── agent-bots/         # Agent bot job runner and output management
 │   │   ├── image-gen/          # Image generation (DALL-E, Gemini Imagen)
@@ -205,11 +214,20 @@ policy-bot/
 │   │   ├── docgen/             # Document generation (PDF, DOCX, Markdown)
 │   │   ├── streaming/          # Streaming response utilities
 │   │   ├── chunking/           # Document chunking strategies
+│   │   ├── pptxgen/            # PPTX generation
+│   │   ├── xlsxgen/            # XLSX generation
+│   │   ├── audio/              # PCM to WAV conversion
+│   │   ├── compliance/         # Compliance checking
+│   │   ├── vector-store/       # Qdrant client
+│   │   ├── skills/             # Skills resolver, seed, types
 │   │   ├── data-sources/       # External API and CSV data sources
 │   │   ├── workspace/          # Workspace utilities (embed/standalone)
 │   │   ├── rag.ts              # RAG pipeline
 │   │   ├── redis.ts            # Redis caching
 │   │   ├── ingest.ts           # Document ingestion
+│   │   ├── llm-client.ts       # Internal LLM client with multi-route fallback
+│   │   ├── llm-fallback.ts     # Cross-route fallback chain
+│   │   ├── openai.ts           # Main OpenAI-compatible completion + tool calling
 │   │   └── skills.ts           # Skills system
 │   └── types/                  # TypeScript definitions
 ├── docs/                       # Comprehensive documentation
@@ -220,7 +238,7 @@ policy-bot/
 │   │   ├── PROMPTS.md                  # Prompts system guide
 │   │   ├── SKILLS.md                   # Skills system guide (includes tool routing)
 │   │   ├── PWA.md                      # Progressive Web App guide
-│   │   ├── routes.md                   # Two-Route LLM Architecture
+│   │   ├── routes.md                   # Four-Route LLM Architecture
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md
 │   ├── tech/
 │   │   ├── SOLUTION.md                 # Architecture and design decisions

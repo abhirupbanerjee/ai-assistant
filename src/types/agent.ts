@@ -133,6 +133,9 @@ export interface AgentTask {
   executor_profile_reason?: string;
   // Actual model ID used by executor for this task (for audit/debugging)
   executor_model_used?: string;
+  // Subagent mode (Phase 4)
+  subagent_enabled?: boolean;
+  max_iterations?: number;
 }
 
 export interface AgentConfig {
@@ -201,6 +204,10 @@ export interface ExecutionResult {
   tokens_used?: number;
   llm_calls?: number;
   web_searches?: number;
+  /** Names of tools executed during this task */
+  tools_used?: string[];
+  /** Subagent loop state if task ran in subagent mode */
+  subagent_state?: { iterations: number; hit_iteration_limit: boolean };
 }
 
 export interface CheckerResult {
@@ -269,6 +276,7 @@ export interface PlannerResponse {
     tool_name?: string;
     executor_profile?: ExecutorProfileName;
     executor_profile_reason?: string;
+    subagent_enabled?: boolean;
   }>;
   context?: Record<string, unknown>;
 }

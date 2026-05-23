@@ -75,6 +75,8 @@ export interface ToolDefinition {
   defaultConfig: Record<string, unknown>;
   /** JSON Schema for configuration (for admin UI generation) */
   configSchema: Record<string, unknown>;
+  /** Whether this tool is safe to invoke automatically in subagent mode without HITL approval */
+  subagentSafe?: boolean;
 }
 
 /**
@@ -101,28 +103,28 @@ export const HYBRID_TOOLS = new Set(['translation']);
  * Import tool implementations from separate files for modularity
  */
 export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
-  web_search: tavilyWebSearch,
-  doc_gen: documentGenerationTool,
-  data_source: dataSourceTool,
-  aggregate_data: aggregateDataTool,
-  function_api: functionApiTool,
-  youtube: youtubeToolDefinition,
-  chart_gen: chartGenTool,
+  web_search: { ...tavilyWebSearch, subagentSafe: true },
+  doc_gen: { ...documentGenerationTool, subagentSafe: false },
+  data_source: { ...dataSourceTool, subagentSafe: false },
+  aggregate_data: { ...aggregateDataTool, subagentSafe: false },
+  function_api: { ...functionApiTool, subagentSafe: false },
+  youtube: youtubeToolDefinition, // processor — not subagent-relevant
+  chart_gen: { ...chartGenTool, subagentSafe: true },
 
-  image_gen: imageGenTool,
-  translation: translationTool,
-  share_thread: shareThreadTool,
-  send_email: sendEmailTool,
-  diagram_gen: diagramGenTool,
-  compliance_checker: complianceCheckerTool,
-  xlsx_gen: xlsxGenTool,
-  pptx_gen: pptxGenTool,
-  podcast_gen: podcastGenTool,
-  website_analysis: websiteAnalysisTool,
-  code_analysis: codeAnalysisTool,
-  load_testing: loadTestingTool,
-  file_to_html: fileToHtmlTool,
-  html_gen: htmlGenTool,
+  image_gen: { ...imageGenTool, subagentSafe: false },
+  translation: { ...translationTool, subagentSafe: true },
+  share_thread: shareThreadTool, // processor
+  send_email: sendEmailTool, // processor
+  diagram_gen: { ...diagramGenTool, subagentSafe: true },
+  compliance_checker: complianceCheckerTool, // processor
+  xlsx_gen: { ...xlsxGenTool, subagentSafe: false },
+  pptx_gen: { ...pptxGenTool, subagentSafe: false },
+  podcast_gen: { ...podcastGenTool, subagentSafe: false },
+  website_analysis: { ...websiteAnalysisTool, subagentSafe: true },
+  code_analysis: { ...codeAnalysisTool, subagentSafe: true },
+  load_testing: { ...loadTestingTool, subagentSafe: true },
+  file_to_html: { ...fileToHtmlTool, subagentSafe: false },
+  html_gen: { ...htmlGenTool, subagentSafe: false },
 };
 
 /**

@@ -34,6 +34,8 @@ interface EnabledModelRow {
   thinking_capable: number;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
+  input_cost_per_1m: number | null;
+  output_cost_per_1m: number | null;
   is_default: number;
   enabled: number;
   provider_enabled?: number;
@@ -53,6 +55,8 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     thinkingCapable: row.thinking_capable === 1,
     maxInputTokens: row.max_input_tokens,
     maxOutputTokens: row.max_output_tokens,
+    inputCostPer1M: row.input_cost_per_1m,
+    outputCostPer1M: row.output_cost_per_1m,
     isDefault: row.is_default === 1,
     enabled: row.enabled === 1,
     providerEnabled: row.provider_enabled !== undefined ? row.provider_enabled === 1 : undefined,
@@ -82,6 +86,8 @@ export async function getAllEnabledModels(): Promise<EnabledModel[]> {
       'm.thinking_capable',
       'm.max_input_tokens',
       'm.max_output_tokens',
+      'm.input_cost_per_1m',
+      'm.output_cost_per_1m',
       'm.is_default',
       'm.enabled',
       'm.sort_order',
@@ -115,6 +121,8 @@ export async function getActiveModels(): Promise<EnabledModel[]> {
       'm.thinking_capable',
       'm.max_input_tokens',
       'm.max_output_tokens',
+      'm.input_cost_per_1m',
+      'm.output_cost_per_1m',
       'm.is_default',
       'm.enabled',
       'm.sort_order',
@@ -178,6 +186,8 @@ export async function getDefaultModel(): Promise<EnabledModel | null> {
       'm.thinking_capable',
       'm.max_input_tokens',
       'm.max_output_tokens',
+      'm.input_cost_per_1m',
+      'm.output_cost_per_1m',
       'm.is_default',
       'm.enabled',
       'm.sort_order',
@@ -223,6 +233,8 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
       thinking_capable: input.thinkingCapable ? 1 : 0,
       max_input_tokens: input.maxInputTokens || null,
       max_output_tokens: input.maxOutputTokens || null,
+      input_cost_per_1m: input.inputCostPer1M ?? null,
+      output_cost_per_1m: input.outputCostPer1M ?? null,
       is_default: input.isDefault ? 1 : 0,
       enabled: input.enabled !== false ? 1 : 0,
       sort_order: sortOrder,
@@ -278,6 +290,12 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
   }
   if (input.maxOutputTokens !== undefined) {
     updateObj.max_output_tokens = input.maxOutputTokens || null;
+  }
+  if (input.inputCostPer1M !== undefined) {
+    updateObj.input_cost_per_1m = input.inputCostPer1M ?? null;
+  }
+  if (input.outputCostPer1M !== undefined) {
+    updateObj.output_cost_per_1m = input.outputCostPer1M ?? null;
   }
   if (input.isDefault !== undefined) {
     updateObj.is_default = input.isDefault ? 1 : 0;

@@ -37,6 +37,8 @@ interface EnabledModel {
   thinkingCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
+  inputCostPer1M?: number | null;
+  outputCostPer1M?: number | null;
   isDefault: boolean;
   enabled: boolean;
   providerEnabled?: boolean;
@@ -110,6 +112,14 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [editingMaxInput, setEditingMaxInput] = useState<string | null>(null);
   const [editedMaxInput, setEditedMaxInput] = useState<number>(0);
   const [editingMaxInputError, setEditingMaxInputError] = useState<string | null>(null);
+
+  // Cost editing state
+  const [editingInputCost, setEditingInputCost] = useState<string | null>(null);
+  const [editedInputCost, setEditedInputCost] = useState<number | ''>('');
+  const [editingInputCostError, setEditingInputCostError] = useState<string | null>(null);
+  const [editingOutputCost, setEditingOutputCost] = useState<string | null>(null);
+  const [editedOutputCost, setEditedOutputCost] = useState<number | ''>('');
+  const [editingOutputCostError, setEditingOutputCostError] = useState<string | null>(null);
 
   // Routes settings for route-aware gating
   const [routesSettings, setRoutesSettings] = useState<{
@@ -424,6 +434,58 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     }
   };
 
+  const handleEditInputCost = async (modelId: string) => {
+    const value = typeof editedInputCost === 'number' ? editedInputCost : parseFloat(editedInputCost as string);
+    if (Number.isNaN(value) || value < 0) {
+      setEditingInputCostError('Must be a positive number');
+      return;
+    }
+    setEditingInputCostError(null);
+    try {
+      const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputCostPer1M: value }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error || `Failed (${res.status})`);
+      }
+      await fetchModels();
+      setEditingInputCost(null);
+      setEditedInputCost('');
+      showSuccess('Input cost updated');
+    } catch (err) {
+      setEditingInputCostError(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
+  const handleEditOutputCost = async (modelId: string) => {
+    const value = typeof editedOutputCost === 'number' ? editedOutputCost : parseFloat(editedOutputCost as string);
+    if (Number.isNaN(value) || value < 0) {
+      setEditingOutputCostError('Must be a positive number');
+      return;
+    }
+    setEditingOutputCostError(null);
+    try {
+      const res = await fetch(`/api/admin/llm/models/${modelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outputCostPer1M: value }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error || `Failed (${res.status})`);
+      }
+      await fetchModels();
+      setEditingOutputCost(null);
+      setEditedOutputCost('');
+      showSuccess('Output cost updated');
+    } catch (err) {
+      setEditingOutputCostError(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
   const handleSetFallback = async (modelId: string | null) => {
     setFallbackError(null);
     try {
@@ -653,6 +715,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                         <span title="Total context window capacity (input + output). This is stored for reference and does not currently affect inference.">Context Window <Info size={12} className="inline-block text-gray-400 ml-0.5" /></span>
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Max Output</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Input Cost (1M)</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Output Cost (1M)</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       {!readOnly && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
                     </tr>
@@ -817,6 +881,54 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           )}
                         </td>
 
+                        {/* Input Cost — inline edit */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {editingInputCost === model.id ? (
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <input type="number" step="0.0001" value={editedInputCost} onChange={(e) => { setEditedInputCost(e.target.value === '' ? '' : parseFloat(e.target.value)); setEditingInputCostError(null); }}
+                                  className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingInputCostError ? 'border-red-400' : ''}`} min={0} autoFocus />
+                                <button onClick={() => handleEditInputCost(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
+                                <button onClick={() => { setEditingInputCost(null); setEditedInputCost(''); setEditingInputCostError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                              </div>
+                              {editingInputCostError && <p className="text-xs text-red-600 mt-0.5">{editingInputCostError}</p>}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => !readOnly && !routeOff && (setEditingInputCost(model.id), setEditedInputCost(model.inputCostPer1M ?? ''))}
+                              disabled={readOnly || routeOff}
+                              className={`text-sm text-gray-600 ${readOnly || routeOff ? '' : 'hover:text-blue-600 hover:underline'}`}
+                              title={routeOff ? 'Route is disabled' : readOnly ? undefined : 'Click to edit'}
+                            >
+                              {model.inputCostPer1M !== undefined && model.inputCostPer1M !== null ? `$${model.inputCostPer1M.toFixed(4)}` : '—'}
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Output Cost — inline edit */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {editingOutputCost === model.id ? (
+                            <div>
+                              <div className="flex items-center gap-1">
+                                <input type="number" step="0.0001" value={editedOutputCost} onChange={(e) => { setEditedOutputCost(e.target.value === '' ? '' : parseFloat(e.target.value)); setEditingOutputCostError(null); }}
+                                  className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingOutputCostError ? 'border-red-400' : ''}`} min={0} autoFocus />
+                                <button onClick={() => handleEditOutputCost(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
+                                <button onClick={() => { setEditingOutputCost(null); setEditedOutputCost(''); setEditingOutputCostError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
+                              </div>
+                              {editingOutputCostError && <p className="text-xs text-red-600 mt-0.5">{editingOutputCostError}</p>}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => !readOnly && !routeOff && (setEditingOutputCost(model.id), setEditedOutputCost(model.outputCostPer1M ?? ''))}
+                              disabled={readOnly || routeOff}
+                              className={`text-sm text-gray-600 ${readOnly || routeOff ? '' : 'hover:text-blue-600 hover:underline'}`}
+                              title={routeOff ? 'Route is disabled' : readOnly ? undefined : 'Click to edit'}
+                            >
+                              {model.outputCostPer1M !== undefined && model.outputCostPer1M !== null ? `$${model.outputCostPer1M.toFixed(4)}` : '—'}
+                            </button>
+                          )}
+                        </td>
+
                         {/* Status */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {routeOff ? (
@@ -864,7 +976,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                       {/* Get Details preview row */}
                       {detailsPreview?.modelId === model.id && (
                         <tr key={`${model.id}-preview`} className="bg-purple-50">
-                          <td colSpan={!readOnly ? 8 : 7} className="px-4 py-3">
+                          <td colSpan={!readOnly ? 10 : 9} className="px-4 py-3">
                             <div className="flex items-start justify-between gap-4">
                               <div>
                                 <div className="flex items-center gap-2 mb-1">

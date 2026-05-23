@@ -306,6 +306,8 @@ export interface EnabledModelsTable {
   thinking_capable: Generated<number>;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
+  input_cost_per_1m: number | null;
+  output_cost_per_1m: number | null;
   is_default: Generated<number>;
   enabled: Generated<number>;
   sort_order: Generated<number>;

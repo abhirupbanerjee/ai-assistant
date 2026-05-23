@@ -33,18 +33,10 @@ import {
   AlertTriangle,
   Brain,
   ClipboardCheck,
-  Circle,
-  SkipForward,
-  Eye,
-  Image,
-  BarChart3,
-  Table,
-  Presentation,
-  Mic,
-  GitBranch,
 } from 'lucide-react';
 import type { ProcessingDetails, StreamPhase, ToolExecutionState, OperationLogEntry, UploadExtractionState, ContextTruncationWarning } from '@/types';
-import type { AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
+import type { AutonomousPlanState } from '@/hooks/useStreamingChat';
+import TaskCard from './TaskCard';
 
 interface ProcessingIndicatorProps {
   details: ProcessingDetails;
@@ -201,133 +193,6 @@ function formatContentLength(length?: number): string {
 }
 
 // ============ Agent Task Components ============
-
-function getTaskTypeIcon(type: string) {
-  switch (type.toLowerCase()) {
-    case 'search':
-    case 'web_search':
-      return <Search size={14} className="text-blue-500" />;
-    case 'generate':
-      return <Sparkles size={14} className="text-purple-500" />;
-    case 'analyze':
-    case 'extract':
-    case 'compare':
-    case 'validate':
-      return <Eye size={14} className="text-amber-500" />;
-    case 'summarize':
-      return <FileText size={14} className="text-green-500" />;
-    case 'document':
-    case 'doc_gen':
-      return <FileText size={14} className="text-blue-600" />;
-    case 'image':
-    case 'image_gen':
-      return <Image size={14} className="text-pink-500" />;
-    case 'chart':
-    case 'chart_gen':
-      return <BarChart3 size={14} className="text-indigo-500" />;
-    case 'spreadsheet':
-    case 'xlsx_gen':
-      return <Table size={14} className="text-emerald-600" />;
-    case 'presentation':
-    case 'pptx_gen':
-      return <Presentation size={14} className="text-orange-500" />;
-    case 'podcast':
-    case 'podcast_gen':
-      return <Mic size={14} className="text-red-500" />;
-    case 'diagram':
-    case 'diagram_gen':
-      return <GitBranch size={14} className="text-cyan-500" />;
-    default:
-      return <Circle size={14} className="text-gray-400" />;
-  }
-}
-
-function getTaskStatusIcon(status: AutonomousTaskState['status']) {
-  switch (status) {
-    case 'done':
-      return <CheckCircle size={14} className="text-green-500" />;
-    case 'running':
-      return <Loader2 size={14} className="text-blue-500 animate-spin" />;
-    case 'skipped':
-      return <SkipForward size={14} className="text-gray-400" />;
-    case 'needs_review':
-      return <AlertCircle size={14} className="text-amber-500" />;
-    case 'error':
-      return <AlertCircle size={14} className="text-red-500" />;
-    default:
-      return <Circle size={14} className="text-gray-300" />;
-  }
-}
-
-function getTaskStatusColor(status: AutonomousTaskState['status']) {
-  switch (status) {
-    case 'done':
-      return 'bg-green-50 border-green-200';
-    case 'running':
-      return 'bg-blue-50 border-blue-200';
-    case 'skipped':
-      return 'bg-gray-50 border-gray-200';
-    case 'needs_review':
-      return 'bg-amber-50 border-amber-200';
-    case 'error':
-      return 'bg-red-50 border-red-200';
-    default:
-      return 'bg-white border-gray-100';
-  }
-}
-
-function formatExecutorProfile(profile?: AutonomousTaskState['executorProfile']): string {
-  if (!profile) return '';
-  return profile.split('_').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-}
-
-function AgentTaskItem({ task, isLast, onSkip }: {
-  task: AutonomousTaskState;
-  isLast: boolean;
-  onSkip?: () => void;
-}) {
-  return (
-    <div className="flex items-start gap-2">
-      <div className="flex flex-col items-center">
-        <div className="flex-shrink-0">{getTaskStatusIcon(task.status)}</div>
-        {!isLast && (
-          <div className={`w-0.5 flex-1 min-h-[16px] mt-0.5 ${task.status === 'done' ? 'bg-green-300' : 'bg-gray-200'}`} />
-        )}
-      </div>
-      <div className={`flex-1 p-1.5 rounded border text-xs mb-1 ${getTaskStatusColor(task.status)}`}>
-        <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1.5">
-            {getTaskTypeIcon(task.type)}
-            <span className="font-medium text-gray-700">{task.description}</span>
-            {task.executorProfile && (
-              <span className="px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-medium">
-                {formatExecutorProfile(task.executorProfile)}
-              </span>
-            )}
-          </div>
-          {task.status === 'pending' && onSkip && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onSkip(); }}
-              className="p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              title="Skip this task"
-            >
-              <SkipForward size={12} />
-            </button>
-          )}
-        </div>
-        {task.confidence !== undefined && task.status === 'done' && (
-          <div className="mt-0.5 text-gray-500">Confidence: {task.confidence}%</div>
-        )}
-        {task.executorModelUsed && (
-          <div className="mt-0.5 text-[11px] text-gray-500">Model: {task.executorModelUsed}</div>
-        )}
-        {task.status === 'needs_review' && (
-          <div className="mt-0.5 text-amber-600">Needs review (confidence: {task.confidence}%)</div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ============ Main Component ============
 
@@ -615,6 +480,45 @@ export default function ProcessingIndicator({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Agent Task List (in expanded view) */}
+          {autonomousPlan && autonomousPlan.tasks.length > 0 && (
+            <div className="mb-3">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Task Plan: {autonomousPlan.title}
+              </h4>
+              <div className="space-y-0">
+                {autonomousPlan.tasks.map((task, index) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    isLast={index === autonomousPlan.tasks.length - 1}
+                    onSkip={onSkipTask ? () => onSkipTask(task.id) : undefined}
+                    compact
+                  />
+                ))}
+              </div>
+              {/* Telemetry summary */}
+              {autonomousPlan.stats && (
+                <div className="mt-2 pt-2 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
+                  <div className="text-center p-1.5 bg-blue-50 rounded">
+                    <div className="font-medium text-blue-700">
+                      {autonomousPlan.stats.tokens_used?.toLocaleString() || 0}
+                    </div>
+                    <div className="text-blue-600">Tokens</div>
+                  </div>
+                  <div className="text-center p-1.5 bg-purple-50 rounded">
+                    <div className="font-medium text-purple-700">{autonomousPlan.stats.llm_calls || 0}</div>
+                    <div className="text-purple-600">LLM Calls</div>
+                  </div>
+                  <div className="text-center p-1.5 bg-cyan-50 rounded">
+                    <div className="font-medium text-cyan-700">{autonomousPlan.stats.web_searches || 0}</div>
+                    <div className="text-cyan-600">Searches</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

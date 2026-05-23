@@ -8,6 +8,7 @@
 import sharp from 'sharp';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
 
 // ============ Types ============
 
@@ -161,7 +162,14 @@ export async function processLogo(
       inputBuffer = Buffer.from(base64Data, 'base64');
     } else if (logoSource.startsWith('http://') || logoSource.startsWith('https://')) {
       // Fetch remote image
-      const response = await fetch(logoSource);
+      // SSRF guard: block private/internal IP ranges
+      try {
+        await validateUrlIsPublic(logoSource);
+      } catch (err) {
+        console.error('SSRF guard rejected logo URL:', err instanceof Error ? err.message : 'Unknown error');
+        return null;
+      }
+      const { response } = await fetchWithSsrfGuard(logoSource, {}, { maxRedirects: 5, followRedirects: true });
       if (!response.ok) {
         console.error(`Failed to fetch logo: ${response.status}`);
         return null;

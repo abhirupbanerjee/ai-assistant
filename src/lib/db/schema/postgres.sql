@@ -351,6 +351,8 @@ CREATE TABLE IF NOT EXISTS enabled_models (
   thinking_capable INTEGER DEFAULT 0,
   max_input_tokens INTEGER,
   max_output_tokens INTEGER,
+  input_cost_per_1m NUMERIC(12,8),
+  output_cost_per_1m NUMERIC(12,8),
   is_default INTEGER DEFAULT 0,
   enabled INTEGER DEFAULT 1,
   sort_order INTEGER DEFAULT 0,

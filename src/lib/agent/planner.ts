@@ -8,6 +8,7 @@
  */
 
 import type { AgentTask, AgentModelConfig, PlannerResponse } from '@/types/agent';
+import type { SubagentConfig } from '../db/compat/agent-config';
 import { generateWithModelFallback, getModelForRole } from './llm-router';
 import { parsePlannerResponse } from './json-parser';
 import { validateDependencyGraph } from './dependency-validator';
@@ -49,6 +50,7 @@ export async function createPlan(
     }>;
     planningFeedback?: string;
     replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
+    subagentConfig?: SubagentConfig;
   },
   modelConfig: AgentModelConfig
 ): Promise<PlanCreationResult> {
@@ -114,6 +116,7 @@ export async function createPlan(
       tool_name: t.tool_name,
       executor_profile: t.executor_profile,
       executor_profile_reason: t.executor_profile_reason,
+      subagent_enabled: t.subagent_enabled,
     }));
 
     // Self-reflection: check plan quality for complex plans (≥4 tasks)
@@ -140,6 +143,7 @@ export async function createPlan(
           tool_name: t.tool_name,
           executor_profile: t.executor_profile,
           executor_profile_reason: t.executor_profile_reason,
+          subagent_enabled: t.subagent_enabled,
         }));
         console.log(`[Planner] Reflection refined plan: ${tasks.length} → ${finalTasks.length} tasks`);
       }
@@ -267,6 +271,7 @@ function buildPlannerPrompt(
     }>;
     planningFeedback?: string;
     replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
+    subagentConfig?: SubagentConfig;
   }
 ): string {
   let prompt = `Break down this user request into a structured task plan.
@@ -348,6 +353,12 @@ For each task, include a "skill_ids" array with the IDs of skills that should be
 - long_context: tasks combining many dependencies or large context windows
 - artifact_generation: document/image/chart/spreadsheet/presentation/podcast/diagram tasks
 - local_private: sensitive workloads requiring local/private execution path
+`;
+  }
+
+  if (context.subagentConfig?.defaultOn) {
+    prompt += `
+**Subagent Mode:** When a task would benefit from multi-step reasoning with tools (e.g., search → analyze → synthesize chains, or tasks requiring iterative tool use), set "subagent_enabled": true on that task. The subagent will run a ReAct loop with up to ${context.subagentConfig.maxIterations} iterations. Use this for complex analytical tasks, not for simple single-tool calls.
 `;
   }
 

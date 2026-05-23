@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt, getExecutorSystemPrompt, setExecutorSystemPrompt, getCheckerSystemPrompt, setCheckerSystemPrompt, getAutonomousModeEnabled, setAutonomousModeEnabled, getExecutorModelProfiles, setExecutorModelProfiles } from '@/lib/db/compat';
+import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt, getExecutorSystemPrompt, setExecutorSystemPrompt, getCheckerSystemPrompt, setCheckerSystemPrompt, getAutonomousModeEnabled, setAutonomousModeEnabled, getExecutorModelProfiles, setExecutorModelProfiles, getSubagentConfig, setSubagentConfig } from '@/lib/db/compat';
 import { getEnabledModel } from '@/lib/db/compat/enabled-models';
 
 const EXECUTOR_PROFILE_KEYS = [
@@ -41,6 +41,7 @@ export async function GET() {
     const checkerSystemPrompt = await getCheckerSystemPrompt();
     const autonomousModeEnabled = await getAutonomousModeEnabled();
     const executorModelProfiles = await getExecutorModelProfiles(modelConfigs.executor);
+    const subagentConfig = await getSubagentConfig();
 
     const settings = {
       autonomousModeEnabled,
@@ -67,6 +68,12 @@ export async function GET() {
       streamingKeepaliveInterval: streamingConfig.keepalive_interval_seconds,
       streamingMaxDuration: streamingConfig.max_stream_duration_seconds,
       streamingToolTimeout: streamingConfig.tool_timeout_seconds,
+      // Subagent configuration
+      subagentEnabled: subagentConfig.enabled,
+      subagentDefaultOn: subagentConfig.defaultOn,
+      subagentMaxIterations: subagentConfig.maxIterations,
+      subagentBudgetRatio: subagentConfig.budgetRatio,
+      subagentHitlEnabled: subagentConfig.hitlEnabled,
     };
 
     return NextResponse.json(settings);
@@ -117,6 +124,12 @@ export async function POST(request: NextRequest) {
       streamingKeepaliveInterval,
       streamingMaxDuration,
       streamingToolTimeout,
+      // Subagent configuration
+      subagentEnabled,
+      subagentDefaultOn,
+      subagentMaxIterations,
+      subagentBudgetRatio,
+      subagentHitlEnabled,
     } = body;
 
     // Validate budget inputs
@@ -222,6 +235,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate subagent configuration (if provided)
+    const hasSubagentConfig =
+      subagentEnabled !== undefined ||
+      subagentDefaultOn !== undefined ||
+      subagentMaxIterations !== undefined ||
+      subagentBudgetRatio !== undefined ||
+      subagentHitlEnabled !== undefined;
+
+    if (hasSubagentConfig) {
+      if (
+        (subagentMaxIterations !== undefined && (typeof subagentMaxIterations !== 'number' || subagentMaxIterations < 1 || subagentMaxIterations > 20)) ||
+        (subagentBudgetRatio !== undefined && (typeof subagentBudgetRatio !== 'number' || subagentBudgetRatio < 1 || subagentBudgetRatio > 100))
+      ) {
+        return NextResponse.json(
+          { error: 'Subagent values out of valid range' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Save budget settings to database
     await setSetting('agent_budget_max_llm_calls', String(budgetMaxLlmCalls), user.email);
     await setSetting('agent_budget_max_tokens', String(budgetMaxTokens), user.email);
@@ -311,6 +344,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Save subagent configuration (if provided)
+    if (hasSubagentConfig) {
+      const currentSubagent = await getSubagentConfig();
+      await setSubagentConfig(
+        {
+          enabled: typeof subagentEnabled === 'boolean' ? subagentEnabled : currentSubagent.enabled,
+          defaultOn: typeof subagentDefaultOn === 'boolean' ? subagentDefaultOn : currentSubagent.defaultOn,
+          maxIterations: typeof subagentMaxIterations === 'number' ? subagentMaxIterations : currentSubagent.maxIterations,
+          budgetRatio: typeof subagentBudgetRatio === 'number' ? subagentBudgetRatio : currentSubagent.budgetRatio,
+          hitlEnabled: typeof subagentHitlEnabled === 'boolean' ? subagentHitlEnabled : currentSubagent.hitlEnabled,
+        },
+        user.email
+      );
+    }
+
     // Get current configs for response
     const finalStreamingConfig = await getStreamingConfig();
     const finalSummarizerPrompt = await getSummarizerSystemPrompt();
@@ -344,6 +392,12 @@ export async function POST(request: NextRequest) {
         streamingKeepaliveInterval: finalStreamingConfig.keepalive_interval_seconds,
         streamingMaxDuration: finalStreamingConfig.max_stream_duration_seconds,
         streamingToolTimeout: finalStreamingConfig.tool_timeout_seconds,
+        // Subagent configuration
+        subagentEnabled: (await getSetting('agent_subagent_enabled', 'false')) === 'true',
+        subagentDefaultOn: (await getSetting('agent_subagent_default_on', 'false')) === 'true',
+        subagentMaxIterations: parseInt(await getSetting('agent_subagent_max_iterations', '5'), 10),
+        subagentBudgetRatio: parseInt(await getSetting('agent_subagent_budget_ratio', '25'), 10),
+        subagentHitlEnabled: (await getSetting('agent_subagent_hitl_enabled', 'true')) === 'true',
         updatedAt: new Date().toISOString(),
         updatedBy: user.email,
       },

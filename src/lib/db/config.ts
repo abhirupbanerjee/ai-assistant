@@ -454,7 +454,13 @@ export type SettingKey =
   // Speech (STT + TTS)
   | 'speech-settings'
   // Display (Sources + Citation Trajectory)
-  | 'display-settings';
+  | 'display-settings'
+  // Subagent Configuration
+  | 'agent_subagent_enabled'
+  | 'agent_subagent_default_on'
+  | 'agent_subagent_max_iterations'
+  | 'agent_subagent_budget_ratio'
+  | 'agent_subagent_hitl_enabled';
 
 // ============ Speech Settings Types ============
 

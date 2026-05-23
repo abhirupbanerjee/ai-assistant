@@ -20,6 +20,9 @@ import type {
 import type { StreamEvent } from '@/types/stream';
 import { createPlan } from './planner';
 import { executeTask, resolveExecutorModelForTask, type ExecutorCallbacks } from './executor';
+import { runSubagentTaskLoop, type SubagentResult } from './subagent';
+import { createSubagentBudget, type SubagentBudget } from './subagent-budget';
+import type { SubagentConfig } from '../db/compat/agent-config';
 import { generateSummary } from './summarizer';
 import { GlobalBudgetTracker } from './budget-tracker';
 import { detectStuckPlan, getReadyTasks } from './dependency-validator';
@@ -51,8 +54,8 @@ export interface OrchestratorCallbacks {
   onTaskChecking?: (task: AgentTask) => void; // When checker validates task result
   onTaskCompleted?: (task: AgentTask, result: ExecutionResult) => void | Promise<void>;
   onTaskSummary?: (task: AgentTask, summary: string) => void; // Brief output summary after each task
-  onToolStart?: (name: string, displayName: string) => void;
-  onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
+  onToolStart?: (name: string, displayName: string, taskId?: number) => void;
+  onToolEnd?: (name: string, success: boolean, duration: number, error?: string, taskId?: number) => void;
   onArtifact?: (event: StreamEvent) => void;
   onSkillsLoaded?: (skills: { name: string; triggerReason: 'always' | 'category' | 'keyword' }[]) => void;
   onBudgetWarning?: (message: string, percentage: number) => void;
@@ -82,7 +85,8 @@ export interface OrchestratorCallbacks {
 export async function executeAutonomousPlan(
   planId: string,
   modelConfig: AgentModelConfig,
-  callbacks?: OrchestratorCallbacks
+  callbacks?: OrchestratorCallbacks,
+  subagentConfig?: SubagentConfig
 ): Promise<OrchestratorResult> {
   // Load plan from database
   let plan = await getTaskPlan(planId) as unknown as AgentPlan | undefined;
@@ -123,7 +127,7 @@ export async function executeAutonomousPlan(
     await callbacks?.onPlanCreated?.(plan);
 
     // Phase 2: Execution Loop
-    const executionResult = await executeTasksInOrder(plan, modelConfig, budgetTracker, callbacks);
+    const executionResult = await executeTasksInOrder(plan, modelConfig, budgetTracker, callbacks, subagentConfig);
 
     if (!executionResult.success) {
       return executionResult;
@@ -184,7 +188,8 @@ async function executeTasksInOrder(
   plan: AgentPlan,
   modelConfig: AgentModelConfig,
   budgetTracker: GlobalBudgetTracker,
-  callbacks?: OrchestratorCallbacks
+  callbacks?: OrchestratorCallbacks,
+  subagentConfig?: SubagentConfig
 ): Promise<OrchestratorResult> {
   const maxWaves = 200; // Safety limit — waves, not individual tasks
   let waveCount = 0;
@@ -251,28 +256,26 @@ async function executeTasksInOrder(
     }
 
     // 5. Execute wave — parallel if multiple tasks, sequential fast path if single
-    const baseCallbacks: ExecutorCallbacks = {
-      onToolStart: callbacks?.onToolStart,
-      onToolEnd: callbacks?.onToolEnd,
+    const baseCallbacksFactory = (task: AgentTask): ExecutorCallbacks => ({
+      onToolStart: (name: string, displayName: string) => callbacks?.onToolStart?.(name, displayName, task.id),
+      onToolEnd: (name: string, success: boolean, duration: number, error?: string) => callbacks?.onToolEnd?.(name, success, duration, error, task.id),
       onArtifact: callbacks?.onArtifact,
       onSkillsLoaded: callbacks?.onSkillsLoaded,
-    };
+    });
 
     let waveResults: { task: AgentTask; result: ExecutionResult }[];
 
     if (routedWave.length === 1) {
       // Single task — no Promise.allSettled overhead
       const task = routedWave[0];
-      const cb: ExecutorCallbacks = { ...baseCallbacks, onChecking: () => callbacks?.onTaskChecking?.(task) };
-      const result = await executeTask(task, currentPlan, modelConfig, cb);
+      const result = await executeSingleTask(task, currentPlan, modelConfig, baseCallbacksFactory(task), callbacks, subagentConfig);
       waveResults = [{ task, result }];
     } else {
       // Parallel wave execution
       console.log(`[Orchestrator] Executing wave ${waveCount}: ${routedWave.length} tasks in parallel [${routedWave.map(t => t.id).join(', ')}]`);
       const settled = await Promise.allSettled(
         routedWave.map((task) => {
-          const cb: ExecutorCallbacks = { ...baseCallbacks, onChecking: () => callbacks?.onTaskChecking?.(task) };
-          return executeTask(task, currentPlan, modelConfig, cb)
+          return executeSingleTask(task, currentPlan, modelConfig, baseCallbacksFactory(task), callbacks, subagentConfig)
             .then((result) => ({ task, result }));
         })
       );
@@ -433,6 +436,59 @@ async function executeTasksInOrder(
 }
 
 /**
+ * Execute a single task — routes to subagent loop or standard executor
+ */
+async function executeSingleTask(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  baseCallbacks: ExecutorCallbacks,
+  orchestratorCallbacks?: OrchestratorCallbacks,
+  subagentConfig?: SubagentConfig
+): Promise<ExecutionResult> {
+  if (task.subagent_enabled) {
+    // Subagent mode: task-level ReAct loop
+    const maxIterations = subagentConfig?.maxIterations ?? 5;
+    const planBudget = plan.budget?.max_tokens ?? 500000;
+    const budget = subagentConfig
+      ? createSubagentBudget(planBudget, subagentConfig.budgetRatio)
+      : undefined;
+
+    const subagentResult = await runSubagentTaskLoop(
+      task,
+      plan,
+      modelConfig,
+      {
+        onStep: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
+        onThinking: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
+        onBudgetWarning: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
+        onComplete: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
+        onHumanApprovalNeeded: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
+        onToolStart: (name, displayName, taskId) => orchestratorCallbacks?.onToolStart?.(name, displayName, taskId),
+        onToolEnd: (name, success, duration, error, taskId) => orchestratorCallbacks?.onToolEnd?.(name, success, duration, error, taskId),
+      },
+      maxIterations,
+      budget
+    );
+
+    return {
+      success: true,
+      result: subagentResult.content,
+      tokens_used: subagentResult.tokens_used,
+      llm_calls: subagentResult.iterations + 1,
+      tools_used: subagentResult.tools_used,
+      subagent_state: {
+        iterations: subagentResult.iterations,
+        hit_iteration_limit: subagentResult.hit_iteration_limit,
+      },
+    };
+  }
+
+  // Standard executor path
+  return executeTask(task, plan, modelConfig, baseCallbacks);
+}
+
+/**
  * Generate plan summary
  */
 async function generatePlanSummary(
@@ -583,6 +639,7 @@ export async function createAndExecuteAutonomousPlan(
     hitlEnabled?: boolean;
     hitlMinTasks?: number;
     hitlTimeoutMs?: number;
+    subagentConfig?: SubagentConfig;
   },
   callbacks?: OrchestratorCallbacks
 ): Promise<OrchestratorResult> {
@@ -690,7 +747,7 @@ export async function createAndExecuteAutonomousPlan(
     callbacks?.onPlanning?.();
     const planResult = await createPlan(
       userRequest,
-      { ...context, skillCatalog, resolvedSkillContext, availableTools, executorProfiles },
+      { ...context, skillCatalog, resolvedSkillContext, availableTools, executorProfiles, subagentConfig: planConfig.subagentConfig },
       planConfig.modelConfig
     );
 
@@ -807,7 +864,7 @@ export async function createAndExecuteAutonomousPlan(
     }
 
     // Phase 2 & 3: Execute plan
-    return await executeAutonomousPlan(planId, planConfig.modelConfig, callbacks);
+    return await executeAutonomousPlan(planId, planConfig.modelConfig, callbacks, planConfig.subagentConfig);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[Orchestrator] Create and execute error:', errorMsg);

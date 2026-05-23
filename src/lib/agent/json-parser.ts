@@ -55,6 +55,7 @@ export const PLANNER_RESPONSE_SCHEMA = {
             ],
           },
           executor_profile_reason: { type: 'string' },
+          subagent_enabled: { type: 'boolean' },
         },
       },
     },

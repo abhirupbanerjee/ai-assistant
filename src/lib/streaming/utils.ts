@@ -68,16 +68,24 @@ export function getToolDisplayName(toolName: string): string {
  */
 const PHASE_MESSAGES: Record<StreamPhase, string> = {
   init: 'Starting...',
+  idle: 'Waiting...',
+  thinking: 'Thinking...',
+  reasoning: 'Reasoning...',
+  planning: 'Planning...',
   rag: 'Searching knowledge base...',
   clarifying_question: 'Waiting for your input...',
   tools: 'Processing tools...',
+  memory: 'Loading context...',
+  streaming: 'Generating response...',
   generating: 'Generating response...',
   agent_planning: 'Creating task plan...',
   agent_executing: 'Executing tasks...',
   agent_checking: 'Checking task quality...',
   agent_summarizing: 'Generating summary...',
   awaiting_approval: 'Waiting for plan approval...',
+  compliance: 'Checking compliance...',
   complete: 'Complete',
+  error: 'Error',
 };
 
 /**

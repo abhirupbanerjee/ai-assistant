@@ -984,6 +984,10 @@ export {
   // Autonomous Mode Toggle
   getAutonomousModeEnabled,
   setAutonomousModeEnabled,
+  // Subagent Configuration
+  type SubagentConfig,
+  getSubagentConfig,
+  setSubagentConfig,
 } from './agent-config';
 
 // ============ RAG Testing ============

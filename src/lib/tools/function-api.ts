@@ -15,6 +15,7 @@ import {
 } from '../db/compat';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getRequestContext } from '../request-context';
+import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
 
 // ===== Configuration =====
 
@@ -225,8 +226,25 @@ async function executeFunction(
       requestOptions.body = JSON.stringify(bodyArgs);
     }
 
+    // SSRF guard: block private/internal IP ranges
+    try {
+      await validateUrlIsPublic(url);
+    } catch (err) {
+      return formatResponseForLLM({
+        success: false,
+        error: {
+          code: 'SSRF_BLOCKED',
+          message: err instanceof Error ? err.message : 'SSRF guard rejected the URL',
+          details: 'The configured API base URL resolves to a private or reserved IP range.',
+        },
+      });
+    }
+
     // Make the request
-    const response = await fetch(url, requestOptions);
+    const { response } = await fetchWithSsrfGuard(url, requestOptions, {
+      maxRedirects: 5,
+      followRedirects: true,
+    });
 
     // Check response status
     if (!response.ok) {
