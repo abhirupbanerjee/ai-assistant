@@ -357,6 +357,11 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS parallel_tool_capable INTEGER DEFAULT 0`.execute(database);
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS thinking_capable INTEGER DEFAULT 0`.execute(database);
   console.log('[Kysely] Ensured parallel_tool_capable and thinking_capable columns exist');
+
+  // Migration: Add input_cost_per_1m and output_cost_per_1m columns to enabled_models
+  await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS input_cost_per_1m NUMERIC(12,8)`.execute(database);
+  await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS output_cost_per_1m NUMERIC(12,8)`.execute(database);
+  console.log('[Kysely] Ensured input_cost_per_1m and output_cost_per_1m columns exist');
   await sql`
     UPDATE enabled_models
     SET thinking_capable = 1
