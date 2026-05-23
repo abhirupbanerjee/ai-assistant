@@ -7,7 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, requireElevated } from '@/lib/auth';
 import { getApiBase, getApiKey } from '@/lib/provider-helpers';
 import { getMoonshotBaseUrl } from '@/lib/moonshot-config';
 
@@ -26,9 +26,9 @@ interface RouteHealth {
  */
 export async function GET() {
   try {
-    const user = await getCurrentUser();
+    const user = await requireElevated().catch(() => null);
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Check both routes in parallel

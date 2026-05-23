@@ -3,7 +3,21 @@ import { authOptions } from '@/lib/auth-options';
 import { getUserRole } from '@/lib/users';
 import type { User } from '@/types';
 
-const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
+const AUTH_DISABLED = ((): boolean => {
+  const disabled = process.env.AUTH_DISABLED === 'true';
+  if (disabled && process.env.NODE_ENV === 'production') {
+    console.error(
+      '\n' +
+      '╔══════════════════════════════════════════════════════════════╗\n' +
+      '║  FATAL: AUTH_DISABLED=true is set in production!            ║\n' +
+      '║  This bypasses ALL authentication and creates a huge        ║\n' +
+      '║  security hole. Remove this setting from production env.    ║\n' +
+      '╚══════════════════════════════════════════════════════════════╝\n'
+    );
+    process.exit(1);
+  }
+  return disabled;
+})();
 
 export async function isAdmin(email: string | null | undefined): Promise<boolean> {
   if (!email) return false;

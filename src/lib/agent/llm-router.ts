@@ -699,6 +699,16 @@ async function generateDeepSeek(
   };
 }
 
+/** Reset all cached LLM clients so they re-read API keys on next use */
+export function resetLlmClients(): void {
+  openaiClient = null;
+  anthropicClient = null;
+  fireworksClient = null;
+  ollamaClient = null;
+  moonshotClient = null;
+  deepseekClient = null;
+}
+
 /**
  * Detect the correct provider for a model ID based on its prefix.
  * Used to assign the right provider for fallback models.

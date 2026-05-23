@@ -120,30 +120,32 @@ export async function getFilterOptions(): Promise<{
 
 // ============ Internal Helpers ============
 
-function buildWhereClause(filters: TokenUsageFilters, days: number, tablePrefix = ''): string {
-  const p = tablePrefix ? `${tablePrefix}.` : '';
-  const conditions = [`${p}created_at >= NOW() - MAKE_INTERVAL(days => ${days})`];
-  if (filters.category) conditions.push(`${p}category = '${filters.category}'`);
-  if (filters.userId) conditions.push(`${p}user_id = ${filters.userId}`);
-  if (filters.model) conditions.push(`${p}model = '${filters.model}'`);
-  return conditions.join(' AND ');
-}
-
 async function getTotals(
   filters: TokenUsageFilters,
   days: number
 ): Promise<{ total_tokens: number; total_calls: number }> {
   const db = await getDb();
-  const where = buildWhereClause(filters, days);
-  const result = await sql<{ total_tokens: string; total_calls: string }>`
-    SELECT
-      COALESCE(SUM(total_tokens), 0) AS total_tokens,
-      COUNT(*) AS total_calls
-    FROM token_usage_log
-    WHERE ${sql.raw(where)}
-  `.execute(db);
 
-  const row = result.rows[0];
+  let query = db
+    .selectFrom('token_usage_log')
+    .select([
+      sql<number>`COALESCE(SUM(total_tokens), 0)`.as('total_tokens'),
+      db.fn.countAll().as('total_calls'),
+    ])
+    .where('created_at', '>=', sql<string>`NOW() - MAKE_INTERVAL(days => ${days})`);
+
+  if (filters.category) {
+    query = query.where('category', '=', filters.category as any);
+  }
+  if (filters.userId) {
+    query = query.where('user_id', '=', filters.userId);
+  }
+  if (filters.model) {
+    query = query.where('model', '=', filters.model as any);
+  }
+
+  const row = await query.executeTakeFirst();
+
   return {
     total_tokens: Number(row?.total_tokens ?? 0),
     total_calls: Number(row?.total_calls ?? 0),
@@ -155,19 +157,32 @@ async function getByCategory(
   days: number
 ): Promise<TokenUsageCategory[]> {
   const db = await getDb();
-  const where = buildWhereClause(filters, days);
-  const result = await sql<{ category: string; total_tokens: string; call_count: string }>`
-    SELECT
-      category,
-      COALESCE(SUM(total_tokens), 0) AS total_tokens,
-      COUNT(*) AS call_count
-    FROM token_usage_log
-    WHERE ${sql.raw(where)}
-    GROUP BY category
-    ORDER BY SUM(total_tokens) DESC
-  `.execute(db);
 
-  return result.rows.map((r) => ({
+  let query = db
+    .selectFrom('token_usage_log')
+    .select([
+      'category',
+      sql<number>`COALESCE(SUM(total_tokens), 0)`.as('total_tokens'),
+      db.fn.countAll().as('call_count'),
+    ])
+    .where('created_at', '>=', sql<string>`NOW() - MAKE_INTERVAL(days => ${days})`);
+
+  if (filters.category) {
+    query = query.where('category', '=', filters.category as any);
+  }
+  if (filters.userId) {
+    query = query.where('user_id', '=', filters.userId);
+  }
+  if (filters.model) {
+    query = query.where('model', '=', filters.model as any);
+  }
+
+  const rows = await query
+    .groupBy('category')
+    .orderBy(sql`SUM(total_tokens)`, 'desc')
+    .execute();
+
+  return rows.map((r) => ({
     category: r.category,
     total_tokens: Number(r.total_tokens),
     call_count: Number(r.call_count),
@@ -179,23 +194,36 @@ async function getByUser(
   days: number
 ): Promise<TokenUsageByUser[]> {
   const db = await getDb();
-  const where = buildWhereClause(filters, days, 't');
-  const result = await sql<{ user_id: number; user_email: string; user_name: string | null; total_tokens: string; call_count: string }>`
-    SELECT
-      u.id AS user_id,
-      u.email AS user_email,
-      u.name AS user_name,
-      COALESCE(SUM(t.total_tokens), 0) AS total_tokens,
-      COUNT(*) AS call_count
-    FROM token_usage_log t
-    INNER JOIN users u ON u.id = t.user_id
-    WHERE ${sql.raw(where)}
-    GROUP BY u.id, u.email, u.name
-    ORDER BY SUM(t.total_tokens) DESC
-    LIMIT 20
-  `.execute(db);
 
-  return result.rows.map((r) => ({
+  let query = db
+    .selectFrom('token_usage_log as t')
+    .innerJoin('users as u', 'u.id', 't.user_id')
+    .select([
+      'u.id as user_id',
+      'u.email as user_email',
+      'u.name as user_name',
+      sql<number>`COALESCE(SUM(t.total_tokens), 0)`.as('total_tokens'),
+      db.fn.countAll().as('call_count'),
+    ])
+    .where('t.created_at', '>=', sql<string>`NOW() - MAKE_INTERVAL(days => ${days})`);
+
+  if (filters.category) {
+    query = query.where('t.category', '=', filters.category as any);
+  }
+  if (filters.userId) {
+    query = query.where('t.user_id', '=', filters.userId);
+  }
+  if (filters.model) {
+    query = query.where('t.model', '=', filters.model as any);
+  }
+
+  const rows = await query
+    .groupBy(['u.id', 'u.email', 'u.name'])
+    .orderBy(sql`SUM(t.total_tokens)`, 'desc')
+    .limit(20)
+    .execute();
+
+  return rows.map((r) => ({
     user_id: r.user_id,
     user_email: r.user_email,
     user_name: r.user_name,
@@ -209,19 +237,32 @@ async function getByModel(
   days: number
 ): Promise<TokenUsageByModel[]> {
   const db = await getDb();
-  const where = buildWhereClause(filters, days);
-  const result = await sql<{ model: string; total_tokens: string; call_count: string }>`
-    SELECT
-      model,
-      COALESCE(SUM(total_tokens), 0) AS total_tokens,
-      COUNT(*) AS call_count
-    FROM token_usage_log
-    WHERE ${sql.raw(where)}
-    GROUP BY model
-    ORDER BY SUM(total_tokens) DESC
-  `.execute(db);
 
-  return result.rows.map((r) => ({
+  let query = db
+    .selectFrom('token_usage_log')
+    .select([
+      'model',
+      sql<number>`COALESCE(SUM(total_tokens), 0)`.as('total_tokens'),
+      db.fn.countAll().as('call_count'),
+    ])
+    .where('created_at', '>=', sql<string>`NOW() - MAKE_INTERVAL(days => ${days})`);
+
+  if (filters.category) {
+    query = query.where('category', '=', filters.category as any);
+  }
+  if (filters.userId) {
+    query = query.where('user_id', '=', filters.userId);
+  }
+  if (filters.model) {
+    query = query.where('model', '=', filters.model as any);
+  }
+
+  const rows = await query
+    .groupBy('model')
+    .orderBy(sql`SUM(total_tokens)`, 'desc')
+    .execute();
+
+  return rows.map((r) => ({
     model: r.model,
     total_tokens: Number(r.total_tokens),
     call_count: Number(r.call_count),
@@ -233,31 +274,36 @@ async function getDaily(
   days: number
 ): Promise<DailyTokenUsage[]> {
   const db = await getDb();
-  const where = buildWhereClause(filters, days);
-  const result = await sql<{
-    date: string;
-    total_tokens: string;
-    call_count: string;
-    chat_tokens: string;
-    autonomous_tokens: string;
-    embeddings_tokens: string;
-    workspace_tokens: string;
-  }>`
-    SELECT
-      DATE(created_at) AS date,
-      COALESCE(SUM(total_tokens), 0) AS total_tokens,
-      COUNT(*) AS call_count,
-      COALESCE(SUM(CASE WHEN category = 'chat' THEN total_tokens ELSE 0 END), 0) AS chat_tokens,
-      COALESCE(SUM(CASE WHEN category = 'autonomous' THEN total_tokens ELSE 0 END), 0) AS autonomous_tokens,
-      COALESCE(SUM(CASE WHEN category = 'embeddings' THEN total_tokens ELSE 0 END), 0) AS embeddings_tokens,
-      COALESCE(SUM(CASE WHEN category = 'workspace' THEN total_tokens ELSE 0 END), 0) AS workspace_tokens
-    FROM token_usage_log
-    WHERE ${sql.raw(where)}
-    GROUP BY DATE(created_at)
-    ORDER BY DATE(created_at) ASC
-  `.execute(db);
 
-  return result.rows.map((r) => ({
+  let query = db
+    .selectFrom('token_usage_log')
+    .select([
+      sql<string>`DATE(created_at)`.as('date'),
+      sql<number>`COALESCE(SUM(total_tokens), 0)`.as('total_tokens'),
+      db.fn.countAll().as('call_count'),
+      sql<number>`COALESCE(SUM(CASE WHEN category = 'chat' THEN total_tokens ELSE 0 END), 0)`.as('chat_tokens'),
+      sql<number>`COALESCE(SUM(CASE WHEN category = 'autonomous' THEN total_tokens ELSE 0 END), 0)`.as('autonomous_tokens'),
+      sql<number>`COALESCE(SUM(CASE WHEN category = 'embeddings' THEN total_tokens ELSE 0 END), 0)`.as('embeddings_tokens'),
+      sql<number>`COALESCE(SUM(CASE WHEN category = 'workspace' THEN total_tokens ELSE 0 END), 0)`.as('workspace_tokens'),
+    ])
+    .where('created_at', '>=', sql<string>`NOW() - MAKE_INTERVAL(days => ${days})`);
+
+  if (filters.category) {
+    query = query.where('category', '=', filters.category as any);
+  }
+  if (filters.userId) {
+    query = query.where('user_id', '=', filters.userId);
+  }
+  if (filters.model) {
+    query = query.where('model', '=', filters.model as any);
+  }
+
+  const rows = await query
+    .groupBy(sql`DATE(created_at)`)
+    .orderBy(sql`DATE(created_at)`, 'asc')
+    .execute();
+
+  return rows.map((r) => ({
     date: String(r.date),
     total_tokens: Number(r.total_tokens),
     call_count: Number(r.call_count),

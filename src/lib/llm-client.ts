@@ -110,6 +110,16 @@ async function getDeepSeekClient(): Promise<OpenAI> {
   return deepseekClient;
 }
 
+/** Reset all cached LLM clients so they re-read API keys on next use */
+export function resetLlmClients(): void {
+  litellmClient = null;
+  fireworksClient = null;
+  anthropicClient = null;
+  ollamaClient = null;
+  moonshotClient = null;
+  deepseekClient = null;
+}
+
 // ============ Provider Callers ============
 
 async function callLiteLLM(model: string, opts: InternalCompletionOptions): Promise<string> {

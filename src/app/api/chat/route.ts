@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail } from '@/lib/db/compat';
+import { rateLimitMiddleware } from '@/lib/rate-limiter';
 import { ragQuery } from '@/lib/rag';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import {
@@ -27,6 +28,12 @@ import type { Message, ChatRequest, ChatResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: 30 requests per 60 seconds per IP
+    const rateLimitResponse = rateLimitMiddleware(request, { maxRequests: 30, windowMs: 60_000 });
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json<ApiError>(

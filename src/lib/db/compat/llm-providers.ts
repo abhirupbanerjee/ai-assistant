@@ -7,6 +7,7 @@
  */
 
 import { getDb } from '../kysely';
+import { safeEncrypt, safeDecrypt } from '../../encryption';
 
 // Re-export types and constants from sync module
 export type { LLMProvider, CreateProviderInput, UpdateProviderInput } from '../llm-providers';
@@ -106,7 +107,7 @@ export async function createProvider(input: CreateProviderInput): Promise<LLMPro
     .values({
       id: input.id,
       name: input.name,
-      api_key: input.apiKey || null,
+      api_key: safeEncrypt(input.apiKey) || null,
       api_base: input.apiBase || null,
       enabled: input.enabled !== false ? 1 : 0,
     })
@@ -128,7 +129,7 @@ export async function updateProvider(id: string, input: UpdateProviderInput): Pr
     updateObj.name = input.name;
   }
   if (input.apiKey !== undefined) {
-    updateObj.api_key = input.apiKey || null;
+    updateObj.api_key = safeEncrypt(input.apiKey) || null;
   }
   if (input.apiBase !== undefined) {
     updateObj.api_base = input.apiBase || null;
@@ -204,7 +205,9 @@ export async function isProviderConfigured(id: string): Promise<boolean> {
  */
 export async function getProviderApiKey(id: string): Promise<string | null> {
   const provider = await getProvider(id);
-  if (provider?.apiKey) return provider.apiKey;
+  if (provider?.apiKey) {
+    return safeDecrypt(provider.apiKey);
+  }
 
   // Fall back to environment variable
   const envConfig = PROVIDER_ENV_KEYS[id];
@@ -267,7 +270,7 @@ export async function seedDefaultProviders(): Promise<void> {
     await createProvider({
       id: provider.id,
       name: provider.name,
-      apiKey,
+      apiKey: apiKey ? safeEncrypt(apiKey) || apiKey : undefined,
       apiBase,
       enabled: provider.enabled,
     });

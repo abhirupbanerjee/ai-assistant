@@ -1,5 +1,6 @@
 import { getWebSearchConfig } from '../db/compat/tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
+import { validateUrlIsPublic } from '../ssrf-guard';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 
 // ============ URL Extract Types ============
@@ -485,6 +486,11 @@ export async function downloadPdfFromUrl(url: string): Promise<PdfDownloadResult
   try {
     // Validate URL
     const urlObj = new URL(url);
+
+    // SSRF guard: block private/internal IP ranges
+    await validateUrlIsPublic(url).catch((err) => {
+      throw new Error(`SSRF guard rejected URL: ${err.message}`);
+    });
 
     console.log('Downloading PDF:', url);
 

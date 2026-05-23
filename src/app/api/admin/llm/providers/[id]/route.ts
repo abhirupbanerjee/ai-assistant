@@ -15,6 +15,11 @@ import {
   maskApiKey,
   type UpdateProviderInput,
 } from '@/lib/db/compat/llm-providers';
+import { safeDecrypt } from '@/lib/encryption';
+import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
+import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
+import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
+import { resetLlmClients as resetImageGenClients } from '@/lib/image-gen/providers/openai-dalle';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -45,8 +50,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       provider: {
         ...provider,
-        apiKey: maskApiKey(provider.apiKey),
-        apiKeyConfigured: !!provider.apiKey,
+        apiKey: maskApiKey(safeDecrypt(provider.apiKey)),
+        apiKeyConfigured: !!safeDecrypt(provider.apiKey),
       },
     });
   } catch (error) {
@@ -85,11 +90,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Invalidate cached LLM clients so updated keys take effect immediately
+    resetInternalClients();
+    resetOpenAiClients();
+    resetAgentClients();
+    resetImageGenClients();
+
     return NextResponse.json({
       provider: {
         ...provider,
-        apiKey: maskApiKey(provider.apiKey),
-        apiKeyConfigured: !!provider.apiKey,
+        apiKey: maskApiKey(safeDecrypt(provider.apiKey)),
+        apiKeyConfigured: !!safeDecrypt(provider.apiKey),
       },
     });
   } catch (error) {
@@ -129,11 +140,18 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
           { status: 404 }
         );
       }
+
+      // Invalidate cached LLM clients so cleared keys take effect immediately
+      resetInternalClients();
+      resetOpenAiClients();
+      resetAgentClients();
+      resetImageGenClients();
+
       return NextResponse.json({
         message: 'Provider configuration cleared',
         provider: {
           ...provider,
-          apiKey: maskApiKey(provider.apiKey),
+          apiKey: maskApiKey(safeDecrypt(provider.apiKey)),
           apiKeyConfigured: false,
         },
       });

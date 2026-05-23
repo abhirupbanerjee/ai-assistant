@@ -447,6 +447,12 @@ After OAuth is set up, either:
 - JWT tokens with configurable expiry
 - CSRF protection built-in
 
+### CSRF Protection
+
+Cross-Site Request Forgery (CSRF) protection is provided by NextAuth.js via `SameSite=Lax` session cookies. Modern browsers block cross-site POST requests from carrying `SameSite=Lax` cookies unless the request is a top-level navigation (which API `fetch()` calls are not). This provides baseline protection against CSRF attacks on JSON API endpoints.
+
+**Accepted risk:** No explicit CSRF tokens are implemented for API routes. `SameSite=Lax` mitigates CSRF against modern browsers. If stricter protection is required, add a custom `X-CSRF-Token` header flow using NextAuth's CSRF token endpoint for all non-GET requests.
+
 ### Recommendations
 
 | Environment | Recommendation |

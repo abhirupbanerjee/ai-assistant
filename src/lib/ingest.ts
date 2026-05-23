@@ -219,8 +219,11 @@ export async function ingestDocument(
   const isGlobal = options?.isGlobal || false;
   const mimeType = options?.mimeType || getMimeTypeFromFilename(filename);
 
+  // Sanitize filename to prevent path traversal
+  const safeFilename = sanitizeFilename(filename);
+
   // Save file
-  const filePath = path.join(globalDocsDir, filename);
+  const filePath = path.join(globalDocsDir, safeFilename);
   await writeFileBuffer(filePath, buffer);
 
   // Create document record with 'processing' status
@@ -336,14 +339,38 @@ async function processDocumentAsync(
 
 /**
  * Sanitize a filename for filesystem use
+ * Blocks path traversal (..), control characters, and removes any remaining
+ * slashes/backslashes that could allow directory escape.
  */
 function sanitizeFilename(name: string): string {
-  return name
+  // 1. Strip path traversal sequences like "..", ".%2e", "。。" etc.
+  let safe = name
+    // Remove URL-encoded dots
+    .replace(/%2e/gi, '')
+    .replace(/%2E/gi, '')
+    // Collapse any remaining dot sequences
+    .replace(/\.{2,}/g, '.')
+    // Remove leading dots (hidden files / relative traversal)
+    .replace(/^\.+/g, '')
+    // Remove trailing dots
+    .replace(/\.+$/g, '');
+
+  // 2. Strip null bytes and control characters
+  safe = safe.replace(/[\x00-\x1f\x7f]/g, '');
+
+  // 3. Remove all invalid filesystem characters (including slashes for defense-in-depth)
+  safe = safe
     .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/\s+/g, '-') // Replace whitespace with hyphens
     .replace(/-+/g, '-') // Collapse multiple hyphens
-    .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
-    .slice(0, 200); // Limit length
+    .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+
+  // 4. Final check: reject if empty after sanitization
+  if (!safe || safe === '.' || safe === '..') {
+    return `document-${Date.now()}`;
+  }
+
+  return safe.slice(0, 200); // Limit length
 }
 
 /**

@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
   async headers() {
     const commonSecurityHeaders = [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'X-XSS-Protection', value: '1; mode=block' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
@@ -26,16 +27,33 @@ const nextConfig: NextConfig = {
       ? `'self' ${allowedEmbedOrigins.join(' ')}`
       : defaultFrameAncestors;
 
+    /**
+     * CSP hardening notes:
+     * - 'unsafe-eval' is required by Next.js dev mode and some dependencies (tiktoken, chart.js)
+     * - report-uri /api/csp-report enables monitoring of CSP violations in production
+     * - 'unsafe-inline' was removed from script-src to prevent XSS via inline script injection.
+     *   If RSC bootstrapping breaks (Next.js App Router limitation), re-add with a specific hash.
+     */
     const buildCsp = (frameAncestors: string) => ({
       key: 'Content-Security-Policy',
       value: [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com",
+        // NOTE: 'unsafe-eval' needed for Next.js dev + some library deps (tiktoken, chart.js)
+        // NOTE: 'unsafe-inline' removed for security (XSS hardening). If RSC breaks, use a
+        //       specific script hash instead of blanket 'unsafe-inline'.
+        "script-src 'self' 'unsafe-eval' https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
         "font-src 'self' data:",
         "connect-src 'self' https://cloudflareinsights.com",
         `frame-ancestors ${frameAncestors}`,
+        "form-action 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        // Optional: enable CSP violation reporting (set CSP_REPORT_URI environment variable)
+        // Example: CSP_REPORT_URI=/api/csp-report or https://your-endpoint.report-uri.com/r/d/csp/enforce
+        ...(process.env.CSP_REPORT_URI ? [`report-uri ${process.env.CSP_REPORT_URI}`] : []),
+        ...(process.env.CSP_REPORT_URI ? [`report-to ${process.env.CSP_REPORT_URI}`] : []),
       ].join('; '),
     });
 

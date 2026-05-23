@@ -942,7 +942,38 @@ fi
 - [ ] PostgreSQL: auto-vacuumed (no manual action needed)
 - [ ] Monitor vector store data size (`du -sh data/qdrant/`)
 
+### Docker Secrets Management
+
+**Accepted risk:** Production deployments currently use environment variables (`.env` file) for secrets. This is common for single-host Docker Compose deployments but does not provide Docker's built-in secret encryption-at-rest or strict file-permission isolation (`0600` bind-mounted to `/run/secrets/<name>`).
+
+**Recommended migration** (when deploying to a multi-host Swarm or Kubernetes cluster):
+
+```yaml
+# docker-compose.yml (Docker Swarm mode)
+secrets:
+  nexauth_secret:
+    external: true                   # create via: printf "my-secret" | docker secret create nexauth_secret -
+  openai_key:
+    external: true
+  azure_client_secret:
+    external: true
+
+services:
+  app:
+    secrets:
+      - nexauth_secret
+      - openai_key
+      - azure_client_secret
+    environment:
+      NEXTAUTH_SECRET_FILE: /run/secrets/nexauth_secret
+      OPENAI_API_KEY_FILE: /run/secrets/openai_key
+      AZURE_AD_CLIENT_SECRET_FILE: /run/secrets/azure_client_secret
+```
+
+Additionally, add a `read_secret` helper in the application bootstrap to load secrets from `/run/secrets/<name>` files with fallback to environment variables (for backward compatibility with non-Swarm deployments).
+
 ---
+
 
 ## Troubleshooting
 

@@ -5,6 +5,7 @@
  */
 
 import { execute, queryOne, queryAll } from './index';
+import { safeEncrypt, safeDecrypt } from '../encryption';
 
 // ============ Types ============
 
@@ -132,7 +133,7 @@ export function createProvider(input: CreateProviderInput): LLMProvider {
   `, [
     input.id,
     input.name,
-    input.apiKey || null,
+    safeEncrypt(input.apiKey) || null,
     input.apiBase || null,
     input.enabled !== false ? 1 : 0,
   ]);
@@ -156,7 +157,7 @@ export function updateProvider(id: string, input: UpdateProviderInput): LLMProvi
   }
   if (input.apiKey !== undefined) {
     updates.push('api_key = ?');
-    params.push(input.apiKey || null);
+    params.push(safeEncrypt(input.apiKey) || null);
   }
   if (input.apiBase !== undefined) {
     updates.push('api_base = ?');
@@ -229,7 +230,9 @@ export function isProviderConfigured(id: string): boolean {
  */
 export function getProviderApiKey(id: string): string | null {
   const provider = getProvider(id);
-  if (provider?.apiKey) return provider.apiKey;
+  if (provider?.apiKey) {
+    return safeDecrypt(provider.apiKey);
+  }
 
   // Fall back to environment variable
   const envConfig = PROVIDER_ENV_KEYS[id];
@@ -291,7 +294,7 @@ export function seedDefaultProviders(): void {
     createProvider({
       id: provider.id,
       name: provider.name,
-      apiKey,
+      apiKey: apiKey ? safeEncrypt(apiKey) || apiKey : undefined,
       apiBase,
       enabled: provider.enabled,
     });

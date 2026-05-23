@@ -34,6 +34,11 @@ async function getOpenAIClient(): Promise<OpenAI> {
   return openaiClient;
 }
 
+/** Reset cached OpenAI client so it re-reads the API key on next use */
+export function resetLlmClients(): void {
+  openaiClient = null;
+}
+
 // ===== Size Mapping =====
 
 /**

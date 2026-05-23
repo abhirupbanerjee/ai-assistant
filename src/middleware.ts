@@ -2,26 +2,9 @@ import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
 
 export default async function middleware(req: NextRequest) {
-  // Embed routes: set runtime CSP with allowed frame-ancestors, skip auth
+  // Embed routes: skip auth (these are public embeddable chat widgets)
   if (req.nextUrl.pathname.startsWith('/e/')) {
-    const allowedOrigins = process.env.ALLOWED_EMBED_ORIGINS
-      ? process.env.ALLOWED_EMBED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
-      : [];
-    const frameAncestors = allowedOrigins.length > 0
-      ? `'self' ${allowedOrigins.join(' ')}`
-      : "'self'";
-
-    const response = NextResponse.next();
-    response.headers.set('Content-Security-Policy', [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
-      "font-src 'self' data:",
-      "connect-src 'self' https://cloudflareinsights.com",
-      `frame-ancestors ${frameAncestors}`,
-    ].join('; '));
-    return response;
+    return NextResponse.next();
   }
 
   // Landing page: authenticated users → /chat, unauthenticated → show landing

@@ -148,6 +148,17 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     providers,
     callbacks,
     pages,
+    cookies: {
+      sessionToken: {
+        name: `__Secure-next-auth.session-token`,
+        options: {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          secure: process.env.NODE_ENV === 'production',
+        },
+      },
+    },
   };
 }
 
@@ -160,4 +171,15 @@ export const authOptions: NextAuthOptions = {
   providers: [],
   callbacks,
   pages,
+  cookies: {
+    sessionToken: {
+      name: `__Secure-next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
 };

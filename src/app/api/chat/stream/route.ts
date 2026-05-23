@@ -43,6 +43,7 @@ import {
 } from '@/lib/llm-fallback';
 import { getAutonomousModeEnabled } from '@/lib/db/compat/agent-config';
 import { executeAutonomousWithStreaming } from '@/lib/agent/streaming-executor';
+import { rateLimitMiddleware } from '@/lib/rate-limiter';
 
 // Route segment config for long-running autonomous tasks
 // 1800s (30 min) matches Traefik proxy timeout for autonomous mode.
@@ -50,6 +51,12 @@ import { executeAutonomousWithStreaming } from '@/lib/agent/streaming-executor';
 export const maxDuration = 1800;
 
 export async function POST(request: NextRequest) {
+  // Rate limit: 15 requests per 60 seconds per IP (stricter for streaming)
+  const rateLimitResponse = rateLimitMiddleware(request, { maxRequests: 15, windowMs: 60_000 });
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const encoder = createSSEEncoder();
   let keepAliveInterval: NodeJS.Timeout | null = null;
 

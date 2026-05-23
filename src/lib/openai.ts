@@ -400,6 +400,16 @@ async function getDeepSeekClient(): Promise<OpenAI> {
   return deepseekClient;
 }
 
+/** Reset all cached LLM clients so they re-read API keys on next use */
+export function resetLlmClients(): void {
+  openaiClient = null;
+  anthropicClient = null;
+  fireworksClient = null;
+  ollamaClient = null;
+  moonshotClient = null;
+  deepseekClient = null;
+}
+
 /**
  * Add LiteLLM provider prefix to non-OpenAI embedding model names.
  * LiteLLM requires prefixes like `gemini/` or `mistral/` to route correctly.

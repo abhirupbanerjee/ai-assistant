@@ -14,6 +14,11 @@ import {
   PROVIDER_ENV_KEYS,
   type CreateProviderInput,
 } from '@/lib/db/compat/llm-providers';
+import { safeDecrypt } from '@/lib/encryption';
+import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
+import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
+import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
+import { resetLlmClients as resetImageGenClients } from '@/lib/image-gen/providers/openai-dalle';
 import type { ApiError } from '@/types';
 
 // GET /api/admin/llm/providers - List all providers
@@ -33,11 +38,12 @@ export async function GET() {
     const safeProviders = providers.map(p => {
       const envConfig = PROVIDER_ENV_KEYS[p.id];
       const envVarName = envConfig?.apiKey ?? envConfig?.apiBase ?? '';
+      const decryptedKey = safeDecrypt(p.apiKey);
       return {
         ...p,
-        apiKey: maskApiKey(p.apiKey),
-        apiKeyConfigured: !!p.apiKey,
-        apiKeyFromEnv: !p.apiKey && !!process.env[envVarName],
+        apiKey: maskApiKey(decryptedKey),
+        apiKeyConfigured: !!decryptedKey,
+        apiKeyFromEnv: !decryptedKey && !!process.env[envVarName],
       };
     });
 
@@ -78,11 +84,17 @@ export async function POST(request: NextRequest) {
 
     const provider = await createProvider(body);
 
+    // Invalidate cached LLM clients so new keys take effect immediately
+    resetInternalClients();
+    resetOpenAiClients();
+    resetAgentClients();
+    resetImageGenClients();
+
     return NextResponse.json({
       provider: {
         ...provider,
-        apiKey: maskApiKey(provider.apiKey),
-        apiKeyConfigured: !!provider.apiKey,
+        apiKey: maskApiKey(safeDecrypt(provider.apiKey)),
+        apiKeyConfigured: !!safeDecrypt(provider.apiKey),
       },
     }, { status: 201 });
   } catch (error) {
