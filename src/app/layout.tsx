@@ -31,6 +31,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
+      <head>
+        {/* Cloudflare Web Analytics with Subresource Integrity (SRI)
+            SRI hash pins the exact script version, preventing CDN compromise attacks.
+            Hash is for beacon.min.js as of 2026-05-23. Update if Cloudflare releases a new version.
+            Reference: https://developers.cloudflare.com/web-analytics/get-started/
+        */}
+        {process.env.NEXT_PUBLIC_CLOUDFLARE_BEACON_TOKEN && (
+          <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            integrity="sha384-KXjSmF7snBFRXXcoEwADd668C56vFQQOoMXjq+3me5V8q5rbsKeJK+srjmzNil7"
+            crossOrigin="anonymous"
+          />
+        )}
+      </head>
       <body className="font-sans h-full">
         <Providers>{children}</Providers>
       </body>

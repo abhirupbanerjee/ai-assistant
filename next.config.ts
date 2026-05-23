@@ -17,9 +17,10 @@ const nextConfig: NextConfig = {
     const commonSecurityHeaders = [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-XSS-Protection', value: '1; mode=block' },
+      { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
-      { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=(), clipboard-read=(), payment=(), usb=(), serial=()' },
     ];
 
     const defaultFrameAncestors = "'self'";
@@ -30,18 +31,21 @@ const nextConfig: NextConfig = {
     /**
      * CSP hardening notes:
      * - 'unsafe-eval' is required by Next.js dev mode and some dependencies (tiktoken, chart.js)
+     * - 'unsafe-inline' is required by Next.js App Router for RSC bootstrap scripts and
+     *   __NEXT_DATA__ hydration blocks. Removing it broke the entire application (see 2026-05-23).
      * - report-uri /api/csp-report enables monitoring of CSP violations in production
-     * - 'unsafe-inline' was removed from script-src to prevent XSS via inline script injection.
-     *   If RSC bootstrapping breaks (Next.js App Router limitation), re-add with a specific hash.
+     * - Roadmap: Introduce hash-based CSP + Content-Security-Policy-Report-Only header to
+     *   collect violation data, then migrate to a nonce-based strict CSP without 'unsafe-inline'.
      */
     const buildCsp = (frameAncestors: string) => ({
       key: 'Content-Security-Policy',
       value: [
         "default-src 'self'",
-        // NOTE: 'unsafe-eval' needed for Next.js dev + some library deps (tiktoken, chart.js)
-        // NOTE: 'unsafe-inline' removed for security (XSS hardening). If RSC breaks, use a
-        //       specific script hash instead of blanket 'unsafe-inline'.
-        "script-src 'self' 'unsafe-eval' https://static.cloudflareinsights.com",
+        // RE-ADDED: 'unsafe-inline' restored on 2026-05-23 — removing it broke Next.js App Router
+        // RSC bootstrap scripts and __NEXT_DATA__ hydration blocks require inline scripts.
+        // A hash-based/nonce CSP should be introduced in a future sprint after collecting
+        // violation data via a Content-Security-Policy-Report-Only header (see Option E plan).
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
         "font-src 'self' data:",

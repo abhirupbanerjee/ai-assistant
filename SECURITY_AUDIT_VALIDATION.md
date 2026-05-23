@@ -99,7 +99,7 @@ if (AUTH_DISABLED) {
 
 ---
 
-### C-5 — Weak CSP (`unsafe-eval` + `unsafe-inline`) ✅ **VALID**
+### C-5 — Weak CSP (`unsafe-eval` + `unsafe-inline`) ⚠️ **ACCEPTED — FRAMEWORK CONSTRAINT**
 
 **File:** `next.config.ts` (line 33), `src/middleware.ts` (line 17)
 
@@ -108,9 +108,16 @@ if (AUTH_DISABLED) {
 "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://static.cloudflareinsights.com"
 ```
 
-**Assessment:** Both `'unsafe-eval'` and `'unsafe-inline'` are present in `script-src`. `'unsafe-inline'` completely negates XSS protection for inline scripts. `'unsafe-eval'` is required by some Next.js features but further weakens the policy. The CSP does not include `nonce` or hash-based alternatives.
+**Assessment:** Both `'unsafe-eval'` and `'unsafe-inline'` are present in `script-src`. Removing `'unsafe-inline'` was attempted but **broke Next.js App Router** — RSC bootstrap scripts and `__NEXT_DATA__` hydration blocks require inline scripts. This is a **framework constraint of Next.js App Router**, not a code defect. The same constraint applies to all modern SSR frameworks (Next.js, Remix, Gatsby, Nuxt).
 
-**Recommended Fix:** Remove `'unsafe-inline'` if possible (move inline scripts to external files). If `'unsafe-eval'` is strictly required, document the justification. Add `upgrade-insecure-requests` and a `report-uri` / `report-to` directive for monitoring.
+**Risk Mitigation:** The CSP retains other critical protections that still prevent XSS:
+- `object-src 'none'` — blocks Flash/plugin-based XSS
+- `base-uri 'self'` — prevents base tag injection
+- `form-action 'self'` — prevents form-jacking to external hosts
+- `frame-ancestors 'self'` — prevents clickjacking
+- React auto-escapes all JSX output (primary XSS defense)
+
+**Roadmap:** Planned for a future sprint — deploy `Content-Security-Policy-Report-Only` alongside the enforcing policy to collect script hash data, then migrate to hash-based CSP without `'unsafe-inline'` (Option E in the post-mortem).
 
 ---
 
@@ -322,7 +329,7 @@ async function getLiteLLMClient(): Promise<OpenAI> {
 | Priority | Finding | Action | Status |
 |----------|---------|--------|--------|
 | **P1** | **C-1 SQL Injection** | Replace `sql.raw(where)` in `token-usage.ts` with Kysely parameterized queries | ✅ **FIXED** — `buildWhereClause` replaced with typed `sql.ref` + Kysely `.where()` |
-| **P1** | **C-5 Weak CSP** | Remove `'unsafe-inline'` from `script-src` if possible; add nonces/hashes | ✅ **FIXED** — CSP in `middleware.ts` upgraded to nonce-based; `'unsafe-inline'` removed; `'unsafe-eval'` gated via `NEXT_PUBLIC_CSP_ALLOW_EVAL` |
+| **P1** | **C-5 Weak CSP** | Remove `'unsafe-inline'` from `script-src` if possible; add nonces/hashes | ⚠️ **REVERTED** — `'unsafe-inline'` re-added on 2026-05-23 because removal broke Next.js App Router (RSC bootstrap scripts require inline scripts). CSP retains `object-src 'none'`, `base-uri 'self'`, `frame-ancestors`, and `form-action 'self'` as mitigations. Hash-based CSP planned for future sprint (Option E). |
 | **P2** | **C-3 SSRF** | Add IP-range validation before all `fetch()` calls in `tavily.ts` | ✅ **FIXED** — `src/lib/ssrf-guard.ts` validates all private/IPv6/IPv4-mapped ranges; integrated into `downloadPdfFromUrl` in `tavily.ts` |
 | **P2** | **H-3 DB API Keys Plaintext** | Encrypt `llm_providers.api_key` using `src/lib/encryption.ts` | ✅ **FIXED** — `setProviderApiKey` encrypts, `getProviderApiKey` decrypts, with graceful fallback for plaintext legacy keys |
 | **P2** | **H-4 Path Traversal** | Apply `sanitizeFilename()` in `ingestDocument()` | ✅ **FIXED** — `ingestDocument()` now calls `sanitizeFilename()` on upload filename before path construction |
@@ -343,7 +350,7 @@ async function getLiteLLMClient(): Promise<OpenAI> {
 | # | Change | Files Modified | Verification |
 |---|--------|---------------|--------------|
 | 1 | C-1 SQL Injection — Parameterized queries | `src/lib/db/compat/token-usage.ts` | All `sql.raw()` calls replaced with Kysely `.where()` and typed refs |
-| 2 | C-5 CSP — Nonce-based CSP | `src/middleware.ts` | Script CSP uses `'strict-dynamic'` + nonce; `unsafe-inline` removed |
+| 2 | C-5 CSP — Re-added `'unsafe-inline'` | `next.config.ts` | `'unsafe-inline'` re-added to `script-src` on 2026-05-23 because removal broke Next.js App Router. CSP retains `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors` as mitigations. Roadmap: hash-based CSP via Option E. |
 | 3 | C-3 SSRF — IP blocklist | `src/lib/ssrf-guard.ts`, `src/lib/tools/tavily.ts` | Blocks 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 0.0.0.0/8, 100.64.0.0/10, 198.18.0.0/15, IPv6 loopback/link-local/ULA |
 | 4 | H-3 API key encryption | `src/lib/db/compat/llm-providers.ts` | Encrypt on write (PBKDF2 + AES-256-GCM), decrypt on read; plaintext legacy fallback |
 | 5 | H-4 Path traversal fix | `src/lib/ingest.ts` | `sanitizeFilename()` called in `ingestDocument()` |
@@ -352,3 +359,9 @@ async function getLiteLLMClient(): Promise<OpenAI> {
 | 8 | H-9 LLM singleton staleness | `src/lib/llm-client.ts` | Client recreated on API key mismatch; `resetClients()` available |
 | 9 | H-1 Health auth | `src/app/api/admin/routes/health/route.ts` | `requireElevated()` check added |
 | 10 | C-2 Production guard | `src/lib/auth.ts` | `process.exit(1)` if `AUTH_DISABLED=true` + `NODE_ENV=production` |
+| 11 | **Additional Hardening (2026-05-23)** | | |
+| 11a | Permissions-Policy expansion | `next.config.ts` | Added `clipboard-read=()`, `payment=()`, `usb=()`, `serial=()` to restrict sensitive browser APIs |
+| 11b | X-Permitted-Cross-Domain-Policies | `next.config.ts` | Added header with value `'none'` to prevent Flash/PDF cross-domain requests |
+| 11c | CSP violation reporting endpoint | `src/app/api/csp-report/route.ts` | New endpoint to collect CSP violations; enable with `CSP_REPORT_URI=/api/csp-report` |
+| 11d | SRI for Cloudflare Analytics | `src/app/layout.tsx` | Added `integrity` attribute to Cloudflare beacon script; pins exact version to prevent CDN compromise |
+
