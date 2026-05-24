@@ -14,6 +14,7 @@ export interface EmbedConfig {
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
+  sourcesEnabled: boolean;
 }
 
 export interface EmbedMessage {

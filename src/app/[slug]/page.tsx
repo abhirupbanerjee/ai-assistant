@@ -40,6 +40,7 @@ export default async function StandaloneWorkspacePage({ params }: PageProps) {
         voiceEnabled: workspace.voice_enabled,
         fileUploadEnabled: workspace.file_upload_enabled,
         maxFileSizeMb: workspace.max_file_size_mb,
+        sourcesEnabled: workspace.sources_enabled,
       }}
     />
   );

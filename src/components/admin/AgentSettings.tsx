@@ -676,7 +676,7 @@ export default function AgentSettingsTab() {
                         min={1}
                         max={20}
                         value={editedSettings.subagentMaxIterations}
-                        onChange={(e) => updateSetting('subagentMaxIterations', parseInt(e.target.value) || 1)}
+                        onChange={(e) => updateSetting('subagentMaxIterations', Number.parseInt(e.target.value) || 1)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <p className="text-xs text-gray-500 mt-1">Maximum ReAct loops per subagent task (1-20)</p>
@@ -688,7 +688,7 @@ export default function AgentSettingsTab() {
                         min={1}
                         max={100}
                         value={editedSettings.subagentBudgetRatio}
-                        onChange={(e) => updateSetting('subagentBudgetRatio', parseInt(e.target.value) || 1)}
+                        onChange={(e) => updateSetting('subagentBudgetRatio', Number.parseInt(e.target.value) || 1)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <p className="text-xs text-gray-500 mt-1">Percentage of plan budget allocated to each subagent task</p>
@@ -735,7 +735,7 @@ export default function AgentSettingsTab() {
                     min={1}
                     max={50}
                     value={editedSettings.hitlMinTasks}
-                    onChange={(e) => updateSetting('hitlMinTasks', parseInt(e.target.value) || 1)}
+                    onChange={(e) => updateSetting('hitlMinTasks', Number.parseInt(e.target.value) || 1)}
                     disabled={!editedSettings.hitlEnabled}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50"
                   />
@@ -748,7 +748,7 @@ export default function AgentSettingsTab() {
                     min={30}
                     max={600}
                     value={editedSettings.hitlTimeoutSeconds}
-                    onChange={(e) => updateSetting('hitlTimeoutSeconds', parseInt(e.target.value) || 300)}
+                    onChange={(e) => updateSetting('hitlTimeoutSeconds', Number.parseInt(e.target.value) || 300)}
                     disabled={!editedSettings.hitlEnabled}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50"
                   />
@@ -770,7 +770,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.budgetMaxLlmCalls}
-                  onChange={(e) => updateSetting('budgetMaxLlmCalls', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('budgetMaxLlmCalls', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -779,7 +779,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.budgetMaxTokens}
-                  onChange={(e) => updateSetting('budgetMaxTokens', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('budgetMaxTokens', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -788,7 +788,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.budgetMaxWebSearches}
-                  onChange={(e) => updateSetting('budgetMaxWebSearches', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('budgetMaxWebSearches', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -797,7 +797,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.budgetMaxDurationMinutes}
-                  onChange={(e) => updateSetting('budgetMaxDurationMinutes', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('budgetMaxDurationMinutes', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -806,7 +806,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.taskTimeoutMinutes}
-                  onChange={(e) => updateSetting('taskTimeoutMinutes', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('taskTimeoutMinutes', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -818,7 +818,7 @@ export default function AgentSettingsTab() {
                   min="0"
                   max="100"
                   value={editedSettings.confidenceThreshold}
-                  onChange={(e) => updateSetting('confidenceThreshold', parseInt(e.target.value, 10) || 0)}
+                  onChange={(e) => updateSetting('confidenceThreshold', Number.parseInt(e.target.value, 10) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">Checker approval threshold (0-100%)</p>
@@ -842,7 +842,7 @@ export default function AgentSettingsTab() {
                           max="100"
                           value={value}
                           onChange={(e) => {
-                            const newVal = parseInt(e.target.value, 10) || 0;
+                            const newVal = Number.parseInt(e.target.value, 10) || 0;
                             setEditedSettings({
                               ...editedSettings,
                               confidenceThresholds: { ...thresholds, [profileKey]: newVal },
@@ -864,7 +864,7 @@ export default function AgentSettingsTab() {
                   min="0"
                   max="500"
                   value={editedSettings.budgetRetryReserveLlmCalls}
-                  onChange={(e) => updateSetting('budgetRetryReserveLlmCalls', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('budgetRetryReserveLlmCalls', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">Extra headroom for retry/re-plan waves (0-500)</p>
@@ -876,7 +876,7 @@ export default function AgentSettingsTab() {
                   min="0"
                   max="500000"
                   value={editedSettings.budgetRetryReserveTokens}
-                  onChange={(e) => updateSetting('budgetRetryReserveTokens', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('budgetRetryReserveTokens', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">Extra token headroom for retries (0-500k)</p>
@@ -970,7 +970,7 @@ export default function AgentSettingsTab() {
                           min="0"
                           max="2"
                           value={currentModel.temperature}
-                          onChange={(e) => updateModelConfig(modelKey, 'temperature', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => updateModelConfig(modelKey, 'temperature', Number.parseFloat(e.target.value) || 0)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                         />
                       </div>
@@ -979,7 +979,7 @@ export default function AgentSettingsTab() {
                         <input
                           type="number"
                           value={currentModel.max_tokens || ''}
-                          onChange={(e) => updateModelConfig(modelKey, 'max_tokens', parseInt(e.target.value) || undefined)}
+                          onChange={(e) => updateModelConfig(modelKey, 'max_tokens', Number.parseInt(e.target.value) || undefined)}
                           placeholder="4096"
                           className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
                             (currentModel.max_tokens || 0) > 32000 ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
@@ -1111,7 +1111,7 @@ export default function AgentSettingsTab() {
                               min="0"
                               max="2"
                               value={currentModel.temperature}
-                              onChange={(e) => updateExecutorProfileConfig(profileKey, 'temperature', parseFloat(e.target.value) || 0)}
+                              onChange={(e) => updateExecutorProfileConfig(profileKey, 'temperature', Number.parseFloat(e.target.value) || 0)}
                               disabled={isDefault}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
                             />
@@ -1121,7 +1121,7 @@ export default function AgentSettingsTab() {
                             <input
                               type="number"
                               value={currentModel.max_tokens || ''}
-                              onChange={(e) => updateExecutorProfileConfig(profileKey, 'max_tokens', parseInt(e.target.value, 10) || undefined)}
+                              onChange={(e) => updateExecutorProfileConfig(profileKey, 'max_tokens', Number.parseInt(e.target.value, 10) || undefined)}
                               disabled={isDefault}
                               placeholder="4096"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
@@ -1318,7 +1318,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.streamingKeepaliveInterval}
-                  onChange={(e) => updateSetting('streamingKeepaliveInterval', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('streamingKeepaliveInterval', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1327,7 +1327,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.streamingMaxDuration}
-                  onChange={(e) => updateSetting('streamingMaxDuration', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('streamingMaxDuration', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1336,7 +1336,7 @@ export default function AgentSettingsTab() {
                 <input
                   type="number"
                   value={editedSettings.streamingToolTimeout}
-                  onChange={(e) => updateSetting('streamingToolTimeout', parseInt(e.target.value) || 0)}
+                  onChange={(e) => updateSetting('streamingToolTimeout', Number.parseInt(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

@@ -585,6 +585,7 @@ export interface WorkspacesTable {
   updated_at: Generated<string>;
   auth_required: Generated<number>;
   web_search_enabled: Generated<number>;
+  sources_enabled: Generated<number>;
 }
 
 // ============ Workspace Categories ============

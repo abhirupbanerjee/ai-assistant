@@ -237,6 +237,7 @@ export function getWorkspaceClientConfig(workspace: Workspace): {
   voice_enabled: boolean;
   file_upload_enabled: boolean;
   max_file_size_mb: number;
+  sources_enabled: boolean;
 } {
   return {
     id: workspace.id,
@@ -252,6 +253,7 @@ export function getWorkspaceClientConfig(workspace: Workspace): {
     voice_enabled: workspace.voice_enabled,
     file_upload_enabled: workspace.file_upload_enabled,
     max_file_size_mb: workspace.max_file_size_mb,
+    sources_enabled: workspace.sources_enabled,
   };
 }
 

@@ -111,6 +111,7 @@ export async function POST(request: Request) {
       fileUploadEnabled,
       maxFileSizeMb,
       webSearchEnabled,
+      sourcesEnabled,
       // Access mode (standalone only)
       accessMode,
     } = body;
@@ -171,6 +172,7 @@ export async function POST(request: Request) {
         file_upload_enabled: fileUploadEnabled ?? false,
         max_file_size_mb: maxFileSizeMb ?? 5,
         web_search_enabled: webSearchEnabled ?? true,
+        sources_enabled: sourcesEnabled ?? true,
         access_mode: accessMode || 'category',
       },
       user.email,

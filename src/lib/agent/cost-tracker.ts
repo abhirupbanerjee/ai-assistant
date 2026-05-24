@@ -22,9 +22,9 @@ export interface CostUpdateEvent {
 type EmitFn = (event: CostUpdateEvent) => void;
 
 class CostTracker {
-  private pricingCache = new Map<string, ModelPricing | null>();
+  private readonly pricingCache = new Map<string, ModelPricing | null>();
   private cumulativeCost = 0;
-  private emit: EmitFn;
+  private readonly emit: EmitFn;
 
   constructor(emit: EmitFn) {
     this.emit = emit;
@@ -71,7 +71,7 @@ class CostTracker {
     const inputCost = (inp / 1_000_000) * pricing.inputCostPer1M;
     const outputCost = (out / 1_000_000) * pricing.outputCostPer1M;
 
-    return parseFloat((inputCost + outputCost).toFixed(8));
+    return Number.parseFloat((inputCost + outputCost).toFixed(8));
   }
 
   /**
@@ -97,7 +97,7 @@ class CostTracker {
     if (!pricing) return;
 
     const taskCost = this.computeCost(pricing, totalTokens, inputTokens, outputTokens);
-    this.cumulativeCost = parseFloat((this.cumulativeCost + taskCost).toFixed(8));
+    this.cumulativeCost = Number.parseFloat((this.cumulativeCost + taskCost).toFixed(8));
 
     this.emit({
       type: 'agent_cost_update',

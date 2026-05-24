@@ -260,6 +260,7 @@ export async function createWorkspace(
         max_file_size_mb: input.max_file_size_mb ?? 5,
         web_search_enabled: input.web_search_enabled !== false ? 1 : 0,
         auth_required: input.auth_required ? 1 : 0,
+        sources_enabled: (input.sources_enabled ?? true) ? 1 : 0,
         created_by: createdBy,
         created_by_role: role,
       })
@@ -319,6 +320,7 @@ export async function updateWorkspace(id: string, updates: UpdateWorkspaceInput)
     if (updates.max_file_size_mb !== undefined) updateData.max_file_size_mb = updates.max_file_size_mb;
     if (updates.web_search_enabled !== undefined) updateData.web_search_enabled = updates.web_search_enabled ? 1 : 0;
     if (updates.auth_required !== undefined) updateData.auth_required = updates.auth_required ? 1 : 0;
+    if (updates.sources_enabled !== undefined) updateData.sources_enabled = updates.sources_enabled ? 1 : 0;
 
     if (Object.keys(updateData).length > 0) {
       await trx
@@ -634,6 +636,7 @@ interface WorkspaceRow {
   max_file_size_mb: number | null;
   web_search_enabled: number;
   auth_required: number;
+  sources_enabled: number;
   created_by: string | null;
   created_by_role: string | null;
   created_at: string;
@@ -667,6 +670,7 @@ function rowToWorkspace(row: unknown): Workspace {
     max_file_size_mb: r.max_file_size_mb ?? 5,
     web_search_enabled: r.web_search_enabled === 1,
     auth_required: r.auth_required === 1,
+    sources_enabled: r.sources_enabled === 1,
     created_by: r.created_by || '',
     created_by_role: (r.created_by_role || 'admin') as CreatorRole,
     created_at: r.created_at || new Date().toISOString(),

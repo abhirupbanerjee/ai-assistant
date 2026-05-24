@@ -72,6 +72,7 @@ function rowToWorkspace(row: WorkspaceRow): Workspace {
     file_upload_enabled: row.file_upload_enabled === 1,
     max_file_size_mb: row.max_file_size_mb,
     web_search_enabled: row.web_search_enabled === 1,
+    sources_enabled: row.sources_enabled === 1,
     auth_required: row.auth_required === 1,
     created_by: row.created_by,
     created_by_role: row.created_by_role as CreatorRole,
@@ -246,9 +247,9 @@ export function createWorkspace(
         primary_color, logo_url, chat_title, greeting_message, suggested_prompts, footer_text,
         llm_provider, llm_model, temperature, system_prompt,
         allowed_domains, daily_limit, session_limit,
-        voice_enabled, file_upload_enabled, max_file_size_mb, web_search_enabled, auth_required,
+        voice_enabled, file_upload_enabled, max_file_size_mb, web_search_enabled, sources_enabled, auth_required,
         created_by, created_by_role
-      ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         slug,
@@ -272,6 +273,7 @@ export function createWorkspace(
         input.file_upload_enabled ? 1 : 0,
         input.max_file_size_mb ?? 5,
         input.web_search_enabled !== false ? 1 : 0,
+        (input.sources_enabled ?? true) ? 1 : 0,
         input.auth_required ? 1 : 0,
         createdBy,
         role,
@@ -376,6 +378,10 @@ export function updateWorkspace(id: string, updates: UpdateWorkspaceInput): Work
   if (updates.web_search_enabled !== undefined) {
     setClauses.push('web_search_enabled = ?');
     params.push(updates.web_search_enabled ? 1 : 0);
+  }
+  if (updates.sources_enabled !== undefined) {
+    setClauses.push('sources_enabled = ?');
+    params.push(updates.sources_enabled ? 1 : 0);
   }
   if (updates.auth_required !== undefined) {
     setClauses.push('auth_required = ?');

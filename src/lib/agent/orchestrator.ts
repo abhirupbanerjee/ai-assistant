@@ -20,8 +20,8 @@ import type {
 import type { StreamEvent } from '@/types/stream';
 import { createPlan } from './planner';
 import { executeTask, resolveExecutorModelForTask, type ExecutorCallbacks } from './executor';
-import { runSubagentTaskLoop, type SubagentResult } from './subagent';
-import { createSubagentBudget, type SubagentBudget } from './subagent-budget';
+import { runSubagentTaskLoop } from './subagent';
+import { createSubagentBudget } from './subagent-budget';
 import type { SubagentConfig } from '../db/compat/agent-config';
 import { generateSummary } from './summarizer';
 import { checkTaskQuality } from './checker';
@@ -539,11 +539,11 @@ async function executeSingleTask(
       plan,
       modelConfig,
       {
-        onStep: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
-        onThinking: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
-        onBudgetWarning: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
-        onComplete: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
-        onHumanApprovalNeeded: (event) => orchestratorCallbacks?.onArtifact?.(event as unknown as StreamEvent),
+        onStep: (event) => orchestratorCallbacks?.onArtifact?.(event),
+        onThinking: (event) => orchestratorCallbacks?.onArtifact?.(event),
+        onBudgetWarning: (event) => orchestratorCallbacks?.onArtifact?.(event),
+        onComplete: (event) => orchestratorCallbacks?.onArtifact?.(event),
+        onHumanApprovalNeeded: (event) => orchestratorCallbacks?.onArtifact?.(event),
         onToolStart: (name, displayName, taskId) => orchestratorCallbacks?.onToolStart?.(name, displayName, taskId),
         onToolEnd: (name, success, duration, error, taskId) => orchestratorCallbacks?.onToolEnd?.(name, success, duration, error, taskId),
       },

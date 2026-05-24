@@ -318,8 +318,10 @@ export async function POST(
               finalSystemPrompt = `${systemPromptOverride}\n\n${ragResult.systemPrompt}`;
             }
 
-            // Send sources from RAG
-            send({ type: 'sources', data: ragResult.sources });
+            // Send sources from RAG (only if workspace has sources enabled)
+            if (workspace.sources_enabled) {
+              send({ type: 'sources', data: ragResult.sources });
+            }
 
             // ============ Phase 3: Tool Execution ============
             send({ type: 'status', phase: 'tools', content: getPhaseMessage('tools') });

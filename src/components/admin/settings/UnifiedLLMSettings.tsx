@@ -55,6 +55,8 @@ interface DetailsResult {
   thinkingCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
+  inputCostPer1M: number | null;
+  outputCostPer1M: number | null;
   confidence: 'high' | 'medium' | 'low';
   source: 'web_search' | 'llm_knowledge' | 'pattern_match';
   sources: string[];
@@ -435,7 +437,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const handleEditInputCost = async (modelId: string) => {
-    const value = typeof editedInputCost === 'number' ? editedInputCost : parseFloat(editedInputCost as string);
+    const value = typeof editedInputCost === 'number' ? editedInputCost : Number.parseFloat(editedInputCost as string);
     if (Number.isNaN(value) || value < 0) {
       setEditingInputCostError('Must be a positive number');
       return;
@@ -461,7 +463,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   };
 
   const handleEditOutputCost = async (modelId: string) => {
-    const value = typeof editedOutputCost === 'number' ? editedOutputCost : parseFloat(editedOutputCost as string);
+    const value = typeof editedOutputCost === 'number' ? editedOutputCost : Number.parseFloat(editedOutputCost as string);
     if (Number.isNaN(value) || value < 0) {
       setEditingOutputCostError('Must be a positive number');
       return;
@@ -541,14 +543,20 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     }
   };
 
-  const handleApplyDetails = async (modelId: string, data: DetailsResult) => {
+  const handleApplyDetails = async (modelId: string, data: DetailsResult, mode: 'tokens' | 'costs') => {
     setDetailsPreview(prev => prev ? { ...prev, applyError: undefined } : prev);
     try {
-      // Only apply token limits from Get Details — tool/vision capabilities are
+      // Only apply token limits or costs from Get Details — tool/vision capabilities are
       // managed manually via the toggle buttons to avoid overwriting admin settings.
       const updates: Record<string, unknown> = {};
-      if (data.maxInputTokens !== null) updates.maxInputTokens = data.maxInputTokens;
-      if (data.maxOutputTokens !== null) updates.maxOutputTokens = data.maxOutputTokens;
+      if (mode === 'tokens') {
+        if (data.maxInputTokens !== null) updates.maxInputTokens = data.maxInputTokens;
+        if (data.maxOutputTokens !== null) updates.maxOutputTokens = data.maxOutputTokens;
+      }
+      if (mode === 'costs') {
+        if (data.inputCostPer1M !== null) updates.inputCostPer1M = data.inputCostPer1M;
+        if (data.outputCostPer1M !== null) updates.outputCostPer1M = data.outputCostPer1M;
+      }
 
       if (Object.keys(updates).length === 0) {
         setDetailsPreview(null);
@@ -566,7 +574,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       }
       await fetchModels();
       setDetailsPreview(null);
-      showSuccess('Token limits applied');
+      showSuccess(mode === 'tokens' ? 'Token limits applied' : 'Costs applied');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to apply details';
       setDetailsPreview(prev => prev ? { ...prev, applyError: msg } : prev);
@@ -838,7 +846,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           {editingMaxInput === model.id ? (
                             <div>
                               <div className="flex items-center gap-1">
-                                <input type="number" value={editedMaxInput} onChange={(e) => { setEditedMaxInput(parseInt(e.target.value) || 0); setEditingMaxInputError(null); }}
+                                <input type="number" value={editedMaxInput} onChange={(e) => { setEditedMaxInput(Number.parseInt(e.target.value) || 0); setEditingMaxInputError(null); }}
                                   className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingMaxInputError ? 'border-red-400' : ''}`} min={1000} max={10000000} autoFocus />
                                 <button onClick={() => handleEditMaxInput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
                                 <button onClick={() => { setEditingMaxInput(null); setEditedMaxInput(0); setEditingMaxInputError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
@@ -862,7 +870,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           {editingMaxOutput === model.id ? (
                             <div>
                               <div className="flex items-center gap-1">
-                                <input type="number" value={editedMaxOutput} onChange={(e) => { setEditedMaxOutput(parseInt(e.target.value) || 0); setEditingMaxOutputError(null); }}
+                                <input type="number" value={editedMaxOutput} onChange={(e) => { setEditedMaxOutput(Number.parseInt(e.target.value) || 0); setEditingMaxOutputError(null); }}
                                   className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingMaxOutputError ? 'border-red-400' : ''}`} min={100} max={2000000} autoFocus />
                                 <button onClick={() => handleEditMaxOutput(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
                                 <button onClick={() => { setEditingMaxOutput(null); setEditedMaxOutput(0); setEditingMaxOutputError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
@@ -886,7 +894,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           {editingInputCost === model.id ? (
                             <div>
                               <div className="flex items-center gap-1">
-                                <input type="number" step="0.0001" value={editedInputCost} onChange={(e) => { setEditedInputCost(e.target.value === '' ? '' : parseFloat(e.target.value)); setEditingInputCostError(null); }}
+                                <input type="number" step="0.0001" value={editedInputCost} onChange={(e) => { setEditedInputCost(e.target.value === '' ? '' : Number.parseFloat(e.target.value)); setEditingInputCostError(null); }}
                                   className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingInputCostError ? 'border-red-400' : ''}`} min={0} autoFocus />
                                 <button onClick={() => handleEditInputCost(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
                                 <button onClick={() => { setEditingInputCost(null); setEditedInputCost(''); setEditingInputCostError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
@@ -910,7 +918,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                           {editingOutputCost === model.id ? (
                             <div>
                               <div className="flex items-center gap-1">
-                                <input type="number" step="0.0001" value={editedOutputCost} onChange={(e) => { setEditedOutputCost(e.target.value === '' ? '' : parseFloat(e.target.value)); setEditingOutputCostError(null); }}
+                                <input type="number" step="0.0001" value={editedOutputCost} onChange={(e) => { setEditedOutputCost(e.target.value === '' ? '' : Number.parseFloat(e.target.value)); setEditingOutputCostError(null); }}
                                   className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 ${editingOutputCostError ? 'border-red-400' : ''}`} min={0} autoFocus />
                                 <button onClick={() => handleEditOutputCost(model.id)} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={14} /></button>
                                 <button onClick={() => { setEditingOutputCost(null); setEditedOutputCost(''); setEditingOutputCostError(null); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded">×</button>
@@ -997,7 +1005,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                   )}
                                   <span className="text-xs text-gray-500 capitalize">{detailsPreview.data.confidence} confidence</span>
                                 </div>
-                                <div className="flex items-center gap-4 text-sm text-gray-700">
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700">
                                   <span className="text-gray-400">Tools: {detailsPreview.data.toolCapable ? '✓' : '✗'}</span>
                                   <span className="text-gray-400">Vision: {detailsPreview.data.visionCapable ? '✓' : '✗'}</span>
                                   <span className="text-gray-400">Parallel: {detailsPreview.data.parallelToolCapable ? '✓' : '✗'}</span>
@@ -1008,12 +1016,19 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                                   {detailsPreview.data.maxOutputTokens ? (
                                     <span>Max Output: <strong>{(detailsPreview.data.maxOutputTokens / 1000).toFixed(0)}K</strong></span>
                                   ) : null}
+                                  {detailsPreview.data.inputCostPer1M != null ? (
+                                    <span>In: <strong>${detailsPreview.data.inputCostPer1M.toFixed(2)}</strong><span className="text-gray-400 text-xs">/1M</span></span>
+                                  ) : null}
+                                  {detailsPreview.data.outputCostPer1M != null ? (
+                                    <span>Out: <strong>${detailsPreview.data.outputCostPer1M.toFixed(2)}</strong><span className="text-gray-400 text-xs">/1M</span></span>
+                                  ) : null}
                                 </div>
-                                {(detailsPreview.data.maxInputTokens || detailsPreview.data.maxOutputTokens) ? (
-                                  <p className="text-xs text-gray-400 mt-0.5">Apply will update token limits only. Toggle tools/vision manually.</p>
-                                ) : (
-                                  <p className="text-xs text-gray-400 mt-0.5">No token limits found. Toggle tools/vision manually.</p>
-                                )}
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {(detailsPreview.data.maxInputTokens || detailsPreview.data.maxOutputTokens) ? 'Token limits found. ' : ''}
+                                  {(detailsPreview.data.inputCostPer1M != null || detailsPreview.data.outputCostPer1M != null) ? 'Costs found. ' : ''}
+                                  {!detailsPreview.data.maxInputTokens && !detailsPreview.data.maxOutputTokens && detailsPreview.data.inputCostPer1M == null && detailsPreview.data.outputCostPer1M == null ? 'No token limits or costs found. ' : ''}
+                                  Toggle tools/vision manually.
+                                </p>
                                 {detailsPreview.data.sources.length > 0 && (
                                   <div className="text-xs text-gray-400 mt-1 truncate max-w-lg">
                                     Source: {detailsPreview.data.sources[0]}
@@ -1025,10 +1040,16 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <Button
-                                  onClick={() => handleApplyDetails(model.id, detailsPreview.data)}
+                                  onClick={() => handleApplyDetails(model.id, detailsPreview.data, 'tokens')}
                                   disabled={!detailsPreview.data.maxInputTokens && !detailsPreview.data.maxOutputTokens}
                                 >
                                   Apply Token Limits
+                                </Button>
+                                <Button
+                                  onClick={() => handleApplyDetails(model.id, detailsPreview.data, 'costs')}
+                                  disabled={detailsPreview.data.inputCostPer1M == null && detailsPreview.data.outputCostPer1M == null}
+                                >
+                                  Apply Costs
                                 </Button>
                                 <Button variant="secondary" onClick={() => setDetailsPreview(null)}>
                                   Dismiss

@@ -55,17 +55,12 @@ export function EmbedWidget({
     }
   }, [isOpen, initialized, initialize]);
 
-  // Fetch display settings on mount
+  // Use workspace-level sources setting from init config
   useEffect(() => {
-    fetch(`${apiBaseUrl}/api/settings/display`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && typeof data.sourcesEnabled === 'boolean') {
-          setShowSources(data.sourcesEnabled);
-        }
-      })
-      .catch(() => { /* default to enabled */ });
-  }, [apiBaseUrl]);
+    if (config && typeof config.sourcesEnabled === 'boolean') {
+      setShowSources(config.sourcesEnabled);
+    }
+  }, [config]);
 
   // Calculate position styles
   const positionStyles: React.CSSProperties = {

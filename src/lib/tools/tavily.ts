@@ -334,6 +334,9 @@ export interface MapResult {
   error?: string;
 }
 
+/** Tavily enforces a 400-character max query length. */
+const TAVILY_MAX_QUERY_LENGTH = 400;
+
 /**
  * Map a website using Tavily Map API
  * Discovers all URLs on a website without extracting content
@@ -883,10 +886,17 @@ export const tavilyWebSearch: ToolDefinition = {
       excludeDomains: excludeDomains.length > 0 ? excludeDomains : undefined,
     });
 
+    // Tavily rejects queries longer than 400 characters
+    let query = args.query;
+    if (query.length > TAVILY_MAX_QUERY_LENGTH) {
+      console.warn(`[Tavily] Query truncated from ${query.length} to ${TAVILY_MAX_QUERY_LENGTH} chars. Original: ${query.slice(0, 80)}...`);
+      query = query.slice(0, TAVILY_MAX_QUERY_LENGTH);
+    }
+
     // Build Tavily request payload
     const payload: Record<string, unknown> = {
       api_key: apiKey,
-      query: args.query,
+      query,
       max_results: maxResults,
       search_depth: searchDepth,
       topic: settings.defaultTopic,

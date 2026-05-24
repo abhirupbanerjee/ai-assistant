@@ -77,6 +77,7 @@ export function useEmbedChat({
         voiceEnabled: data.config.voice_enabled,
         fileUploadEnabled: data.config.file_upload_enabled,
         maxFileSizeMb: data.config.max_file_size_mb,
+        sourcesEnabled: data.config.sources_enabled,
       });
 
       if (data.rateLimit) {

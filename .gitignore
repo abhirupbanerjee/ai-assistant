@@ -97,4 +97,8 @@ AGENTS.md
 .next
 .agents
 .kimi
-
+AGENTS.md
+docker-compose.dev.yml
+docker-compose.local.yml
+GEMINI.md
+.env.local

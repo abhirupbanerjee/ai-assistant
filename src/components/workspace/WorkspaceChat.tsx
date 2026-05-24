@@ -24,6 +24,7 @@ interface WorkspaceConfig {
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
+  sourcesEnabled: boolean;
 }
 
 interface WorkspaceChatProps {
@@ -48,19 +49,8 @@ export function WorkspaceChat({
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [user, setUser] = useState<{ id: string; email: string; name: string } | null>(null);
-  const [displaySettings, setDisplaySettings] = useState({ sourcesEnabled: true });
-
-  // Fetch display settings on mount
-  useEffect(() => {
-    fetch('/api/settings/display')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data) {
-          setDisplaySettings({ sourcesEnabled: data.sourcesEnabled ?? true });
-        }
-      })
-      .catch(() => { /* default to enabled */ });
-  }, []);
+  // Use workspace-level sources setting (passed via config from server)
+  const showSources = config.sourcesEnabled;
 
   // Initialize session
   useEffect(() => {
@@ -482,7 +472,7 @@ export function WorkspaceChat({
               sessionId={sessionId}
               onSendMessage={handleSendMessage}
               onRetry={handleRetry}
-              showSources={displaySettings.sourcesEnabled}
+              showSources={showSources}
             />
           )}
         </div>

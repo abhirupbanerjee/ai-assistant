@@ -680,7 +680,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   auth_required INTEGER DEFAULT 0,
-  web_search_enabled INTEGER DEFAULT 1
+  web_search_enabled INTEGER DEFAULT 1,
+  sources_enabled INTEGER DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);

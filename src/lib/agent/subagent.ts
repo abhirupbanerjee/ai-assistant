@@ -21,7 +21,7 @@ import { isToolEnabledForCategory } from '@/lib/db/compat/category-tool-config';
 import { getCategoryBySlug } from '@/lib/db/compat/categories';
 import { getModelForRole } from './llm-router';
 import { resolveSkillsForTask, resolveExecutorModelForTask } from './executor';
-import { createSubagentApprovalResolver, type SubagentApprovalResult } from '@/lib/streaming/subagent-approval-resolver';
+import { createSubagentApprovalResolver } from '@/lib/streaming/subagent-approval-resolver';
 import { generateToolCompletionWithFallback } from '@/lib/openai';
 import { SubagentBudget, createSubagentBudget, checkBudget } from './subagent-budget';
 

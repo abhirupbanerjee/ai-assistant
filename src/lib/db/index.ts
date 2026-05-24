@@ -971,6 +971,9 @@ function runMigrations(database: Database.Database): void {
         voice_enabled INTEGER DEFAULT 0,
         file_upload_enabled INTEGER DEFAULT 0,
         max_file_size_mb INTEGER DEFAULT 5,
+        web_search_enabled INTEGER DEFAULT 1,
+        auth_required INTEGER DEFAULT 0,
+        sources_enabled INTEGER DEFAULT 1,
 
         -- Ownership & Timestamps
         created_by TEXT NOT NULL,
@@ -1163,6 +1166,11 @@ function runMigrations(database: Database.Database): void {
   // Migration: Add web_search_enabled column to workspaces table
   if (workspacesColumnNames.length > 0 && !workspacesColumnNames.includes('web_search_enabled')) {
     database.exec('ALTER TABLE workspaces ADD COLUMN web_search_enabled INTEGER DEFAULT 1');
+  }
+
+  // Migration: Add sources_enabled column to workspaces table (controls whether RAG sources are returned/shown)
+  if (workspacesColumnNames.length > 0 && !workspacesColumnNames.includes('sources_enabled')) {
+    database.exec('ALTER TABLE workspaces ADD COLUMN sources_enabled INTEGER DEFAULT 1');
   }
 
   // Migration: Add tool routing columns to skills table for unified keyword actions

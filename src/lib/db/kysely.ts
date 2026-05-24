@@ -104,6 +104,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_threads_selected_model ON threads(selected_model)`.execute(database);
   console.log('[Kysely] Ensured thread columns exist');
 
+  // Migration: Add sources_enabled column to workspaces table
+  await sql`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sources_enabled INTEGER DEFAULT 1`.execute(database);
+  console.log('[Kysely] Ensured workspaces.sources_enabled column exists');
+
   // Seed default LLM providers if table is empty (first-time Postgres setup)
   const existingProviders = await database
     .selectFrom('llm_providers')

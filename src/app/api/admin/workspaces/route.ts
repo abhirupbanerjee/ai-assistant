@@ -90,6 +90,7 @@ export async function POST(request: Request) {
       fileUploadEnabled,
       maxFileSizeMb,
       webSearchEnabled,
+      sourcesEnabled,
       // Authentication (embed only)
       authRequired,
       // Access mode (standalone only)
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
         file_upload_enabled: fileUploadEnabled ?? false,
         max_file_size_mb: maxFileSizeMb ?? 5,
         web_search_enabled: webSearchEnabled ?? true,
+        sources_enabled: sourcesEnabled ?? true,
         auth_required: authRequired ?? false,
         access_mode: accessMode || 'category',
       },

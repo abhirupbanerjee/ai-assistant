@@ -69,6 +69,7 @@ interface Workspace {
   file_upload_enabled: boolean;
   max_file_size_mb: number;
   web_search_enabled: boolean;
+  sources_enabled: boolean;
   auth_required: boolean;
   created_by: string;
   created_by_role: 'admin' | 'superuser';
@@ -99,6 +100,7 @@ interface WorkspaceFormData {
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
   webSearchEnabled: boolean;
+  sourcesEnabled: boolean;
   authRequired: boolean;
   accessMode: 'category' | 'explicit';
 }
@@ -124,6 +126,7 @@ const initialFormData: WorkspaceFormData = {
   fileUploadEnabled: false,
   maxFileSizeMb: 5,
   webSearchEnabled: true,
+  sourcesEnabled: true,
   authRequired: false,
   accessMode: 'category',
 };
@@ -375,6 +378,7 @@ export default function WorkspacesTab({ isAdmin }: WorkspacesTabProps) {
       fileUploadEnabled: workspace.file_upload_enabled,
       maxFileSizeMb: workspace.max_file_size_mb,
       webSearchEnabled: workspace.web_search_enabled,
+      sourcesEnabled: workspace.sources_enabled,
       authRequired: workspace.auth_required,
       accessMode: workspace.access_mode,
     });
@@ -1388,6 +1392,16 @@ function WorkspaceForm({
                 className="rounded border-gray-300 text-blue-600"
               />
               <span className="text-sm">Enable Web Search</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.sourcesEnabled}
+                onChange={(e) => updateField('sourcesEnabled', e.target.checked)}
+                className="rounded border-gray-300 text-blue-600"
+              />
+              <span className="text-sm">Include Sources</span>
             </label>
           </div>
 

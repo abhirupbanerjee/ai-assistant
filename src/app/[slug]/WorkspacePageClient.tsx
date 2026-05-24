@@ -17,6 +17,7 @@ interface WorkspaceConfig {
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
+  sourcesEnabled: boolean;
 }
 
 interface WorkspacePageClientProps {

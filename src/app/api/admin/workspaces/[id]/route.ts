@@ -104,6 +104,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       fileUploadEnabled,
       maxFileSizeMb,
       webSearchEnabled,
+      sourcesEnabled,
       // Authentication (embed only)
       authRequired,
       // Access mode
@@ -132,6 +133,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (fileUploadEnabled !== undefined) updates.file_upload_enabled = fileUploadEnabled;
     if (maxFileSizeMb !== undefined) updates.max_file_size_mb = maxFileSizeMb;
     if (webSearchEnabled !== undefined) updates.web_search_enabled = webSearchEnabled;
+    if (sourcesEnabled !== undefined) updates.sources_enabled = sourcesEnabled;
     if (authRequired !== undefined) updates.auth_required = authRequired;
     if (accessMode !== undefined) updates.access_mode = accessMode;
 
