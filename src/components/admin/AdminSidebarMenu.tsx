@@ -66,7 +66,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
   { id: 'autonomous-mode', label: 'Autonomous Mode', icon: Bot, expandable: false },
-  { id: 'agent', label: 'Agent', icon: Bot, expandable: false },
+  { id: 'agent', label: 'Agent Bots', icon: Bot, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
