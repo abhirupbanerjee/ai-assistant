@@ -206,6 +206,11 @@ export function getReadyTasks(tasks: AgentTask[]): AgentTask[] {
     // Only consider pending tasks
     if (task.status !== 'pending') return false;
 
+    // Respect retry_after backoff for transient-error retries
+    if (task.retry_after && task.retry_after > Date.now()) {
+      return false;
+    }
+
     // Check if all dependencies are completed
     return task.dependencies.every(depId => {
       const dep = tasks.find(t => t.id === depId);

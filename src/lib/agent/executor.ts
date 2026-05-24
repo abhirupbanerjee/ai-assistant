@@ -14,6 +14,7 @@ import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import type { ResolvedSkills } from '../skills/types';
 import { generateWithModelFallback, getModelForRole } from './llm-router';
+import { isRecoverableApiError } from '../llm-fallback';
 import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
 import { transitionTaskState, getTaskPlan } from '../db/compat/task-plans';
@@ -440,8 +441,22 @@ export async function executeTask(
   }
 
   try {
-    // Get task timeout from plan budget (default 5 minutes)
-    const timeoutMinutes = plan.budget?.task_timeout_minutes || 5;
+    // Get task timeout: per-task override > type default > plan budget > global default
+    const typeTimeoutMap: Record<string, number> = {
+      image: 15,
+      document: 15,
+      chart: 10,
+      diagram: 10,
+      spreadsheet: 10,
+      presentation: 15,
+      podcast: 15,
+      research: 10,
+      deep_analysis: 20,
+    };
+    const timeoutMinutes = task.task_timeout_minutes
+      || typeTimeoutMap[task.type]
+      || plan.budget?.task_timeout_minutes
+      || 5;
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
     // Perform task execution with timeout enforcement
@@ -502,10 +517,29 @@ export async function executeTask(
       };
     }
   } catch (error) {
-    // FAIL-FAST: No retries, skip on first failure
     const errorMsg = error instanceof Error ? error.message : String(error);
-    const fallbackModel = executorSelection.model.model;
+    const isRetryable = isRecoverableApiError(error as Error);
 
+    if (isRetryable && (task.retry_count || 0) < 2) {
+      const retryDelayMs = Math.min(Math.pow(2, task.retry_count || 0) * 1000, 30000);
+      const retryAfter = Date.now() + retryDelayMs;
+      await transitionTaskState(plan.id, task.id, 'pending', {
+        error: errorMsg,
+        retry_suggestion: 'retry_same_provider',
+        retry_count: (task.retry_count || 0) + 1,
+        retry_context: `Transient error: ${isRetryable}. Will retry after ${retryDelayMs}ms.`,
+        retry_after: retryAfter,
+      });
+      return {
+        success: false,
+        error: errorMsg,
+        needsRetry: true,
+        retryAfter,
+      };
+    }
+
+    // Fatal or exhausted — mark skipped
+    const fallbackModel = executorSelection.model.model;
     await transitionTaskState(plan.id, task.id, 'skipped', {
       error: errorMsg,
       executor_profile: executorSelection.profileUsed,
@@ -543,7 +577,7 @@ async function performTaskExecution(
   }
 
   // Default: LLM-based execution
-  let prompt = buildExecutionPrompt(task, plan);
+  let prompt = await buildExecutionPrompt(task, plan);
   let webSearches = 0;
 
   // Handle retry strategies that augment the prompt
@@ -1398,7 +1432,7 @@ Output markdown content directly.`;
 /**
  * Build execution prompt for the executor
  */
-function buildExecutionPrompt(task: AgentTask, plan: AgentPlan): string {
+async function buildExecutionPrompt(task: AgentTask, plan: AgentPlan): Promise<string> {
   // Handle both snake_case (AgentPlan) and camelCase (TaskPlan) property names
   const originalRequest = (plan as any).original_request || (plan as any).originalRequest || '';
 
@@ -1413,6 +1447,16 @@ ${originalRequest ? `**Original Request:** ${originalRequest}\n` : ''}
 - Description: ${task.description}
 ${task.expected_output ? `- Expected Output: ${task.expected_output}\n` : ''}
 `;
+
+  // Inject working memory from previous waves (gated by feature flag)
+  const { isWorkingMemoryEnabled } = await import('../db/compat/agent-config');
+  if (await isWorkingMemoryEnabled()) {
+    const { getWorkingMemory } = await import('./memory');
+    const memory = await getWorkingMemory(plan.id);
+    if (memory) {
+      prompt += `\n**Previous Waves Summary**:\n${memory}\n`;
+    }
+  }
 
   // Add results from dependent tasks
   if (task.dependencies.length > 0) {

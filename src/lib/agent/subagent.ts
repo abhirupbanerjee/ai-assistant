@@ -19,7 +19,7 @@ import type { StreamEvent } from '@/types/stream';
 import { AVAILABLE_TOOLS, isToolEnabled } from '@/lib/tools';
 import { isToolEnabledForCategory } from '@/lib/db/compat/category-tool-config';
 import { getCategoryBySlug } from '@/lib/db/compat/categories';
-import { getModelForRole } from './llm-router';
+import { getModelForRole, getModelContextLimit, estimateTokens } from './llm-router';
 import { resolveSkillsForTask, resolveExecutorModelForTask } from './executor';
 import { createSubagentApprovalResolver } from '@/lib/streaming/subagent-approval-resolver';
 import { generateToolCompletionWithFallback } from '@/lib/openai';
@@ -46,6 +46,8 @@ export interface SubagentResult {
 
 const DEFAULT_MAX_TOKENS = 100000;
 const HITL_TIMEOUT_MS = 300_000; // 5 minutes
+const MAX_TOOL_RESULT_CHARS = 4000;
+const CONTEXT_SAFETY_MARGIN = 8000; // Leave headroom for response tokens
 
 function getToolDefinitionsForSubagent(enabledToolNames: string[]): OpenAI.Chat.ChatCompletionTool[] {
   const tools: OpenAI.Chat.ChatCompletionTool[] = [];
@@ -99,6 +101,124 @@ async function getEnabledToolsForPlan(plan: AgentPlan): Promise<string[]> {
 }
 
 /**
+ * Trim messages array to stay within a model's context window.
+ * Always preserves system prompt [0] and task definition [1].
+ * Drops oldest complete assistant+tool turns first.
+ */
+function trimMessagesForContext(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  maxTokens: number
+): { trimmedMessages: OpenAI.Chat.ChatCompletionMessageParam[]; droppedTurns: number } {
+  if (messages.length <= 2) {
+    return { trimmedMessages: messages, droppedTurns: 0 };
+  }
+
+  const preserved = messages.slice(0, 2);
+  let tail = messages.slice(2);
+  let droppedTurns = 0;
+
+  // Safety guard: if tail starts with a tool, drop it (shouldn't happen with proper turn tracking)
+  while (tail.length > 0 && tail[0].role === 'tool') {
+    tail = tail.slice(1);
+  }
+
+  let totalTokens = estimateTokens(JSON.stringify([...preserved, ...tail]));
+  if (totalTokens <= maxTokens) {
+    return { trimmedMessages: messages, droppedTurns: 0 };
+  }
+
+  while (tail.length > 0) {
+    // Find the first assistant message — that's a turn boundary
+    const firstAssistantIdx = tail.findIndex((m) => m.role === 'assistant');
+    if (firstAssistantIdx === -1) break;
+
+    // Count this assistant + all consecutive tool messages after it
+    let dropCount = 1;
+    for (let i = firstAssistantIdx + 1; i < tail.length; i++) {
+      if (tail[i].role === 'tool') {
+        dropCount++;
+      } else {
+        break;
+      }
+    }
+
+    tail = tail.slice(dropCount);
+    droppedTurns++;
+
+    // Re-check token count
+    totalTokens = estimateTokens(JSON.stringify([...preserved, ...tail]));
+    if (totalTokens <= maxTokens) break;
+  }
+
+  return { trimmedMessages: [...preserved, ...tail], droppedTurns };
+}
+
+/**
+ * Truncate a tool result to a maximum character count.
+ * Attempts structured truncation for JSON, falls back to plain text.
+ */
+function truncateToolResult(result: string, maxChars: number = MAX_TOOL_RESULT_CHARS): string {
+  if (!result || result.length <= maxChars) {
+    return result;
+  }
+
+  // Attempt JSON structured truncation
+  try {
+    const parsed = JSON.parse(result);
+    const truncated = truncateObjectValue(parsed, maxChars);
+    const serialized = JSON.stringify(truncated);
+    if (serialized.length <= maxChars) {
+      return serialized;
+    }
+  } catch {
+    // Not valid JSON, fall through to plain text truncation
+  }
+
+  const suffix = `... [truncated, ${result.length - maxChars + 50} chars omitted]`;
+  return result.substring(0, maxChars - suffix.length) + suffix;
+}
+
+function truncateObjectValue(obj: unknown, maxChars: number): unknown {
+  const str = JSON.stringify(obj);
+  if (str.length <= maxChars) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    const result: unknown[] = [];
+    for (const item of obj) {
+      const test = [...result, item];
+      if (JSON.stringify(test).length > maxChars * 0.6) break;
+      result.push(item);
+    }
+    if (result.length < obj.length) {
+      result.push(`... ${obj.length - result.length} more items truncated`);
+    }
+    return result;
+  }
+
+  if (obj && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string' && value.length > 200) {
+        result[key] = value.substring(0, 200) + '... [truncated]';
+      } else if (typeof value === 'object' && value !== null) {
+        result[key] = truncateObjectValue(value, maxChars);
+      } else {
+        result[key] = value;
+      }
+      if (JSON.stringify(result).length > maxChars * 0.8) {
+        result['_truncated'] = 'Additional fields omitted due to length';
+        break;
+      }
+    }
+    return result;
+  }
+
+  return obj;
+}
+
+/**
  * Run a subagent ReAct loop for a single task.
  */
 export async function runSubagentTaskLoop(
@@ -106,7 +226,7 @@ export async function runSubagentTaskLoop(
   plan: AgentPlan,
   modelConfig: AgentModelConfig,
   callbacks?: SubagentCallbacks,
-  maxIterations: number = 5,
+  maxIterations: number = 15,
   budget?: SubagentBudget
 ): Promise<SubagentResult> {
   const executorSelection = resolveExecutorModelForTask(task, modelConfig, plan);
@@ -148,6 +268,11 @@ export async function runSubagentTaskLoop(
     `Task: ${task.description}\n` +
     `Target: ${task.target || '(none)'}`;
 
+  // Prompt injection for non-thinking providers to preserve reasoning across turns
+  if (!executorSelection.model.thinking_enabled) {
+    systemPrompt += `\n\nIf you reason through multiple steps, include your reasoning in <thinking></thinking> tags before your final answer or tool calls. These tags will be preserved across turns.`;
+  }
+
   if (originalRequest) {
     systemPrompt += `\n\nOriginal user request: ${originalRequest}`;
   }
@@ -172,6 +297,10 @@ export async function runSubagentTaskLoop(
   let loopError: Error | undefined;
   let actualModelUsed = effectiveModel;
 
+  // Tool call deduplication: track hashes of name+args to avoid redundant execution
+  const toolCallHistory = new Set<string>();
+  const toolResultCache = new Map<string, string>();
+
   // Extended first-chunk timeout for subagent: thinking-enabled models get 4 min,
   // others get 3 min (vs default 2 min for interactive chat)
   const subagentFirstChunkTimeout = executorSelection.model.thinking_enabled ? 240_000 : 180_000;
@@ -188,9 +317,17 @@ export async function runSubagentTaskLoop(
       break;
     }
 
+    // Trim messages to fit within model context window before LLM call
+    const contextLimit = await getModelContextLimit(executorSelection.model.model);
+    const safeLimit = Math.max(contextLimit - CONTEXT_SAFETY_MARGIN, 32000);
+    const { trimmedMessages, droppedTurns } = trimMessagesForContext(messages, safeLimit);
+    if (droppedTurns > 0) {
+      console.warn(`[Subagent] Task ${task.id}: dropped ${droppedTurns} oldest turns to fit context limit (${safeLimit} tokens)`);
+    }
+
     const response = await generateToolCompletionWithFallback(
       executorSelection.model,
-      messages,
+      trimmedMessages,
       tools,
       'auto',
       0.4,
@@ -202,6 +339,7 @@ export async function runSubagentTaskLoop(
 
     const messageContent = response.content;
     const toolCalls = response.tool_calls;
+    const thinkingContent = response.thinkingContent;
     const iterTokens = response.tokens_used;
     totalTokens += iterTokens;
     tokensUsed += iterTokens;
@@ -239,12 +377,19 @@ export async function runSubagentTaskLoop(
       return result;
     }
 
-    // Push assistant message with tool_calls
-    messages.push({
+    // Push assistant message with tool_calls and preserved reasoning
+    const MAX_REASONING_CHARS = 2000;
+    const assistantMsg: any = {
       role: 'assistant',
       content: messageContent || null,
       tool_calls: toolCalls as any,
-    });
+    };
+    if (thinkingContent) {
+      assistantMsg.reasoning_content = thinkingContent.length > MAX_REASONING_CHARS
+        ? thinkingContent.slice(0, MAX_REASONING_CHARS) + '\n...[reasoning truncated]'
+        : thinkingContent;
+    }
+    messages.push(assistantMsg);
 
     // One LLM response with tool calls = one ReAct iteration
     iterations++;
@@ -313,6 +458,22 @@ export async function runSubagentTaskLoop(
         }
       }
 
+      // Deduplication: check if this exact tool+args was already called in this subagent loop
+      const callHash = `${toolName}:${JSON.stringify(approvedArgs)}`;
+      if (toolCallHistory.has(callHash)) {
+        const cachedResult = toolResultCache.get(callHash);
+        callbacks?.onToolEnd?.(toolName, true, 0, undefined, task.id);
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: cachedResult || JSON.stringify({ warning: `Tool ${toolName} was already called with the same arguments.` }),
+        });
+        if (!toolsUsed.includes(toolName)) {
+          toolsUsed.push(toolName);
+        }
+        continue;
+      }
+
       callbacks?.onToolStart?.(toolName, tool.displayName, task.id);
 
       callbacks?.onStep?.({
@@ -338,10 +499,14 @@ export async function runSubagentTaskLoop(
         toolsUsed.push(toolName);
       }
 
+      // Cache result for deduplication
+      toolCallHistory.add(callHash);
+      toolResultCache.set(callHash, result);
+
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
-        content: result,
+        content: truncateToolResult(result),
       });
     }
 
@@ -386,9 +551,14 @@ export async function runSubagentTaskLoop(
     content: 'You have reached the iteration limit. Please summarize your findings and provide a final answer.',
   });
 
+  // Trim before final summarization call too
+  const finalContextLimit = await getModelContextLimit(executorSelection.model.model);
+  const finalSafeLimit = Math.max(finalContextLimit - CONTEXT_SAFETY_MARGIN, 32000);
+  const { trimmedMessages: finalTrimmedMessages } = trimMessagesForContext(messages, finalSafeLimit);
+
   const finalResponse = await generateToolCompletionWithFallback(
     executorSelection.model,
-    messages,
+    finalTrimmedMessages,
     undefined,
     undefined,
     0.4,

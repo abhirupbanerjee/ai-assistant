@@ -400,6 +400,18 @@ export interface TaskPlansTable {
   original_request: string | null;
 }
 
+// ============ Plan Memories ============
+
+export interface PlanMemoriesTable {
+  id: Generated<number>;
+  plan_id: string;
+  wave: number;
+  task_ids: number[];
+  summary: string;
+  keywords: string[] | null;
+  created_at: Generated<string>;
+}
+
 // ============ Data API Configs ============
 
 export interface DataApiConfigsTable {
@@ -1011,6 +1023,7 @@ export interface DB {
   category_tool_configs: CategoryToolConfigsTable;
   tool_routing_rules: ToolRoutingRulesTable;
   task_plans: TaskPlansTable;
+  plan_memories: PlanMemoriesTable;
   data_api_configs: DataApiConfigsTable;
   data_api_categories: DataApiCategoriesTable;
   data_csv_configs: DataCsvConfigsTable;

@@ -801,6 +801,21 @@ export function getModelForRole(role: 'planner' | 'executor' | 'checker' | 'summ
 /**
  * Estimate tokens for a string (rough approximation)
  */
+export async function getModelContextLimit(modelId: string): Promise<number> {
+  const { getEnabledModel } = await import('../db/compat/enabled-models');
+  const model = await getEnabledModel(modelId);
+  if (model?.maxInputTokens) {
+    return model.maxInputTokens;
+  }
+  // Fallback heuristics by provider prefix
+  if (modelId.startsWith('claude')) return 200_000;
+  if (modelId.startsWith('gemini')) return 1_000_000;
+  if (modelId.startsWith('deepseek')) return 64_000;
+  if (modelId.startsWith('mistral')) return 128_000;
+  if (modelId.startsWith('ollama')) return 128_000;
+  return 128_000; // OpenAI-safe default
+}
+
 export function estimateTokens(text: string): number {
   // Rough estimate: 1 token ≈ 4 characters
   return Math.ceil(text.length / 4);

@@ -1223,7 +1223,7 @@ export async function generateToolCompletion(
   temperature?: number,
   maxTokens?: number,
   firstChunkTimeoutMsOverride?: number,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number }> {
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; thinkingContent?: string }> {
   const effectiveModel = modelSpec.model;
   const effectiveTemperature = temperature ?? modelSpec.temperature;
   const effectiveMaxTokens = maxTokens ?? modelSpec.max_tokens ?? 4096;
@@ -1271,6 +1271,7 @@ export async function generateToolCompletion(
       content: result.content,
       tool_calls: result.tool_calls,
       tokens_used: result.totalTokens,
+      thinkingContent: result.thinkingContent ?? undefined,
     };
   }
 
@@ -1297,6 +1298,7 @@ export async function generateToolCompletion(
       content: result.content,
       tool_calls: result.tool_calls,
       tokens_used: result.totalTokens,
+      thinkingContent: result.thinkingContent ?? undefined,
     };
   }
 
@@ -1338,6 +1340,7 @@ export async function generateToolCompletion(
     content: result.content,
     tool_calls: result.tool_calls,
     tokens_used: result.totalTokens,
+    thinkingContent: result.thinkingContent ?? undefined,
   };
 }
 
@@ -1354,10 +1357,10 @@ export async function generateToolCompletionWithFallback(
   temperature?: number,
   maxTokens?: number,
   firstChunkTimeoutMsOverride?: number,
-): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string }> {
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string; thinkingContent?: string }> {
   const { isRecoverableApiError, markModelUnhealthy } = await import('./llm-fallback');
 
-  const attemptModel = async (spec: ModelSpec): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string }> => {
+  const attemptModel = async (spec: ModelSpec): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string; thinkingContent?: string }> => {
     const result = await generateToolCompletion(spec, messages, tools, toolChoice, temperature, maxTokens, firstChunkTimeoutMsOverride);
     return { ...result, model_used: spec.model };
   };

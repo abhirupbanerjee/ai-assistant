@@ -246,6 +246,22 @@ async function executeTasksInOrder(
     }
 
     if (wave.length === 0) {
+      // Check if any pending tasks are in retry backoff — sleep without burning a wave
+      const pendingBackoffTasks = currentPlan.tasks.filter(
+        (t) => t.status === 'pending' && t.retry_after && t.retry_after > Date.now()
+      );
+      if (pendingBackoffTasks.length > 0) {
+        const earliestRetry = Math.min(...pendingBackoffTasks.map((t) => t.retry_after!));
+        const sleepMs = Math.max(earliestRetry - Date.now(), 1000);
+        callbacks?.onTaskSummary?.(
+          pendingBackoffTasks[0],
+          `Waiting ${Math.ceil(sleepMs / 1000)}s for retry backoff...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, sleepMs));
+        waveCount--; // Don't burn a wave on sleep
+        continue;
+      }
+
       // Check if plan is complete or stuck
       const allCompleted = currentPlan.tasks.every((t) =>
         ['done', 'skipped', 'needs_review'].includes(t.status)
@@ -284,7 +300,35 @@ async function executeTasksInOrder(
       callbacks?.onTaskStarted?.(task);
     }
 
-    // 5. Execute wave — parallel if multiple tasks, sequential fast path if single
+    // 5. Reserve budget headroom for this wave to prevent mid-wave overruns
+    const headroom = {
+      llm_calls: routedWave.length,
+      tokens_used: routedWave.length * 5000,
+      web_searches: 0,
+    };
+    const canReserve = await budgetTracker.reserveBudget(plan.id, headroom);
+    if (!canReserve) {
+      const completionPlan = await getTaskPlan(plan.id);
+      const hasResults = completionPlan?.tasks?.some(
+        (t: AgentTask) => t.result && t.result.length > 0
+      );
+      if (hasResults) {
+        console.warn(`[Orchestrator] Budget exceeded before wave ${waveCount} — entering graceful completion`);
+        const pendingTasks = completionPlan?.tasks?.filter((t: AgentTask) => t.status === 'pending') || [];
+        for (const pendingTask of pendingTasks) {
+          await transitionTaskState(plan.id, pendingTask.id, 'skipped', {
+            error: 'Budget exceeded — task skipped to preserve partial results',
+          });
+        }
+        return { success: true, plan_id: plan.id };
+      }
+      const errorMsg = `Budget exceeded: cannot reserve headroom for wave ${waveCount}`;
+      callbacks?.onError?.(errorMsg);
+      await updateTaskPlanStatus(plan.id, 'failed');
+      return { success: false, error: errorMsg, plan_id: plan.id };
+    }
+
+    // 5b. Execute wave — parallel if multiple tasks, sequential fast path if single
     const baseCallbacksFactory = (task: AgentTask): ExecutorCallbacks => ({
       onToolStart: (name: string, displayName: string) => callbacks?.onToolStart?.(name, displayName, task.id),
       onToolEnd: (name: string, success: boolean, duration: number, error?: string) => callbacks?.onToolEnd?.(name, success, duration, error, task.id),
@@ -373,12 +417,43 @@ async function executeTasksInOrder(
         } else {
           const errorMsg = `Task ${task.id} failed: ${result.error}`;
           callbacks?.onError?.(errorMsg);
+          // Release budget reservation so the failed wave doesn't permanently consume headroom
+          await budgetTracker.releaseReservation(plan.id, headroom);
           return { success: false, error: errorMsg, plan_id: plan.id };
         }
       }
     }
 
-    // 6b. Re-plan: collect ALL retry-exhausted tasks from this wave and re-plan
+    // 6a. Commit budget reservation with actual wave usage
+    const actualWaveUsage = waveResults.reduce(
+      (acc, { result }) => ({
+        llm_calls: acc.llm_calls + (result.llm_calls || 0),
+        tokens_used: acc.tokens_used + (result.tokens_used || 0),
+        web_searches: acc.web_searches + (result.web_searches || 0),
+      }),
+      { llm_calls: 0, tokens_used: 0, web_searches: 0 }
+    );
+    await budgetTracker.commitReservation(plan.id, actualWaveUsage);
+
+    // 6b. Save working memory for cross-wave recall (gated by feature flag)
+    const { isWorkingMemoryEnabled } = await import('../db/compat/agent-config');
+    if (await isWorkingMemoryEnabled()) {
+      const { saveWaveMemory } = await import('./memory');
+      const completedInWave = waveResults
+        .filter(({ task }) => task.status === 'done')
+        .map(({ task }) => ({
+          id: task.id,
+          description: task.description,
+          type: task.type,
+          result: task.result,
+          tool_name: task.tool_name,
+        }));
+      if (completedInWave.length > 0) {
+        await saveWaveMemory(plan.id, waveCount, completedInWave);
+      }
+    }
+
+    // 6c. Re-plan: collect ALL retry-exhausted tasks from this wave and re-plan
     const freshPlan = await getTaskPlan(plan.id);
     const failedTasks = (freshPlan?.tasks || [])
       .filter((t: any) =>

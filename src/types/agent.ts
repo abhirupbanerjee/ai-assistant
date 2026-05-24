@@ -128,6 +128,7 @@ export interface AgentTask {
   retry_count?: number;
   retry_context?: string;
   retry_strategy?: string;
+  retry_after?: number; // epoch ms — delay before task is eligible for next wave
   // Execution hints (Phase 2.6e — stored, not acted on until Phase 3.5)
   execution_hint?: 'parallel' | 'sequential' | 'wave_barrier';
   // Skill IDs tagged by planner (Phase 3 — skills gap fix)
@@ -142,6 +143,8 @@ export interface AgentTask {
   // Subagent mode (Phase 4)
   subagent_enabled?: boolean;
   max_iterations?: number;
+  // Per-task timeout override
+  task_timeout_minutes?: number;
 }
 
 export interface AgentConfig {
@@ -216,6 +219,9 @@ export interface ExecutionResult {
   subagent_state?: { iterations: number; hit_iteration_limit: boolean };
   /** Actual model ID used by executor for this task (for audit/debugging) */
   executor_model_used?: string;
+  /** Set when a transient API error should trigger a delayed retry */
+  needsRetry?: boolean;
+  retryAfter?: number; // epoch ms
 }
 
 export interface CheckerResult {

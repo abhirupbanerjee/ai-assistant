@@ -463,6 +463,21 @@ CREATE INDEX IF NOT EXISTS idx_task_plans_thread ON task_plans(thread_id);
 CREATE INDEX IF NOT EXISTS idx_task_plans_status ON task_plans(status);
 CREATE INDEX IF NOT EXISTS idx_task_plans_user ON task_plans(user_id);
 
+-- ============ Plan Memories (Working Memory for Autonomous Mode) ============
+
+CREATE TABLE IF NOT EXISTS plan_memories (
+  id SERIAL PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES task_plans(id) ON DELETE CASCADE,
+  wave INTEGER NOT NULL,
+  task_ids INTEGER[] NOT NULL,
+  summary TEXT NOT NULL,
+  keywords TEXT[],
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan_memories_lookup ON plan_memories(plan_id, wave DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_memories_keywords ON plan_memories USING GIN(keywords);
+
 -- ============ Data Sources ============
 
 CREATE TABLE IF NOT EXISTS data_api_configs (

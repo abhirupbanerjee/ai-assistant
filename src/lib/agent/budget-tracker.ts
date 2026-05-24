@@ -61,6 +61,9 @@ export class GlobalBudgetTracker {
   private usageCacheTime: number = 0;
   private static readonly CACHE_TTL_MS = 2000; // 2 second cache
 
+  // In-memory reservations for wave budget race condition fix
+  private reservations: Map<string, BudgetUsage> = new Map();
+
   private constructor(
     budget: AgentBudget,
     retryReserve: RetryReserve,
@@ -230,6 +233,59 @@ export class GlobalBudgetTracker {
         });
       }
     }
+  }
+
+  /**
+   * Reserve budget headroom for a wave of tasks.
+   * Returns false if the projected usage would exceed effective limits.
+   */
+  async reserveBudget(planId: string, headroom: BudgetUsage): Promise<boolean> {
+    const totalUsage = await this.getTotalUsage();
+    const currentReservation = this.reservations.get(planId) || { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+
+    const projected: BudgetUsage = {
+      llm_calls: totalUsage.llm_calls + currentReservation.llm_calls + headroom.llm_calls,
+      tokens_used: totalUsage.tokens_used + currentReservation.tokens_used + headroom.tokens_used,
+      web_searches: totalUsage.web_searches + currentReservation.web_searches + headroom.web_searches,
+    };
+
+    const status = await this.checkBudget(projected);
+    if (status.exceeded) {
+      return false;
+    }
+
+    this.reservations.set(planId, {
+      llm_calls: currentReservation.llm_calls + headroom.llm_calls,
+      tokens_used: currentReservation.tokens_used + headroom.tokens_used,
+      web_searches: currentReservation.web_searches + headroom.web_searches,
+    });
+    return true;
+  }
+
+  /**
+   * Commit actual usage for a wave, releasing the reservation.
+   */
+  async commitReservation(planId: string, actual: BudgetUsage): Promise<void> {
+    const reservation = this.reservations.get(planId) || { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+    this.reservations.set(planId, {
+      llm_calls: Math.max(0, reservation.llm_calls - (actual.llm_calls || 0)),
+      tokens_used: Math.max(0, reservation.tokens_used - (actual.tokens_used || 0)),
+      web_searches: Math.max(0, reservation.web_searches - (actual.web_searches || 0)),
+    });
+    this.invalidateCache();
+  }
+
+  /**
+   * Release a reservation without committing usage (for error/timeout paths).
+   */
+  async releaseReservation(planId: string, headroom: BudgetUsage): Promise<void> {
+    const reservation = this.reservations.get(planId) || { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+    this.reservations.set(planId, {
+      llm_calls: Math.max(0, reservation.llm_calls - (headroom.llm_calls || 0)),
+      tokens_used: Math.max(0, reservation.tokens_used - (headroom.tokens_used || 0)),
+      web_searches: Math.max(0, reservation.web_searches - (headroom.web_searches || 0)),
+    });
+    this.invalidateCache();
   }
 
   /**

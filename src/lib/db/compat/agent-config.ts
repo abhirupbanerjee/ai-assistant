@@ -525,3 +525,11 @@ export async function setSubagentConfig(
   await setSetting('agent_subagent_budget_ratio', String(config.budgetRatio), updatedBy);
   await setSetting('agent_subagent_hitl_enabled', String(config.hitlEnabled), updatedBy);
 }
+
+/**
+ * Check if working memory (cross-wave plan memory) is enabled.
+ * Gated behind agent_working_memory_enabled setting. Defaults to false.
+ */
+export async function isWorkingMemoryEnabled(): Promise<boolean> {
+  return (await getSetting('agent_working_memory_enabled', 'false')) === 'true';
+}

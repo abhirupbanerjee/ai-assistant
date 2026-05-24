@@ -548,6 +548,8 @@ export async function transitionTaskState(
     retry_count?: number;
     retry_context?: string;
     retry_strategy?: string;
+    retry_after?: number;
+    retry_suggestion?: string;
     executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual';
     executor_model_used?: string;
     subagent_iterations?: number;
@@ -600,6 +602,8 @@ export async function transitionTaskState(
     if (extras?.retry_count !== undefined) task.retry_count = extras.retry_count;
     if (extras?.retry_context !== undefined) task.retry_context = extras.retry_context;
     if (extras?.retry_strategy !== undefined) task.retry_strategy = extras.retry_strategy;
+    if (extras?.retry_after !== undefined) task.retry_after = extras.retry_after;
+    if (extras?.retry_suggestion !== undefined) task.retry_suggestion = extras.retry_suggestion;
     if (extras?.executor_profile !== undefined) task.executor_profile = extras.executor_profile;
     if (extras?.executor_model_used !== undefined) task.executor_model_used = extras.executor_model_used;
     if (extras?.subagent_iterations !== undefined) task.subagent_iterations = extras.subagent_iterations;
@@ -1123,4 +1127,66 @@ export async function getPlanControlStatus(planId: string): Promise<{
     pauseReason: row.pause_reason || undefined,
     stopReason: row.stop_reason || undefined,
   };
+}
+
+// ============ Plan Memory (Working Memory) ============
+
+export interface PlanMemoryRow {
+  id: number;
+  plan_id: string;
+  wave: number;
+  task_ids: number[];
+  summary: string;
+  keywords: string[] | null;
+  created_at: string;
+}
+
+/**
+ * Save a wave's memory snapshot for cross-wave recall.
+ */
+export async function savePlanMemory(
+  planId: string,
+  wave: number,
+  taskIds: number[],
+  summary: string,
+  keywords: string[]
+): Promise<void> {
+  const db = await getDb();
+  await db
+    .insertInto('plan_memories')
+    .values({
+      plan_id: planId,
+      wave,
+      task_ids: taskIds,
+      summary: summary.slice(0, 500),
+      keywords: keywords.slice(0, 10),
+    })
+    .execute();
+}
+
+/**
+ * Get the most recent plan memories (last N waves).
+ */
+export async function getRecentPlanMemories(
+  planId: string,
+  lastN: number = 2
+): Promise<PlanMemoryRow[]> {
+  const db = await getDb();
+  const rows = await db
+    .selectFrom('plan_memories')
+    .selectAll()
+    .where('plan_id', '=', planId)
+    .orderBy('wave', 'desc')
+    .limit(lastN)
+    .execute();
+
+  return rows.map((r) => ({
+    id: r.id as number,
+    plan_id: r.plan_id as string,
+    wave: r.wave as number,
+    task_ids: r.task_ids as number[],
+    summary: r.summary as string,
+    keywords: (r.keywords as string[] | null) || null,
+    created_at: r.created_at as string,
+  }));
 }
