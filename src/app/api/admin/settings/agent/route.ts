@@ -51,6 +51,9 @@ export async function GET() {
       confidenceThreshold: parseInt(await getSetting('agent_confidence_threshold', '80'), 10),
       budgetMaxDurationMinutes: parseInt(await getSetting('agent_budget_max_duration_minutes', '30'), 10),
       taskTimeoutMinutes: parseInt(await getSetting('agent_task_timeout_minutes', '5'), 10),
+      // Retry reserve
+      budgetRetryReserveLlmCalls: parseInt(await getSetting('agent_budget_retry_reserve_llm_calls', '10'), 10),
+      budgetRetryReserveTokens: parseInt(await getSetting('agent_budget_retry_reserve_tokens', '50000'), 10),
       plannerModel: modelConfigs.planner,
       executorModel: modelConfigs.executor,
       checkerModel: modelConfigs.checker,
@@ -107,6 +110,8 @@ export async function POST(request: NextRequest) {
       confidenceThreshold,
       budgetMaxDurationMinutes,
       taskTimeoutMinutes,
+      budgetRetryReserveLlmCalls,
+      budgetRetryReserveTokens,
       plannerModel,
       executorModel,
       checkerModel,
@@ -209,7 +214,9 @@ export async function POST(request: NextRequest) {
       budgetMaxDurationMinutes < 1 ||
       budgetMaxDurationMinutes > 480 ||
       taskTimeoutMinutes < 1 ||
-      taskTimeoutMinutes > 60
+      taskTimeoutMinutes > 60 ||
+      (typeof budgetRetryReserveLlmCalls === 'number' && (budgetRetryReserveLlmCalls < 0 || budgetRetryReserveLlmCalls > 500)) ||
+      (typeof budgetRetryReserveTokens === 'number' && (budgetRetryReserveTokens < 0 || budgetRetryReserveTokens > 500000))
     ) {
       return NextResponse.json(
         { error: 'Values out of valid range' },
@@ -262,6 +269,14 @@ export async function POST(request: NextRequest) {
     await setSetting('agent_confidence_threshold', String(confidenceThreshold), user.email);
     await setSetting('agent_budget_max_duration_minutes', String(budgetMaxDurationMinutes), user.email);
     await setSetting('agent_task_timeout_minutes', String(taskTimeoutMinutes), user.email);
+
+    // Save retry reserve settings
+    if (typeof budgetRetryReserveLlmCalls === 'number') {
+      await setSetting('agent_budget_retry_reserve_llm_calls', String(budgetRetryReserveLlmCalls), user.email);
+    }
+    if (typeof budgetRetryReserveTokens === 'number') {
+      await setSetting('agent_budget_retry_reserve_tokens', String(budgetRetryReserveTokens), user.email);
+    }
 
     // Save model configurations
     await setAgentModelConfigs(
@@ -377,6 +392,8 @@ export async function POST(request: NextRequest) {
         confidenceThreshold,
         budgetMaxDurationMinutes,
         taskTimeoutMinutes,
+        budgetRetryReserveLlmCalls: parseInt(await getSetting('agent_budget_retry_reserve_llm_calls', '10'), 10),
+        budgetRetryReserveTokens: parseInt(await getSetting('agent_budget_retry_reserve_tokens', '50000'), 10),
         plannerModel: sanitizedPlannerModel,
         executorModel,
         checkerModel,

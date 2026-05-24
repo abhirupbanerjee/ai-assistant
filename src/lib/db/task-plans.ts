@@ -40,6 +40,9 @@ export interface Task {
   executor_model_used?: string;
   tokens_used?: number;
   llm_calls?: number;
+  subagent_enabled?: boolean;
+  subagent_iterations?: number;
+  subagent_hit_limit?: boolean;
   started_at?: string;
   completed_at?: string;
 }
@@ -438,6 +441,7 @@ export function createAutonomousPlan(
     executor_profile_reason?: string;
     executor_model_used?: string;
     retry_count?: number;
+    subagent_enabled?: boolean;
   }[],
   options: {
     categorySlug?: string;
@@ -465,6 +469,7 @@ export function createAutonomousPlan(
     ...(t.executor_profile ? { executor_profile: t.executor_profile } : {}),
     ...(t.executor_profile_reason ? { executor_profile_reason: t.executor_profile_reason } : {}),
     ...(t.executor_model_used ? { executor_model_used: t.executor_model_used } : {}),
+    ...(t.subagent_enabled ? { subagent_enabled: t.subagent_enabled } : {}),
     retry_count: t.retry_count ?? 0,
   }));
 
@@ -564,6 +569,8 @@ export function transitionTaskState(
     llm_calls?: number;
     executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
     executor_model_used?: string;
+    subagent_iterations?: number;
+    subagent_hit_limit?: boolean;
   }
 ): void {
   const plan = getTaskPlan(planId);
@@ -607,6 +614,8 @@ export function transitionTaskState(
   if (extras?.llm_calls !== undefined) task.llm_calls = extras.llm_calls;
   if (extras?.executor_profile !== undefined) task.executor_profile = extras.executor_profile;
   if (extras?.executor_model_used !== undefined) task.executor_model_used = extras.executor_model_used;
+  if (extras?.subagent_iterations !== undefined) task.subagent_iterations = extras.subagent_iterations;
+  if (extras?.subagent_hit_limit !== undefined) task.subagent_hit_limit = extras.subagent_hit_limit;
 
   // Calculate updated stats
   const stats = {

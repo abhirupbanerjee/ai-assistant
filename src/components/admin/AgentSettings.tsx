@@ -38,6 +38,8 @@ interface AgentSettings {
   confidenceThreshold: number;
   budgetMaxDurationMinutes: number;
   taskTimeoutMinutes: number;
+  budgetRetryReserveLlmCalls: number;
+  budgetRetryReserveTokens: number;
   plannerModel: AgentModelConfig;
   executorModel: AgentModelConfig;
   checkerModel: AgentModelConfig;
@@ -269,6 +271,8 @@ export default function AgentSettingsTab() {
         confidenceThreshold: data.confidenceThreshold,
         budgetMaxDurationMinutes: data.budgetMaxDurationMinutes,
         taskTimeoutMinutes: data.taskTimeoutMinutes,
+        budgetRetryReserveLlmCalls: data.budgetRetryReserveLlmCalls ?? 10,
+        budgetRetryReserveTokens: data.budgetRetryReserveTokens ?? 50000,
         plannerModel: data.plannerModel,
         executorModel: data.executorModel,
         checkerModel: data.checkerModel,
@@ -341,6 +345,8 @@ export default function AgentSettingsTab() {
         confidenceThreshold: settings.confidenceThreshold,
         budgetMaxDurationMinutes: settings.budgetMaxDurationMinutes,
         taskTimeoutMinutes: settings.taskTimeoutMinutes,
+        budgetRetryReserveLlmCalls: settings.budgetRetryReserveLlmCalls ?? 10,
+        budgetRetryReserveTokens: settings.budgetRetryReserveTokens ?? 50000,
         plannerModel: settings.plannerModel,
         executorModel: settings.executorModel,
         checkerModel: settings.checkerModel,
@@ -790,6 +796,30 @@ export default function AgentSettingsTab() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">Checker approval threshold (0-100%)</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Retry Reserve (LLM calls)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="500"
+                  value={editedSettings.budgetRetryReserveLlmCalls}
+                  onChange={(e) => updateSetting('budgetRetryReserveLlmCalls', parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Extra headroom for retry/re-plan waves (0-500)</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Retry Reserve (tokens)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="500000"
+                  value={editedSettings.budgetRetryReserveTokens}
+                  onChange={(e) => updateSetting('budgetRetryReserveTokens', parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Extra token headroom for retries (0-500k)</p>
               </div>
             </div>
           </div>

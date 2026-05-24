@@ -424,6 +424,8 @@ export type SettingKey =
   | 'agent_confidence_threshold'
   | 'agent_budget_max_duration_minutes'
   | 'agent_task_timeout_minutes'
+  | 'agent_budget_retry_reserve_llm_calls'
+  | 'agent_budget_retry_reserve_tokens'
   | 'agent_model_planner'
   | 'agent_model_executor'
   | 'agent_executor_model_profiles'

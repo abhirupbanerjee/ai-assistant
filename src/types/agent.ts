@@ -208,6 +208,8 @@ export interface ExecutionResult {
   tools_used?: string[];
   /** Subagent loop state if task ran in subagent mode */
   subagent_state?: { iterations: number; hit_iteration_limit: boolean };
+  /** Actual model ID used by executor for this task (for audit/debugging) */
+  executor_model_used?: string;
 }
 
 export interface CheckerResult {

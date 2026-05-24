@@ -8,10 +8,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { resolveSubagentApproval } from '@/lib/streaming/subagent-approval-resolver';
+import { getTaskPlan } from '@/lib/db/compat/task-plans';
 import type { ApiError } from '@/types';
 
 interface ApproveRequest {
   task_id: number;
+  plan_id: string;
   action: 'approve' | 'deny' | 'modify';
   modified_args?: Record<string, unknown>;
 }
@@ -41,11 +43,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { task_id, action, modified_args } = body;
-    if (typeof task_id !== 'number') {
+    const { task_id, plan_id, action, modified_args } = body;
+    if (typeof task_id !== 'number' || typeof plan_id !== 'string') {
       return NextResponse.json<ApiError>(
-        { error: 'task_id is required', code: 'VALIDATION_ERROR' },
+        { error: 'task_id and plan_id are required', code: 'VALIDATION_ERROR' },
         { status: 400 }
+      );
+    }
+
+    // Verify plan exists and belongs to user
+    const plan = await getTaskPlan(plan_id);
+    if (!plan) {
+      return NextResponse.json<ApiError>(
+        { error: 'Plan not found', code: 'NOT_FOUND' },
+        { status: 404 }
+      );
+    }
+
+    if (plan.userId !== String(user.id)) {
+      return NextResponse.json<ApiError>(
+        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
+        { status: 403 }
       );
     }
 

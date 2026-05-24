@@ -228,13 +228,64 @@ export async function parsePlannerResponse(
 /**
  * Parse checker response with schema validation
  */
+/**
+ * Heuristic confidence extraction for checker responses.
+ * Scans raw text for a number 0-100, preferring values near confidence-related keywords.
+ */
+function extractConfidenceHeuristic(content: string): number | null {
+  // Look for patterns like "confidence: 85", "85%", "score of 85", etc.
+  const patterns = [
+    /confidence[:\s=]+(\d{1,3})/i,
+    /score[:\s=]+(\d{1,3})/i,
+    /(\d{1,3})\s*%/,
+    /(\d{1,3})\s*(?:out of|of)\s*100/i,
+    /(\d{1,3})\s*\/\s*100/,
+    /"?\b(\d{1,3})\b"?/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = content.match(pattern);
+    if (match) {
+      const value = parseInt(match[1], 10);
+      if (value >= 0 && value <= 100) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function parseCheckerResponse(
   content: string,
   repairModel?: ModelSpec
 ): Promise<ParseResult<CheckerResponse>> {
-  return parseAndValidateJSON<CheckerResponse>(content, CHECKER_RESPONSE_SCHEMA, {
-    maxRetries: repairModel ? 1 : 0,
+  // Step 1: Normal parsing with increased retries
+  const result = await parseAndValidateJSON<CheckerResponse>(content, CHECKER_RESPONSE_SCHEMA, {
+    maxRetries: repairModel ? 2 : 0,
     repairModel,
     context: 'Checker response for quality evaluation',
   });
+
+  if (result.success) {
+    return result;
+  }
+
+  // Step 2: Heuristic fallback — extract confidence from raw text
+  const heuristicConfidence = extractConfidenceHeuristic(content);
+  if (heuristicConfidence !== null) {
+    console.warn(
+      `[JSONParser] Used heuristic confidence extraction: ${heuristicConfidence} (original error: ${result.error})`
+    );
+    return {
+      success: true,
+      data: {
+        confidence: heuristicConfidence,
+        notes: `Heuristic extraction from malformed response. Original error: ${result.error}. Raw content: ${content.substring(0, 500)}`,
+      },
+    };
+  }
+
+  // Step 3: All attempts failed
+  return result;
 }

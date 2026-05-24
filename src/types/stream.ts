@@ -285,7 +285,7 @@ export type StreamEvent =
   | { type: 'subagent_thinking'; task_id: number; thought: string }
   | { type: 'subagent_budget_warning'; task_id: number; pct: number }
   | { type: 'subagent_complete'; task_id: number; result: string; iterations: number; hit_limit: boolean }
-  | { type: 'subagent_human_approval_needed'; task_id: number; request: { tool_name: string; arguments: Record<string, unknown>; reasoning: string; risk_level: 'low' | 'medium' | 'high' } }
+  | { type: 'subagent_human_approval_needed'; task_id: number; plan_id: string; request: { tool_name: string; arguments: Record<string, unknown>; reasoning: string; risk_level: 'low' | 'medium' | 'high' } }
 
   // Autonomous mode HITL — plan approval
   | { type: 'hitl_plan_approval'; data: PlanApprovalEvent }

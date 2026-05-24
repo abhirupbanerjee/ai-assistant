@@ -403,6 +403,7 @@ export async function createAutonomousPlan(
     executor_profile_reason?: string;
     executor_model_used?: string;
     retry_count?: number;
+    subagent_enabled?: boolean;
   }[],
   options: {
     categorySlug?: string;
@@ -430,6 +431,7 @@ export async function createAutonomousPlan(
     ...(t.executor_profile ? { executor_profile: t.executor_profile } : {}),
     ...(t.executor_profile_reason ? { executor_profile_reason: t.executor_profile_reason } : {}),
     ...(t.executor_model_used ? { executor_model_used: t.executor_model_used } : {}),
+    ...(t.subagent_enabled ? { subagent_enabled: t.subagent_enabled } : {}),
     retry_count: t.retry_count ?? 0,
   }));
 
@@ -547,6 +549,8 @@ export async function transitionTaskState(
     retry_strategy?: string;
     executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
     executor_model_used?: string;
+    subagent_iterations?: number;
+    subagent_hit_limit?: boolean;
   }
 ): Promise<void> {
   await transaction(async (trx) => {
@@ -597,6 +601,8 @@ export async function transitionTaskState(
     if (extras?.retry_strategy !== undefined) task.retry_strategy = extras.retry_strategy;
     if (extras?.executor_profile !== undefined) task.executor_profile = extras.executor_profile;
     if (extras?.executor_model_used !== undefined) task.executor_model_used = extras.executor_model_used;
+    if (extras?.subagent_iterations !== undefined) task.subagent_iterations = extras.subagent_iterations;
+    if (extras?.subagent_hit_limit !== undefined) task.subagent_hit_limit = extras.subagent_hit_limit;
 
     // Calculate updated stats
     const stats = {

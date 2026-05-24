@@ -119,7 +119,7 @@ export interface StreamingState {
   /** HITL plan approval event (autonomous mode) */
   planApprovalEvent: PlanApprovalEvent | null;
   /** HITL subagent tool approval event */
-  subagentApprovalEvent: { taskId: number; toolName: string; args: Record<string, unknown>; reasoning: string; riskLevel: 'low' | 'medium' | 'high' } | null;
+  subagentApprovalEvent: { taskId: number; planId: string; toolName: string; args: Record<string, unknown>; reasoning: string; riskLevel: 'low' | 'medium' | 'high' } | null;
 }
 
 export interface UseStreamingChatOptions {
@@ -154,7 +154,7 @@ export interface UseStreamingChatReturn {
   /** Skip a specific task in the autonomous plan */
   skipTask: (taskId: number, reason?: string) => Promise<boolean>;
   /** Approve or deny a subagent tool execution request */
-  approveSubagentTool: (taskId: number, action: 'approve' | 'deny' | 'modify', modifiedArgs?: Record<string, unknown>) => Promise<boolean>;
+  approveSubagentTool: (taskId: number, planId: string, action: 'approve' | 'deny' | 'modify', modifiedArgs?: Record<string, unknown>) => Promise<boolean>;
 }
 
 // ============ Tool Action Messages ============
@@ -741,6 +741,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           ...prev,
           subagentApprovalEvent: {
             taskId: event.task_id,
+            planId: event.plan_id,
             toolName: event.request.tool_name,
             args: event.request.arguments,
             reasoning: event.request.reasoning,
@@ -1221,6 +1222,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
   const approveSubagentTool = useCallback(async (
     taskId: number,
+    planId: string,
     action: 'approve' | 'deny' | 'modify',
     modifiedArgs?: Record<string, unknown>
   ): Promise<boolean> => {
@@ -1228,7 +1230,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       const response = await fetch('/api/agent/subagent/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: taskId, action, modified_args: modifiedArgs }),
+        body: JSON.stringify({ task_id: taskId, plan_id: planId, action, modified_args: modifiedArgs }),
       });
 
       if (response.ok) {

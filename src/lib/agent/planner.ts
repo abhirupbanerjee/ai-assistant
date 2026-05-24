@@ -359,6 +359,10 @@ For each task, include a "skill_ids" array with the IDs of skills that should be
   if (context.subagentConfig?.defaultOn) {
     prompt += `
 **Subagent Mode:** When a task would benefit from multi-step reasoning with tools (e.g., search → analyze → synthesize chains, or tasks requiring iterative tool use), set "subagent_enabled": true on that task. The subagent will run a ReAct loop with up to ${context.subagentConfig.maxIterations} iterations. Use this for complex analytical tasks, not for simple single-tool calls.
+
+Subagent-safe tools (can run without human approval): web_search, website_analysis, code_analysis, load_testing, chart_gen, diagram_gen, translation.
+Tools that ALWAYS require human approval in subagent mode (avoid assigning subagent_enabled): doc_gen, image_gen, xlsx_gen, pptx_gen, podcast_gen, data_source, aggregate_data, file_to_html, html_gen.
+Set "subagent_enabled": true ONLY when a task requires 2+ subagent-safe tools in sequence. Never set it for tasks that primarily use approval-required tools.
 `;
   }
 

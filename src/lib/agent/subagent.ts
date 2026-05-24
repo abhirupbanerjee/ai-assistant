@@ -22,6 +22,7 @@ import { AVAILABLE_TOOLS, isToolEnabled } from '@/lib/tools';
 import { isToolEnabledForCategory } from '@/lib/db/compat/category-tool-config';
 import { getCategoryBySlug } from '@/lib/db/compat/categories';
 import { getModelForRole } from './llm-router';
+import { resolveSkillsForTask, resolveExecutorModelForTask } from './executor';
 import { createSubagentApprovalResolver, type SubagentApprovalResult } from '@/lib/streaming/subagent-approval-resolver';
 import getOpenAI from '@/lib/openai';
 import { SubagentBudget, createSubagentBudget, checkBudget } from './subagent-budget';
@@ -42,6 +43,7 @@ export interface SubagentResult {
   iterations: number;
   tokens_used: number;
   hit_iteration_limit: boolean;
+  model_used: string;
 }
 
 const DEFAULT_MAX_TOKENS = 100000;
@@ -109,8 +111,8 @@ export async function runSubagentTaskLoop(
   maxIterations: number = 5,
   budget?: SubagentBudget
 ): Promise<SubagentResult> {
-  const executorModel = getModelForRole('executor', modelConfig);
-  const effectiveModel = task.executor_model_used || executorModel.model;
+  const executorSelection = resolveExecutorModelForTask(task, modelConfig);
+  const effectiveModel = executorSelection.model.model;
 
   // Resolve enabled tools for this plan/category
   const enabledToolNames = await getEnabledToolsForPlan(plan);
@@ -123,6 +125,7 @@ export async function runSubagentTaskLoop(
       iterations: 0,
       tokens_used: 0,
       hit_iteration_limit: false,
+      model_used: effectiveModel,
     };
     callbacks?.onComplete?.({
       type: 'subagent_complete',
@@ -134,20 +137,32 @@ export async function runSubagentTaskLoop(
     return result;
   }
 
-  // Build conversation
+  // Resolve skills for context injection
+  const skillPrompt = await resolveSkillsForTask(plan, task);
+
+  // Build conversation with plan context and skills
+  const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
+  const originalRequest = plan.original_request || (plan as any).originalRequest || '';
+
+  let systemPrompt = `You are a focused subagent executing a single task. You have access to tools. ` +
+    `Think step by step. Use tools when needed. After each tool result, decide if you need ` +
+    `more tools or if you can provide the final answer.\n\n` +
+    `Task: ${task.description}\n` +
+    `Target: ${task.target || '(none)'}`;
+
+  if (originalRequest) {
+    systemPrompt += `\n\nOriginal user request: ${originalRequest}`;
+  }
+  if (categorySlug) {
+    systemPrompt += `\n\nCategory: ${categorySlug}`;
+  }
+  if (skillPrompt) {
+    systemPrompt += `\n\n--- DOMAIN-SPECIFIC GUIDELINES ---\n${skillPrompt}`;
+  }
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    {
-      role: 'system',
-      content: `You are a focused subagent executing a single task. You have access to tools. ` +
-        `Think step by step. Use tools when needed. After each tool result, decide if you need ` +
-        `more tools or if you can provide the final answer.\n\n` +
-        `Task: ${task.description}\n` +
-        `Target: ${task.target || '(none)'}`,
-    },
-    {
-      role: 'user',
-      content: `Execute this task: ${task.description}`,
-    },
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `Execute this task: ${task.description}` },
   ];
 
   const toolsUsed: string[] = [];
@@ -158,7 +173,10 @@ export async function runSubagentTaskLoop(
 
   const openai = await getOpenAI();
 
+  let loopError: Error | undefined;
+
   while (iterations < maxIterations) {
+    try {
     // Budget check
     if (tokensUsed >= tokenBudget) {
       callbacks?.onBudgetWarning?.({
@@ -175,7 +193,7 @@ export async function runSubagentTaskLoop(
       tools,
       tool_choice: 'auto',
       temperature: 0.4,
-      max_tokens: 4000,
+      max_tokens: 8000,
     });
 
     const choice = response.choices[0];
@@ -206,6 +224,7 @@ export async function runSubagentTaskLoop(
         iterations,
         tokens_used: totalTokens,
         hit_iteration_limit: false,
+        model_used: effectiveModel,
       };
       if (budget) {
         budget.tokensUsed = tokensUsed;
@@ -248,10 +267,21 @@ export async function runSubagentTaskLoop(
       // HITL gate for non-subagentSafe tools
       let approvedArgs: Record<string, unknown>;
       if (tool.subagentSafe === false) {
-        const rawArgs = JSON.parse(toolCall.function.arguments || '{}');
+        let rawArgs: Record<string, unknown>;
+        try {
+          rawArgs = JSON.parse(toolCall.function.arguments || '{}');
+        } catch {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: `Invalid tool arguments for "${toolName}".` }),
+          });
+          continue;
+        }
         callbacks?.onHumanApprovalNeeded?.({
           type: 'subagent_human_approval_needed',
           task_id: task.id,
+          plan_id: plan.id,
           request: {
             tool_name: toolName,
             arguments: rawArgs,
@@ -272,7 +302,16 @@ export async function runSubagentTaskLoop(
         // Honor modified args from HITL approval
         approvedArgs = approval.modifiedArgs ?? rawArgs;
       } else {
-        approvedArgs = JSON.parse(toolCall.function.arguments || '{}');
+        try {
+          approvedArgs = JSON.parse(toolCall.function.arguments || '{}');
+        } catch {
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: `Invalid tool arguments for "${toolName}".` }),
+          });
+          continue;
+        }
       }
 
       callbacks?.onToolStart?.(toolName, tool.displayName, task.id);
@@ -315,6 +354,31 @@ export async function runSubagentTaskLoop(
         pct: Math.round((tokensUsed / tokenBudget) * 100),
       });
     }
+    } catch (error) {
+      loopError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[Subagent] Loop error for task ${task.id}:`, loopError.message);
+      break;
+    }
+  }
+
+  // Handle unexpected loop errors
+  if (loopError) {
+    const result: SubagentResult = {
+      content: `Subagent failed: ${loopError.message}`,
+      tools_used: toolsUsed,
+      iterations,
+      tokens_used: totalTokens,
+      hit_iteration_limit: false,
+      model_used: effectiveModel,
+    };
+    callbacks?.onComplete?.({
+      type: 'subagent_complete',
+      task_id: task.id,
+      result: result.content,
+      iterations: result.iterations,
+      hit_limit: result.hit_iteration_limit,
+    });
+    return result;
   }
 
   // Max iterations reached — force a final summarization call
@@ -327,7 +391,7 @@ export async function runSubagentTaskLoop(
     model: effectiveModel,
     messages,
     temperature: 0.4,
-    max_tokens: 4000,
+    max_tokens: 8000,
   });
 
   const finalContent = finalResponse.choices[0]?.message?.content || 'Max iterations reached.';
@@ -346,6 +410,7 @@ export async function runSubagentTaskLoop(
     iterations,
     tokens_used: totalTokens,
     hit_iteration_limit: true,
+    model_used: effectiveModel,
   };
 
   callbacks?.onComplete?.({

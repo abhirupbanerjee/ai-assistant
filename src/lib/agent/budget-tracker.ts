@@ -15,6 +15,14 @@ const WARNING_THRESHOLD_1 = 0.5; // 50%
 const WARNING_THRESHOLD_2 = 0.75; // 75%
 
 /**
+ * Retry reserve settings — extra headroom for bounded retries/re-planning
+ */
+export interface RetryReserve {
+  llm_calls: number;
+  tokens: number;
+}
+
+/**
  * Get global budget settings from database
  */
 export async function getGlobalBudgetSettings(): Promise<AgentBudget> {
@@ -28,12 +36,23 @@ export async function getGlobalBudgetSettings(): Promise<AgentBudget> {
 }
 
 /**
+ * Get retry reserve settings from database
+ */
+export async function getRetryReserveSettings(): Promise<RetryReserve> {
+  return {
+    llm_calls: parseInt(await getSetting('agent_budget_retry_reserve_llm_calls', '10'), 10),
+    tokens: parseInt(await getSetting('agent_budget_retry_reserve_tokens', '50000'), 10),
+  };
+}
+
+/**
  * Global Budget Tracker
  *
  * Monitors resource usage across all active autonomous plans
  */
 export class GlobalBudgetTracker {
   private globalBudget: AgentBudget;
+  private retryReserve: RetryReserve;
   private startTime: number;
   private onEvent?: (event: BudgetWarningEvent) => void;
 
@@ -42,15 +61,23 @@ export class GlobalBudgetTracker {
   private usageCacheTime: number = 0;
   private static readonly CACHE_TTL_MS = 2000; // 2 second cache
 
-  private constructor(budget: AgentBudget, onEvent?: (event: BudgetWarningEvent) => void) {
+  private constructor(
+    budget: AgentBudget,
+    retryReserve: RetryReserve,
+    onEvent?: (event: BudgetWarningEvent) => void
+  ) {
     this.globalBudget = budget;
+    this.retryReserve = retryReserve;
     this.startTime = Date.now();
     this.onEvent = onEvent;
   }
 
   static async create(onEvent?: (event: BudgetWarningEvent) => void): Promise<GlobalBudgetTracker> {
-    const budget = await getGlobalBudgetSettings();
-    return new GlobalBudgetTracker(budget, onEvent);
+    const [budget, retryReserve] = await Promise.all([
+      getGlobalBudgetSettings(),
+      getRetryReserveSettings(),
+    ]);
+    return new GlobalBudgetTracker(budget, retryReserve, onEvent);
   }
 
   /**
@@ -76,34 +103,42 @@ export class GlobalBudgetTracker {
   }
 
   /**
-   * Check current budget status against global limits
+   * Check current budget status against global limits.
+   * @param usage - Optional pre-computed usage (falls back to DB query)
+   * @param headroom - Optional additional headroom to add on top of the retry reserve
    */
-  async checkBudget(usage?: BudgetUsage): Promise<BudgetStatus> {
+  async checkBudget(usage?: BudgetUsage, headroom?: Partial<BudgetUsage>): Promise<BudgetStatus> {
     // If no usage provided, get current totals from all active plans
     const totalUsage = usage || await this.getTotalUsage();
 
+    // Effective limits include retry reserve + any one-off headroom
+    const effectiveLlmLimit = this.globalBudget.max_llm_calls + this.retryReserve.llm_calls + (headroom?.llm_calls || 0);
+    const effectiveTokenLimit = this.globalBudget.max_tokens + this.retryReserve.tokens + (headroom?.tokens_used || 0);
+    const effectiveSearchLimit = this.globalBudget.max_web_searches + (headroom?.web_searches || 0);
+
+    // Percentages for warnings are based on ORIGINAL limits (so admins see true utilization)
     const llmPct = (totalUsage.llm_calls / this.globalBudget.max_llm_calls) * 100;
     const tokenPct = (totalUsage.tokens_used / this.globalBudget.max_tokens) * 100;
     const searchPct = (totalUsage.web_searches / this.globalBudget.max_web_searches) * 100;
 
-    // Hard stop at 100%
-    if (llmPct >= 100) {
-      return this.exceeded('llm_calls', `LLM call limit exceeded (${this.globalBudget.max_llm_calls})`);
+    // Hard stop at effective limit (original + reserve + headroom)
+    if (totalUsage.llm_calls >= effectiveLlmLimit) {
+      return this.exceeded('llm_calls', `LLM call limit exceeded (${this.globalBudget.max_llm_calls} base + ${this.retryReserve.llm_calls} reserve)`);
     }
-    if (tokenPct >= 100) {
-      return this.exceeded('tokens', `Token limit exceeded (${this.globalBudget.max_tokens})`);
+    if (totalUsage.tokens_used >= effectiveTokenLimit) {
+      return this.exceeded('tokens', `Token limit exceeded (${this.globalBudget.max_tokens} base + ${this.retryReserve.tokens} reserve)`);
     }
-    if (searchPct >= 100) {
+    if (totalUsage.web_searches >= effectiveSearchLimit) {
       return this.exceeded('web_searches', `Web search limit exceeded (${this.globalBudget.max_web_searches})`);
     }
 
-    // Duration check
+    // Duration check (no reserve for duration — it's a wall-clock safety)
     const elapsedMinutes = (Date.now() - this.startTime) / 60000;
     if (elapsedMinutes >= this.globalBudget.max_duration_minutes) {
       return this.exceeded('duration', `Time limit exceeded (${this.globalBudget.max_duration_minutes} min)`);
     }
 
-    // Check warnings at 50% and 75%
+    // Check warnings at 50% and 75% (based on original limits)
     this.checkWarnings(totalUsage, llmPct, tokenPct, searchPct);
 
     return { exceeded: false };
@@ -195,6 +230,20 @@ export class GlobalBudgetTracker {
         });
       }
     }
+  }
+
+  /**
+   * Check if usage has exceeded the BASE limit (excluding retry reserve).
+   * Used by orchestrator to decide whether new tasks should be blocked
+   * while still allowing retry-only waves to consume the reserve.
+   */
+  async isOverBaseLimit(usage?: BudgetUsage): Promise<boolean> {
+    const totalUsage = usage || await this.getTotalUsage();
+    return (
+      totalUsage.llm_calls >= this.globalBudget.max_llm_calls ||
+      totalUsage.tokens_used >= this.globalBudget.max_tokens ||
+      totalUsage.web_searches >= this.globalBudget.max_web_searches
+    );
   }
 
   /**

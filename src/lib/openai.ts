@@ -11,6 +11,7 @@ import {
   type ThinkingRequestProfile,
 } from '@/lib/llm-thinking';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
+import type { ModelSpec } from '@/types/agent';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
@@ -1096,6 +1097,290 @@ async function streamOneCompletionWithThinkingRetry(
         );
       }
     }
+    throw error;
+  }
+}
+
+// ============ Tool Completion Helpers (for subagent / autonomous loops) ============
+
+/**
+ * Convert OpenAI-shaped message history to Anthropic MessageParam format.
+ * Preserves tool calls and tool results within the current session.
+ * Batches consecutive tool messages into a single Anthropic user message.
+ */
+function convertOpenAIMessagesToAnthropic(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[]
+): { system?: string; anthropicMessages: Anthropic.MessageParam[] } {
+  let system: string | undefined;
+  const anthropicMessages: Anthropic.MessageParam[] = [];
+  let i = 0;
+
+  // Extract leading system messages ( Anthropic passes system separately )
+  while (i < messages.length && messages[i].role === 'system') {
+    const sysMsg = messages[i] as OpenAI.Chat.ChatCompletionSystemMessageParam;
+    const sysContent = typeof sysMsg.content === 'string' ? sysMsg.content : JSON.stringify(sysMsg.content);
+    system = system ? `${system}\n\n${sysContent}` : sysContent;
+    i++;
+  }
+
+  while (i < messages.length) {
+    const msg = messages[i];
+
+    if (msg.role === 'user') {
+      const userMsg = msg as OpenAI.Chat.ChatCompletionUserMessageParam;
+      const content = typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content);
+      anthropicMessages.push({ role: 'user', content });
+      i++;
+    } else if (msg.role === 'assistant') {
+      const assistantMsg = msg as OpenAI.Chat.ChatCompletionAssistantMessageParam;
+      const contentBlocks: Anthropic.ContentBlockParam[] = [];
+
+      if (assistantMsg.content) {
+        contentBlocks.push({ type: 'text', text: assistantMsg.content });
+      }
+
+      if (assistantMsg.tool_calls) {
+        for (const tc of assistantMsg.tool_calls) {
+          if (tc.type === 'function') {
+            contentBlocks.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.function.name,
+              input: (() => {
+                try { return JSON.parse(tc.function.arguments || '{}'); }
+                catch { return {}; }
+              })(),
+            });
+          }
+        }
+      }
+
+      anthropicMessages.push({ role: 'assistant', content: contentBlocks });
+      i++;
+    } else if (msg.role === 'tool') {
+      // Batch consecutive tool messages into a single Anthropic user message
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      while (i < messages.length && messages[i].role === 'tool') {
+        const toolMsg = messages[i] as OpenAI.Chat.CompletionToolMessageParam;
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolMsg.tool_call_id,
+          content: typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content),
+        });
+        i++;
+      }
+      anthropicMessages.push({ role: 'user', content: toolResults });
+    } else {
+      i++;
+    }
+  }
+
+  return { system, anthropicMessages };
+}
+
+function detectProviderForToolCompletion(modelId: string): ModelSpec['provider'] {
+  if (isClaudeModel(modelId)) return 'anthropic';
+  if (isFireworksModel(modelId)) return 'fireworks';
+  if (isOllamaCloudModel(modelId)) return 'ollama-cloud';
+  if (isOllamaModel(modelId)) return 'ollama';
+  if (isMoonshotModel(modelId)) return 'moonshot';
+  if (isDeepSeekModel(modelId)) return 'deepseek';
+  if (modelId.startsWith('gemini')) return 'gemini';
+  if (modelId.startsWith('mistral') || modelId.startsWith('codestral') || modelId.startsWith('pixtral')) return 'mistral';
+  return 'openai';
+}
+
+/**
+ * Generate a single tool-completion turn across all supported routes.
+ * Normalizes responses to OpenAI-shaped tool_calls so callers don't need
+ * to know which provider executed the request.
+ */
+export async function generateToolCompletion(
+  modelSpec: ModelSpec,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  tools?: OpenAI.Chat.ChatCompletionTool[],
+  toolChoice?: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined,
+  temperature?: number,
+  maxTokens?: number,
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number }> {
+  const effectiveModel = modelSpec.model;
+  const effectiveTemperature = temperature ?? modelSpec.temperature;
+  const effectiveMaxTokens = maxTokens ?? modelSpec.max_tokens ?? 4096;
+
+  const useAnthropicDirect = isClaudeModel(effectiveModel);
+  const useFireworksDirect = isFireworksModel(effectiveModel);
+  const useOllamaDirect = isOllamaModel(effectiveModel);
+  const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
+  const useMoonshotDirect = isMoonshotModel(effectiveModel);
+  const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
+
+  // Build thinking profile (subagent doesn't need thinking, but some models require param handling)
+  const modelThinkingCapable = await isModelThinkingCapable(effectiveModel);
+  const thinkingProfile = buildThinkingRequestProfile({
+    modelId: effectiveModel,
+    thinkingCapable: modelThinkingCapable,
+    thinkingEnabled: false,
+    maxTokens: effectiveMaxTokens,
+    toolsEnabled: Boolean(tools?.length),
+  });
+
+  if (useAnthropicDirect) {
+    const client = await getAnthropicClient();
+    const { system, anthropicMessages } = convertOpenAIMessagesToAnthropic(messages);
+
+    const result = await streamAnthropicCompletion(
+      client,
+      {
+        model: getAnthropicModelId(effectiveModel),
+        messages: anthropicMessages,
+        system,
+        max_tokens: effectiveMaxTokens,
+        temperature: effectiveTemperature,
+        tools: convertToolsToAnthropic(tools),
+        tool_choice: tools?.length ? convertToolChoiceToAnthropic(toolChoice) : undefined,
+        thinking: thinkingProfile.enabled ? (thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam) : undefined,
+      },
+      undefined, // onChunk
+      undefined, // onThinkingChunk
+    );
+
+    return {
+      content: result.content,
+      tool_calls: result.tool_calls,
+      tokens_used: result.totalTokens,
+    };
+  }
+
+  if (useOllamaCloudDirect) {
+    const ollamaMessages = messages.map(m => ({
+      role: m.role as 'system' | 'user' | 'assistant',
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+
+    const result = await streamOllamaCloudCompletion(
+      effectiveModel,
+      ollamaMessages,
+      {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+      },
+      undefined,
+      undefined,
+    );
+
+    return {
+      content: result.content,
+      tool_calls: result.tool_calls,
+      tokens_used: result.totalTokens,
+    };
+  }
+
+  // OpenAI-compatible routes: LiteLLM, Fireworks, Ollama local, Moonshot, DeepSeek
+  const openai = useFireworksDirect ? await getFireworksClient()
+    : useOllamaDirect ? await getOllamaClient()
+    : useMoonshotDirect ? await getMoonshotClient()
+    : useDeepSeekDirect ? await getDeepSeekClient()
+    : await getOpenAI();
+
+  const completionModel = useFireworksDirect ? getFireworksModelId(effectiveModel)
+    : useOllamaDirect ? getOllamaModelId(effectiveModel)
+    : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
+    : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
+    : effectiveModel;
+
+  const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
+    model: completionModel,
+    messages,
+    tools,
+    tool_choice: tools?.length ? toolChoice : undefined,
+    max_tokens: effectiveMaxTokens,
+    temperature: effectiveTemperature,
+    ...(useOllamaDirect && { num_ctx: OLLAMA_NUM_CTX }),
+    ...thinkingProfile.requestParams,
+  } as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>;
+
+  const result = await streamOneCompletionWithThinkingRetry(
+    openai,
+    completionParams,
+    thinkingProfile,
+    undefined,
+    undefined,
+  );
+
+  return {
+    content: result.content,
+    tool_calls: result.tool_calls,
+    tokens_used: result.totalTokens,
+  };
+}
+
+/**
+ * Generate tool completion with automatic fallback on recoverable errors.
+ * Tries the requested model, then the global default, then the universal fallback.
+ * Preserves the conversation state (messages[]) across fallback attempts.
+ */
+export async function generateToolCompletionWithFallback(
+  modelSpec: ModelSpec,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  tools?: OpenAI.Chat.ChatCompletionTool[],
+  toolChoice?: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined,
+  temperature?: number,
+  maxTokens?: number,
+): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string }> {
+  const { isRecoverableApiError, markModelUnhealthy } = await import('./llm-fallback');
+
+  const attemptModel = async (spec: ModelSpec): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string }> => {
+    const result = await generateToolCompletion(spec, messages, tools, toolChoice, temperature, maxTokens);
+    return { ...result, model_used: spec.model };
+  };
+
+  try {
+    return await attemptModel(modelSpec);
+  } catch (error) {
+    const reason = isRecoverableApiError(error as Error);
+    if (!reason) throw error;
+
+    console.warn(`[ToolCompletion] ${modelSpec.model} failed (${reason}), trying fallback chain...`);
+    await markModelUnhealthy(modelSpec.model);
+
+    const { getDefaultLLMModel } = await import('./config-loader');
+    const { getLlmFallbackSettings } = await import('./db/compat/config');
+
+    const globalDefault = getDefaultLLMModel();
+    const fallbackSettings = await getLlmFallbackSettings();
+    const maxRetryAttempts = Math.max(1, Math.min(3, Number(fallbackSettings.maxRetryAttempts || 2)));
+    const universalFallback = fallbackSettings.universalFallback;
+
+    const fallbackChain: string[] = [];
+    if (globalDefault && globalDefault !== modelSpec.model) {
+      fallbackChain.push(globalDefault);
+    }
+    if (universalFallback && universalFallback !== modelSpec.model && universalFallback !== globalDefault) {
+      fallbackChain.push(universalFallback);
+    }
+    const allowedFallbacks = fallbackChain.slice(0, Math.max(0, maxRetryAttempts - 1));
+
+    for (const fallbackModelId of allowedFallbacks) {
+      try {
+        const fallbackSpec: ModelSpec = {
+          model: fallbackModelId,
+          provider: detectProviderForToolCompletion(fallbackModelId),
+          temperature: getEffectiveTemperature(fallbackModelId, modelSpec.temperature),
+          max_tokens: modelSpec.max_tokens,
+        };
+        console.log(`[ToolCompletion] Falling back to ${fallbackModelId}`);
+        return await attemptModel(fallbackSpec);
+      } catch (fallbackError) {
+        const fallbackReason = isRecoverableApiError(fallbackError as Error);
+        if (fallbackReason) {
+          console.warn(`[ToolCompletion] ${fallbackModelId} also failed (${fallbackReason})`);
+          await markModelUnhealthy(fallbackModelId);
+          continue;
+        }
+        throw fallbackError;
+      }
+    }
+
     throw error;
   }
 }

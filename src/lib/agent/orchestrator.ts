@@ -24,6 +24,7 @@ import { runSubagentTaskLoop, type SubagentResult } from './subagent';
 import { createSubagentBudget, type SubagentBudget } from './subagent-budget';
 import type { SubagentConfig } from '../db/compat/agent-config';
 import { generateSummary } from './summarizer';
+import { checkTaskQuality } from './checker';
 import { GlobalBudgetTracker } from './budget-tracker';
 import { detectStuckPlan, getReadyTasks } from './dependency-validator';
 import {
@@ -218,6 +219,19 @@ async function executeTasksInOrder(
     // 3. Get all ready tasks (deps satisfied) — the "wave"
     const wave = getReadyTasks(currentPlan.tasks);
 
+    // 3b. If over base budget limit, only allow retry-only waves to consume reserve
+    const overBase = await budgetTracker.isOverBaseLimit();
+    if (overBase && wave.length > 0) {
+      const allRetries = wave.every((t) => (t.retry_count || 0) > 0);
+      if (!allRetries) {
+        const errorMsg = `Budget exceeded: LLM call limit reached, only retry waves allowed`;
+        callbacks?.onError?.(errorMsg);
+        await updateTaskPlanStatus(plan.id, 'failed');
+        return { success: false, error: errorMsg, plan_id: plan.id };
+      }
+      console.warn(`[Orchestrator] Over base budget limit but allowing retry-only wave ${waveCount}`);
+    }
+
     if (wave.length === 0) {
       // Check if plan is complete or stuck
       const allCompleted = currentPlan.tasks.every((t) =>
@@ -371,6 +385,7 @@ async function executeTasksInOrder(
                 model: spec.model,
                 notes: name === 'default' ? 'baseline executor profile' : undefined,
               })),
+              subagentConfig,
             },
             modelConfig
           );
@@ -396,6 +411,24 @@ async function executeTasksInOrder(
     // 7. Post-wave budget check
     const postWaveBudget = await budgetTracker.checkBudget();
     if (postWaveBudget.exceeded) {
+      // Graceful completion: if any task produced results, skip remaining tasks and return partial success
+      const completionPlan = await getTaskPlan(plan.id);
+      const hasResults = completionPlan?.tasks?.some(
+        (t: AgentTask) => t.result && t.result.length > 0
+      );
+      if (hasResults) {
+        console.warn(
+          `[Orchestrator] Budget exceeded after wave ${waveCount} — entering graceful completion with partial results`
+        );
+        const pendingTasks = completionPlan?.tasks?.filter((t: AgentTask) => t.status === 'pending') || [];
+        for (const pendingTask of pendingTasks) {
+          await transitionTaskState(plan.id, pendingTask.id, 'skipped', {
+            error: 'Budget exceeded — task skipped to preserve partial results',
+          });
+        }
+        return { success: true, plan_id: plan.id };
+      }
+
       const errorMsg = `Budget exceeded after wave ${waveCount}: ${postWaveBudget.message}`;
       callbacks?.onError?.(errorMsg);
       await updateTaskPlanStatus(plan.id, 'failed');
@@ -454,6 +487,15 @@ async function executeSingleTask(
       ? createSubagentBudget(planBudget, subagentConfig.budgetRatio)
       : undefined;
 
+    // Resolve executor model for state tracking
+    const { model: executorSelection } = resolveExecutorModelForTask(task, modelConfig);
+    const effectiveModel = executorSelection.model;
+
+    // Mark as running
+    await transitionTaskState(plan.id, task.id, 'running', {
+      executor_model_used: effectiveModel,
+    });
+
     const subagentResult = await runSubagentTaskLoop(
       task,
       plan,
@@ -471,12 +513,90 @@ async function executeSingleTask(
       budget
     );
 
-    return {
-      success: true,
+    // Compute honest success semantics
+    const dubious = subagentResult.hit_iteration_limit && subagentResult.tools_used.length === 0;
+    const success = !dubious && !subagentResult.content.startsWith('Subagent failed:');
+
+    // Quality check
+    let checkResult: Awaited<ReturnType<typeof checkTaskQuality>> | undefined;
+    if (success) {
+      orchestratorCallbacks?.onTaskChecking?.(task);
+      checkResult = await checkTaskQuality(task, subagentResult.content, modelConfig);
+    }
+
+    const totalTokens = subagentResult.tokens_used + (checkResult?.tokens_used || 0);
+    const totalLlmCalls = subagentResult.iterations + 1 + (checkResult?.llm_calls || 0);
+
+    if (checkResult && checkResult.status === 'approved') {
+      await transitionTaskState(plan.id, task.id, 'done', {
+        result: subagentResult.content,
+        confidence_score: checkResult.confidence_score,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
+        executor_model_used: subagentResult.model_used,
+        subagent_iterations: subagentResult.iterations,
+        subagent_hit_limit: subagentResult.hit_iteration_limit,
+      });
+
+      return {
+        success: true,
+        result: subagentResult.content,
+        confidence: checkResult.confidence_score,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
+        tools_used: subagentResult.tools_used,
+        executor_model_used: subagentResult.model_used,
+        subagent_state: {
+          iterations: subagentResult.iterations,
+          hit_iteration_limit: subagentResult.hit_iteration_limit,
+        },
+      };
+    }
+
+    if (checkResult && checkResult.status === 'needs_review') {
+      await transitionTaskState(plan.id, task.id, 'needs_review', {
+        result: subagentResult.content,
+        confidence_score: checkResult.confidence_score,
+        review_notes: checkResult.notes,
+        executor_model_used: subagentResult.model_used,
+        subagent_iterations: subagentResult.iterations,
+        subagent_hit_limit: subagentResult.hit_iteration_limit,
+      });
+
+      return {
+        success: false,
+        result: subagentResult.content,
+        needsReview: true,
+        confidence: checkResult.confidence_score,
+        retry_suggestion: checkResult.retry_suggestion,
+        tokens_used: totalTokens,
+        llm_calls: totalLlmCalls,
+        tools_used: subagentResult.tools_used,
+        executor_model_used: subagentResult.model_used,
+        subagent_state: {
+          iterations: subagentResult.iterations,
+          hit_iteration_limit: subagentResult.hit_iteration_limit,
+        },
+      };
+    }
+
+    // No quality check (dubious result) or checker unavailable — mark as done with warning
+    await transitionTaskState(plan.id, task.id, 'done', {
       result: subagentResult.content,
-      tokens_used: subagentResult.tokens_used,
-      llm_calls: subagentResult.iterations + 1,
+      tokens_used: totalTokens,
+      llm_calls: totalLlmCalls,
+      executor_model_used: subagentResult.model_used,
+      subagent_iterations: subagentResult.iterations,
+      subagent_hit_limit: subagentResult.hit_iteration_limit,
+    });
+
+    return {
+      success,
+      result: subagentResult.content,
+      tokens_used: totalTokens,
+      llm_calls: totalLlmCalls,
       tools_used: subagentResult.tools_used,
+      executor_model_used: subagentResult.model_used,
       subagent_state: {
         iterations: subagentResult.iterations,
         hit_iteration_limit: subagentResult.hit_iteration_limit,
@@ -784,6 +904,7 @@ export async function createAndExecuteAutonomousPlan(
         tool_name: t.tool_name,
         executor_profile: t.executor_profile,
         executor_profile_reason: t.executor_profile_reason,
+        subagent_enabled: t.subagent_enabled,
         retry_count: 0,
       })),
       {
@@ -837,7 +958,7 @@ export async function createAndExecuteAutonomousPlan(
         console.log(`[Orchestrator] Re-planning (attempt ${approvalAttempts}) with feedback: ${approval.feedback}`);
         const revisedResult = await createPlan(
           userRequest,
-          { ...context, skillCatalog, resolvedSkillContext, availableTools, executorProfiles, planningFeedback: approval.feedback },
+          { ...context, skillCatalog, resolvedSkillContext, availableTools, executorProfiles, planningFeedback: approval.feedback, subagentConfig: planConfig.subagentConfig },
           planConfig.modelConfig
         );
 

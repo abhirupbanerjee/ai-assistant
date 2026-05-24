@@ -553,18 +553,15 @@ function AdminPageContent() {
     const tab = searchParams.get('tab');
     const section = searchParams.get('section');
     if (tab) {
-      // Handle legacy agent URLs - redirect to new autonomous-mode tab
-      if (tab === 'agent' || tab === 'agents' || tab === 'agent-bots') {
-        if (tab === 'agent-bots') {
-          setActiveTab('agent');
-          router.replace('/admin?tab=agent', { scroll: false });
-        } else if (tab === 'agent') {
-          setActiveTab('autonomous-mode');
-          router.replace('/admin?tab=autonomous-mode', { scroll: false });
-        } else {
-          setActiveTab('autonomous-mode');
-          router.replace('/admin?tab=autonomous-mode', { scroll: false });
-        }
+      // Handle legacy URLs:
+      // - 'agent-bots' was renamed to 'agent' (Agent Bots management)
+      // - 'agents' (plural) was the prior name for the autonomous-mode tab
+      if (tab === 'agent-bots') {
+        setActiveTab('agent');
+        router.replace('/admin?tab=agent', { scroll: false });
+      } else if (tab === 'agents') {
+        setActiveTab('autonomous-mode');
+        router.replace('/admin?tab=autonomous-mode', { scroll: false });
       } else {
         setActiveTab(tab as TabType);
       }

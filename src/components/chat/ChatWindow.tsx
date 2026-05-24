@@ -824,9 +824,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             args={streamingState.subagentApprovalEvent.args}
             reasoning={streamingState.subagentApprovalEvent.reasoning}
             riskLevel={streamingState.subagentApprovalEvent.riskLevel}
-            onApprove={(taskId) => approveSubagentTool(taskId, 'approve')}
-            onDeny={(taskId) => approveSubagentTool(taskId, 'deny')}
-            onModify={(taskId, modifiedArgs) => approveSubagentTool(taskId, 'modify', modifiedArgs)}
+            onApprove={(taskId) => approveSubagentTool(taskId, streamingState.subagentApprovalEvent!.planId, 'approve')}
+            onDeny={(taskId) => approveSubagentTool(taskId, streamingState.subagentApprovalEvent!.planId, 'deny')}
+            onModify={(taskId, modifiedArgs) => approveSubagentTool(taskId, streamingState.subagentApprovalEvent!.planId, 'modify', modifiedArgs)}
           />
         )}
 

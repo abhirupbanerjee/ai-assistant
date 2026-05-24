@@ -36,7 +36,7 @@ import { isToolEnabledForCategory } from '../db/compat/category-tool-config';
  * Resolve skills for the plan's category context
  * Returns the combined skill prompt content to inject into executor prompts
  */
-async function resolveSkillsForTask(plan: AgentPlan, task: AgentTask, callbacks?: ExecutorCallbacks): Promise<string> {
+export async function resolveSkillsForTask(plan: AgentPlan, task: AgentTask, callbacks?: ExecutorCallbacks): Promise<string> {
   // Priority 1: Load skills tagged by planner (keyword skills resolved at plan time)
   if (task.skill_ids && task.skill_ids.length > 0) {
     try {
