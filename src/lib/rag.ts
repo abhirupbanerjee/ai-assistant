@@ -57,21 +57,23 @@ async function rewriteQueryWithLLM(query: string): Promise<string[]> {
     }
 
     const prompt = `Generate 3-5 alternative phrasings for the search query below.
-Return ONLY a JSON array of strings. No markdown.
+Return ONLY a JSON array of strings. No markdown, no preamble, no explanation.
 Query: "${query}"`;
 
     const response = await createInternalCompletion({
       messages: [
-        { role: 'system', content: 'You are a helpful assistant that generates search query variations. Always return a valid JSON array of strings.' },
+        { role: 'system', content: 'You are a helpful assistant that generates search query variations. Always return a valid JSON array of strings — start your reply with [ and end with ]. Do not include any other text.' },
         { role: 'user', content: prompt },
       ],
       maxTokens: 256,
       temperature: 0.3,
     });
 
-    // Extract JSON array from response (may be wrapped in markdown code blocks)
-    const jsonMatch = response.match(/\[[\s\S]*?\]/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : response;
+    // Extract JSON array from response. Use greedy match from first '[' to last ']'
+    // so we capture nested/multiline arrays even when the model wraps them in prose.
+    const first = response.indexOf('[');
+    const last = response.lastIndexOf(']');
+    const jsonStr = first !== -1 && last > first ? response.slice(first, last + 1) : response;
     const variations = JSON.parse(jsonStr) as string[];
 
     if (!Array.isArray(variations) || !variations.every(q => typeof q === 'string')) {

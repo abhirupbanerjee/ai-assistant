@@ -93,9 +93,14 @@ export async function POST(request: NextRequest) {
             }
           );
 
-          const jsonMatch = raw.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) throw new Error(`Non-JSON response from LLM: ${raw.slice(0, 80)}`);
-          const parsed = JSON.parse(jsonMatch[0]) as {
+          // Greedy match from first '{' to last '}' so reasoning prose before
+          // the JSON object doesn't break extraction.
+          const first = raw.indexOf('{');
+          const last = raw.lastIndexOf('}');
+          if (first === -1 || last <= first) {
+            throw new Error(`Non-JSON response from LLM: ${raw.slice(0, 80)}`);
+          }
+          const parsed = JSON.parse(raw.slice(first, last + 1)) as {
             toolCapable?: boolean;
             visionCapable?: boolean;
             parallelToolCapable?: boolean;

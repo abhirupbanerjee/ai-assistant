@@ -25,6 +25,14 @@ const DEEPSEEK_FALLBACK_MODEL = 'deepseek-v4-flash';
 const MOONSHOT_FALLBACK_MODEL = 'moonshot/kimi-k2p5';
 const CLAUDE_FALLBACK_MODEL = 'claude-haiku-4-5-20251001';
 
+// Strip <think>…</think> reasoning blocks that thinking-mode models emit before
+// the actual response. Without this, downstream JSON parsers choke on the
+// reasoning prose. Mirrors extractThinkTags() in agent/llm-router.ts.
+function stripThinkTags(content: string): string {
+  if (!content) return content;
+  return content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^\s+/, '');
+}
+
 // ============ Types ============
 
 export interface InternalCompletionOptions {
@@ -134,7 +142,7 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
     temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
-  return response.choices[0]?.message?.content?.trim() || '';
+  return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
 async function callFireworks(model: string, opts: InternalCompletionOptions): Promise<string> {
@@ -152,7 +160,7 @@ async function callFireworks(model: string, opts: InternalCompletionOptions): Pr
     temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
-  return response.choices[0]?.message?.content?.trim() || '';
+  return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
 async function callAnthropic(model: string, opts: InternalCompletionOptions): Promise<string> {
@@ -173,7 +181,7 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
   });
 
   const textBlock = response.content.find(b => b.type === 'text');
-  return textBlock?.text?.trim() || '';
+  return stripThinkTags(textBlock?.text?.trim() || '');
 }
 
 async function callOllama(model: string, opts: InternalCompletionOptions): Promise<string> {
@@ -189,7 +197,7 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
     temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: opts.maxTokens ?? 2000,
   });
-  return response.choices[0]?.message?.content?.trim() || '';
+  return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
 async function callMoonshot(model: string, opts: InternalCompletionOptions): Promise<string> {
@@ -205,7 +213,7 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
     temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
-  return response.choices[0]?.message?.content?.trim() || '';
+  return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
 async function callDeepSeek(model: string, opts: InternalCompletionOptions): Promise<string> {
@@ -219,7 +227,7 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
     temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
     max_tokens: maxTokens,
   });
-  return response.choices[0]?.message?.content?.trim() || '';
+  return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
 /**
@@ -239,7 +247,7 @@ async function callOllamaCloudDirect(model: string, opts: InternalCompletionOpti
   }
 
   const data = await response.json() as { message?: { content: string } };
-  return data.message?.content?.trim() || '';
+  return stripThinkTags(data.message?.content?.trim() || '');
 }
 
 // ============ Route Classification ============

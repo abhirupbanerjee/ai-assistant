@@ -105,6 +105,11 @@ const nextConfig: NextConfig = {
     'pdfkit',
     'playwright',
     'tiktoken',
+    // officeparser dynamically imports the ESM-only `file-type` package at runtime.
+    // Without externalization Next.js fails to resolve it inside the bundled chunk
+    // ("Cannot find package 'file-type' imported from .next/server/chunks/...").
+    'officeparser',
+    'file-type',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {
