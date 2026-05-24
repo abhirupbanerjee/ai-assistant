@@ -213,6 +213,7 @@ async function callClarificationLLM(
   const response = await callLLMForJson(prompt, {
     model: config.clarificationModel,
     timeout: config.clarificationTimeout,
+    assistantPrefix: '{',
   });
 
   return response;
@@ -413,6 +414,7 @@ export async function generatePreflightClarifications(
       temperature: 0.2,
       maxTokens: 800,
       systemPrompt,
+      assistantPrefix: '{',
     });
 
     return parseClarificationResponse(response);

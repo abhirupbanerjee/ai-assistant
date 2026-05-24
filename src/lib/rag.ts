@@ -64,6 +64,7 @@ Query: "${query}"`;
       messages: [
         { role: 'system', content: 'You are a helpful assistant that generates search query variations. Always return a valid JSON array of strings — start your reply with [ and end with ]. Do not include any other text.' },
         { role: 'user', content: prompt },
+        { role: 'assistant', content: '[' },
       ],
       maxTokens: 256,
       temperature: 0.3,

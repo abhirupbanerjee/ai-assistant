@@ -175,6 +175,7 @@ export async function POST(request: NextRequest) {
             maxTokens: 500,
             temperature: 0,
             timeout: 20000,
+            assistantPrefix: '{',
           });
 
           // Greedy match from first '{' to last '}' so reasoning prose before

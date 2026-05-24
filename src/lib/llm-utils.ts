@@ -20,13 +20,20 @@ interface CallLLMOptions {
   maxTokens?: number;
   /** When provided, sent as a separate role: 'system' message before the user prompt */
   systemPrompt?: string;
+  /**
+   * When provided, adds an assistant message with this prefix after the user prompt.
+   * This forces models (especially Claude) to continue from the prefix instead of
+   * generating prose like "The user wants me to...". Use '{' for JSON objects or
+   * '[' for JSON arrays.
+   */
+  assistantPrefix?: string;
 }
 
 /**
  * Call LLM for JSON output (simple, non-streaming)
  * Used for small tasks like generating clarification questions.
  *
- * JSON enforcement is via system prompt (works across all providers
+ * JSON enforcement is via system prompt + assistant prefix (works across all providers
  * including Anthropic which doesn't support response_format).
  */
 export async function callLLMForJson(
@@ -39,21 +46,28 @@ export async function callLLMForJson(
     temperature = 0.3,
     maxTokens = 1000,
     systemPrompt,
+    assistantPrefix,
   } = options;
 
   const effectiveModel = model || (await getLlmSettings()).model;
 
-  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
   if (systemPrompt) {
-    // Reinforce JSON-only output in system prompt
-    const jsonHint = systemPrompt.toLowerCase().includes('json')
+    // Append a hard JSON-only guard so the model never explains what it's doing.
+    const guarded = systemPrompt.toLowerCase().includes('no prose')
       ? systemPrompt
-      : `${systemPrompt}\n\nRespond with valid JSON only.`;
-    messages.push({ role: 'system', content: jsonHint });
+      : `${systemPrompt}\n\nCRITICAL: Output raw valid JSON only. No prose, no markdown fences, no explanations, no preamble, no "The user wants" text. Start immediately with the JSON.`;
+    messages.push({ role: 'system', content: guarded });
   } else {
-    messages.push({ role: 'system', content: 'Respond with valid JSON only.' });
+    messages.push({ role: 'system', content: 'Output raw valid JSON only. No prose, no markdown fences, no explanations, no preamble.' });
   }
   messages.push({ role: 'user', content: prompt });
+
+  // Assistant prefix forces Claude and other chatty models to continue from the JSON
+  // structure instead of generating conversational prose.
+  if (assistantPrefix) {
+    messages.push({ role: 'assistant', content: assistantPrefix });
+  }
 
   const completionPromise = createInternalCompletion({
     messages,
