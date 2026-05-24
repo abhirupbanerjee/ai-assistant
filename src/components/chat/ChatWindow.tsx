@@ -1065,13 +1065,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            onFocus={onInputFocus}
            onBlur={onInputBlur}
             categoryChipSlot={
-              <CategoryChip
-                subscriptions={userSubscriptions}
-                selectedCategoryId={pendingCategoryId}
-                onSelect={setPendingCategoryId}
-                disabled={!!threadId}
-                readOnly={!!activeThread}
-              />
+              !threadId ? (
+                <CategoryChip
+                  subscriptions={userSubscriptions}
+                  selectedCategoryId={pendingCategoryId}
+                  onSelect={setPendingCategoryId}
+                  disabled={!!threadId}
+                  readOnly={!!activeThread}
+                />
+              ) : null
             }
            attachmentChipsSlot={
              <AttachmentChipsRow
