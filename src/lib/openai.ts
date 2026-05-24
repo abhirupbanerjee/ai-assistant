@@ -806,18 +806,21 @@ async function streamAnthropicCompletion(
   },
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
+  interChunkTimeoutMsOverride?: number,
+  firstChunkTimeoutMsOverride?: number,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; stopReason: string | null; totalTokens: number }> {
   const controller = new AbortController();
   let wasAborted = false;
 
   const streamingConfig = await getStreamingConfigMs();
-  const interChunkTimeoutMs = streamingConfig.TOOL_TIMEOUT_MS;
+  const interChunkTimeoutMs = interChunkTimeoutMsOverride ?? streamingConfig.TOOL_TIMEOUT_MS;
 
+  const firstChunkTimeoutMs = firstChunkTimeoutMsOverride ?? FIRST_CHUNK_TIMEOUT_MS;
   let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
     logger.warn('Anthropic streaming timed out waiting for first chunk', { model: params.model });
     wasAborted = true;
     controller.abort();
-  }, FIRST_CHUNK_TIMEOUT_MS);
+  }, firstChunkTimeoutMs);
 
   const resetTimeout = () => {
     if (timeoutId) clearTimeout(timeoutId);
@@ -926,6 +929,8 @@ async function streamOneCompletion(
   params: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
+  interChunkTimeoutMsOverride?: number,
+  firstChunkTimeoutMsOverride?: number,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; thinkingContent: string | null; totalTokens: number }> {
   const controller = new AbortController();
   // OpenAI SDK v6+ silently swallows AbortError in its stream iterator
@@ -933,12 +938,14 @@ async function streamOneCompletion(
   let wasAborted = false;
 
   // Use DB-configurable inter-chunk timeout (default 120s, was hardcoded 60s)
+  // Callers (e.g. subagent) may override for longer-running unattended tasks.
   const streamingConfig = await getStreamingConfigMs();
-  const interChunkTimeoutMs = streamingConfig.TOOL_TIMEOUT_MS;
+  const interChunkTimeoutMs = interChunkTimeoutMsOverride ?? streamingConfig.TOOL_TIMEOUT_MS;
 
   // Ollama models get a longer first-chunk timeout for CPU cold-start
   const isOllama = params.model?.startsWith('ollama-') || params.model?.startsWith('ollama/');
-  const firstChunkTimeout = isOllama ? FIRST_CHUNK_TIMEOUT_OLLAMA_MS : FIRST_CHUNK_TIMEOUT_MS;
+  const baseFirstChunkTimeout = isOllama ? FIRST_CHUNK_TIMEOUT_OLLAMA_MS : FIRST_CHUNK_TIMEOUT_MS;
+  const firstChunkTimeout = firstChunkTimeoutMsOverride ?? baseFirstChunkTimeout;
 
   // Start with first-chunk timeout; reset to inter-chunk on each received chunk
   let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
@@ -1056,9 +1063,11 @@ async function streamOneCompletionWithThinkingRetry(
   thinkingProfile: ThinkingRequestProfile,
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
+  interChunkTimeoutMsOverride?: number,
+  firstChunkTimeoutMsOverride?: number,
 ): Promise<StreamCompletionResult> {
   try {
-    return await streamOneCompletion(openai, params, onChunk, onThinkingChunk);
+    return await streamOneCompletion(openai, params, onChunk, onThinkingChunk, interChunkTimeoutMsOverride, firstChunkTimeoutMsOverride);
   } catch (error) {
     if (Object.keys(thinkingProfile.requestParams).length > 0 && isUnsupportedThinkingParamError(error)) {
       logger.warn('Retrying LLM request without thinking parameters', {
@@ -1071,6 +1080,7 @@ async function streamOneCompletionWithThinkingRetry(
         plainParams as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
         onChunk,
         onThinkingChunk,
+        interChunkTimeoutMsOverride,
       );
     }
     const currentTemp = params.temperature;
@@ -1094,6 +1104,7 @@ async function streamOneCompletionWithThinkingRetry(
           correctedParams as Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'>,
           onChunk,
           onThinkingChunk,
+          interChunkTimeoutMsOverride,
         );
       }
     }
@@ -1136,7 +1147,8 @@ function convertOpenAIMessagesToAnthropic(
       const contentBlocks: Anthropic.ContentBlockParam[] = [];
 
       if (assistantMsg.content) {
-        contentBlocks.push({ type: 'text', text: assistantMsg.content });
+        const text = typeof assistantMsg.content === 'string' ? assistantMsg.content : assistantMsg.content.map(c => (c.type === 'text' ? c.text : '')).join('');
+        contentBlocks.push({ type: 'text', text });
       }
 
       if (assistantMsg.tool_calls) {
@@ -1161,7 +1173,7 @@ function convertOpenAIMessagesToAnthropic(
       // Batch consecutive tool messages into a single Anthropic user message
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       while (i < messages.length && messages[i].role === 'tool') {
-        const toolMsg = messages[i] as OpenAI.Chat.CompletionToolMessageParam;
+        const toolMsg = messages[i] as OpenAI.Chat.ChatCompletionToolMessageParam;
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolMsg.tool_call_id,
@@ -1191,6 +1203,14 @@ function detectProviderForToolCompletion(modelId: string): ModelSpec['provider']
 }
 
 /**
+ * Inter-chunk stream timeout for subagent / autonomous tool completions.
+ * Larger than the chat default (typically 120s) because autonomous loops
+ * run unattended and may use slower/reasoning models that pause between
+ * tokens longer than a user-facing chat would tolerate.
+ */
+const SUBAGENT_INTER_CHUNK_TIMEOUT_MS = 300_000;
+
+/**
  * Generate a single tool-completion turn across all supported routes.
  * Normalizes responses to OpenAI-shaped tool_calls so callers don't need
  * to know which provider executed the request.
@@ -1202,6 +1222,7 @@ export async function generateToolCompletion(
   toolChoice?: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined,
   temperature?: number,
   maxTokens?: number,
+  firstChunkTimeoutMsOverride?: number,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number }> {
   const effectiveModel = modelSpec.model;
   const effectiveTemperature = temperature ?? modelSpec.temperature;
@@ -1219,7 +1240,7 @@ export async function generateToolCompletion(
   const thinkingProfile = buildThinkingRequestProfile({
     modelId: effectiveModel,
     thinkingCapable: modelThinkingCapable,
-    thinkingEnabled: false,
+    thinkingEnabled: modelSpec.thinking_enabled ?? false,
     maxTokens: effectiveMaxTokens,
     toolsEnabled: Boolean(tools?.length),
   });
@@ -1242,6 +1263,8 @@ export async function generateToolCompletion(
       },
       undefined, // onChunk
       undefined, // onThinkingChunk
+      SUBAGENT_INTER_CHUNK_TIMEOUT_MS,
+      firstChunkTimeoutMsOverride,
     );
 
     return {
@@ -1266,6 +1289,8 @@ export async function generateToolCompletion(
       },
       undefined,
       undefined,
+      SUBAGENT_INTER_CHUNK_TIMEOUT_MS,
+      firstChunkTimeoutMsOverride,
     );
 
     return {
@@ -1305,6 +1330,8 @@ export async function generateToolCompletion(
     thinkingProfile,
     undefined,
     undefined,
+    SUBAGENT_INTER_CHUNK_TIMEOUT_MS,
+    firstChunkTimeoutMsOverride,
   );
 
   return {
@@ -1326,11 +1353,12 @@ export async function generateToolCompletionWithFallback(
   toolChoice?: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined,
   temperature?: number,
   maxTokens?: number,
+  firstChunkTimeoutMsOverride?: number,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string }> {
   const { isRecoverableApiError, markModelUnhealthy } = await import('./llm-fallback');
 
   const attemptModel = async (spec: ModelSpec): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; model_used: string }> => {
-    const result = await generateToolCompletion(spec, messages, tools, toolChoice, temperature, maxTokens);
+    const result = await generateToolCompletion(spec, messages, tools, toolChoice, temperature, maxTokens, firstChunkTimeoutMsOverride);
     return { ...result, model_used: spec.model };
   };
 
@@ -1405,18 +1433,21 @@ async function streamOllamaCloudCompletion(
   },
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
+  interChunkTimeoutMsOverride?: number,
+  firstChunkTimeoutMsOverride?: number,
 ): Promise<{ content: string | null; tool_calls: undefined; thinkingContent: string | null; totalTokens: number }> {
   const controller = new AbortController();
   let wasAborted = false;
 
   const streamingConfig = await getStreamingConfigMs();
-  const interChunkTimeoutMs = streamingConfig.TOOL_TIMEOUT_MS;
+  const interChunkTimeoutMs = interChunkTimeoutMsOverride ?? streamingConfig.TOOL_TIMEOUT_MS;
 
+  const firstChunkTimeoutMs = firstChunkTimeoutMsOverride ?? FIRST_CHUNK_TIMEOUT_MS;
   let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
     logger.warn('Ollama Cloud streaming timed out waiting for first chunk', { model });
     wasAborted = true;
     controller.abort();
-  }, FIRST_CHUNK_TIMEOUT_MS);
+  }, firstChunkTimeoutMs);
 
   const resetTimeout = () => {
     if (timeoutId) clearTimeout(timeoutId);

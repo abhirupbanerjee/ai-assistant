@@ -422,6 +422,7 @@ export type SettingKey =
   | 'agent_budget_max_tokens'
   | 'agent_budget_max_web_searches'
   | 'agent_confidence_threshold'
+  | 'agent_confidence_thresholds'
   | 'agent_budget_max_duration_minutes'
   | 'agent_task_timeout_minutes'
   | 'agent_budget_retry_reserve_llm_calls'

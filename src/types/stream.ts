@@ -174,7 +174,7 @@ export interface PlanApprovalEvent {
     target: string;
     description: string;
     tool_name?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     executor_profile_reason?: string;
     dependencies: number[];
   }>;
@@ -235,7 +235,7 @@ export type StreamEvent =
         id: number;
         description: string;
         type: string;
-        executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+        executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
         executor_profile_reason?: string;
       }>;
     }
@@ -245,7 +245,7 @@ export type StreamEvent =
       task_id: number;
       description: string;
       task_type: string;
-      executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     }
   | {
       type: 'agent_task_completed';
@@ -254,7 +254,7 @@ export type StreamEvent =
       confidence?: number;
       result?: string;
       checkerNotes?: string;
-      executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
       executor_model_used?: string;
       /** Per-task token usage */
       tokens_used?: number;

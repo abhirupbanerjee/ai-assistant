@@ -8,11 +8,9 @@
  * Safety: subagentSafe flag gates tool availability without HITL.
  *
  * NOTE on multi-provider support:
- * This loop uses OpenAI-compatible chat.completions.create via getOpenAI()
- * (LiteLLM proxy on Route 1). LiteLLM handles tool-call translation for
- * most backends. Direct-route models (Claude SDK, Fireworks SDK, Ollama
- * native, etc.) are not yet supported in subagent mode — they will fall
- * back to the OpenAI-compatible path which may fail for tool calls.
+ * This loop uses generateToolCompletionWithFallback() which routes across
+ * all 6 direct routes + LiteLLM. Anthropic tool_use blocks are normalized
+ * to OpenAI-shaped tool_calls so the loop can consume them uniformly.
  */
 
 import OpenAI from 'openai';
@@ -24,7 +22,7 @@ import { getCategoryBySlug } from '@/lib/db/compat/categories';
 import { getModelForRole } from './llm-router';
 import { resolveSkillsForTask, resolveExecutorModelForTask } from './executor';
 import { createSubagentApprovalResolver, type SubagentApprovalResult } from '@/lib/streaming/subagent-approval-resolver';
-import getOpenAI from '@/lib/openai';
+import { generateToolCompletionWithFallback } from '@/lib/openai';
 import { SubagentBudget, createSubagentBudget, checkBudget } from './subagent-budget';
 
 export interface SubagentCallbacks {
@@ -111,7 +109,7 @@ export async function runSubagentTaskLoop(
   maxIterations: number = 5,
   budget?: SubagentBudget
 ): Promise<SubagentResult> {
-  const executorSelection = resolveExecutorModelForTask(task, modelConfig);
+  const executorSelection = resolveExecutorModelForTask(task, modelConfig, plan);
   const effectiveModel = executorSelection.model.model;
 
   // Resolve enabled tools for this plan/category
@@ -171,9 +169,12 @@ export async function runSubagentTaskLoop(
   let tokenBudget = budget?.maxTokens ?? DEFAULT_MAX_TOKENS;
   let tokensUsed = budget?.tokensUsed ?? 0;
 
-  const openai = await getOpenAI();
-
   let loopError: Error | undefined;
+  let actualModelUsed = effectiveModel;
+
+  // Extended first-chunk timeout for subagent: thinking-enabled models get 4 min,
+  // others get 3 min (vs default 2 min for interactive chat)
+  const subagentFirstChunkTimeout = executorSelection.model.thinking_enabled ? 240_000 : 180_000;
 
   while (iterations < maxIterations) {
     try {
@@ -187,44 +188,42 @@ export async function runSubagentTaskLoop(
       break;
     }
 
-    const response = await openai.chat.completions.create({
-      model: effectiveModel,
+    const response = await generateToolCompletionWithFallback(
+      executorSelection.model,
       messages,
       tools,
-      tool_choice: 'auto',
-      temperature: 0.4,
-      max_tokens: 8000,
-    });
+      'auto',
+      0.4,
+      8000,
+      subagentFirstChunkTimeout,
+    );
 
-    const choice = response.choices[0];
-    const message = choice.message;
-    const usage = response.usage;
+    actualModelUsed = response.model_used;
 
-    if (usage) {
-      const iterTokens = usage.total_tokens || 0;
-      totalTokens += iterTokens;
-      tokensUsed += iterTokens;
-    }
+    const messageContent = response.content;
+    const toolCalls = response.tool_calls;
+    const iterTokens = response.tokens_used;
+    totalTokens += iterTokens;
+    tokensUsed += iterTokens;
 
     // Emit thinking content
-    if (message.content) {
+    if (messageContent) {
       callbacks?.onThinking?.({
         type: 'subagent_thinking',
         task_id: task.id,
-        thought: message.content,
+        thought: messageContent,
       });
     }
 
     // No tool calls — task is complete
-    const toolCalls = message.tool_calls as OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined;
     if (!toolCalls || toolCalls.length === 0) {
       const result: SubagentResult = {
-        content: message.content || 'Task completed.',
+        content: messageContent || 'Task completed.',
         tools_used: toolsUsed,
         iterations,
         tokens_used: totalTokens,
         hit_iteration_limit: false,
-        model_used: effectiveModel,
+        model_used: actualModelUsed,
       };
       if (budget) {
         budget.tokensUsed = tokensUsed;
@@ -243,7 +242,7 @@ export async function runSubagentTaskLoop(
     // Push assistant message with tool_calls
     messages.push({
       role: 'assistant',
-      content: message.content || null,
+      content: messageContent || null,
       tool_calls: toolCalls as any,
     });
 
@@ -285,7 +284,7 @@ export async function runSubagentTaskLoop(
           request: {
             tool_name: toolName,
             arguments: rawArgs,
-            reasoning: message.content || '',
+            reasoning: messageContent || '',
             risk_level: 'medium',
           },
         });
@@ -369,7 +368,7 @@ export async function runSubagentTaskLoop(
       iterations,
       tokens_used: totalTokens,
       hit_iteration_limit: false,
-      model_used: effectiveModel,
+      model_used: actualModelUsed,
     };
     callbacks?.onComplete?.({
       type: 'subagent_complete',
@@ -387,17 +386,18 @@ export async function runSubagentTaskLoop(
     content: 'You have reached the iteration limit. Please summarize your findings and provide a final answer.',
   });
 
-  const finalResponse = await openai.chat.completions.create({
-    model: effectiveModel,
+  const finalResponse = await generateToolCompletionWithFallback(
+    executorSelection.model,
     messages,
-    temperature: 0.4,
-    max_tokens: 8000,
-  });
+    undefined,
+    undefined,
+    0.4,
+    8000,
+    subagentFirstChunkTimeout,
+  );
 
-  const finalContent = finalResponse.choices[0]?.message?.content || 'Max iterations reached.';
-  if (finalResponse.usage) {
-    totalTokens += finalResponse.usage.total_tokens || 0;
-  }
+  const finalContent = finalResponse.content || 'Max iterations reached.';
+  totalTokens += finalResponse.tokens_used;
 
   if (budget) {
     budget.tokensUsed = tokensUsed;
@@ -410,7 +410,7 @@ export async function runSubagentTaskLoop(
     iterations,
     tokens_used: totalTokens,
     hit_iteration_limit: true,
-    model_used: effectiveModel,
+    model_used: actualModelUsed,
   };
 
   callbacks?.onComplete?.({

@@ -548,6 +548,7 @@ function runMigrations(database: Database.Database): void {
         ('agent_budget_max_tokens', '2000000', 'system'),
         ('agent_budget_max_web_searches', '100', 'system'),
         ('agent_confidence_threshold', '80', 'system'),
+        ('agent_confidence_thresholds', '{"fast_low_cost":65,"default":80,"deep_reasoning":85,"agentic_tool_loop":75,"code_generation":80,"multilingual":70}', 'system'),
         ('agent_budget_max_duration_minutes', '30', 'system'),
         ('agent_task_timeout_minutes', '5', 'system');
     `);

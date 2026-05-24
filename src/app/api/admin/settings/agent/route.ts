@@ -18,6 +18,9 @@ const EXECUTOR_PROFILE_KEYS = [
   'long_context',
   'artifact_generation',
   'local_private',
+  'agentic_tool_loop',
+  'code_generation',
+  'multilingual',
 ] as const;
 
 export async function GET() {
@@ -49,6 +52,7 @@ export async function GET() {
       budgetMaxTokens: parseInt(await getSetting('agent_budget_max_tokens', '2000000'), 10),
       budgetMaxWebSearches: parseInt(await getSetting('agent_budget_max_web_searches', '100'), 10),
       confidenceThreshold: parseInt(await getSetting('agent_confidence_threshold', '80'), 10),
+      confidenceThresholds: JSON.parse(await getSetting('agent_confidence_thresholds', '{"fast_low_cost":65,"default":80,"deep_reasoning":85,"agentic_tool_loop":75,"code_generation":80,"multilingual":70}')),
       budgetMaxDurationMinutes: parseInt(await getSetting('agent_budget_max_duration_minutes', '30'), 10),
       taskTimeoutMinutes: parseInt(await getSetting('agent_task_timeout_minutes', '5'), 10),
       // Retry reserve
@@ -108,6 +112,7 @@ export async function POST(request: NextRequest) {
       budgetMaxTokens,
       budgetMaxWebSearches,
       confidenceThreshold,
+      confidenceThresholds,
       budgetMaxDurationMinutes,
       taskTimeoutMinutes,
       budgetRetryReserveLlmCalls,
@@ -143,6 +148,7 @@ export async function POST(request: NextRequest) {
       typeof budgetMaxTokens !== 'number' ||
       typeof budgetMaxWebSearches !== 'number' ||
       typeof confidenceThreshold !== 'number' ||
+      (confidenceThresholds && typeof confidenceThresholds !== 'object') ||
       typeof budgetMaxDurationMinutes !== 'number' ||
       typeof taskTimeoutMinutes !== 'number'
     ) {
@@ -211,6 +217,7 @@ export async function POST(request: NextRequest) {
       budgetMaxWebSearches > 1000 ||
       confidenceThreshold < 0 ||
       confidenceThreshold > 100 ||
+      (confidenceThresholds && Object.values(confidenceThresholds).some((v: any) => typeof v !== 'number' || v < 0 || v > 100)) ||
       budgetMaxDurationMinutes < 1 ||
       budgetMaxDurationMinutes > 480 ||
       taskTimeoutMinutes < 1 ||
@@ -267,6 +274,9 @@ export async function POST(request: NextRequest) {
     await setSetting('agent_budget_max_tokens', String(budgetMaxTokens), user.email);
     await setSetting('agent_budget_max_web_searches', String(budgetMaxWebSearches), user.email);
     await setSetting('agent_confidence_threshold', String(confidenceThreshold), user.email);
+    if (confidenceThresholds) {
+      await setSetting('agent_confidence_thresholds', JSON.stringify(confidenceThresholds), user.email);
+    }
     await setSetting('agent_budget_max_duration_minutes', String(budgetMaxDurationMinutes), user.email);
     await setSetting('agent_task_timeout_minutes', String(taskTimeoutMinutes), user.email);
 
@@ -390,6 +400,7 @@ export async function POST(request: NextRequest) {
         budgetMaxTokens,
         budgetMaxWebSearches,
         confidenceThreshold,
+        confidenceThresholds,
         budgetMaxDurationMinutes,
         taskTimeoutMinutes,
         budgetRetryReserveLlmCalls: parseInt(await getSetting('agent_budget_retry_reserve_llm_calls', '10'), 10),

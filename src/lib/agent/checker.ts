@@ -286,9 +286,18 @@ export async function checkTaskQuality(
     return toolResult;
   }
 
-  // Get confidence threshold from settings (async compat layer)
-  const thresholdStr = await getSetting('agent_confidence_threshold', String(DEFAULT_CONFIDENCE_THRESHOLD));
-  const threshold = parseInt(thresholdStr, 10);
+  // M-8: Profile-aware confidence thresholds — look up per-profile threshold, fall back to global default
+  const profile = task.executor_profile || 'default';
+  let threshold = DEFAULT_CONFIDENCE_THRESHOLD;
+  try {
+    const thresholdsJson = await getSetting('agent_confidence_thresholds', '{}');
+    const thresholds = JSON.parse(thresholdsJson) as Record<string, number>;
+    threshold = thresholds[profile] ?? thresholds.default ?? DEFAULT_CONFIDENCE_THRESHOLD;
+  } catch {
+    // Fallback to legacy global threshold if JSON parse fails
+    const thresholdStr = await getSetting('agent_confidence_threshold', String(DEFAULT_CONFIDENCE_THRESHOLD));
+    threshold = parseInt(thresholdStr, 10);
+  }
 
   // Build evaluation prompt
   const prompt = buildEvaluationPrompt(task, result, threshold);

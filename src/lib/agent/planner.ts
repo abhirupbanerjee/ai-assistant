@@ -43,13 +43,13 @@ export async function createPlan(
     };
     availableTools?: { name: string; description: string }[];
     executorProfiles?: Array<{
-      name: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      name: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual';
       provider: string;
       model: string;
       notes?: string;
     }>;
     planningFeedback?: string;
-    replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
+    replanContext?: Array<{ id: number; description: string; type: string; error?: string; last_result?: string; retries_attempted?: number; retry_strategies_used?: string }>;
     subagentConfig?: SubagentConfig;
   },
   modelConfig: AgentModelConfig
@@ -264,13 +264,13 @@ function buildPlannerPrompt(
     };
     availableTools?: { name: string; description: string }[];
     executorProfiles?: Array<{
-      name: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+      name: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual';
       provider: string;
       model: string;
       notes?: string;
     }>;
     planningFeedback?: string;
-    replanContext?: Array<{ id: number; description: string; type: string; error?: string }>;
+    replanContext?: Array<{ id: number; description: string; type: string; error?: string; last_result?: string; retries_attempted?: number; retry_strategies_used?: string }>;
     subagentConfig?: SubagentConfig;
   }
 ): string {
@@ -353,6 +353,7 @@ For each task, include a "skill_ids" array with the IDs of skills that should be
 - long_context: tasks combining many dependencies or large context windows
 - artifact_generation: document/image/chart/spreadsheet/presentation/podcast/diagram tasks
 - local_private: sensitive workloads requiring local/private execution path
+- agentic_tool_loop: multi-turn ReAct tool-calling loops for complex agentic tasks
 `;
   }
 
@@ -758,10 +759,17 @@ Respond with JSON only.`;
 
   if (context.replanContext && context.replanContext.length > 0) {
     prompt += `\n\n**Re-Planning Required:**\n${context.replanContext.length} tasks failed quality checks:\n`;
-    prompt += context.replanContext.map(t =>
-      `- Task "${t.description}" (${t.type}): ${t.error || 'Low confidence'}`
-    ).join('\n');
-    prompt += `\n\nFor each failed task above, provide an improved replacement task with a better approach. Return exactly one replacement per failed task, in the same order. If you need additional supporting tasks, add them after the replacements.\n`;
+    prompt += context.replanContext.map(t => {
+      let line = `- Task "${t.description}" (${t.type}): ${t.error || 'Low confidence'}`;
+      if (t.retries_attempted && t.retries_attempted > 0) {
+        line += ` [retries: ${t.retries_attempted}, strategies: ${t.retry_strategies_used || 'none'}]`;
+      }
+      if (t.last_result && t.last_result !== 'No result produced') {
+        line += `\n  Previous result (truncated): ${t.last_result.substring(0, 300)}`;
+      }
+      return line;
+    }).join('\n');
+    prompt += `\n\nFor each failed task above, provide an improved replacement task with a better approach. The previous results and strategies are included — avoid prescribing the same approach. Return exactly one replacement per failed task, in the same order. If you need additional supporting tasks, add them after the replacements.\n`;
   }
 
   return prompt;
@@ -796,7 +804,7 @@ Key principles:
 - If available skills are listed in the context, tag each task with applicable skill IDs by including a "skill_ids" array. Only tag skills whose keywords or description match the specific task. Use an empty array if no skills apply.
 - If available tools are listed in the context, set "tool_name" only when a task directly maps to a specific tool.
 - When executor model profiles are listed in context, assign "executor_profile" to each task based on task requirements and available enabled profiles.
-- Use "artifact_generation" for document/image/chart/spreadsheet/presentation/podcast/diagram tasks, "deep_reasoning" for complex analysis/comparison/validation, "long_context" when many dependencies or large context are required, "fast_low_cost" for extraction/search/summarization/simple transformations, and "local_private" only for sensitive workloads that require local/private execution.
+- Use "artifact_generation" for document/image/chart/spreadsheet/presentation/podcast/diagram tasks, "deep_reasoning" for complex analysis/comparison/validation, "long_context" when many dependencies or large context are required, "fast_low_cost" for extraction/search/summarization/simple transformations, "agentic_tool_loop" for tasks that require multi-turn tool calling, "code_generation" for programming/scripting tasks, "multilingual" for translation or non-English tasks, and "local_private" only for sensitive workloads that require local/private execution.
 - Add "executor_profile_reason" when selecting a non-default profile. If no listed profile clearly fits, use "default".
 
 Output valid JSON matching the schema provided.`;

@@ -37,7 +37,7 @@ export interface AutonomousTaskState {
   description: string;
   type: string;
   status: 'pending' | 'running' | 'done' | 'skipped' | 'needs_review' | 'error';
-  executorProfile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+  executorProfile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
   executorProfileReason?: string;
   executorModelUsed?: string;
   confidence?: number;

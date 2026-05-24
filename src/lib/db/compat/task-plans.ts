@@ -47,7 +47,7 @@ interface DbTaskPlanRow {
 }
 
 function mapDbToTaskPlan(row: DbTaskPlanRow): TaskPlan {
-  const tasksData = JSON.parse(row.tasks_json) as { tasks: Task[] };
+  const tasksData = JSON.parse(row.tasks_json) as { tasks: Task[]; initial_task_count?: number };
   const parseObject = (value: string | null): Record<string, unknown> | undefined => {
     if (!value) return undefined;
     try {
@@ -83,6 +83,7 @@ function mapDbToTaskPlan(row: DbTaskPlanRow): TaskPlan {
     budget: parseObject(row.budget_json),
     budget_used: parseObject(row.budget_used_json),
     model_config: parseObject(row.model_config_json),
+    initialTaskCount: tasksData.initial_task_count,
   };
 }
 
@@ -107,7 +108,7 @@ export async function createTaskPlan(
     status: 'pending' as TaskStatus,
   }));
 
-  const tasksJson = JSON.stringify({ tasks: fullTasks });
+  const tasksJson = JSON.stringify({ tasks: fullTasks, initial_task_count: tasks.length });
   const db = await getDb();
 
   await db
@@ -399,7 +400,7 @@ export async function createAutonomousPlan(
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual';
     executor_profile_reason?: string;
     executor_model_used?: string;
     retry_count?: number;
@@ -547,7 +548,7 @@ export async function transitionTaskState(
     retry_count?: number;
     retry_context?: string;
     retry_strategy?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual';
     executor_model_used?: string;
     subagent_iterations?: number;
     subagent_hit_limit?: boolean;
@@ -879,7 +880,7 @@ export async function replacePlanTasks(
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     executor_profile_reason?: string;
     executor_model_used?: string;
   }>,
@@ -929,7 +930,7 @@ export async function replaceFailedTasks(
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     executor_profile_reason?: string;
     executor_model_used?: string;
   }>
@@ -990,7 +991,7 @@ export async function resetFailedTasks(
     expected_output?: string;
     priority?: number;
     tool_name?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     executor_profile_reason?: string;
     executor_model_used?: string;
   }>

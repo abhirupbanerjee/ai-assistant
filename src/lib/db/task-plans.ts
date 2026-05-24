@@ -35,7 +35,7 @@ export interface Task {
   execution_hint?: string;
   skill_ids?: number[];
   tool_name?: string;
-  executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+  executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
   executor_profile_reason?: string;
   executor_model_used?: string;
   tokens_used?: number;
@@ -72,6 +72,8 @@ export interface TaskPlan {
   budget?: Record<string, unknown>;
   budget_used?: Record<string, unknown>;
   model_config?: Record<string, unknown>;
+  // O-17: Initial task count for plan-level cap guardrail
+  initialTaskCount?: number;
 }
 
 export interface TaskPlanStats {
@@ -437,7 +439,7 @@ export function createAutonomousPlan(
     execution_hint?: string;
     skill_ids?: number[];
     tool_name?: string;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     executor_profile_reason?: string;
     executor_model_used?: string;
     retry_count?: number;
@@ -567,7 +569,7 @@ export function transitionTaskState(
     review_notes?: string;
     tokens_used?: number;
     llm_calls?: number;
-    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private';
+    executor_profile?: 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop';
     executor_model_used?: string;
     subagent_iterations?: number;
     subagent_hit_limit?: boolean;

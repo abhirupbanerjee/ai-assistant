@@ -19,7 +19,10 @@ type ExecutorProfileKey =
   | 'deep_reasoning'
   | 'long_context'
   | 'artifact_generation'
-  | 'local_private';
+  | 'local_private'
+  | 'agentic_tool_loop'
+  | 'code_generation'
+  | 'multilingual';
 
 interface ExecutorModelProfiles {
   default: AgentModelConfig;
@@ -28,6 +31,9 @@ interface ExecutorModelProfiles {
   long_context?: AgentModelConfig;
   artifact_generation?: AgentModelConfig;
   local_private?: AgentModelConfig;
+  agentic_tool_loop?: AgentModelConfig;
+  code_generation?: AgentModelConfig;
+  multilingual?: AgentModelConfig;
 }
 
 interface AgentSettings {
@@ -36,6 +42,7 @@ interface AgentSettings {
   budgetMaxTokens: number;
   budgetMaxWebSearches: number;
   confidenceThreshold: number;
+  confidenceThresholds?: Record<string, number>;
   budgetMaxDurationMinutes: number;
   taskTimeoutMinutes: number;
   budgetRetryReserveLlmCalls: number;
@@ -82,6 +89,9 @@ const EXECUTOR_PROFILE_KEYS: ExecutorProfileKey[] = [
   'long_context',
   'artifact_generation',
   'local_private',
+  'agentic_tool_loop',
+  'code_generation',
+  'multilingual',
 ];
 
 const EXECUTOR_PROFILE_LABELS: Record<ExecutorProfileKey, string> = {
@@ -91,6 +101,9 @@ const EXECUTOR_PROFILE_LABELS: Record<ExecutorProfileKey, string> = {
   long_context: 'Long Context',
   artifact_generation: 'Artifact Generation',
   local_private: 'Local / Private',
+  agentic_tool_loop: 'Agentic Tool Loop',
+  code_generation: 'Code Generation',
+  multilingual: 'Multilingual',
 };
 
 const EXECUTOR_PROFILE_HINTS: Record<ExecutorProfileKey, string> = {
@@ -100,6 +113,9 @@ const EXECUTOR_PROFILE_HINTS: Record<ExecutorProfileKey, string> = {
   long_context: 'Use when tasks require large dependency/context windows.',
   artifact_generation: 'Use for doc/chart/spreadsheet/presentation generation tasks.',
   local_private: 'Use for air-gapped or sensitive workloads.',
+  agentic_tool_loop: 'Use for multi-turn ReAct tool-calling loops.',
+  code_generation: 'Use for programming, scripting, and software development tasks.',
+  multilingual: 'Use for translation and non-English language tasks.',
 };
 
 /** Role-specific hints for recommended models */
@@ -269,6 +285,7 @@ export default function AgentSettingsTab() {
         budgetMaxTokens: data.budgetMaxTokens,
         budgetMaxWebSearches: data.budgetMaxWebSearches,
         confidenceThreshold: data.confidenceThreshold,
+        confidenceThresholds: data.confidenceThresholds,
         budgetMaxDurationMinutes: data.budgetMaxDurationMinutes,
         taskTimeoutMinutes: data.taskTimeoutMinutes,
         budgetRetryReserveLlmCalls: data.budgetRetryReserveLlmCalls ?? 10,
@@ -487,9 +504,18 @@ export default function AgentSettingsTab() {
     const selectedModel = availableModels.find(m => m.id === modelId);
     const provider = selectedModel ? mapProviderForAgent(selectedModel.providerId) : current.provider;
 
+    // Auto-default thinking for complex profiles on thinking-capable models
+    const shouldDefaultThinking = selectedModel?.thinkingCapable === true
+      && (profileKey === 'deep_reasoning' || profileKey === 'agentic_tool_loop' || profileKey === 'code_generation');
+
     const nextProfiles: ExecutorModelProfiles = {
       ...editedSettings.executorModelProfiles,
-      [profileKey]: { ...current, model: modelId, provider },
+      [profileKey]: {
+        ...current,
+        model: modelId,
+        provider,
+        thinking_enabled: shouldDefaultThinking ? true : (selectedModel?.thinkingCapable ? current.thinking_enabled : false),
+      },
     };
 
     setEditedSettings({
@@ -797,6 +823,40 @@ export default function AgentSettingsTab() {
                 />
                 <p className="text-xs text-gray-500 mt-1">Checker approval threshold (0-100%)</p>
               </div>
+              {/* M-8: Per-profile confidence thresholds */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Per-Profile Confidence Thresholds</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {EXECUTOR_PROFILE_KEYS.filter((k) => k !== 'default').map((profileKey) => {
+                    const thresholds = editedSettings.confidenceThresholds || {};
+                    const value = thresholds[profileKey] ?? editedSettings.confidenceThreshold;
+                    return (
+                      <div key={profileKey}>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          {EXECUTOR_PROFILE_LABELS[profileKey]}
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          value={value}
+                          onChange={(e) => {
+                            const newVal = parseInt(e.target.value, 10) || 0;
+                            setEditedSettings({
+                              ...editedSettings,
+                              confidenceThresholds: { ...thresholds, [profileKey]: newVal },
+                            });
+                            setIsModified(true);
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Profile-specific checker thresholds. Falls back to global threshold if not set.</p>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Retry Reserve (LLM calls)</label>
                 <input
@@ -831,6 +891,35 @@ export default function AgentSettingsTab() {
               <p className="text-sm text-gray-500">Assign models to different agent roles</p>
             </div>
             <div className="p-6 space-y-6">
+              {/* Same-family alignment hint */}
+              {(() => {
+                const planner = editedSettings.plannerModel;
+                const executor = editedSettings.executorModel;
+                const getFamily = (provider: string) => {
+                  if (provider === 'anthropic') return 'Claude';
+                  if (provider === 'openai') return 'GPT';
+                  if (provider === 'gemini') return 'Gemini';
+                  if (provider === 'mistral') return 'Mistral';
+                  if (provider === 'deepseek') return 'DeepSeek';
+                  if (provider === 'fireworks') return 'Fireworks';
+                  if (provider === 'ollama' || provider === 'ollama-cloud') return 'Ollama';
+                  if (provider === 'moonshot') return 'Moonshot';
+                  return provider;
+                };
+                const plannerFamily = getFamily(planner.provider);
+                const executorFamily = getFamily(executor.provider);
+                if (plannerFamily !== executorFamily) {
+                  return (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs text-amber-800">
+                        <strong>Hint:</strong> Planner ({plannerFamily}) and executor ({executorFamily}) are from different model families. Same-family pairing (e.g., Claude + Claude) often produces more coherent multi-step plans.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               {MODEL_KEYS.map((modelKey) => {
                 const currentModel = editedSettings[modelKey];
                 const selectedModel = availableModels.find(m => m.id === currentModel.model);
@@ -985,59 +1074,99 @@ export default function AgentSettingsTab() {
                     </div>
 
                     {isEnabled && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-                        <div className="lg:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
-                          <select
-                            value={currentModel.model}
-                            onChange={(e) => handleExecutorProfileModelSelect(profileKey, e.target.value)}
-                            disabled={isDefault}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
-                          >
-                            {!isKnownModel && currentModel.model && (
-                              <option value={currentModel.model}>
-                                {currentModel.model} ({currentModel.provider})
-                              </option>
-                            )}
-                            {Object.entries(modelsByProvider).map(([providerId, models]) => (
-                              <optgroup key={providerId} label={providerId}>
-                                {models.map((model) => (
-                                  <option key={model.id} value={model.id}>
-                                    {model.displayName}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                          <span className="text-xs text-gray-400 mt-1 block">
-                            Provider: {currentModel.provider}
-                          </span>
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                          <div className="lg:col-span-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Model</label>
+                            <select
+                              value={currentModel.model}
+                              onChange={(e) => handleExecutorProfileModelSelect(profileKey, e.target.value)}
+                              disabled={isDefault}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
+                            >
+                              {!isKnownModel && currentModel.model && (
+                                <option value={currentModel.model}>
+                                  {currentModel.model} ({currentModel.provider})
+                                </option>
+                              )}
+                              {Object.entries(modelsByProvider).map(([providerId, models]) => (
+                                <optgroup key={providerId} label={providerId}>
+                                  {models.map((model) => (
+                                    <option key={model.id} value={model.id}>
+                                      {model.displayName}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                            <span className="text-xs text-gray-400 mt-1 block">
+                              Provider: {currentModel.provider}
+                            </span>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Temperature</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="2"
+                              value={currentModel.temperature}
+                              onChange={(e) => updateExecutorProfileConfig(profileKey, 'temperature', parseFloat(e.target.value) || 0)}
+                              disabled={isDefault}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Max Tokens</label>
+                            <input
+                              type="number"
+                              value={currentModel.max_tokens || ''}
+                              onChange={(e) => updateExecutorProfileConfig(profileKey, 'max_tokens', parseInt(e.target.value, 10) || undefined)}
+                              disabled={isDefault}
+                              placeholder="4096"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Temperature</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="2"
-                            value={currentModel.temperature}
-                            onChange={(e) => updateExecutorProfileConfig(profileKey, 'temperature', parseFloat(e.target.value) || 0)}
-                            disabled={isDefault}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Max Tokens</label>
-                          <input
-                            type="number"
-                            value={currentModel.max_tokens || ''}
-                            onChange={(e) => updateExecutorProfileConfig(profileKey, 'max_tokens', parseInt(e.target.value, 10) || undefined)}
-                            disabled={isDefault}
-                            placeholder="4096"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:opacity-60 disabled:bg-gray-50"
-                          />
-                        </div>
-                      </div>
+                        {/* Thinking toggle per profile */}
+                        {(() => {
+                          const selectedModel = availableModels.find(m => m.id === currentModel.model);
+                          const isThinkingCapable = selectedModel?.thinkingCapable === true;
+                          return (
+                            <div className={`mt-3 rounded-lg border p-3 ${isThinkingCapable ? 'border-blue-100 bg-blue-50/60' : 'border-gray-100 bg-gray-50/60 opacity-60'}`}>
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                                    <Brain size={16} className={isThinkingCapable ? 'text-blue-600' : 'text-gray-400'} />
+                                    Thinking / Reasoning
+                                  </div>
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    {isThinkingCapable
+                                      ? 'Enables extended reasoning. Recommended for deep_reasoning, agentic_tool_loop, and code_generation profiles. Increases latency and token cost.'
+                                      : 'Selected model does not support thinking/reasoning.'}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={Boolean(currentModel.thinking_enabled)}
+                                  disabled={!isThinkingCapable || isDefault}
+                                  onClick={() => updateExecutorProfileConfig(profileKey, 'thinking_enabled', !Boolean(currentModel.thinking_enabled))}
+                                  className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                                    !isThinkingCapable || isDefault ? 'bg-gray-200 cursor-not-allowed' : currentModel.thinking_enabled ? 'bg-blue-600' : 'bg-gray-200'
+                                  }`}
+                                >
+                                  <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                      currentModel.thinking_enabled ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
                     )}
                   </div>
                 );

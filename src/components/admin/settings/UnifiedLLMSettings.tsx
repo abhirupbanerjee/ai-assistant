@@ -895,12 +895,12 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             </div>
                           ) : (
                             <button
-                              onClick={() => !readOnly && !routeOff && (setEditingInputCost(model.id), setEditedInputCost(model.inputCostPer1M ?? ''))}
+                              onClick={() => !readOnly && !routeOff && (setEditingInputCost(model.id), setEditedInputCost(model.inputCostPer1M == null ? '' : Number(model.inputCostPer1M)))}
                               disabled={readOnly || routeOff}
                               className={`text-sm text-gray-600 ${readOnly || routeOff ? '' : 'hover:text-blue-600 hover:underline'}`}
                               title={routeOff ? 'Route is disabled' : readOnly ? undefined : 'Click to edit'}
                             >
-                              {model.inputCostPer1M !== undefined && model.inputCostPer1M !== null ? `$${model.inputCostPer1M.toFixed(4)}` : '—'}
+                              {model.inputCostPer1M !== undefined && model.inputCostPer1M !== null ? `$${Number(model.inputCostPer1M).toFixed(4)}` : '—'}
                             </button>
                           )}
                         </td>
@@ -919,12 +919,12 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             </div>
                           ) : (
                             <button
-                              onClick={() => !readOnly && !routeOff && (setEditingOutputCost(model.id), setEditedOutputCost(model.outputCostPer1M ?? ''))}
+                              onClick={() => !readOnly && !routeOff && (setEditingOutputCost(model.id), setEditedOutputCost(model.outputCostPer1M == null ? '' : Number(model.outputCostPer1M)))}
                               disabled={readOnly || routeOff}
                               className={`text-sm text-gray-600 ${readOnly || routeOff ? '' : 'hover:text-blue-600 hover:underline'}`}
                               title={routeOff ? 'Route is disabled' : readOnly ? undefined : 'Click to edit'}
                             >
-                              {model.outputCostPer1M !== undefined && model.outputCostPer1M !== null ? `$${model.outputCostPer1M.toFixed(4)}` : '—'}
+                              {model.outputCostPer1M !== undefined && model.outputCostPer1M !== null ? `$${Number(model.outputCostPer1M).toFixed(4)}` : '—'}
                             </button>
                           )}
                         </td>

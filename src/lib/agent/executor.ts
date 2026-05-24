@@ -250,7 +250,9 @@ function detectToolForTask(task: AgentTask, planId?: string): string | null {
 
 export function resolveExecutorModelForTask(
   task: AgentTask,
-  modelConfig: AgentModelConfig
+  modelConfig: AgentModelConfig,
+  plan?: AgentPlan,
+  budgetStatus?: { pct: number }
 ): ExecutorRouting {
   const configuredProfiles = modelConfig.executor_profiles;
   const defaultModel = configuredProfiles?.default || getModelForRole('executor', modelConfig);
@@ -278,17 +280,36 @@ export function resolveExecutorModelForTask(
     return resolveFromProfile(task.executor_profile);
   }
 
-  const inferredProfile = inferExecutorProfileForTask(task, availableProfileKeys);
+  const inferredProfile = inferExecutorProfileForTask(task, availableProfileKeys, plan, budgetStatus);
   return resolveFromProfile(inferredProfile);
 }
 
 function inferExecutorProfileForTask(
   task: AgentTask,
-  availableProfiles: Set<ExecutorProfileUsed>
+  availableProfiles: Set<ExecutorProfileUsed>,
+  plan?: AgentPlan,
+  budgetStatus?: { pct: number }
 ): ExecutorProfileUsed {
+  // O-7: Budget-aware profile downgrade — force fast_low_cost when budget is ≥80% consumed
+  if (budgetStatus && budgetStatus.pct >= 80 && availableProfiles.has('fast_low_cost')) {
+    console.log(`[Executor] Budget ${budgetStatus.pct}% consumed — downgrading to fast_low_cost`);
+    return 'fast_low_cost';
+  }
+
   const type = task.type.toLowerCase();
   const text = `${task.description} ${task.target} ${task.expected_output || ''}`.toLowerCase();
   const dependencyCount = task.dependencies?.length || 0;
+
+  // O-5: Estimate dependency payload size for accurate long-context routing
+  let depPayloadSize = 0;
+  if (plan && task.dependencies?.length) {
+    depPayloadSize = task.dependencies
+      .map((depId) => {
+        const depTask = plan.tasks.find((t) => t.id === depId);
+        return depTask?.result?.length || 0;
+      })
+      .reduce((a, b) => a + b, 0);
+  }
   const isArtifactTask = [
     'document',
     'image',
@@ -312,21 +333,37 @@ function inferExecutorProfileForTask(
 
   const likelyLongContext = dependencyCount >= 3
     || text.length > 1200
-    || /\b(comprehensive|across|all|full|end-to-end|detailed|multi-step|cross-cutting)\b/.test(text);
+    || /\b(comprehensive|across|all|full|end-to-end|detailed|multi-step|cross-cutting)\b/.test(text)
+    || depPayloadSize > 20_000;
   if (likelyLongContext && availableProfiles.has('long_context')) {
     return 'long_context';
   }
 
   const deepReasoningType = ['compare', 'synthesize', 'validate'].includes(type);
-  const deepReasoningText = /\b(compare|trade-?off|evaluate|risk|root cause|scenario|decision|architecture)\b/.test(text);
+  const deepReasoningText = /\b(compare|trade-?off|evaluate|risk|root cause|scenario|decision|architecture|analyze|assess|complex|multi-factor)\b/.test(text);
   if ((deepReasoningType || deepReasoningText) && availableProfiles.has('deep_reasoning')) {
     return 'deep_reasoning';
   }
 
   const fastLowCostType = ['extract', 'search', 'summarize'].includes(type);
-  const fastLowCostText = /\b(extract|list|summarize|quick|brief|short)\b/.test(text);
+  const fastLowCostText = /\b(extract|list|summarize|quick|brief|short|fetch|lookup|count|status)\b/.test(text);
   if ((fastLowCostType || fastLowCostText) && availableProfiles.has('fast_low_cost')) {
     return 'fast_low_cost';
+  }
+
+  const codeGenerationType = ['code', 'script', 'function', 'implement', 'develop', 'program'].includes(type);
+  const codeGenerationText = /\b(code|script|function|implement|develop|program|refactor|debug|algorithm|class|module|api|endpoint)\b/.test(text);
+  if ((codeGenerationType || codeGenerationText) && availableProfiles.has('code_generation')) {
+    return 'code_generation';
+  }
+
+  const multilingualText = /\b(translate|translation|language|non-english|french|spanish|chinese|arabic|bilingual|localize|i18n)\b/.test(text);
+  if (multilingualText && availableProfiles.has('multilingual')) {
+    return 'multilingual';
+  }
+
+  if (task.subagent_enabled && availableProfiles.has('agentic_tool_loop')) {
+    return 'agentic_tool_loop';
   }
 
   if (availableProfiles.has('default')) {
@@ -386,7 +423,7 @@ export async function executeTask(
     status: (freshTask?.status as AgentTask['status']) || task.status,
     executor_profile: freshTask?.executor_profile || task.executor_profile,
   };
-  const executorSelection = resolveExecutorModelForTask(selectionTask, modelConfig);
+  const executorSelection = resolveExecutorModelForTask(selectionTask, modelConfig, plan);
 
   // Mark as running and save state history
   try {
@@ -499,7 +536,7 @@ async function performTaskExecution(
     (task.retry_strategy === 'fallback_ascii_diagram' || task.retry_strategy === 'fallback_text_description');
 
   const toolType = isRetryWithFallback ? null : detectToolForTask(task, plan.id);
-  const { model: taskExecutorModel } = executorSelection || resolveExecutorModelForTask(task, modelConfig);
+  const { model: taskExecutorModel } = executorSelection || resolveExecutorModelForTask(task, modelConfig, plan);
 
   if (toolType) {
     return executeToolForTask(task, plan, taskExecutorModel, toolType, callbacks);
@@ -567,6 +604,22 @@ async function performTaskExecution(
       }
     } catch (e) {
       console.warn('[Executor] Model escalation failed, using default:', e);
+    }
+
+    // M-7: Conditional thinking on retries — enable for reasoning failures, disable for others
+    const reasoningTaskTypes = ['compare', 'synthesize', 'validate', 'analyze'];
+    const isReasoningFailure = reasoningTaskTypes.includes(task.type.toLowerCase()) ||
+      task.retry_strategy === 'more_specific_prompt';
+
+    if (isReasoningFailure && !executorModel.thinking_enabled) {
+      console.log(`[Executor] Retry ${task.retry_count} on reasoning task — enabling thinking for deeper analysis`);
+      executorModel = { ...executorModel, thinking_enabled: true };
+      prompt += '\n\n**THINK STEP BY STEP: Take time to reason through this carefully before answering.**';
+    } else if (!isReasoningFailure && executorModel.thinking_enabled) {
+      // O-14: Disable thinking for non-reasoning retries
+      console.log(`[Executor] Retry ${task.retry_count} with thinking_enabled — disabling thinking for different approach`);
+      executorModel = { ...executorModel, thinking_enabled: false };
+      prompt += '\n\n**APPROACH DIFFERENTLY: Your previous attempt with extended reasoning did not succeed. Try a simpler, more direct approach.**';
     }
   }
 

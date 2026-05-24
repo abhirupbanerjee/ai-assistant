@@ -67,7 +67,10 @@ export type ExecutorProfileName =
   | 'deep_reasoning'
   | 'long_context'
   | 'artifact_generation'
-  | 'local_private';
+  | 'local_private'
+  | 'agentic_tool_loop'
+  | 'code_generation'
+  | 'multilingual';
 
 export interface ModelSpec {
   provider: LLMProvider;
@@ -84,6 +87,9 @@ export interface ExecutorModelProfiles {
   long_context?: ModelSpec;
   artifact_generation?: ModelSpec;
   local_private?: ModelSpec;
+  agentic_tool_loop?: ModelSpec;
+  code_generation?: ModelSpec;
+  multilingual?: ModelSpec;
 }
 
 export interface AgentModelConfig {

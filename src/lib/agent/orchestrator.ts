@@ -42,6 +42,19 @@ import {
 import { getThreadById } from '../db/compat/threads';
 
 /**
+ * Compute the highest budget utilization percentage across all budget dimensions.
+ * Returns 0 if plan has no budget configured.
+ */
+function computeBudgetPct(plan: AgentPlan): number {
+  if (!plan.budget) return 0;
+  const used = plan.budget_used || { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+  const llmPct = plan.budget.max_llm_calls > 0 ? (used.llm_calls / plan.budget.max_llm_calls) * 100 : 0;
+  const tokenPct = plan.budget.max_tokens > 0 ? (used.tokens_used / plan.budget.max_tokens) * 100 : 0;
+  const searchPct = plan.budget.max_web_searches > 0 ? (used.web_searches / plan.budget.max_web_searches) * 100 : 0;
+  return Math.max(llmPct, tokenPct, searchPct);
+}
+
+/**
  * Orchestrator callbacks for progress updates
  */
 export interface OrchestratorCallbacks {
@@ -256,9 +269,11 @@ async function executeTasksInOrder(
 
     // Sort wave by priority (highest first) for consistent ordering
     wave.sort((a, b) => (b.priority || 1) - (a.priority || 1));
+    const budgetPct = computeBudgetPct(currentPlan);
+    const downgradeBudgetStatus = budgetPct >= 80 ? { pct: Math.round(budgetPct) } : undefined;
     const routedWave = wave.map((task) => ({
       ...task,
-      executor_profile: resolveExecutorModelForTask(task, modelConfig).profileUsed,
+      executor_profile: resolveExecutorModelForTask(task, modelConfig, currentPlan, downgradeBudgetStatus).profileUsed,
     }));
 
     // 4. Notify wave and task starts
@@ -330,9 +345,13 @@ async function executeTasksInOrder(
       if (result.needsReview && (updatedTask.retry_count || 0) < 2) {
         const retrySuggestion = result.retry_suggestion || 'more_specific_prompt';
         console.log(`[Orchestrator] Task ${task.id} needs review — retrying with strategy: ${retrySuggestion}`);
+        // M-6: Build rich retry context with checker notes and up to 2000 chars of previous result
+        const previousResult = result.result?.substring(0, 2000) || '';
+        const checkerNotes = updatedTask.review_notes || `Low confidence (${result.confidence}%)`;
+        const retryContext = `Checker feedback: ${checkerNotes}. Previous result: ${previousResult}`;
         await transitionTaskState(plan.id, task.id, 'pending', {
           retry_count: (updatedTask.retry_count || 0) + 1,
-          retry_context: updatedTask.review_notes || `Low confidence (${result.confidence}%). ${result.result?.substring(0, 200) || ''}`,
+          retry_context: retryContext.length > 2500 ? retryContext.substring(0, 2500) + '... [truncated]' : retryContext,
           retry_strategy: retrySuggestion,
         });
         callbacks?.onTaskSummary?.(updatedTask, `Retrying with alternative approach: ${retrySuggestion}`);
@@ -367,43 +386,60 @@ async function executeTasksInOrder(
         t.error?.startsWith('Retry exhausted') &&
         (t.replan_count || 0) < 2  // Max 2 re-plans per task (loop guard)
       )
-      .map((t: any) => ({ id: t.id, description: t.description, type: t.type, error: t.review_notes || t.error }));
+      .map((t: any) => ({
+        id: t.id,
+        description: t.description,
+        type: t.type,
+        error: t.review_notes || t.error,
+        last_result: t.result?.substring(0, 1500) || 'No result produced',
+        retries_attempted: t.retry_count || 0,
+        retry_strategies_used: t.retry_strategy || 'none',
+      }));
 
     if (failedTasks.length > 0) {
       const budgetCheck = await budgetTracker.checkBudget();
       if (!budgetCheck.exceeded) {
-        callbacks?.onReplanNeeded?.(plan.id, failedTasks);
+        // O-17: Plan-level task cap — prevent runaway plan growth from compounded replans
+        const currentTaskCount = freshPlan.tasks.length;
+        const initialTaskCount = freshPlan.initialTaskCount || currentTaskCount;
+        const maxTasks = initialTaskCount * 3;
+        if (currentTaskCount >= maxTasks) {
+          console.warn(`[Orchestrator] Plan task cap reached (${currentTaskCount}/${maxTasks}), skipping replan`);
+          callbacks?.onError?.(`Plan task cap reached (${currentTaskCount}/${maxTasks}). ${failedTasks.length} tasks could not be replanned.`);
+        } else {
+          callbacks?.onReplanNeeded?.(plan.id, failedTasks);
 
-        try {
-          const replanResult = await createPlan(
-            freshPlan?.originalRequest || '',
-            {
-              replanContext: failedTasks,
-              executorProfiles: Object.entries(modelConfig.executor_profiles || {}).map(([name, spec]) => ({
-                name: name as 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private',
-                provider: spec.provider,
-                model: spec.model,
-                notes: name === 'default' ? 'baseline executor profile' : undefined,
-              })),
-              subagentConfig,
-            },
-            modelConfig
-          );
+          try {
+            const replanResult = await createPlan(
+              freshPlan?.originalRequest || '',
+              {
+                replanContext: failedTasks,
+                executorProfiles: Object.entries(modelConfig.executor_profiles || {}).map(([name, spec]) => ({
+                  name: name as 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual',
+                  provider: spec.provider,
+                  model: spec.model,
+                  notes: name === 'default' ? 'baseline executor profile' : undefined,
+                })),
+                subagentConfig,
+              },
+              modelConfig
+            );
 
-          if (replanResult.tasks.length > 0) {
-            const routedReplacementTasks = replanResult.tasks.map((task) => ({
-              ...task,
-              executor_profile: resolveExecutorModelForTask(task, modelConfig).profileUsed,
-            }));
-            await resetFailedTasks(plan.id, failedTasks.map(t => t.id), routedReplacementTasks);
-            await incrementBudgetUsage(plan.id, {
-              llm_calls: replanResult.llm_calls || 0,
-              tokens_used: replanResult.tokens_used || 0,
-            });
-            console.log(`[Orchestrator] Re-planned: reset ${failedTasks.length} tasks with improved descriptions`);
+            if (replanResult.tasks.length > 0) {
+              const routedReplacementTasks = replanResult.tasks.map((task) => ({
+                ...task,
+                executor_profile: resolveExecutorModelForTask(task, modelConfig, currentPlan).profileUsed,
+              }));
+              await resetFailedTasks(plan.id, failedTasks.map(t => t.id), routedReplacementTasks);
+              await incrementBudgetUsage(plan.id, {
+                llm_calls: replanResult.llm_calls || 0,
+                tokens_used: replanResult.tokens_used || 0,
+              });
+              console.log(`[Orchestrator] Re-planned: reset ${failedTasks.length} tasks with improved descriptions`);
+            }
+          } catch (e) {
+            console.error('[Orchestrator] Re-planning failed:', e);
           }
-        } catch (e) {
-          console.error('[Orchestrator] Re-planning failed:', e);
         }
       }
     }
@@ -488,7 +524,9 @@ async function executeSingleTask(
       : undefined;
 
     // Resolve executor model for state tracking
-    const { model: executorSelection } = resolveExecutorModelForTask(task, modelConfig);
+    const budgetPct = computeBudgetPct(plan);
+    const budgetStatus = budgetPct >= 80 ? { pct: Math.round(budgetPct) } : undefined;
+    const { model: executorSelection } = resolveExecutorModelForTask(task, modelConfig, plan, budgetStatus);
     const effectiveModel = executorSelection.model;
 
     // Mark as running
@@ -857,7 +895,7 @@ export async function createAndExecuteAutonomousPlan(
 
     const executorProfiles = Object.entries(planConfig.modelConfig.executor_profiles || {})
       .map(([name, spec]) => ({
-        name: name as 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private',
+        name: name as 'default' | 'fast_low_cost' | 'deep_reasoning' | 'long_context' | 'artifact_generation' | 'local_private' | 'agentic_tool_loop' | 'code_generation' | 'multilingual',
         provider: spec.provider,
         model: spec.model,
         notes: name === 'default' ? 'baseline executor profile' : undefined,

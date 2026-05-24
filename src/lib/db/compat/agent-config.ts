@@ -24,7 +24,10 @@ export type ExecutorProfileName =
   | 'deep_reasoning'
   | 'long_context'
   | 'artifact_generation'
-  | 'local_private';
+  | 'local_private'
+  | 'agentic_tool_loop'
+  | 'code_generation'
+  | 'multilingual';
 
 export interface ExecutorModelProfiles {
   default: AgentModelConfig;
@@ -33,6 +36,9 @@ export interface ExecutorModelProfiles {
   long_context?: AgentModelConfig;
   artifact_generation?: AgentModelConfig;
   local_private?: AgentModelConfig;
+  agentic_tool_loop?: AgentModelConfig;
+  code_generation?: AgentModelConfig;
+  multilingual?: AgentModelConfig;
 }
 
 const EXECUTOR_PROFILE_KEYS: ExecutorProfileName[] = [
@@ -42,6 +48,9 @@ const EXECUTOR_PROFILE_KEYS: ExecutorProfileName[] = [
   'long_context',
   'artifact_generation',
   'local_private',
+  'agentic_tool_loop',
+  'code_generation',
+  'multilingual',
 ];
 
 function sanitizeModelSpec(value: unknown): AgentModelConfig | undefined {
