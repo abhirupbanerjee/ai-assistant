@@ -424,6 +424,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_citation_trajectories_source_type ON citation_trajectories(source_type)`.execute(database);
   console.log('[Kysely] Ensured citation_trajectories table exists');
 
+  // Migration: Add include_sources column to agent_bot_versions if missing
+  await sql`ALTER TABLE agent_bot_versions ADD COLUMN IF NOT EXISTS include_sources INTEGER DEFAULT 0`.execute(database);
+  console.log('[Kysely] Ensured agent_bot_versions.include_sources column exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: sync enabled models to LiteLLM proxy

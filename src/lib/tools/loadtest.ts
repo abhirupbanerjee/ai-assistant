@@ -9,8 +9,9 @@
  */
 
 import { spawn } from 'child_process';
-import { writeFile, unlink } from 'fs/promises';
+import { writeFile, unlink, mkdtemp, rmdir } from 'fs/promises';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { getToolConfig } from '../db/compat/tool-config';
 import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
@@ -204,9 +205,11 @@ export async function runK6CloudTest(
   apiToken: string,
   targetUrl: string
 ): Promise<{ testRunId: string; outputUrl: string }> {
-  const tmpDir = process.env.TMPDIR || '/tmp';
-  const scriptPath = join(tmpDir, `k6-test-${Date.now()}.js`);
-  await writeFile(scriptPath, script, 'utf-8');
+  // Create a private temp directory (mode 0700) to avoid the S5443 risk of
+  // writing into a world-writable location like /tmp with a predictable name.
+  const scriptDir = await mkdtemp(join(tmpdir(), 'k6-test-'));
+  const scriptPath = join(scriptDir, 'script.js');
+  await writeFile(scriptPath, script, { encoding: 'utf-8', mode: 0o600 });
 
   try {
     return await new Promise((resolve, reject) => {
@@ -264,6 +267,7 @@ export async function runK6CloudTest(
   } finally {
     try {
       await unlink(scriptPath);
+      await rmdir(scriptDir);
     } catch {
       console.error('[k6] Failed to cleanup temp file:', scriptPath);
     }

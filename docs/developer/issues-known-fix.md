@@ -178,6 +178,149 @@ Claude models are still registered with LiteLLM for non-chat services (embedding
 
 ---
 
+## 4. Security Fix Rollback & Re-Application Sequence
+
+**Status:** Historical — fixes re-applied successfully  
+**Affected files:** Entire security fix patch set  
+**Date discovered:** 2026-05-23  
+
+### Problem
+
+The initial security fix work was committed as a WIP merge (`cdbf3f2`) but had to be rolled back via `git reset --hard 59f996d` because the patch set was too large and touched too many code paths simultaneously, creating merge conflicts and making review difficult.
+
+### Sequence of events
+
+1. **Baseline:** `59f996d` — last commit before security work  
+2. **WIP commit:** `cdbf3f2` — merge of stash containing all 10 fixes in one shot  
+3. **Rollback:** `git reset --hard` to `59f996d` (visible in reflog as `HEAD@{2}: reset: moving to HEAD`)  
+4. **Re-application (Part 1):** `1f8f55e` — "Security fix" (23 files, 917 insertions)  
+5. **Re-application (Part 2):** `3eb4467` — "Security fix 2" (CSP report endpoint + layout nonce injection)  
+6. **Follow-up:** `418f245` — "React based autonomous mode with cards + security fix 3"  
+
+### Lesson learned
+
+When applying a large security patch set, break it into 2–3 focused commits rather than one monolithic WIP. This makes rollbacks surgical and reviews manageable.
+
+### Related commits
+
+| Commit | Date | Description |
+|--------|------|-------------|
+| `cdbf3f2` | 2026-05-23 | WIP on main (rolled back) |
+| `1f8f55e` | 2026-05-23 | Security fix (re-applied) |
+| `3eb4467` | 2026-05-23 | Security fix 2 (CSP hardening) |
+| `418f245` | 2026-05-23 | React autonomous mode + security fix 3 |
+
+---
+
+## 5. Missing DB Migration: `enabled_models` Cost Columns
+
+**Status:** ✅ **FIXED** — migration added to `src/lib/db/kysely.ts`  
+**Affected files:** `src/lib/db/compat/enabled-models.ts`, `src/lib/db/enabled-models.ts`, `src/lib/db/schema/postgres.sql`  
+**Date discovered:** 2026-05-23  
+
+### Problem
+
+Commits `2f02486` and `418f245` added `input_cost_per_1m` and `output_cost_per_1m` columns to the `enabled_models` table (schema + code + types), but **no migration was added to `runPostgresMigrations()` in `src/lib/db/kysely.ts`**. Existing databases created before these columns were missing them.
+
+`getActiveModels()` in `src/lib/db/compat/enabled-models.ts` selects these columns:
+
+```typescript
+.select([
+  'm.input_cost_per_1m',
+  'm.output_cost_per_1m',
+  // ...
+])
+```
+
+For databases without these columns, PostgreSQL throws:
+
+```
+column m.input_cost_per_1m does not exist
+```
+
+The `/api/models` route has no try/catch, so Next.js returns 500. The `ModelSelector` component's fetch fails silently (`response.ok` is false), `availableModels` stays empty, and the chat input box shows **"No models available"**.
+
+### Fix applied
+
+Added migration to `src/lib/db/kysely.ts`:
+
+```typescript
+await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS input_cost_per_1m NUMERIC(12,8)`.execute(database);
+await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS output_cost_per_1m NUMERIC(12,8)`.execute(database);
+```
+
+### Recovery for affected deployments
+
+Restart the application. `getDb()` runs `runPostgresMigrations()` on startup, which now adds the missing columns automatically.
+
+### Prevention
+
+Whenever adding a column to `schema/postgres.sql`, always add a corresponding `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migration in `src/lib/db/kysely.ts`. The migration must be idempotent (use `IF NOT EXISTS`) so it is safe to run repeatedly.
+
+### Related commits
+
+| Commit | Description |
+|--------|-------------|
+| `2f02486` | Added cost columns to schema (but no migration) |
+| `418f245` | Added cost columns to code (`enabled-models.ts`) |
+| Current HEAD | Migration added to `kysely.ts` |
+
+---
+
+## 6. Cookie Name Change Invalidates Existing Sessions
+
+**Status:** Active limitation — known side effect of security fix  
+**Affected files:** `src/lib/auth-options.ts`  
+**Date discovered:** 2026-05-23  
+
+### Problem
+
+The security fix (H-7) added explicit cookie configuration to NextAuth, changing the session token cookie name from the default `next-auth.session-token` to `__Secure-next-auth.session-token`:
+
+```typescript
+cookies: {
+  sessionToken: {
+    name: `__Secure-next-auth.session-token`,
+    options: {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+    },
+  },
+}
+```
+
+This has two side effects:
+
+1. **All existing sessions are invalidated** — browsers still hold the old cookie (`next-auth.session-token`) but NextAuth now looks for the new name. Users must sign in again.
+2. **Development environments** (`NODE_ENV !== 'production'`) set `secure: false`, but the cookie name still has the `__Secure-` prefix. Some browsers (notably Chrome) enforce that `__Secure-` prefixed cookies MUST have `Secure: true`. In non-HTTPS development, this can cause the cookie to be rejected, forcing users to re-authenticate on every request.
+
+### Workarounds
+
+- **Production:** Users just need to sign in once. The new cookie will be set with `Secure: true` and work correctly.
+- **Development:** If you see repeated sign-out issues in dev, temporarily change the cookie name back to `next-auth.session-token` in `src/lib/auth-options.ts` (do NOT commit this change).
+
+### Future resolution
+
+Consider using conditional cookie naming:
+
+```typescript
+name: process.env.NODE_ENV === 'production'
+  ? '__Secure-next-auth.session-token'
+  : 'next-auth.session-token',
+```
+
+This preserves security in production while avoiding dev friction.
+
+### Related commits
+
+| Commit | Description |
+|--------|-------------|
+| `1f8f55e` | Added explicit cookie config to `auth-options.ts` |
+
+---
+
 ## Contributing to This Document
 
 When you encounter a non-obvious limitation, build issue, or framework constraint:
