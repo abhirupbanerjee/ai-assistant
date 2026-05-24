@@ -139,10 +139,6 @@ export function buildThinkingRequestProfile(options: {
     requestParams.thinking = { type: 'enabled' };
     requestParams.reasoning_effort = 'high';
     streamFields.add('reasoning_content');
-  } else if (isKimiThinkingModel(options.modelId)) {
-    requiresThinkingStatePreservation = true;
-    requestParams.thinking = { type: 'enabled', keep: 'all' };
-    streamFields.add('reasoning_content');
   } else if (isOllamaModel(options.modelId)) {
     requestParams.think = true;
     streamFields.add('thinking');

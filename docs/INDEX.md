@@ -309,6 +309,7 @@ This documentation index tracks major documentation updates.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **3.6** | May 2026 | **Autonomous Mode Hardening** — Context trimming (drops oldest assistant+tool pairs), tool result truncation (4000 chars), CoT preservation with 2000-char reasoning truncation, retryable error classification with exponential backoff (`retry_after`, `retry_count`), per-task-type timeouts (deep_analysis: 20min, image/doc: 15min), provider-aware context limits via `enabled_models.max_input_tokens`, wave budget reservations (`reserveBudget`/`commitReservation`/`releaseReservation`) to fix race conditions, subagent tool call deduplication via hash cache, empty-wave backoff without burning `maxWaves`, max subagent iterations increased from 5 to 15. **Working Memory (beta)** — new `plan_memories` table with GIN keyword index, heuristic keyword extraction (no LLM, no embeddings), deterministic wave summary injection into executor prompts, feature flag `agent_working_memory_enabled` (default false). |
 | **3.5** | May 2026 | **Gantt & Project Plan page types** — `gantt` and `project_plan` added to `html_gen` tool. JSON fenced ` ```gantt ` blocks define categories, tasks, and a hybrid time axis (ISO dates / week tokens / month tokens). `project_plan` adds a KPI strip and roll-up summary table. Branding-driven color palette with per-category overrides. Interactive filter tabs and hover tooltips. New files: `templates/gantt.ts`, `templates/project-plan.ts`; updated `types.ts`, `content-parser.ts`, `page-type.ts`, `generate.ts`, `html-gen.ts`. |
 | **3.4** | May 2026 | **Server-side HTML rendering** — Playwright/Chromium renders Chart.js charts to PNG and Mermaid diagrams to inline SVG at generation time. `chartjs-plugin-datalabels` added for value annotations. Generated HTML is fully self-contained with graceful client-side fallback. `html-builder.ts` refactored from 3,386-line monolith into 33-module `src/lib/docgen/html/` directory. |
 | **3.3** | April 2026 | **Two-Route LLM Architecture** — Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled. Route-aware model filtering, admin UI gating (view-only for disabled routes), model conflict warnings, cross-route fallback chain, model readiness gating on chat submit. |
@@ -360,4 +361,4 @@ When updating documentation:
 
 ---
 
-*Last updated: May 2026 (v3.5)*
+*Last updated: May 2026 (v3.6)*

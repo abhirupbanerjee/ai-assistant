@@ -573,6 +573,21 @@ CREATE TABLE IF NOT EXISTS task_plans (
 CREATE INDEX IF NOT EXISTS idx_task_plans_thread ON task_plans(thread_id);
 CREATE INDEX IF NOT EXISTS idx_task_plans_status ON task_plans(status);
 
+-- ============ Plan Memories (Agent Working Memory) ============
+
+CREATE TABLE IF NOT EXISTS plan_memories (
+  id SERIAL PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES task_plans(id) ON DELETE CASCADE,
+  wave INTEGER NOT NULL,
+  task_ids INTEGER[] NOT NULL,
+  summary TEXT NOT NULL,
+  keywords TEXT[],
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan_memories_lookup ON plan_memories(plan_id, wave DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_memories_keywords ON plan_memories USING GIN(keywords);
+
 -- ============ RAG Testing ============
 
 CREATE TABLE IF NOT EXISTS rag_test_queries (
@@ -1002,6 +1017,7 @@ Key-value configuration store.
 | `memory-settings` | MemorySettings | User memory extraction configuration |
 | `summarization-settings` | SummarizationSettings | Thread summarization configuration |
 | `agent-settings` | AgentSettings | Autonomous agent configuration (beta) |
+| `agent_working_memory_enabled` | boolean | Enable per-plan working memory for cross-wave context (default: false) |
 | `limits-settings` | LimitsSettings | Token limits and conversation history |
 
 **Settings Interfaces:**
@@ -1436,7 +1452,7 @@ Active and completed task plans from the Task Planner tool.
 | template_key | TEXT | Links to task_planner_templates (NULL for ad-hoc) |
 | name | TEXT | Plan display name |
 | status | TEXT | `pending`, `in_progress`, `completed`, `failed`, `cancelled` |
-| tasks | TEXT | JSON array of task objects with id, description, status |
+| tasks | TEXT | JSON array of task objects with id, description, status, dependencies, type, subagent_enabled, executor_profile, **retry_count**, **retry_after**, **retry_suggestion**, **task_timeout_minutes** |
 | current_task_index | INTEGER | Index of currently executing task |
 | results | TEXT | JSON array of task results/outputs |
 | placeholders | TEXT | JSON object of substituted placeholder values |
@@ -1703,6 +1719,26 @@ Version snapshots of bot configuration.
 | config_snapshot_json | TEXT | Full bot config at this version |
 | created_by | TEXT | Admin who saved version |
 | created_at | TIMESTAMPTZ | Snapshot timestamp |
+
+### plan_memories
+
+Per-wave working memory for autonomous agent plans. Stores deterministic summaries of completed tasks so the executor can reference prior-wave context in long-running plans.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | SERIAL | Auto-increment primary key |
+| plan_id | TEXT | FK to task_plans.id (cascading delete) |
+| wave | INTEGER | Wave number within the plan |
+| task_ids | INTEGER[] | IDs of tasks summarized in this memory |
+| summary | TEXT | Deterministic summary text (≤500 chars) |
+| keywords | TEXT[] | Heuristic keywords extracted from task descriptions/results (max 10) |
+| created_at | TIMESTAMP | Memory creation timestamp |
+
+**Indexes:**
+- `idx_plan_memories_lookup` — (plan_id, wave DESC) for retrieving recent waves
+- `idx_plan_memories_keywords` — GIN index on keywords for future retrieval optimization
+
+**Feature gate:** controlled by `agent_working_memory_enabled` setting (default `false`).
 
 ---
 

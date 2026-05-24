@@ -380,6 +380,25 @@ export async function cleanupOldPlans(daysOld: number = 30): Promise<number> {
   return Number(result.numDeletedRows ?? 0);
 }
 
+/**
+ * Fail active autonomous plans that have been running too long (stale from crashes/restarts)
+ */
+export async function failStaleActivePlans(hoursOld: number = 2): Promise<number> {
+  const db = await getDb();
+  const result = await db
+    .updateTable('task_plans')
+    .set({
+      status: 'failed',
+      updated_at: new Date().toISOString(),
+    })
+    .where('status', '=', 'active')
+    .where('mode', '=', 'autonomous')
+    .where('updated_at', '<', new Date(Date.now() - hoursOld * 60 * 60 * 1000).toISOString())
+    .executeTakeFirst();
+
+  return Number(result.numUpdatedRows ?? 0);
+}
+
 // ============ Autonomous Mode Operations ============
 
 /**

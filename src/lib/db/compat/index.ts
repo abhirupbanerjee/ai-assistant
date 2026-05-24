@@ -674,6 +674,7 @@ export {
   failPlan,
   deleteTaskPlan,
   cleanupOldPlans,
+  failStaleActivePlans,
   // Autonomous Mode Operations
   createAutonomousPlan,
   getBudgetUsage,

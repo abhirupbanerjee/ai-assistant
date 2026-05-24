@@ -338,6 +338,9 @@ async function executeTasksInOrder(
 
     let waveResults: { task: AgentTask; result: ExecutionResult }[];
 
+    // Log wave execution unconditionally (both single-task fast path and parallel path)
+    console.log(`[Orchestrator] Executing wave ${waveCount}: ${routedWave.length} task(s) [${routedWave.map(t => t.id).join(', ')}]`);
+
     if (routedWave.length === 1) {
       // Single task — no Promise.allSettled overhead
       const task = routedWave[0];
@@ -345,7 +348,6 @@ async function executeTasksInOrder(
       waveResults = [{ task, result }];
     } else {
       // Parallel wave execution
-      console.log(`[Orchestrator] Executing wave ${waveCount}: ${routedWave.length} tasks in parallel [${routedWave.map(t => t.id).join(', ')}]`);
       const settled = await Promise.allSettled(
         routedWave.map((task) => {
           return executeSingleTask(task, currentPlan, modelConfig, baseCallbacksFactory(task), callbacks, subagentConfig)

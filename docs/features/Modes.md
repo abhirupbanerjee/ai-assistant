@@ -170,8 +170,9 @@ User Request
 - Zero LLM dependency — pure orchestration logic
 - Manages state across agent lifecycle
 - Handles error propagation from sub-agents
-- Enforces budget constraints at coordinator level
-- Max 1000 iteration safety guard to prevent infinite loops
+- Enforces budget constraints at coordinator level with **per-wave budget reservations**
+- Max **200 waves** safety limit to prevent infinite loops
+- **Empty-wave backoff**: when all pending tasks are in exponential backoff (`retry_after`), sleeps until the earliest retry without burning a wave count
 
 ### 3.2 Planner
 
@@ -208,8 +209,14 @@ User Request
 
 **Key Features:**
 - 8 tool types: `doc_gen`, `image_gen`, `chart_gen`, `xlsx_gen`, `pptx_gen`, `podcast_gen`, `diagram_gen`, `web_search`
-- **Subagent ReAct loop** (optional, per-task): multi-turn LLM reasoning with tool calling, up to admin-configured max iterations (default 5)
+- **Subagent ReAct loop** (optional, per-task): multi-turn LLM reasoning with tool calling, up to admin-configured max iterations (default **15**)
+- **Context trimming**: automatically drops oldest assistant+tool pairs when approaching model context limits; preserves system and initial task messages
+- **Tool result truncation**: structured JSON-aware truncation at **4000 characters** to prevent context bloat
+- **Chain-of-thought preservation**: captures thinking/reasoning content from thinking-capable models, truncates to **2000 characters** before reinjection
+- **Tool call deduplication**: hash-based cache prevents redundant identical tool calls within a single subagent loop
 - **Tool safety classification**: `subagentSafe` flag on all 21 tools — safe tools (read-only: `web_search`, `code_analysis`, etc.) run freely; unsafe tools (generative: `doc_gen`, `image_gen`, etc.) trigger HITL pause for approval
+- **Per-task timeouts**: type-specific execution limits (deep_analysis: 20 min, image/document/podcast: 15 min, chart/diagram/spreadsheet/research: 10 min)
+- **Retry with exponential backoff**: recoverable API errors (rate limits, timeouts) transition to `pending` with `retry_after`; fatal errors skip retry
 - Code generation for dynamic tasks (temperature: 0.4, max tokens: 4096)
 - Streaming response handling
 - Tool result parsing and validation
@@ -325,10 +332,94 @@ Task Execution → Confidence Score
 - Budget tracker initialized per plan from database settings
 - Tracks: LLM calls (default 500), total tokens (default 2M), web searches (default 100), duration (default 30 min), task timeout (default 5 min)
 - **Subagent budget allocation**: Each subagent task receives a configurable percentage (default 25%) of the plan-level token budget, tracked independently with 80% warning threshold
+- **Wave-level budget reservations**: before executing a wave, the orchestrator `reserveBudget(headroom)` checks effective limits against anticipated usage; reservations are `commitReservation(actual)` on success or `releaseReservation(headroom)` on fatal failure, preventing race conditions between concurrent waves
 - Warning thresholds: 50% (medium), 75% (high), 100% (hard stop)
 - Global budget pool shared across all concurrent agents
 - 2-second TTL cache prevents excessive DB queries
 - Live cost tracking: per-model pricing from `enabled_models` table, emitted via `agent_cost_update` SSE events
+
+### 5.5 Context Trimming (Subagent)
+
+When a subagent ReAct loop approaches the model's context window, the system proactively trims message history rather than failing with a context-length error:
+
+1. **Trimming strategy**: drops oldest complete `assistant + tool` pairs first
+2. **Protected messages**: system prompt and the initial task description are never removed
+3. **Token estimation**: uses `text.length / 4` as a coarse proxy when exact token counts are unavailable
+4. **Provider-aware limits**: reads `enabled_models.max_input_tokens` from the database; falls back to provider defaults (Claude: 200K, Gemini: 1M, DeepSeek: 64K, default: 128K)
+
+### 5.6 Tool Result Truncation
+
+Tool outputs are truncated before being appended to the subagent context:
+
+- **Plain text**: truncated to **4000 characters** with `"...[truncated]"` suffix
+- **Structured JSON**: individual string fields are truncated; the overall JSON is preserved so the LLM still sees the schema
+- **Rationale**: prevents a single large tool result (e.g., a long web search result or document extraction) from consuming the entire context window
+
+### 5.7 Chain-of-Thought Preservation
+
+Thinking-capable models (Claude, DeepSeek-R1, QwQ, o1/o3/o4) emit reasoning content that is preserved across subagent turns:
+
+1. **Extraction**: `thinkingContent` is extracted from provider-specific response fields (`reasoning_content`, `<thinking>` blocks, etc.)
+2. **Truncation**: truncated to **2000 characters** before reinjection as `reasoning_content` on the assistant message
+3. **Non-thinking models**: receive explicit `<thinking>` tag prompts so reasoning traces are still captured when the model supports it
+
+### 5.8 Retry Logic & Exponential Backoff
+
+Task failures are classified before deciding whether to retry:
+
+1. **Recoverable errors** (rate limit, timeout, API unavailable): classified by `isRecoverableApiError()` from the fallback system
+   - Task transitions back to `pending`
+   - `retry_count` incremented (max 2 retries)
+   - `retry_after` set to `min(2^retry_count × 1000ms, 30000ms)`
+   - `retry_suggestion` hints at strategy (e.g., `retry_same_provider`)
+2. **Fatal errors** (bad request, content filter, invalid arguments): skip retry, mark failed
+3. **Dependency validator** filters out tasks with future `retry_after` when computing ready tasks
+
+### 5.9 Per-Task Timeouts
+
+Instead of a single global timeout, tasks use type-specific limits:
+
+| Task Type | Timeout |
+|-----------|---------|
+| `deep_analysis` | 20 minutes |
+| `image`, `document`, `presentation`, `podcast` | 15 minutes |
+| `chart`, `diagram`, `spreadsheet`, `research` | 10 minutes |
+
+Execution is wrapped in `Promise.race` against the timeout; exceeded timeouts are treated as recoverable errors and may retry.
+
+### 5.10 Tool Call Deduplication
+
+Within a single subagent ReAct loop, identical tool calls are cached:
+
+- **Hash key**: `toolName + JSON.stringify(arguments)`
+- **Cache scope**: per-subagent-task in-memory `Map`
+- **Benefit**: prevents the LLM from redundantly calling the same tool with identical parameters across multiple reasoning turns
+
+### 5.11 Working Memory (Beta)
+
+A lightweight, zero-LLM working memory system helps the executor maintain context across waves in long-running plans:
+
+**Feature flag**: `agent_working_memory_enabled` (default: `false`) — set via Admin > Settings > Agent.
+
+**How it works:**
+1. After each wave completes, `saveWaveMemory(planId, wave, completedTasks)` generates a deterministic summary (≤500 chars) from truncated task results (120 chars each)
+2. Heuristic keyword extraction (frequency-based regex, 150-word stop list, max 10 keywords) is stored in the `keywords` column for future retrieval optimization
+3. Before the next wave's executor prompt is built, `getWorkingMemory(planId)` retrieves the last **2 waves** of summaries (≤1500 chars total) and injects them as a `[Previous Waves Summary]` block
+4. Summaries are stored in the **`plan_memories`** table with a GIN index on keywords
+
+**Constraints** (by design):
+- No LLM calls for summarization — fully deterministic string concatenation
+- No embeddings or vector DB — pure PostgreSQL text storage
+- Feature-gated and can be disabled without schema rollback
+
+### 5.12 Empty-Wave Backoff
+
+When the dependency resolver returns zero ready tasks because all pending tasks are waiting on `retry_after`:
+
+1. The orchestrator computes the earliest retry timestamp
+2. Sleeps until that timestamp (minimum 1 second)
+3. Decrements `waveCount` so the sleep does **not** count against the `maxWaves` budget
+4. Resumes the loop normally
 
 ---
 
@@ -341,7 +432,7 @@ Configured in **Admin Settings → Autonomous Mode → Subagent Configuration**:
 | Enable subagent mode | Toggle | `false` | Master on/off for multi-turn ReAct subagents |
 | Default tasks to subagent mode | Toggle | `false` | Planner marks new tasks as `subagent_enabled` by default |
 | Require HITL for unsafe subagent tools | Toggle | `true` | Pause execution before generative/costly tools |
-| Max iterations per task | Number | `5` | ReAct loop ceiling (1–20) |
+| Max iterations per task | Number | `15` | ReAct loop ceiling (1–30) |
 | Budget allocation (%) | Number | `25` | Percentage of plan budget allocated per subagent task |
 
 ---
@@ -378,7 +469,8 @@ Configured in **Admin Settings → Autonomous Mode → Subagent Configuration**:
 | `src/lib/agent/dependency-validator.ts` | DAG validation, cycle detection |
 | `src/lib/agent/streaming-executor.ts` | SSE streaming integration, subagent config loading |
 | `src/lib/agent/cost-tracker.ts` | Live cumulative cost tracking with per-model pricing |
+| `src/lib/agent/memory.ts` | **Working memory** — wave summary persistence and prompt injection |
 | `src/streaming/subagent-approval-resolver.ts` | In-memory HITL resolver for subagent tool approvals |
 | `src/components/chat/SubagentPanel.tsx` | Live subagent telemetry UI (iterations, thinking, cost) |
 | `src/components/chat/SubagentApprovalCard.tsx` | HITL approval card for unsafe subagent tools |
-| `src/lib/db/compat/agent-config.ts` | Model config, system prompts, admin settings, subagent config |
+| `src/lib/db/compat/agent-config.ts` | Model config, system prompts, admin settings, subagent config, working memory flag |

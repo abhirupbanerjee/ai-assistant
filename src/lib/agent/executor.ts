@@ -942,10 +942,18 @@ async function executeWebSearchTool(
     return 'Web search failed: No search query provided. Task target and description are both empty.';
   }
 
+  // Extract quantity from task text (e.g., "top 10", "5 best", "find 20")
+  const combinedText = `${task.target || ''} ${task.description || ''}`;
+  const quantityMatch = combinedText.match(/(?:top|best|find|search|get)\s+(\d+)|(\d+)\s+(?:top|best|results?|items?|movies?|shows?|books?)/i);
+  const maxResults = quantityMatch ? Math.min(Math.max(parseInt(quantityMatch[1] || quantityMatch[2], 10), 1), 20) : 5;
+  if (maxResults !== 5) {
+    console.log(`[Executor] Detected quantity ${maxResults} in search task, overriding default max_results`);
+  }
+
   // Execute web search
   const result = await tavilyWebSearch.execute({
     query,
-    max_results: 5,
+    max_results: maxResults,
     search_depth: 'basic',
   });
 
@@ -1454,6 +1462,7 @@ ${task.expected_output ? `- Expected Output: ${task.expected_output}\n` : ''}
     const { getWorkingMemory } = await import('./memory');
     const memory = await getWorkingMemory(plan.id);
     if (memory) {
+      console.log(`[Executor] Injecting working memory (${memory.length} chars) into task ${task.id} prompt`);
       prompt += `\n**Previous Waves Summary**:\n${memory}\n`;
     }
   }
@@ -1476,10 +1485,10 @@ ${task.expected_output ? `- Expected Output: ${task.expected_output}\n` : ''}
 
   prompt += `\n**Instructions:**
 Execute the task based on the type:
-- **analyze**: Examine and interpret the information
-- **search**: Find relevant information (explain what you would search for)
+- **analyze**: Examine and interpret the information. **CRITICAL:** If dependency results are provided above, analyze them DIRECTLY. Do NOT perform additional web searches — the data you need is already in the Dependencies section.
+- **search**: Find relevant information via web search (only when no dependency data is available)
 - **compare**: Compare the items and highlight key differences
-- **synthesize**: Consolidate findings from multiple completed tasks — identify cross-cutting themes, patterns, and unified insights
+- **synthesize**: Consolidate findings from multiple completed tasks — identify cross-cutting themes, patterns, and unified insights. Use ONLY the provided dependency results — do not search for additional data.
 - **generate**: Create the requested content
 - **summarize**: Provide a concise summary
 - **extract**: Pull out the specific information requested

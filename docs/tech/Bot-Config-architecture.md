@@ -799,3 +799,4 @@ The agent streams these events during execution:
 | `memory-settings` | User memory extraction |
 | `summarization-settings` | Thread summarization |
 | `agent-settings` | Autonomous agent configuration (beta), including planner/executor/checker/summarizer model assignments and executor profiles |
+| `agent_working_memory_enabled` | Enable per-plan working memory for cross-wave context persistence in autonomous mode (default: false) |

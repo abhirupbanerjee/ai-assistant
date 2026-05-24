@@ -161,7 +161,7 @@ Widgets showing recent system activity:
 | **Memory** | User memory extraction, semantic retrieval, and temporal filtering |
 | **Summarization** | Thread summarization settings |
 | **Limits** | Conversation history, upload limits |
-| **Agent** | Autonomous agent budget, quality threshold, timeout settings, model assignments, executor profiles, planner reasoning toggle, **subagent mode** (ReAct loops, tool safety gating, HITL approval) |
+| **Agent** | Autonomous agent budget, quality threshold, timeout settings, model assignments, executor profiles, planner reasoning toggle, **subagent mode** (ReAct loops, tool safety gating, HITL approval), **working memory** (cross-wave context, beta) |
 | **Superuser** | Superuser quota and permissions |
 | **Backup** | Database backup and restore |
 | **Branding** | Bot name, icon, accent color, PWA settings |
@@ -1701,6 +1701,56 @@ The RAG pipeline now proactively manages token budgets before sending to the LLM
 - Provides visibility into context size via logs
 
 **No configuration needed** — this is automatic behavior enabled for all requests.
+
+### Agent Settings (Beta)
+
+The **Agent** section configures the autonomous multi-step task execution system. This is an advanced feature that decomposes complex requests into planned tasks, executes them with tool calling, checks quality, and synthesizes a final answer.
+
+#### Model Assignment
+
+| Setting | Description |
+|---------|-------------|
+| **Planner Model** | Model for task decomposition and DAG creation. Thinking-capable models recommended. |
+| **Executor Model** | Model for running individual tasks. Supports executor profiles for specialized routing. |
+| **Checker Model** | Model for quality validation and confidence scoring |
+| **Summarizer Model** | Model for final output synthesis |
+| **Planner Reasoning** | Enable chain-of-thought reasoning in the planner (only shown when planner model is thinking-capable) |
+
+#### Budget & Quality
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Max Tokens** | 2,000,000 | Total token budget per autonomous execution |
+| **Max Cost** | — | Maximum dollar cost per execution |
+| **Max Tasks** | 10 | Maximum tasks per plan |
+| **Quality Threshold** | 0.7 | Minimum confidence score (0.0–1.0) before retry |
+| **Max Retries** | 2 | Retries per task before marking failed |
+
+#### Subagent Mode
+
+Subagent mode enables multi-turn ReAct loops within individual tasks for complex reasoning:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enable Subagent Mode** | Off | Master toggle for multi-turn subagent ReAct loops |
+| **Default Tasks to Subagent** | Off | Planner marks new tasks as subagent-enabled by default |
+| **Require HITL for Unsafe Tools** | On | Pause before generative/costly tools in subagent loops |
+| **Max Iterations per Task** | 15 | ReAct loop ceiling (1–30). Higher values allow deeper reasoning but consume more tokens. |
+| **Budget Allocation (%)** | 25 | Percentage of plan budget allocated per subagent task |
+
+#### Working Memory (Beta)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Enable Working Memory** | Off | Persist per-wave task summaries into the `plan_memories` table so the executor can reference prior-wave context in long-running plans. No LLM overhead — summaries are deterministic. |
+
+> **Working Memory behavior:** When enabled, after each wave completes the system saves a truncated summary (≤500 chars) of completed tasks. Before the next wave executes, the last 2 waves of summaries (≤1500 chars) are injected into the executor prompt as `[Previous Waves Summary]`. This helps the agent maintain continuity across many waves without growing the prompt indefinitely.
+
+#### Streaming & Timeouts
+
+- **Stream Progress**: Real-time SSE events stream task status to the chat UI
+- **Task Timeouts**: Type-specific limits are enforced automatically (deep analysis: 20 min, image/document generation: 15 min, charts/research: 10 min)
+- **Retry Backoff**: Recoverable API errors (rate limits, timeouts) trigger exponential backoff with automatic retry; fatal errors skip retry
 
 ### Memory Settings
 

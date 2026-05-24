@@ -434,6 +434,19 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
 
   console.log('[Kysely] PostgreSQL migrations completed');
 
+  // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)
+  import('../db/compat/task-plans')
+    .then(({ failStaleActivePlans }) =>
+      failStaleActivePlans(2).then((count: number) => {
+        if (count > 0) {
+          console.log(`[Kysely] Auto-failed ${count} stale active autonomous plan(s) older than 2 hours`);
+        }
+      })
+    )
+    .catch(() => {
+      /* ignore — table may not exist on very first boot */
+    });
+
   // Fire-and-forget: sync enabled models to LiteLLM proxy
   import('../services/litellm-sync')
     .then(({ syncAllModelsToLiteLLM }) =>
