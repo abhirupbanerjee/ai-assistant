@@ -4692,6 +4692,8 @@ Get usage statistics for an agent bot.
 
 These endpoints are authenticated via API key (Bearer token) rather than session cookies.
 
+> **Note:** Agent bots are **single-turn LLM executions** with optional tool calling. They are **not** the autonomous agent (orchestrator/planner/executor/checker/summarizer pipeline). Agent bots do not create task plans, execute waves, or use the autonomous mode infrastructure. They call the LLM directly with the version's configured model, skills, and tools, and return the output.
+
 #### `POST /api/agent-bots/{slug}/invoke`
 
 Invoke an agent bot to execute a task.
@@ -4711,8 +4713,9 @@ Invoke an agent bot to execute a task.
 {
   input: Record<string, any>;           // Input parameters matching the version's schema
   version?: string;                     // Optional: version ID or "latest" (default)
-  outputType?: 'text' | 'json' | 'pdf' | 'pptx' | 'xlsx' | 'mp3';  // Override default
+  outputType?: 'text' | 'json' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'podcast' | 'md' | 'chart' | 'diagram';  // Override default
   async?: boolean;                      // If true, returns immediately with jobId
+  files?: string[];                     // Optional: array of uploaded file IDs to include
   webhookUrl?: string;                  // For async: webhook to call on completion
   webhookSecret?: string;               // For async: shared secret for webhook signature
 }
@@ -4739,12 +4742,18 @@ curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
   success: true;
   jobId: string;
   outputs: Array<{
-    type: 'text' | 'json' | 'pdf' | 'pptx' | 'xlsx' | 'mp3';
-    content?: string;             // For text/json
+    type: 'text' | 'json' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'podcast' | 'md' | 'chart' | 'diagram';
+    content?: string;             // For text/json/md
     downloadUrl?: string;         // For file outputs
     filename?: string;
     fileSize?: number;
     mimeType?: string;
+  }>;
+  sources?: Array<{               // Only if version has include_sources enabled
+    documentName: string;
+    pageNumber?: number;
+    chunkText?: string;
+    score?: number;
   }>;
   tokenUsage?: {
     promptTokens: number;
@@ -4755,13 +4764,59 @@ curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
 }
 ```
 
+**Example Request (Async with Webhook)**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
+  -H "Authorization: Bearer pb_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "query": "Generate a quarterly report"
+    },
+    "outputType": "pdf",
+    "async": true,
+    "webhookUrl": "https://your-server.com/webhook",
+    "webhookSecret": "whsec_1234567890abcdef"
+  }'
+```
+
 **Response (Async)** `202 Accepted`:
 
-```typescript
+```json
 {
-  jobId: string;
-  status: 'pending';
+  "jobId": "job_abc123",
+  "status": "pending"
 }
+```
+
+**Example: Check Job Status**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/agent-bots/hr-assistant/jobs/job_abc123 \
+  -H "Authorization: Bearer pb_abc123..."
+```
+
+**Example: Invoke with Uploaded Files**:
+
+```bash
+# 1. Upload a file
+curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/upload \
+  -H "Authorization: Bearer pb_abc123..." \
+  -F "file=@document.pdf"
+# Response: {"fileId": "file_xyz789", ...}
+
+# 2. Invoke with the file
+curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
+  -H "Authorization: Bearer pb_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "query": "Summarize this document"
+    },
+    "files": ["file_xyz789"],
+    "outputType": "text"
+  }'
 ```
 
 **Rate Limit Headers**:
@@ -4823,13 +4878,45 @@ Get the status and results of an async job.
 }
 ```
 
+**Example Response (Completed)**:
+
+```json
+{
+  "jobId": "job_abc123",
+  "status": "completed",
+  "createdAt": "2026-05-25T10:30:00Z",
+  "startedAt": "2026-05-25T10:30:01Z",
+  "completedAt": "2026-05-25T10:30:05Z",
+  "outputs": [
+    {
+      "type": "text",
+      "content": "The annual leave policy entitles employees to 20 working days per year."
+    }
+  ],
+  "sources": [
+    {
+      "documentName": "HR_Handbook_2024.pdf",
+      "pageNumber": 12,
+      "chunkText": "Annual leave entitlement is 20 working days...",
+      "score": 0.89
+    }
+  ],
+  "tokenUsage": {
+    "promptTokens": 500,
+    "completionTokens": 200,
+    "totalTokens": 700
+  },
+  "processingTimeMs": 2340
+}
+```
+
 ---
 
 #### `GET /api/agent-bots/{slug}/jobs/{jobId}/outputs/{outputId}/download`
 
 Download a generated output file.
 
-**Authentication**: API Key (Bearer token)
+**Authentication**: API Key (Bearer token) **or** Admin session cookie (for Test tab downloads)
 
 **Response**: Binary file with appropriate Content-Type header.
 

@@ -280,64 +280,90 @@ function generateOpenApiSpec(
                 { type: 'string', enum: ['latest', 'default'] },
               ],
               description: 'Version to use (number, "latest", or "default")',
+              example: 'latest',
             },
             outputType: {
               type: 'string',
               enum: version?.output_config?.enabledTypes || ['text', 'json'],
               description: 'Desired output format',
+              example: version?.output_config?.defaultType || 'json',
             },
             fallbackType: {
               type: 'string',
               enum: ['text', 'json', 'md'],
               description: 'Fallback output type if primary fails',
+              example: 'text',
             },
             async: {
               type: 'boolean',
               description: 'Use async mode (returns immediately with job ID)',
+              example: false,
+            },
+            files: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Array of uploaded file IDs to include as context',
+              example: ['file_abc123'],
             },
             webhookUrl: {
               type: 'string',
               format: 'uri',
               description: 'Webhook URL for async result delivery',
+              example: 'https://your-server.com/webhook',
             },
             webhookSecret: {
               type: 'string',
               description: 'Secret for webhook signature verification',
+              example: 'whsec_1234567890abcdef',
             },
           },
         },
         InvokeResponse: {
           type: 'object',
           properties: {
-            success: { type: 'boolean' },
-            jobId: { type: 'string' },
+            success: { type: 'boolean', example: true },
+            jobId: { type: 'string', example: 'job_abc123' },
             outputs: {
               type: 'array',
               items: {
                 $ref: '#/components/schemas/OutputItem',
               },
             },
+            sources: {
+              type: 'array',
+              description: 'RAG source citations (only when version.include_sources is true)',
+              items: {
+                type: 'object',
+                properties: {
+                  documentName: { type: 'string', example: 'Document.pdf' },
+                  pageNumber: { type: 'integer', example: 5 },
+                  chunkText: { type: 'string', example: 'Relevant text excerpt...' },
+                  score: { type: 'number', example: 0.92 },
+                },
+              },
+            },
             tokenUsage: {
               $ref: '#/components/schemas/TokenUsage',
             },
-            processingTimeMs: { type: 'integer' },
-            usedFallback: { type: 'boolean' },
+            processingTimeMs: { type: 'integer', example: 2340 },
+            usedFallback: { type: 'boolean', example: false },
           },
         },
         AsyncResponse: {
           type: 'object',
           properties: {
-            jobId: { type: 'string' },
-            status: { type: 'string', enum: ['pending'] },
+            jobId: { type: 'string', example: 'job_abc123' },
+            status: { type: 'string', enum: ['pending'], example: 'pending' },
           },
         },
         JobStatusResponse: {
           type: 'object',
           properties: {
-            jobId: { type: 'string' },
+            jobId: { type: 'string', example: 'job_abc123' },
             status: {
               type: 'string',
               enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+              example: 'completed',
             },
             outputs: {
               type: 'array',
@@ -345,15 +371,28 @@ function generateOpenApiSpec(
                 $ref: '#/components/schemas/OutputItem',
               },
             },
+            sources: {
+              type: 'array',
+              description: 'RAG source citations (only when version.include_sources is true)',
+              items: {
+                type: 'object',
+                properties: {
+                  documentName: { type: 'string', example: 'Document.pdf' },
+                  pageNumber: { type: 'integer', example: 5 },
+                  chunkText: { type: 'string', example: 'Relevant text excerpt...' },
+                  score: { type: 'number', example: 0.92 },
+                },
+              },
+            },
             tokenUsage: {
               $ref: '#/components/schemas/TokenUsage',
             },
-            processingTimeMs: { type: 'integer' },
+            processingTimeMs: { type: 'integer', example: 2340 },
             error: {
               type: 'object',
               properties: {
-                message: { type: 'string' },
-                code: { type: 'string' },
+                message: { type: 'string', example: 'Model request failed' },
+                code: { type: 'string', example: 'PROCESSING_ERROR' },
               },
             },
           },
@@ -372,9 +411,9 @@ function generateOpenApiSpec(
         TokenUsage: {
           type: 'object',
           properties: {
-            promptTokens: { type: 'integer' },
-            completionTokens: { type: 'integer' },
-            totalTokens: { type: 'integer' },
+            promptTokens: { type: 'integer', example: 500 },
+            completionTokens: { type: 'integer', example: 200 },
+            totalTokens: { type: 'integer', example: 700 },
           },
         },
         UploadResponse: {

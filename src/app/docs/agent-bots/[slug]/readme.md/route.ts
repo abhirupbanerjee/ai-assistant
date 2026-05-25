@@ -135,6 +135,7 @@ ${apiUrl}
 | GET | \`/jobs/{jobId}\` | Get job status and results |
 | POST | \`/jobs/{jobId}/cancel\` | Cancel a pending job |
 | POST | \`/upload\` | Upload files for job input |
+| GET | \`/jobs/{jobId}/outputs/{outputId}/download\` | Download generated output file |
 
 `;
 
@@ -246,6 +247,14 @@ console.log(result);
       "content": { ... }
     }
   ],
+  "sources": [
+    {
+      "documentName": "HR_Handbook_2024.pdf",
+      "pageNumber": 12,
+      "chunkText": "Annual leave entitlement is 20 working days...",
+      "score": 0.89
+    }
+  ],
   "tokenUsage": {
     "promptTokens": 500,
     "completionTokens": 200,
@@ -276,6 +285,23 @@ console.log(result);
 | FILE_VALIDATION_ERROR | 400 | File type/size not allowed |
 | OUTPUT_TYPE_NOT_SUPPORTED | 400 | Requested output type not enabled |
 | PROCESSING_ERROR | 500 | Internal processing error |
+
+## Source Citations
+
+If the agent bot version has **Include Sources** enabled, the response will include a \`sources\` array with RAG citation details:
+
+\`\`\`json
+{
+  "sources": [
+    {
+      "documentName": "Document.pdf",
+      "pageNumber": 5,
+      "chunkText": "Relevant text excerpt...",
+      "score": 0.92
+    }
+  ]
+}
+\`\`\`
 
 ## Rate Limits
 
