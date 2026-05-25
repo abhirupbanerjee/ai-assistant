@@ -18,7 +18,7 @@ import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/
 import { getRequestContext } from '@/lib/request-context';
 import { getDisclaimerConfigIfEnabled } from '../disclaimer';
 import { getApiKey } from '@/lib/provider-helpers';
-import { getEffectiveTemperature, isTemperatureUnsupportedModel } from '@/lib/llm-thinking';
+import { getTemperatureForModel } from '@/lib/llm-thinking';
 import { getLlmSettings } from '@/lib/db/compat/config';
 import { pcmToWav, GEMINI_TTS_PCM_OPTIONS, estimateDurationFromPCM } from '@/lib/audio/pcm-to-wav';
 import type {
@@ -230,7 +230,7 @@ async function formatContentForAudio(
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, 0.7),
+    temperature: getTemperatureForModel(model, 0.7),
     max_tokens: lengthConfig.words * 2, // Allow buffer
   });
 
@@ -337,7 +337,7 @@ async function formatContentForDialogue(
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, 0.7),
+    temperature: getTemperatureForModel(model, 0.7),
     max_tokens: lengthConfig.words * 2,
   });
 
@@ -634,7 +634,7 @@ Select the best matching voice for each role.`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, 0.3),
+      temperature: getTemperatureForModel(model, 0.3),
       max_tokens: 100,
     });
 

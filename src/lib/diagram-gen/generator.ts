@@ -8,7 +8,7 @@
 import OpenAI from 'openai';
 import { getLlmSettings } from '@/lib/db/compat/config';
 import { getApiKey } from '@/lib/provider-helpers';
-import { getEffectiveTemperature, isTemperatureUnsupportedModel } from '@/lib/llm-thinking';
+import { getTemperatureForModel } from '@/lib/llm-thinking';
 import { getToolConfig } from '@/lib/db/compat/tool-config';
 import { buildGenerationPrompt, getDiagramSystemPrompt, DIAGRAM_TEMPLATES } from './templates';
 import { validateMermaidSyntax, sanitizeMermaidCode } from './validator';
@@ -138,7 +138,7 @@ export async function generateMermaidDiagram(
 
       const response = await client.chat.completions.create({
         model,
-        temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, config.temperature),
+        temperature: getTemperatureForModel(model, config.temperature),
         max_tokens: config.maxTokens,
         messages: [
           { role: 'system', content: system },

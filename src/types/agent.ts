@@ -75,7 +75,7 @@ export type ExecutorProfileName =
 export interface ModelSpec {
   provider: LLMProvider;
   model: string;
-  temperature: number;
+  temperature: number | undefined;
   max_tokens?: number;
   thinking_enabled?: boolean;
 }

@@ -5,9 +5,8 @@ import {
   buildThinkingRequestProfile,
   isUnsupportedThinkingParamError,
   stripThinkingRequestParams,
-  getEffectiveTemperature,
-  isTemperatureUnsupportedModel,
   isTemperatureParamError,
+  getTemperatureForModel,
   type ThinkingRequestProfile,
 } from '@/lib/llm-thinking';
 import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
@@ -638,7 +637,7 @@ export async function generateResponse(
     model: isOllama ? getOllamaModelId(llmSettings.model) : llmSettings.model,
     messages,
     max_tokens: effectiveMaxTokens,
-    temperature: isTemperatureUnsupportedModel(llmSettings.model) ? undefined : getEffectiveTemperature(llmSettings.model, llmSettings.temperature),
+    temperature: getTemperatureForModel(llmSettings.model, llmSettings.temperature),
     ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 
@@ -1085,9 +1084,7 @@ async function streamOneCompletionWithThinkingRetry(
     }
     const currentTemp = params.temperature;
     if (isTemperatureParamError(error) && currentTemp != null) {
-      const safeTemperature = isTemperatureUnsupportedModel(params.model)
-        ? undefined
-        : getEffectiveTemperature(params.model, currentTemp);
+      const safeTemperature = getTemperatureForModel(params.model, currentTemp);
       if (safeTemperature !== params.temperature || safeTemperature === undefined) {
         logger.warn('Retrying LLM request with temperature correction', {
           model: params.model,
@@ -1396,7 +1393,7 @@ export async function generateToolCompletionWithFallback(
         const fallbackSpec: ModelSpec = {
           model: fallbackModelId,
           provider: detectProviderForToolCompletion(fallbackModelId),
-          temperature: getEffectiveTemperature(fallbackModelId, modelSpec.temperature),
+          temperature: getTemperatureForModel(fallbackModelId, modelSpec.temperature),
           max_tokens: modelSpec.max_tokens,
         };
         console.log(`[ToolCompletion] Falling back to ${fallbackModelId}`);
@@ -1573,9 +1570,7 @@ export async function generateResponseWithTools(
 
   // Use model override if provided, otherwise use default from settings
   const effectiveModel = modelOverride || llmSettings.model;
-  const effectiveTemperature = isTemperatureUnsupportedModel(effectiveModel)
-    ? undefined
-    : getEffectiveTemperature(effectiveModel, llmSettings.temperature);
+  const effectiveTemperature = getTemperatureForModel(effectiveModel, llmSettings.temperature);
 
   // Detect direct-route models — bypass LiteLLM
   const useAnthropicDirect = isClaudeModel(effectiveModel);

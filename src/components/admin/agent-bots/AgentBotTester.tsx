@@ -280,6 +280,17 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
         body: JSON.stringify(requestBody),
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const rawText = await response.text();
+        console.error('[AgentBotTester] Non-JSON response:', response.status, rawText.slice(0, 500));
+        setTestResult({
+          success: false,
+          error: `Server returned ${response.status} with non-JSON response (check browser console for details)`,
+        });
+        return;
+      }
+
       const data = await response.json();
 
       if (!response.ok) {

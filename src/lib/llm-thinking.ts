@@ -53,6 +53,25 @@ export function getEffectiveTemperature(modelId: string, requestedTemperature: n
   return isTemperatureLockedModel(modelId) ? 1 : requestedTemperature;
 }
 
+/**
+ * Get the correct temperature value for a model.
+ * - O-series models: undefined (strip entirely)
+ * - Temperature-locked models (kimi-k2, gpt-5, deepseek-reasoner): 1
+ * - All others: requestedTemperature
+ *
+ * Use this instead of the isTemperatureUnsupportedModel + getEffectiveTemperature pair.
+ */
+export function getTemperatureForModel(modelId: string, requestedTemperature: number | undefined): number | undefined {
+  const id = normalizeModelId(modelId);
+  if (isOpenAIOFamilyModel(id)) {
+    return undefined; // Strip entirely — o-series rejects temperature
+  }
+  if (isTemperatureLockedModel(id)) {
+    return 1; // Temperature-locked models require exactly 1
+  }
+  return requestedTemperature ?? 0.3;
+}
+
 export function isDefaultThinkingEnabledModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6');

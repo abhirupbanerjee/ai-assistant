@@ -15,7 +15,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings, getRoutesSettings } from './db/compat/config';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
-import { getEffectiveTemperature, isTemperatureUnsupportedModel } from './llm-thinking';
+import { getTemperatureForModel } from './llm-thinking';
 
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
@@ -139,7 +139,7 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
   const response = await client.chat.completions.create({
     model,
     messages: opts.messages,
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
@@ -157,7 +157,7 @@ async function callFireworks(model: string, opts: InternalCompletionOptions): Pr
   const response = await client.chat.completions.create({
     model: fireworksModel,
     messages: opts.messages,
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
@@ -177,7 +177,7 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
     system: systemMsg || undefined,
     messages: conversationMsgs,
     max_tokens: opts.maxTokens ?? 2000,
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
   });
 
   const textBlock = response.content.find(b => b.type === 'text');
@@ -194,7 +194,7 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
   const response = await client.chat.completions.create({
     model: ollamaModel,
     messages: opts.messages,
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: opts.maxTokens ?? 2000,
   });
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
@@ -210,7 +210,7 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
   const response = await client.chat.completions.create({
     model: moonshotModel,
     messages: opts.messages,
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
@@ -224,7 +224,7 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
   const response = await client.chat.completions.create({
     model: deepseekModel,
     messages: opts.messages,
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
@@ -237,7 +237,7 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
 async function callOllamaCloudDirect(model: string, opts: InternalCompletionOptions): Promise<string> {
   const baseTemp = opts.temperature ?? 0.3;
   const response = await callOllamaCloud(model, opts.messages, {
-    temperature: isTemperatureUnsupportedModel(model) ? undefined : getEffectiveTemperature(model, baseTemp),
+    temperature: getTemperatureForModel(model, baseTemp),
     maxTokens: opts.maxTokens,
   });
 

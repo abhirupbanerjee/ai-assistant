@@ -15,9 +15,8 @@ import {
   buildThinkingRequestProfile,
   isUnsupportedThinkingParamError,
   stripThinkingRequestParams,
-  isTemperatureLockedModel,
   isTemperatureParamError,
-  getEffectiveTemperature,
+  getTemperatureForModel,
 } from '@/lib/llm-thinking';
 import { isModelThinkingCapable } from '@/lib/db/compat/enabled-models';
 
@@ -64,7 +63,7 @@ type GenerateOptions = {
 
 type PreparedGenerationOptions = {
   systemPrompt: string;
-  temperature: number;
+  temperature: number | undefined;
   maxTokens: number;
   requestParams: Record<string, unknown>;
 };
@@ -84,7 +83,7 @@ async function prepareGenerationOptions(
 ): Promise<PreparedGenerationOptions> {
   const systemPrompt = options.systemPrompt || '';
   const requestedTemperature = options.temperature ?? modelSpec.temperature;
-  const temperature = getEffectiveTemperature(modelSpec.model, requestedTemperature);
+  const temperature = getTemperatureForModel(modelSpec.model, requestedTemperature);
   const rawMaxTokens = options.maxTokens ?? modelSpec.max_tokens ?? 4096;
   const maxTokens = Math.min(rawMaxTokens, 32000);
   const thinkingEnabled = options.thinkingEnabled ?? modelSpec.thinking_enabled ?? false;
@@ -200,7 +199,7 @@ async function generateOpenAI(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -231,7 +230,7 @@ async function generateOpenAI(
     const stream = await openaiClient.chat.completions.create({
       model,
       messages,
-      temperature,
+      ...(temperature !== undefined && { temperature }),
       max_tokens: maxTokens,
       ...requestParams,
       stream: true,
@@ -252,7 +251,7 @@ async function generateOpenAI(
   const response = await openaiClient.chat.completions.create({
     model,
     messages,
-    temperature,
+    ...(temperature !== undefined && { temperature }),
     max_tokens: maxTokens,
     ...requestParams,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
@@ -275,7 +274,7 @@ async function generateGemini(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -295,7 +294,7 @@ async function generateGemini(
     model,
     contents: [{ parts: [{ text: fullPrompt }] }],
     config: {
-      temperature,
+      ...(temperature !== undefined && { temperature }),
       maxOutputTokens: maxTokens,
       ...requestParams,
     },
@@ -320,7 +319,7 @@ async function generateMistral(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -365,7 +364,7 @@ async function generateAnthropic(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -382,7 +381,7 @@ async function generateAnthropic(
     system: systemPrompt || undefined,
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
-    temperature,
+    ...(temperature !== undefined && { temperature }),
     ...(requestParams.thinking ? { thinking: requestParams.thinking as Anthropic.ThinkingConfigParam } : {}),
   });
 
@@ -408,7 +407,7 @@ async function generateFireworks(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -434,7 +433,7 @@ async function generateFireworks(
     const stream = await fireworksClient.chat.completions.create({
       model: fireworksModel,
       messages,
-      temperature,
+      ...(temperature !== undefined && { temperature }),
       max_tokens: maxTokens,
       ...requestParams,
       stream: true,
@@ -478,7 +477,7 @@ async function generateOllama(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -525,7 +524,7 @@ async function generateOllamaCloud(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -536,7 +535,7 @@ async function generateOllamaCloud(
   messages.push({ role: 'user', content: prompt });
 
   const response = await callOllamaCloud(model, messages, {
-    temperature,
+    ...(temperature !== undefined && { temperature }),
     maxTokens,
     think: typeof requestParams.think === 'boolean' ? requestParams.think : undefined,
   });
@@ -567,7 +566,7 @@ async function generateMoonshot(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -593,7 +592,7 @@ async function generateMoonshot(
     const stream = await moonshotClient.chat.completions.create({
       model: moonshotModel,
       messages,
-      temperature,
+      ...(temperature !== undefined && { temperature }),
       max_tokens: maxTokens,
       ...requestParams,
       stream: true,
@@ -614,7 +613,7 @@ async function generateMoonshot(
   const response = await moonshotClient.chat.completions.create({
     model: moonshotModel,
     messages,
-    temperature,
+    ...(temperature !== undefined && { temperature }),
     max_tokens: maxTokens,
     ...requestParams,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
@@ -637,7 +636,7 @@ async function generateDeepSeek(
   model: string,
   prompt: string,
   systemPrompt: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
@@ -662,7 +661,7 @@ async function generateDeepSeek(
     const stream = await deepseekClient.chat.completions.create({
       model: deepseekModel,
       messages,
-      temperature,
+      ...(temperature !== undefined && { temperature }),
       max_tokens: maxTokens,
       ...requestParams,
       stream: true,
@@ -683,7 +682,7 @@ async function generateDeepSeek(
   const response = await deepseekClient.chat.completions.create({
     model: deepseekModel,
     messages,
-    temperature,
+    ...(temperature !== undefined && { temperature }),
     max_tokens: maxTokens,
     ...requestParams,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
@@ -770,7 +769,7 @@ export async function generateWithModelFallback(
         const fallbackSpec: ModelSpec = {
           model: fallbackModelId,
           provider: detectProvider(fallbackModelId),
-          temperature: getEffectiveTemperature(fallbackModelId, modelSpec.temperature),
+          temperature: getTemperatureForModel(fallbackModelId, modelSpec.temperature),
           max_tokens: modelSpec.max_tokens,
         };
         console.log(`[LLM Router] Falling back to ${fallbackModelId}`);

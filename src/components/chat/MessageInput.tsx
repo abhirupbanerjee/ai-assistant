@@ -86,16 +86,11 @@ export default function MessageInput({
   attachmentChipsSlot,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
-  // Restore default mode from localStorage on mount
-  const [mode, setMode] = useState<ChatMode>(() => {
-    if (typeof window === 'undefined') return 'normal';
-    try {
-      const saved = localStorage.getItem('policybot:pref:defaultMode');
-      return (saved as ChatMode) || 'normal';
-    } catch {
-      return 'normal';
-    }
-  });
+  // Mode defaults to normal on every page load.
+  // We intentionally do NOT restore autonomous mode from localStorage,
+  // because it causes unexpected autonomous executions when users
+  // forget they had it enabled in a previous session.
+  const [mode, setMode] = useState<ChatMode>('normal');
   const [isUploading, setIsUploading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [lineCount, setLineCount] = useState(1);
@@ -249,12 +244,6 @@ export default function MessageInput({
       onSend(message.trim(), mode, preferences);
       setMessage('');
       clearDraft();
-      // Save mode to localStorage for next session
-      try {
-        localStorage.setItem('policybot:pref:defaultMode', mode);
-      } catch (error) {
-        console.warn('Failed to save default mode preference:', error);
-      }
       // Reset mode to normal after sending
       setMode('normal');
     }
