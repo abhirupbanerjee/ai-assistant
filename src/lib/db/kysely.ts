@@ -432,6 +432,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE agent_bot_versions ADD COLUMN IF NOT EXISTS include_sources INTEGER DEFAULT 0`.execute(database);
   console.log('[Kysely] Ensured agent_bot_versions.include_sources column exists');
 
+  // Migration: Add sources_json column to agent_bot_jobs if missing
+  await sql`ALTER TABLE agent_bot_jobs ADD COLUMN IF NOT EXISTS sources_json TEXT`.execute(database);
+  console.log('[Kysely] Ensured agent_bot_jobs.sources_json column exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)
