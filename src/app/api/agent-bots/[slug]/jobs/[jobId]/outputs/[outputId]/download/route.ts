@@ -80,7 +80,7 @@ export async function GET(
 
     // 4. Verify API key has access (same bot or same key)
     // Skip this check for admin session access
-    if (!isAdminAccess && job.api_key_id !== apiKey.id && job.agent_bot_id !== apiKey.agent_bot_id) {
+    if (!isAdminAccess && apiKey && job.api_key_id !== apiKey.id && job.agent_bot_id !== apiKey.agent_bot_id) {
       return agentBotErrors.jobNotFound();
     }
 
