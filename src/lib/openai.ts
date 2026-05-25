@@ -1889,10 +1889,11 @@ export async function generateResponseWithTools(
     });
   }
 
-  // Reasoning models (DeepSeek-R1, QwQ, etc.) may not support tool_choice — downgrade to auto
-  if (isThinkTagModel(effectiveModel) && typeof effectiveToolChoice === 'object') {
+  // Reasoning models (DeepSeek-R1, QwQ, etc.) may not support forced tool_choice — downgrade to auto
+  if (isThinkTagModel(effectiveModel) && (typeof effectiveToolChoice === 'object' || effectiveToolChoice === 'required')) {
+    const originalToolChoice = typeof effectiveToolChoice === 'object' ? effectiveToolChoice.function.name : effectiveToolChoice;
     effectiveToolChoice = 'auto' as const;
-    logger.info('Downgraded tool_choice for reasoning model', { model: effectiveModel });
+    logger.info('Downgraded tool_choice for reasoning model', { model: effectiveModel, original: originalToolChoice });
   }
 
   // Inject request_clarification meta-tool when preflight skill is active.
@@ -2022,7 +2023,8 @@ export async function generateResponseWithTools(
       content: responseMessage.content,
       tool_calls: responseMessage.tool_calls,
     };
-    if (thinkingProfile.requiresThinkingStatePreservation && responseMessage.thinkingContent) {
+    // Preserve reasoning_content for any model that returns it (Moonshot, Claude, DeepSeek, etc.)
+    if (responseMessage.thinkingContent) {
       assistantToolMessage.reasoning_content = responseMessage.thinkingContent;
     }
     messages.push(assistantToolMessage);

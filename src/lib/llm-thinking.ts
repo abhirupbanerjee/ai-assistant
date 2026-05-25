@@ -41,8 +41,9 @@ export function isTemperatureLockedModel(modelId: string): boolean {
 
 export function isTemperatureUnsupportedModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
-  // OpenAI o-series does not accept temperature at all
-  return isOpenAIOFamilyModel(id);
+  // OpenAI o-series does not accept temperature at all.
+  // Temperature-locked models (kimi-k2, gpt-5, etc.) also reject custom temps.
+  return isOpenAIOFamilyModel(id) || isTemperatureLockedModel(id);
 }
 
 export function getEffectiveTemperature(modelId: string, requestedTemperature: number): number {
