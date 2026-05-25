@@ -202,19 +202,14 @@ export function summarizeSyncActions(actions: SyncAction[]): SyncActionSummary {
 }
 
 /**
- * Maximum files allowed per folder sync
+ * Validate folder for upload.
+ * Limits are sourced from admin settings (UploadLimits.adminMaxFileSizeMB / adminMaxFilesPerFolder)
+ * and must be passed in by the caller — this helper does no I/O.
  */
-export const MAX_FILES_PER_FOLDER = 500;
-
-/**
- * Maximum file size in bytes (50MB)
- */
-export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-
-/**
- * Validate folder for upload
- */
-export function validateFolder(files: File[]): {
+export function validateFolder(
+  files: File[],
+  limits: { maxFilesPerFolder: number; maxFileSizeBytes: number }
+): {
   valid: boolean;
   errors: string[];
   warnings: string[];
@@ -222,18 +217,16 @@ export function validateFolder(files: File[]): {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Check total file count
-  if (files.length > MAX_FILES_PER_FOLDER) {
-    errors.push(`Too many files: ${files.length} (max: ${MAX_FILES_PER_FOLDER})`);
+  if (files.length > limits.maxFilesPerFolder) {
+    errors.push(`Too many files: ${files.length} (max: ${limits.maxFilesPerFolder})`);
   }
 
-  // Check individual file sizes
-  const oversizedFiles = files.filter(f => f.size > MAX_FILE_SIZE_BYTES);
+  const oversizedFiles = files.filter(f => f.size > limits.maxFileSizeBytes);
   if (oversizedFiles.length > 0) {
-    errors.push(`${oversizedFiles.length} file(s) exceed 50MB size limit`);
+    const mb = Math.round(limits.maxFileSizeBytes / 1024 / 1024);
+    errors.push(`${oversizedFiles.length} file(s) exceed ${mb}MB size limit`);
   }
 
-  // Check for unsupported files
   const { unsupported } = filterSupportedFiles(files);
   if (unsupported.length > 0) {
     warnings.push(`${unsupported.length} unsupported file(s) will be skipped`);

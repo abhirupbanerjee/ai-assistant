@@ -70,6 +70,8 @@ export interface UploadLimits {
   maxFilesPerThread: number;
   maxFileSizeMB: number;
   allowedTypes: string[];
+  adminMaxFileSizeMB: number;
+  adminMaxFilesPerFolder: number;
 }
 
 export interface SystemPrompt {

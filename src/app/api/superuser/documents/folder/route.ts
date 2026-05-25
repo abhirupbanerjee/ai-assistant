@@ -17,7 +17,8 @@ import {
   findFolderSyncFileByPath,
 } from '@/lib/db/compat/folder-syncs';
 import { updateDocumentFolderSync } from '@/lib/db/compat';
-import { calculateFileHash, MAX_FILES_PER_FOLDER, MAX_FILE_SIZE_BYTES } from '@/lib/folder-sync-utils';
+import { calculateFileHash } from '@/lib/folder-sync-utils';
+import { getUploadLimits } from '@/lib/db/compat/config';
 
 interface FolderUploadResult {
   syncId: string;
@@ -122,9 +123,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (files.length > MAX_FILES_PER_FOLDER) {
+    const uploadLimits = await getUploadLimits();
+    const maxFilesPerFolder = uploadLimits.adminMaxFilesPerFolder;
+    const maxFileSizeBytes = uploadLimits.adminMaxFileSizeMB * 1024 * 1024;
+
+    if (files.length > maxFilesPerFolder) {
       return NextResponse.json(
-        { error: `Too many files. Maximum ${MAX_FILES_PER_FOLDER} files per folder.` },
+        { error: `Too many files. Maximum ${maxFilesPerFolder} files per folder.` },
         { status: 400 }
       );
     }
@@ -176,7 +181,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Skip files that are too large
-      if (file.size > MAX_FILE_SIZE_BYTES) {
+      if (file.size > maxFileSizeBytes) {
         await createFolderSyncFile({
           folderSyncId: folderSync.id,
           relativePath,
@@ -185,18 +190,19 @@ export async function POST(request: NextRequest) {
           lastModified: file.lastModified,
         });
 
+        const tooLargeMsg = `File too large (max ${uploadLimits.adminMaxFileSizeMB}MB)`;
         const syncFile = await findFolderSyncFileByPath(folderSync.id, relativePath);
         if (syncFile) {
           await updateFolderSyncFile(syncFile.id, {
             status: 'error',
-            errorMessage: 'File too large (max 50MB)',
+            errorMessage: tooLargeMsg,
           });
         }
 
         results.push({
           path: relativePath,
           status: 'error',
-          error: 'File too large (max 50MB)',
+          error: tooLargeMsg,
         });
         failed++;
         continue;

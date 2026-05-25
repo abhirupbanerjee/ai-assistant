@@ -103,6 +103,8 @@ export interface UploadConfig {
   maxFilesPerThread: number;
   maxFileSizeMB: number;
   allowedTypes: string[];
+  adminMaxFileSizeMB: number;
+  adminMaxFilesPerFolder: number;
 }
 
 export interface RetentionConfig {
@@ -479,6 +481,8 @@ function getHardcodedDefaults(): AppConfig {
       maxFilesPerThread: 10,
       maxFileSizeMB: 25,
       allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'application/json'],
+      adminMaxFileSizeMB: 50,
+      adminMaxFilesPerFolder: 500,
     },
     retention: {
       threadRetentionDays: 90,

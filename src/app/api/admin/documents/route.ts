@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listGlobalDocuments, ingestDocument } from '@/lib/ingest';
 import { isSupportedMimeType } from '@/lib/document-extractor';
+import { getUploadLimits } from '@/lib/db/compat/config';
 import type { AdminDocumentsResponse, AdminUploadResponse, ApiError } from '@/types';
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export async function GET() {
   try {
@@ -75,10 +74,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
+    // Validate file size against admin upload limit
+    const uploadLimits = await getUploadLimits();
+    const maxFileSize = uploadLimits.adminMaxFileSizeMB * 1024 * 1024;
+    if (file.size > maxFileSize) {
       return NextResponse.json<ApiError>(
-        { error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`, code: 'FILE_TOO_LARGE' },
+        { error: `File too large (max ${uploadLimits.adminMaxFileSizeMB}MB)`, code: 'FILE_TOO_LARGE' },
         { status: 413 }
       );
     }

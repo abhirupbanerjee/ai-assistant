@@ -9,6 +9,8 @@ interface UploadLimits {
   maxFilesPerThread: number;
   maxFileSizeMB: number;
   allowedTypes: string[];
+  adminMaxFileSizeMB: number;
+  adminMaxFilesPerFolder: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -70,6 +72,8 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
         maxFilesPerThread: 10,
         maxFileSizeMB: 25,
         allowedTypes: [],
+        adminMaxFileSizeMB: 50,
+        adminMaxFilesPerFolder: 500,
       };
 
       setSettings(uploadData);
@@ -103,6 +107,8 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
             maxFilesPerThread: editedSettings.maxFilesPerThread,
             maxFileSizeMB: editedSettings.maxFileSizeMB,
             allowedTypes: editedSettings.allowedTypes,
+            adminMaxFileSizeMB: editedSettings.adminMaxFileSizeMB,
+            adminMaxFilesPerFolder: editedSettings.adminMaxFilesPerFolder,
           },
         }),
       });
@@ -197,6 +203,8 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
     maxFilesPerThread: 10,
     maxFileSizeMB: 25,
     allowedTypes: [] as string[],
+    adminMaxFileSizeMB: 50,
+    adminMaxFilesPerFolder: 500,
   };
 
   const isModified = JSON.stringify(settings) !== JSON.stringify(editedSettings);
@@ -228,9 +236,10 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
         </div>
       )}
 
-      {/* Upload Limits */}
+      {/* Chat Input Upload Limits */}
       <div className="bg-white border rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-medium text-gray-700">Upload Limits</h3>
+        <h3 className="text-sm font-medium text-gray-700">Chat Input Limits</h3>
+        <p className="text-xs text-gray-500 -mt-2">Applies to user uploads in the chat window.</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Max Files Per Input */}
@@ -276,6 +285,48 @@ export default function FileUploadSettings({ readOnly = false }: { readOnly?: bo
               max="100"
               value={displaySettings.maxFileSizeMB}
               onChange={(e) => updateNumeric('maxFileSizeMB', parseInt(e.target.value) || 1)}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={readOnly || isSaving}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Admin Document Upload Limits */}
+      <div className="bg-white border rounded-lg p-4 space-y-4">
+        <h3 className="text-sm font-medium text-gray-700">Admin Document Upload Limits</h3>
+        <p className="text-xs text-gray-500 -mt-2">
+          Applies to Admin → Documents → Add New (single file, folder upload, and folder re-sync).
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Admin Max File Size */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Max File Size (MB)
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="2048"
+              value={displaySettings.adminMaxFileSizeMB}
+              onChange={(e) => updateNumeric('adminMaxFileSizeMB', parseInt(e.target.value) || 1)}
+              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={readOnly || isSaving}
+            />
+          </div>
+
+          {/* Admin Max Files Per Folder */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Max Files Per Folder Upload
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="10000"
+              value={displaySettings.adminMaxFilesPerFolder}
+              onChange={(e) => updateNumeric('adminMaxFilesPerFolder', parseInt(e.target.value) || 1)}
               className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               disabled={readOnly || isSaving}
             />

@@ -20,7 +20,8 @@ import {
 import { ingestDocument } from '@/lib/ingest';
 import { isSupportedMimeType } from '@/lib/document-extractor';
 import { updateDocumentFolderSync, deleteDocument as dbDeleteDocument } from '@/lib/db/compat';
-import { calculateFileHash, needsResync, MAX_FILE_SIZE_BYTES } from '@/lib/folder-sync-utils';
+import { calculateFileHash, needsResync } from '@/lib/folder-sync-utils';
+import { getUploadLimits } from '@/lib/db/compat/config';
 
 interface RouteParams {
   params: Promise<{ syncId: string }>;
@@ -111,6 +112,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Files and paths count mismatch' }, { status: 400 });
     }
 
+    const uploadLimits = await getUploadLimits();
+    const maxFileSizeBytes = uploadLimits.adminMaxFileSizeMB * 1024 * 1024;
+
     // Mark as syncing
     await updateFolderSync(syncId, { status: 'syncing' });
 
@@ -143,11 +147,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
 
       // Skip files that are too large
-      if (file.size > MAX_FILE_SIZE_BYTES) {
+      if (file.size > maxFileSizeBytes) {
         results.push({
           path: relativePath,
           action: 'error',
-          error: 'File too large (max 50MB)',
+          error: `File too large (max ${uploadLimits.adminMaxFileSizeMB}MB)`,
         });
         failed++;
         continue;

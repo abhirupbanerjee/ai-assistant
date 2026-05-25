@@ -762,12 +762,32 @@ export default function DocumentsManagement({ documentsSection: initialSection }
         method: 'POST',
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Refresh failed');
+      // Refresh All is long-running; a reverse-proxy timeout will return HTML, not JSON.
+      // Read the body as text first so we can give a useful error instead of a cryptic
+      // "Unexpected token '<', '<!DOCTYPE ...'" when the response isn't JSON.
+      const bodyText = await response.text();
+      let result: {
+        documentsReindexed?: number;
+        totalDocuments?: number;
+        missingFiles?: { filename: string; filepath: string }[];
+        errors?: string[];
+        truncatedErrors?: number;
+        error?: string;
+      };
+      try {
+        result = JSON.parse(bodyText);
+      } catch {
+        const looksLikeHtml = /^\s*<(!doctype|html)/i.test(bodyText);
+        const hint = looksLikeHtml
+          ? 'The server returned an HTML page instead of JSON — likely a reverse-proxy/gateway timeout. The reindex may still be running in the background; check server logs and refresh the page in a few minutes.'
+          : `Server returned non-JSON response (HTTP ${response.status}).`;
+        throw new Error(hint);
       }
 
-      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Refresh failed (HTTP ${response.status})`);
+      }
+
       await loadDocuments();
 
       // Build alert message from enhanced response

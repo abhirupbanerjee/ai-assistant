@@ -2023,6 +2023,8 @@ function initializeDefaultSettings(database: Database.Database): void {
         'image/jpeg',
         'image/webp',
       ],
+      adminMaxFileSizeMB: 50,
+      adminMaxFilesPerFolder: 500,
     },
     'acronym-mappings': {},
     'system-prompt': {

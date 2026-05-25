@@ -565,7 +565,14 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'uploadLimits': {
-        const { maxFilesPerInput, maxFilesPerThread, maxFileSizeMB, allowedTypes } = settings;
+        const {
+          maxFilesPerInput,
+          maxFilesPerThread,
+          maxFileSizeMB,
+          allowedTypes,
+          adminMaxFileSizeMB,
+          adminMaxFilesPerFolder,
+        } = settings;
 
         if (typeof maxFilesPerThread !== 'number' || !isFinite(maxFilesPerThread) || maxFilesPerThread < 0 || maxFilesPerThread > 100) {
           return NextResponse.json<ApiError>(
@@ -595,11 +602,27 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        if (typeof adminMaxFileSizeMB !== 'number' || !isFinite(adminMaxFileSizeMB) || adminMaxFileSizeMB < 1 || adminMaxFileSizeMB > 2048) {
+          return NextResponse.json<ApiError>(
+            { error: 'Admin max file size must be between 1 and 2048 MB', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (typeof adminMaxFilesPerFolder !== 'number' || !isFinite(adminMaxFilesPerFolder) || adminMaxFilesPerFolder < 1 || adminMaxFilesPerFolder > 10000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Admin max files per folder must be between 1 and 10000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
         const uploadResult = await setUploadLimits({
           maxFilesPerInput,
           maxFilesPerThread,
           maxFileSizeMB,
           allowedTypes,
+          adminMaxFileSizeMB,
+          adminMaxFilesPerFolder,
         }, user.email);
         await invalidateQueryCache();
         const uploadMeta = await getSettingMetadata('upload-limits');

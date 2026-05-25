@@ -60,6 +60,8 @@ const DEFAULT_SETTINGS: Record<string, object> = {
       'text/plain',
       'application/json',
     ],
+    adminMaxFileSizeMB: 50,
+    adminMaxFilesPerFolder: 500,
   },
   'acronym-mappings': {},
   'system-prompt': {

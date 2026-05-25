@@ -127,6 +127,16 @@ const nextConfig: NextConfig = {
       './node_modules/chart.js/dist/chart.umd.min.js',
       './node_modules/chartjs-plugin-datalabels/dist/chartjs-plugin-datalabels.min.js',
       './node_modules/mermaid/dist/mermaid.min.js',
+      // officeparser loads these via `new Function('s', 'return import(s)')(...)` to
+      // defeat bundler analysis, which also defeats Next's outputFileTracing. Force
+      // them into the standalone image so PPTX/legacy-Office extraction works at runtime.
+      './node_modules/file-type/**/*',
+      './node_modules/pdfjs-dist/**/*',
+      './node_modules/tesseract.js/**/*',
+      // file-type's runtime deps (transitive — also missed by tracing).
+      './node_modules/strtok3/**/*',
+      './node_modules/token-types/**/*',
+      './node_modules/uint8array-extras/**/*',
     ],
   },
   // Exclude data directory from build (contains Redis files with restricted permissions)
