@@ -285,7 +285,7 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
       if (!response.ok) {
         setTestResult({
           success: false,
-          error: data.error || 'Test failed',
+          error: data.details || data.error || 'Test failed',
         });
       } else {
         setTestResult({

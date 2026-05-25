@@ -242,7 +242,7 @@ async function executeLlm(
   // Estimate token usage (actual tracking would require OpenAI response)
   // This is a rough estimate - actual would come from response.usage
   const promptTokens = Math.ceil((systemPrompt.length + ragContext.length + userMessage.length) / 4);
-  const completionTokens = Math.ceil(result.content.length / 4);
+  const completionTokens = Math.ceil((result.content || '').length / 4);
 
   return {
     content: result.content,
@@ -403,7 +403,7 @@ export async function executeInvocation(
     // 9. Generate output using the output generator module
     const generatedOutput = await generateOutputFile({
       outputType,
-      content: llmResult.content,
+      content: llmResult.content || '',
       jobId: job.id,
       version,
       title: request.input.title as string | undefined,
@@ -451,6 +451,8 @@ export async function executeInvocation(
   } catch (error) {
     const processingTimeMs = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    console.error('[AgentBot] executeInvocation error:', error);
 
     // Mark job as failed
     await failJob(job.id, errorMessage, 'PROCESSING_ERROR');
