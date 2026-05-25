@@ -1394,15 +1394,22 @@ function WorkspaceForm({
               <span className="text-sm">Enable Web Search</span>
             </label>
 
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.sourcesEnabled}
-                onChange={(e) => updateField('sourcesEnabled', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600"
-              />
-              <span className="text-sm">Include Sources</span>
-            </label>
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.sourcesEnabled}
+                  onChange={(e) => updateField('sourcesEnabled', e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600"
+                />
+                <span className="text-sm">Include Sources</span>
+              </label>
+              {formData.type === 'embed' && formData.sourcesEnabled && (
+                <p className="text-xs text-amber-700 ml-6 max-w-md">
+                  ⚠ Source document names and snippets will be visible to anonymous embed visitors. Disable if any indexed content is sensitive.
+                </p>
+              )}
+            </div>
           </div>
 
           {formData.fileUploadEnabled && (

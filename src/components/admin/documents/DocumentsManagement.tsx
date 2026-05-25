@@ -792,21 +792,24 @@ export default function DocumentsManagement({ documentsSection: initialSection }
 
       // Build alert message from enhanced response
       let message = '';
-      if (result.missingFiles?.length > 0) {
-        message += `⚠️ ${result.missingFiles.length} document(s) have missing files on disk (skipped).\n`;
-        message += result.missingFiles.slice(0, 3).map(
-          (mf: { filename: string; filepath: string }) => `  • ${mf.filename} (${mf.filepath})`
+      const missingFiles = result.missingFiles ?? [];
+      const reindexed = result.documentsReindexed ?? 0;
+      const total = result.totalDocuments ?? 0;
+      if (missingFiles.length > 0) {
+        message += `⚠️ ${missingFiles.length} document(s) have missing files on disk (skipped).\n`;
+        message += missingFiles.slice(0, 3).map(
+          (mf) => `  • ${mf.filename} (${mf.filepath})`
         ).join('\n');
-        if (result.missingFiles.length > 3) {
-          message += `\n  ...and ${result.missingFiles.length - 3} more`;
+        if (missingFiles.length > 3) {
+          message += `\n  ...and ${missingFiles.length - 3} more`;
         }
         message += '\n\n';
       }
 
-      if (result.documentsReindexed > 0) {
-        message += `✓ ${result.documentsReindexed}/${result.totalDocuments} documents reindexed.`;
+      if (reindexed > 0) {
+        message += `✓ ${reindexed}/${total} documents reindexed.`;
       } else {
-        message += `✓ Cache cleared. ${result.totalDocuments} total documents.`;
+        message += `✓ Cache cleared. ${total} total documents.`;
       }
 
       if (result.errors && result.errors.length > 0) {

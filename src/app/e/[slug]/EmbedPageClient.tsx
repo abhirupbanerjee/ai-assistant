@@ -29,6 +29,14 @@ interface EmbedConfig {
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
   maxFileSizeMb: number;
+  sourcesEnabled: boolean;
+}
+
+interface EmbedSource {
+  documentName: string;
+  pageNumber: number;
+  chunkText: string;
+  score: number;
 }
 
 interface Message {
@@ -36,6 +44,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  sources?: EmbedSource[];
 }
 
 interface UploadedFile {
@@ -190,6 +199,13 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
                     : m
                 )
               );
+            } else if (event.type === 'sources' && config.sourcesEnabled && Array.isArray(event.data)) {
+              const sources = event.data as EmbedSource[];
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantMessageId ? { ...m, sources } : m
+                )
+              );
             } else if (event.type === 'done') {
               setMessages(prev =>
                 prev.map(m =>
@@ -215,7 +231,7 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [sessionId, isStreaming, workspaceSlug]);
+  }, [sessionId, isStreaming, workspaceSlug, config.sourcesEnabled]);
 
   const handleSubmit = () => {
     if ((inputValue.trim() || attachments.length > 0) && !isStreaming) {
@@ -358,6 +374,26 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
                       : <Copy size={12} />
                     }
                   </button>
+                )}
+                {message.role === 'assistant' && !message.isStreaming && config.sourcesEnabled && message.sources && message.sources.length > 0 && (
+                  <details className="embed-sources">
+                    <summary>Sources ({message.sources.length})</summary>
+                    <ul className="embed-sources-list">
+                      {message.sources.map((src, idx) => (
+                        <li key={`${message.id}-src-${idx}`} className="embed-source-item">
+                          <div className="embed-source-name">
+                            {src.documentName}
+                            {src.pageNumber > 0 && (
+                              <span className="embed-source-page"> · p.{src.pageNumber}</span>
+                            )}
+                          </div>
+                          {src.chunkText && (
+                            <div className="embed-source-snippet">{src.chunkText}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
               </div>
             ))}

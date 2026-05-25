@@ -514,13 +514,22 @@ function formatContext(globalChunks: RetrievedChunk[], userChunks: RetrievedChun
 }
 
 function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChunk[]): Source[] {
-  const allChunks = [...globalChunks, ...userChunks];
-  return allChunks.map(chunk => ({
-    documentName: chunk.documentName,
-    pageNumber: chunk.pageNumber,
-    chunkText: chunk.text.substring(0, CHUNK_PREVIEW_LENGTH) + (chunk.text.length > CHUNK_PREVIEW_LENGTH ? '...' : ''),
-    score: chunk.score,
-  }));
+  // Dedupe by documentName: multiple chunks from the same document collapse into one source.
+  // Keeps the highest-scoring chunk's page + snippet. Sorted by score desc.
+  const byDocument = new Map<string, Source>();
+  for (const chunk of [...globalChunks, ...userChunks]) {
+    const candidate: Source = {
+      documentName: chunk.documentName,
+      pageNumber: chunk.pageNumber,
+      chunkText: chunk.text.substring(0, CHUNK_PREVIEW_LENGTH) + (chunk.text.length > CHUNK_PREVIEW_LENGTH ? '...' : ''),
+      score: chunk.score,
+    };
+    const existing = byDocument.get(chunk.documentName);
+    if (!existing || candidate.score > existing.score) {
+      byDocument.set(chunk.documentName, candidate);
+    }
+  }
+  return Array.from(byDocument.values()).sort((a, b) => b.score - a.score);
 }
 
 /**

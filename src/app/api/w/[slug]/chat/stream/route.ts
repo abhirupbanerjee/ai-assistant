@@ -67,6 +67,11 @@ interface WorkspaceChatRequest {
   attachments?: string[]; // Filenames of uploaded files to include
 }
 
+// Cap on unique sources surfaced to the client and persisted to history.
+// Sources are deduped by document name (RAG dedup in extractSources, combined dedup below)
+// so this is a cap on UNIQUE documents, not chunks.
+const MAX_SOURCES_DISPLAYED = 3;
+
 export async function POST(
   request: NextRequest,
   context: RouteContext
@@ -318,9 +323,10 @@ export async function POST(
               finalSystemPrompt = `${systemPromptOverride}\n\n${ragResult.systemPrompt}`;
             }
 
-            // Send sources from RAG (only if workspace has sources enabled)
+            // Send sources from RAG (only if workspace has sources enabled).
+            // Cap at MAX_SOURCES_DISPLAYED; RAG sources are already deduped by document in extractSources.
             if (workspace.sources_enabled) {
-              send({ type: 'sources', data: ragResult.sources });
+              send({ type: 'sources', data: ragResult.sources.slice(0, MAX_SOURCES_DISPLAYED) });
             }
 
             // ============ Phase 3: Tool Execution ============
@@ -416,8 +422,16 @@ export async function POST(
               }
             }
 
-            // Combine all sources
-            const allSources = [...ragResult.sources, ...webSources];
+            // Combine RAG + web sources, dedupe by document name (web entries are prefixed [WEB]
+            // so they never collide with RAG docs of the same name), and cap at MAX_SOURCES_DISPLAYED.
+            const combinedByName = new Map<string, Source>();
+            for (const s of [...ragResult.sources, ...webSources]) {
+              const existing = combinedByName.get(s.documentName);
+              if (!existing || s.score > existing.score) combinedByName.set(s.documentName, s);
+            }
+            const allSources = Array.from(combinedByName.values())
+              .sort((a, b) => b.score - a.score)
+              .slice(0, MAX_SOURCES_DISPLAYED);
 
             // Send combined sources (including web search results) if workspace has sources enabled
             if (workspace.sources_enabled && allSources.length > 0) {
@@ -429,7 +443,7 @@ export async function POST(
             const fullContent = toolResult.content;
 
             // ============ Save Message ============
-            // Convert sources to workspace format
+            // Convert sources to workspace format (persist the same deduped/capped list)
             const workspaceSources: WorkspaceMessageSource[] = allSources.map(s => ({
               document_name: s.documentName,
               page_number: s.pageNumber,
