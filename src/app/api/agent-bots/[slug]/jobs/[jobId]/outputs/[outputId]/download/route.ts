@@ -12,8 +12,10 @@ import {
   authenticateRequest,
   isAuthError,
   agentBotErrors,
+  extractApiKey,
 } from '@/lib/agent-bot/auth';
-import { getJobById, getOutputById } from '@/lib/db/compat';
+import { getJobById, getOutputById, getActiveAgentBotBySlug, listApiKeys, createApiKey } from '@/lib/db/compat';
+import { getCurrentUser } from '@/lib/auth';
 import type { AgentBotError } from '@/types/agent-bot';
 
 // ============================================================================
@@ -26,13 +28,43 @@ export async function GET(
 ): Promise<NextResponse<Blob | AgentBotError>> {
   const { slug, jobId, outputId } = await params;
 
+  let agentBot;
+  let apiKey;
+  let isAdminAccess = false;
+
   // 1. Authenticate request
-  const authResult = await authenticateRequest(request, slug);
-  if (isAuthError(authResult)) {
-    return authResult;
+  const apiKeyString = extractApiKey(request);
+  if (!apiKeyString) {
+    // No API key provided — try admin session fallback (browser download links)
+    const user = await getCurrentUser();
+    if (user?.role === 'admin' || user?.role === 'superuser') {
+      const bot = await getActiveAgentBotBySlug(slug);
+      if (bot) {
+        agentBot = bot;
+        isAdminAccess = true;
+        // Find or create admin test API key for this bot
+        const keys = await listApiKeys(bot.id);
+        let testKey = keys.find((k) => k.name === 'Admin Test' && k.created_by === 'system');
+        if (!testKey) {
+          const result = await createApiKey(bot.id, { name: 'Admin Test' }, 'system');
+          testKey = result.apiKey;
+        }
+        apiKey = testKey;
+      } else {
+        return agentBotErrors.agentBotNotFound();
+      }
+    }
   }
 
-  const { agentBot, apiKey } = authResult;
+  if (!agentBot) {
+    // API key provided — use standard API key authentication
+    const authResult = await authenticateRequest(request, slug);
+    if (isAuthError(authResult)) {
+      return authResult;
+    }
+    agentBot = authResult.agentBot;
+    apiKey = authResult.apiKey;
+  }
 
   try {
     // 2. Get job
@@ -47,7 +79,8 @@ export async function GET(
     }
 
     // 4. Verify API key has access (same bot or same key)
-    if (job.api_key_id !== apiKey.id && job.agent_bot_id !== apiKey.agent_bot_id) {
+    // Skip this check for admin session access
+    if (!isAdminAccess && job.api_key_id !== apiKey.id && job.agent_bot_id !== apiKey.agent_bot_id) {
       return agentBotErrors.jobNotFound();
     }
 
@@ -69,6 +102,7 @@ export async function GET(
           'Content-Disposition': output.filename
             ? `attachment; filename="${output.filename}"`
             : 'inline',
+          'Access-Control-Allow-Origin': '*',
         },
       });
     }
@@ -92,6 +126,7 @@ export async function GET(
           'Content-Length': fileBuffer.length.toString(),
           'Content-Disposition': `attachment; filename="${filename}"`,
           'Cache-Control': 'private, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
         },
       });
     }
