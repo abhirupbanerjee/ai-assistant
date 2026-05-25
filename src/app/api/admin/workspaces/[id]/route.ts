@@ -12,6 +12,7 @@ import {
   getWorkspaceById,
   updateWorkspace,
   deleteWorkspace,
+  getWorkspaceWithRelations,
 } from '@/lib/db/compat';
 import { isWorkspacesFeatureEnabled } from '@/lib/workspace/validator';
 
@@ -137,7 +138,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (authRequired !== undefined) updates.auth_required = authRequired;
     if (accessMode !== undefined) updates.access_mode = accessMode;
 
-    const updatedWorkspace = await updateWorkspace(id, updates);
+    await updateWorkspace(id, updates);
+    const updatedWorkspace = await getWorkspaceWithRelations(id);
 
     return NextResponse.json({ workspace: updatedWorkspace });
   } catch (error) {

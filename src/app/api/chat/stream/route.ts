@@ -676,6 +676,11 @@ export async function POST(request: NextRequest) {
             // Combine all sources
             const allSources = [...ragResult.sources, ...webSources];
 
+            // Send combined sources (including web search results)
+            if (allSources.length > 0) {
+              send({ type: 'sources', data: allSources });
+            }
+
             // ============ Phase 4: Finalize Content ============
             // For English: content tokens were already streamed token-by-token via onChunk
             // during generateResponseWithTools above — no further action needed.

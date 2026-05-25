@@ -109,6 +109,7 @@ export default function PlusMenu({
      selectedLanguage !== 'en',
      selectedTone !== 'default',
      showCitationTrajectory,
+     showSources,
    ].filter(Boolean);
 
    const hasUploads = currentUploads.length > 0;

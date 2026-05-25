@@ -299,11 +299,21 @@ async function rerankWithBGE(
   // Load model if needed
   if (variant === 'large' && !bgeRerankerLarge) {
     console.log('[Reranker] Loading BGE Reranker Large (first time may take ~670MB download)...');
-    bgeRerankerLarge = await pipeline('text-classification', modelId, { quantized: true });
+    try {
+      bgeRerankerLarge = await pipeline('text-classification', modelId, { quantized: true });
+    } catch (loadErr) {
+      console.warn('[Reranker] BGE Large quantized load failed, retrying without quantization:', loadErr);
+      bgeRerankerLarge = await pipeline('text-classification', modelId, { quantized: false });
+    }
     console.log('[Reranker] BGE Reranker Large loaded successfully');
   } else if (variant === 'base' && !bgeRerankerBase) {
     console.log('[Reranker] Loading BGE Reranker Base (first time may take ~220MB download)...');
-    bgeRerankerBase = await pipeline('text-classification', modelId, { quantized: true });
+    try {
+      bgeRerankerBase = await pipeline('text-classification', modelId, { quantized: true });
+    } catch (loadErr) {
+      console.warn('[Reranker] BGE Base quantized load failed, retrying without quantization:', loadErr);
+      bgeRerankerBase = await pipeline('text-classification', modelId, { quantized: false });
+    }
     console.log('[Reranker] BGE Reranker Base loaded successfully');
   }
 
@@ -319,19 +329,19 @@ async function rerankWithBGE(
       const truncatedText = chunk.text.slice(0, 512);
       const input = `${query} [SEP] ${truncatedText}`;
 
-      // Cast to proper function type for text-classification pipeline
-      const classify = reranker as unknown as (text: string) => Promise<ClassificationResult>;
-      const result = await classify(input);
+      // BGE rerankers are single-output regression models (sigmoid head, one label).
+      // Xenova/bge-reranker-{base,large} expose this as a text-classification pipeline
+      // returning a single LABEL_0 whose score IS the relevance probability.
+      // Pass topk: null to surface all labels in case a variant exposes two heads
+      // (LABEL_0 = irrelevant, LABEL_1 = relevant) — in that case prefer LABEL_1.
+      const classify = reranker as unknown as (text: string, opts?: { topk: number | null }) => Promise<ClassificationResult>;
+      const result = await classify(input, { topk: null });
 
-       // BGE text-classification applies softmax across two labels:
-       // LABEL_0 = not relevant, LABEL_1 = relevant
-       // Results are sorted descending by score, so result[0] is always the highest-scoring label.
-       // CRITICAL FIX: If LABEL_1 is not found, default to score 0 (not relevant), not result[0]
-       // Using result[0] when it's LABEL_0 would invert the ranking (not-relevant treated as relevant)
-       const relevantResult = Array.isArray(result)
-         ? result.find(r => r.label === 'LABEL_1')
-         : null;
-       const score = relevantResult?.score ?? 0;
+      let score = 0;
+      if (Array.isArray(result) && result.length > 0) {
+        const label1 = result.find(r => r.label === 'LABEL_1');
+        score = label1 ? label1.score : result[0].score;
+      }
 
       if (score >= minScore) {
         scoredChunks.push({
@@ -474,9 +484,13 @@ export async function rerankChunks(
   }
 
   // Fallback to original chunks if all providers failed
+  // Use original Qdrant scores (which are typically 0.2-0.5 for relevant matches) rather than
+  // the reranker minScore threshold (which may be 0.7+). A very low threshold (0.05) ensures
+  // we preserve chunks that were retrieved by Qdrant as relevant, even when the reranker fails.
   if (rerankedChunks === null) {
-    console.warn('[Reranker] All providers failed, returning original chunks filtered by threshold');
-    rerankedChunks = chunksToRerank.filter(c => c.score >= minScore);
+    const fallbackThreshold = 0.05;
+    console.warn(`[Reranker] All providers failed, returning original chunks with fallback threshold ${fallbackThreshold}`);
+    rerankedChunks = chunksToRerank.filter(c => c.score >= fallbackThreshold);
   }
 
   // Cache only the chunks that survived threshold filtering, keyed by ID.

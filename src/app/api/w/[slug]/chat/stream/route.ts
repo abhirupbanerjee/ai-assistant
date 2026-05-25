@@ -419,6 +419,11 @@ export async function POST(
             // Combine all sources
             const allSources = [...ragResult.sources, ...webSources];
 
+            // Send combined sources (including web search results) if workspace has sources enabled
+            if (workspace.sources_enabled && allSources.length > 0) {
+              send({ type: 'sources', data: allSources });
+            }
+
             // ============ Phase 4: Finalize Content ============
             // Content tokens were already streamed token-by-token via onChunk above.
             const fullContent = toolResult.content;

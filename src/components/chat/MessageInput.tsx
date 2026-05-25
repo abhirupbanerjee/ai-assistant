@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain } from 'lucide-react';
+import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain, BookOpen } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import ModelSelector from './ModelSelector';
@@ -154,6 +154,9 @@ export default function MessageInput({
         label: preferences.targetLanguage,
       });
     }
+    if (preferences.showSources) {
+      features.push({ icon: <BookOpen size={12} />, label: 'Sources' });
+    }
     if (currentUploads.length > 0) {
       features.push({
         icon: <Paperclip size={12} />,
@@ -161,7 +164,7 @@ export default function MessageInput({
       });
     }
     return features;
-  }, [mode, preferences.webSearchEnabled, preferences.thinkingEnabled, preferences.targetLanguage, currentUploads.length, currentModelInfo?.thinkingCapable]);
+  }, [mode, preferences.webSearchEnabled, preferences.thinkingEnabled, preferences.targetLanguage, preferences.showSources, currentUploads.length, currentModelInfo?.thinkingCapable]);
 
 
   // aria-live state announcements — announce input state transitions to screen readers

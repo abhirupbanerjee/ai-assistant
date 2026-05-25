@@ -1012,6 +1012,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               thinkingContent: streamingState.currentThinkingContent || undefined,
             }}
             isStreaming={true}
+            threadId={threadId}
+            showSources={effectiveShowSources}
+            showCitationTrajectory={effectiveShowCitationTrajectory}
           />
         )}
 

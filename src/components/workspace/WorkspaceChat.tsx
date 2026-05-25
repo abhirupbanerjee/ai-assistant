@@ -149,6 +149,29 @@ export function WorkspaceChat({
         const data = await response.json();
         // API returns { thread: { ...thread, messages: [...] } }
         const threadMessages = data.thread?.messages || [];
+
+        // Workspace DB stores sources with snake_case keys, but UI expects camelCase
+        const parseWorkspaceSources = (sourcesJson?: string): Source[] | undefined => {
+          if (!sourcesJson) return undefined;
+          try {
+            const parsed = JSON.parse(sourcesJson) as Array<{
+              document_name?: string;
+              page_number?: number;
+              chunk_text?: string;
+              score?: number;
+            }>;
+            if (!Array.isArray(parsed) || parsed.length === 0) return undefined;
+            return parsed.map((s) => ({
+              documentName: s.document_name || 'Unknown',
+              pageNumber: s.page_number ?? 1,
+              chunkText: s.chunk_text || '',
+              score: s.score ?? 0,
+            }));
+          } catch {
+            return undefined;
+          }
+        };
+
         const loadedMessages: WorkspaceChatMessage[] = threadMessages.map((m: {
           id: string;
           role: 'user' | 'assistant';
@@ -163,7 +186,7 @@ export function WorkspaceChat({
           role: m.role,
           content: m.content,
           timestamp: new Date(m.created_at),
-          sources: m.sources_json ? JSON.parse(m.sources_json) : undefined,
+          sources: parseWorkspaceSources(m.sources_json),
           metadata: (m.model || m.tokens_used) ? {
             model: m.model || undefined,
             completionTokens: m.tokens_used || undefined,

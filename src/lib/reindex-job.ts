@@ -8,9 +8,11 @@
 import { getDb } from './db/kysely';
 import { sql } from 'kysely';
 import { getEmbeddingSettings, setEmbeddingSettings } from './db/compat/config';
-import { listGlobalDocuments, reindexDocument } from './ingest';
+import { listGlobalDocuments, reindexDocument, getGlobalDocument } from './ingest';
 import { getVectorStore } from './vector-store';
+import { getGlobalDocsDir, fileExists } from './storage';
 import { clearAllCache } from './redis';
+import path from 'path';
 import { getEmbeddingModelDimensions } from './constants';
 import { isLocalEmbeddingModel, resetLocalEmbedder } from './local-embeddings';
 
@@ -272,6 +274,34 @@ export async function runReindexJob(jobId: string): Promise<void> {
   try {
     console.log(`[Reindex] Starting job ${jobId}: ${job.previousModel} -> ${job.targetModel}`);
 
+    // Step 0: Verify all document source files exist BEFORE deleting any collections
+    // This prevents irreversible data loss if files are missing
+    const documents = await listGlobalDocuments();
+    const missingFiles: string[] = [];
+    for (const doc of documents) {
+      const docWithPath = await getGlobalDocument(doc.id);
+      if (!docWithPath) {
+        missingFiles.push(`${doc.filename} (ID: ${doc.id})`);
+        continue;
+      }
+      const globalDocsDir = getGlobalDocsDir();
+      const filePath = path.join(globalDocsDir, docWithPath.filepath);
+      if (!(await fileExists(filePath))) {
+        missingFiles.push(`${doc.filename} (ID: ${doc.id})`);
+      }
+    }
+
+    if (missingFiles.length > 0) {
+      const errMsg =
+        `Cannot start reindex: ${missingFiles.length} document source file(s) are missing. ` +
+        `Reindexing would permanently delete existing vectors with no way to rebuild them. ` +
+        `Missing files: ${missingFiles.join(', ')}`;
+      console.error(`[Reindex] ${errMsg}`);
+      throw new Error(errMsg);
+    }
+
+    console.log(`[Reindex] Verified ${documents.length} document source files exist`);
+
     // Step 1: Delete ALL vector store collections FIRST (before changing settings)
     // Different embedding models produce incompatible vectors, even with same dimensions
     // We must clear all collections to avoid dimension/embedding mismatches
@@ -344,8 +374,7 @@ export async function runReindexJob(jobId: string): Promise<void> {
     await clearAllCache();
     console.log('[Reindex] Cleared Redis cache');
 
-    // Step 5: Get all documents to reindex
-    const documents = await listGlobalDocuments();
+    // Step 5: Get all documents to reindex (already fetched in Step 0)
     const totalDocuments = documents.length;
 
     await db

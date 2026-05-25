@@ -769,7 +769,34 @@ export default function DocumentsManagement({ documentsSection: initialSection }
 
       const result = await response.json();
       await loadDocuments();
-      alert(`Refresh complete! Cache cleared, ${result.documentsReindexed} documents reindexed.`);
+
+      // Build alert message from enhanced response
+      let message = '';
+      if (result.missingFiles?.length > 0) {
+        message += `⚠️ ${result.missingFiles.length} document(s) have missing files on disk (skipped).\n`;
+        message += result.missingFiles.slice(0, 3).map(
+          (mf: { filename: string; filepath: string }) => `  • ${mf.filename} (${mf.filepath})`
+        ).join('\n');
+        if (result.missingFiles.length > 3) {
+          message += `\n  ...and ${result.missingFiles.length - 3} more`;
+        }
+        message += '\n\n';
+      }
+
+      if (result.documentsReindexed > 0) {
+        message += `✓ ${result.documentsReindexed}/${result.totalDocuments} documents reindexed.`;
+      } else {
+        message += `✓ Cache cleared. ${result.totalDocuments} total documents.`;
+      }
+
+      if (result.errors && result.errors.length > 0) {
+        message += `\n\n${result.errors.length} failure(s):\n${result.errors.slice(0, 5).join('\n')}`;
+        if (result.truncatedErrors) {
+          message += `\n...and ${result.truncatedErrors} more`;
+        }
+      }
+
+      alert(message);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refresh failed');
     } finally {
