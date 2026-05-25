@@ -87,8 +87,9 @@ function determineToolChoice(
   }
 
   // No required, check preferred
+  // preferred = strongly suggest but let the LLM decide (avoids force-mode issues with thinking models)
   if (top.forceMode === 'preferred') {
-    return 'required';
+    return 'auto';
   }
 
   // Only suggested = just hint, don't force

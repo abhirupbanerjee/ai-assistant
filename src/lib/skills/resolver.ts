@@ -107,9 +107,10 @@ export function determineToolChoice(
   }
 
   // No required matches - check for preferred
+  // preferred = strongly suggest but let the LLM decide (avoids force-mode issues with thinking models)
   const preferredMatches = sorted.filter(m => m.forceMode === 'preferred');
   if (preferredMatches.length > 0) {
-    return 'required';
+    return 'auto';
   }
 
   // Only suggested matches: don't force

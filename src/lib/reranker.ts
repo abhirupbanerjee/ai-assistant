@@ -143,7 +143,12 @@ async function rerankWithFireworks(
     throw new Error(`Fireworks rerank API error: ${response.status} ${response.statusText} ${errorText}`);
   }
 
-  const data = await response.json() as { results: { index: number; relevance_score: number }[] };
+  const data = await response.json() as { results?: { index: number; relevance_score: number }[] };
+
+  // Guard against unexpected API response format
+  if (!data.results || !Array.isArray(data.results)) {
+    throw new Error(`Fireworks rerank API returned invalid response format: missing 'results' array`);
+  }
 
   // CRITICAL FIX: Validate that all chunks received scores
   // Partial results cause score misalignment - missing chunks get wrong scores mapped to them
