@@ -331,12 +331,14 @@ Execute the agent bot with provided input.
   input: Record<string, unknown>;     // Required. Matches the version's input schema
   version?: number | 'latest' | 'default'; // Optional. Defaults to default version
   outputType?: OutputType;            // Optional. Defaults to version's default
-  async?: boolean;                    // Optional. Default: true (recommended)
+  async?: boolean;                    // Optional. Defaults to false (sync mode) — see warning below
   files?: string[];                   // Optional. Uploaded file IDs
   webhookUrl?: string;                // Optional. For async webhook notification
   webhookSecret?: string;             // Optional. Webhook HMAC secret
 }
 ```
+
+> **⚠️ Critical Warning:** The API **does not automatically switch to async mode**. If you omit `async` or set it to `false`, the request runs **synchronously** and blocks until completion. If the LLM triggers web searches, tool calls, or document generation, the request may exceed Cloudflare's ~100-second timeout and return a **524 error**. There is no automatic fallback or retry-as-async. **Always explicitly set `"async": true`** for production integrations.
 
 **OutputType enum:** `text`, `json`, `md`, `pdf`, `docx`, `xlsx`, `pptx`, `image`, `podcast`, `chart`, `diagram`
 
@@ -536,6 +538,101 @@ These endpoints require an authenticated admin/superuser session cookie.
 
 ### Integration Patterns
 
+#### Pattern 0: Discovery / Auto-Configuration (Recommended First Step)
+
+Before invoking an agent bot, an external system can discover its metadata using only the API key. No prior knowledge of the bot's slug, schema, or capabilities is required.
+
+```bash
+curl -X GET "https://policybot.gov/api/agent-bots/spec" \
+  -H "Authorization: Bearer ab_pk_..."
+```
+
+**Response:**
+
+```json
+{
+  "name": "HR Policy Assistant",
+  "slug": "hr-assistant",
+  "description": "Answers HR policy questions",
+  "baseUrl": "https://policybot.gov/api/agent-bots/hr-assistant",
+  "version": {
+    "number": 3,
+    "label": "v1.2"
+  },
+  "inputSchema": {
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "description": "The HR policy question",
+        "required": true
+      },
+      {
+        "name": "jurisdiction",
+        "type": "string",
+        "description": "Country or territory",
+        "required": false,
+        "default": "Grenada"
+      }
+    ]
+  },
+  "uploadConfig": {
+    "enabled": true,
+    "maxFiles": 3,
+    "maxSizePerFileMB": 10,
+    "allowedTypes": ["application/pdf", "image/*"],
+    "required": false
+  },
+  "outputConfig": {
+    "enabledTypes": ["text", "json", "pdf", "docx"],
+    "defaultType": "json",
+    "supportsFallback": true
+  },
+  "endpoints": [
+    {
+      "path": "https://policybot.gov/api/agent-bots/hr-assistant/invoke",
+      "method": "POST",
+      "purpose": "Execute the agent bot (sync or async)"
+    },
+    {
+      "path": "https://policybot.gov/api/agent-bots/hr-assistant/upload",
+      "method": "POST",
+      "purpose": "Upload files to include as context"
+    },
+    {
+      "path": "https://policybot.gov/api/agent-bots/hr-assistant/jobs/{jobId}",
+      "method": "GET",
+      "purpose": "Check async job status and results"
+    },
+    {
+      "path": "https://policybot.gov/api/agent-bots/hr-assistant/jobs/{jobId}/outputs/{outputId}/download",
+      "method": "GET",
+      "purpose": "Download generated file outputs"
+    },
+    {
+      "path": "https://policybot.gov/api/agent-bots/spec",
+      "method": "GET",
+      "purpose": "Discovery — returns this metadata"
+    }
+  ],
+  "features": {
+    "async": true,
+    "sync": true,
+    "webhooks": true,
+    "includeSources": false
+  }
+}
+```
+
+**When to use:**
+- External site onboarding — auto-populate agent registration forms
+- Dynamic UI generation — build input forms from the `inputSchema.parameters` array
+- Health checks — verify key validity and bot availability before invoking
+
+**Key insight:** The API key **is** the identity. You don't need to know the slug in advance.
+
+---
+
 #### Pattern 1: Synchronous (Quick Queries)
 
 For requests that complete in under ~30 seconds (simple text/JSON queries with no heavy tool calls):
@@ -552,7 +649,7 @@ const response = await fetch(
     body: JSON.stringify({
       input: { query: 'What is the maternity leave policy?' },
       outputType: 'text',
-      async: false,  // Sync mode
+      async: false,  // Sync mode — omitting async also defaults to sync
     }),
   }
 );
@@ -563,7 +660,7 @@ console.log(result.outputs[0].content);
 
 **When to use:** Simple Q&A, small RAG context, no web search, no document generation.
 
-**Risk:** If the LLM takes too long or triggers multiple tool calls, the request may timeout (see [Known Issues § 524 Timeout](#524-timeout-cloudflare-error)).
+**Risk:** If the LLM takes too long or triggers multiple tool calls, the request may timeout (see [Known Issues § 524 Timeout](#524-timeout-cloudflare-error)). **The API does not automatically convert a slow sync request to async.**
 
 ---
 
@@ -640,7 +737,9 @@ if (result.outputs?.[0]?.downloadUrl) {
 }
 ```
 
-**When to use:** Document generation, web search, multi-tool calls, any production integration.
+**When to use:** Document generation, web search, multi-tool calls, **any production integration**.
+
+> **Recommendation:** Even if you expect a quick response, use `async: true` for all production calls. This insulates you from unexpected tool-triggering behavior that could cause timeouts.
 
 ---
 

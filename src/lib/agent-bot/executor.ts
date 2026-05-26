@@ -299,7 +299,8 @@ function formatUserInput(input: Record<string, unknown>): string {
 export async function executeInvocation(
   agentBot: AgentBot,
   apiKey: AgentBotApiKey,
-  request: InvokeRequest
+  request: InvokeRequest,
+  existingJob?: AgentBotJob
 ): Promise<ExecutionResult> {
   const startTime = Date.now();
 
@@ -334,8 +335,8 @@ export async function executeInvocation(
   // 2. Determine output type
   const outputType = request.outputType || version.output_config.defaultType;
 
-  // 3. Create job record
-  const job = await createJob({
+  // 3. Use existing job (async mode) or create new job record (sync mode)
+  const job = existingJob || await createJob({
     agentBotId: agentBot.id,
     versionId: version.id,
     apiKeyId: apiKey.id,

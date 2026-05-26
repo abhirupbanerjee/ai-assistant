@@ -182,6 +182,89 @@ export function extractApiKey(request: NextRequest): string | null {
 }
 
 /**
+ * Authenticate request by API key only (no slug required)
+ * Used for discovery endpoints where the key itself identifies the agent bot
+ */
+export async function authenticateByKey(
+  request: NextRequest
+): Promise<AuthResult> {
+  // Extract API key
+  const apiKeyString = extractApiKey(request);
+  if (!apiKeyString) {
+    return {
+      success: false,
+      error: { error: 'API key required', code: 'INVALID_API_KEY' },
+      status: 401,
+    };
+  }
+
+  // Validate API key
+  const keyValidation = await validateApiKey(apiKeyString);
+  if (!keyValidation.valid || !keyValidation.apiKey) {
+    return {
+      success: false,
+      error: {
+        error: keyValidation.error || 'Invalid API key',
+        code: (keyValidation.errorCode as AgentBotErrorCode) || 'INVALID_API_KEY',
+      },
+      status: 401,
+    };
+  }
+
+  const apiKey = keyValidation.apiKey;
+
+  // Get agent bot by the key's agent_bot_id
+  const agentBot = await getAgentBotById(apiKey.agent_bot_id);
+  if (!agentBot) {
+    return {
+      success: false,
+      error: { error: 'Agent bot not found', code: 'AGENT_BOT_NOT_FOUND' },
+      status: 404,
+    };
+  }
+
+  if (!agentBot.is_active) {
+    return {
+      success: false,
+      error: { error: 'Agent bot is disabled', code: 'AGENT_BOT_DISABLED' },
+      status: 403,
+    };
+  }
+
+  // Check rate limits
+  const rateLimitResult = await checkRateLimit(apiKey.id);
+  if (!rateLimitResult.allowed) {
+    return {
+      success: false,
+      error: {
+        error: rateLimitResult.blockedReason === 'day'
+          ? 'Daily rate limit exceeded'
+          : 'Rate limit exceeded',
+        code: 'RATE_LIMIT_EXCEEDED',
+        details: `Retry after ${
+          rateLimitResult.blockedReason === 'day'
+            ? Math.ceil((rateLimitResult.info.resetDay.getTime() - Date.now()) / 1000)
+            : Math.ceil((rateLimitResult.info.resetMinute.getTime() - Date.now()) / 1000)
+        } seconds`,
+      },
+      status: 429,
+    };
+  }
+
+  // Update last used timestamp
+  await updateLastUsed(apiKey.id);
+
+  return {
+    success: true,
+    context: {
+      agentBot,
+      apiKey,
+      rateLimitInfo: rateLimitResult.info,
+    },
+  };
+}
+
+/**
  * Authenticate request by slug
  * Used for public API endpoints like /api/agent-bots/[slug]/invoke
  */
@@ -296,6 +379,44 @@ export async function authenticateRequest(
     // Add rate limit headers if we have them (even for errors)
     if (result.status === 429) {
       // Rate limit info would be available from the check
+      const keyString = extractApiKey(request);
+      if (keyString) {
+        const keyValidation = await validateApiKey(keyString);
+        if (keyValidation.valid && keyValidation.apiKey) {
+          const rateLimitResult = await checkRateLimit(keyValidation.apiKey.id);
+          return createRateLimitResponse(
+            rateLimitResult.info,
+            rateLimitResult.blockedReason === 'day'
+          );
+        }
+      }
+    }
+
+    return response;
+  }
+
+  return result.context;
+}
+
+/**
+ * Authenticate request by key only and return response or context
+ * Convenience wrapper for discovery endpoints
+ */
+export async function authenticateRequestByKey(
+  request: NextRequest
+): Promise<NextResponse<AgentBotError> | AuthContext> {
+  const result = await authenticateByKey(request);
+
+  if (!result.success) {
+    const response = agentBotError(
+      result.error.error,
+      result.error.code,
+      result.status,
+      result.error.details
+    );
+
+    // Add rate limit headers if we have them (even for errors)
+    if (result.status === 429) {
       const keyString = extractApiKey(request);
       if (keyString) {
         const keyValidation = await validateApiKey(keyString);

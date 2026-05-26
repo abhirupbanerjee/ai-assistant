@@ -636,6 +636,11 @@ components:
         webhookSecret:
           type: string
           example: "whsec_1234567890abcdef"
+        fallbackType:
+          type: string
+          enum: [text, json, md]
+          description: "Optional override for admin-set fallback output type"
+          example: "text"
       required:
         - input
       example:
@@ -679,6 +684,15 @@ components:
         processingTimeMs:
           type: integer
           example: 2340
+        status:
+          type: string
+          enum: [completed, failed]
+          description: "Final job status (only present in sync responses)"
+          example: "completed"
+        usedFallback:
+          type: boolean
+          description: "True if the primary output type failed and fallback was used"
+          example: false
       example:
         success: true
         jobId: "job_abc123"
@@ -731,7 +745,7 @@ components:
           example: "job_abc123"
         status:
           type: string
-          enum: [pending, running, completed, failed]
+          enum: [pending, running, completed, failed, cancelled]
           example: "completed"
         createdAt:
           type: string
@@ -771,6 +785,97 @@ components:
           completionTokens: 200
           totalTokens: 700
         processingTimeMs: 2340
+
+    AgentBotSpec:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "HR Policy Assistant"
+        slug:
+          type: string
+          example: "hr-assistant"
+        description:
+          type: string
+          example: "Answers HR policy questions"
+        baseUrl:
+          type: string
+          example: "https://policybot.abhirup.app/api/agent-bots/hr-assistant"
+        version:
+          type: object
+          properties:
+            number:
+              type: integer
+              example: 3
+            label:
+              type: string
+              example: "v1.2"
+        inputSchema:
+          type: object
+          properties:
+            parameters:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  description:
+                    type: string
+                  required:
+                    type: boolean
+                  default:
+                    type: object
+        uploadConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            maxFiles:
+              type: integer
+            maxSizePerFileMB:
+              type: integer
+            allowedTypes:
+              type: array
+              items:
+                type: string
+            required:
+              type: boolean
+        outputConfig:
+          type: object
+          properties:
+            enabledTypes:
+              type: array
+              items:
+                type: string
+            defaultType:
+              type: string
+            supportsFallback:
+              type: boolean
+        endpoints:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              method:
+                type: string
+              purpose:
+                type: string
+        features:
+          type: object
+          properties:
+            async:
+              type: boolean
+            sync:
+              type: boolean
+            webhooks:
+              type: boolean
+            includeSources:
+              type: boolean
 
     LLMProvider:
       type: object
@@ -4663,6 +4768,32 @@ paths:
   # Agent Bots Public API (API Key Auth)
   # ========================================
 
+  /agent-bots/spec:
+    get:
+      tags:
+        - Agent Bots - Public
+      summary: Discover agent bot metadata
+      description: |
+        Returns simplified metadata JSON for the agent bot associated with the provided API key.
+        The API key itself identifies the bot — no slug or prior knowledge is required.
+        Useful for external systems to auto-configure agent bot registration.
+      operationId: discoverAgentBot
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Agent bot metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentBotSpec'
+        '401':
+          description: Invalid or missing API key
+        '404':
+          description: Agent bot or version not found
+        '429':
+          description: Rate limit exceeded
+
   /agent-bots/{slug}/invoke:
     post:
       tags:
@@ -4725,6 +4856,60 @@ paths:
           description: Input validation error
         '429':
           description: Rate limit exceeded
+
+  /agent-bots/{slug}/upload:
+    post:
+      tags:
+        - Agent Bots - Public
+      summary: Upload file
+      description: Upload a file to be used in an agent bot invocation. File must be referenced by ID in the invoke request.
+      operationId: uploadAgentBotFile
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "hr-assistant"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "File to upload"
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fileId:
+                    type: string
+                    example: "file_abc123"
+                  filename:
+                    type: string
+                    example: "document.pdf"
+                  mimeType:
+                    type: string
+                    example: "application/pdf"
+                  fileSize:
+                    type: integer
+                    example: 1048576
+        '400':
+          description: Invalid file or upload disabled
+        '401':
+          description: Invalid or missing API key
+        '404':
+          description: Agent bot not found
 
   /agent-bots/{slug}/jobs/{jobId}:
     get:

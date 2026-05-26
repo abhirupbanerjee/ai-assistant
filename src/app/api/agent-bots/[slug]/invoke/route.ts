@@ -275,20 +275,26 @@ async function processAsyncJob(
   categoryIds: number[]
 ): Promise<void> {
   try {
-    // Get the full API key and bot objects
-    const { getAgentBotById, getApiKeyById } = await import('@/lib/db/compat');
+    // Get the full API key and bot objects, plus the existing job
+    const { getAgentBotById, getApiKeyById, getJobWithOutputs } = await import('@/lib/db/compat');
 
     const fullApiKey = await getApiKeyById(apiKey.id);
     const fullAgentBot = await getAgentBotById(agentBot.id);
+    const existingJob = await getJobWithOutputs(jobId);
 
     if (!fullApiKey || !fullAgentBot) {
       throw new Error('Failed to load agent bot or API key');
     }
 
-    // Execute the invocation with request context for tool access
+    if (!existingJob) {
+      throw new Error('Async job not found');
+    }
+
+    // Execute the invocation with request context for tool access,
+    // passing the existing job so it is updated instead of creating a new one
     const result = await runWithContextAsync(
       { categoryIds },
-      () => executeInvocation(fullAgentBot, fullApiKey, request)
+      () => executeInvocation(fullAgentBot, fullApiKey, request, existingJob)
     );
 
     // Get base URL for webhook

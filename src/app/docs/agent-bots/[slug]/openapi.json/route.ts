@@ -194,10 +194,10 @@ function generateOpenApiSpec(
           },
         },
       },
-      '/jobs/{jobId}/cancel': {
-        post: {
-          summary: 'Cancel job',
-          description: 'Cancel a pending job.',
+      '/jobs/{jobId}/outputs/{outputId}/download': {
+        get: {
+          summary: 'Download output file',
+          description: 'Download a generated output file from a completed job.',
           parameters: [
             {
               name: 'jobId',
@@ -207,16 +207,29 @@ function generateOpenApiSpec(
                 type: 'string',
               },
             },
+            {
+              name: 'outputId',
+              in: 'path',
+              required: true,
+              schema: {
+                type: 'string',
+              },
+            },
           ],
           responses: {
             '200': {
-              description: 'Job cancelled',
-            },
-            '400': {
-              description: 'Job cannot be cancelled',
+              description: 'Binary file content',
+              content: {
+                'application/octet-stream': {
+                  schema: {
+                    type: 'string',
+                    format: 'binary',
+                  },
+                },
+              },
             },
             '404': {
-              description: 'Job not found',
+              description: 'Output not found',
             },
           },
         },
@@ -347,6 +360,12 @@ function generateOpenApiSpec(
             },
             processingTimeMs: { type: 'integer', example: 2340 },
             usedFallback: { type: 'boolean', example: false },
+            status: {
+              type: 'string',
+              enum: ['completed', 'failed'],
+              description: 'Final job status (only present in sync responses)',
+              example: 'completed',
+            },
           },
         },
         AsyncResponse: {
@@ -388,6 +407,9 @@ function generateOpenApiSpec(
               $ref: '#/components/schemas/TokenUsage',
             },
             processingTimeMs: { type: 'integer', example: 2340 },
+            createdAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00Z' },
+            startedAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:01Z' },
+            completedAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:05Z' },
             error: {
               type: 'object',
               properties: {

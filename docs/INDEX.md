@@ -72,7 +72,8 @@ Detailed guides for specific features and capabilities.
 
 | Document | Description | Key Topics |
 |----------|-------------|------------|
-| [features/AUTONOMOUS_MODE_INTEGRATION.md](features/AUTONOMOUS_MODE_INTEGRATION.md) | Autonomous mode integration | Agent pipeline, budget tracking, streaming events, pause/resume/stop |
+| [features/autonomous-mode.md](features/autonomous-mode.md) | **Comprehensive Autonomous Mode guide** | Objectives, use cases (policy assessment, IT consolidation), configuration walkthrough, plan control API, SSE events, HITL, subagent mode, working memory, budget enforcement, known issues |
+| [features/workspace-chatbot.md](features/workspace-chatbot.md) | **Comprehensive Workspace Chatbot guide** | Standalone vs embed, creation walkthrough, public/admin API reference, embed script/iframe integration, WhatsApp setup, access control, analytics, known issues |
 
 ### Agent Bots (Programmatic API)
 
