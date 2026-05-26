@@ -221,6 +221,13 @@ async function executeLlm(
   const enabledTools = await getEnabledTools(version);
   const excludedTools = getExcludedTools(enabledTools);
 
+  // If output type is already a document format, exclude doc_gen tool
+  // because the output generator will handle document generation post-LLM
+  const documentOutputTypes: OutputType[] = ['pdf', 'docx', 'md'];
+  if (documentOutputTypes.includes(ctx.outputType) && !excludedTools.includes('doc_gen')) {
+    excludedTools.push('doc_gen');
+  }
+
   // Execute LLM with tools
   const result = await generateResponseWithTools(
     systemPrompt,

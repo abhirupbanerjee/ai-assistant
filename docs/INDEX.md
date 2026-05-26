@@ -78,7 +78,9 @@ Detailed guides for specific features and capabilities.
 
 | Document | Description | Key Topics |
 |----------|-------------|------------|
-| [API/API_SPECIFICATION.md](API/API_SPECIFICATION.md) | Agent Bot API reference | `/api/agent-bots/{slug}/invoke`, async job polling, file uploads, output downloads, API key management |
+| [features/agent-bot.md](features/agent-bot.md) | **Comprehensive Agent Bot guide** | Objectives, use cases (IT portfolio rationalisation, service assessment), creation walkthrough, API docs, external portal integration, error codes, known issues |
+| [API/API_SPECIFICATION.md](API/API_SPECIFICATION.md) | Complete REST API reference | All endpoints, authentication, request/response schemas |
+| [API/openapi.yaml](API/openapi.yaml) | OpenAPI 3.0 specification | Machine-readable API spec for codegen and Postman import |
 
 ---
 

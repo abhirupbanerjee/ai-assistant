@@ -321,6 +321,64 @@ This preserves security in production while avoiding dev friction.
 
 ---
 
+---
+
+## 7. Agent Bot 524 Timeout (Cloudflare Origin Timeout)
+
+**Status:** ✅ Fixed — async-by-default + polling + doc_gen auto-exclusion  
+**Affected files:** `src/components/admin/agent-bots/AgentBotTester.tsx`, `src/app/api/agent-bots/[slug]/jobs/[jobId]/route.ts`, `src/lib/agent-bot/executor.ts`  
+**Date discovered:** 2026-05-26
+
+### Problem
+
+Agent Bot invocations running in **sync mode** (`async: false`) would hit Cloudflare's ~100-second origin timeout when the LLM triggered time-consuming operations:
+
+- Multiple Tavily `advanced` depth web searches (30–60s each)
+- Repeated `doc_gen` tool calls that failed due to missing thread context (`[DocGen] No thread context available`)
+- Document generation (DOCX/PDF) after all LLM work
+
+**Symptoms:**
+- Browser console: `Failed to load resource: the server responded with a status of 524`
+- Response body: Cloudflare HTML error page (`<title>... | 524: A timeout occurred</title>`)
+- Server logs showed the job was still processing when the client gave up
+
+### Root Cause
+
+1. The admin Test tab defaulted to `async: false`
+2. There was no polling UI for async jobs
+3. The job status endpoint did not support the `X-Admin-Test` header, so admins couldn't poll without an API key
+4. The `doc_gen` tool was available to the LLM even when the output type was already a document format, causing wasted failed tool calls
+
+### Fix Applied
+
+**1. Async-by-default in Test tab** (`AgentBotTester.tsx`):
+- `isAsync` state defaults to `true` instead of `false`
+- After invoking, if `async: true`, the component starts polling the job status endpoint every 2 seconds
+- Shows live status: `Processing async job... Status: running`
+
+**2. Admin test support in job status endpoint** (`/api/agent-bots/{slug}/jobs/[jobId]/route.ts`):
+- Added `isAdminTest()` function that checks for `X-Admin-Test: true` header + admin/superuser session
+- In admin test mode, skips API key authentication and returns mock rate limit headers
+- Allows the Test tab to poll without needing a real API key
+
+**3. Auto-exclude `doc_gen` for document outputs** (`executor.ts`):
+- In `executeLlm()`, if `ctx.outputType` is `pdf`, `docx`, or `md`, `doc_gen` is added to `excludedTools`
+- Prevents the LLM from calling `doc_gen` during conversation (which would fail anyway), since the output generator handles document creation post-LLM
+
+### Prevention
+
+- Always use `async: true` for production integrations
+- Poll the job status endpoint every 2–5 seconds
+- Use webhooks for server-to-server integrations to avoid polling
+- Reduce Tavily `searchDepth` to `basic` if `advanced` is not strictly required
+
+### Related Documentation
+
+- [docs/features/agent-bot.md § 524 Timeout](../features/agent-bot.md#524-timeout-cloudflare-error)
+- [docs/features/agent-bot.md § Integration Patterns](../features/agent-bot.md#integration-patterns)
+
+---
+
 ## Contributing to This Document
 
 When you encounter a non-obvious limitation, build issue, or framework constraint:

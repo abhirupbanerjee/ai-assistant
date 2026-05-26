@@ -13,12 +13,51 @@ import {
   addRateLimitHeaders,
   agentBotErrors,
 } from '@/lib/agent-bot/auth';
-import { getJobWithOutputs } from '@/lib/db/compat';
+import { getJobWithOutputs, getActiveAgentBotBySlug } from '@/lib/db/compat';
+import { getCurrentUser } from '@/lib/auth';
 import type {
   JobStatusResponse,
   InvokeOutputItem,
   AgentBotError,
+  RateLimitInfo,
 } from '@/types/agent-bot';
+
+// ============================================================================
+// Admin Test Mode
+// ============================================================================
+
+/**
+ * Check if admin test mode is enabled
+ */
+async function isAdminTest(request: NextRequest): Promise<boolean> {
+  const adminTestHeader = request.headers.get('X-Admin-Test');
+  if (adminTestHeader !== 'true') {
+    return false;
+  }
+
+  // Verify user is authenticated as admin
+  try {
+    const user = await getCurrentUser();
+    return user?.role === 'admin' || user?.role === 'superuser';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create mock rate limit info for admin testing
+ */
+function createMockRateLimitInfo(): RateLimitInfo {
+  const now = new Date();
+  return {
+    limitMinute: 9999,
+    remainingMinute: 9999,
+    resetMinute: new Date(now.getTime() + 60000),
+    limitDay: 99999,
+    remainingDay: 99999,
+    resetDay: new Date(now.getTime() + 86400000),
+  };
+}
 
 // ============================================================================
 // Route Handler
@@ -30,13 +69,30 @@ export async function GET(
 ): Promise<NextResponse<JobStatusResponse | AgentBotError>> {
   const { slug, jobId } = await params;
 
-  // 1. Authenticate request
-  const authResult = await authenticateRequest(request, slug);
-  if (isAuthError(authResult)) {
-    return authResult;
-  }
+  // Check for admin test mode
+  const adminTestMode = await isAdminTest(request);
 
-  const { agentBot, apiKey, rateLimitInfo } = authResult;
+  let agentBot;
+  let rateLimitInfo: RateLimitInfo;
+
+  if (adminTestMode) {
+    // Admin test mode - bypass API key authentication
+    const bot = await getActiveAgentBotBySlug(slug);
+    if (!bot) {
+      return agentBotErrors.agentBotNotFound();
+    }
+    agentBot = bot;
+    rateLimitInfo = createMockRateLimitInfo();
+  } else {
+    // 1. Authenticate request
+    const authResult = await authenticateRequest(request, slug);
+    if (isAuthError(authResult)) {
+      return authResult;
+    }
+
+    agentBot = authResult.agentBot;
+    rateLimitInfo = authResult.rateLimitInfo;
+  }
 
   try {
     // 2. Get job with outputs
@@ -53,11 +109,17 @@ export async function GET(
       return addRateLimitHeaders(response, rateLimitInfo);
     }
 
-    // 4. Verify API key has access to this job
-    // Jobs can be accessed by the key that created them OR any key for the same bot
-    if (job.api_key_id !== apiKey.id && job.agent_bot_id !== apiKey.agent_bot_id) {
-      const response = agentBotErrors.jobNotFound();
-      return addRateLimitHeaders(response, rateLimitInfo);
+    // 4. For non-admin mode, verify API key has access to this job
+    if (!adminTestMode) {
+      const authResult = await authenticateRequest(request, slug);
+      if (!isAuthError(authResult)) {
+        const apiKey = authResult.apiKey;
+        // Jobs can be accessed by the key that created them OR any key for the same bot
+        if (job.api_key_id !== apiKey.id && job.agent_bot_id !== apiKey.agent_bot_id) {
+          const response = agentBotErrors.jobNotFound();
+          return addRateLimitHeaders(response, rateLimitInfo);
+        }
+      }
     }
 
     // 5. Build response

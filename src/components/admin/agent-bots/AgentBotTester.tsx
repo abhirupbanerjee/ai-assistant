@@ -75,7 +75,12 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
   // Input state
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [outputType, setOutputType] = useState('');
-  const [isAsync, setIsAsync] = useState(false);
+  const [isAsync, setIsAsync] = useState(true);
+
+  // Polling state
+  const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [pollingStatus, setPollingStatus] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // File upload state
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -231,6 +236,82 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
     setUploadedFileIds((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Poll for job status
+  const startPolling = useCallback((jobId: string) => {
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    setPollingJobId(jobId);
+    setPollingStatus('running');
+    setIsTesting(true);
+
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/agent-bots/${agentBot.slug}/jobs/${jobId}`,
+          {
+            headers: {
+              'X-Admin-Test': 'true',
+            },
+          }
+        );
+
+        if (!response.ok) {
+          console.error('[AgentBotTester] Poll failed:', response.status);
+          return;
+        }
+
+        const data = await response.json();
+        setPollingStatus(data.status);
+
+        if (data.status === 'completed') {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setIsTesting(false);
+          setPollingJobId(null);
+          setTestResult({
+            success: true,
+            jobId: data.jobId,
+            outputs: data.outputs,
+            tokenUsage: data.tokenUsage,
+            processingTimeMs: data.processingTimeMs,
+          });
+        } else if (data.status === 'failed') {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setIsTesting(false);
+          setPollingJobId(null);
+          setTestResult({
+            success: false,
+            error: data.error?.message || 'Job failed',
+          });
+        }
+        // For 'pending' or 'running', continue polling
+      } catch (err) {
+        console.error('[AgentBotTester] Poll error:', err);
+      }
+    };
+
+    // Poll immediately, then every 2 seconds
+    poll();
+    pollIntervalRef.current = setInterval(poll, 2000);
+  }, [agentBot.slug]);
+
   // Run test
   const handleRunTest = async () => {
     if (!selectedVersion) return;
@@ -238,6 +319,14 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
     setIsTesting(true);
     setTestResult(null);
     setError(null);
+    setPollingJobId(null);
+    setPollingStatus(null);
+
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
 
     try {
       // Build input object
@@ -288,6 +377,7 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
           success: false,
           error: `Server returned ${response.status} with non-JSON response (check browser console for details)`,
         });
+        setIsTesting(false);
         return;
       }
 
@@ -298,7 +388,12 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
           success: false,
           error: data.details || data.error || 'Test failed',
         });
+        setIsTesting(false);
+      } else if (isAsync && data.jobId) {
+        // Start polling for async job results
+        startPolling(data.jobId);
       } else {
+        // Sync mode - result is ready
         setTestResult({
           success: true,
           jobId: data.jobId,
@@ -306,13 +401,13 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
           tokenUsage: data.tokenUsage,
           processingTimeMs: data.processingTimeMs,
         });
+        setIsTesting(false);
       }
     } catch (err) {
       setTestResult({
         success: false,
         error: err instanceof Error ? err.message : 'Test failed',
       });
-    } finally {
       setIsTesting(false);
     }
   };
@@ -579,8 +674,17 @@ export default function AgentBotTester({ agentBot }: AgentBotTesterProps) {
           </label>
 
           {isTesting ? (
-            <div className="flex items-center justify-center h-64">
+            <div className="flex flex-col items-center justify-center h-64 gap-3">
               <Spinner size="lg" />
+              {pollingJobId && (
+                <div className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                  <p>Processing async job...</p>
+                  <p className="text-xs mt-1">
+                    Status: <span className="capitalize">{pollingStatus || 'pending'}</span>
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Job ID: {pollingJobId}</p>
+                </div>
+              )}
             </div>
           ) : testResult ? (
             <div className="space-y-4">
