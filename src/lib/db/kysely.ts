@@ -108,6 +108,15 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS sources_enabled INTEGER DEFAULT 1`.execute(database);
   console.log('[Kysely] Ensured workspaces.sources_enabled column exists');
 
+  // Migration: Add encrypted_key column to agent_bot_api_keys table
+  // Stores the full API key encrypted with AES-256-GCM (DATA_SOURCE_ENCRYPTION_KEY)
+  // so admins can reveal it later via the eye icon in the UI.
+  await sql`
+    ALTER TABLE agent_bot_api_keys
+    ADD COLUMN IF NOT EXISTS encrypted_key TEXT
+  `.execute(database);
+  console.log('[Kysely] Ensured agent_bot_api_keys.encrypted_key column exists');
+
   // Seed default LLM providers if table is empty (first-time Postgres setup)
   const existingProviders = await database
     .selectFrom('llm_providers')

@@ -178,6 +178,7 @@ export interface AgentBotApiKey {
   name: string;
   key_prefix: string;
   key_hash: string;
+  encrypted_key?: string; // AES-256-GCM encrypted full key (only populated for new keys)
   permissions: string[];
   rate_limit_rpm: number;
   rate_limit_rpd: number;
@@ -197,7 +198,17 @@ export interface AgentBotApiKeyWithStats extends AgentBotApiKey {
 
 export interface CreateApiKeyResult {
   apiKey: AgentBotApiKey;
-  fullKey: string; // Only returned once at creation
+  fullKey: string; // Only returned once at creation (also stored encrypted in DB)
+}
+
+/**
+ * Response from the API key reveal endpoint
+ */
+export interface RevealedApiKeyResponse {
+  id: string;
+  name: string;
+  key_prefix: string;
+  fullKey: string;
 }
 
 // ============================================================================
@@ -509,6 +520,7 @@ export interface AgentBotApiKeyRow {
   name: string;
   key_prefix: string;
   key_hash: string;
+  encrypted_key: string | null;
   permissions: string;
   rate_limit_rpm: number;
   rate_limit_rpd: number;

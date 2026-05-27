@@ -471,6 +471,7 @@ CREATE TABLE IF NOT EXISTS agent_bot_api_keys (
   name TEXT NOT NULL,
   key_prefix TEXT NOT NULL,
   key_hash TEXT NOT NULL,
+  encrypted_key TEXT,
   permissions TEXT NOT NULL DEFAULT '["invoke"]',
   rate_limit_rpm INTEGER DEFAULT 60,
   rate_limit_rpd INTEGER DEFAULT 1000,

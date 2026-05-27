@@ -932,6 +932,8 @@ export {
   getActiveKeyCount,
   keyNameExists,
   cleanupOldUsageRecords,
+  // Key Reveal
+  getRevealedApiKey,
 } from './agent-bot-api-keys';
 
 // ============ Tool Routing ============

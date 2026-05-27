@@ -850,6 +850,7 @@ export interface AgentBotApiKeysTable {
   name: string;
   key_prefix: string;
   key_hash: string;
+  encrypted_key: string | null;
   permissions: Generated<string>;
   rate_limit_rpm: Generated<number>;
   rate_limit_rpd: Generated<number>;

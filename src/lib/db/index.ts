@@ -1521,6 +1521,15 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Added source_type column to citation_trajectories');
   }
 
+  // Migration: Add encrypted_key column to agent_bot_api_keys for key reveal feature
+  const apiKeysColumns = database.pragma('table_info(agent_bot_api_keys)') as { name: string }[];
+  const apiKeysColumnNames = apiKeysColumns.map((c) => c.name);
+
+  if (!apiKeysColumnNames.includes('encrypted_key')) {
+    database.exec('ALTER TABLE agent_bot_api_keys ADD COLUMN encrypted_key TEXT');
+    console.log('[DB Migration] Added encrypted_key column to agent_bot_api_keys');
+  }
+
   console.log('[DB Migration] Migrations completed successfully');
 }
 

@@ -58,6 +58,7 @@ function rowToApiKey(row: AgentBotApiKeyRow): AgentBotApiKey {
     name: row.name,
     key_prefix: row.key_prefix,
     key_hash: row.key_hash,
+    encrypted_key: row.encrypted_key ?? undefined,
     permissions: typeof row.permissions === 'string'
       ? JSON.parse(row.permissions)
       : row.permissions,
@@ -152,6 +153,16 @@ export async function createApiKey(
   const keyHash = hashApiKey(fullKey);
   const keyPrefix = extractPrefix(fullKey);
 
+  // Encrypt the full key for later retrieval (admin reveal feature)
+  let encryptedKey: string | null = null;
+  try {
+    const { encrypt } = await import('@/lib/encryption');
+    encryptedKey = encrypt(fullKey);
+  } catch {
+    // Encryption not configured — key will only be shown once at creation
+    console.warn('[AgentBotApiKeys] DATA_SOURCE_ENCRYPTION_KEY not configured; API key reveal will be unavailable');
+  }
+
   // Calculate expiration if provided
   let expiresAt: string | null = null;
   if (input.expires_in_days) {
@@ -168,6 +179,7 @@ export async function createApiKey(
       name: input.name,
       key_prefix: keyPrefix,
       key_hash: keyHash,
+      encrypted_key: encryptedKey,
       permissions: JSON.stringify(['invoke']),
       rate_limit_rpm: input.rate_limit_rpm ?? 60,
       rate_limit_rpd: input.rate_limit_rpd ?? 1000,
@@ -552,4 +564,70 @@ export async function cleanupOldUsageRecords(daysToKeep = 90): Promise<number> {
     .executeTakeFirst();
 
   return Number(result.numDeletedRows ?? 0);
+}
+
+// ============ API Key Reveal ============
+
+/**
+ * Reveal the full API key by decrypting the stored encrypted key.
+ * Only callable by admin/superuser — the caller must verify authorization.
+ *
+ * @param keyId - The API key ID to reveal
+ * @param agentBotId - The agent bot ID for ownership verification
+ * @param revealedBy - Email of the user requesting the reveal (for audit logging)
+ * @returns The decrypted full key, or an error object
+ */
+export async function getRevealedApiKey(
+  keyId: string,
+  agentBotId: string,
+  revealedBy: string
+): Promise<{ fullKey: string } | { error: string; code: string }> {
+  const { isEncryptionConfigured, decrypt } = await import('@/lib/encryption');
+
+  if (!isEncryptionConfigured()) {
+    console.warn('[Audit] API key reveal blocked — encryption not configured', {
+      keyId,
+      agentBotId,
+      revealedBy,
+    });
+    return {
+      error: 'Encryption is not configured. Set DATA_SOURCE_ENCRYPTION_KEY in your environment variables.',
+      code: 'ENCRYPTION_NOT_CONFIGURED',
+    };
+  }
+
+  const apiKey = await getApiKeyById(keyId);
+  if (!apiKey || apiKey.agent_bot_id !== agentBotId) {
+    return { error: 'API key not found', code: 'NOT_FOUND' };
+  }
+  if (!apiKey.is_active) {
+    return { error: 'API key is revoked', code: 'KEY_REVOKED' };
+  }
+  if (!apiKey.encrypted_key) {
+    return {
+      error: 'This key was created before encryption support was added and cannot be revealed. Generate a new key to use this feature.',
+      code: 'NOT_ENCRYPTED',
+    };
+  }
+
+  try {
+    const fullKey = decrypt(apiKey.encrypted_key);
+    // Audit log the reveal event
+    console.log('[Audit] API key revealed', {
+      keyId,
+      keyName: apiKey.name,
+      agentBotId,
+      revealedBy,
+      timestamp: new Date().toISOString(),
+    });
+    return { fullKey };
+  } catch (err) {
+    console.error('[Audit] API key reveal failed — decryption error', {
+      keyId,
+      agentBotId,
+      revealedBy,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    });
+    return { error: 'Failed to decrypt API key', code: 'DECRYPT_FAILED' };
+  }
 }

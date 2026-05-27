@@ -3,10 +3,12 @@
 /**
  * API Key Manager
  *
- * Manages API keys for an agent bot - list, create, and revoke keys.
+ * Manages API keys for an agent bot - list, create, revoke, and reveal keys.
+ * Admins and superusers can toggle key visibility with an eye icon to view + copy.
+ * Revealed keys auto-hide after 30 seconds.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
   Key,
@@ -16,6 +18,8 @@ import {
   Check,
   Clock,
   Shield,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -43,6 +47,9 @@ interface ApiKeyManagerProps {
   agentBotSlug: string;
 }
 
+// Auto-hide timeout in milliseconds
+const REVEAL_AUTO_HIDE_MS = 30_000;
+
 export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }: ApiKeyManagerProps) {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,7 +69,15 @@ export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }
   const [expiresInDays, setExpiresInDays] = useState<number | ''>('');
   const [isCreating, setIsCreating] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
-  const [copiedTarget, setCopiedTarget] = useState<'key' | 'curl' | null>(null);
+  const [copiedTarget, setCopiedTarget] = useState<'key' | 'curl' | 'revealed' | null>(null);
+
+  // Reveal state: key id -> full key
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
+  const [revealingKey, setRevealingKey] = useState<string | null>(null);
+  const [revealErrors, setRevealErrors] = useState<Record<string, string>>({});
+  // Map of key id -> timeout ref for auto-hide
+  const hideTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
   const apiBaseUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/agent-bots/${agentBotSlug}`
     : `/api/agent-bots/${agentBotSlug}`;
@@ -70,6 +85,29 @@ export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }
   -H "Authorization: Bearer ${newFullKey || 'YOUR_API_KEY'}" \\
   -H "Content-Type: application/json" \\
   -d '{"input":{"query":"what is life"},"outputType":"json"}'`;
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(hideTimers.current).forEach(clearTimeout);
+    };
+  }, []);
+
+  // Schedule auto-hide for a revealed key
+  const scheduleAutoHide = (keyId: string) => {
+    // Clear any existing timer for this key
+    if (hideTimers.current[keyId]) {
+      clearTimeout(hideTimers.current[keyId]);
+    }
+    hideTimers.current[keyId] = setTimeout(() => {
+      setRevealedKeys((prev) => {
+        const next = { ...prev };
+        delete next[keyId];
+        return next;
+      });
+      delete hideTimers.current[keyId];
+    }, REVEAL_AUTO_HIDE_MS);
+  };
 
   // Load API keys
   const loadApiKeys = useCallback(async () => {
@@ -161,7 +199,62 @@ export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }
     }
   };
 
-  // Copy key to clipboard
+  // Toggle key reveal (show/hide full key)
+  const handleRevealKey = async (keyId: string) => {
+    // If already revealed, hide it (toggle off)
+    if (revealedKeys[keyId]) {
+      if (hideTimers.current[keyId]) {
+        clearTimeout(hideTimers.current[keyId]);
+        delete hideTimers.current[keyId];
+      }
+      setRevealedKeys((prev) => {
+        const next = { ...prev };
+        delete next[keyId];
+        return next;
+      });
+      return;
+    }
+
+    setRevealingKey(keyId);
+    setRevealErrors((prev) => {
+      const next = { ...prev };
+      delete next[keyId];
+      return next;
+    });
+
+    try {
+      const response = await fetch(
+        `/api/admin/agent-bots/${agentBotId}/api-keys/${keyId}`
+      );
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to reveal key');
+      }
+      const data = await response.json();
+      setRevealedKeys((prev) => ({ ...prev, [keyId]: data.fullKey }));
+      // Schedule auto-hide
+      scheduleAutoHide(keyId);
+    } catch (err) {
+      setRevealErrors((prev) => ({
+        ...prev,
+        [keyId]: err instanceof Error ? err.message : 'Failed to reveal key',
+      }));
+    } finally {
+      setRevealingKey(null);
+    }
+  };
+
+  // Copy revealed key to clipboard
+  const handleCopyRevealed = async (keyId: string) => {
+    const fullKey = revealedKeys[keyId];
+    if (fullKey) {
+      await navigator.clipboard.writeText(fullKey);
+      setCopiedTarget('revealed');
+      setTimeout(() => setCopiedTarget(null), 2000);
+    }
+  };
+
+  // Copy key to clipboard (from creation modal)
   const handleCopy = async () => {
     if (newFullKey) {
       await navigator.clipboard.writeText(newFullKey);
@@ -255,52 +348,119 @@ export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }
       ) : (
         <div className="space-y-3">
           {/* Active Keys */}
-          {activeKeys.map((key) => (
-            <div
-              key={key.id}
-              className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Key className="w-4 h-4 text-blue-500" />
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      {key.name}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono">
-                    {key.key_prefix}...
-                  </p>
-                  <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <Shield className="w-3 h-3" />
-                      {key.rate_limit_rpm}/min, {key.rate_limit_rpd}/day
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      Last used: {formatRelativeTime(key.last_used_at)}
-                    </span>
-                    {key.expires_at && (
-                      <span>
-                        Expires:{' '}
-                        {new Date(key.expires_at).toLocaleDateString()}
+          {activeKeys.map((key) => {
+            const isRevealed = !!revealedKeys[key.id];
+            const isRevealing = revealingKey === key.id;
+            const revealError = revealErrors[key.id];
+            const isCopied = copiedTarget === 'revealed';
+
+            return (
+              <div
+                key={key.id}
+                className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Key className="w-4 h-4 text-blue-500" />
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {key.name}
                       </span>
+                    </div>
+
+                    {/* Key value display: truncated prefix or full revealed key */}
+                    {isRevealed ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="relative flex-1 min-w-0">
+                          <input
+                            type="text"
+                            readOnly
+                            value={revealedKeys[key.id]}
+                            className="w-full px-3 py-2 pr-10 border border-green-300 dark:border-green-700 rounded-lg bg-green-50 dark:bg-green-900/20 font-mono text-sm text-gray-900 dark:text-green-100"
+                          />
+                          <button
+                            onClick={() => handleCopyRevealed(key.id)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                            title="Copy key"
+                          >
+                            {isCopied ? (
+                              <Check className="w-5 h-5 text-green-500" />
+                            ) : (
+                              <Copy className="w-5 h-5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono">
+                        {key.key_prefix}...
+                      </p>
                     )}
+
+                    {/* Reveal error */}
+                    {revealError && (
+                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {revealError}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <Shield className="w-3 h-3" />
+                        {key.rate_limit_rpm}/min, {key.rate_limit_rpd}/day
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Last used: {formatRelativeTime(key.last_used_at)}
+                      </span>
+                      {key.expires_at && (
+                        <span>
+                          Expires:{' '}
+                          {new Date(key.expires_at).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* Eye icon: reveal/hide full key */}
+                    <button
+                      onClick={() => handleRevealKey(key.id)}
+                      disabled={isRevealing}
+                      className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                        isRevealed
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-gray-400 dark:text-gray-500'
+                      }`}
+                      title={isRevealed ? 'Hide key' : 'Reveal key'}
+                    >
+                      {isRevealing ? (
+                        <Spinner size="sm" />
+                      ) : isRevealed ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    {/* Revoke button */}
+                    <button
+                      onClick={() => {
+                        setSelectedKey(key);
+                        setShowRevokeModal(true);
+                      }}
+                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-red-500"
+                      title="Revoke"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedKey(key);
-                    setShowRevokeModal(true);
-                  }}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-red-500"
-                  title="Revoke"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Revoked Keys */}
           {revokedKeys.length > 0 && (
@@ -432,7 +592,7 @@ export default function ApiKeyManager({ agentBotId, agentBotName, agentBotSlug }
             <p className="text-sm text-yellow-800 dark:text-yellow-200 flex items-start gap-2">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
               <span>
-                Copy this key now. You won&apos;t be able to see it again!
+                Copy this key now. You won't be able to see it again!
               </span>
             </p>
           </div>
