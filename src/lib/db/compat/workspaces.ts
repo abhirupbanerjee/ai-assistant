@@ -81,19 +81,19 @@ export async function getWorkspaceWithRelations(id: string): Promise<WorkspaceWi
   // Get counts
   const userCount = await db
     .selectFrom('workspace_users')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('workspace_id', '=', id)
     .executeTakeFirst();
 
   const sessionCount = await db
     .selectFrom('workspace_sessions')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('workspace_id', '=', id)
     .executeTakeFirst();
 
   const messageCount = await db
     .selectFrom('workspace_messages')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('workspace_id', '=', id)
     .executeTakeFirst();
 
@@ -502,7 +502,7 @@ export async function isUserInWorkspaceAccessList(userId: number, workspaceId: s
   const db = await getDb();
   const result = await db
     .selectFrom('workspace_users')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('workspace_id', '=', workspaceId)
     .where('user_id', '=', userId)
     .executeTakeFirst();
@@ -554,7 +554,7 @@ export async function slugExists(slug: string): Promise<boolean> {
   const db = await getDb();
   const result = await db
     .selectFrom('workspaces')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('slug', '=', slug)
     .executeTakeFirst();
 
@@ -568,13 +568,13 @@ export async function getWorkspaceCountByType(): Promise<{ embed: number; standa
   const db = await getDb();
   const embed = await db
     .selectFrom('workspaces')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('type', '=', 'embed')
     .executeTakeFirst();
 
   const standalone = await db
     .selectFrom('workspaces')
-    .select(db.fn.count('id').as('count'))
+    .select(db.fn.countAll<number>().as('count'))
     .where('type', '=', 'standalone')
     .executeTakeFirst();
 

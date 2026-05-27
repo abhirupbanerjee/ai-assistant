@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Sparkles,
   Bot,
+  BrainCircuit,
   Coins,
   BarChart3,
   Layers,
@@ -65,7 +66,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'tools', label: 'Tools', icon: Wrench, expandable: false },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
-  { id: 'autonomous-mode', label: 'Autonomous Mode', icon: Bot, expandable: false },
+  { id: 'autonomous-mode', label: 'Autonomous Mode', icon: BrainCircuit, expandable: false },
   { id: 'agent', label: 'Agent Bots', icon: Bot, expandable: false },
   {
     id: 'settings',

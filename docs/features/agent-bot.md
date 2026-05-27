@@ -738,6 +738,7 @@ if (result.outputs?.[0]?.downloadUrl) {
 ```
 
 **When to use:** Document generation, web search, multi-tool calls, **any production integration**.
+**When to use:** Document generation, web search, multi-tool calls, **any production integration**.
 
 > **Recommendation:** Even if you expect a quick response, use `async: true` for all production calls. This insulates you from unexpected tool-triggering behavior that could cause timeouts.
 

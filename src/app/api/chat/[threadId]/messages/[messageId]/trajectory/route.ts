@@ -30,7 +30,7 @@ export async function GET(
       return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
     }
 
-    const summary = getTrajectorySummary(messageId, threadId);
+    const summary = await getTrajectorySummary(messageId, threadId);
 
     return NextResponse.json(summary);
   } catch (error) {
