@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowUp, Mic, Paperclip, Settings, AlertCircle, Loader2, X } from 'lucide-react';
+import SlashCommandMenu from '@/components/chat/SlashCommandMenu';
 import VoiceInput from '@/components/chat/VoiceInput';
 import FileUpload from '@/components/chat/FileUpload';
 import ModeToggle, { ChatMode } from '@/components/chat/ModeToggle';
@@ -60,8 +61,12 @@ export default function MobileMessageInput({
   const [showPrefsMenu, setShowPrefsMenu] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [activeSlashCommand, setActiveSlashCommand] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prefsMenuRef = useRef<HTMLDivElement>(null);
+  const slashMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenu = useMobileMenuOptional();
 
   // Should hide input while scrolling (from context)
@@ -102,19 +107,39 @@ export default function MobileMessageInput({
   const isSubmitDisabled = disabled || !modelReady;
 
   const handleSubmit = () => {
-    if (message.trim() && !isSubmitDisabled) {
-      onSend(message.trim(), mode, preferences);
-      setMessage('');
-      setMode('normal');
-      setIsExpanded(false);
-      setShowPrefsMenu(false);
+    let finalMessage = message.trim();
+    if (!finalMessage && !activeSlashCommand) return;
+    if (isSubmitDisabled) return;
+
+    let toolHint: string | undefined;
+    if (activeSlashCommand) {
+      toolHint = activeSlashCommand;
+    } else {
+      const slashMatch = finalMessage.match(/^\/([a-z0-9_-]+)(?:\s+(.+))?$/i);
+      if (slashMatch) {
+        toolHint = slashMatch[1].toLowerCase();
+        finalMessage = slashMatch[2] || '';
+      }
     }
+
+    onSend(finalMessage, mode, { ...preferences, toolHint });
+    setMessage('');
+    setActiveSlashCommand(null);
+    setMode('normal');
+    setIsExpanded(false);
+    setShowPrefsMenu(false);
+    setSlashMenuOpen(false);
+    setSlashQuery('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       handleSubmit();
+    }
+    if (e.key === 'Escape') {
+      setSlashMenuOpen(false);
+      setSlashQuery('');
     }
   };
 
@@ -201,6 +226,7 @@ export default function MobileMessageInput({
     preferences.webSearchEnabled,
     preferences.targetLanguage !== 'en',
     preferences.responseTone !== 'default',
+    !!activeSlashCommand,
   ].filter(Boolean).length;
 
   // Collapsed state - thin bar (hidden while scrolling)
@@ -243,7 +269,7 @@ export default function MobileMessageInput({
   // Expanded state - full input
   return (
     <div className="bg-white p-3 safe-area-bottom">
-      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
+      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 relative">
         {/* Upload indicators */}
         {currentUploads.length > 0 && (
           <div className="flex items-center gap-2 mb-2 text-sm">
@@ -285,11 +311,64 @@ export default function MobileMessageInput({
           </div>
         )}
 
+        {/* Active slash command indicator */}
+        {activeSlashCommand && (
+          <div className="mb-2 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+              /{activeSlashCommand}
+              <button
+                type="button"
+                onClick={() => setActiveSlashCommand(null)}
+                className="ml-0.5 hover:text-blue-900"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Slash command menu */}
+        {slashMenuOpen && (
+          <SlashCommandMenu
+            query={slashQuery}
+            onSelect={(commandKey) => {
+              setActiveSlashCommand(commandKey);
+              setSlashMenuOpen(false);
+              setSlashQuery('');
+              setMessage((prev) => prev.replace(/^\//, ''));
+              textareaRef.current?.focus();
+            }}
+            onDismiss={() => {
+              setSlashMenuOpen(false);
+              setSlashQuery('');
+            }}
+          />
+        )}
+
         {/* Textarea - 1 line default, expands to 4 lines, then scrolls */}
         <textarea
           ref={textareaRef}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setMessage(val);
+
+            // Detect slash command at position 0
+            if (activeSlashCommand) {
+              setSlashMenuOpen(false);
+              return;
+            }
+
+            if (val.startsWith('/')) {
+              const spaceIdx = val.indexOf(' ');
+              const query = spaceIdx === -1 ? val.slice(1) : val.slice(1, spaceIdx);
+              setSlashQuery(query);
+              setSlashMenuOpen(true);
+            } else {
+              setSlashMenuOpen(false);
+              setSlashQuery('');
+            }
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onBlur={handleCollapse}

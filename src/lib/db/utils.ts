@@ -350,6 +350,35 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       maxDocumentSizeMB: 50,
     },
   },
+  pptx_gen: {
+    enabled: true,
+    config: {
+      maxSlides: 12,
+      maxImageSlides: 3,
+      defaultTheme: 'corporate',
+      enableImageGeneration: true,
+      branding: {
+        enabled: false,
+        logoUrl: '',
+        organizationName: '',
+      },
+    },
+  },
+  xlsx_gen: {
+    enabled: true,
+    config: {
+      maxRows: 1000,
+      maxColumns: 25,
+      maxSheets: 10,
+      defaultHeaderStyle: 'highlighted',
+      enableAlternateRows: true,
+      enableAutoFilter: true,
+      enableFreezeHeader: true,
+      branding: {
+        organizationName: '',
+      },
+    },
+  },
 };
 
 function getTranslationToolDefaults(): { enabled: boolean; config: Record<string, unknown> } {

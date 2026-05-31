@@ -468,6 +468,11 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_slash_commands_tool ON slash_command_configs(tool_name)`.execute(database);
   console.log('[Kysely] Ensured slash_command_configs table exists');
 
+  // Seed default slash commands if table is empty
+  const { ensureSlashCommandsExist } = await import('./compat/slash-commands');
+  await ensureSlashCommandsExist('system');
+  console.log('[Kysely] Ensured default slash commands exist');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

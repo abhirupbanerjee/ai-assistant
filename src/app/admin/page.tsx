@@ -9,7 +9,7 @@ import Spinner from '@/components/ui/Spinner';
 import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
-import AdminSidebarMenu, { type SettingsSection as SidebarSettingsSection } from '@/components/admin/AdminSidebarMenu';
+import AdminSidebarMenu, { type SettingsSection as SidebarSettingsSection, type ToolsSection as SidebarToolsSection } from '@/components/admin/AdminSidebarMenu';
 // AgentsSection type removed - now separate L1 tabs for autonomous-mode and agent
 import FileUploadSettings from '@/components/admin/settings/FileUploadSettings';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
@@ -119,7 +119,7 @@ type PromptsSection = 'system-prompt' | 'category-prompts';
 type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Legacy types for backward compatibility during migration
-type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
+type ToolsSection = SidebarToolsSection;
 type TokensSection = 'memory' | 'summarization' | 'limits';
 
 interface RerankerSettings {
@@ -278,8 +278,14 @@ function AdminPageContent() {
   // Agent Bots state - track selected bot for detail view
   const [selectedAgentBotId, setSelectedAgentBotId] = useState<string | null>(null);
 
-  // Legacy tools section for backward compatibility
-  const [toolsSection, setToolsSection] = useState<ToolsSection>('management');
+  // Tools section state with URL sync
+  const VALID_TOOLS_SECTIONS: ToolsSection[] = ['management', 'dependencies', 'routing', 'conflicts', 'slash-commands'];
+  const toolsSectionParam = searchParams.get('toolsSection');
+  const [toolsSection, setToolsSection] = useState<ToolsSection>(
+    VALID_TOOLS_SECTIONS.includes(toolsSectionParam as ToolsSection)
+      ? (toolsSectionParam as ToolsSection)
+      : 'management'
+  );
 
   // Accordion expanded states for flattened menu items
   const [expandedUsersSections, setExpandedUsersSections] = useState<Set<UsersSection>>(new Set(['management']));
@@ -297,6 +303,13 @@ function AdminPageContent() {
     setActiveTab('settings');
     setSettingsSection(section);
     router.push(`/admin?tab=settings&section=${section}`, { scroll: false });
+  }, [router]);
+
+  // Handle tools section change - updates both state and URL so section survives remounts
+  const handleToolsChange = useCallback((section: ToolsSection) => {
+    setActiveTab('tools');
+    setToolsSection(section);
+    router.push(`/admin?tab=tools&toolsSection=${section}`, { scroll: false });
   }, [router]);
 
   const toggleUsersSection = (section: UsersSection) => {
@@ -1011,12 +1024,14 @@ function AdminPageContent() {
         documentsSection={documentsSection}
         usersSection={usersSection}
         promptsSection={promptsSection}
+        toolsSection={toolsSection}
         settingsSection={settingsSection}
         userRole={userRole}
         onTabChange={handleTabChange}
         onDocumentsChange={setDocumentsSection}
         onUsersChange={setUsersSection}
         onPromptsChange={setPromptsSection}
+        onToolsChange={handleToolsChange}
         onSettingsChange={handleSettingsChange}
       />
 

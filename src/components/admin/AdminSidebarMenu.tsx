@@ -36,6 +36,7 @@ type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
+type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
 type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
@@ -63,7 +64,19 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'documents', label: 'Documents', icon: FileText, expandable: false },
   { id: 'users', label: 'Users', icon: Users, expandable: false },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare, expandable: false },
-  { id: 'tools', label: 'Tools', icon: Wrench, expandable: false },
+  {
+    id: 'tools',
+    label: 'Tools',
+    icon: Wrench,
+    expandable: true,
+    submenu: [
+      { id: 'management', label: 'Tools Management' },
+      { id: 'dependencies', label: 'Dependencies' },
+      { id: 'routing', label: 'Tool Routing' },
+      { id: 'conflicts', label: 'Conflicts' },
+      { id: 'slash-commands', label: 'Slash Commands' },
+    ]
+  },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
   { id: 'autonomous-mode', label: 'Autonomous Mode', icon: BrainCircuit, expandable: false },
@@ -149,12 +162,14 @@ interface AdminSidebarMenuProps {
   documentsSection: DocumentsSection;
   usersSection: UsersSection;
   promptsSection: PromptsSection;
+  toolsSection: ToolsSection;
   settingsSection: SettingsSection;
   userRole?: 'admin' | 'superuser' | 'user';
   onTabChange: (tab: TabType) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
+  onToolsChange: (section: ToolsSection) => void;
   onSettingsChange: (section: SettingsSection) => void;
 }
 
@@ -167,12 +182,14 @@ export default function AdminSidebarMenu({
   documentsSection,
   usersSection,
   promptsSection,
+  toolsSection,
   settingsSection,
   userRole = 'admin',
   onTabChange,
   onDocumentsChange,
   onUsersChange,
   onPromptsChange,
+  onToolsChange,
   onSettingsChange,
 }: AdminSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -200,6 +217,7 @@ export default function AdminSidebarMenu({
       case 'documents': return documentsSection;
       case 'users': return usersSection;
       case 'prompts': return promptsSection;
+      case 'tools': return toolsSection;
       case 'settings': return settingsSection;
       default: return '';
     }
@@ -217,10 +235,13 @@ export default function AdminSidebarMenu({
       case 'users':
         onUsersChange(sectionId as UsersSection);
         break;
-        case 'prompts':
-          onPromptsChange(sectionId as PromptsSection);
-          break;
-        case 'settings':
+      case 'prompts':
+        onPromptsChange(sectionId as PromptsSection);
+        break;
+      case 'tools':
+        onToolsChange(sectionId as ToolsSection);
+        break;
+      case 'settings':
         onSettingsChange(sectionId as SettingsSection);
         break;
     }
@@ -440,4 +461,4 @@ export default function AdminSidebarMenu({
 }
 
 // Export types for use in admin/page.tsx
-export type { TabType, DocumentsSection, UsersSection, PromptsSection, SettingsSection };
+export type { TabType, DocumentsSection, UsersSection, PromptsSection, ToolsSection, SettingsSection };
