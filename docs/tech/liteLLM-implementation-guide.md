@@ -21,7 +21,7 @@ Policy Bot uses a **hybrid architecture**: most chat services route through Lite
 | **Compliance Checks** | HITL clarification | ✅ LiteLLM | OpenAI, Gemini, Mistral, Anthropic | Skill compliance |
 | **Translation** | Multi-language support | ✅ LiteLLM / ❌ Direct | OpenAI (proxy), Gemini/Mistral (direct) | Provider-dependent |
 | **Audio Transcription** | Voice input | ✅ LiteLLM | OpenAI Whisper, Mistral Voxtral | `transcribeAudio()` uses `getOpenAI()` client |
-| **Image Generation** | `image_gen` tool | ❌ Direct | OpenAI DALL-E, Gemini Imagen | Specialized APIs |
+| **Image Generation** | `image_gen` tool | ❌ Direct | Gemini Nano Banana, Imagen 4 | Specialized APIs |
 | **Podcast Generation** | `podcast_gen` tool | ❌ Direct | OpenAI TTS, Gemini TTS | Multi-voice audio synthesis |
 | **Document Processing** | Document text extraction | ❌ Direct | mammoth/exceljs/officeparser (local), Mistral OCR, Azure DI, pdf-parse | Tiered fallback: local parsers first, then API providers |
 | **Reranking** | Search result scoring | ❌ Direct | Fireworks AI | Direct HTTP to `api.fireworks.ai/inference/v1/rerank` |
@@ -43,7 +43,7 @@ Policy Bot uses a **hybrid architecture**: most chat services route through Lite
 | Service | Reason |
 |---------|--------|
 | **Anthropic Claude** | LiteLLM's Anthropic→OpenAI streaming translation produces malformed tool-calling JSON. Direct `@anthropic-ai/sdk` provides native, reliable tool call parsing |
-| **Image Generation** | DALL-E and Gemini Imagen APIs not supported by LiteLLM proxy |
+| **Image Generation** | Gemini and Imagen APIs not supported by LiteLLM proxy |
 | **Podcast TTS** | OpenAI TTS and Gemini TTS are audio generation APIs, not chat completions |
 | **OCR** | Mistral OCR is a specialized document API with unique request format |
 | **Reranking** | Fireworks reranker is a specialized search API (`/inference/v1/rerank`), not a chat model |
@@ -154,10 +154,10 @@ PolicyBot uses a **four-tier hybrid architecture**. LiteLLM handles most chat, e
 │ │ Fireworks* │ │ │                │ │ Gemini/Mistral │ │  via @google/  │
 │ │ Ollama*    │ │ │ Models:        │ │  (translation) │ │  genai SDK     │
 │ └────────────┘ │ │ claude-opus-*  │ │                │ │                │
-│                │ │ claude-sonnet-*│ │ OpenAI TTS     │ │ DALL-E 3       │
+│                │ │ claude-sonnet-*│ │ OpenAI TTS     │ │ Imagen 4       │
 │ * YAML-only,   │ │ claude-haiku-* │ │  (podcast_gen) │ │  (image_gen)   │
-│   not dynamic  │ │                │ │  hardcoded to  │ │  via OpenAI SDK│
-│   sync         │ │ Why: LiteLLM   │ │  api.openai.com│ │  (no proxy)    │
+│   not dynamic  │ │                │ │  hardcoded to  │ │  via @google/  │
+│   sync         │ │ Why: LiteLLM   │ │  api.openai.com│ │  genai SDK     │
 │                │ │ breaks tool    │ │                │ │                │
 │                │ │ call JSON      │ │                │ │                │
 └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘

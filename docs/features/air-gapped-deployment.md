@@ -106,7 +106,7 @@ LiteLLM is **not required** in a pure Route 3 deployment.
 | Capability | Requires | Why |
 |-----------|----------|-----|
 | Web search | Tavily API key | No local search engine |
-| Image generation | DALL-E or Gemini API | No local image model |
+| Image generation | Google Gemini/Imagen API | No local image model |
 | Podcast / TTS | OpenAI or Gemini TTS | No local speech synthesis |
 | Translation | External LLM API | Could be done via Ollama but not implemented |
 | YouTube transcripts | Supadata API | External service |

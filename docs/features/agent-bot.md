@@ -218,7 +218,7 @@ Define what parameters callers must (or can) provide:
 | `docx` | Microsoft Word document |
 | `xlsx` | Excel spreadsheet (from table data) |
 | `pptx` | PowerPoint presentation |
-| `image` | AI-generated image (DALL-E / Gemini Imagen) |
+| `image` | AI-generated image (Gemini / Imagen 4) |
 | `podcast` | AI-generated audio narration |
 | `chart` | Chart.js visualization (PNG) |
 | `diagram` | Mermaid diagram (SVG) |

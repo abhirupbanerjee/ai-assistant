@@ -99,7 +99,7 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 - `pptx_gen` - Generate PowerPoint presentations with multiple slide types
 - `xlsx_gen` - Generate Excel spreadsheets with formulas and styling
 - `podcast_gen` - Generate audio podcasts using Text-to-Speech
-- `image_gen` - Generate images using DALL-E 3 or Gemini Imagen
+- `image_gen` - Generate images using Google AI (Gemini Nano Banana or Imagen 4)
 - `diagram_gen` - Generate Mermaid diagrams (flowcharts, sequences, mindmaps, timelines, quadrants, C4, architecture, and more — 18 types)
 - `translation` - Translate text using OpenAI, Gemini, or Mistral
 - `data_source` - Query external APIs and CSV data with visualization
@@ -140,7 +140,7 @@ Terminal tools are a special category of autonomous tools that produce final out
 
 | Tool | Output Type | Description |
 |------|-------------|-------------|
-| `image_gen` | Image | AI-generated images (DALL-E, Imagen) |
+| `image_gen` | Image | AI-generated images (Gemini, Imagen 4) |
 | `doc_gen` | Document | PDF, DOCX, Markdown files |
 | `pptx_gen` | Presentation | PowerPoint presentations (.pptx) |
 | `xlsx_gen` | Spreadsheet | Excel spreadsheets (.xlsx) |
@@ -238,7 +238,7 @@ Slash commands are **strong hints**, not forced directives. When a user invokes 
 
 | Command | Aliases | Tool | Output | Description |
 |---------|---------|------|--------|-------------|
-| `/image` | `img` | `image_gen` | Image | AI-generated image (DALL-E 3 / Gemini Imagen) |
+| `/image` | `img` | `image_gen` | Image | AI-generated image (Gemini / Imagen 4) |
 | `/chart` | — | `chart_gen` | Chart | Interactive data visualization |
 | `/diagram` | `diag` | `diagram_gen` | Diagram | Mermaid diagram (general) |
 | `/flowchart` | — | `diagram_gen` | Diagram | Mermaid flowchart |
@@ -270,7 +270,7 @@ If a command's tool is disabled, the command appears grayed out in the UI with a
 | `doc_gen` | `formatHint` column (`pdf`, `docx`) | Backend appends `Use format='pdf'` |
 | `diagram_gen` | Baked into hint text | `diagram_type='flowchart'` |
 | `chart_gen` | Baked into hint text | `recommended_chart='bar'` |
-| `image_gen` | Baked into hint text | `style='photo'` or `style='infographic'` |
+| `image_gen` | Baked into hint text | `style='photo'`, `style='infographic'`, `style='illustration'`, etc. |
 | `html_gen`, `pptx_gen`, `xlsx_gen` | Tool-only hint | No format parameter needed |
 
 **Message Stripping:** The slash prefix is always stripped from saved messages. If a user sends `/pdf leave policy summary`, the thread history stores only `leave policy summary`. The `toolHint` is passed separately in the chat preferences.
@@ -620,7 +620,7 @@ Image slides support optional AI-generated imagery:
 | Property | Description |
 |----------|-------------|
 | `imagePrompt` | Description of the desired image |
-| `imageStyle` | Style: `infographic`, `photo`, `illustration`, `diagram` |
+| `imageStyle` | Style: `auto`, `infographic`, `poster`, `illustration`, `photo`, `product-mockup`, `icon`, `social-media` |
 
 Images integrate with the `image_gen` tool. If image generation fails or is unavailable, slides fall back to text content.
 
@@ -1175,6 +1175,251 @@ EXPERT: Certainly. The first change relates to...
 > - Host: Aoede | Expert: Charon (Gemini)
 > - Format: Host/Expert dialogue
 > - Style: Conversational
+
+---
+
+## Image Generator Tool
+
+### Purpose
+
+Enables the AI to generate artistic raster images from text descriptions using Google AI models. Supports 8 visual styles with smart provider routing, automatic prompt enhancement, and cascading fallback.
+
+### When to Use
+
+- **Infographics**: Data/concept visualizations combining text, icons, and visual hierarchy
+- **Posters**: Text-heavy promotional graphics with typography
+- **Illustrations**: Artistic drawings for presentations and documents
+- **Photos**: Photorealistic images and editorial photography
+- **Product Mockups**: Commercial product photography and renders
+- **Icons**: Simple graphics and iconography
+- **Social Media**: Digital graphics, banners, and story content
+
+### When NOT to Use
+
+| Use Case | Correct Tool | Why |
+|----------|-------------|-----|
+| Data-accurate charts from real datasets | `chart_gen` | `image_gen` invents data; `chart_gen` plots real values interactively |
+| Editable technical diagrams (flowcharts, ER diagrams, architecture) | `diagram_gen` | `image_gen` produces raster images; `diagram_gen` outputs editable Mermaid SVGs |
+| Process flow diagrams | `diagram_gen` | Mermaid diagrams are editable and data-verifiable |
+
+### Supported Styles
+
+| Style | Description | Primary Provider |
+|-------|-------------|------------------|
+| `auto` | Intelligently selects best style based on prompt keywords | Classified dynamically |
+| `infographic` | Data/concept visualizations with readable text | Gemini Pro |
+| `poster` | Text-heavy promotional graphics with typography | Gemini Pro |
+| `illustration` | Artistic drawings, sketches, concept art | Gemini Default |
+| `photo` | Photorealistic images, editorial photography | Imagen 4 Ultra/Standard |
+| `product-mockup` | Commercial product shots, 3D renders | Imagen 4 Ultra/Standard |
+| `icon` | Simple icons, glyphs, minimalist graphics | Gemini Default |
+| `social-media` | Digital graphics, banners, story content | Gemini Default |
+
+### Providers and Models
+
+| Provider | Model | Endpoint | Best For |
+|----------|-------|----------|----------|
+| **Gemini Nano Banana** | `gemini-3.1-flash-image-preview` | `:generateContent` | Speed, general purpose |
+| **Gemini Nano Banana Pro** | `gemini-3-pro-image-preview` | `:generateContent` | Text-heavy images (infographics, posters) |
+| **Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | `:predict` | Quick photorealistic previews |
+| **Imagen 4 Standard** | `imagen-4.0-generate-001` | `:predict` | Balanced photorealistic quality |
+| **Imagen 4 Ultra** | `imagen-4.0-ultra-generate-001` | `:predict` | Maximum photorealistic fidelity |
+
+Both provider families use the same Google API key. The unified provider (`src/lib/image-gen/providers/gemini-imagen.ts`) automatically routes to the correct endpoint based on model ID.
+
+### Smart Routing
+
+The system automatically selects the optimal provider based on the requested style:
+
+```
+User Request ("create an infographic about...")
+    │
+    ▼
+┌─────────────────┐
+│ LLM calls       │
+│ image_gen with  │
+│ style='infographic'
+└─────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────────────┐
+│                 IMAGE GENERATION PIPELINE                     │
+│                                                              │
+│  ┌───────────────┐    ┌───────────────┐    ┌──────────────┐ │
+│  │ classifyPrompt│───▶│ selectPrimary │───▶│   enhance    │ │
+│  │   (auto)      │    │   Provider    │    │   Prompt     │ │
+│  └───────────────┘    └───────────────┘    └──────────────┘ │
+│                              │                               │
+│                              ▼                               │
+│  ┌───────────────┐    ┌───────────────┐    ┌──────────────┐ │
+│  │    ASCII      │◄───│   Fallback    │◄───│   Primary    │ │
+│  │   Fallback    │    │   Provider    │    │   Provider   │ │
+│  │   (sharp)     │    │               │    │              │ │
+│  └───────────────┘    └───────────────┘    └──────────────┘ │
+│                              │                               │
+│                              ▼                               │
+│                       ┌───────────────┐                      │
+│                       │  processImage │                      │
+│                       │  (webp/png)   │                      │
+│                       └───────────────┘                      │
+└──────────────────────────────────────────────────────────────┘
+    │
+    ▼
+Image displayed in chat + saved to thread artifacts
+```
+
+**Fallback Chain:**
+1. **Primary Provider** — Determined by style routing table
+2. **Cross-Provider Fallback** — If primary fails, try the other provider ecosystem
+3. **ASCII Placeholder** — If all providers fail, generate a styled placeholder PNG with the prompt text
+
+### Prompt Enhancement
+
+When `enhancePrompts` is enabled (default), the system rewrites prompts using Google's recommended 5-part structure:
+
+```
+[TASK] [STYLE/SUBJECT] [TEXT/LABELS] [FORMAT] [CONSTRAINTS]
+```
+
+Example transformation:
+- **Raw prompt:** "Q3 revenue infographic"
+- **Enhanced prompt:** `[CREATE] [an infographic about Q3 revenue] [with text "Q3 Revenue: $12.4M"] [as a 16:9 widescreen image] [using bold sans-serif typography, high contrast, professional color palette]`
+
+Text enclosed in quotes in the original prompt is preserved and emphasized.
+
+### Configuration
+
+```typescript
+interface ImageGenConfig {
+  activeProvider: 'gemini' | 'imagen' | 'none';
+  providers: {
+    gemini: {
+      enabled: boolean;
+      defaultModel: 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview';
+      proModel: 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview';
+      aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    };
+    imagen: {
+      enabled: boolean;
+      fastModel: 'imagen-4.0-fast-generate-001';
+      standardModel: 'imagen-4.0-generate-001';
+      ultraModel: 'imagen-4.0-ultra-generate-001';
+      aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+    };
+  };
+  defaultStyle: 'auto' | 'infographic' | 'poster' | 'illustration' | 'photo' | 'product-mockup' | 'icon' | 'social-media';
+  defaultResolution: '512' | '1K' | '2K' | '4K';
+  enhancePrompts: boolean;
+  addSafetyPrefixes: boolean;
+  imageProcessing: {
+    maxDimension: number;      // 1024-4096, default: 2048
+    format: 'webp' | 'png' | 'jpeg';
+    quality: number;           // 0-100, default: 85
+    generateThumbnail: boolean;
+    thumbnailSize: number;     // 100-800, default: 400
+  };
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "activeProvider": "gemini",
+    "providers": {
+      "gemini": {
+        "enabled": true,
+        "defaultModel": "gemini-3.1-flash-image-preview",
+        "proModel": "gemini-3-pro-image-preview",
+        "aspectRatio": "16:9"
+      },
+      "imagen": {
+        "enabled": true,
+        "fastModel": "imagen-4.0-fast-generate-001",
+        "standardModel": "imagen-4.0-generate-001",
+        "ultraModel": "imagen-4.0-ultra-generate-001",
+        "aspectRatio": "16:9"
+      }
+    },
+    "defaultStyle": "infographic",
+    "defaultResolution": "1K",
+    "enhancePrompts": true,
+    "addSafetyPrefixes": true,
+    "imageProcessing": {
+      "maxDimension": 2048,
+      "format": "webp",
+      "quality": 85,
+      "generateThumbnail": true,
+      "thumbnailSize": 400
+    }
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "image_gen",
+  "description": "Generate an artistic image from a text description. Best for infographics, posters, illustrations, photos, product mockups, icons, and social media graphics. NOT for data-accurate charts (use chart_gen) or editable technical diagrams (use diagram_gen).",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "Detailed description of the image. Be specific about content, style, colors, layout, and text. Enclose desired text in quotes."
+      },
+      "style": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "infographic",
+          "poster",
+          "illustration",
+          "photo",
+          "product-mockup",
+          "icon",
+          "social-media"
+        ],
+        "description": "Visual style. Use 'auto' for intelligent selection, or specify: infographic (data/concept with text), poster (text-heavy promo), illustration (artistic), photo (photorealistic), product-mockup (commercial shots), icon (simple graphics), social-media (digital banners)."
+      },
+      "aspectRatio": {
+        "type": "string",
+        "enum": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+        "description": "Aspect ratio. 16:9 for presentations, 1:1 for social media, 9:16 for mobile, 4:3 for documents, 3:4 for posters."
+      },
+      "resolution": {
+        "type": "string",
+        "enum": ["512", "1K", "2K", "4K"],
+        "description": "Output resolution. 512 for previews, 1K for standard (default), 2K for high-fidelity, 4K for print."
+      }
+    },
+    "required": ["prompt"]
+  }
+}
+```
+
+### Example Usage
+
+**Infographic:**
+
+> 🎨 [View Infographic]
+>
+> Prompt: "Annual sustainability report showing carbon reduction milestones from 2020-2024"
+> - Style: `infographic`
+> - Provider: Gemini Pro
+> - Resolution: `2K`
+
+**Product Mockup:**
+
+> 🎨 [View Product Image]
+>
+> Prompt: "Minimalist white coffee mug on marble surface, soft studio lighting"
+> - Style: `product-mockup`
+> - Provider: Imagen 4 Ultra
+> - Resolution: `4K`
 
 ---
 

@@ -53,14 +53,15 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 │  Chat, Embeddings, │ (@anthropic-    │ (Non-Chat)       │ SDK            │
 │  Transcription     │  ai/sdk)        │                  │ (Image/TTS)    │
 ├──────────────────┼──────────────────┼──────────────────┼────────────────┤
-│ ┌──────────────┐ │ Claude chat +    │ Fireworks        │ Gemini Imagen  │
-│ │ OpenAI       │ │ tool calling     │  Reranking       │  (image_gen)   │
-│ │ Gemini       │ │ via native       │  (api.fireworks  │                │
-│ │ Mistral      │ │ streaming        │   .ai)           │ Gemini TTS     │
-│ │ DeepSeek     │ │                  │                  │  (podcast_gen) │
-│ │ Fireworks*   │ │ Why: LiteLLM     │ Fireworks        │                │
-│ └──────────────┘ │ breaks tool call │  Reranking       │ DALL-E 3       │
-│                  │ JSON assembly    │  (api.fireworks  │  (image_gen)   │
+│ ┌──────────────┐ │ Claude chat +    │ Fireworks        │ Gemini Nano    │
+│ │ OpenAI       │ │ tool calling     │  Reranking       │  Banana        │
+│ │ Gemini       │ │ via native       │  (api.fireworks  │  (image_gen)   │
+│ │ Mistral      │ │ streaming        │   .ai)           │                │
+│ │ DeepSeek     │ │                  │                  │ Gemini TTS     │
+│ │ Fireworks*   │ │ Why: LiteLLM     │ Fireworks        │  (podcast_gen) │
+│ └──────────────┘ │ breaks tool call │  Reranking       │                │
+│                  │ JSON assembly    │  (api.fireworks  │ Imagen 4       │
+│                  │ for Anthropic    │   .ai)           │  (image_gen)   │
 │ * YAML-only,     │ for Anthropic    │   .ai)           │                │
 │   not dynamic    │ streaming        │                  │                │
 │   sync           │                  │ Tavily Search    │                │
@@ -1334,7 +1335,7 @@ Policy Bot includes tools for generating images, diagrams, and translations.
 
 #### 16.1 Image Generation
 
-Generate images using AI providers (DALL-E 3, Gemini Imagen):
+Generate images using Google AI models (Gemini Nano Banana, Imagen 4):
 
 ```
 User Request ("create an image of...")
@@ -1352,7 +1353,7 @@ User Request ("create an image of...")
 │                                                                 │
 │  ┌─────────────────┐     ┌─────────────────┐                   │
 │  │ Provider Factory│────▶│ Generate Image  │                   │
-│  │ (DALL-E/Gemini) │     │                 │                   │
+│  │ (Gemini/Imagen) │     │                 │                   │
 │  └─────────────────┘     └─────────────────┘                   │
 │                                 │                               │
 │                                 ▼                               │
@@ -1368,10 +1369,26 @@ Image displayed in Artifacts Panel
 
 **Supported Providers:**
 
-| Provider | Model | Sizes | Notes |
-|----------|-------|-------|-------|
-| **OpenAI** | DALL-E 3 | 1024x1024, 1024x1792, 1792x1024 | High quality, style options |
-| **Google** | Gemini Imagen | Various | Fast generation |
+| Provider | Model | Endpoint | Use Case |
+|----------|-------|----------|----------|
+| **Google** | Gemini 3.1 Flash Image Preview | `:generateContent` | Speed, general purpose |
+| **Google** | Gemini 3 Pro Image Preview | `:generateContent` | Text-heavy (infographics, posters) |
+| **Google** | Imagen 4 Fast | `:predict` | Quick photorealistic previews |
+| **Google** | Imagen 4 Standard | `:predict` | Balanced photorealistic quality |
+| **Google** | Imagen 4 Ultra | `:predict` | Maximum photorealistic fidelity |
+
+**Smart Routing:** The system automatically selects the best provider based on style:
+
+| Style | Primary Provider | Fallback |
+|-------|-----------------|----------|
+| `photo`, `product-mockup` | Imagen 4 Ultra/Standard | Gemini Default |
+| `infographic`, `poster` | Gemini Pro | Gemini Default |
+| `illustration`, `icon`, `social-media` | Gemini Default | Gemini Pro |
+| `auto` | Classified by keyword | — |
+
+**Resolution Control:** `512`, `1K` (default), `2K`, `4K`
+
+**Fallback Chain:** Primary provider → Cross-provider fallback → ASCII placeholder PNG
 
 **Implementation:** `src/lib/image-gen/`
 

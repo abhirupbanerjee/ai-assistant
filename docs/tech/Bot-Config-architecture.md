@@ -267,7 +267,7 @@ Defaults are auto-detected by `src/lib/services/model-discovery.ts` when models 
 | **youtube** | Autonomous | Extract YouTube video transcripts | Supadata API key (optional) |
 | **share_thread** | UI | Share conversation threads via secure links | None |
 | **send_email** | Internal | Send email notifications via SendGrid | SendGrid API key |
-| **image_gen** | Autonomous | Generate images via DALL-E or Gemini Imagen | None (uses LLM provider) |
+| **image_gen** | Autonomous | Generate images via Gemini Nano Banana or Imagen 4 | None (uses LLM provider) |
 | **diagram_gen** | Autonomous | Generate diagrams (Mermaid, PlantUML) | None |
 | **translation** | Autonomous | Translate content to specified language | None |
 | **ssl_scan** | Autonomous | Analyze SSL/TLS certificate and configuration | None |

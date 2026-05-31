@@ -105,9 +105,6 @@ const imageGenConfigSchema = {
       enum: [
         'auto',
         'infographic',
-        'diagram',
-        'chart',
-        'process-flow',
         'poster',
         'illustration',
         'photo',
