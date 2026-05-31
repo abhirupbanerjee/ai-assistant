@@ -382,7 +382,7 @@ export default function MessageInput({
       <span role="status" aria-live="polite" className="sr-only">
         {stateAnnouncement}
       </span>
-      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 transition-all duration-300">
+      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3 transition-all duration-300 relative">
 
         {/* Chip slots: CategoryChip + AttachmentChipsRow (visible in EXPANDED state) */}
         {/* On mobile FOCUSED-WRITE, chips are shown in the ChipSheet instead */}
