@@ -392,6 +392,7 @@ export interface ChatPreferences {
   showSources: boolean;
   showCitationTrajectory: boolean;
   thinkingEnabled: boolean;
+  toolHint?: string; // Transient slash command hint for this message only
 }
 
 /**
@@ -432,6 +433,7 @@ export interface StreamChatRequest {
   responseTone?: string; // e.g., 'concise', 'formal', defaults to 'default'
   showCitationTrajectory?: boolean; // default: true
   thinkingEnabled?: boolean; // default: false unless model-specific UI default enables it
+  toolHint?: string; // Transient slash command hint for this message only
 }
 
 /**

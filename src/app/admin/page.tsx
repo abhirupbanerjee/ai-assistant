@@ -119,7 +119,7 @@ type PromptsSection = 'system-prompt' | 'category-prompts';
 type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Legacy types for backward compatibility during migration
-type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts';
+type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
 type TokensSection = 'memory' | 'summarization' | 'limits';
 
 interface RerankerSettings {

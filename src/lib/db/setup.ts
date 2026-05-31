@@ -153,6 +153,12 @@ async function setupPostgres(): Promise<void> {
 
     console.log('[Setup] Default settings initialized');
 
+    // Seed default slash commands
+    console.log('[Setup] Seeding default slash commands...');
+    const { ensureSlashCommandsExist } = await import('./compat/slash-commands');
+    await ensureSlashCommandsExist('system');
+    console.log('[Setup] Default slash commands seeded');
+
     // Verify tables
     const result = await pool.query(`
       SELECT table_name

@@ -137,6 +137,7 @@ Widgets showing recent system activity:
 | Section | Purpose |
 |---------|---------|
 | **Tools Management** | Enable/disable tools, configure tool settings |
+| **Slash Commands** | Edit labels, hints, aliases, and enable states for `/` commands |
 | **Dependencies** | Manage tool dependencies and execution order |
 | **Tool Routing** | Keyword/regex patterns to force specific tools |
 
@@ -889,6 +890,72 @@ When enabled, check types have different weights:
 3. Enter test parameters
 4. View results
 5. Verify configuration works
+
+### Slash Commands
+
+Slash commands provide users with a fast way to request specific terminal tool outputs by typing `/` followed by a command key. Admins can customize the behavior and appearance of each command.
+
+**Access:** Admin → Tools → Slash Commands
+
+#### Command List
+
+The system includes 16 predefined slash commands covering all terminal tools:
+
+| Command | Tool | Output | Aliases |
+|---------|------|--------|---------|
+| `image` | `image_gen` | AI-generated image | `img` |
+| `chart` | `chart_gen` | Data visualization | — |
+| `diagram` | `diagram_gen` | Mermaid diagram | `diag` |
+| `flowchart` | `diagram_gen` | Flowchart diagram | — |
+| `sequence` | `diagram_gen` | Sequence diagram | — |
+| `c4` | `diagram_gen` | C4 architecture diagram | — |
+| `gantt` | `diagram_gen` | Gantt chart | — |
+| `bar-chart` | `chart_gen` | Bar chart | — |
+| `line-chart` | `chart_gen` | Line chart | — |
+| `infographic` | `image_gen` | Infographic image | — |
+| `photo` | `image_gen` | Photorealistic image | — |
+| `pdf` | `doc_gen` | PDF document | — |
+| `docx` | `doc_gen` | Word document | `doc`, `word` |
+| `html` | `html_gen` | Interactive HTML page | — |
+| `slide` | `pptx_gen` | PowerPoint presentation | `pptx` |
+| `sheet` | `xlsx_gen` | Excel spreadsheet | `xlsx` |
+
+#### Editing Commands
+
+Click any command card to open the edit modal:
+
+| Field | Editable | Description |
+|-------|----------|-------------|
+| **Label** | ✅ | Display name shown in the UI |
+| **Description** | ✅ | Short help text for users |
+| **Aliases** | ✅ | Alternative command keys (comma-separated) |
+| **Hint** | ✅ | The instruction injected into the AI's system prompt |
+| **Icon** | ✅ | Lucide icon name for visual identification |
+| **Enabled** | ✅ | Whether users can invoke this command |
+| **Sort Order** | ✅ | Position in the autocomplete menu |
+| **Command Key** | ❌ | Fixed identifier (e.g., `pdf`, `image`) |
+| **Tool Name** | ❌ | Fixed mapping to the underlying tool |
+
+#### Important Rules
+
+- **Tool dependency:** A slash command only works if its underlying tool is enabled in **Tools Management**. If a tool is disabled, its commands appear grayed out with a warning.
+- **No new commands:** You can only edit the 16 predefined commands. You cannot create new commands or remap tools.
+- **Reset to defaults:** The **Reset to Defaults** button restores all original labels, descriptions, hints, aliases, icons, and enable states.
+
+#### Hint Customization
+
+The **Hint** field is the most powerful customization. It is appended to the system prompt as:
+
+```
+[SUGGESTED APPROACH: {hint}]
+```
+
+Tips for writing effective hints:
+- Be specific about what the tool should do
+- For `doc_gen` commands, include `Use format='...'` (the backend handles this automatically for format-aware commands)
+- For diagram commands, specify `diagram_type='...'`
+- For chart commands, specify `recommended_chart='...'`
+- For image commands, specify `style='...'`
 
 ---
 
@@ -2216,4 +2283,4 @@ When creating a thread:
 
 ---
 
-*Last updated: April 2026 (v3.0 - Added centralized API Keys settings page, updated key management references across all sections)*
+*Last updated: May 2026 (v3.1 - Added Slash Commands management section under Tools, including command registry, editing, and reset-to-defaults documentation)*

@@ -945,6 +945,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           responseTone: preferences?.responseTone,
           showCitationTrajectory: preferences?.showCitationTrajectory,
           thinkingEnabled: preferences?.thinkingEnabled,
+          toolHint: preferences?.toolHint,
         }),
         signal: abortControllerRef.current.signal,
       });

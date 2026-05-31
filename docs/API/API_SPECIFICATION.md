@@ -97,6 +97,7 @@ When `AUTH_DISABLED=true` in environment:
 |--------|----------|------|------|-------------|
 | POST | `/api/chat` | Yes | Any | Send message and get RAG response |
 | POST | `/api/chat/stream` | Yes | Any | Send message and get streaming RAG response |
+| GET | `/api/chat/slash-commands` | Yes | Any | List enabled slash commands for autocomplete |
 | POST | `/api/transcribe` | Yes | Any | Convert audio to text |
 | GET | `/api/threads` | Yes | Any | List user's threads |
 | POST | `/api/threads` | Yes | Any | Create new thread |
@@ -677,6 +678,67 @@ Submit user response to HITL (Human-in-the-Loop) clarification dialog.
 | 400 | "Invalid action" | VALIDATION_ERROR | Use valid action value |
 | 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
 | 500 | "Failed to process HITL response" | SERVICE_ERROR | Contact admin |
+
+---
+
+#### `GET /api/chat/slash-commands`
+
+List all enabled slash commands for the slash command autocomplete menu.
+
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Response** `200 OK`:
+
+```typescript
+{
+  commands: Array<{
+    commandKey: string;     // Unique command identifier (e.g., "pdf", "image")
+    toolName: string;       // Underlying tool (e.g., "doc_gen", "image_gen")
+    label: string;          // Display label (e.g., "Generate PDF")
+    description: string;    // Short description
+    aliases: string[];      // Alternative command keys
+    icon: string;           // Lucide icon name
+    enabled: boolean;       // Whether command is active
+    sortOrder: number;      // Display order in menu
+  }>;
+}
+```
+
+**Example Response**:
+
+```json
+{
+  "commands": [
+    {
+      "commandKey": "image",
+      "toolName": "image_gen",
+      "label": "Generate Image",
+      "description": "Create an AI-generated image",
+      "aliases": ["img"],
+      "icon": "Image",
+      "enabled": true,
+      "sortOrder": 0
+    },
+    {
+      "commandKey": "pdf",
+      "toolName": "doc_gen",
+      "label": "Generate PDF",
+      "description": "Create a PDF document",
+      "aliases": ["pdf"],
+      "icon": "FileText",
+      "enabled": true,
+      "sortOrder": 3
+    }
+  ]
+}
+```
+
+**Notes**:
+- Only returns commands where `enabled = true`
+- Commands are sorted by `sortOrder`
+- The client uses this to populate the `/` autocomplete menu
+- The underlying tool must also be enabled for the command to function
 
 ---
 

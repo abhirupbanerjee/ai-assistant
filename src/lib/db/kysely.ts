@@ -445,6 +445,29 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE agent_bot_jobs ADD COLUMN IF NOT EXISTS sources_json TEXT`.execute(database);
   console.log('[Kysely] Ensured agent_bot_jobs.sources_json column exists');
 
+  // Migration: Create slash_command_configs table
+  await sql`
+    CREATE TABLE IF NOT EXISTS slash_command_configs (
+      id TEXT PRIMARY KEY,
+      command_key TEXT UNIQUE NOT NULL,
+      tool_name TEXT NOT NULL,
+      label TEXT NOT NULL,
+      description TEXT NOT NULL,
+      aliases TEXT NOT NULL,
+      hint TEXT NOT NULL,
+      icon TEXT,
+      format_hint TEXT,
+      enabled INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_by TEXT NOT NULL
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_slash_commands_enabled ON slash_command_configs(enabled)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_slash_commands_tool ON slash_command_configs(tool_name)`.execute(database);
+  console.log('[Kysely] Ensured slash_command_configs table exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

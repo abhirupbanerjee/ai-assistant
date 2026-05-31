@@ -337,6 +337,50 @@ Voice input primarily supports English. Other languages may work but with reduce
 
 The AI has access to various tools that enhance its capabilities.
 
+### Slash Commands
+
+Slash commands let you quickly request specific outputs without typing long instructions. Simply type `/` followed by a command at the start of your message.
+
+**How to use slash commands:**
+1. Type `/` in the message input — an autocomplete menu appears
+2. Select a command (or keep typing to filter)
+3. Add your request after the command
+4. Press Enter to send
+
+**Example:**
+```
+/pdf Create a summary of our leave policies
+```
+
+The `/pdf` part tells the AI you want a PDF document. Your actual message (`Create a summary of our leave policies`) is what the AI uses to generate the content. The slash prefix is not saved in your conversation history.
+
+**Available commands:**
+
+| Command | Output | Example |
+|---------|--------|---------|
+| `/image` or `/img` | AI-generated image | `/image a futuristic city skyline` |
+| `/chart` | Data visualization | `/chart show Q4 budget by department` |
+| `/diagram` or `/diag` | Mermaid diagram | `/diagram our software deployment process` |
+| `/flowchart` | Flowchart diagram | `/flowchart employee onboarding steps` |
+| `/sequence` | Sequence diagram | `/sequence login authentication flow` |
+| `/c4` | C4 architecture diagram | `/c4 our microservices architecture` |
+| `/gantt` | Gantt chart | `/gantt project timeline for Q3` |
+| `/bar-chart` | Bar chart | `/bar-chart compare sales by region` |
+| `/line-chart` | Line chart | `/line-chart monthly revenue trend` |
+| `/infographic` | Infographic image | `/infographic key company milestones` |
+| `/photo` | Photorealistic image | `/photo a modern office workspace` |
+| `/pdf` | PDF document | `/pdf summary of remote work policy` |
+| `/docx` or `/doc` or `/word` | Word document | `/docx draft of meeting minutes` |
+| `/html` | Interactive HTML page | `/html employee handbook playbook` |
+| `/slide` or `/pptx` | PowerPoint presentation | `/slide quarterly business review` |
+| `/sheet` or `/xlsx` | Excel spreadsheet | `/sheet department budget breakdown` |
+
+**Alternative ways to invoke:**
+- **PlusMenu Create section:** Click the `+` button in the chat input, then select from the **Create** grid
+- **Direct typing:** Type `/command your message` without selecting from the menu
+
+> **Note:** Slash commands are suggestions to the AI, not rigid directives. The AI may choose a different approach if your message clearly indicates another intent.
+
 ### Web Search
 
 When the AI needs current information not in the documents:
@@ -782,4 +826,4 @@ If you encounter issues:
 
 ---
 
-*Last updated: January 2025 (v1.4 - Added Artifacts Panel, multi-format uploads, Web URL and YouTube extraction)*
+*Last updated: May 2026 (v1.5 - Added Slash Commands section with all 16 commands, Create menu, and autocomplete documentation)*

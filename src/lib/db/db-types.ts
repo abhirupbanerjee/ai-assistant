@@ -1071,6 +1071,8 @@ export interface DB {
   workspace_whatsapp_messages: WorkspaceWhatsappMessagesTable;
   // Citation Trajectories
   citation_trajectories: CitationTrajectoriesTable;
+  // Slash Commands
+  slash_command_configs: SlashCommandConfigsTable;
 }
 
 // ============ WhatsApp Channels ============
@@ -1101,6 +1103,23 @@ export interface WorkspaceWhatsappContactsTable {
   service_window_expires_at: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
+}
+
+export interface SlashCommandConfigsTable {
+  id: string;
+  command_key: string;
+  tool_name: string;
+  label: string;
+  description: string;
+  aliases: string;
+  hint: string;
+  icon: string | null;
+  format_hint: string | null;
+  enabled: Generated<number>;
+  sort_order: Generated<number>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+  updated_by: string;
 }
 
 export interface WorkspaceWhatsappMessagesTable {

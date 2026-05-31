@@ -7,6 +7,7 @@ The chat input bar now adapts dynamically to screen size, interaction state, and
 **Phase 2 Status:** ✅ Complete (Adaptive states, chip wiring, swipe gestures)
 **Phase 3 Status:** ✅ Complete (Inline mode chips, keyboard shortcuts, CSS variants, read-only badge)
 **Track A Status:** ✅ Complete (A1: Inline chips on desktop, A3: Read-only badge, A2: Deferred to Phase 5)
+**Slash Commands:** ✅ Complete (Autocomplete menu, active chip, PlusMenu Create grid)
 
 ## Three States
 
@@ -289,6 +290,7 @@ Enables smooth CSS transitions instead of mount/unmount flashes.
 3. **Inline Language/Tone Selectors:** Promote to desktop inline (currently in PlusMenu)
 4. **Collapsed Chip Animations:** Smooth transitions when collapsing/expanding chips
 5. **Keyboard Shortcut Customization:** Allow users to rebind shortcuts
+6. **Slash Command Shortcuts:** Keyboard shortcuts for common slash commands (e.g., Cmd/Ctrl+Shift+I for `/image`)
 REPLACE
 
 

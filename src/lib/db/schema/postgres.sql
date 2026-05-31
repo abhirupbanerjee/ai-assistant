@@ -1367,6 +1367,28 @@ CREATE TRIGGER update_workspace_whatsapp_contact_timestamp
   FOR EACH ROW
   EXECUTE FUNCTION update_workspace_whatsapp_contact_timestamp();
 
+-- ============ Slash Command Configs ============
+
+CREATE TABLE IF NOT EXISTS slash_command_configs (
+  id TEXT PRIMARY KEY,
+  command_key TEXT UNIQUE NOT NULL,
+  tool_name TEXT NOT NULL,
+  label TEXT NOT NULL,
+  description TEXT NOT NULL,
+  aliases TEXT NOT NULL,
+  hint TEXT NOT NULL,
+  icon TEXT,
+  format_hint TEXT,
+  enabled INTEGER DEFAULT 1,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  updated_by TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_slash_commands_enabled ON slash_command_configs(enabled);
+CREATE INDEX IF NOT EXISTS idx_slash_commands_tool ON slash_command_configs(tool_name);
+
 -- Update workspace_whatsapp_messages updated_at timestamp
 CREATE OR REPLACE FUNCTION update_workspace_whatsapp_message_timestamp()
 RETURNS TRIGGER AS $$

@@ -395,6 +395,23 @@ export {
   migrateToolRoutingToSkills,
 } from './skills';
 
+// ============ Slash Commands ============
+export {
+  type SlashCommandConfig,
+  type SlashCommandUpdate,
+  type ResolvedSlashCommand,
+  type SlashCommandPublic,
+} from '@/types/slash-commands';
+export {
+  getSlashCommandConfigs,
+  getEnabledSlashCommands,
+  getSlashCommandByKey,
+  updateSlashCommand,
+  resetSlashCommandsToDefaults,
+  ensureSlashCommandsExist,
+  resolveSlashCommandAlias,
+} from './slash-commands';
+
 // ============ Tool Config ============
 export {
   // Types

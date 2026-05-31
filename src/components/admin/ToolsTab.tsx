@@ -49,6 +49,7 @@ import LoadTestConfig from './LoadTestConfig';
 import SecurityScanConfig from './SecurityScanConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
+import SlashCommandsTab from './SlashCommandsTab';
 
 // Tool interface matching API response
 interface Tool {
@@ -1593,7 +1594,7 @@ STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyph
   );
 }
 
-type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts';
+type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
 
 interface ToolsTabProps {
   /** If true, shows read-only view (for superusers in legacy mode) */
@@ -1601,7 +1602,7 @@ interface ToolsTabProps {
   /** If true, shows superuser mode with category selection and per-category config */
   isSuperuser?: boolean;
   /** Optional controlled sub-tab from sidebar. When provided, hides internal tab UI */
-  activeSubTab?: 'management' | 'dependencies' | 'routing' | 'conflicts';
+  activeSubTab?: 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
 }
 
 /**
@@ -2147,6 +2148,17 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
               <AlertCircle size={16} />
               Keyword Conflicts
             </button>
+            <button
+              onClick={() => setInternalSubTab('slash-commands')}
+              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeSubTab === 'slash-commands'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Zap size={16} />
+              Slash Commands
+            </button>
           </nav>
         </div>
       )}
@@ -2154,6 +2166,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       {/* Tool Dependencies Sub-tab */}
       {!readOnly && !isSuperuser && activeSubTab === 'dependencies' && (
         <ToolDependencyPanel />
+      )}
+
+      {/* Slash Commands Sub-tab */}
+      {!readOnly && !isSuperuser && activeSubTab === 'slash-commands' && (
+        <SlashCommandsTab />
       )}
 
       {/* Tool Routing Sub-tab - DEPRECATED */}

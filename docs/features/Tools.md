@@ -9,34 +9,35 @@ This document describes the AI tools system that extends the bot's capabilities 
 1. [Overview](#overview)
 2. [Tool Categories](#tool-categories)
 3. [Terminal Tools](#terminal-tools)
-4. [Web Search Tool](#web-search-tool)
-5. [Document Generator Tool](#document-generator-tool)
-6. [PowerPoint Generator Tool](#powerpoint-generator-tool)
-7. [Excel Generator Tool](#excel-generator-tool)
-8. [Podcast Generator Tool](#podcast-generator-tool)
-9. [Data Source Tool](#data-source-tool)
-10. [Chart Generator Tool](#chart-generator-tool)
-11. [Function API Tool](#function-api-tool)
-12. [Task Planner Tool](#task-planner-tool)
-13. [YouTube Tool](#youtube-tool)
-14. [Thread Sharing Tool](#thread-sharing-tool)
-15. [Email Tool](#email-tool)
-16. [Compliance Checker Tool](#compliance-checker-tool)
-17. [Preflight Clarification (Pre-response HITL)](#preflight-clarification-pre-response-hitl)
-18. [SSL Scan Tool](#ssl-scan-tool)
-19. [DNS Scan Tool](#dns-scan-tool)
-20. [Cookie Audit Tool](#cookie-audit-tool)
-21. [Redirect Audit Tool](#redirect-audit-tool)
-22. [PageSpeed Tool](#pagespeed-tool)
-23. [SonarCloud Tool](#sonarcloud-tool)
-24. [Load Test Tool](#load-test-tool)
-25. [Security Scan Tool](#security-scan-tool)
-26. [Dependency Analysis Tool](#dependency-analysis-tool)
-27. [Tool Routing](#tool-routing)
-28. [Tool Configuration](#tool-configuration)
-29. [Category-Level Overrides](#category-level-overrides)
-30. [Creating a New Tool](#creating-a-new-tool)
-31. [API Reference](#api-reference)
+4. [Slash Commands](#slash-commands)
+5. [Web Search Tool](#web-search-tool)
+6. [Document Generator Tool](#document-generator-tool)
+7. [PowerPoint Generator Tool](#powerpoint-generator-tool)
+8. [Excel Generator Tool](#excel-generator-tool)
+9. [Podcast Generator Tool](#podcast-generator-tool)
+10. [Data Source Tool](#data-source-tool)
+11. [Chart Generator Tool](#chart-generator-tool)
+12. [Function API Tool](#function-api-tool)
+13. [Task Planner Tool](#task-planner-tool)
+14. [YouTube Tool](#youtube-tool)
+15. [Thread Sharing Tool](#thread-sharing-tool)
+16. [Email Tool](#email-tool)
+17. [Compliance Checker Tool](#compliance-checker-tool)
+18. [Preflight Clarification (Pre-response HITL)](#preflight-clarification-pre-response-hitl)
+19. [SSL Scan Tool](#ssl-scan-tool)
+20. [DNS Scan Tool](#dns-scan-tool)
+21. [Cookie Audit Tool](#cookie-audit-tool)
+22. [Redirect Audit Tool](#redirect-audit-tool)
+23. [PageSpeed Tool](#pagespeed-tool)
+24. [SonarCloud Tool](#sonarcloud-tool)
+25. [Load Test Tool](#load-test-tool)
+26. [Security Scan Tool](#security-scan-tool)
+27. [Dependency Analysis Tool](#dependency-analysis-tool)
+28. [Tool Routing](#tool-routing)
+29. [Tool Configuration](#tool-configuration)
+30. [Category-Level Overrides](#category-level-overrides)
+31. [Creating a New Tool](#creating-a-new-tool)
+32. [API Reference](#api-reference)
 
 ---
 
@@ -205,6 +206,132 @@ download it. Do not use markdown formatting.
 ```
 
 This generates natural, context-aware summaries without tool-specific hardcoding.
+
+---
+
+## Slash Commands
+
+Slash commands provide a fast, explicit way for users to request specific terminal tool outputs. By typing `/` followed by a command key, users can guide the AI toward generating images, documents, charts, diagrams, and more.
+
+### Philosophy
+
+Slash commands are **strong hints**, not forced directives. When a user invokes a slash command, the system injects a `[SUGGESTED APPROACH: ...]` instruction into the system prompt. The LLM can still override this suggestion if the user's actual message clearly indicates a different intent. This balances user convenience with AI flexibility.
+
+### User Interface
+
+**Autocomplete (Type `/`):**
+- Typing `/` at the start of the message input opens an inline autocomplete menu
+- Commands are filtered by key or alias as the user types
+- Keyboard navigation: ↑/↓ to select, Enter/Tab to confirm, Esc to close
+- Selecting a command strips the `/` prefix and shows an active chip above the input
+
+**Create Menu (PlusMenu):**
+- The `+` menu in the chat input includes a **Create** section
+- Grid of buttons for common outputs (Image, Chart, Diagram, PDF, Word, etc.)
+- Selecting a button sets the active slash command the same way as typing `/`
+
+**Direct Typing:**
+- Users can type `/command message` directly (e.g., `/pdf summary of leave policy`)
+- The `/command` prefix is stripped from the saved message history
+
+### Available Commands
+
+| Command | Aliases | Tool | Output | Description |
+|---------|---------|------|--------|-------------|
+| `/image` | `img` | `image_gen` | Image | AI-generated image (DALL-E 3 / Gemini Imagen) |
+| `/chart` | — | `chart_gen` | Chart | Interactive data visualization |
+| `/diagram` | `diag` | `diagram_gen` | Diagram | Mermaid diagram (general) |
+| `/flowchart` | — | `diagram_gen` | Diagram | Mermaid flowchart |
+| `/sequence` | — | `diagram_gen` | Diagram | Mermaid sequence diagram |
+| `/c4` | — | `diagram_gen` | Diagram | Mermaid C4 architecture diagram |
+| `/gantt` | — | `diagram_gen` | Diagram | Mermaid Gantt chart |
+| `/bar-chart` | — | `chart_gen` | Chart | Bar chart visualization |
+| `/line-chart` | — | `chart_gen` | Chart | Line chart visualization |
+| `/infographic` | — | `image_gen` | Image | Infographic-style image |
+| `/photo` | — | `image_gen` | Image | Photorealistic image |
+| `/pdf` | — | `doc_gen` | PDF document | Formatted PDF report |
+| `/docx` | `doc`, `word` | `doc_gen` | Word document | Editable DOCX file |
+| `/html` | — | `html_gen` | HTML page | Interactive HTML page |
+| `/slide` | `pptx` | `pptx_gen` | Presentation | PowerPoint presentation |
+| `/sheet` | `xlsx` | `xlsx_gen` | Spreadsheet | Excel spreadsheet |
+
+### Command Behavior
+
+**Enabled State:** Commands are only available if:
+1. The command itself is enabled in the slash command registry
+2. The underlying tool is enabled in Admin → Tools
+
+If a command's tool is disabled, the command appears grayed out in the UI with a warning.
+
+**Format Hints:** Different command families use different hint strategies:
+
+| Tool Family | Hint Strategy | Example |
+|-------------|---------------|---------|
+| `doc_gen` | `formatHint` column (`pdf`, `docx`) | Backend appends `Use format='pdf'` |
+| `diagram_gen` | Baked into hint text | `diagram_type='flowchart'` |
+| `chart_gen` | Baked into hint text | `recommended_chart='bar'` |
+| `image_gen` | Baked into hint text | `style='photo'` or `style='infographic'` |
+| `html_gen`, `pptx_gen`, `xlsx_gen` | Tool-only hint | No format parameter needed |
+
+**Message Stripping:** The slash prefix is always stripped from saved messages. If a user sends `/pdf leave policy summary`, the thread history stores only `leave policy summary`. The `toolHint` is passed separately in the chat preferences.
+
+### Backend Injection
+
+In the streaming chat endpoint (`src/app/api/chat/stream/route.ts`):
+
+```typescript
+const { toolHint } = body;
+if (toolHint) {
+  const command = await getSlashCommandByKey(toolHint);
+  if (command && command.enabled && await isToolEnabled(command.toolName)) {
+    effectiveSystemPrompt += `\n\n[SUGGESTED APPROACH: ${command.hint}]`;
+  }
+}
+```
+
+The hint is appended to the system prompt just before the LLM call. This ensures the LLM sees the suggestion in the same context as all other instructions.
+
+### Admin Registry
+
+Admins manage slash commands at **Admin → Tools → Slash Commands**.
+
+**Editable Fields:**
+| Field | Description |
+|-------|-------------|
+| **Label** | Display name in the UI |
+| **Description** | Short help text |
+| **Aliases** | Alternative command keys (comma-separated) |
+| **Hint** | The exact text injected into the system prompt |
+| **Icon** | Lucide icon name for UI display |
+| **Enabled** | Whether the command is active |
+| **Sort Order** | Position in the autocomplete list |
+
+**Limitations:**
+- Admins can only edit the 16 predefined commands (cannot create new ones or remap tools)
+- The `commandKey` and `toolName` are fixed per command
+- Reset to defaults restores all original labels, hints, and aliases
+
+### Database Schema
+
+```sql
+CREATE TABLE slash_command_configs (
+  id SERIAL PRIMARY KEY,
+  command_key VARCHAR(50) NOT NULL UNIQUE,
+  tool_name VARCHAR(100) NOT NULL,
+  label VARCHAR(100) NOT NULL,
+  description TEXT,
+  aliases TEXT,              -- JSON array ["alias1", "alias2"]
+  hint TEXT NOT NULL,        -- Injected into system prompt
+  icon VARCHAR(50),          -- Lucide icon name
+  format_hint VARCHAR(50),   -- e.g., 'pdf', 'docx'
+  enabled BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+Commands are seeded automatically on first startup via `ensureSlashCommandsExist()`.
 
 ---
 

@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain, BookOpen } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
+import SlashCommandMenu from './SlashCommandMenu';
 import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
 import InlineLanguageToneChips from './InlineLanguageToneChips';
@@ -96,6 +97,9 @@ export default function MessageInput({
   const [lineCount, setLineCount] = useState(1);
   const [chipSheetOpen, setChipSheetOpen] = useState(false);
   const [currentModelInfo, setCurrentModelInfo] = useState<CurrentModelInfo | null>(null);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [activeSlashCommand, setActiveSlashCommand] = useState<string | null>(null);
   const lastModelIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -240,14 +244,30 @@ export default function MessageInput({
   }, [onPreferencesChange, preferences]);
 
   const handleSubmit = useCallback(() => {
-    if (message.trim() && !isSubmitDisabled) {
-      onSend(message.trim(), mode, preferences);
-      setMessage('');
-      clearDraft();
-      // Reset mode to normal after sending
-      setMode('normal');
+    if (!message.trim() || isSubmitDisabled) return;
+
+    let finalMessage = message.trim();
+    let toolHint: string | undefined;
+
+    // If active slash command was selected via menu
+    if (activeSlashCommand) {
+      toolHint = activeSlashCommand;
+    } else {
+      // Fallback: parse raw message for /command pattern
+      const slashMatch = finalMessage.match(/^\/([a-z0-9_-]+)(?:\s+(.+))?$/i);
+      if (slashMatch) {
+        toolHint = slashMatch[1].toLowerCase();
+        finalMessage = slashMatch[2] || '';
+      }
     }
-  }, [message, isSubmitDisabled, onSend, mode, preferences, clearDraft]);
+
+    onSend(finalMessage, mode, { ...preferences, toolHint });
+    setMessage('');
+    setActiveSlashCommand(null);
+    clearDraft();
+    // Reset mode to normal after sending
+    setMode('normal');
+  }, [message, isSubmitDisabled, onSend, mode, preferences, activeSlashCommand, clearDraft]);
 
   // Memoized keyboard shortcut callbacks to prevent listener re-binding
   const focusTextarea = useCallback(() => {
@@ -413,11 +433,66 @@ export default function MessageInput({
           </div>
         )}
 
+        {/* Active slash command indicator */}
+        {activeSlashCommand && (
+          <div className="mb-2 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+              /{activeSlashCommand}
+              <button
+                type="button"
+                onClick={() => setActiveSlashCommand(null)}
+                className="hover:text-blue-900 ml-0.5"
+                aria-label="Remove slash command"
+              >
+                ×
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Slash command menu */}
+        {slashMenuOpen && (
+          <SlashCommandMenu
+            query={slashQuery}
+            onSelect={(commandKey) => {
+              setActiveSlashCommand(commandKey);
+              setSlashMenuOpen(false);
+              setSlashQuery('');
+              // Strip the leading slash from message
+              setMessage((prev) => prev.replace(/^\//, ''));
+              textareaRef.current?.focus();
+            }}
+            onDismiss={() => {
+              setSlashMenuOpen(false);
+              setSlashQuery('');
+            }}
+          />
+        )}
+
         {/* Textarea - responsive sizing */}
         <textarea
           ref={textareaRef}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setMessage(val);
+
+            // Detect slash command at position 0
+            if (activeSlashCommand) {
+              setSlashMenuOpen(false);
+              return;
+            }
+
+            if (val.startsWith('/')) {
+              const spaceIdx = val.indexOf(' ');
+              const query = spaceIdx === -1 ? val.slice(1) : val.slice(1, spaceIdx);
+              setSlashQuery(query);
+              setSlashMenuOpen(true);
+            } else {
+              setSlashMenuOpen(false);
+              setSlashQuery('');
+            }
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onFocus={handleFocus}
@@ -456,6 +531,10 @@ export default function MessageInput({
               onSourcesToggle={handleSourcesToggle}
               adminSourcesDisabled={adminSourcesDisabled}
               adminCitationTrajectoryDisabled={adminCitationTrajectoryDisabled}
+              onCreateCommandSelect={(commandKey) => {
+                setActiveSlashCommand(commandKey);
+                textareaRef.current?.focus();
+              }}
             />
             {currentModelInfo?.thinkingCapable && (
               <button

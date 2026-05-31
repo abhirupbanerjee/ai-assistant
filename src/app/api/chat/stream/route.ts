@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
           responseTone = 'default',
           showCitationTrajectory = true,
           thinkingEnabled = false,
+          toolHint,
         } = body;
 
         if (!message || !threadId) {
@@ -465,6 +466,21 @@ export async function POST(request: NextRequest) {
             if (responseTone && responseTone !== 'default' && TONE_PRESETS[responseTone]) {
               const tonePrompt = TONE_PRESETS[responseTone].prompt;
               effectiveSystemPrompt = `${tonePrompt}\n\n${ragResult.systemPrompt}`;
+            }
+
+            // Phase 1: Inject slash command hint for this turn only (transient, not persistent)
+            if (toolHint) {
+              const { getSlashCommandByKey } = await import('@/lib/db/compat/slash-commands');
+              const { isToolEnabled: checkToolEnabled } = await import('@/lib/tools');
+
+              const command = await getSlashCommandByKey(toolHint);
+              if (command && command.enabled && await checkToolEnabled(command.toolName)) {
+                let hintText = command.hint;
+                if (command.formatHint) {
+                  hintText += ` Use format='${command.formatHint}'.`;
+                }
+                effectiveSystemPrompt += `\n\n[SUGGESTED APPROACH: ${hintText}]`;
+              }
             }
 
             // Append clarification instruction when preflight skill is active
