@@ -166,21 +166,22 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
     config: {
       activeProvider: 'gemini',
       providers: {
-        openai: {
-          enabled: true,
-          model: 'dall-e-3',
-          size: '1024x1024',
-          quality: 'standard',
-          style: 'natural',
-        },
         gemini: {
           enabled: true,
-          model: 'gemini-3-pro-image-preview',
+          defaultModel: 'gemini-3.1-flash-image-preview',
+          proModel: 'gemini-3-pro-image-preview',
+          aspectRatio: '16:9',
+        },
+        imagen: {
+          enabled: true,
+          fastModel: 'imagen-4.0-fast-generate-001',
+          standardModel: 'imagen-4.0-generate-001',
+          ultraModel: 'imagen-4.0-ultra-generate-001',
           aspectRatio: '16:9',
         },
       },
       defaultStyle: 'infographic',
-      infographicProvider: 'gemini',
+      defaultResolution: '1K',
       enhancePrompts: true,
       addSafetyPrefixes: true,
       imageProcessing: {

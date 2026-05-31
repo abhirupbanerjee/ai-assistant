@@ -19,7 +19,6 @@ import { safeDecrypt } from '@/lib/encryption';
 import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
 import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
 import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
-import { resetLlmClients as resetImageGenClients } from '@/lib/image-gen/providers/openai-dalle';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -94,8 +93,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     resetInternalClients();
     resetOpenAiClients();
     resetAgentClients();
-    resetImageGenClients();
-
     return NextResponse.json({
       provider: {
         ...provider,
@@ -145,8 +142,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       resetInternalClients();
       resetOpenAiClients();
       resetAgentClients();
-      resetImageGenClients();
-
       return NextResponse.json({
         message: 'Provider configuration cleared',
         provider: {

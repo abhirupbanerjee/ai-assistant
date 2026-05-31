@@ -43,8 +43,8 @@ export interface SlideDefinition {
   stats?: StatItem[];
   /** Prompt for AI image generation (for image slides) */
   imagePrompt?: string;
-  /** Style hint for image generation */
-  imageStyle?: ImageStyle;
+  /** Style hint for image generation (mapped to available image_gen styles) */
+  imageStyle?: string;
   /** Speaker notes */
   speakerNotes?: string;
 }
@@ -60,7 +60,7 @@ export interface StatItem {
 
 export type ThemeName = 'corporate' | 'modern' | 'minimal' | 'bold';
 
-export type ImageStyle = 'infographic' | 'photo' | 'illustration' | 'diagram';
+export type ImageStyle = 'infographic' | 'photo' | 'illustration';
 
 export interface ColorScheme {
   /** Primary color (hex) */

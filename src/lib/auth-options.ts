@@ -8,14 +8,18 @@ import { verifyPassword } from './password';
 
 // Trigger user initialization at module load time
 // This ensures admin users are created before auth routes are accessed
-(async () => {
-  try {
-    await initializeAdminsFromEnv();
-    await initializeAdminCredentialsFromEnv();
-  } catch (err) {
-    console.error('[Auth] Failed to initialize users:', err);
-  }
-})();
+// Guard against Next.js build: no database is available during `next build`,
+// so skip DB initialization to avoid noisy auth/db connection errors in build logs.
+if (process.env.NEXT_PHASE !== 'phase-production-build') {
+  (async () => {
+    try {
+      await initializeAdminsFromEnv();
+      await initializeAdminCredentialsFromEnv();
+    } catch (err) {
+      console.error('[Auth] Failed to initialize users:', err);
+    }
+  })();
+}
 
 // Access control mode: 'allowlist' (specific users) or 'domain' (any user from allowed domains)
 const ACCESS_MODE = process.env.ACCESS_MODE || 'allowlist';

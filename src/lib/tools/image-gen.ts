@@ -1,7 +1,7 @@
 /**
  * Image Generation Tool Definition
  *
- * Autonomous tool for generating images using AI providers (DALL-E 3, Gemini Nano Banana Pro).
+ * Autonomous tool for generating images using Google AI models.
  * LLM-triggered via OpenAI function calling.
  *
  * Best for:
@@ -10,6 +10,8 @@
  * - Illustrations for presentations
  * - Charts and data visualizations
  * - Icons and simple graphics
+ * - Posters and social media graphics
+ * - Product mockups and photorealistic images
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
@@ -19,8 +21,7 @@ import {
   isImageGenEnabled,
   IMAGE_GEN_DEFAULTS,
 } from '../image-gen/provider-factory';
-import { testDalleConnection } from '../image-gen/providers/openai-dalle';
-import { testGeminiConnection } from '../image-gen/providers/gemini-imagen';
+import { testGeminiConnection, testImagenConnection } from '../image-gen/providers/gemini-imagen';
 import type { ImageGenToolArgs } from '@/types/image-gen';
 
 // ===== Configuration Schema for Admin UI =====
@@ -31,55 +32,61 @@ const imageGenConfigSchema = {
     activeProvider: {
       type: 'string',
       title: 'Active Provider',
-      description: 'Default image generation provider',
-      enum: ['openai', 'gemini', 'none'],
+      description: 'Default image generation provider ecosystem',
+      enum: ['gemini', 'imagen', 'none'],
       default: 'gemini',
     },
     providers: {
       type: 'object',
       title: 'Provider Settings',
       properties: {
-        openai: {
+        gemini: {
           type: 'object',
-          title: 'OpenAI DALL-E',
+          title: 'Google Gemini (Nano Banana)',
           properties: {
-            enabled: { type: 'boolean', title: 'Enable DALL-E', default: true },
-            model: {
+            enabled: { type: 'boolean', title: 'Enable Gemini', default: true },
+            defaultModel: {
               type: 'string',
-              title: 'Model',
-              enum: ['dall-e-3', 'dall-e-2'],
-              default: 'dall-e-3',
+              title: 'Default Model (speed)',
+              enum: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+              default: 'gemini-3.1-flash-image-preview',
             },
-            size: {
+            proModel: {
               type: 'string',
-              title: 'Default Size',
-              enum: ['1024x1024', '1024x1792', '1792x1024'],
-              default: '1024x1024',
+              title: 'Pro Model (text-heavy)',
+              enum: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+              default: 'gemini-3-pro-image-preview',
             },
-            quality: {
+            aspectRatio: {
               type: 'string',
-              title: 'Quality',
-              enum: ['standard', 'hd'],
-              default: 'standard',
-            },
-            style: {
-              type: 'string',
-              title: 'Style',
-              enum: ['vivid', 'natural'],
-              default: 'natural',
+              title: 'Default Aspect Ratio',
+              enum: ['1:1', '16:9', '9:16', '4:3', '3:4'],
+              default: '16:9',
             },
           },
         },
-        gemini: {
+        imagen: {
           type: 'object',
-          title: 'Google Gemini (Nano Banana Pro)',
+          title: 'Google Imagen 4',
           properties: {
-            enabled: { type: 'boolean', title: 'Enable Gemini', default: true },
-            model: {
+            enabled: { type: 'boolean', title: 'Enable Imagen 4', default: true },
+            fastModel: {
               type: 'string',
-              title: 'Model',
-              enum: ['gemini-3-pro-image-preview', 'imagen-3.0-generate-002'],
-              default: 'gemini-3-pro-image-preview',
+              title: 'Fast Model',
+              enum: ['imagen-4.0-fast-generate-001'],
+              default: 'imagen-4.0-fast-generate-001',
+            },
+            standardModel: {
+              type: 'string',
+              title: 'Standard Model',
+              enum: ['imagen-4.0-generate-001'],
+              default: 'imagen-4.0-generate-001',
+            },
+            ultraModel: {
+              type: 'string',
+              title: 'Ultra Model (max quality)',
+              enum: ['imagen-4.0-ultra-generate-001'],
+              default: 'imagen-4.0-ultra-generate-001',
             },
             aspectRatio: {
               type: 'string',
@@ -96,23 +103,26 @@ const imageGenConfigSchema = {
       title: 'Default Style',
       description: 'Default image style when not specified',
       enum: [
+        'auto',
         'infographic',
         'diagram',
-        'illustration',
-        'photo',
-        'icon',
         'chart',
         'process-flow',
+        'poster',
+        'illustration',
+        'photo',
+        'product-mockup',
+        'icon',
+        'social-media',
       ],
       default: 'infographic',
     },
-    infographicProvider: {
+    defaultResolution: {
       type: 'string',
-      title: 'Infographic Provider',
-      description:
-        'Recommended provider for infographics (Gemini excels at text rendering)',
-      enum: ['openai', 'gemini'],
-      default: 'gemini',
+      title: 'Default Resolution',
+      description: 'Default output resolution for cost control',
+      enum: ['512', '1K', '2K', '4K'],
+      default: '1K',
     },
     enhancePrompts: {
       type: 'boolean',
@@ -173,37 +183,35 @@ const imageGenConfigSchema = {
 
 // ===== Validation Function =====
 
-/**
- * Validate image_gen tool configuration
- */
-function validateImageGenConfig(
-  config: Record<string, unknown>
-): ValidationResult {
+function validateImageGenConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
-  // Validate activeProvider
   if (
     config.activeProvider &&
-    !['openai', 'gemini', 'none'].includes(config.activeProvider as string)
+    !['gemini', 'imagen', 'none'].includes(config.activeProvider as string)
   ) {
-    errors.push('activeProvider must be openai, gemini, or none');
+    errors.push('activeProvider must be gemini, imagen, or none');
   }
 
-  // Validate defaultStyle
   const validStyles = [
+    'auto',
     'infographic',
-    'diagram',
+    'poster',
     'illustration',
     'photo',
+    'product-mockup',
     'icon',
-    'chart',
-    'process-flow',
+    'social-media',
   ];
   if (config.defaultStyle && !validStyles.includes(config.defaultStyle as string)) {
     errors.push(`defaultStyle must be one of: ${validStyles.join(', ')}`);
   }
 
-  // Validate imageProcessing
+  const validResolutions = ['512', '1K', '2K', '4K'];
+  if (config.defaultResolution && !validResolutions.includes(config.defaultResolution as string)) {
+    errors.push(`defaultResolution must be one of: ${validResolutions.join(', ')}`);
+  }
+
   if (config.imageProcessing) {
     const ip = config.imageProcessing as Record<string, unknown>;
 
@@ -234,63 +242,73 @@ function validateImageGenConfig(
 
 // ===== Tool Definition =====
 
-/**
- * Image generation tool implementation
- */
 export const imageGenTool: ToolDefinition = {
   name: 'image_gen',
   displayName: 'Image Generation',
   description:
-    'Generate images, infographics, and diagrams using AI (DALL-E 3 or Gemini Nano Banana Pro)',
+    'Generate images, infographics, diagrams, and photos using Google AI (Gemini Nano Banana or Imagen 4)',
   category: 'autonomous',
 
   definition: {
     type: 'function',
     function: {
       name: 'image_gen',
-      description: `Generate an image from a text description. Best for:
-- Infographics explaining concepts, data, or processes
-- Diagrams showing relationships or structures
-- Illustrations for presentations and documents
-- Charts and data visualizations
-- Icons and simple graphics
-- Process flows and workflows
+      description: `Generate an artistic image from a text description. Best for:
+- Infographics combining text, icons, and visual hierarchy (use "infographic")
+- Posters and promotional graphics with typography (use "poster")
+- Illustrations for presentations and documents (use "illustration")
+- Photorealistic images and editorial photography (use "photo")
+- Product mockups and commercial photography (use "product-mockup")
+- Icons and simple graphics (use "icon")
+- Social media graphics and banners (use "social-media")
+
+IMPORTANT: This tool produces artistic/presentational raster images. It is NOT for data-accurate charts or editable technical diagrams.
+- For data-driven interactive charts from real datasets, use chart_gen instead.
+- For editable technical diagrams (flowcharts, architecture, ER diagrams), use diagram_gen instead.
 
 The generated image will be displayed in the chat.
 
 Guidelines:
 - Be specific about content, layout, colors, and style
 - For infographics, describe the data and key points clearly
-- For diagrams, specify components and their relationships
-- Use "infographic" style for data with text that needs to be readable
-- Gemini is preferred for infographics (better text rendering)`,
+- For text that should appear in the image, enclose it in quotes (e.g., "Q3 Revenue")
+- Specify typography when text is important (e.g., "bold sans-serif font")
+- Use "infographic" or "poster" style for designs with text that needs to be readable
+- Use "photo" or "product-mockup" for photorealistic commercial imagery`,
       parameters: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
             description:
-              'Detailed description of the image to generate. Be specific about content, style, colors, layout, and any text that should appear.',
+              'Detailed description of the image to generate. Be specific about content, style, colors, layout, and any text that should appear. Enclose desired text in quotes and specify typography style.',
           },
           style: {
             type: 'string',
             enum: [
+              'auto',
               'infographic',
-              'diagram',
+              'poster',
               'illustration',
               'photo',
+              'product-mockup',
               'icon',
-              'chart',
-              'process-flow',
+              'social-media',
             ],
             description:
-              'Visual style. Use "infographic" for data/concept visualizations with text, "diagram" for technical drawings, "process-flow" for step-by-step flows, "chart" for data charts.',
+              'Visual style. Use "auto" to let the system intelligently select the best style based on your prompt. Or specify directly: "infographic" for data/concept visualizations with text, "poster" for text-heavy promotional graphics, "illustration" for artistic drawings, "photo" for photorealistic images, "product-mockup" for commercial product shots, "icon" for simple icons, "social-media" for digital graphics. NOTE: For real data charts use chart_gen. For editable technical diagrams use diagram_gen.',
           },
           aspectRatio: {
             type: 'string',
             enum: ['1:1', '16:9', '9:16', '4:3', '3:4'],
             description:
-              'Aspect ratio. Use "16:9" for presentations/widescreen, "1:1" for social media, "9:16" for mobile/stories, "4:3" for documents.',
+              'Aspect ratio. Use "16:9" for presentations/widescreen, "1:1" for social media, "9:16" for mobile/stories, "4:3" for documents, "3:4" for posters.',
+          },
+          resolution: {
+            type: 'string',
+            enum: ['512', '1K', '2K', '4K'],
+            description:
+              'Output resolution. Use "512" for quick previews, "1K" for standard production work (default), "2K" for high-fidelity display, "4K" for print-quality output.',
           },
         },
         required: ['prompt'],
@@ -307,7 +325,6 @@ Guidelines:
   execute: async (args: Record<string, unknown>): Promise<string> => {
     const typedArgs = args as unknown as ImageGenToolArgs;
 
-    // Check if enabled (async - works with both SQLite and PostgreSQL)
     if (!(await isImageGenEnabled())) {
       return JSON.stringify({
         success: false,
@@ -319,7 +336,6 @@ Guidelines:
       });
     }
 
-    // Validate prompt
     if (!typedArgs.prompt || typeof typedArgs.prompt !== 'string') {
       return JSON.stringify({
         success: false,
@@ -340,15 +356,15 @@ Guidelines:
       });
     }
 
-    // Validate style if provided
     const validStyles = [
+      'auto',
       'infographic',
-      'diagram',
+      'poster',
       'illustration',
       'photo',
+      'product-mockup',
       'icon',
-      'chart',
-      'process-flow',
+      'social-media',
     ];
     if (typedArgs.style && !validStyles.includes(typedArgs.style)) {
       return JSON.stringify({
@@ -360,7 +376,6 @@ Guidelines:
       });
     }
 
-    // Validate aspectRatio if provided
     const validRatios = ['1:1', '16:9', '9:16', '4:3', '3:4'];
     if (typedArgs.aspectRatio && !validRatios.includes(typedArgs.aspectRatio)) {
       return JSON.stringify({
@@ -372,7 +387,17 @@ Guidelines:
       });
     }
 
-    // Generate image
+    const validResolutions = ['512', '1K', '2K', '4K'];
+    if (typedArgs.resolution && !validResolutions.includes(typedArgs.resolution)) {
+      return JSON.stringify({
+        success: false,
+        error: {
+          code: 'INVALID_RESOLUTION',
+          message: `Resolution must be one of: ${validResolutions.join(', ')}`,
+        },
+      });
+    }
+
     const result = await generateImage(typedArgs);
 
     return JSON.stringify(result);
@@ -386,28 +411,23 @@ export interface ImageGenTestResult {
   message: string;
   latency?: number;
   providers?: {
-    openai?: { success: boolean; message: string; latency?: number };
     gemini?: { success: boolean; message: string; latency?: number };
+    imagen?: { success: boolean; message: string; latency?: number };
   };
 }
 
-/**
- * Test image generation connectivity
- */
 export async function testImageGen(): Promise<ImageGenTestResult> {
   const config = await getImageGenConfig();
   const providers: ImageGenTestResult['providers'] = {};
 
   const startTime = Date.now();
 
-  // Test OpenAI if enabled
-  if (config.providers.openai.enabled) {
-    providers.openai = await testDalleConnection();
-  }
-
-  // Test Gemini if enabled
   if (config.providers.gemini.enabled) {
     providers.gemini = await testGeminiConnection();
+  }
+
+  if (config.providers.imagen.enabled) {
+    providers.imagen = await testImagenConnection();
   }
 
   const latency = Date.now() - startTime;

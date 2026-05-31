@@ -209,6 +209,7 @@ Available themes: corporate, modern, minimal, bold`,
                 imageStyle: {
                   type: 'string',
                   enum: ['infographic', 'photo', 'illustration', 'diagram'],
+                  // Note: 'diagram' is mapped to 'illustration' by the builder since image_gen no longer supports diagram style
                   description: 'Style hint for image generation (default: infographic)',
                 },
                 speakerNotes: {

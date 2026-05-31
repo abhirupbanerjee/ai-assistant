@@ -507,7 +507,7 @@ export class PptxBuilder {
   /**
    * Map slide imageStyle to image_gen style parameter
    */
-  private mapImageStyle(style?: ImageStyle): ImageStyle {
+  private mapImageStyle(style?: string): ImageStyle {
     switch (style) {
       case 'infographic':
         return 'infographic';
@@ -516,7 +516,11 @@ export class PptxBuilder {
       case 'illustration':
         return 'illustration';
       case 'diagram':
-        return 'diagram';
+        return 'illustration'; // Diagram style removed from image_gen; use illustration instead
+      case 'chart':
+        return 'infographic'; // Chart style removed from image_gen; use infographic instead
+      case 'process-flow':
+        return 'infographic'; // Process-flow style removed from image_gen; use infographic instead
       default:
         return 'infographic'; // Default to infographic for presentations
     }

@@ -4,7 +4,7 @@
  * Image Generation Tool Configuration Component
  *
  * Admin UI for configuring the image_gen tool:
- * - Provider selection (OpenAI DALL-E / Google Gemini)
+ * - Provider selection (Google Gemini / Google Imagen 4)
  * - Provider-specific settings
  * - Image processing options
  * - Prompt enhancement settings
@@ -29,7 +29,7 @@ export default function ImageGenConfig({
   };
 
   const handleProviderChange = (
-    provider: 'openai' | 'gemini',
+    provider: 'gemini' | 'imagen',
     key: string,
     value: unknown
   ) => {
@@ -60,8 +60,8 @@ export default function ImageGenConfig({
 
   const providers =
     (config.providers as Record<string, Record<string, unknown>>) || {};
-  const openaiConfig = providers.openai || {};
   const geminiConfig = providers.gemini || {};
+  const imagenConfig = providers.imagen || {};
   const imageProcessing =
     (config.imageProcessing as Record<string, unknown>) || {};
 
@@ -70,7 +70,7 @@ export default function ImageGenConfig({
       {/* Active Provider */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Default Provider
+          Default Provider Ecosystem
         </label>
         <select
           value={(config.activeProvider as string) || 'gemini'}
@@ -79,118 +79,23 @@ export default function ImageGenConfig({
           disabled={disabled}
         >
           <option value="none">Disabled</option>
-          <option value="openai">OpenAI DALL-E 3</option>
-          <option value="gemini">Google Gemini (Nano Banana Pro)</option>
+          <option value="gemini">Google Gemini (Primary)</option>
+          <option value="imagen">Google Imagen 4 (Primary)</option>
         </select>
         <p className="text-xs text-gray-500 mt-1">
-          Gemini is recommended for infographics with legible text
+          Gemini excels at text rendering (infographics, posters). Imagen 4 excels at photorealism.
         </p>
       </div>
 
-      {/* Infographic Provider Recommendation */}
+      {/* Provider Recommendation Tip */}
       <div className="p-3 bg-blue-50 rounded-lg flex items-start gap-2">
         <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
         <div className="text-sm text-blue-800">
-          <strong>Tip:</strong> Gemini Nano Banana Pro excels at generating
-          infographics with legible text, accurate data visualizations, and
-          professional layouts. Use DALL-E 3 for photorealistic images and
-          artistic illustrations.
+          <strong>Smart Routing:</strong> The system automatically routes each
+          category to the best model. Infographics and posters use
+          Gemini Nano Banana Pro. Photos and product mockups use Imagen 4 Ultra.
+          If the primary provider fails, the system falls back to the other.
         </div>
-      </div>
-
-      {/* OpenAI Settings */}
-      <div className="border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <ImageIcon size={18} className="text-gray-600" />
-            <h4 className="font-medium text-gray-900">OpenAI DALL-E 3</h4>
-          </div>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={(openaiConfig.enabled as boolean) || false}
-              onChange={(e) =>
-                handleProviderChange('openai', 'enabled', e.target.checked)
-              }
-              disabled={disabled}
-              className="rounded"
-            />
-            <span className="text-sm">Enabled</span>
-          </label>
-        </div>
-
-        {(openaiConfig.enabled as boolean) && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Model
-              </label>
-              <select
-                value={(openaiConfig.model as string) || 'dall-e-3'}
-                onChange={(e) =>
-                  handleProviderChange('openai', 'model', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                disabled={disabled}
-              >
-                <option value="dall-e-3">DALL-E 3</option>
-                <option value="dall-e-2">DALL-E 2</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quality
-              </label>
-              <select
-                value={(openaiConfig.quality as string) || 'standard'}
-                onChange={(e) =>
-                  handleProviderChange('openai', 'quality', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                disabled={disabled}
-              >
-                <option value="standard">Standard ($0.04/image)</option>
-                <option value="hd">HD ($0.08/image)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Default Size
-              </label>
-              <select
-                value={(openaiConfig.size as string) || '1024x1024'}
-                onChange={(e) =>
-                  handleProviderChange('openai', 'size', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                disabled={disabled}
-              >
-                <option value="1024x1024">1024x1024 (Square)</option>
-                <option value="1792x1024">1792x1024 (Landscape)</option>
-                <option value="1024x1792">1024x1792 (Portrait)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Style
-              </label>
-              <select
-                value={(openaiConfig.style as string) || 'natural'}
-                onChange={(e) =>
-                  handleProviderChange('openai', 'style', e.target.value)
-                }
-                className="w-full px-3 py-2 border rounded-lg"
-                disabled={disabled}
-              >
-                <option value="natural">Natural</option>
-                <option value="vivid">Vivid</option>
-              </select>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Gemini Settings */}
@@ -202,7 +107,7 @@ export default function ImageGenConfig({
               <h4 className="font-medium text-gray-900">Google Gemini</h4>
             </div>
             <p className="text-xs text-gray-500">
-              Nano Banana Pro - Best for infographics
+              Nano Banana series — best for text, infographics, posters
             </p>
           </div>
           <label className="flex items-center gap-2">
@@ -223,23 +128,46 @@ export default function ImageGenConfig({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Model
+                Default Model (speed)
               </label>
               <select
                 value={
-                  (geminiConfig.model as string) || 'gemini-3-pro-image-preview'
+                  (geminiConfig.defaultModel as string) || 'gemini-3.1-flash-image-preview'
                 }
                 onChange={(e) =>
-                  handleProviderChange('gemini', 'model', e.target.value)
+                  handleProviderChange('gemini', 'defaultModel', e.target.value)
+                }
+                className="w-full px-3 py-2 border rounded-lg"
+                disabled={disabled}
+              >
+                <option value="gemini-3.1-flash-image-preview">
+                  Nano Banana 2 ($0.067/image)
+                </option>
+                <option value="gemini-3-pro-image-preview">
+                  Nano Banana Pro ($0.134/image)
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pro Model (text-heavy)
+              </label>
+              <select
+                value={
+                  (geminiConfig.proModel as string) || 'gemini-3-pro-image-preview'
+                }
+                onChange={(e) =>
+                  handleProviderChange('gemini', 'proModel', e.target.value)
                 }
                 className="w-full px-3 py-2 border rounded-lg"
                 disabled={disabled}
               >
                 <option value="gemini-3-pro-image-preview">
-                  Nano Banana Pro ($0.039/image)
+                  Nano Banana Pro ($0.134/image)
                 </option>
-                <option value="imagen-3.0-generate-002">
-                  Imagen 3 ($0.03/image)
+                <option value="gemini-3.1-flash-image-preview">
+                  Nano Banana 2 ($0.067/image)
                 </option>
               </select>
             </div>
@@ -252,6 +180,111 @@ export default function ImageGenConfig({
                 value={(geminiConfig.aspectRatio as string) || '16:9'}
                 onChange={(e) =>
                   handleProviderChange('gemini', 'aspectRatio', e.target.value)
+                }
+                className="w-full px-3 py-2 border rounded-lg"
+                disabled={disabled}
+              >
+                <option value="1:1">1:1 (Square)</option>
+                <option value="16:9">16:9 (Presentation)</option>
+                <option value="9:16">9:16 (Mobile)</option>
+                <option value="4:3">4:3 (Standard)</option>
+                <option value="3:4">3:4 (Portrait)</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Imagen 4 Settings */}
+      <div className="border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <ImageIcon size={18} className="text-gray-600" />
+              <h4 className="font-medium text-gray-900">Google Imagen 4</h4>
+            </div>
+            <p className="text-xs text-gray-500">
+              Professional image generation — best for photorealism
+            </p>
+          </div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={(imagenConfig.enabled as boolean) || false}
+              onChange={(e) =>
+                handleProviderChange('imagen', 'enabled', e.target.checked)
+              }
+              disabled={disabled}
+              className="rounded"
+            />
+            <span className="text-sm">Enabled</span>
+          </label>
+        </div>
+
+        {(imagenConfig.enabled as boolean) && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fast Model
+              </label>
+              <select
+                value={(imagenConfig.fastModel as string) || 'imagen-4.0-fast-generate-001'}
+                onChange={(e) =>
+                  handleProviderChange('imagen', 'fastModel', e.target.value)
+                }
+                className="w-full px-3 py-2 border rounded-lg"
+                disabled={disabled}
+              >
+                <option value="imagen-4.0-fast-generate-001">
+                  Imagen 4 Fast ($0.02/image)
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Standard Model
+              </label>
+              <select
+                value={(imagenConfig.standardModel as string) || 'imagen-4.0-generate-001'}
+                onChange={(e) =>
+                  handleProviderChange('imagen', 'standardModel', e.target.value)
+                }
+                className="w-full px-3 py-2 border rounded-lg"
+                disabled={disabled}
+              >
+                <option value="imagen-4.0-generate-001">
+                  Imagen 4 Standard ($0.04/image)
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Ultra Model (max quality)
+              </label>
+              <select
+                value={(imagenConfig.ultraModel as string) || 'imagen-4.0-ultra-generate-001'}
+                onChange={(e) =>
+                  handleProviderChange('imagen', 'ultraModel', e.target.value)
+                }
+                className="w-full px-3 py-2 border rounded-lg"
+                disabled={disabled}
+              >
+                <option value="imagen-4.0-ultra-generate-001">
+                  Imagen 4 Ultra ($0.06/image)
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Default Aspect Ratio
+              </label>
+              <select
+                value={(imagenConfig.aspectRatio as string) || '16:9'}
+                onChange={(e) =>
+                  handleProviderChange('imagen', 'aspectRatio', e.target.value)
                 }
                 className="w-full px-3 py-2 border rounded-lg"
                 disabled={disabled}
@@ -285,30 +318,32 @@ export default function ImageGenConfig({
               className="w-full px-3 py-2 border rounded-lg"
               disabled={disabled}
             >
+              <option value="auto">Auto (System decides)</option>
               <option value="infographic">Infographic</option>
-              <option value="diagram">Diagram</option>
-              <option value="process-flow">Process Flow</option>
-              <option value="chart">Chart</option>
+
+              <option value="poster">Poster</option>
               <option value="illustration">Illustration</option>
               <option value="photo">Photo</option>
+              <option value="product-mockup">Product Mockup</option>
               <option value="icon">Icon</option>
+              <option value="social-media">Social Media</option>
             </select>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Infographic Provider
+              Default Resolution
             </label>
             <select
-              value={(config.infographicProvider as string) || 'gemini'}
-              onChange={(e) =>
-                handleChange('infographicProvider', e.target.value)
-              }
+              value={(config.defaultResolution as string) || '1K'}
+              onChange={(e) => handleChange('defaultResolution', e.target.value)}
               className="w-full px-3 py-2 border rounded-lg"
               disabled={disabled}
             >
-              <option value="gemini">Gemini (Recommended)</option>
-              <option value="openai">OpenAI</option>
+              <option value="512">512px (Preview)</option>
+              <option value="1K">1K (Standard)</option>
+              <option value="2K">2K (High-Fidelity)</option>
+              <option value="4K">4K (Print-Quality)</option>
             </select>
           </div>
         </div>
@@ -467,20 +502,24 @@ export default function ImageGenConfig({
         </h5>
         <div className="text-xs text-gray-600 space-y-1">
           <div className="flex justify-between">
-            <span>DALL-E 3 Standard (1024x1024)</span>
+            <span>Gemini Nano Banana 2 (1K)</span>
+            <span>$0.067</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Gemini Nano Banana Pro (1K)</span>
+            <span>$0.134</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Imagen 4 Fast</span>
+            <span>$0.02</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Imagen 4 Standard</span>
             <span>$0.04</span>
           </div>
           <div className="flex justify-between">
-            <span>DALL-E 3 HD (1024x1024)</span>
-            <span>$0.08</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Gemini Nano Banana Pro</span>
-            <span>$0.039</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Gemini Imagen 3</span>
-            <span>$0.03</span>
+            <span>Imagen 4 Ultra</span>
+            <span>$0.06</span>
           </div>
         </div>
       </div>

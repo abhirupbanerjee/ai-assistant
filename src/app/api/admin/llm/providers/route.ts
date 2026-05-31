@@ -18,7 +18,6 @@ import { safeDecrypt } from '@/lib/encryption';
 import { resetLlmClients as resetInternalClients } from '@/lib/llm-client';
 import { resetLlmClients as resetOpenAiClients } from '@/lib/openai';
 import { resetLlmClients as resetAgentClients } from '@/lib/agent/llm-router';
-import { resetLlmClients as resetImageGenClients } from '@/lib/image-gen/providers/openai-dalle';
 import type { ApiError } from '@/types';
 
 // GET /api/admin/llm/providers - List all providers
@@ -88,8 +87,6 @@ export async function POST(request: NextRequest) {
     resetInternalClients();
     resetOpenAiClients();
     resetAgentClients();
-    resetImageGenClients();
-
     return NextResponse.json({
       provider: {
         ...provider,
