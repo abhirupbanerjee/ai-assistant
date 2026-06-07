@@ -220,8 +220,16 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
+  // Height of the bottom spacer that keeps the new user message pinned to the
+  // top of the viewport during streaming. Collapses automatically once the
+  // streaming response grows past the visible area.
+  const [bottomSpacerHeight, setBottomSpacerHeight] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // Anchor placed just before the streaming content — scrolled to top on send
+  const newTurnAnchorRef = useRef<HTMLDivElement>(null);
+  // Ref on the .streaming-live div — measured to decide when to collapse spacer
+  const streamingLiveRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
 
@@ -520,21 +528,61 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   };
 
+  // ── Anchor-to-top: pin new user message at viewport top on send ─────────
+  // When a new loading cycle starts, measure the container and set a bottom
+  // spacer large enough for the user message to reach the top. Then
+  // scrollIntoView the anchor (placed just before the streaming area).
+  useEffect(() => {
+    if (!loading) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    // Set spacer to container height so user message has room to sit at top
+    setBottomSpacerHeight(container.clientHeight);
+    // Scroll the new-turn anchor to the top of the viewport
+    requestAnimationFrame(() => {
+      newTurnAnchorRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // ── Spacer collapse: remove reserved space once response fills the screen ─
+  // Measured on every streamed chunk. Once the streaming content div is tall
+  // enough that a spacer is no longer needed, collapse it so there's no
+  // visible gap after a short response.
+  useEffect(() => {
+    if (!streamingState.isStreaming || bottomSpacerHeight === 0) return;
+    const streamingDiv = streamingLiveRef.current;
+    const container = messagesContainerRef.current;
+    if (!streamingDiv || !container) return;
+    // Collapse when streaming content height exceeds 55% of container height —
+    // at that point the viewport is filled and the spacer causes no benefit.
+    if (streamingDiv.scrollHeight > container.clientHeight * 0.55) {
+      setBottomSpacerHeight(0);
+    }
+  }, [streamingState.currentContent, streamingState.currentThinkingContent, streamingState.isStreaming, bottomSpacerHeight]);
+
+  // Reset spacer when the turn completes or is aborted
+  useEffect(() => {
+    if (!streamingState.isStreaming && !loading) {
+      setBottomSpacerHeight(0);
+    }
+  }, [streamingState.isStreaming, loading]);
+
   // Auto-scroll to bottom (only when user hasn't scrolled up).
   // Depends on streaming content chunks so the main container follows the live
   // response token-by-token — same single-container model used by Claude / ChatGPT.
+  // When the spacer is still active (user message pinned at top), skip
+  // bottom-follow — the anchor-to-top scroll already placed us correctly.
   useEffect(() => {
     if (!isScrolledUp) {
       if (streamingState.isStreaming) {
-        // Instant scroll during streaming — smooth scroll causes competing animations
-        // as the scroll target keeps moving with each chunk, creating visible shake/jitter.
-        // Only write scrollTop when not already at the bottom to avoid forcing a synchronous
-        // layout reflow on every RAF frame when the user is already pinned.
+        // While the spacer is active, the user message is pinned — don't scroll
+        if (bottomSpacerHeight > 0) return;
+        // Spacer collapsed: resume normal bottom-follow with reflow guard
         const container = messagesContainerRef.current;
         if (container) {
           const distanceFromBottom =
             container.scrollHeight - container.scrollTop - container.clientHeight;
-          // Only scroll if we're more than 8px from the bottom (avoids reflow when pinned)
           if (distanceFromBottom > 8) {
             container.scrollTop = container.scrollHeight;
           }
@@ -549,7 +597,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (threadId && !streamingState.isStreaming) {
       confirmRestore(threadId);
     }
-  }, [messages.length, isScrolledUp, streamingState.isStreaming, streamingState.currentContent, streamingState.currentThinkingContent, threadId, confirmRestore]);
+  }, [messages.length, isScrolledUp, streamingState.isStreaming, streamingState.currentContent, streamingState.currentThinkingContent, threadId, confirmRestore, bottomSpacerHeight]);
 
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = messagesContainerRef.current;
@@ -821,6 +869,12 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           />
         ))}
 
+        {/* Anchor point: scrolled to the top of viewport on send so the new
+            user message is immediately visible at the top of the screen */}
+        {(loading || streamingState.isStreaming) && (
+          <div ref={newTurnAnchorRef} aria-hidden="true" />
+        )}
+
         {/* Skeleton placeholder — shown while loading but no streaming content yet */}
         {loading && !streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
           <SkeletonMessage />
@@ -836,7 +890,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             .streaming-live overrides contain-intrinsic-size so the growing bubble
             doesn't get a fixed 200px placeholder that causes scroll-anchor micro-jitter. */}
         {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (
-          <div className="streaming-live">
+          <div className="streaming-live" ref={streamingLiveRef}>
             <MessageBubble
               message={{
                 id: 'streaming',
@@ -873,6 +927,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         )}
 
         <div ref={messagesEndRef} />
+
+        {/* Bottom spacer — keeps the new user message pinned to the top of
+            the viewport while the response streams. Height is set on send and
+            collapses automatically once the streaming content fills the screen,
+            then zeroed on completion. Transition smooths the collapse. */}
+        {bottomSpacerHeight > 0 && (
+          <div
+            style={{ minHeight: bottomSpacerHeight, transition: 'min-height 0.2s ease' }}
+            aria-hidden="true"
+          />
+        )}
 
         {/* Scroll to bottom FAB */}
         {isScrolledUp && (
