@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
-import { RefreshCw, BookOpen, ArrowDown } from 'lucide-react';
+import { RefreshCw, ArrowDown } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
@@ -222,7 +222,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const streamingAreaRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
 
@@ -521,15 +520,24 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   };
 
-  // Auto-scroll to bottom (only when user hasn't scrolled up)
+  // Auto-scroll to bottom (only when user hasn't scrolled up).
+  // Depends on streaming content chunks so the main container follows the live
+  // response token-by-token — same single-container model used by Claude / ChatGPT.
   useEffect(() => {
     if (!isScrolledUp) {
       if (streamingState.isStreaming) {
         // Instant scroll during streaming — smooth scroll causes competing animations
-        // as the scroll target keeps moving with each chunk, creating visible shake/jitter
+        // as the scroll target keeps moving with each chunk, creating visible shake/jitter.
+        // Only write scrollTop when not already at the bottom to avoid forcing a synchronous
+        // layout reflow on every RAF frame when the user is already pinned.
         const container = messagesContainerRef.current;
         if (container) {
-          container.scrollTop = container.scrollHeight;
+          const distanceFromBottom =
+            container.scrollHeight - container.scrollTop - container.clientHeight;
+          // Only scroll if we're more than 8px from the bottom (avoids reflow when pinned)
+          if (distanceFromBottom > 8) {
+            container.scrollTop = container.scrollHeight;
+          }
         }
       } else {
         // Smooth scroll for new messages (non-streaming)
@@ -541,17 +549,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (threadId && !streamingState.isStreaming) {
       confirmRestore(threadId);
     }
-  }, [messages.length, isScrolledUp, streamingState.isStreaming, threadId, confirmRestore]);
-
-  // Auto-scroll the capped streaming area so new content stays visible
-  useEffect(() => {
-    if (streamingState.isStreaming) {
-      const streamingArea = streamingAreaRef.current;
-      if (streamingArea) {
-        streamingArea.scrollTop = streamingArea.scrollHeight;
-      }
-    }
-  }, [streamingState.currentContent, streamingState.currentThinkingContent, streamingState.isStreaming]);
+  }, [messages.length, isScrolledUp, streamingState.isStreaming, streamingState.currentContent, streamingState.currentThinkingContent, threadId, confirmRestore]);
 
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = messagesContainerRef.current;
@@ -668,6 +666,20 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   }, [streamingState.isStreaming, sendMessage]);
 
+  // Edit a user message in-place and re-run from that point.
+  // Truncates the message list to just before the edited message (removing
+  // the original user message and all subsequent assistant replies), then
+  // sends the edited content as a new message — same pattern as handleRegenerate.
+  const handleEditMessage = useCallback((messageId: string, newContent: string) => {
+    if (streamingState.isStreaming) return;
+    const currentMessages = messagesRef.current;
+    const index = currentMessages.findIndex(m => m.id === messageId);
+    if (index < 0) return;
+    // Slice off the edited message and everything after it
+    setMessages(prev => prev.slice(0, index));
+    sendMessage(newContent);
+  }, [streamingState.isStreaming, sendMessage]);
+
   const handleUploadComplete = useCallback((filename: string) => {
     setUploads((prev) => [...prev, filename]);
     setPendingUploads((prev) => [...prev, filename]);
@@ -695,9 +707,33 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   }, []);
 
   const handleAbort = useCallback(() => {
+    // Capture partial content BEFORE aborting so it isn't lost when streaming
+    // state resets. Matches Claude's behaviour: Stop keeps what was streamed.
+    const partialContent = streamingState.currentContent;
+    const partialThinking = streamingState.currentThinkingContent;
+    const partialSources = streamingState.sources;
+    const partialDocuments = streamingState.documents;
+    const partialImages = streamingState.images;
+
     abortStreaming();
     setLoading(false);
-  }, [abortStreaming]);
+
+    if (partialContent || partialThinking) {
+      const stoppedMessage: Message = {
+        id: `stopped-${Date.now()}`,
+        role: 'assistant',
+        content: partialContent || '',
+        sources: partialSources.length > 0 ? partialSources : undefined,
+        generatedDocuments: partialDocuments.length > 0 ? partialDocuments : undefined,
+        generatedImages: partialImages.length > 0 ? partialImages : undefined,
+        timestamp: new Date(),
+        thinkingContent: partialThinking || undefined,
+        // Tag so the bubble can optionally show a "Stopped" indicator
+        metadata: { stopped: true } as Message['metadata'],
+      };
+      setMessages(prev => [...prev, stoppedMessage]);
+    }
+  }, [abortStreaming, streamingState]);
 
   const categoryChipSlot = useMemo(() => {
     return !threadId ? (
@@ -737,7 +773,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       <div
         ref={messagesContainerRef}
         onScroll={handleMessagesScroll}
-        className="flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative"
+        className={`flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative${streamingState.isStreaming ? ' is-streaming' : ''}`}
       >
             {messages.length === 0 && archivedMessages.length === 0 && !loading && (
               <ChatWelcome
@@ -781,8 +817,45 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             showSources={effectiveShowSources}
             showCitationTrajectory={effectiveShowCitationTrajectory}
             onRegenerate={message.role === 'assistant' ? handleRegenerate : undefined}
+            onEdit={message.role === 'user' ? handleEditMessage : undefined}
           />
         ))}
+
+        {/* Skeleton placeholder — shown while loading but no streaming content yet */}
+        {loading && !streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
+          <SkeletonMessage />
+        )}
+
+        {/* Compact skeleton — shown while streaming has started but first tokens haven't arrived */}
+        {streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
+          <CompactSkeletonMessage />
+        )}
+
+        {/* Streaming Content — rendered inside the same scroll container as settled messages
+            so the user can scroll freely while the response grows (single-container model).
+            .streaming-live overrides contain-intrinsic-size so the growing bubble
+            doesn't get a fixed 200px placeholder that causes scroll-anchor micro-jitter. */}
+        {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (
+          <div className="streaming-live">
+            <MessageBubble
+              message={{
+                id: 'streaming',
+                role: 'assistant',
+                content: streamingState.currentContent,
+                sources: streamingState.sources,
+                visualizations: streamingState.visualizations,
+                generatedDocuments: streamingState.documents,
+                generatedImages: streamingState.images,
+                timestamp: new Date(),
+                thinkingContent: streamingState.currentThinkingContent || undefined,
+              }}
+              isStreaming={true}
+              threadId={threadId}
+              showSources={effectiveShowSources}
+              showCitationTrajectory={effectiveShowCitationTrajectory}
+            />
+          </div>
+        )}
 
         {displayError && (
           <div className="flex justify-center mb-4">
@@ -813,10 +886,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         )}
       </div>
 
-      {/* Streaming / Processing Area — isolated from message list scroll container
-           to prevent SSE-triggered re-layouts from recalculating the virtualized list.
-           Capped at 40vh so a long stream can't push the input bar off-screen. */}
-      <div ref={streamingAreaRef} className="px-4 shrink-0 max-h-[40vh] overflow-y-auto">
+      {/* Ephemeral processing/control strip — sits above the input bar, never scrolls.
+          Contains only status indicators and approval cards, NOT the live response text.
+          The live response is now rendered inside the main scroll container above
+          so the user can scroll freely during streaming (single-container model). */}
+      <div className="px-4 shrink-0">
         {/* Processing Indicator - shows detailed status during all phases */}
         {(streamingState.isStreaming || (loading && streamingState.processingDetails.phase !== 'complete')) && (
           <ProcessingIndicator
@@ -1021,38 +1095,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                   : 'Failed to submit clarification.');
               }
             }}
-          />
-        )}
-
-        {/* Skeleton placeholder — shown while loading but no streaming content yet */}
-        {loading && !streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
-          <SkeletonMessage />
-        )}
-
-        {/* Compact skeleton — shown while streaming has started but first tokens haven't arrived */}
-        {streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
-          <CompactSkeletonMessage />
-        )}
-
-        {/* Streaming Content — isolated from scroll container to prevent
-            SSE-triggered layout thrashing on the message list */}
-        {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (
-          <MessageBubble
-            message={{
-              id: 'streaming',
-              role: 'assistant',
-              content: streamingState.currentContent,
-              sources: streamingState.sources,
-              visualizations: streamingState.visualizations,
-              generatedDocuments: streamingState.documents,
-              generatedImages: streamingState.images,
-              timestamp: new Date(),
-              thinkingContent: streamingState.currentThinkingContent || undefined,
-            }}
-            isStreaming={true}
-            threadId={threadId}
-            showSources={effectiveShowSources}
-            showCitationTrajectory={effectiveShowCitationTrajectory}
           />
         )}
       </div>

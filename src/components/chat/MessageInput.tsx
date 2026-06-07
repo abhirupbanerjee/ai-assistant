@@ -502,7 +502,7 @@ const MessageInput = memo(function MessageInput({
           rows={isMobile ? 2 : 1}
           enterKeyHint={isMobile ? 'enter' : 'send'}
           className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${
-            isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[150px]'
+            isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[40vh]'
           }`}
         />
 

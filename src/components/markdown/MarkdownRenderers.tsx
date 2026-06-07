@@ -378,7 +378,25 @@ export const MarkdownComponentsLite: Components = {
 } as Components;
 
 /**
- * Pre renderer with a per-code-block copy button.
+ * Extract the language name from a fenced code block's children.
+ * react-markdown puts the language as a `language-*` class on the <code> child.
+ * Returns a display label like "python", "typescript", "bash", or null.
+ */
+function extractCodeLanguage(children: React.ReactNode): string | null {
+  const codeChildren = React.Children.toArray(children);
+  for (const child of codeChildren) {
+    if (!React.isValidElement(child)) continue;
+    const props = child.props as Record<string, unknown>;
+    if (typeof props.className === 'string') {
+      const match = props.className.match(/\blanguage-(\S+)/);
+      if (match) return match[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * Pre renderer with a language header bar + per-code-block copy button.
  * Only used in the main chat assistant responses.
  * Skips Mermaid-rendered diagram blocks (no copy button on diagram output).
  */
@@ -411,6 +429,8 @@ const CopyablePre: Components['pre'] = ({ children }) => {
     return false;
   });
 
+  const language = extractCodeLanguage(children);
+
   const handleCopy = async () => {
     const rawText = getTextContent(children);
     // Strip exactly one trailing newline added by the markdown renderer
@@ -434,21 +454,27 @@ const CopyablePre: Components['pre'] = ({ children }) => {
   }
 
   return (
-    <div className="relative group/code my-3">
-      <button
-        onClick={handleCopy}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover/code:opacity-100 focus:opacity-100"
-        title={copied ? 'Copied' : 'Copy code'}
-        aria-label={copied ? 'Copied' : 'Copy code'}
-        type="button"
-      >
-        {copied ? (
-          <Check size={14} className="text-green-600" />
-        ) : (
-          <Copy size={14} />
-        )}
-      </button>
-      <pre className="bg-gray-100 text-gray-800 p-4 pt-10 pr-12 rounded-md overflow-x-auto whitespace-pre border border-gray-300 max-w-full touch-pan-x font-mono text-sm leading-relaxed">
+    <div className="relative group/code my-3 rounded-md border border-gray-300 overflow-hidden">
+      {/* Language header bar — shows detected language and copy button */}
+      <div className="flex items-center justify-between px-4 py-1.5 bg-gray-200 border-b border-gray-300">
+        <span className="text-xs font-mono text-gray-500 select-none">
+          {language || 'code'}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors py-0.5 px-1.5 rounded hover:bg-gray-300"
+          title={copied ? 'Copied' : 'Copy code'}
+          aria-label={copied ? 'Copied' : 'Copy code'}
+          type="button"
+        >
+          {copied ? (
+            <><Check size={12} className="text-green-600" /><span className="text-green-600">Copied</span></>
+          ) : (
+            <><Copy size={12} /><span>Copy</span></>
+          )}
+        </button>
+      </div>
+      <pre className="bg-gray-100 text-gray-800 p-4 overflow-x-auto whitespace-pre max-w-full touch-pan-x font-mono text-sm leading-relaxed m-0 border-0 rounded-none">
         {children}
       </pre>
     </div>

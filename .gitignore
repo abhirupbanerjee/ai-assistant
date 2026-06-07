@@ -102,3 +102,4 @@ docker-compose.dev.yml
 docker-compose.local.yml
 GEMINI.md
 .env.local
+plans/*

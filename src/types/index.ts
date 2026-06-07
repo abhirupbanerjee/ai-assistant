@@ -99,6 +99,8 @@ export interface MessageMetadata {
   ragMs?: number;            // Time spent inside performRAGRetrieval
   completionTokens?: number; // Token count of assistant response (real API data when available)
   tokensEstimated?: boolean; // True when completionTokens is a heuristic estimate
+  /** Set to true when the user clicked Stop mid-stream; partial content was preserved */
+  stopped?: boolean;
 }
 
 export interface Message {

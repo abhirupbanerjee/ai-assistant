@@ -4,12 +4,137 @@ import { useState, useMemo, memo } from 'react';
 import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Message, MessageMetadata } from '@/types';
 import SourceCard from './SourceCard';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
+
+// Shared remark plugins — defined at module level so the reference is stable
+// and accessible by FrozenBlock / StreamingMarkdown before the main export.
+const REMARK_PLUGINS = [remarkGfm];
+// Applied only on the completed final render — zero per-frame cost during streaming.
+// Adds .hljs-* token classes; styled by the GitHub Light theme in globals.css.
+const REHYPE_PLUGINS = [rehypeHighlight];
+
+// ---------------------------------------------------------------------------
+// StreamingMarkdown — block-level live markdown renderer
+//
+// Strategy (matches Claude / ChatGPT):
+//   • Split the growing content on double-newline boundaries into "blocks".
+//   • All blocks except the last are COMPLETE — they never change again once
+//     a new \n\n appears. Each is rendered in its own memoized component so
+//     React skips re-rendering them on subsequent frames.
+//   • Only the LAST (active) block is re-parsed each RAF frame. Because it is
+//     small (a single paragraph/code fence in progress), the parse is cheap.
+//   • On completion (isStreaming=false) the full content is rendered once as a
+//     single ReactMarkdown pass so edge-cases (lists crossing paragraph breaks,
+//     trailing fences) are handled correctly.
+// ---------------------------------------------------------------------------
+
+/** A single frozen block — content never changes so the memo always bails out */
+const FrozenBlock = memo(function FrozenBlock({ content, isUser }: { content: string; isUser: boolean }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
+
+/**
+ * Find the safe split point for block-level freezing.
+ *
+ * A naïve \n\n split breaks fenced code blocks that contain blank lines
+ * (the first frozen chunk gets an unterminated ``` and renders garbled).
+ * This function walks lines, tracks open/closed fence state, and returns
+ * the last \n\n boundary that falls OUTSIDE an open code fence as the
+ * split point.  Everything before it can be frozen; everything from that
+ * point on is the actively-growing live tail.
+ *
+ * Returns [frozenContent, liveTail].  If no safe split point exists
+ * (e.g. a fence opened right at the start), the whole content is the
+ * live tail.
+ */
+function splitAtSafeBoundary(content: string): [string, string] {
+  const lines = content.split('\n');
+  let fenceOpen = false;
+  let lastSafeEnd = -1; // character index of the last safe double-newline
+  let charIndex = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+
+    // Toggle fence state on lines starting with ``` (three or more backticks)
+    if (/^`{3,}/.test(trimmed)) {
+      fenceOpen = !fenceOpen;
+    }
+
+    // A double-newline boundary occurs between line[i] and line[i+1] when
+    // line[i] is empty — i.e. this line IS the blank separator.
+    // We only mark it safe if we are not currently inside a fence.
+    if (line === '' && !fenceOpen && i < lines.length - 1) {
+      // charIndex currently points to the start of this blank line.
+      // The double-newline ends at charIndex + 1 (the \n of this line).
+      lastSafeEnd = charIndex + 1;
+    }
+
+    charIndex += line.length + 1; // +1 for the \n
+  }
+
+  if (lastSafeEnd === -1) {
+    // No safe split point found — treat everything as the live tail
+    return ['', content];
+  }
+
+  return [content.slice(0, lastSafeEnd), content.slice(lastSafeEnd)];
+}
+
+function StreamingMarkdown({ content, isStreaming, isUser }: { content: string; isStreaming: boolean; isUser: boolean }) {
+  if (!isStreaming) {
+    // Final pass — full parse once with syntax highlighting on code blocks
+    return (
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={isUser ? [] : REHYPE_PLUGINS}
+        components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
+      >
+        {content}
+      </ReactMarkdown>
+    );
+  }
+
+  // Find the last safe freeze boundary (respects open code fences)
+  const [frozenContent, liveTail] = splitAtSafeBoundary(content);
+
+  return (
+    <>
+      {/* Frozen completed content — never re-renders */}
+      {frozenContent && (
+        <FrozenBlock content={frozenContent} isUser={isUser} />
+      )}
+      {/* Active tail: small, cheap single-block re-parse each frame */}
+      {liveTail && (
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
+        >
+          {liveTail}
+        </ReactMarkdown>
+      )}
+      {/* Claude-style blinking block cursor at the streaming edge */}
+      <span
+        className="inline-block w-[2px] h-[1em] bg-current align-middle ml-[1px] streaming-cursor"
+        aria-hidden="true"
+      />
+    </>
+  );
+}
 
 // Lazy-load heavy message children that only appear conditionally
 const DocumentResultCard = dynamic(() => import('./DocumentResultCard'), { ssr: false, loading: () => <div className="h-16 animate-pulse bg-gray-200 rounded-lg" /> });
@@ -19,7 +144,6 @@ const DataVisualization = dynamic(() => import('./DataVisualization'), { ssr: fa
 const MermaidDiagram = dynamic(() => import('@/components/markdown/MermaidDiagram'), { ssr: false, loading: () => <div className="h-48 animate-pulse bg-gray-200 rounded-lg" /> });
 
 const MAX_SOURCES_DISPLAYED = 5;
-const REMARK_PLUGINS = [remarkGfm];
 
 function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
   const [expanded, setExpanded] = useState(false);
@@ -58,6 +182,8 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   /** Callback to regenerate the assistant response (assistant messages only) */
   onRegenerate?: (messageId: string) => void;
+  /** Callback to edit a user message and re-run from that point */
+  onEdit?: (messageId: string, newContent: string) => void;
   /** Thread ID for citation trajectory card */
   threadId?: string | null;
   /** Whether to show source documents */
@@ -66,10 +192,12 @@ interface MessageBubbleProps {
   showCitationTrajectory?: boolean;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, threadId, showSources = true, showCitationTrajectory = true }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onEdit, threadId, showSources = true, showCitationTrajectory = true }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editValue, setEditValue] = useState('');
   const isUser = message.role === 'user';
 
   // Extract <think>…</think> blocks from content as fallback for historical messages
@@ -111,7 +239,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 group`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 group message-enter`}>
       <div
         className={`max-w-full sm:max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
@@ -150,23 +278,80 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           </div>
         )}
 
-        <div className="markdown-content">
-          <ReactMarkdown
-            remarkPlugins={REMARK_PLUGINS}
-            components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
-          >
-            {displayContent}
-          </ReactMarkdown>
-          {isStreaming && (
-            <div className="inline-flex items-center gap-1 ml-0.5 align-middle">
-              <div className="streaming-dots">
-                <span className="streaming-dot" />
-                <span className="streaming-dot" />
-                <span className="streaming-dot" />
-              </div>
+        {/* User message edit UI — inline textarea that replaces content on edit */}
+        {isUser && editMode ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              autoFocus
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  const trimmed = editValue.trim();
+                  if (trimmed && onEdit) {
+                    onEdit(message.id, trimmed);
+                    setEditMode(false);
+                  }
+                }
+                if (e.key === 'Escape') {
+                  setEditMode(false);
+                }
+              }}
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[60px] max-h-[200px]"
+              rows={Math.min(editValue.split('\n').length + 1, 8)}
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <span className="text-xs text-gray-400">⌘↵ to submit</span>
+              <button
+                onClick={() => setEditMode(false)}
+                className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const trimmed = editValue.trim();
+                  if (trimmed && onEdit) {
+                    onEdit(message.id, trimmed);
+                    setEditMode(false);
+                  }
+                }}
+                disabled={!editValue.trim()}
+                className="px-3 py-1 text-xs text-white rounded-md transition-colors disabled:opacity-40"
+                style={{ backgroundColor: 'var(--accent-color)' }}
+              >
+                Send
+              </button>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="markdown-content">
+            <StreamingMarkdown
+              content={displayContent}
+              isStreaming={isStreaming}
+              isUser={isUser}
+            />
+            {/* Edit pencil — user messages only, appears on hover */}
+            {isUser && !isStreaming && onEdit && (
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 flex justify-end">
+                <button
+                  onClick={() => {
+                    setEditValue(message.content);
+                    setEditMode(true);
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-gray-100 transition-colors"
+                  title="Edit message"
+                  aria-label="Edit this message"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/>
+                  </svg>
+                  Edit
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Generated Documents */}
         {message.generatedDocuments && message.generatedDocuments.length > 0 && (
@@ -314,6 +499,7 @@ function areMessageBubblePropsEqual(
   if (prev.showCitationTrajectory !== next.showCitationTrajectory) return false;
   // Callback identity — only compare by reference (parent should useCallback)
   if (prev.onRegenerate !== next.onRegenerate) return false;
+  if (prev.onEdit !== next.onEdit) return false;
 
   const pm = prev.message;
   const nm = next.message;
