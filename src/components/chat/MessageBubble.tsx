@@ -12,11 +12,11 @@ import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
 
 // Lazy-load heavy message children that only appear conditionally
-const DocumentResultCard = dynamic(() => import('./DocumentResultCard'), { ssr: false });
-const ImageDisplay = dynamic(() => import('./ImageDisplay'), { ssr: false });
-const PodcastPlayer = dynamic(() => import('./PodcastPlayer'), { ssr: false });
-const DataVisualization = dynamic(() => import('./DataVisualization'), { ssr: false });
-const MermaidDiagram = dynamic(() => import('@/components/markdown/MermaidDiagram'), { ssr: false });
+const DocumentResultCard = dynamic(() => import('./DocumentResultCard'), { ssr: false, loading: () => <div className="h-16 animate-pulse bg-gray-200 rounded-lg" /> });
+const ImageDisplay = dynamic(() => import('./ImageDisplay'), { ssr: false, loading: () => <div className="h-48 animate-pulse bg-gray-200 rounded-lg" /> });
+const PodcastPlayer = dynamic(() => import('./PodcastPlayer'), { ssr: false, loading: () => <div className="h-16 animate-pulse bg-gray-200 rounded-lg" /> });
+const DataVisualization = dynamic(() => import('./DataVisualization'), { ssr: false, loading: () => <div className="h-64 animate-pulse bg-gray-200 rounded-lg" /> });
+const MermaidDiagram = dynamic(() => import('@/components/markdown/MermaidDiagram'), { ssr: false, loading: () => <div className="h-48 animate-pulse bg-gray-200 rounded-lg" /> });
 
 const MAX_SOURCES_DISPLAYED = 5;
 const REMARK_PLUGINS = [remarkGfm];

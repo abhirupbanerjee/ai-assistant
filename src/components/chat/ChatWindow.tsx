@@ -24,10 +24,10 @@ import ChatSummaryBanner from './ChatSummaryBanner';
 import ChatWelcome from './ChatWelcome';
 
 // Lazy-load heavy conditional components that only render during specific streaming states
-const SubagentPanel = dynamic(() => import('./SubagentPanel'), { ssr: false });
-const HitlClarificationCard = dynamic(() => import('./HitlClarificationCard'), { ssr: false });
-const PlanApprovalCard = dynamic(() => import('./PlanApprovalCard'), { ssr: false });
-const SubagentApprovalCard = dynamic(() => import('./SubagentApprovalCard'), { ssr: false });
+const SubagentPanel = dynamic(() => import('./SubagentPanel'), { ssr: false, loading: () => <div className="h-24 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
+const HitlClarificationCard = dynamic(() => import('./HitlClarificationCard'), { ssr: false, loading: () => <div className="h-32 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
+const PlanApprovalCard = dynamic(() => import('./PlanApprovalCard'), { ssr: false, loading: () => <div className="h-40 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
+const SubagentApprovalCard = dynamic(() => import('./SubagentApprovalCard'), { ssr: false, loading: () => <div className="h-32 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
 
 
 interface WelcomeConfig {
@@ -222,6 +222,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const streamingAreaRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
 
   // Mobile scroll-based hiding
   const { isHidden: isScrollingDown, onScroll: onScrollHide } = useScrollHide();
@@ -540,6 +543,16 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     }
   }, [messages.length, isScrolledUp, streamingState.isStreaming, threadId, confirmRestore]);
 
+  // Auto-scroll the capped streaming area so new content stays visible
+  useEffect(() => {
+    if (streamingState.isStreaming) {
+      const streamingArea = streamingAreaRef.current;
+      if (streamingArea) {
+        streamingArea.scrollTop = streamingArea.scrollHeight;
+      }
+    }
+  }, [streamingState.currentContent, streamingState.currentThinkingContent, streamingState.isStreaming]);
+
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -640,11 +653,12 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
   const handleRegenerate = useCallback((messageId: string) => {
     if (streamingState.isStreaming) return;
-    const index = messages.findIndex(m => m.id === messageId);
+    const currentMessages = messagesRef.current;
+    const index = currentMessages.findIndex(m => m.id === messageId);
     if (index < 0) return;
-    const message = messages[index];
+    const message = currentMessages[index];
     if (message.role !== 'assistant') return;
-    const precedingUserMsg = [...messages]
+    const precedingUserMsg = [...currentMessages]
       .slice(0, index)
       .reverse()
       .find(m => m.role === 'user');
@@ -652,7 +666,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       setMessages(prev => prev.slice(0, index));
       sendMessage(precedingUserMsg.content);
     }
-  }, [messages, streamingState.isStreaming, sendMessage]);
+  }, [streamingState.isStreaming, sendMessage]);
 
   const handleUploadComplete = useCallback((filename: string) => {
     setUploads((prev) => [...prev, filename]);
@@ -695,7 +709,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         readOnly={!!activeThread}
       />
     ) : null;
-  }, [threadId, userSubscriptions, pendingCategoryId, activeThread]);
+  }, [threadId, userSubscriptions, pendingCategoryId, activeThread?.id]);
 
   const attachmentChipsSlot = useMemo(() => (
     <AttachmentChipsRow
@@ -800,8 +814,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       </div>
 
       {/* Streaming / Processing Area — isolated from message list scroll container
-           to prevent SSE-triggered re-layouts from recalculating the virtualized list. */}
-      <div className="px-4 shrink-0">
+           to prevent SSE-triggered re-layouts from recalculating the virtualized list.
+           Capped at 40vh so a long stream can't push the input bar off-screen. */}
+      <div ref={streamingAreaRef} className="px-4 shrink-0 max-h-[40vh] overflow-y-auto">
         {/* Processing Indicator - shows detailed status during all phases */}
         {(streamingState.isStreaming || (loading && streamingState.processingDetails.phase !== 'complete')) && (
           <ProcessingIndicator

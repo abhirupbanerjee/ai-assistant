@@ -241,6 +241,43 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageVersionRef = useRef(0); // Prevents stale updates from aborted streams
 
+  // Parallel refs for accumulated artifacts — read in the 'done' event so we
+  // don't rely on stateRef which lags behind batched setState updates.
+  const sourcesRef = useRef<Source[]>([]);
+  const visualizationsRef = useRef<MessageVisualization[]>([]);
+  const documentsRef = useRef<GeneratedDocumentInfo[]>([]);
+  const imagesRef = useRef<GeneratedImageInfo[]>([]);
+  const diagramsRef = useRef<DiagramHint[]>([]);
+  const podcastsRef = useRef<PodcastHint[]>([]);
+
+  const resetArtifactRefs = useCallback(() => {
+    sourcesRef.current = [];
+    visualizationsRef.current = [];
+    documentsRef.current = [];
+    imagesRef.current = [];
+    diagramsRef.current = [];
+    podcastsRef.current = [];
+  }, []);
+
+  // Unified RAF flush — always writes both content and thinking buffers so that
+  // interleaved chunk/thinking_chunk events never leave one buffer stale.
+  const flushBuffers = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      currentContent: contentBufferRef.current,
+      currentThinkingContent: thinkingBufferRef.current,
+    }));
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        flushBuffers();
+        rafRef.current = undefined;
+      });
+    }
+  }, [flushBuffers]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -343,37 +380,43 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
       case 'artifact':
         if (event.subtype === 'visualization') {
+          visualizationsRef.current = [...visualizationsRef.current, event.data];
           setState(prev => ({
             ...prev,
-            visualizations: [...prev.visualizations, event.data],
+            visualizations: visualizationsRef.current,
           }));
         } else if (event.subtype === 'document') {
+          documentsRef.current = [...documentsRef.current, event.data];
           setState(prev => ({
             ...prev,
-            documents: [...prev.documents, event.data],
+            documents: documentsRef.current,
           }));
         } else if (event.subtype === 'image') {
+          imagesRef.current = [...imagesRef.current, event.data];
           setState(prev => ({
             ...prev,
-            images: [...prev.images, event.data],
+            images: imagesRef.current,
           }));
         } else if (event.subtype === 'diagram') {
+          diagramsRef.current = [...diagramsRef.current, event.data];
           setState(prev => ({
             ...prev,
-            diagrams: [...prev.diagrams, event.data],
+            diagrams: diagramsRef.current,
           }));
         } else if (event.subtype === 'podcast') {
+          podcastsRef.current = [...podcastsRef.current, event.data];
           setState(prev => ({
             ...prev,
-            podcasts: [...prev.podcasts, event.data],
+            podcasts: podcastsRef.current,
           }));
         }
         break;
 
       case 'sources':
+        sourcesRef.current = event.data;
         setState(prev => ({
           ...prev,
-          sources: event.data,
+          sources: sourcesRef.current,
         }));
         break;
 
@@ -827,29 +870,12 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       case 'chunk':
         // Use RAF batching for smooth updates
         contentBufferRef.current += event.content;
-        if (!rafRef.current) {
-          rafRef.current = requestAnimationFrame(() => {
-            setState(prev => ({
-              ...prev,
-              currentContent: contentBufferRef.current,
-            }));
-            rafRef.current = undefined;
-          });
-        }
+        scheduleFlush();
         break;
 
       case 'thinking_chunk':
         thinkingBufferRef.current += event.content;
-        if (!rafRef.current) {
-          rafRef.current = requestAnimationFrame(() => {
-            setState(prev => ({
-              ...prev,
-              currentContent: contentBufferRef.current,
-              currentThinkingContent: thinkingBufferRef.current,
-            }));
-            rafRef.current = undefined;
-          });
-        }
+        scheduleFlush();
         break;
 
       case 'done': {
@@ -858,11 +884,19 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           cancelAnimationFrame(rafRef.current);
           rafRef.current = undefined;
         }
-        // Read current state values from ref BEFORE setState to avoid calling
-        // onComplete inside a setState updater (would fire twice in React strict mode)
+        // Flush buffers one last time so currentContent / currentThinkingContent are up-to-date
+        flushBuffers();
+        // Read accumulated artifacts from refs, NOT from stateRef, because React may
+        // have batched the artifact setState calls and stateRef still holds the old state.
         const doneState = stateRef.current;
         const finalContent = contentBufferRef.current || doneState.currentContent;
         const finalThinking = thinkingBufferRef.current || doneState.currentThinkingContent;
+        const finalSources = sourcesRef.current;
+        const finalVisualizations = visualizationsRef.current;
+        const finalDocuments = documentsRef.current;
+        const finalImages = imagesRef.current;
+        const finalDiagrams = diagramsRef.current;
+        const finalPodcasts = podcastsRef.current;
         const metadata = (event.model || event.totalMs || event.completionTokens) ? {
           model: event.model,
           totalMs: event.totalMs,
@@ -885,7 +919,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             phase: 'complete',
           },
         }));
-        onComplete?.(event.messageId, finalContent, doneState.sources, doneState.visualizations, doneState.documents, doneState.images, doneState.diagrams, doneState.podcasts, metadata, finalThinking || undefined);
+        onComplete?.(event.messageId, finalContent, finalSources, finalVisualizations, finalDocuments, finalImages, finalDiagrams, finalPodcasts, metadata, finalThinking || undefined);
         break;
       }
 
@@ -920,6 +954,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     // Reset state for new message
     contentBufferRef.current = '';
     thinkingBufferRef.current = '';
+    resetArtifactRefs();
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = undefined;
@@ -1045,6 +1080,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       cancelAnimationFrame(rafRef.current);
       rafRef.current = undefined;
     }
+    resetArtifactRefs();
     // Reset all streaming state including processing details
     setState(prev => ({
       ...prev,
@@ -1081,6 +1117,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     abort();
     contentBufferRef.current = '';
     thinkingBufferRef.current = '';
+    resetArtifactRefs();
     setState(initialState);
   }, [abort]);
 

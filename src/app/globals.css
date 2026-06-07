@@ -42,8 +42,9 @@ html, body {
   overscroll-behavior-y: contain;
   /* content-visibility reduces layout cost of off-screen messages */
   content-visibility: auto;
-  /* contain isolates layout/paint invalidations to the scroll container */
-  contain: layout paint;
+  /* GPU-accelerated scrolling — promote scroll layer to reduce compositing cost */
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 /* Message list items get intrinsic size containment for stable scroll anchoring */
