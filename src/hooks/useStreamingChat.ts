@@ -840,7 +840,16 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
       case 'thinking_chunk':
         thinkingBufferRef.current += event.content;
-        setState(prev => ({ ...prev, currentThinkingContent: thinkingBufferRef.current }));
+        if (!rafRef.current) {
+          rafRef.current = requestAnimationFrame(() => {
+            setState(prev => ({
+              ...prev,
+              currentContent: contentBufferRef.current,
+              currentThinkingContent: thinkingBufferRef.current,
+            }));
+            rafRef.current = undefined;
+          });
+        }
         break;
 
       case 'done': {
@@ -1082,7 +1091,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
    * Note: Pause takes effect AFTER the current task completes (graceful pause)
    */
   const pausePlan = useCallback(async (reason?: string): Promise<boolean> => {
-    const planId = state.activePlanId;
+    const planId = stateRef.current.activePlanId;
     console.log('[useStreamingChat] Pause requested, activePlanId:', planId);
 
     if (!planId) {
@@ -1113,13 +1122,13 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       console.error('[useStreamingChat] Pause error:', error);
       return false;
     }
-  }, [state.activePlanId]);
+  }, []);
 
   /**
    * Resume a paused autonomous plan
    */
   const resumePlan = useCallback(async (): Promise<boolean> => {
-    const planId = state.activePlanId;
+    const planId = stateRef.current.activePlanId;
     if (!planId) {
       console.warn('[useStreamingChat] Cannot resume: no active plan');
       return false;
@@ -1143,13 +1152,13 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       console.error('[useStreamingChat] Resume error:', error);
       return false;
     }
-  }, [state.activePlanId]);
+  }, []);
 
   /**
    * Stop the current autonomous plan gracefully
    */
   const stopPlan = useCallback(async (reason?: string): Promise<boolean> => {
-    const planId = state.activePlanId;
+    const planId = stateRef.current.activePlanId;
     if (!planId) {
       console.warn('[useStreamingChat] Cannot stop: no active plan');
       return false;
@@ -1174,13 +1183,13 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       console.error('[useStreamingChat] Stop error:', error);
       return false;
     }
-  }, [state.activePlanId]);
+  }, []);
 
   /**
    * Skip a specific task in the autonomous plan
    */
   const skipTask = useCallback(async (taskId: number, reason?: string): Promise<boolean> => {
-    const planId = state.activePlanId;
+    const planId = stateRef.current.activePlanId;
     if (!planId) {
       console.warn('[useStreamingChat] Cannot skip task: no active plan');
       return false;
@@ -1219,7 +1228,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       console.error('[useStreamingChat] Skip task error:', error);
       return false;
     }
-  }, [state.activePlanId]);
+  }, []);
 
   const approveSubagentTool = useCallback(async (
     taskId: number,

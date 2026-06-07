@@ -1,21 +1,25 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
+import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Message, MessageMetadata } from '@/types';
 import SourceCard from './SourceCard';
-import DocumentResultCard from './DocumentResultCard';
-import ImageDisplay from './ImageDisplay';
-import PodcastPlayer from './PodcastPlayer';
-import DataVisualization from './DataVisualization';
-import MermaidDiagram from '@/components/markdown/MermaidDiagram';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
 
+// Lazy-load heavy message children that only appear conditionally
+const DocumentResultCard = dynamic(() => import('./DocumentResultCard'), { ssr: false });
+const ImageDisplay = dynamic(() => import('./ImageDisplay'), { ssr: false });
+const PodcastPlayer = dynamic(() => import('./PodcastPlayer'), { ssr: false });
+const DataVisualization = dynamic(() => import('./DataVisualization'), { ssr: false });
+const MermaidDiagram = dynamic(() => import('@/components/markdown/MermaidDiagram'), { ssr: false });
+
 const MAX_SOURCES_DISPLAYED = 5;
+const REMARK_PLUGINS = [remarkGfm];
 
 function MetadataFooter({ metadata }: { metadata: MessageMetadata }) {
   const [expanded, setExpanded] = useState(false);
@@ -53,7 +57,7 @@ interface MessageBubbleProps {
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
   /** Callback to regenerate the assistant response (assistant messages only) */
-  onRegenerate?: () => void;
+  onRegenerate?: (messageId: string) => void;
   /** Thread ID for citation trajectory card */
   threadId?: string | null;
   /** Whether to show source documents */
@@ -62,7 +66,7 @@ interface MessageBubbleProps {
   showCitationTrajectory?: boolean;
 }
 
-export default function MessageBubble({ message, isStreaming = false, onRegenerate, threadId, showSources = true, showCitationTrajectory = true }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, threadId, showSources = true, showCitationTrajectory = true }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -148,7 +152,7 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
 
         <div className="markdown-content">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={REMARK_PLUGINS}
             components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
           >
             {displayContent}
@@ -281,13 +285,90 @@ export default function MessageBubble({ message, isStreaming = false, onRegenera
         </div>
 
         {/* Message action bar — visible on hover, assistant messages only, not while streaming */}
-        {!isUser && !isStreaming && (
+        {!isUser && !isStreaming && onRegenerate && (
           <MessageActions
             content={message.content}
-            onRegenerate={onRegenerate}
+            onRegenerate={() => onRegenerate(message.id)}
           />
         )}
       </div>
     </div>
   );
+}, areMessageBubblePropsEqual);
+
+export default MessageBubble;
+
+/**
+ * Custom comparator for React.memo on MessageBubble.
+ * Only re-renders when props that affect the visual output actually change.
+ * Avoids re-rendering on identity-changing object references when content is the same.
+ */
+function areMessageBubblePropsEqual(
+  prev: MessageBubbleProps,
+  next: MessageBubbleProps
+): boolean {
+  // Scalar props — cheap comparison first
+  if (prev.isStreaming !== next.isStreaming) return false;
+  if (prev.threadId !== next.threadId) return false;
+  if (prev.showSources !== next.showSources) return false;
+  if (prev.showCitationTrajectory !== next.showCitationTrajectory) return false;
+  // Callback identity — only compare by reference (parent should useCallback)
+  if (prev.onRegenerate !== next.onRegenerate) return false;
+
+  const pm = prev.message;
+  const nm = next.message;
+
+  // Core fields that drive re-renders
+  if (pm.id !== nm.id) return false;
+  if (pm.role !== nm.role) return false;
+  if (pm.content !== nm.content) return false;
+  if (pm.thinkingContent !== nm.thinkingContent) return false;
+
+  // Timestamp
+  if (pm.timestamp instanceof Date && nm.timestamp instanceof Date) {
+    if (pm.timestamp.getTime() !== nm.timestamp.getTime()) return false;
+  } else if (pm.timestamp !== nm.timestamp) {
+    return false;
+  }
+
+  // Metadata (shallow compare keys that matter for the footer)
+  if (!shallowEqual(pm.metadata, nm.metadata)) return false;
+
+  // Nested arrays — shallow compare by length + reference identity of first items
+  if (!arrayRefsEqual(pm.sources, nm.sources)) return false;
+  if (!arrayRefsEqual(pm.visualizations, nm.visualizations)) return false;
+  if (!arrayRefsEqual(pm.generatedDocuments, nm.generatedDocuments)) return false;
+  if (!arrayRefsEqual(pm.generatedImages, nm.generatedImages)) return false;
+  if (!arrayRefsEqual(pm.generatedPodcasts, nm.generatedPodcasts)) return false;
+  if (!arrayRefsEqual(pm.generatedDiagrams, nm.generatedDiagrams)) return false;
+
+  return true;
+}
+
+function shallowEqual(
+  a: object | null | undefined,
+  b: object | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(k => (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k]);
+}
+
+function arrayRefsEqual<T>(
+  a: T[] | null | undefined,
+  b: T[] | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return !a && !b;
+  if (a.length !== b.length) return false;
+  // Compare reference identity of ALL items;
+  // if the array reference is new but items are the same objects,
+  // it's typically a spread operation that doesn't change content.
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }

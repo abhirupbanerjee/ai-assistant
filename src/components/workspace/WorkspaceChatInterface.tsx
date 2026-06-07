@@ -11,6 +11,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowUp, RefreshCw, ArrowDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 import type { Source } from '@/types';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 import VoiceInput from '@/components/chat/VoiceInput';
@@ -352,7 +354,7 @@ function MessageBubble({ message, primaryColor, showSources: showSourcesProp = t
       >
         <div className={`markdown-content ${isUser ? 'text-white' : ''}`}>
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={REMARK_PLUGINS}
             components={MarkdownComponents}
           >
             {message.content}

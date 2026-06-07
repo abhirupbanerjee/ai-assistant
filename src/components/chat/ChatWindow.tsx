@@ -1,26 +1,33 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { RefreshCw, BookOpen, ChevronDown, ChevronUp, ArrowDown } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { RefreshCw, BookOpen, ArrowDown } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
+import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
 import MessageInput from './MessageInput';
 import type { ChatMode } from './ModeToggle';
 import CategoryChip from './CategoryChip';
 import AttachmentChipsRow from './AttachmentChipsRow';
-import Spinner from '@/components/ui/Spinner';
-import ProcessingIndicator from './ProcessingIndicator';
-import SubagentPanel from './SubagentPanel';
 
-import { useStreamingChat, AutonomousPlanState, AutonomousTaskState } from '@/hooks/useStreamingChat';
-import HitlClarificationCard from './HitlClarificationCard';
-import PlanApprovalCard from './PlanApprovalCard';
-import SubagentApprovalCard from './SubagentApprovalCard';
+import ProcessingIndicator from './ProcessingIndicator';
+
+import { useStreamingChat } from '@/hooks/useStreamingChat';
 import { useScrollHide } from '@/hooks/useScrollHide';
+import { useScrollMemory } from '@/hooks/useScrollMemory';
+import { useChatArtifacts } from '@/hooks/useChatArtifacts';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import ChatSummaryBanner from './ChatSummaryBanner';
 import ChatWelcome from './ChatWelcome';
+
+// Lazy-load heavy conditional components that only render during specific streaming states
+const SubagentPanel = dynamic(() => import('./SubagentPanel'), { ssr: false });
+const HitlClarificationCard = dynamic(() => import('./HitlClarificationCard'), { ssr: false });
+const PlanApprovalCard = dynamic(() => import('./PlanApprovalCard'), { ssr: false });
+const SubagentApprovalCard = dynamic(() => import('./SubagentApprovalCard'), { ssr: false });
 
 
 interface WelcomeConfig {
@@ -61,6 +68,22 @@ interface ThreadSummary {
   summary: string;
   messagesSummarized: number;
   createdAt: string;
+}
+
+// Fallback UI for MessageInput when it crashes — defined outside component
+// so React does not unmount/remount it on every parent render.
+function InputFallback() {
+  return (
+    <div className="p-4 bg-gray-50 border-t border-gray-200 text-center">
+      <p className="text-sm text-gray-500 mb-2">Input unavailable — please refresh the page</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
+      >
+        Refresh
+      </button>
+    </div>
+  );
 }
 
 const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindow({
@@ -204,6 +227,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const { isHidden: isScrollingDown, onScroll: onScrollHide } = useScrollHide();
   const mobileMenu = useMobileMenuOptional();
 
+  // Per-thread scroll position memory
+  const { saveScroll, restoreScroll, confirmRestore } = useScrollMemory(messagesContainerRef);
+
   // Sync scroll state to mobile menu context
   useEffect(() => {
     mobileMenu?.setScrollingDown(isScrollingDown);
@@ -269,54 +295,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
 
-  // Compute generated docs, images, and podcasts from all messages + streaming state
-  const { generatedDocs, generatedImages, generatedPodcasts } = useMemo(() => {
-    const docs: GeneratedDocumentInfo[] = [];
-    const images: GeneratedImageInfo[] = [];
-    const podcasts: PodcastHint[] = [];
-    // Include artifacts from saved messages
-    for (const msg of messages) {
-      if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
-      if (msg.generatedImages) images.push(...msg.generatedImages);
-      if (msg.generatedPodcasts) podcasts.push(...msg.generatedPodcasts);
-    }
-    // Include real-time streaming artifacts (for sidebar updates during generation)
-    if (streamingState.documents) {
-      for (const doc of streamingState.documents) {
-        // Avoid duplicates by checking id
-        if (!docs.some(d => d.id === doc.id)) {
-          docs.push(doc);
-        }
-      }
-    }
-    if (streamingState.images) {
-      for (const img of streamingState.images) {
-        if (!images.some(i => i.id === img.id)) {
-          images.push(img);
-        }
-      }
-    }
-    if (streamingState.podcasts) {
-      for (const podcast of streamingState.podcasts) {
-        if (!podcasts.some(p => p.id === podcast.id)) {
-          podcasts.push(podcast);
-        }
-      }
-    }
-    return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts };
-  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts]);
-
-  // Notify parent of artifacts changes
-  useEffect(() => {
-    onArtifactsChange?.({
-      threadId,
-      uploads,
-      generatedDocs,
-      generatedImages,
-      generatedPodcasts,
-      urlSources,
-    });
-  }, [threadId, uploads, generatedDocs, generatedImages, generatedPodcasts, urlSources, onArtifactsChange]);
+  // Compute aggregated artifacts (docs, images, podcasts) from messages + streaming state
+  const { generatedDocs, generatedImages, generatedPodcasts } = useChatArtifacts({
+    threadId,
+    messages,
+    uploads,
+    urlSources,
+    streamingState,
+    onArtifactsChange,
+  });
 
   // Fetch autonomous mode admin setting on mount
   useEffect(() => {
@@ -376,6 +363,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     // onThreadCreated() during sendMessage(), and resetting would kill the stream.
     if (isSendingRef.current) return;
 
+    // Save scroll position of current thread before switching
+    if (threadId) {
+      saveScroll(threadId);
+    }
+
     resetStreaming();
 
     // Reset pending uploads/sources when switching threads
@@ -386,6 +378,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       setPendingModelId(null);
       setThreadId(activeThread.id);
       loadThread(activeThread.id);
+      // Restore scroll position for this thread (if saved)
+      restoreScroll(activeThread.id);
       if (activeThread.isSummarized) {
         loadSummaryData(activeThread.id);
       } else {
@@ -400,7 +394,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       setSummaryData(null);
       setArchivedMessages([]);
     }
-  }, [activeThread, resetStreaming, loadThread]);
+  }, [activeThread, resetStreaming, loadThread, saveScroll, restoreScroll, threadId]);
 
   // Recover from backgrounding on mobile: reload thread state when returning to tab
   const errorRef = useRef(error);
@@ -539,7 +533,12 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
     }
-  }, [messages, streamingState.currentContent, isScrolledUp, streamingState.isStreaming, streamingState.planApprovalEvent, streamingState.preflightEvent]);
+
+    // Confirm restored scroll position after messages have rendered
+    if (threadId && !streamingState.isStreaming) {
+      confirmRestore(threadId);
+    }
+  }, [messages.length, isScrolledUp, streamingState.isStreaming, threadId, confirmRestore]);
 
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = messagesContainerRef.current;
@@ -622,32 +621,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   }, [threadId, createThread, sendStreamingMessage, chatPreferences]);
 
 
-  const handleUploadComplete = (filename: string) => {
-    setUploads((prev) => [...prev, filename]);
-    setPendingUploads((prev) => [...prev, filename]);
-  };
 
-  const handleUrlSourceAdded = (source: {
-    filename: string;
-    originalUrl: string;
-    sourceType: 'web' | 'youtube';
-    title?: string;
-  }) => {
-    setUrlSources((prev) => [
-      ...prev,
-      {
-        ...source,
-        extractedAt: new Date().toISOString(),
-      },
-    ]);
-    setPendingUrlSources((prev) => [
-      ...prev,
-      {
-        ...source,
-        extractedAt: new Date().toISOString(),
-      },
-    ]);
-  };
 
   const retry = () => {
     setError(null);
@@ -660,64 +634,90 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Combined error from local state or streaming state
   const displayError = error || streamingState.error;
 
-  const handleStarterSelect = (prompt: string) => {
+  const handleStarterSelect = useCallback((prompt: string) => {
     sendMessage(prompt);
-  };
+  }, [sendMessage]);
 
-  // Fallback UI for MessageInput when it crashes
-  const InputFallback = () => (
-    <div className="p-4 bg-gray-50 border-t border-gray-200 text-center">
-      <p className="text-sm text-gray-500 mb-2">Input unavailable — please refresh the page</p>
-      <button
-        onClick={() => window.location.reload()}
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
-      >
-        Refresh
-      </button>
-    </div>
-  );
+  const handleRegenerate = useCallback((messageId: string) => {
+    if (streamingState.isStreaming) return;
+    const index = messages.findIndex(m => m.id === messageId);
+    if (index < 0) return;
+    const message = messages[index];
+    if (message.role !== 'assistant') return;
+    const precedingUserMsg = [...messages]
+      .slice(0, index)
+      .reverse()
+      .find(m => m.role === 'user');
+    if (precedingUserMsg) {
+      setMessages(prev => prev.slice(0, index));
+      sendMessage(precedingUserMsg.content);
+    }
+  }, [messages, streamingState.isStreaming, sendMessage]);
+
+  const handleUploadComplete = useCallback((filename: string) => {
+    setUploads((prev) => [...prev, filename]);
+    setPendingUploads((prev) => [...prev, filename]);
+  }, []);
+
+  const handleUrlSourceAdded = useCallback((source: {
+    filename: string;
+    originalUrl: string;
+    sourceType: 'web' | 'youtube';
+    title?: string;
+  }) => {
+    const enriched = { ...source, extractedAt: new Date().toISOString() };
+    setUrlSources((prev) => [...prev, enriched]);
+    setPendingUrlSources((prev) => [...prev, enriched]);
+  }, []);
+
+  const handleRemoveUpload = useCallback((filename: string) => {
+    setPendingUploads(prev => prev.filter(f => f !== filename));
+    setUploads(prev => prev.filter(f => f !== filename));
+  }, []);
+
+  const handleRemoveUrlSource = useCallback((filename: string) => {
+    setPendingUrlSources(prev => prev.filter(s => s.filename !== filename));
+    setUrlSources(prev => prev.filter(s => s.filename !== filename));
+  }, []);
+
+  const handleAbort = useCallback(() => {
+    abortStreaming();
+    setLoading(false);
+  }, [abortStreaming]);
+
+  const categoryChipSlot = useMemo(() => {
+    return !threadId ? (
+      <CategoryChip
+        subscriptions={userSubscriptions}
+        selectedCategoryId={pendingCategoryId}
+        onSelect={setPendingCategoryId}
+        disabled={!!threadId}
+        readOnly={!!activeThread}
+      />
+    ) : null;
+  }, [threadId, userSubscriptions, pendingCategoryId, activeThread]);
+
+  const attachmentChipsSlot = useMemo(() => (
+    <AttachmentChipsRow
+      uploads={uploads}
+      urlSources={urlSources}
+      pendingUploads={pendingUploads}
+      pendingUrlSources={pendingUrlSources}
+      onRemoveUpload={handleRemoveUpload}
+      onRemoveUrlSource={handleRemoveUrlSource}
+    />
+  ), [uploads, urlSources, pendingUploads, pendingUrlSources, handleRemoveUpload, handleRemoveUrlSource]);
 
   return (
 
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Summarization Banner */}
-      {activeThread?.isSummarized && summaryData && (
-        <div
-          className="border-b px-6 py-3"
-          style={{
-            backgroundColor: 'var(--accent-lighter)',
-            borderColor: 'var(--accent-border)',
-          }}
-        >
-          <button
-            onClick={() => setShowSummaryDetails(!showSummaryDetails)}
-            className="w-full flex items-center justify-between text-left"
-          >
-            <div className="flex items-center gap-2" style={{ color: 'var(--accent-text)' }}>
-              <BookOpen size={18} />
-              <span className="text-sm font-medium">
-                This conversation has been summarized ({summaryData.messagesSummarized} messages compressed)
-              </span>
-            </div>
-            {showSummaryDetails ? (
-              <ChevronUp size={18} style={{ color: 'var(--accent-color)' }} />
-            ) : (
-              <ChevronDown size={18} style={{ color: 'var(--accent-color)' }} />
-            )}
-          </button>
-          {showSummaryDetails && (
-            <div
-              className="mt-3 p-3 bg-white rounded-lg border"
-              style={{ borderColor: 'var(--accent-border)' }}
-            >
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{summaryData.summary}</p>
-              <p className="text-xs text-gray-500 mt-2">
-                Summarized on {new Date(summaryData.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      <ChatSummaryBanner
+        isSummarized={activeThread?.isSummarized ?? false}
+        summaryData={summaryData}
+        showSummaryDetails={showSummaryDetails}
+        onToggleDetails={() => setShowSummaryDetails(!showSummaryDetails)}
+      />
 
       {/* Messages */}
       <div
@@ -759,49 +759,63 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           </div>
         )}
 
-        {messages.map((message, index) => (
+        {messages.map((message) => (
           <MessageBubble
             key={message.id}
             message={message}
             threadId={threadId}
             showSources={effectiveShowSources}
             showCitationTrajectory={effectiveShowCitationTrajectory}
-            onRegenerate={
-              message.role === 'assistant' && !streamingState.isStreaming
-                ? () => {
-                    // Find the most recent user message before this assistant message
-                    const precedingUserMsg = [...messages]
-                      .slice(0, index)
-                      .reverse()
-                      .find(m => m.role === 'user');
-                    if (precedingUserMsg) {
-                      // Remove this assistant message and resend the user message
-                      setMessages(prev => prev.slice(0, index));
-                      sendMessage(precedingUserMsg.content);
-                    }
-                  }
-                : undefined
-            }
+            onRegenerate={message.role === 'assistant' ? handleRegenerate : undefined}
           />
         ))}
 
+        {displayError && (
+          <div className="flex justify-center mb-4">
+            <div className="bg-red-50 text-red-600 rounded-lg px-4 py-3 flex items-center gap-3">
+              <span>{displayError}</span>
+              <button
+                onClick={retry}
+                className="flex items-center gap-1 text-sm font-medium hover:underline"
+              >
+                <RefreshCw size={14} />
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+
+        {/* Scroll to bottom FAB */}
+        {isScrolledUp && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-4 right-4 p-2 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all text-gray-600"
+            title="Scroll to bottom"
+          >
+            <ArrowDown size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Streaming / Processing Area — isolated from message list scroll container
+           to prevent SSE-triggered re-layouts from recalculating the virtualized list. */}
+      <div className="px-4 shrink-0">
         {/* Processing Indicator - shows detailed status during all phases */}
         {(streamingState.isStreaming || (loading && streamingState.processingDetails.phase !== 'complete')) && (
           <ProcessingIndicator
             details={streamingState.processingDetails}
             onToggleExpand={toggleProcessingDetails}
-            onAbort={() => {
-              abortStreaming();
-              setLoading(false);
-            }}
+            onAbort={handleAbort}
             isAutonomous={isAutonomousMode}
             isPaused={streamingState.isPaused}
             isStopped={streamingState.isStopped}
-            onPause={() => pausePlan()}
-            onResume={() => resumePlan()}
-            onStop={() => stopPlan()}
+            onPause={pausePlan}
+            onResume={resumePlan}
+            onStop={stopPlan}
             autonomousPlan={streamingState.autonomousPlan}
-            onSkipTask={(taskId) => skipTask(taskId)}
+            onSkipTask={skipTask}
           />
         )}
 
@@ -812,7 +826,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             totalCost={streamingState.totalCost}
             isPaused={streamingState.isPaused}
             isStopped={streamingState.isStopped}
-            onSkipTask={(taskId) => skipTask(taskId)}
+            onSkipTask={skipTask}
           />
         )}
 
@@ -995,9 +1009,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           />
         )}
 
-        {/* Restored plan info is now shown inline via per-task progressive updates (Phase 1.4) */}
+        {/* Skeleton placeholder — shown while loading but no streaming content yet */}
+        {loading && !streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
+          <SkeletonMessage />
+        )}
 
-        {/* Streaming Content */}
+        {/* Compact skeleton — shown while streaming has started but first tokens haven't arrived */}
+        {streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (
+          <CompactSkeletonMessage />
+        )}
+
+        {/* Streaming Content — isolated from scroll container to prevent
+            SSE-triggered layout thrashing on the message list */}
         {streamingState.isStreaming && (streamingState.currentContent || streamingState.currentThinkingContent) && (
           <MessageBubble
             message={{
@@ -1016,34 +1039,6 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
             showSources={effectiveShowSources}
             showCitationTrajectory={effectiveShowCitationTrajectory}
           />
-        )}
-
-        {displayError && (
-          <div className="flex justify-center mb-4">
-            <div className="bg-red-50 text-red-600 rounded-lg px-4 py-3 flex items-center gap-3">
-              <span>{displayError}</span>
-              <button
-                onClick={retry}
-                className="flex items-center gap-1 text-sm font-medium hover:underline"
-              >
-                <RefreshCw size={14} />
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-
-        {/* Scroll to bottom FAB */}
-        {isScrolledUp && (
-          <button
-            onClick={scrollToBottom}
-            className="absolute bottom-4 right-4 p-2 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all text-gray-600"
-            title="Scroll to bottom"
-          >
-            <ArrowDown size={16} />
-          </button>
         )}
       </div>
 
@@ -1067,33 +1062,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            adminCitationTrajectoryDisabled={!displaySettings.citationTrajectoryEnabled}
            onFocus={onInputFocus}
            onBlur={onInputBlur}
-            categoryChipSlot={
-              !threadId ? (
-                <CategoryChip
-                  subscriptions={userSubscriptions}
-                  selectedCategoryId={pendingCategoryId}
-                  onSelect={setPendingCategoryId}
-                  disabled={!!threadId}
-                  readOnly={!!activeThread}
-                />
-              ) : null
-            }
-           attachmentChipsSlot={
-             <AttachmentChipsRow
-               uploads={uploads}
-               urlSources={urlSources}
-               pendingUploads={pendingUploads}
-               pendingUrlSources={pendingUrlSources}
-               onRemoveUpload={(filename: string) => {
-                 setPendingUploads(prev => prev.filter(f => f !== filename));
-                 setUploads(prev => prev.filter(f => f !== filename));
-               }}
-               onRemoveUrlSource={(filename: string) => {
-                 setPendingUrlSources(prev => prev.filter(s => s.filename !== filename));
-                 setUrlSources(prev => prev.filter(s => s.filename !== filename));
-               }}
-             />
-           }
+           categoryChipSlot={categoryChipSlot}
+           attachmentChipsSlot={attachmentChipsSlot}
          />
        </ErrorBoundary>
 

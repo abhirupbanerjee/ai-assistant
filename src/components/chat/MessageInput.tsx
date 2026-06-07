@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 
 import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain, BookOpen } from 'lucide-react';
 import VoiceInput from './VoiceInput';
@@ -63,7 +63,7 @@ interface CurrentModelInfo {
   thinkingCapable: boolean;
 }
 
-export default function MessageInput({
+const MessageInput = memo(function MessageInput({
   onSend,
   disabled,
   threadId,
@@ -602,4 +602,6 @@ export default function MessageInput({
       {/* Draft restored toast — fired via useToast on restore */}
     </div>
   );
-}
+});
+
+export default MessageInput;

@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 import {
   MessageSquare,
   User,
@@ -306,7 +308,7 @@ export default function SharedThreadPage({ params }: PageProps) {
                   >
                     <div className={`markdown-content ${message.role === 'user' ? 'text-white' : ''}`}>
                       <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
+                        remarkPlugins={REMARK_PLUGINS}
                         components={MarkdownComponents}
                       >
                         {message.content}

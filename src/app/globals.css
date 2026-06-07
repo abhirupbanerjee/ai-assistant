@@ -40,6 +40,15 @@ html, body {
 /* Scrollable container that prevents mobile pull-to-refresh */
 .scroll-container {
   overscroll-behavior-y: contain;
+  /* content-visibility reduces layout cost of off-screen messages */
+  content-visibility: auto;
+  /* contain isolates layout/paint invalidations to the scroll container */
+  contain: layout paint;
+}
+
+/* Message list items get intrinsic size containment for stable scroll anchoring */
+.scroll-container > * {
+  contain-intrinsic-size: auto 200px;
 }
 
 body {

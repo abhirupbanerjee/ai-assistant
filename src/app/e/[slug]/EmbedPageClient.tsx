@@ -14,6 +14,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+const REMARK_PLUGINS = [remarkGfm];
 import { Copy, Check } from 'lucide-react';
 import VoiceInput from '@/components/chat/VoiceInput';
 import { WorkspaceFileUpload, AttachmentChip } from '@/components/workspace/WorkspaceFileUpload';
@@ -334,7 +336,7 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
               >
                 {message.role === 'assistant' ? (
                   <div className="embed-markdown">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>
                       {message.content}
                     </ReactMarkdown>
                   </div>
