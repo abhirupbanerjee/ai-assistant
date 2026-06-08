@@ -45,8 +45,10 @@ interface Version {
   include_sources: boolean;
   created_by: string;
   created_at: string;
-  categories?: Array<{ id: number; name: string }>;
-  skills?: Array<{ id: number; name: string }>;
+  category_ids?: number[];
+  category_names?: string[];
+  skill_ids?: number[];
+  skill_names?: string[];
   tools?: Array<{ tool_name: string; is_enabled: boolean; config_override?: Record<string, unknown> }>;
 }
 
@@ -92,6 +94,7 @@ interface Skill {
   id: number;
   name: string;
   description: string | null;
+  categories?: Array<{ id: number; name: string; slug: string }>;
 }
 
 interface EnabledModel {
@@ -168,10 +171,10 @@ export default function VersionEditor({
 
   // Categories, skills, tools
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>(
-    version?.categories?.map((c) => c.id) || []
+    version?.category_ids || []
   );
   const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>(
-    version?.skills?.map((s) => s.id) || []
+    version?.skill_ids || []
   );
   const [enabledTools, setEnabledTools] = useState<string[]>(
     version?.tools?.filter((t) => t.is_enabled).map((t) => t.tool_name) || []
@@ -198,6 +201,27 @@ export default function VersionEditor({
       ...toolTypes,
     ];
   }, [enabledTools]);
+
+  // Group skills by category linkage relative to selected categories
+  const skillGroups = useMemo(() => {
+    if (selectedCategoryIds.length === 0) {
+      return { linked: [] as Skill[], global: skills };
+    }
+
+    const linked: Skill[] = [];
+    const global: Skill[] = [];
+
+    for (const skill of skills) {
+      const skillCategoryIds = skill.categories?.map((c) => c.id) || [];
+      if (skillCategoryIds.length === 0) {
+        global.push(skill);
+      } else if (skillCategoryIds.some((id) => selectedCategoryIds.includes(id))) {
+        linked.push(skill);
+      }
+    }
+
+    return { linked, global };
+  }, [skills, selectedCategoryIds]);
 
   // UI state
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -825,37 +849,124 @@ export default function VersionEditor({
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Skills
               </label>
-              <div className="flex flex-wrap gap-2">
-                {skills.map((skill) => (
-                  <label
-                    key={skill.id}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm cursor-pointer ${
-                      selectedSkillIds.includes(skill.id)
-                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSkillIds.includes(skill.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedSkillIds([...selectedSkillIds, skill.id]);
-                        } else {
-                          setSelectedSkillIds(
-                            selectedSkillIds.filter((id) => id !== skill.id)
-                          );
-                        }
-                      }}
-                      className="hidden"
-                    />
-                    {skill.name}
-                  </label>
-                ))}
-                {skills.length === 0 && (
-                  <p className="text-sm text-gray-500">No skills available</p>
+
+              {/* Linked skills */}
+              {selectedCategoryIds.length > 0 && skillGroups.linked.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                    Linked to selected categories
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {skillGroups.linked.map((skill) => (
+                      <label
+                        key={skill.id}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm cursor-pointer ${
+                          selectedSkillIds.includes(skill.id)
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSkillIds.includes(skill.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSkillIds([...selectedSkillIds, skill.id]);
+                            } else {
+                              setSelectedSkillIds(
+                                selectedSkillIds.filter((id) => id !== skill.id)
+                              );
+                            }
+                          }}
+                          className="hidden"
+                        />
+                        {skill.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Global / unlinked skills */}
+              {selectedCategoryIds.length > 0 && skillGroups.global.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                    Not linked to any category
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {skillGroups.global.map((skill) => (
+                      <label
+                        key={skill.id}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm cursor-pointer ${
+                          selectedSkillIds.includes(skill.id)
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSkillIds.includes(skill.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSkillIds([...selectedSkillIds, skill.id]);
+                            } else {
+                              setSelectedSkillIds(
+                                selectedSkillIds.filter((id) => id !== skill.id)
+                              );
+                            }
+                          }}
+                          className="hidden"
+                        />
+                        {skill.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No categories selected: show all skills */}
+              {selectedCategoryIds.length === 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {skills.map((skill) => (
+                    <label
+                      key={skill.id}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm cursor-pointer ${
+                        selectedSkillIds.includes(skill.id)
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                          : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSkillIds.includes(skill.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSkillIds([...selectedSkillIds, skill.id]);
+                          } else {
+                            setSelectedSkillIds(
+                              selectedSkillIds.filter((id) => id !== skill.id)
+                            );
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      {skill.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Empty states */}
+              {selectedCategoryIds.length === 0 && skills.length === 0 && (
+                <p className="text-sm text-gray-500">No skills available</p>
+              )}
+              {selectedCategoryIds.length > 0 &&
+                skillGroups.linked.length === 0 &&
+                skillGroups.global.length === 0 && (
+                  <p className="text-sm text-gray-500">
+                    No skills available for the selected categories
+                  </p>
                 )}
-              </div>
             </div>
           </div>
         )}

@@ -38,8 +38,10 @@ interface Version {
   max_tokens: number | null;
   created_by: string;
   created_at: string;
-  categories?: Array<{ id: number; name: string }>;
-  skills?: Array<{ id: number; name: string }>;
+  category_ids?: number[];
+  category_names?: string[];
+  skill_ids?: number[];
+  skill_names?: string[];
   tools?: Array<{ tool_name: string; is_enabled: boolean }>;
 }
 
@@ -281,15 +283,15 @@ export default function VersionList({ agentBotId }: VersionListProps) {
                             </p>
                           )}
                           <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            {version.categories && version.categories.length > 0 && (
+                            {version.category_names && version.category_names.length > 0 && (
                               <span>
                                 Categories:{' '}
-                                {version.categories.map((c) => c.name).join(', ')}
+                                {version.category_names.join(', ')}
                               </span>
                             )}
-                            {version.skills && version.skills.length > 0 && (
+                            {version.skill_names && version.skill_names.length > 0 && (
                               <span>
-                                Skills: {version.skills.map((s) => s.name).join(', ')}
+                                Skills: {version.skill_names.join(', ')}
                               </span>
                             )}
                             {version.tools && version.tools.filter((t) => t.is_enabled).length > 0 && (

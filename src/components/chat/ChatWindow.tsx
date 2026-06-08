@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { RefreshCw, ArrowDown } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
@@ -857,23 +857,21 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           </div>
         )}
 
-        {messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            threadId={threadId}
-            showSources={effectiveShowSources}
-            showCitationTrajectory={effectiveShowCitationTrajectory}
-            onRegenerate={message.role === 'assistant' ? handleRegenerate : undefined}
-            onEdit={message.role === 'user' ? handleEditMessage : undefined}
-          />
+        {messages.map((message, idx) => (
+          <Fragment key={message.id}>
+            {idx === messages.length - 1 && (loading || streamingState.isStreaming) && (
+              <div ref={newTurnAnchorRef} aria-hidden="true" />
+            )}
+            <MessageBubble
+              message={message}
+              threadId={threadId}
+              showSources={effectiveShowSources}
+              showCitationTrajectory={effectiveShowCitationTrajectory}
+              onRegenerate={message.role === 'assistant' ? handleRegenerate : undefined}
+              onEdit={message.role === 'user' ? handleEditMessage : undefined}
+            />
+          </Fragment>
         ))}
-
-        {/* Anchor point: scrolled to the top of viewport on send so the new
-            user message is immediately visible at the top of the screen */}
-        {(loading || streamingState.isStreaming) && (
-          <div ref={newTurnAnchorRef} aria-hidden="true" />
-        )}
 
         {/* Skeleton placeholder — shown while loading but no streaming content yet */}
         {loading && !streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (

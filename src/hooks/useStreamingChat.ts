@@ -1039,13 +1039,29 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }
       }
 
-      // Safety: if stream closed without explicit 'done' event, ensure bar is dismissed
+      // Safety: if stream closed without explicit 'done' event, finalize with
+      // buffered content so ChatWindow can reset loading instead of being stuck.
+      const wasStreaming = stateRef.current.isStreaming;
       setState(prev => prev.isStreaming ? {
         ...prev,
         isStreaming: false,
         phase: 'complete',
         processingDetails: { ...prev.processingDetails, phase: 'complete' },
       } : prev);
+      if (wasStreaming && (contentBufferRef.current || thinkingBufferRef.current)) {
+        onComplete?.(
+          `partial-${Date.now()}`,
+          contentBufferRef.current,
+          sourcesRef.current,
+          visualizationsRef.current,
+          documentsRef.current,
+          imagesRef.current,
+          diagramsRef.current,
+          podcastsRef.current,
+          undefined,
+          thinkingBufferRef.current || undefined,
+        );
+      }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         // User aborted, reset state
