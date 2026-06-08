@@ -240,6 +240,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const rafRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageVersionRef = useRef(0); // Prevents stale updates from aborted streams
+  const completedRef = useRef(false); // Prevents double onComplete when done event fires
 
   // Parallel refs for accumulated artifacts — read in the 'done' event so we
   // don't rely on stateRef which lags behind batched setState updates.
@@ -919,6 +920,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             phase: 'complete',
           },
         }));
+        completedRef.current = true;
         onComplete?.(event.messageId, finalContent, finalSources, finalVisualizations, finalDocuments, finalImages, finalDiagrams, finalPodcasts, metadata, finalThinking || undefined);
         break;
       }
@@ -955,6 +957,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     contentBufferRef.current = '';
     thinkingBufferRef.current = '';
     resetArtifactRefs();
+    completedRef.current = false;
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = undefined;
@@ -1041,6 +1044,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
       // Safety: if stream closed without explicit 'done' event, finalize with
       // buffered content so ChatWindow can reset loading instead of being stuck.
+      if (completedRef.current) return;
       const wasStreaming = stateRef.current.isStreaming;
       setState(prev => prev.isStreaming ? {
         ...prev,
