@@ -8,6 +8,15 @@ import type { Components } from 'react-markdown';
 const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
 
 /**
+ * Parse language name from a `language-*` CSS class string.
+ * Uses word boundary to avoid false matches when other classes (e.g. `hljs`)
+ * are present. Returns null if no language class is found.
+ */
+function parseLanguage(className?: string): string | null {
+  return className?.match(/\blanguage-(\S+)/)?.[1] ?? null;
+}
+
+/**
  * Extract text content from React children (handles nested elements)
  */
 function getTextContent(children: React.ReactNode): string {
@@ -230,7 +239,7 @@ const BaseMarkdownComponents: Partial<Components> = {
  */
 const CodeWithMermaid: Components['code'] = ({ children, className }) => {
   const isInline = !className;
-  const language = className?.replace('language-', '') || '';
+  const language = parseLanguage(className);
   const codeContent = getTextContent(children);
 
   // Only render as Mermaid if explicitly tagged with ```mermaid
@@ -277,7 +286,7 @@ const CodeWithMermaid: Components['code'] = ({ children, className }) => {
 const CodeWithMermaidAndCopy: Components['code'] = ({ children, className }) => {
   const [copied, setCopied] = useState(false);
   const isInline = !className;
-  const language = className?.replace('language-', '') || '';
+  const language = parseLanguage(className);
   const codeContent = getTextContent(children);
   const isMermaid = language === 'mermaid';
 
@@ -388,8 +397,8 @@ function extractCodeLanguage(children: React.ReactNode): string | null {
     if (!React.isValidElement(child)) continue;
     const props = child.props as Record<string, unknown>;
     if (typeof props.className === 'string') {
-      const match = props.className.match(/\blanguage-(\S+)/);
-      if (match) return match[1];
+      const lang = parseLanguage(props.className);
+      if (lang) return lang;
     }
   }
   return null;
@@ -446,11 +455,7 @@ const CopyablePre: Components['pre'] = ({ children }) => {
 
   if (isMermaidBlock) {
     // Render without copy button for Mermaid diagram blocks
-    return (
-      <pre className="bg-gray-100 text-gray-800 p-4 rounded-md overflow-x-auto whitespace-pre my-3 border border-gray-300 max-w-full touch-pan-x font-mono text-sm leading-relaxed">
-        {children}
-      </pre>
-    );
+    return <>{children}</>;
   }
 
   return (
