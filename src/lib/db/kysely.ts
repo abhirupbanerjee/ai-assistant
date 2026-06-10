@@ -394,6 +394,29 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured Claude adaptive-thinking models are not marked forced-tool-capable');
 
+  // Migration: Think-tag / reasoning models (Kimi K2, DeepSeek V4 Pro, Qwen3, QwQ,
+  // GPT-OSS) do not reliably honor forced tool_choice. These mirror isThinkTagModel
+  // in model-discovery. Rows seeded before forced_tool_capable existed inherited the
+  // default of 1, so backfill them to 0. See model-discovery.isForcedToolCapable.
+  await sql`
+    UPDATE enabled_models
+    SET forced_tool_capable = 0
+    WHERE (
+        id LIKE 'kimi-k2%'
+        OR id LIKE '%/kimi-k2%'
+        OR id LIKE 'deepseek-v4-pro%'
+        OR id LIKE '%/deepseek-v4-pro%'
+        OR id LIKE 'qwen3%'
+        OR id LIKE '%/qwen3%'
+        OR id LIKE 'qwq%'
+        OR id LIKE '%/qwq%'
+        OR id LIKE 'gpt-oss%'
+        OR id LIKE '%/gpt-oss%'
+      )
+      AND forced_tool_capable = 1
+  `.execute(database);
+  console.log('[Kysely] Ensured think-tag/reasoning models are not marked forced-tool-capable');
+
   // Migration: Add input_cost_per_1m and output_cost_per_1m columns to enabled_models
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS input_cost_per_1m NUMERIC(12,8)`.execute(database);
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS output_cost_per_1m NUMERIC(12,8)`.execute(database);
