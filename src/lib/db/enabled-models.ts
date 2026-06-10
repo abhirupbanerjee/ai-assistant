@@ -208,9 +208,10 @@ export function createEnabledModel(input: CreateEnabledModelInput): EnabledModel
   execute(`
     INSERT INTO enabled_models (
       id, provider_id, display_name, tool_capable, vision_capable,
+      parallel_tool_capable, thinking_capable, forced_tool_capable,
       max_input_tokens, max_output_tokens, is_default, enabled, sort_order
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.id,
     input.providerId,

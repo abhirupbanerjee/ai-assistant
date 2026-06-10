@@ -181,6 +181,17 @@ This script:
 
 > **Note:** The Docker entrypoint also handles permissions automatically, but running setup.sh ensures everything is ready before first start.
 
+### 3. Install Node.js Dependencies (Required for Database Setup)
+
+The `db:setup` script must run from the host because the production Docker image does not include `node_modules`.
+
+```bash
+# Install Node.js dependencies
+npm install --legacy-peer-deps
+```
+
+> **Why?** The Dockerfile uses a multi-stage build that only copies the Next.js standalone output into the production container, minimizing image size. This means `npm run db:setup` cannot run inside the app container.
+
 ---
 
 ## Environment Configuration
@@ -406,6 +417,18 @@ docker compose logs traefik | grep -i certificate
 curl -I https://policybot.example.com
 ```
 
+### 5. Seed Database Settings
+
+The PostgreSQL schema is automatically created when the Postgres container starts for the first time. However, default settings, slash commands, and admin users must be seeded separately.
+
+```bash
+# Run database setup from the host (NOT inside the container)
+export DATABASE_URL="postgresql://policybot:${POSTGRES_PASSWORD}@localhost:5432/policybot"
+npm run db:setup
+```
+
+> **Important:** Do not run `docker compose exec app npm run db:setup`. The production container lacks `node_modules` and this command will fail.
+
 ---
 
 ## Post-Installation Configuration
@@ -576,8 +599,13 @@ ls -la ./data/app/policybot.db
 # PostgreSQL - check connection
 docker compose exec postgres psql -U policybot -c "SELECT 1"
 
-# Reinitialize database schema
-docker compose exec app npm run db:setup
+# Reinitialize database schema and settings
+# Must be run from the host, not inside the container:
+export DATABASE_URL="postgresql://policybot:${POSTGRES_PASSWORD}@localhost:5432/policybot"
+npm run db:setup
+
+# If you only need to re-run the raw schema, use psql directly:
+# docker compose exec postgres psql -U policybot -d policybot -f /docker-entrypoint-initdb.d/01-schema.sql
 ```
 
 ### LLM API Errors

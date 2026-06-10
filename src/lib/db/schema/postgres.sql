@@ -366,6 +366,9 @@ CREATE INDEX IF NOT EXISTS idx_enabled_models_provider ON enabled_models(provide
 CREATE INDEX IF NOT EXISTS idx_enabled_models_enabled ON enabled_models(enabled);
 CREATE INDEX IF NOT EXISTS idx_enabled_models_default ON enabled_models(is_default);
 
+-- Migration: add parallel_tool_capable for existing databases
+ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS parallel_tool_capable INTEGER DEFAULT 0;
+
 -- Migration: add forced_tool_capable for existing databases
 ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS forced_tool_capable INTEGER DEFAULT 1;
 

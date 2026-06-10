@@ -1322,6 +1322,20 @@ function runMigrations(database: Database.Database): void {
     console.log('[DB Migration] Added max_output_tokens column to enabled_models');
   }
 
+  // Migration: Add parallel_tool_capable, thinking_capable, and forced_tool_capable columns
+  if (!enabledModelsColumnNames.includes('parallel_tool_capable')) {
+    database.exec('ALTER TABLE enabled_models ADD COLUMN parallel_tool_capable INTEGER DEFAULT 0');
+    console.log('[DB Migration] Added parallel_tool_capable column to enabled_models');
+  }
+  if (!enabledModelsColumnNames.includes('thinking_capable')) {
+    database.exec('ALTER TABLE enabled_models ADD COLUMN thinking_capable INTEGER DEFAULT 0');
+    console.log('[DB Migration] Added thinking_capable column to enabled_models');
+  }
+  if (!enabledModelsColumnNames.includes('forced_tool_capable')) {
+    database.exec('ALTER TABLE enabled_models ADD COLUMN forced_tool_capable INTEGER DEFAULT 1');
+    console.log('[DB Migration] Added forced_tool_capable column to enabled_models');
+  }
+
   // Migration: Add xlsx and pptx to workspace_outputs file_type CHECK constraint
   // SQLite requires table recreation to modify CHECK constraints
   const workspaceOutputsExists = database.prepare(
