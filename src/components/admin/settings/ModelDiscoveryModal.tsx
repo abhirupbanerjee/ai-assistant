@@ -24,6 +24,7 @@ interface DiscoveredModel {
   visionCapable: boolean;
   parallelToolCapable?: boolean;
   thinkingCapable?: boolean;
+  forcedToolCapable?: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number;
   isEnabled: boolean;
@@ -191,6 +192,7 @@ export default function ModelDiscoveryModal({
           visionCapable: m.visionCapable,
           parallelToolCapable: m.parallelToolCapable,
           thinkingCapable: m.thinkingCapable,
+          forcedToolCapable: m.forcedToolCapable,
           maxInputTokens: m.maxInputTokens,
           maxOutputTokens: getModelOutputTokens(m),
         }));

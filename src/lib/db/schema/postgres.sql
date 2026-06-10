@@ -349,6 +349,7 @@ CREATE TABLE IF NOT EXISTS enabled_models (
   vision_capable INTEGER DEFAULT 0,
   parallel_tool_capable INTEGER DEFAULT 0,
   thinking_capable INTEGER DEFAULT 0,
+  forced_tool_capable INTEGER DEFAULT 1,
   max_input_tokens INTEGER,
   max_output_tokens INTEGER,
   input_cost_per_1m NUMERIC(12,8),
@@ -364,6 +365,9 @@ CREATE TABLE IF NOT EXISTS enabled_models (
 CREATE INDEX IF NOT EXISTS idx_enabled_models_provider ON enabled_models(provider_id);
 CREATE INDEX IF NOT EXISTS idx_enabled_models_enabled ON enabled_models(enabled);
 CREATE INDEX IF NOT EXISTS idx_enabled_models_default ON enabled_models(is_default);
+
+-- Migration: add forced_tool_capable for existing databases
+ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS forced_tool_capable INTEGER DEFAULT 1;
 
 -- ============ Tool Configs ============
 

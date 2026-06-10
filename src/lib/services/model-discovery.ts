@@ -18,6 +18,7 @@ export interface DiscoveredModel {
   provider: string;       // 'openai', 'gemini', 'mistral', 'ollama'
   toolCapable: boolean;
   visionCapable: boolean;
+  forcedToolCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number;  // Provider-based default or API value
   isEnabled: boolean;     // Already enabled in Policy Bot
@@ -76,6 +77,35 @@ const VISION_CAPABLE_PATTERNS = [
   // Anthropic Claude (all Claude 3+ models support vision)
   /^claude/,
   // Note: DeepSeek does NOT support vision
+];
+
+// Models known to support forced tool_choice (required / specific function)
+const FORCED_TOOL_CAPABLE_PATTERNS = [
+  // OpenAI
+  /^gpt-4/,
+  /^gpt-5/,
+  /^gpt-3\.5-turbo/,
+  /^o1/,
+  /^o3/,
+  /^o4/,
+  // Gemini
+  /^gemini/,
+  // Mistral
+  /^mistral-large/,
+  /^mistral-small/,
+  /^mistral-medium/,
+  /^codestral/,
+  /^pixtral/,
+  // Anthropic Claude (most models, but exceptions like fable-5 may not support forced)
+  /^claude/,
+  // DeepSeek V4
+  /^deepseek-v4-(flash|pro)/,
+  // Moonshot / Kimi
+  /^kimi/,
+  /^moonshot/,
+  // Fireworks hosted
+  /^fireworks\//,
+  /^accounts\/fireworks/,
 ];
 
 // Models known to reliably handle parallel tool calls (multiple tool_calls in one response)
@@ -155,7 +185,9 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   // Anthropic Claude
   'claude-sonnet-4-7': 1000000,
   'claude-sonnet-4-6': 1000000,
+  'claude-opus-4-7': 1000000,
   'claude-opus-4-6': 1000000,
+  'claude-fable-5': 1000000,
   'claude-sonnet-4-5': 1000000,
   'claude-haiku-4-5': 1000000,
   'claude-opus-4-5': 1000000,
@@ -216,6 +248,14 @@ function isVisionCapable(modelId: string): boolean {
 function isParallelToolCapable(modelId: string): boolean {
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
   return PARALLEL_TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
+}
+
+function isForcedToolCapable(modelId: string): boolean {
+  const id = modelId.toLowerCase().replace(/^ollama-/, '');
+  // Reasoning / tag models and Ollama generally don't support forced tool choice reliably
+  if (isThinkTagModel(modelId)) return false;
+  if (id.startsWith('ollama-') || id.startsWith('ollama/') || id.startsWith('ollama-cloud/')) return false;
+  return FORCED_TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
 function isThinkingCapable(modelId: string): boolean {
@@ -329,6 +369,7 @@ async function discoverOpenAIModels(apiKey: string): Promise<DiscoveredModel[]> 
     provider: 'openai',
     toolCapable: isToolCapable(m.id),
     visionCapable: isVisionCapable(m.id),
+    forcedToolCapable: isForcedToolCapable(m.id),
     maxInputTokens: getContextWindow(m.id),
     maxOutputTokens: getDefaultOutputTokens('openai'),
     isEnabled: !!(await getEnabledModel(m.id)),
@@ -371,6 +412,7 @@ async function discoverGeminiModels(apiKey: string): Promise<DiscoveredModel[]> 
       provider: 'gemini',
       toolCapable: isToolCapable(id),
       visionCapable: isVisionCapable(id),
+      forcedToolCapable: isForcedToolCapable(id),
       maxInputTokens: m.inputTokenLimit || getContextWindow(id),
       // Use actual outputTokenLimit from API if available, else provider default
       maxOutputTokens: m.outputTokenLimit || getDefaultOutputTokens('gemini'),
@@ -401,6 +443,7 @@ async function discoverMistralModels(apiKey: string): Promise<DiscoveredModel[]>
     provider: 'mistral',
     toolCapable: isToolCapable(m.id),
     visionCapable: isVisionCapable(m.id),
+    forcedToolCapable: isForcedToolCapable(m.id),
     maxInputTokens: getContextWindow(m.id),
     maxOutputTokens: getDefaultOutputTokens('mistral'),
     isEnabled: !!(await getEnabledModel(m.id)),
@@ -444,6 +487,7 @@ async function discoverOllamaModels(apiBase: string): Promise<DiscoveredModel[]>
       provider: 'ollama',
       toolCapable: isToolCapable(base),
       visionCapable: isVisionCapable(base),
+      forcedToolCapable: isForcedToolCapable(base),
       maxInputTokens: null,  // Ollama doesn't report this
       maxOutputTokens: getDefaultOutputTokens('ollama'),
       isEnabled: !!(await getEnabledModel(id)),
@@ -479,6 +523,7 @@ async function discoverAnthropicModels(apiKey: string): Promise<DiscoveredModel[
     provider: 'anthropic',
     toolCapable: isToolCapable(m.id),
     visionCapable: isVisionCapable(m.id),
+    forcedToolCapable: isForcedToolCapable(m.id),
     maxInputTokens: getContextWindow(m.id),
     maxOutputTokens: getDefaultOutputTokens('anthropic'),
     isEnabled: !!(await getEnabledModel(m.id)),
@@ -509,6 +554,7 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
     toolCapable: isToolCapable(m.id),
     // DeepSeek does NOT support vision
     visionCapable: false,
+    forcedToolCapable: isForcedToolCapable(m.id),
     maxInputTokens: getContextWindow(m.id),
     maxOutputTokens: 16384,
     isEnabled: !!(await getEnabledModel(m.id)),
@@ -536,6 +582,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'MiniMax M2.5',
       toolCapable: true,
       visionCapable: false,
+      forcedToolCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
@@ -544,6 +591,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'GLM-5.1',
       toolCapable: false,
       visionCapable: false,
+      forcedToolCapable: false,
       maxInputTokens: 202000,
       maxOutputTokens: 16384,
     },
@@ -552,6 +600,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'Kimi K2.6',
       toolCapable: true,
       visionCapable: true,
+      forcedToolCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
@@ -560,6 +609,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'Kimi K2.5',
       toolCapable: true,
       visionCapable: false,
+      forcedToolCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
@@ -568,6 +618,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'OpenAI GPT-OSS 120B',
       toolCapable: true,
       visionCapable: false,
+      forcedToolCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
@@ -576,6 +627,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'Qwen3 P6 Plus',
       toolCapable: true,
       visionCapable: true,
+      forcedToolCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
@@ -584,6 +636,7 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       name: 'MiniMax M2.7',
       toolCapable: true,
       visionCapable: false,
+      forcedToolCapable: true,
       maxInputTokens: 131072,
       maxOutputTokens: 16384,
     },
@@ -621,6 +674,7 @@ async function discoverMoonshotModels(apiKey: string): Promise<DiscoveredModel[]
     provider: 'moonshot',
     toolCapable: isToolCapable(m.id),
     visionCapable: isVisionCapable(m.id),
+    forcedToolCapable: isForcedToolCapable(m.id),
     maxInputTokens: getContextWindow(m.id),
     maxOutputTokens: getDefaultOutputTokens('moonshot'),
     isEnabled: !!(await getEnabledModel(`moonshot/${m.id}`)),
@@ -715,6 +769,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
           provider: 'ollama-cloud',
           toolCapable: m.toolCapable,
           visionCapable: m.visionCapable,
+          forcedToolCapable: false,
           maxInputTokens: m.maxInputTokens,
           maxOutputTokens: m.maxOutputTokens,
           isEnabled: m.isEnabled,
@@ -802,4 +857,4 @@ export async function discoverAllModels(): Promise<{
 // ============ Exported Capability Functions ============
 // Used by enabled-models.ts to refresh model capabilities
 
-export { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, getContextWindow };
+export { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, isForcedToolCapable, getContextWindow };

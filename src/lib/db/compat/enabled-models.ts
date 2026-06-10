@@ -32,6 +32,7 @@ interface EnabledModelRow {
   vision_capable: number;
   parallel_tool_capable: number;
   thinking_capable: number;
+  forced_tool_capable: number;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
   input_cost_per_1m: number | null;
@@ -53,6 +54,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     visionCapable: row.vision_capable === 1,
     parallelToolCapable: row.parallel_tool_capable === 1,
     thinkingCapable: row.thinking_capable === 1,
+    forcedToolCapable: row.forced_tool_capable === 1,
     maxInputTokens: row.max_input_tokens,
     maxOutputTokens: row.max_output_tokens,
     inputCostPer1M: row.input_cost_per_1m == null ? row.input_cost_per_1m : Number(row.input_cost_per_1m),
@@ -84,6 +86,7 @@ export async function getAllEnabledModels(): Promise<EnabledModel[]> {
       'm.vision_capable',
       'm.parallel_tool_capable',
       'm.thinking_capable',
+      'm.forced_tool_capable',
       'm.max_input_tokens',
       'm.max_output_tokens',
       'm.input_cost_per_1m',
@@ -119,6 +122,7 @@ export async function getActiveModels(): Promise<EnabledModel[]> {
       'm.vision_capable',
       'm.parallel_tool_capable',
       'm.thinking_capable',
+      'm.forced_tool_capable',
       'm.max_input_tokens',
       'm.max_output_tokens',
       'm.input_cost_per_1m',
@@ -184,6 +188,7 @@ export async function getDefaultModel(): Promise<EnabledModel | null> {
       'm.vision_capable',
       'm.parallel_tool_capable',
       'm.thinking_capable',
+      'm.forced_tool_capable',
       'm.max_input_tokens',
       'm.max_output_tokens',
       'm.input_cost_per_1m',
@@ -231,6 +236,7 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
       vision_capable: input.visionCapable ? 1 : 0,
       parallel_tool_capable: input.parallelToolCapable ? 1 : 0,
       thinking_capable: input.thinkingCapable ? 1 : 0,
+      forced_tool_capable: input.forcedToolCapable !== false ? 1 : 0,
       max_input_tokens: input.maxInputTokens || null,
       max_output_tokens: input.maxOutputTokens || null,
       input_cost_per_1m: input.inputCostPer1M ?? null,
@@ -284,6 +290,9 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
   }
   if (input.thinkingCapable !== undefined) {
     updateObj.thinking_capable = input.thinkingCapable ? 1 : 0;
+  }
+  if (input.forcedToolCapable !== undefined) {
+    updateObj.forced_tool_capable = input.forcedToolCapable ? 1 : 0;
   }
   if (input.maxInputTokens !== undefined) {
     updateObj.max_input_tokens = input.maxInputTokens || null;
@@ -414,6 +423,14 @@ export async function isModelThinkingCapable(id: string): Promise<boolean> {
 }
 
 /**
+ * Check if a model supports forced tool choice (required / specific function)
+ */
+export async function isModelForcedToolCapable(id: string): Promise<boolean> {
+  const model = await getEnabledModel(id);
+  return model?.forcedToolCapable ?? true;
+}
+
+/**
  * Get all tool-capable model IDs (from enabled providers only)
  */
 export async function getToolCapableModelIds(): Promise<Set<string>> {
@@ -510,11 +527,13 @@ export async function refreshModelCapabilities(modelId: string): Promise<Enabled
 
   const newTokens = getContextWindow(modelId);
 
+  const { isForcedToolCapable } = await import('../../services/model-discovery');
   return updateEnabledModel(modelId, {
     toolCapable: isToolCapable(modelId),
     visionCapable: isVisionCapable(modelId),
     parallelToolCapable: isParallelToolCapable(modelId),
     thinkingCapable: isThinkingCapable(modelId),
+    forcedToolCapable: isForcedToolCapable(modelId),
     maxInputTokens: newTokens ?? model.maxInputTokens ?? undefined,
   });
 }

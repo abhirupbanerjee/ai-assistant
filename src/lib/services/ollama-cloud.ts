@@ -200,6 +200,7 @@ export async function discoverOllamaCloudModels(): Promise<DiscoveredModel[]> {
       provider: OLLAMA_CLOUD_PROVIDER_ID,
       toolCapable: caps.toolCapable,
       visionCapable: caps.visionCapable,
+      forcedToolCapable: false,
       maxInputTokens: null, // Ollama Cloud doesn't report this
       maxOutputTokens: 8192, // Conservative default
       isEnabled: !!(await getEnabledModel(id)),

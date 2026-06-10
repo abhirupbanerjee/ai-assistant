@@ -17,7 +17,7 @@ import { getEnabledModel } from '@/lib/db/compat/enabled-models';
 import { isTavilyConfigured } from '@/lib/tools/tavily';
 import { getWebSearchConfig } from '@/lib/db/compat/tool-config';
 import { callLLMForJson } from '@/lib/llm-utils';
-import { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, getContextWindow } from '@/lib/services/model-discovery';
+import { isToolCapable, isVisionCapable, isParallelToolCapable, isThinkingCapable, isForcedToolCapable, getContextWindow } from '@/lib/services/model-discovery';
 import type { ApiError } from '@/types';
 
 interface TavilySearchResult {
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
             systemPrompt:
               'You are a technical assistant extracting LLM model capability and pricing data. Return JSON only with these exact fields: ' +
               'toolCapable (boolean), visionCapable (boolean), parallelToolCapable (boolean - true if the model reliably handles multiple tool calls in a single response), ' +
-              'thinkingCapable (boolean - true if the model outputs reasoning/thinking content), ' +
+              'thinkingCapable (boolean - true if the model outputs reasoning/thinking content), forcedToolCapable (boolean - true if the model supports forced tool_choice like required or specific function), ' +
               'maxInputTokens (number or null), maxOutputTokens (number or null), ' +
               'inputCostPer1M (number or null - USD cost per 1 million input tokens), outputCostPer1M (number or null - USD cost per 1 million output tokens), ' +
               'confidence ("high"|"medium"|"low"). ' +
@@ -190,6 +190,7 @@ export async function POST(request: NextRequest) {
             visionCapable?: boolean;
             parallelToolCapable?: boolean;
             thinkingCapable?: boolean;
+            forcedToolCapable?: boolean;
             maxInputTokens?: number | null;
             maxOutputTokens?: number | null;
             inputCostPer1M?: number | null;
@@ -203,6 +204,7 @@ export async function POST(request: NextRequest) {
             visionCapable: Boolean(parsed.visionCapable),
             parallelToolCapable: Boolean(parsed.parallelToolCapable),
             thinkingCapable: Boolean(parsed.thinkingCapable),
+            forcedToolCapable: Boolean(parsed.forcedToolCapable),
             maxInputTokens: typeof parsed.maxInputTokens === 'number' ? parsed.maxInputTokens : null,
             maxOutputTokens: typeof parsed.maxOutputTokens === 'number' ? parsed.maxOutputTokens : null,
             inputCostPer1M: typeof parsed.inputCostPer1M === 'number' ? parsed.inputCostPer1M : null,
@@ -222,6 +224,7 @@ export async function POST(request: NextRequest) {
     const visionCapable = isVisionCapable(id);
     const parallelToolCapable = isParallelToolCapable(id);
     const thinkingCapable = isThinkingCapable(id);
+    const forcedToolCapable = isForcedToolCapable(id);
     const maxInputTokens = getContextWindow(id);
 
     return NextResponse.json({
@@ -230,6 +233,7 @@ export async function POST(request: NextRequest) {
       visionCapable,
       parallelToolCapable,
       thinkingCapable,
+      forcedToolCapable,
       maxInputTokens,
       maxOutputTokens: null,
       inputCostPer1M: null,

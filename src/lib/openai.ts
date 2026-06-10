@@ -14,7 +14,7 @@ import type { ModelSpec } from '@/types/agent';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens, isToolCapableModelFromDb } from './db/compat/config';
-import { isModelParallelToolCapable, isModelThinkingCapable } from './db/compat/enabled-models';
+import { isModelParallelToolCapable, isModelThinkingCapable, isModelForcedToolCapable } from './db/compat/enabled-models';
 import { getToolDisplayName, getStreamingConfigMs } from './streaming/utils';
 import { getToolDefinitions, executeTool, REQUEST_CLARIFICATION_TOOL } from './tools';
 import { resolveToolRouting } from './tool-routing';
@@ -802,6 +802,7 @@ async function streamAnthropicCompletion(
     tools?: Anthropic.Tool[];
     tool_choice?: Anthropic.ToolChoice;
     thinking?: Anthropic.ThinkingConfigParam;
+    output_config?: Anthropic.OutputConfig;
   },
   onChunk?: (text: string) => void,
   onThinkingChunk?: (text: string) => void,
@@ -850,6 +851,7 @@ async function streamAnthropicCompletion(
       ...(params.tools?.length ? { tools: params.tools } : {}),
       ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
       ...(params.thinking ? { thinking: params.thinking } : {}),
+      ...(params.output_config ? { output_config: params.output_config } : {}),
     };
 
     const stream = client.messages.stream(createParams, { signal: controller.signal });
@@ -1257,6 +1259,7 @@ export async function generateToolCompletion(
         tools: convertToolsToAnthropic(tools),
         tool_choice: tools?.length ? convertToolChoiceToAnthropic(toolChoice) : undefined,
         thinking: thinkingProfile.enabled ? (thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam) : undefined,
+        output_config: thinkingProfile.requestParams.output_config as Anthropic.OutputConfig | undefined,
       },
       undefined, // onChunk
       undefined, // onThinkingChunk
@@ -1873,10 +1876,6 @@ export async function generateResponseWithTools(
         allowed: Array.from(OLLAMA_ALLOWED_TOOLS),
       });
     }
-    // Ollama doesn't support forced tool_choice — downgrade to auto
-    if (typeof effectiveToolChoice === 'object') {
-      effectiveToolChoice = 'auto' as const;
-    }
     logger.info('Ollama context configured', {
       model: effectiveModel,
       num_ctx: OLLAMA_NUM_CTX,
@@ -1884,11 +1883,12 @@ export async function generateResponseWithTools(
     });
   }
 
-  // Reasoning models (DeepSeek-R1, QwQ, etc.) may not support forced tool_choice — downgrade to auto
-  if (isThinkTagModel(effectiveModel) && (typeof effectiveToolChoice === 'object' || effectiveToolChoice === 'required')) {
+  // Downgrade forced tool_choice for models that don't support it
+  const modelSupportsForcedTool = await isModelForcedToolCapable(effectiveModel);
+  if (!modelSupportsForcedTool && (typeof effectiveToolChoice === 'object' || effectiveToolChoice === 'required')) {
     const originalToolChoice = typeof effectiveToolChoice === 'object' ? effectiveToolChoice.function.name : effectiveToolChoice;
     effectiveToolChoice = 'auto' as const;
-    logger.info('Downgraded tool_choice for reasoning model', { model: effectiveModel, original: originalToolChoice });
+    logger.info('Downgraded tool_choice for model without forced-tool support', { model: effectiveModel, original: originalToolChoice });
   }
 
   // Inject request_clarification meta-tool when preflight skill is active.
@@ -1963,6 +1963,7 @@ export async function generateResponseWithTools(
         tools: convertToolsToAnthropic(tools),
         tool_choice: tools?.length ? convertToolChoiceToAnthropic(effectiveToolChoice) : undefined,
         thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
+        output_config: thinkingProfile.requestParams.output_config as Anthropic.OutputConfig | undefined,
       },
       callbacks?.onChunk,
       callbacks?.onThinkingChunk,
@@ -2390,6 +2391,7 @@ export async function generateResponseWithTools(
             ? convertToolChoiceToAnthropic('auto')
             : convertToolChoiceToAnthropic(effectiveToolChoice),
           thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
+          output_config: thinkingProfile.requestParams.output_config as Anthropic.OutputConfig | undefined,
         },
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
@@ -2428,6 +2430,7 @@ export async function generateResponseWithTools(
           temperature: effectiveTemperature,
           // No tools — force text-only response
           thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
+          output_config: thinkingProfile.requestParams.output_config as Anthropic.OutputConfig | undefined,
         },
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,
@@ -2478,6 +2481,7 @@ export async function generateResponseWithTools(
           tools: convertToolsToAnthropic(tools),
           // Don't set tool_choice — Anthropic handles this via the message flow
           thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
+          output_config: thinkingProfile.requestParams.output_config as Anthropic.OutputConfig | undefined,
         },
         callbacks?.onChunk,
         callbacks?.onThinkingChunk,

@@ -35,6 +35,7 @@ interface EnabledModel {
   visionCapable: boolean;
   parallelToolCapable: boolean;
   thinkingCapable: boolean;
+  forcedToolCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
   inputCostPer1M?: number | null;
@@ -53,6 +54,7 @@ interface DetailsResult {
   visionCapable: boolean;
   parallelToolCapable: boolean;
   thinkingCapable: boolean;
+  forcedToolCapable: boolean;
   maxInputTokens: number | null;
   maxOutputTokens: number | null;
   inputCostPer1M: number | null;
@@ -381,7 +383,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // ============ New Model Capability Actions ============
 
-  const handleToggleCapability = async (modelId: string, field: 'toolCapable' | 'visionCapable' | 'parallelToolCapable' | 'thinkingCapable', current: boolean) => {
+  const handleToggleCapability = async (modelId: string, field: 'toolCapable' | 'visionCapable' | 'parallelToolCapable' | 'thinkingCapable' | 'forcedToolCapable', current: boolean) => {
     setToggleError(null);
     // Optimistic update
     setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, [field]: !current } : m));
@@ -402,7 +404,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       // prevents fetchModels() failures from incorrectly reverting a successful save.
       const { model: updated } = await res.json() as { model: EnabledModel };
       setEnabledModels(prev => prev.map(m => m.id === modelId ? { ...m, ...updated } : m));
-      const labels: Record<string, string> = { toolCapable: 'Tools', visionCapable: 'Vision', parallelToolCapable: 'Parallel', thinkingCapable: 'Thinking' };
+      const labels: Record<string, string> = { toolCapable: 'Tools', visionCapable: 'Vision', parallelToolCapable: 'Parallel', thinkingCapable: 'Thinking', forcedToolCapable: 'Forced Tools' };
       showSuccess(`${labels[field] || field} ${!current ? 'enabled' : 'disabled'}`);
     } catch (err) {
       // Revert on network/parse error
@@ -719,6 +721,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vision</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parallel</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thinking</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forced</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         <span title="Total context window capacity (input + output). This is stored for reference and does not currently affect inference.">Context Window <Info size={12} className="inline-block text-gray-400 ml-0.5" /></span>
                       </th>
@@ -837,6 +840,25 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                             <Brain size={11} className="mr-1" />{model.thinkingCapable ? 'On' : 'Off'}
                           </button>
                           {toggleError?.modelId === model.id && toggleError.field === 'thinkingCapable' && (
+                            <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
+                          )}
+                        </td>
+
+                        {/* Forced Tools toggle */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => !readOnly && !routeOff && handleToggleCapability(model.id, 'forcedToolCapable', model.forcedToolCapable)}
+                            disabled={readOnly || routeOff}
+                            title={routeOff ? 'Route is disabled' : model.forcedToolCapable ? 'Forced tool choice enabled — click to disable' : 'Forced tool choice disabled — click to enable'}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                              model.forcedToolCapable
+                                ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                            } ${readOnly || routeOff ? 'cursor-default' : 'cursor-pointer'}`}
+                          >
+                            <Wrench size={11} className="mr-1" />{model.forcedToolCapable ? 'On' : 'Off'}
+                          </button>
+                          {toggleError?.modelId === model.id && toggleError.field === 'forcedToolCapable' && (
                             <p className="text-xs text-red-500 mt-0.5">{toggleError.msg}</p>
                           )}
                         </td>

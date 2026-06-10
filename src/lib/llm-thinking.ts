@@ -39,11 +39,33 @@ export function isTemperatureLockedModel(modelId: string): boolean {
   );
 }
 
+function isClaudeAdaptiveThinkingModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return (
+    id.startsWith('claude-opus-4-7') ||
+    id.startsWith('claude-opus-4-8') ||
+    id.startsWith('claude-fable-5') ||
+    id.startsWith('claude-sonnet-4-6') ||
+    id.startsWith('claude-opus-4-6')
+  );
+}
+
+function isClaudeLegacyThinkingModel(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return (
+    (id.startsWith('claude-opus-4') ||
+     id.startsWith('claude-sonnet-4') ||
+     id.startsWith('claude-haiku-4'))
+    && !isClaudeAdaptiveThinkingModel(modelId)
+  );
+}
+
 export function isTemperatureUnsupportedModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   // OpenAI o-series does not accept temperature at all.
   // Temperature-locked models (kimi-k2, gpt-5, etc.) also reject custom temps.
-  return isOpenAIOFamilyModel(id) || isTemperatureLockedModel(id);
+  // Claude adaptive-thinking models (Fable 5, Opus 4.7+) also reject temperature.
+  return isOpenAIOFamilyModel(id) || isTemperatureLockedModel(id) || isClaudeAdaptiveThinkingModel(modelId);
 }
 
 export function getEffectiveTemperature(modelId: string, requestedTemperature: number): number {
@@ -150,9 +172,14 @@ export function buildThinkingRequestProfile(options: {
 
   if (isClaudeModel(options.modelId)) {
     requiresThinkingStatePreservation = true;
-    const maxTokens = Math.max(options.maxTokens ?? 4096, 2048);
-    const budgetTokens = Math.max(1024, Math.min(4096, maxTokens - 1024));
-    requestParams.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+    if (isClaudeAdaptiveThinkingModel(options.modelId)) {
+      requestParams.thinking = { type: 'adaptive', display: 'summarized' };
+      requestParams.output_config = { effort: 'high' };
+    } else {
+      const maxTokens = Math.max(options.maxTokens ?? 4096, 2048);
+      const budgetTokens = Math.max(1024, Math.min(4096, maxTokens - 1024));
+      requestParams.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+    }
     streamFields.add('thinking');
   } else if (isDeepSeekThinkingModel(options.modelId)) {
     requiresThinkingStatePreservation = true;
@@ -176,6 +203,7 @@ export function stripThinkingRequestParams<T extends Record<string, unknown>>(pa
   delete clone.reasoning_effort;
   delete clone.thinking;
   delete clone.think;
+  delete clone.output_config;
   return clone;
 }
 

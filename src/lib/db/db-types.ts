@@ -304,6 +304,7 @@ export interface EnabledModelsTable {
   vision_capable: Generated<number>;
   parallel_tool_capable: Generated<number>;
   thinking_capable: Generated<number>;
+  forced_tool_capable: Generated<number>;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
   input_cost_per_1m: number | null;
