@@ -85,8 +85,8 @@ export function getEffectiveTemperature(modelId: string, requestedTemperature: n
  */
 export function getTemperatureForModel(modelId: string, requestedTemperature: number | undefined): number | undefined {
   const id = normalizeModelId(modelId);
-  if (isOpenAIOFamilyModel(id)) {
-    return undefined; // Strip entirely — o-series rejects temperature
+  if (isOpenAIOFamilyModel(id) || isClaudeAdaptiveThinkingModel(id)) {
+    return undefined; // Strip entirely — o-series and Claude adaptive-thinking models reject temperature
   }
   if (isTemperatureLockedModel(id)) {
     return 1; // Temperature-locked models require exactly 1
@@ -216,7 +216,8 @@ export function isTemperatureParamError(error: unknown): boolean {
       message.includes('invalid') ||
       message.includes('only 1 is allowed') ||
       message.includes('only the default') ||
-      message.includes('does not support')
+      message.includes('does not support') ||
+      message.includes('deprecated')
     )
   );
 }
