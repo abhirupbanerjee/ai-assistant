@@ -372,6 +372,28 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS forced_tool_capable INTEGER DEFAULT 1`.execute(database);
   console.log('[Kysely] Ensured parallel_tool_capable, thinking_capable, and forced_tool_capable columns exist');
 
+  // Migration: Claude adaptive-thinking models (e.g. claude-fable-5) reject forced
+  // tool_choice. The column defaults to 1, so backfill existing rows seeded before
+  // this classification was corrected. See model-discovery.isForcedToolCapable.
+  await sql`
+    UPDATE enabled_models
+    SET forced_tool_capable = 0
+    WHERE (
+        id LIKE 'claude-fable-5%'
+        OR id LIKE '%/claude-fable-5%'
+        OR id LIKE 'claude-opus-4-7%'
+        OR id LIKE '%/claude-opus-4-7%'
+        OR id LIKE 'claude-opus-4-8%'
+        OR id LIKE '%/claude-opus-4-8%'
+        OR id LIKE 'claude-sonnet-4-6%'
+        OR id LIKE '%/claude-sonnet-4-6%'
+        OR id LIKE 'claude-opus-4-6%'
+        OR id LIKE '%/claude-opus-4-6%'
+      )
+      AND forced_tool_capable = 1
+  `.execute(database);
+  console.log('[Kysely] Ensured Claude adaptive-thinking models are not marked forced-tool-capable');
+
   // Migration: Add input_cost_per_1m and output_cost_per_1m columns to enabled_models
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS input_cost_per_1m NUMERIC(12,8)`.execute(database);
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS output_cost_per_1m NUMERIC(12,8)`.execute(database);

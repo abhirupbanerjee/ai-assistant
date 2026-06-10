@@ -39,7 +39,7 @@ export function isTemperatureLockedModel(modelId: string): boolean {
   );
 }
 
-function isClaudeAdaptiveThinkingModel(modelId: string): boolean {
+export function isClaudeAdaptiveThinkingModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   return (
     id.startsWith('claude-opus-4-7') ||

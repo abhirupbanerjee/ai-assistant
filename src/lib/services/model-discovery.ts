@@ -6,7 +6,7 @@
 
 import { getProviderApiKey, getProviderApiBase } from '../db/compat/llm-providers';
 import { getEnabledModel } from '../db/compat/enabled-models';
-import { isLikelyThinkingCapableModel } from '@/lib/llm-thinking';
+import { isLikelyThinkingCapableModel, isClaudeAdaptiveThinkingModel } from '@/lib/llm-thinking';
 import { generateDisplayName, getProviderFromModelPath } from '../litellm-validator';
 import { getMoonshotBaseUrl } from '../moonshot-config';
 
@@ -255,6 +255,10 @@ function isForcedToolCapable(modelId: string): boolean {
   // Reasoning / tag models and Ollama generally don't support forced tool choice reliably
   if (isThinkTagModel(modelId)) return false;
   if (id.startsWith('ollama-') || id.startsWith('ollama/') || id.startsWith('ollama-cloud/')) return false;
+  // Claude adaptive-thinking models (e.g. claude-fable-5, opus-4.7+) reject forced
+  // tool_choice — they decide their own reasoning/tool strategy. Exclude them even
+  // though the blanket /^claude/ pattern below would otherwise match.
+  if (isClaudeAdaptiveThinkingModel(modelId)) return false;
   return FORCED_TOOL_CAPABLE_PATTERNS.some(pattern => pattern.test(id));
 }
 
