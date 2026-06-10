@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { RefreshCw, ArrowDown } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
@@ -232,6 +232,9 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const streamingLiveRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
+  // Latch: once the user scrolls up during streaming, pause auto-scroll for the
+  // rest of that turn. Reset on every new send.
+  const streamScrollPausedRef = useRef(false);
 
   // Mobile scroll-based hiding
   const { isHidden: isScrollingDown, onScroll: onScrollHide } = useScrollHide();
@@ -301,6 +304,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     onComplete: handleStreamComplete,
     onError: handleStreamError,
   });
+
+  // Always-current streaming flag for scroll handler (avoids recreating callback)
+  const isStreamingRef = useRef(streamingState.isStreaming);
+  isStreamingRef.current = streamingState.isStreaming;
 
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
@@ -529,20 +536,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   };
 
   // ── Anchor-to-top: pin new user message at viewport top on send ─────────
-  // When a new loading cycle starts, measure the container and set a bottom
-  // spacer large enough for the user message to reach the top. Then
-  // scrollIntoView the anchor (placed just before the streaming area).
-  useEffect(() => {
+  // useLayoutEffect runs after DOM mutations but before paint, so the scroll
+  // happens before the user sees the frame — eliminating the flash-to-bottom.
+  useLayoutEffect(() => {
     if (!loading) return;
     const container = messagesContainerRef.current;
-    if (!container) return;
-    // Set spacer to container height so user message has room to sit at top
-    setBottomSpacerHeight(container.clientHeight);
-    // Scroll the new-turn anchor to the top of the viewport
-    requestAnimationFrame(() => {
-      newTurnAnchorRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const anchor = newTurnAnchorRef.current;
+    if (!container || !anchor) return;
+    // Manual scroll calculation avoids iOS Safari scrollIntoView quirks
+    container.scrollTop = anchor.offsetTop;
   }, [loading]);
 
   // ── Spacer collapse: remove reserved space once response fills the screen ─
@@ -578,6 +580,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       if (streamingState.isStreaming) {
         // While the spacer is active, the user message is pinned — don't scroll
         if (bottomSpacerHeight > 0) return;
+        // If the user manually scrolled up during this streaming turn, stay paused
+        if (streamScrollPausedRef.current) return;
         // Spacer collapsed: resume normal bottom-follow with reflow guard
         const container = messagesContainerRef.current;
         if (container) {
@@ -604,6 +608,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (!container) return;
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setIsScrolledUp(!atBottom);
+    // If user scrolls up while streaming, latch the pause so auto-scroll stays off
+    // for the rest of this streaming turn (resets on next send).
+    if (isStreamingRef.current && !atBottom) {
+      streamScrollPausedRef.current = true;
+    }
     // Also update mobile scroll-hide state
     onScrollHide(e);
   }, [onScrollHide]);
@@ -663,6 +672,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       content,
       timestamp: new Date(),
     };
+
+    // Pre-measure spacer so the auto-scroll effect sees bottomSpacerHeight > 0 on the first render
+    const container = messagesContainerRef.current;
+    if (container) {
+      setBottomSpacerHeight(container.clientHeight);
+    }
+    // Reset the streaming scroll-pause latch for the new turn
+    streamScrollPausedRef.current = false;
+
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
