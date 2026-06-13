@@ -575,8 +575,11 @@ export async function ragQuery(
     throw new Error('Message exceeds maximum length (10000 characters)');
   }
 
-  // Get RAG settings from SQLite config
-  const ragSettings = await getRagSettings();
+  // Get RAG settings and category IDs in parallel (category IDs needed later for prompt assembly)
+  const [ragSettings, categoryIds] = await Promise.all([
+    getRagSettings(),
+    categorySlugs && categorySlugs.length > 0 ? getCategoryIdsBySlugs(categorySlugs) : Promise.resolve([]),
+  ]);
   const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled, llmQueryRewritingEnabled } = ragSettings;
 
   // Include category info in cache key for category-specific results
@@ -597,13 +600,21 @@ export async function ragQuery(
     }
   }
 
-  // Expand query for better retrieval (if enabled)
-  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled, llmQueryRewritingEnabled);
+  // Expand query and create the primary embedding in parallel.
+  // The original query is embedded immediately so retrieval can start while
+  // LLM-based rewriting (when enabled) is still running.
+  const [expandedQueries, primaryEmbeddingArray] = await Promise.all([
+    expandQueries(userMessage, queryExpansionEnabled, llmQueryRewritingEnabled),
+    createEmbeddings([userMessage]),
+  ]);
+  const primaryEmbedding = primaryEmbeddingArray[0];
 
-  // Create embeddings for all queries
-  const allQueryEmbeddings = await createEmbeddings(expandedQueries);
-  const primaryEmbedding = allQueryEmbeddings[0];
-  const additionalEmbeddings = allQueryEmbeddings.slice(1);
+  // Embed any additional expanded queries, avoiding a duplicate embedding of
+  // the original query since expandQueries always includes it as the first element.
+  const additionalQueries = expandedQueries.filter(q => q !== userMessage);
+  const additionalEmbeddings = additionalQueries.length > 0
+    ? await createEmbeddings(additionalQueries)
+    : [];
 
   // Build context from documents using multiple query embeddings
   const { globalChunks, userChunks } = await buildContext(
@@ -634,35 +645,30 @@ export async function ragQuery(
 
   // Apply reranking if enabled (improves relevance ordering)
   // Pass boostDocuments to prioritize chunks from previous conversation context
-  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
-  // User uploads use a low threshold (0.05) to filter obviously irrelevant uploads
-  // while still respecting user intent to include uploaded documents
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, { minScoreOverride: USER_UPLOAD_MIN_RERANK_SCORE, boostDocuments });
+  // Run global and user rerankers concurrently.
+  const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
+    rerankChunks(userMessage, globalChunks, { boostDocuments }),
+    rerankChunks(userMessage, userChunks, { minScoreOverride: USER_UPLOAD_MIN_RERANK_SCORE, boostDocuments }),
+  ]);
 
   // Format context for LLM
   const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
 
-  // Get category-aware system prompt
-  // If categories are specified, use the first category's prompt addendum (if any)
-  let categoryIds: number[] = [];
-  if (categorySlugs && categorySlugs.length > 0) {
-    categoryIds = await getCategoryIdsBySlugs(categorySlugs);
-  }
+  // Build system prompt and resolve independent DB reads in parallel
   const categoryId = categoryIds[0]; // Use first category for prompt resolution
-  let systemPrompt = await getResolvedSystemPrompt(categoryId);
+  let [systemPrompt, resolvedSkills, dataSourcesDescription] = await Promise.all([
+    getResolvedSystemPrompt(categoryId),
+    resolveSkills(categoryIds, userMessage),
+    categoryIds.length > 0 ? getAvailableDataSourcesDescription(categoryIds) : Promise.resolve(''),
+  ]);
 
-  // Resolve and inject skills prompts (if skills feature is enabled)
-  const resolvedSkills = await resolveSkills(categoryIds, userMessage);
   if (resolvedSkills.combinedPrompt) {
     systemPrompt = `${systemPrompt}\n\n${resolvedSkills.combinedPrompt}`;
   }
 
   // Inject data source descriptions (if data sources are available for these categories)
-  if (categoryIds.length > 0) {
-    const dataSourcesDescription = getAvailableDataSourcesDescription(categoryIds);
-    if (dataSourcesDescription) {
-      systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
-    }
+  if (dataSourcesDescription) {
+    systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
   }
 
   // Inject memory context into system prompt

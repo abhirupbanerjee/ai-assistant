@@ -215,24 +215,31 @@ export async function performRAGRetrieval(
   send?: (event: StreamEvent) => void,
   conversationHistory: Message[] = []
 ): Promise<RAGRetrievalResult> {
-  const ragSettings = await getRagSettings();
+  // Fetch RAG settings and category IDs in parallel
+  const [ragSettings, categoryIds] = await Promise.all([
+    getRagSettings(),
+    categorySlugs.length > 0 ? getCategoryIdsBySlugs(categorySlugs) : Promise.resolve([]),
+  ]);
   const { queryExpansionEnabled, llmQueryRewritingEnabled } = ragSettings;
   const uploadDirected = isUploadDirectedQuery(userMessage, userDocPaths.length > 0);
 
   logger.debug('Starting RAG retrieval', { categorySlugs, userDocPaths: userDocPaths.length, uploadDirected });
 
-  // Resolve category IDs
-  const categoryIds = categorySlugs.length > 0
-    ? await getCategoryIdsBySlugs(categorySlugs)
+  // Expand query and create the primary embedding in parallel.
+  // The original query is embedded immediately so retrieval can start while
+  // LLM-based rewriting (when enabled) is still running.
+  const [expandedQueries, primaryEmbeddingArray] = await Promise.all([
+    expandQueries(userMessage, queryExpansionEnabled, llmQueryRewritingEnabled),
+    createEmbeddings([userMessage]),
+  ]);
+  const primaryEmbedding = primaryEmbeddingArray[0];
+
+  // Embed any additional expanded queries, avoiding a duplicate embedding of
+  // the original query since expandQueries always includes it as the first element.
+  const additionalQueries = expandedQueries.filter(q => q !== userMessage);
+  const additionalEmbeddings = additionalQueries.length > 0
+    ? await createEmbeddings(additionalQueries)
     : [];
-
-  // Expand query for better retrieval
-  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled, llmQueryRewritingEnabled);
-
-  // Create embeddings for all queries
-  const allQueryEmbeddings = await createEmbeddings(expandedQueries);
-  const primaryEmbedding = allQueryEmbeddings[0];
-  const additionalEmbeddings = allQueryEmbeddings.slice(1);
 
   // Build context from documents
   send?.({ type: 'operation_log', category: 'rag', message: 'Searching vector database' });
@@ -269,7 +276,6 @@ export async function performRAGRetrieval(
 
   // Apply reranking with boost for follow-up context
   send?.({ type: 'operation_log', category: 'rag', message: 'Reranking search results' });
-  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks, { boostDocuments });
   if (userChunks.length > 0) {
     send?.({
       type: 'operation_log',
@@ -277,10 +283,15 @@ export async function performRAGRetrieval(
       message: uploadDirected ? 'Reviewing uploaded document content' : 'Ranking user documents',
     });
   }
-  const rerankedUserChunks = await rerankChunks(userMessage, userChunks, {
-    minScoreOverride: uploadDirected ? 0 : USER_UPLOAD_MIN_RERANK_SCORE,
-    boostDocuments,
-  });
+
+  // Rerank global and user chunks concurrently
+  const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
+    rerankChunks(userMessage, globalChunks, { boostDocuments }),
+    rerankChunks(userMessage, userChunks, {
+      minScoreOverride: uploadDirected ? 0 : USER_UPLOAD_MIN_RERANK_SCORE,
+      boostDocuments,
+    }),
+  ]);
 
   // Emit truncation warnings for documents with content cut off
   if (send && userDocTruncations.length > 0) {
@@ -373,12 +384,15 @@ export async function performRAGRetrieval(
   // Extract sources
   const sources = extractSources(rerankedGlobalChunks, rerankedUserChunks);
 
-  // Build system prompt
+  // Build system prompt and resolve independent DB reads in parallel
   const categoryId = categoryIds[0];
-  let systemPrompt = await getResolvedSystemPrompt(categoryId);
+  let [systemPrompt, resolvedSkills, dataSourcesDescription, toolDefs] = await Promise.all([
+    getResolvedSystemPrompt(categoryId),
+    resolveSkills(categoryIds, userMessage),
+    categoryIds.length > 0 ? getAvailableDataSourcesDescription(categoryIds) : Promise.resolve(''),
+    getToolDefinitions(categoryIds),
+  ]);
 
-  // Resolve skills and extract info for progressive disclosure
-  const resolvedSkills = await resolveSkills(categoryIds, userMessage);
   const activatedSkills: SkillInfo[] = resolvedSkills.skills.map(skill => {
     // Determine trigger reason
     const triggerReason = resolvedSkills.activatedBy.always.includes(skill.name)
@@ -398,11 +412,8 @@ export async function performRAGRetrieval(
   }
 
   // Inject data source descriptions
-  if (categoryIds.length > 0) {
-    const dataSourcesDescription = getAvailableDataSourcesDescription(categoryIds);
-    if (dataSourcesDescription) {
-      systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
-    }
+  if (dataSourcesDescription) {
+    systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
   }
 
   // Inject memory context into system prompt
@@ -414,8 +425,7 @@ export async function performRAGRetrieval(
   // generateResponseWithTools which positions it dynamically based on
   // follow-up detection via the conversation-context module
 
-  // Get available tools
-  const toolDefs = await getToolDefinitions(categoryIds);
+  // Extract available tool names
   const availableTools = toolDefs.map(t => t.function.name);
 
   // Send context_loaded event for progressive disclosure
