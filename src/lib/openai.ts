@@ -836,6 +836,7 @@ async function streamAnthropicCompletion(
   const toolCalls: { id: string; name: string; input: unknown }[] = [];
   let stopReason: string | null = null;
   let anthropicUsage: { input_tokens?: number; output_tokens?: number } = {};
+  let refusalDetails: { type?: string; category?: string; explanation?: string } | undefined;
 
   // Track current tool_use input accumulation for manual assembly
   const toolInputBuffers = new Map<number, { id: string; name: string; json: string }>();
@@ -868,6 +869,24 @@ async function streamAnthropicCompletion(
       resetTimeout();
     });
 
+    // Defensively capture raw refusal metadata if Anthropic sends it in the
+    // message_delta event. The installed SDK (0.80.0) does not type or persist
+    // stop_details on the final message, so we capture it from the raw event.
+    stream.on('streamEvent', (event) => {
+      if (event.type === 'message_delta') {
+        const rawEvent = event as unknown as Record<string, unknown>;
+        const delta = rawEvent.delta as Record<string, unknown> | undefined;
+        if (delta && typeof delta.stop_details === 'object' && delta.stop_details !== null) {
+          const details = delta.stop_details as Record<string, string>;
+          refusalDetails = {
+            type: details.type,
+            category: details.category,
+            explanation: details.explanation,
+          };
+        }
+      }
+    });
+
     // Wait for the full message
     const message = await stream.finalMessage();
 
@@ -880,6 +899,25 @@ async function streamAnthropicCompletion(
 
     stopReason = message.stop_reason;
     anthropicUsage = message.usage || {};
+
+    // Fable 5 returns stop_reason: 'refusal' for classifier-blocked prompts.
+    // Surface a helpful message instead of silently returning empty content.
+    const fableRefusal =
+      stopReason === 'refusal' &&
+      (params.model === 'claude-fable-5' || params.model.startsWith('claude-fable-5-'));
+    if (fableRefusal) {
+      const refusalMessage =
+        'Claude Fable 5 refused this request due to its safety guardrails. Try a different model or rephrase your prompt.';
+      content = refusalMessage;
+      onChunk?.(refusalMessage);
+
+      logger.warn('Claude Fable 5 refusal detected', {
+        model: params.model,
+        stopReason,
+        refusalCategory: refusalDetails?.category,
+        refusalExplanation: refusalDetails?.explanation,
+      });
+    }
 
     // Extract content blocks from the final message
     for (const block of message.content) {
