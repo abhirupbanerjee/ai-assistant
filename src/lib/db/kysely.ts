@@ -264,17 +264,9 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     {
       id: 'fireworks/glm-5p1',
       display_name: 'GLM-5.1 (Fireworks)',
-      tool_capable: 0,
+      tool_capable: 1,
       vision_capable: 0,
       max_input_tokens: 202000,
-      max_output_tokens: 16384,
-    },
-    {
-      id: 'fireworks/qwen3p6-plus',
-      display_name: 'Qwen3 P6 Plus (Fireworks)',
-      tool_capable: 1,
-      vision_capable: 1,
-      max_input_tokens: 131072,
       max_output_tokens: 16384,
     },
     {
@@ -283,6 +275,38 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       tool_capable: 1,
       vision_capable: 0,
       max_input_tokens: 131072,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/minimax-m3',
+      display_name: 'MiniMax M3 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 500000,
+      max_output_tokens: 32768,
+    },
+    {
+      id: 'fireworks/kimi-k2p7-code',
+      display_name: 'Kimi K2.7 Code (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 262144,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/deepseek-v4-flash',
+      display_name: 'DeepSeek V4 Flash (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 1048576,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/deepseek-v4-pro',
+      display_name: 'DeepSeek V4 Pro (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 1048576,
       max_output_tokens: 16384,
     },
   ];
@@ -307,8 +331,8 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   console.log('[Kysely] Seeded new Fireworks models');
 
   // Migration: Remove retired Fireworks models
-  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/deepseek-v4-pro', 'fireworks/qwen3-coder-480b-a35b-instruct', 'fireworks/qwen3-vl-30b-a3b-thinking')`.execute(database);
-  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, deepseek-v4-pro, qwen3-coder-480b, qwen3-vl-30b-a3b-thinking)');
+  await sql`DELETE FROM enabled_models WHERE id IN ('fireworks/deepseek-v3p2', 'fireworks/qwen3-coder-480b-a35b-instruct', 'fireworks/qwen3-vl-30b-a3b-thinking', 'fireworks/qwen3p6-plus')`.execute(database);
+  console.log('[Kysely] Removed retired Fireworks models (deepseek-v3p2, qwen3-coder-480b, qwen3-vl-30b-a3b-thinking, qwen3p6-plus)');
 
   // Migration: Remove deprecated DeepSeek legacy models
   await sql`DELETE FROM enabled_models WHERE id IN ('deepseek-chat', 'deepseek-reasoner')`.execute(database);
@@ -421,11 +445,41 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS input_cost_per_1m NUMERIC(12,8)`.execute(database);
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS output_cost_per_1m NUMERIC(12,8)`.execute(database);
   console.log('[Kysely] Ensured input_cost_per_1m and output_cost_per_1m columns exist');
+
+  // Migration: Ensure MiniMax M2.7 and M3 pricing matches Fireworks serverless rates
+  await sql`
+    UPDATE enabled_models
+    SET input_cost_per_1m = 0.30, output_cost_per_1m = 1.20
+    WHERE id IN ('fireworks/minimax-m2p7', 'fireworks/minimax-m3')
+  `.execute(database);
+  console.log('[Kysely] Updated MiniMax M2.7 / M3 pricing to $0.30 in / $1.20 out per 1M tokens');
+
+  // Migration: Ensure Kimi K2.7 Code pricing matches the K2.6 tier
+  await sql`
+    UPDATE enabled_models
+    SET input_cost_per_1m = 0.95, output_cost_per_1m = 4.00
+    WHERE id = 'fireworks/kimi-k2p7-code'
+  `.execute(database);
+  console.log('[Kysely] Updated Kimi K2.7 Code pricing to $0.95 in / $4.00 out per 1M tokens');
+
+  // Migration: Ensure Fireworks DeepSeek V4 Pro / Flash pricing matches Fireworks serverless rates
+  await sql`
+    UPDATE enabled_models
+    SET input_cost_per_1m = 1.74, output_cost_per_1m = 3.48
+    WHERE id = 'fireworks/deepseek-v4-pro'
+  `.execute(database);
+  await sql`
+    UPDATE enabled_models
+    SET input_cost_per_1m = 0.14, output_cost_per_1m = 0.28
+    WHERE id = 'fireworks/deepseek-v4-flash'
+  `.execute(database);
+  console.log('[Kysely] Updated Fireworks DeepSeek V4 Pro / Flash pricing');
+
   await sql`
     UPDATE enabled_models
     SET thinking_capable = 1
     WHERE (
-        id IN ('deepseek-v4-pro', 'deepseek/deepseek-v4-pro', 'fireworks/kimi-k2p6', 'moonshot/kimi-k2p6')
+        id IN ('deepseek-v4-pro', 'deepseek/deepseek-v4-pro', 'fireworks/deepseek-v4-pro', 'fireworks/deepseek-v4-flash', 'fireworks/kimi-k2p6', 'moonshot/kimi-k2p6', 'fireworks/minimax-m3', 'fireworks/kimi-k2p7-code')
         OR id LIKE 'gpt-5%'
         OR id LIKE 'openai/gpt-5%'
       )

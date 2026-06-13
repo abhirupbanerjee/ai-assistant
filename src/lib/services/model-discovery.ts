@@ -54,9 +54,16 @@ const TOOL_CAPABLE_PATTERNS = [
   /^claude/,
   // DeepSeek V4 (flash and pro both support tool calling)
   /^deepseek-v4-(flash|pro)/,
+  /^fireworks\/deepseek-v4-(flash|pro)/,
+  /^accounts\/fireworks\/models\/deepseek-v4-(flash|pro)/,
   // Moonshot / Kimi
   /^kimi/,
   /^moonshot/,
+  /^fireworks\/kimi/,
+  /^accounts\/fireworks\/models\/kimi/,
+  // MiniMax
+  /^fireworks\/minimax/,
+  /^accounts\/fireworks\/models\/minimax/,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing
@@ -76,6 +83,9 @@ const VISION_CAPABLE_PATTERNS = [
   /^mistral-small/,
   // Anthropic Claude (all Claude 3+ models support vision)
   /^claude/,
+  // MiniMax M3 is natively multimodal (text + image + video)
+  /^fireworks\/minimax-m3/,
+  /^accounts\/fireworks\/models\/minimax-m3/,
   // Note: DeepSeek does NOT support vision
 ];
 
@@ -142,14 +152,22 @@ const THINKING_CAPABLE_PATTERNS = [
   // Think-tag models — <think>…</think> parsed via parseThinkChunk()
   /^qwen3/,
   /^qwq/,
-  /^deepseek-v4-pro/,
+  /^deepseek-v4-(flash|pro)/,
+  /^fireworks\/deepseek-v4-(flash|pro)/,
+  /^accounts\/fireworks\/models\/deepseek-v4-(flash|pro)/,
   /^deepseek-reasoner/,
   // Moonshot / Kimi (future-proofing for reasoning mode exposure)
   /^kimi-k2/,
+  /^fireworks\/kimi-k2/,
+  /^accounts\/fireworks\/models\/kimi-k2/,
   // Other exposed-reasoning families
   /^gpt-oss/,
   /^gemini-2\.5/,
   /^magistral/,
+  // MiniMax M3 exposes reasoning via the thinking parameter
+  /^minimax-m3/,
+  /^fireworks\/minimax-m3/,
+  /^accounts\/fireworks\/models\/minimax-m3/,
 ];
 
 // Known context window sizes
@@ -295,6 +313,8 @@ function getContextWindow(modelId: string): number | null {
     [/^mistral-small/, 32000],
     [/^claude/, 1000000],
     [/^deepseek-v4/, 1048576],
+    [/^fireworks\/deepseek-v4/, 1048576],
+    [/^accounts\/fireworks\/models\/deepseek-v4/, 1048576],
   ];
 
   for (const [pattern, value] of familyPatterns) {
@@ -568,7 +588,7 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
 
 /**
  * Curated Fireworks AI models (Zero Data Retention, SOC2/GDPR/HIPAA)
- * Returns the 5 approved models rather than the full Fireworks catalog (300+)
+ * Returns the approved serverless models rather than the full Fireworks catalog (300+)
  */
 async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[]> {
   // Validate API key by calling the models endpoint
@@ -593,9 +613,9 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
     {
       id: 'fireworks/glm-5p1',
       name: 'GLM-5.1',
-      toolCapable: false,
+      toolCapable: true,
       visionCapable: false,
-      forcedToolCapable: false,
+      forcedToolCapable: true,
       maxInputTokens: 202000,
       maxOutputTokens: 16384,
     },
@@ -627,21 +647,48 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       maxOutputTokens: 16384,
     },
     {
-      id: 'fireworks/qwen3p6-plus',
-      name: 'Qwen3 P6 Plus',
-      toolCapable: true,
-      visionCapable: true,
-      forcedToolCapable: true,
-      maxInputTokens: 131072,
-      maxOutputTokens: 16384,
-    },
-    {
       id: 'fireworks/minimax-m2p7',
       name: 'MiniMax M2.7',
       toolCapable: true,
       visionCapable: false,
       forcedToolCapable: true,
       maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/minimax-m3',
+      name: 'MiniMax M3',
+      toolCapable: true,
+      visionCapable: true,
+      forcedToolCapable: true,
+      maxInputTokens: 500000,
+      maxOutputTokens: 32768,
+    },
+    {
+      id: 'fireworks/kimi-k2p7-code',
+      name: 'Kimi K2.7 Code',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: true,
+      maxInputTokens: 262144,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/deepseek-v4-flash',
+      name: 'DeepSeek V4 Flash',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: true,
+      maxInputTokens: 1048576,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/deepseek-v4-pro',
+      name: 'DeepSeek V4 Pro',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: false,
+      maxInputTokens: 1048576,
       maxOutputTokens: 16384,
     },
   ];
