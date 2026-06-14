@@ -141,14 +141,14 @@ async function getOpenAIBalance(): Promise<ProviderBalance | null> {
   }
 
   try {
-    // Calculate current month date range
+    // Calculate current month date range — OpenAI requires Unix seconds
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startTime = startOfMonth.toISOString().split('T')[0];
-    const endTime = now.toISOString().split('T')[0];
+    const startUnix = Math.floor(startOfMonth.getTime() / 1000);
+    const endUnix = Math.floor(now.getTime() / 1000);
 
     const res = await fetch(
-      `https://api.openai.com/v1/organization/costs?start_time=${startTime}&end_time=${endTime}&limit=1`,
+      `https://api.openai.com/v1/organization/costs?start_time=${startUnix}&end_time=${endUnix}&bucket_width=1d&limit=180`,
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -175,17 +175,25 @@ async function getOpenAIBalance(): Promise<ProviderBalance | null> {
       };
     }
 
+    // OpenAI response: { data: [{ results: [{ amount: { value: 0.06, currency: "usd" } }] }] }
     const data = (await res.json()) as {
-      data?: Array<{ cost?: number }>;
-      total_cost?: number;
+      data?: Array<{
+        results?: Array<{
+          amount?: { value?: number; currency?: string };
+        }>;
+      }>;
     };
 
-    // The costs endpoint returns an array of daily cost entries
+    // Sum all cost amounts across all daily buckets and results
     let totalSpend = 0;
     if (data.data && Array.isArray(data.data)) {
-      totalSpend = data.data.reduce((sum, entry) => sum + (entry.cost ?? 0), 0);
-    } else if (data.total_cost !== undefined) {
-      totalSpend = data.total_cost;
+      for (const bucket of data.data) {
+        if (bucket.results && Array.isArray(bucket.results)) {
+          for (const result of bucket.results) {
+            totalSpend += result.amount?.value ?? 0;
+          }
+        }
+      }
     }
 
     return {
@@ -238,13 +246,14 @@ async function getAnthropicBalance(): Promise<ProviderBalance | null> {
   }
 
   try {
+    // Anthropic requires starting_at/ending_at in RFC 3339 format
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startTime = startOfMonth.toISOString().split('T')[0];
-    const endTime = now.toISOString().split('T')[0];
+    const startingAt = startOfMonth.toISOString();
+    const endingAt = now.toISOString();
 
     const res = await fetch(
-      `https://api.anthropic.com/v1/organizations/cost_report?start_date=${startTime}&end_date=${endTime}`,
+      `https://api.anthropic.com/v1/organizations/cost_report?starting_at=${encodeURIComponent(startingAt)}&ending_at=${encodeURIComponent(endingAt)}&bucket_width=1d&limit=31`,
       {
         headers: {
           'x-api-key': apiKey,
@@ -272,20 +281,32 @@ async function getAnthropicBalance(): Promise<ProviderBalance | null> {
       };
     }
 
+    // Anthropic response: { data: [{ results: [{ amount: { value: "6.00" } }] }] }
+    // Amounts are decimal strings in lowest units (cents)
     const data = (await res.json()) as {
-      total_cost?: number;
-      amount?: number;
-      costs?: Array<{ amount?: number }>;
+      data?: Array<{
+        results?: Array<{
+          amount?: { value?: string | number };
+        }>;
+      }>;
     };
 
-    // Parse spend — Anthropic response format varies
+    // Sum all cost amounts across all daily buckets and results
     let totalSpend = 0;
-    if (data.total_cost !== undefined) {
-      totalSpend = data.total_cost;
-    } else if (data.amount !== undefined) {
-      totalSpend = data.amount;
-    } else if (data.costs && Array.isArray(data.costs)) {
-      totalSpend = data.costs.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
+    if (data.data && Array.isArray(data.data)) {
+      for (const bucket of data.data) {
+        if (bucket.results && Array.isArray(bucket.results)) {
+          for (const result of bucket.results) {
+            const val = result.amount?.value;
+            if (val !== undefined) {
+              // Anthropic returns amounts as strings in cents; parse and convert to dollars
+              const numVal = typeof val === 'string' ? parseFloat(val) : val;
+              // If the value seems to be in cents (large number), convert to dollars
+              totalSpend += numVal > 100 ? numVal / 100 : numVal;
+            }
+          }
+        }
+      }
     }
 
     return {
