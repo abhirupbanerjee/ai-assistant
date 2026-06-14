@@ -44,6 +44,8 @@ import {
 import { getAutonomousModeEnabled } from '@/lib/db/compat/agent-config';
 import { executeAutonomousWithStreaming } from '@/lib/agent/streaming-executor';
 import { rateLimitMiddleware } from '@/lib/rate-limiter';
+import { AUTO_MODEL_SENTINEL } from '@/lib/constants';
+import { selectBestModel, isAutoSentinel } from '@/lib/auto-model-selector';
 
 // Route segment config for long-running autonomous tasks
 // 1800s (30 min) matches Traefik proxy timeout for autonomous mode.
@@ -150,7 +152,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Resolve effective model for this thread (thread override or global default)
-        const effectiveModel = await getEffectiveModelForThread(threadId);
+        // Note: may be AUTO_MODEL_SENTINEL — resolved to concrete id below after context is available
+        let effectiveModel = await getEffectiveModelForThread(threadId);
         const requestStart = Date.now();
 
         send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
@@ -295,6 +298,39 @@ export async function POST(request: NextRequest) {
         const conversationHistory = await getMessages(user.id, threadId, 50);
         const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
         const categoryIds = thread.categories?.map(c => c.id) || [];
+
+        // ── Resolve Auto model selection ──
+        // Must happen after categoryIds and uploadDetails are available,
+        // but before effectiveModel is used (e.g., getImageCapabilities).
+        if (isAutoSentinel(effectiveModel)) {
+          try {
+            const picked = await selectBestModel({
+              userMessage: message,
+              categoryIds,
+              hasImages: uploadDetails.images.length > 0,
+            });
+            effectiveModel = picked.modelId;
+            send({
+              type: 'model_switch',
+              originalModel: AUTO_MODEL_SENTINEL,
+              newModel: picked.modelId,
+              reason: 'auto_selected',
+              message: `Auto-selected ${picked.displayName} (${picked.reason.replace(/_/g, ' ')})`,
+            });
+          } catch (err) {
+            // Auto selection failed — fall back to global default
+            console.error('[Auto] Model selection failed, falling back to default:', err);
+            const { getDefaultModel } = await import('@/lib/db/compat/enabled-models');
+            const defaultModel = await getDefaultModel();
+            effectiveModel = defaultModel?.id || null;
+            if (!effectiveModel) {
+              send({ type: 'error', code: 'NO_MODELS_AVAILABLE', message: 'No models available for Auto selection.', recoverable: false });
+              cleanup();
+              safeClose();
+              return;
+            }
+          }
+        }
 
         // Get memory and summary context
         let memoryContext = '';

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { createThread, listThreads } from '@/lib/threads';
 import { getEnabledModel } from '@/lib/db/compat/enabled-models';
+import { isAutoSentinel } from '@/lib/auto-model-selector';
 import type { Thread, ThreadListResponse, CreateThreadRequest, ApiError } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       // Body is optional
     }
 
-    if (selectedModel !== null && selectedModel !== undefined) {
+    if (selectedModel !== null && selectedModel !== undefined && !isAutoSentinel(selectedModel)) {
       const model = await getEnabledModel(selectedModel);
 
       if (!model || !model.enabled) {

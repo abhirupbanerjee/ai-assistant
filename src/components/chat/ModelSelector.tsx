@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Check, ChevronDown, Loader2, Wrench, Eye, AlertTriangle, Brain } from 'lucide-react';
+import { Bot, Check, ChevronDown, Loader2, Wrench, Eye, AlertTriangle, Brain, Sparkles } from 'lucide-react';
+import { AUTO_MODEL_SENTINEL } from '@/lib/constants';
 
 interface EnabledModel {
   id: string;
@@ -80,12 +81,18 @@ export default function ModelSelector({
           const pendingModel = pendingModelId
             ? models.find((m: EnabledModel) => m.id === pendingModelId)
             : null;
-          const nextEffectiveModel = pendingModel?.id || defaultModel?.id || '';
-          const isValid = nextEffectiveModel
-            ? models.some((m: EnabledModel) => m.id === nextEffectiveModel)
-            : false;
+          // 'auto' sentinel is valid even though it's not in the models list
+          const isAuto = pendingModelId === AUTO_MODEL_SENTINEL;
+          const nextEffectiveModel = isAuto
+            ? AUTO_MODEL_SENTINEL
+            : (pendingModel?.id || defaultModel?.id || '');
+          const isValid = isAuto
+            ? true
+            : (nextEffectiveModel
+              ? models.some((m: EnabledModel) => m.id === nextEffectiveModel)
+              : false);
 
-          setSelectedModel(pendingModel?.id || null);
+          setSelectedModel(isAuto ? AUTO_MODEL_SENTINEL : (pendingModel?.id || null));
           setGlobalDefault(defaultModel?.id || '');
           setEffectiveModel(nextEffectiveModel);
           setEffectiveModelValid(isValid);
@@ -124,10 +131,16 @@ export default function ModelSelector({
     // it when the first message creates the thread.
     if (!threadId) {
       const modelToSet = newModelId === 'default' ? null : newModelId;
-      const nextEffectiveModel = modelToSet || globalDefault || availableModels.find((m) => m.isDefault)?.id || '';
-      const isValid = nextEffectiveModel
-        ? availableModels.some((m) => m.id === nextEffectiveModel)
-        : false;
+      // 'auto' sentinel is valid even though it's not in the models list
+      const isAuto = modelToSet === AUTO_MODEL_SENTINEL;
+      const nextEffectiveModel = isAuto
+        ? AUTO_MODEL_SENTINEL
+        : (modelToSet || globalDefault || availableModels.find((m) => m.isDefault)?.id || '');
+      const isValid = isAuto
+        ? true
+        : (nextEffectiveModel
+          ? availableModels.some((m) => m.id === nextEffectiveModel)
+          : false);
 
       setSelectedModel(modelToSet);
       setEffectiveModel(nextEffectiveModel);
@@ -154,7 +167,11 @@ export default function ModelSelector({
         setSelectedModel(data.selectedModel);
         setEffectiveModel(data.effectiveModel || '');
         // After changing model, check if the new effective model is in available list
-        const isValid = availableModels.some(m => m.id === data.effectiveModel);
+        // 'auto' sentinel is valid even though it's not in the models list
+        const isAuto = data.effectiveModel === AUTO_MODEL_SENTINEL;
+        const isValid = isAuto
+          ? true
+          : availableModels.some(m => m.id === data.effectiveModel);
         setEffectiveModelValid(isValid);
         updateModelStatus(availableModels, isValid, data.effectiveModel || null);
       } else {
@@ -177,6 +194,9 @@ export default function ModelSelector({
     if (isLoading) return 'Loading...';
 
     if (availableModels.length === 0) return 'No models';
+
+    // Auto sentinel — show "Auto" label
+    if (selectedModel === AUTO_MODEL_SENTINEL) return 'Auto';
 
     if (!effectiveModel) {
       // No thread yet — show the default model name if available
@@ -202,8 +222,9 @@ export default function ModelSelector({
       : effectiveModel;
   };
 
-  // Check if using non-default model
+  // Check if using non-default model (Auto counts as non-default for styling)
   const isNonDefault = selectedModel !== null;
+  const isAutoSelected = selectedModel === AUTO_MODEL_SENTINEL;
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -216,6 +237,8 @@ export default function ModelSelector({
         className={`px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-sm ${
           hasModelError
             ? 'bg-red-50 text-red-600 hover:bg-red-100'
+            : isAutoSelected
+            ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
             : isNonDefault
             ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
             : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
@@ -225,6 +248,8 @@ export default function ModelSelector({
           <Loader2 size={16} className="animate-spin" />
         ) : hasModelError ? (
           <AlertTriangle size={16} className="text-red-500" />
+        ) : isAutoSelected ? (
+          <Sparkles size={16} />
         ) : (
           <Bot size={16} />
         )}
@@ -241,6 +266,7 @@ export default function ModelSelector({
           <p className="text-gray-400 mt-0.5">
             {hasModelError
               ? 'Current model unavailable — select a valid model'
+              : isAutoSelected ? 'Auto: best model picked per message'
               : isNonDefault ? `Using: ${effectiveModel}` : 'Using default model'}
           </p>
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
@@ -264,6 +290,30 @@ export default function ModelSelector({
                   : 'Current model belongs to a disabled route. Select a valid model below.'}
               </span>
             </div>
+          )}
+
+          {/* Auto option — always show when models are available */}
+          {availableModels.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleModelChange(AUTO_MODEL_SENTINEL)}
+                className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 ${
+                  isAutoSelected ? 'text-purple-700 bg-purple-50' : 'text-gray-700'
+                }`}
+              >
+                <span className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Sparkles size={12} className="text-purple-600" />
+                </span>
+                <span className="flex-1 truncate font-medium">
+                  Auto (recommended)
+                </span>
+                {isAutoSelected && <Check size={16} className="flex-shrink-0 text-purple-600" />}
+              </button>
+
+              {/* Divider */}
+              <div className="border-t border-gray-100 my-1" />
+            </>
           )}
 
           {/* Default option — only show if global default is in the available list */}

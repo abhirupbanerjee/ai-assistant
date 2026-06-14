@@ -124,3 +124,12 @@ export const CSV_TYPE_INFERENCE_ROWS = 100;
 
 /** Sample data rows for API response preview */
 export const API_SAMPLE_ROWS = 3;
+
+// ============ Auto Model Selection Constants ============
+
+/**
+ * Sentinel value stored as `selected_model` in the threads table when the user
+ * chooses "Auto" mode. Resolved to a concrete model id at request time by
+ * `selectBestModel()` — never passed to any LLM API or `buildModelsToTry()`.
+ */
+export const AUTO_MODEL_SENTINEL = 'auto';

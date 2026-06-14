@@ -5,6 +5,7 @@ import { updateThreadModel, getEffectiveModelForThread, getThreadById } from '@/
 import { getActiveModels, getDefaultModel, getEnabledModel } from '@/lib/db/compat/enabled-models';
 import { getRoutesSettings } from '@/lib/db/compat/config';
 import { isRoute2Model, isRoute3Model, isRoute4Model } from '@/lib/llm-fallback';
+import { isAutoSentinel } from '@/lib/auto-model-selector';
 import type { ApiError } from '@/types';
 
 interface RouteParams {
@@ -59,8 +60,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const effectiveModel = await getEffectiveModelForThread(threadId);
 
     // Check if effective model belongs to a disabled route
+    // 'auto' sentinel is always valid — it resolves at request time
     const effectiveModelValid = effectiveModel
-      ? availableModels.some(m => m.id === effectiveModel)
+      ? (isAutoSentinel(effectiveModel) || availableModels.some(m => m.id === effectiveModel))
       : false;
 
     return NextResponse.json({
@@ -112,8 +114,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
     const { modelId } = body;
 
-    // Validate model exists if not NULL
-    if (modelId !== null && modelId !== undefined) {
+    // Validate model exists if not NULL and not the Auto sentinel
+    if (modelId !== null && modelId !== undefined && !isAutoSentinel(modelId)) {
       const model = await getEnabledModel(modelId);
 
       if (!model) {

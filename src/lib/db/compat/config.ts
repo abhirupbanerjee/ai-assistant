@@ -810,6 +810,17 @@ export async function setDisplaySettings(
   return merged;
 }
 
+// ============ Auto Model Selection ============
+
+/**
+ * Get the tool→model preference map for Auto model selection.
+ * Maps tool names (e.g., 'html_gen', 'chart_gen') to preferred model ids.
+ * Returns empty object when not configured — selector skips tool preference signal.
+ */
+export async function getAutoToolModelMap(): Promise<Record<string, string>> {
+  return (await getSetting<Record<string, string>>('auto-tool-model-map')) ?? {};
+}
+
 // ============ Bulk Operations ============
 
 export async function getAllSettings(): Promise<{

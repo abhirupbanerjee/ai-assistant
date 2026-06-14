@@ -467,7 +467,9 @@ export type SettingKey =
   | 'agent_subagent_max_iterations'
   | 'agent_subagent_budget_ratio'
   | 'agent_subagent_hitl_enabled'
-  | 'agent_working_memory_enabled';
+  | 'agent_working_memory_enabled'
+  // Auto Model Selection
+  | 'auto-tool-model-map';
 
 // ============ Speech Settings Types ============
 

@@ -18,7 +18,8 @@ export type FallbackReason =
   | 'api_error'
   | 'auth_error'
   | 'vision_required'
-  | 'tools_required';
+  | 'tools_required'
+  | 'auto_selected';
 
 export interface ModelSwitchEvent {
   originalModel: string;
