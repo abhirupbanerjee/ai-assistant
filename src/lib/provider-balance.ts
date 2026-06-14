@@ -292,6 +292,7 @@ async function getAnthropicBalance(): Promise<ProviderBalance | null> {
     };
 
     // Sum all cost amounts across all daily buckets and results
+    // Anthropic returns amount.value as a number or string in USD (not cents)
     let totalSpend = 0;
     if (data.data && Array.isArray(data.data)) {
       for (const bucket of data.data) {
@@ -299,10 +300,7 @@ async function getAnthropicBalance(): Promise<ProviderBalance | null> {
           for (const result of bucket.results) {
             const val = result.amount?.value;
             if (val !== undefined) {
-              // Anthropic returns amounts as strings in cents; parse and convert to dollars
-              const numVal = typeof val === 'string' ? parseFloat(val) : val;
-              // If the value seems to be in cents (large number), convert to dollars
-              totalSpend += numVal > 100 ? numVal / 100 : numVal;
+              totalSpend += Number(val);
             }
           }
         }

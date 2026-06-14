@@ -109,6 +109,13 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** Safely convert a value that may be string/number/null/undefined to a number */
+function toNum(val: number | string | null | undefined): number {
+  if (val == null) return 0;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : 0;
+}
+
 // ============ Component ============
 
 interface TokenUsageDashboardProps {
@@ -323,7 +330,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                               <div className="flex justify-between text-sm">
                                 <span className="text-gray-500">Available Balance</span>
                                 <span className="font-medium text-gray-900">
-                                  {b.currency === 'USD' ? '$' : ''}{(b.balance ?? 0).toFixed(2)}
+                                  {b.currency === 'USD' ? '$' : ''}{toNum(b.balance).toFixed(2)}
                                   {b.currency !== 'USD' ? ` ${b.currency}` : ''}
                                 </span>
                               </div>
@@ -331,7 +338,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                                 <div className="flex justify-between text-sm">
                                   <span className="text-gray-500">Granted Credits</span>
                                   <span className="font-medium text-gray-900">
-                                    {b.currency === 'USD' ? '$' : ''}{b.limit.toFixed(2)}
+                                    {b.currency === 'USD' ? '$' : ''}{toNum(b.limit).toFixed(2)}
                                     {b.currency !== 'USD' ? ` ${b.currency}` : ''}
                                   </span>
                                 </div>
@@ -340,7 +347,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                                 <div className="flex justify-between text-sm">
                                   <span className="text-gray-500">Used This Month</span>
                                   <span className="font-medium text-gray-900">
-                                    {b.currency === 'USD' ? '$' : ''}{b.usageThisMonth.toFixed(2)}
+                                    {b.currency === 'USD' ? '$' : ''}{toNum(b.usageThisMonth).toFixed(2)}
                                     {b.currency !== 'USD' ? ` ${b.currency}` : ''}
                                   </span>
                                 </div>
@@ -349,17 +356,17 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                                 <div className="mt-2">
                                   <div className="flex justify-between text-xs text-gray-500 mb-1">
                                     <span>Usage</span>
-                                    <span>{((b.usageThisMonth / b.limit) * 100).toFixed(1)}%</span>
+                                    <span>{((toNum(b.usageThisMonth) / toNum(b.limit)) * 100).toFixed(1)}%</span>
                                   </div>
                                   <div className="w-full bg-gray-200 rounded-full h-2">
                                     <div
                                       className="bg-blue-600 rounded-full h-2 transition-all"
                                       style={{
-                                        width: `${Math.min(100, (b.usageThisMonth / b.limit) * 100)}%`,
+                                        width: `${Math.min(100, (toNum(b.usageThisMonth) / toNum(b.limit)) * 100)}%`,
                                         backgroundColor:
-                                          b.usageThisMonth / b.limit > 0.9
+                                          toNum(b.usageThisMonth) / toNum(b.limit) > 0.9
                                             ? '#EF4444'
-                                            : b.usageThisMonth / b.limit > 0.7
+                                            : toNum(b.usageThisMonth) / toNum(b.limit) > 0.7
                                               ? '#F59E0B'
                                               : '#3B82F6',
                                       }}
@@ -408,7 +415,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                               <div className="flex justify-between text-sm">
                                 <span className="text-gray-500">Spend This Month</span>
                                 <span className="font-medium text-gray-900">
-                                  {b.currency === 'USD' ? '$' : ''}{(b.usageThisMonth ?? b.balance ?? 0).toFixed(2)}
+                                  {b.currency === 'USD' ? '$' : ''}{toNum(b.usageThisMonth ?? b.balance).toFixed(2)}
                                   {b.currency !== 'USD' ? ` ${b.currency}` : ''}
                                 </span>
                               </div>
@@ -416,7 +423,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                                 <div className="flex justify-between text-sm">
                                   <span className="text-gray-500">Monthly Limit</span>
                                   <span className="font-medium text-gray-900">
-                                    {b.currency === 'USD' ? '$' : ''}{b.limit.toFixed(2)}
+                                    {b.currency === 'USD' ? '$' : ''}{toNum(b.limit).toFixed(2)}
                                     {b.currency !== 'USD' ? ` ${b.currency}` : ''}
                                   </span>
                                 </div>
@@ -425,7 +432,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                                 <div className="mt-2">
                                   <div className="flex justify-between text-xs text-gray-500 mb-1">
                                     <span>Usage</span>
-                                    <span>{(((b.usageThisMonth ?? 0) / b.limit) * 100).toFixed(1)}%</span>
+                                    <span>{((toNum(b.usageThisMonth) / toNum(b.limit)) * 100).toFixed(1)}%</span>
                                   </div>
                                   <div className="w-full bg-gray-200 rounded-full h-2">
                                     <div
