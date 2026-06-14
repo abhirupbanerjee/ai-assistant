@@ -1305,9 +1305,11 @@ Override global LLM settings for this workspace:
 | Setting | Description |
 |---------|-------------|
 | **Provider** | OpenAI, Gemini, Mistral, etc. (default: global) |
-| **Model** | Specific model to use |
+| **Model** | Specific model to use, or **⚡ Auto** for intelligent per-message selection |
 | **Temperature** | Response creativity (0-1) |
 | **System Prompt** | Additional instructions prepended to global prompt |
+
+> **Auto Model Selection:** When **⚡ Auto** is selected, the system evaluates each incoming message (query context, tool routing, token budget) and picks the best available enabled model automatically. This is scoped to the workspace's linked categories. If selection fails, the global default model is used.
 
 #### Feature Toggles
 
@@ -1471,7 +1473,7 @@ Agent Bots are API-accessible chatbot instances. Instead of a user interacting v
    - **System Prompt** - AI instructions for this bot
    - **Categories** - Document categories this bot can access
    - **Tools** - Enabled tools (web search, doc gen, etc.)
-   - **LLM Config** - Model, temperature, max tokens
+   - **LLM Config** - Model (including **⚡ Auto** for intelligent per-invocation selection), temperature, max tokens
 4. Click **Create**
 
 ### Managing API Keys
@@ -1780,11 +1782,19 @@ The **Agent** section configures the autonomous multi-step task execution system
 
 | Setting | Description |
 |---------|-------------|
-| **Planner Model** | Model for task decomposition and DAG creation. Thinking-capable models recommended. |
-| **Executor Model** | Model for running individual tasks. Supports executor profiles for specialized routing. |
-| **Checker Model** | Model for quality validation and confidence scoring |
-| **Summarizer Model** | Model for final output synthesis |
+| **Planner Model** | Model for task decomposition and DAG creation. Thinking-capable models recommended. Set to **⚡ Auto** for intelligent per-plan selection. |
+| **Executor Model** | Model for running individual tasks. Supports executor profiles for specialized routing. Set to **⚡ Auto** for intelligent per-task selection. |
+| **Checker Model** | Model for quality validation and confidence scoring. Set to **⚡ Auto** for intelligent per-check selection. |
+| **Summarizer Model** | Model for final output synthesis. Set to **⚡ Auto** for intelligent per-summary selection. |
 | **Planner Reasoning** | Enable chain-of-thought reasoning in the planner (only shown when planner model is thinking-capable) |
+
+> **Auto Model Selection for Agent Roles:** Each role (Planner, Executor, Checker, Summarizer) can be set to **⚡ Auto** independently. The system picks the best model for that role's specific workload:
+> - **Planner** → prioritizes reasoning capability
+> - **Executor** → prioritizes function calling / tool execution
+> - **Checker** → prioritizes reasoning capability
+> - **Summarizer** → prioritizes reasoning capability
+>
+> Auto is disabled for the `local_private` executor profile (air-gapped deployments must stay on Ollama). If Auto selection fails, the global default model is used.
 
 #### Budget & Quality
 

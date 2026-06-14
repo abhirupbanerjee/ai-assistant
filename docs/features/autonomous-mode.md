@@ -156,14 +156,16 @@ The autonomous agent:
 
 ### Agent Model Configuration
 
-Configure a dedicated model for each agent role. The fallback chain is: **role-specific model → global default → universal fallback**.
+Configure a dedicated model for each agent role, or set any role to **⚡ Auto** for intelligent per-invocation selection. The fallback chain is: **role-specific model → global default → universal fallback**.
 
 | Role | Recommended Model Type | Purpose |
 |------|----------------------|---------|
-| **Planner** | Thinking-capable (Claude Sonnet, Gemini 2.5 Pro, o1) | Task decomposition, reasoning, self-reflection |
-| **Executor** | Fast tool-capable model (GPT-4.1, Claude Haiku) | Tool execution, code generation, subagent loops |
-| **Checker** | Fast validation model (GPT-4.1 Mini, Gemini Flash) | Confidence scoring, quality validation |
-| **Summarizer** | Strong synthesis model (GPT-4.1, Claude Sonnet) | Final output compilation |
+| **Planner** | Thinking-capable (Claude Sonnet, Gemini 2.5 Pro, o1) or **⚡ Auto** | Task decomposition, reasoning, self-reflection |
+| **Executor** | Fast tool-capable model (GPT-4.1, Claude Haiku) or **⚡ Auto** | Tool execution, code generation, subagent loops |
+| **Checker** | Fast validation model (GPT-4.1 Mini, Gemini Flash) or **⚡ Auto** | Confidence scoring, quality validation |
+| **Summarizer** | Strong synthesis model (GPT-4.1, Claude Sonnet) or **⚡ Auto** | Final output compilation |
+
+> **Auto Model Selection:** When a role is set to **⚡ Auto**, the system picks the best model for that role's specific workload using role-specific scoring dimensions (Planner/Checker/Summarizer → reasoning; Executor → function calling). Auto is disabled for the `local_private` executor profile (air-gapped deployments must stay on Ollama). If Auto selection fails, the global default model is used.
 
 **Executor Profiles:**
 

@@ -80,6 +80,7 @@ Built with enterprise-grade, open-source technologies:
 - **Flexible Authentication** - Credentials login enabled by default for fresh deployments, can be disabled after OAuth setup
 
 ### AI Enhancements
+- **Auto Model Selection** - Per-message intelligent model selection based on query context, tool routing, image presence, and token budget. Available in main chat, workspaces, autonomous agent (per-role), and agent bots. Falls back to global default if selection fails.
 - **Prompts System** - Global and category-specific AI instructions
 - **Skills System** - Modular behaviors triggered by category/keyword/always-on
 - **Tool Routing** - Pattern-based forced tool invocation for reliable behavior

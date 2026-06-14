@@ -40,7 +40,7 @@ Workspaces solve the problem of **deploying Policy Bot capabilities outside the 
 
 - **Category-scoped RAG** — Each workspace searches only its linked categories
 - **Independent branding** — Colors, logo, greeting, suggested prompts per workspace
-- **LLM overrides** — Per-workspace model, temperature, system prompt
+- **LLM overrides** — Per-workspace model (including **⚡ Auto** for intelligent per-message selection), temperature, system prompt
 - **Access control** — Category-based (subscriptions) or explicit user list
 - **WhatsApp channel** — Standalone workspaces can receive WhatsApp messages
 - **Analytics** — Sessions, messages, visitors, response times, token usage
@@ -183,8 +183,10 @@ Override global LLM settings for this workspace:
 | Field | Description |
 |-------|-------------|
 | **Provider** | OpenAI, Gemini, Mistral, Anthropic, etc. |
-| **Model** | Specific model override |
+| **Model** | Specific model override, or **⚡ Auto** for intelligent per-message selection |
 | **Temperature** | Response creativity (0.0–1.0) |
+
+> **Auto Model Selection:** When **⚡ Auto** is selected, the system evaluates each incoming message (query context, tool routing, token budget) and picks the best available enabled model automatically, scoped to the workspace's linked categories. If selection fails, the global default model is used.
 | **System Prompt** | Additional instructions prepended to global prompt |
 
 > **Tip:** Lower temperatures (0.2–0.4) work well for policy/Q&A workspaces where precision matters.

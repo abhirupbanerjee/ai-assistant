@@ -260,8 +260,10 @@ Select which tools the LLM can call during execution:
 
 | Setting | Description |
 |---------|-------------|
-| **Model** | Override the default model (e.g., `gpt-4.1`, `claude-sonnet-4`, `gemini-2.5-pro`) |
+| **Model** | Override the default model (e.g., `gpt-4.1`, `claude-sonnet-4`, `gemini-2.5-pro`), or select **⚡ Auto** for intelligent per-invocation selection |
 | **Temperature** | Creativity vs determinism (0.0 = strict, 1.0 = creative) |
+
+> **Auto Model Selection:** When **⚡ Auto** is selected, the system evaluates each incoming invocation (query context, tool routing, token budget) and picks the best available enabled model automatically, scoped to the bot's linked categories. If selection fails, the global default model is used.
 | **Max Tokens** | Maximum response length |
 | **Include Sources** | Include RAG source citations in the response |
 
