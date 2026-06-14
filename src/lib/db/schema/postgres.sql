@@ -372,6 +372,9 @@ ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS parallel_tool_capable INTEGE
 -- Migration: add forced_tool_capable for existing databases
 ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS forced_tool_capable INTEGER DEFAULT 1;
 
+-- Migration: add capability_scores JSONB column for Auto model selection
+ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS capability_scores JSONB DEFAULT NULL;
+
 -- ============ Tool Configs ============
 
 CREATE TABLE IF NOT EXISTS tool_configs (
@@ -1272,6 +1275,21 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_log_created ON token_usage_log(create
 CREATE INDEX IF NOT EXISTS idx_token_usage_log_category ON token_usage_log(category, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_token_usage_log_user ON token_usage_log(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_token_usage_log_model ON token_usage_log(model, created_at DESC);
+
+-- ============ Model Latency Log (Auto selection) ============
+
+CREATE TABLE IF NOT EXISTS model_latency_log (
+  id BIGSERIAL PRIMARY KEY,
+  model_id TEXT NOT NULL,
+  latency_ms INTEGER NOT NULL,
+  output_tokens INTEGER,
+  success INTEGER NOT NULL DEFAULT 1,
+  error_type TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_latency_model_time
+  ON model_latency_log(model_id, created_at DESC);
 
 -- ============ WhatsApp Channels ============
 

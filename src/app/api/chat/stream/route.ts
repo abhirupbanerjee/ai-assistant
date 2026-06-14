@@ -299,6 +299,13 @@ export async function POST(request: NextRequest) {
         const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
         const categoryIds = thread.categories?.map(c => c.id) || [];
 
+        // Compute estimated token count for Auto model selection context-length filtering.
+        // Uses message + conversation history (the dominant token consumers).
+        // Memory/summary context is fetched after Auto resolution, so not included here;
+        // the estimate is slightly conservative which is safe for filtering.
+        const estimatedTokens = countTokens(message)
+          + conversationHistory.reduce((sum, m) => sum + countTokens(m.content || ''), 0);
+
         // ── Resolve Auto model selection ──
         // Must happen after categoryIds and uploadDetails are available,
         // but before effectiveModel is used (e.g., getImageCapabilities).
@@ -308,14 +315,18 @@ export async function POST(request: NextRequest) {
               userMessage: message,
               categoryIds,
               hasImages: uploadDetails.images.length > 0,
+              estimatedTokens,
             });
             effectiveModel = picked.modelId;
+            const autoMessage = picked.reason === 'best_score' && picked.dominantFactor
+              ? `Auto-selected ${picked.displayName} (best ${picked.dominantFactor})`
+              : `Auto-selected ${picked.displayName} (${picked.reason.replace(/_/g, ' ')})`;
             send({
               type: 'model_switch',
               originalModel: AUTO_MODEL_SENTINEL,
               newModel: picked.modelId,
               reason: 'auto_selected',
-              message: `Auto-selected ${picked.displayName} (${picked.reason.replace(/_/g, ' ')})`,
+              message: autoMessage,
             });
           } catch (err) {
             // Auto selection failed — fall back to global default

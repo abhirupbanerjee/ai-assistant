@@ -469,7 +469,8 @@ export type SettingKey =
   | 'agent_subagent_hitl_enabled'
   | 'agent_working_memory_enabled'
   // Auto Model Selection
-  | 'auto-tool-model-map';
+  | 'auto-tool-model-map'
+  | 'model-scoring-weights';
 
 // ============ Speech Settings Types ============
 

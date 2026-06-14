@@ -23,6 +23,8 @@ interface ModelSelectorProps {
   onPendingModelChange?: (modelId: string | null) => void;
   onModelStatusChange?: (ready: boolean) => void;
   onModelInfoChange?: (model: EnabledModel | null, ready: boolean) => void;
+  /** Display name of the last model Auto picked — shown as subtitle when Auto is selected */
+  lastAutoPick?: string | null;
 }
 
 export default function ModelSelector({
@@ -32,6 +34,7 @@ export default function ModelSelector({
   onPendingModelChange,
   onModelStatusChange,
   onModelInfoChange,
+  lastAutoPick,
 }: ModelSelectorProps) {
   const [availableModels, setAvailableModels] = useState<EnabledModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -253,8 +256,15 @@ export default function ModelSelector({
         ) : (
           <Bot size={16} />
         )}
-        <span className="hidden sm:inline max-w-[120px] truncate">
-          {getCurrentModelDisplay()}
+        <span className="hidden sm:inline flex flex-col leading-tight">
+          <span className="max-w-[120px] truncate">
+            {getCurrentModelDisplay()}
+          </span>
+          {isAutoSelected && lastAutoPick && (
+            <span className="text-[10px] text-purple-500 max-w-[120px] truncate leading-none">
+              → {lastAutoPick}
+            </span>
+          )}
         </span>
         <ChevronDown size={14} className={`transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
       </button>
@@ -266,7 +276,7 @@ export default function ModelSelector({
           <p className="text-gray-400 mt-0.5">
             {hasModelError
               ? 'Current model unavailable — select a valid model'
-              : isAutoSelected ? 'Auto: best model picked per message'
+              : isAutoSelected ? (lastAutoPick ? `Auto: last picked ${lastAutoPick}` : 'Auto: best model picked per message')
               : isNonDefault ? `Using: ${effectiveModel}` : 'Using default model'}
           </p>
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />

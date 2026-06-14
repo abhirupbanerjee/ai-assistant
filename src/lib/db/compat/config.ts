@@ -821,6 +821,61 @@ export async function getAutoToolModelMap(): Promise<Record<string, string>> {
   return (await getSetting<Record<string, string>>('auto-tool-model-map')) ?? {};
 }
 
+/**
+ * Set the tool→model preference map for Auto model selection.
+ * Maps tool names (e.g., 'html_gen', 'chart_gen') to preferred model ids.
+ * Values of '' or null are treated as "no preference" and removed from the map.
+ */
+export async function setAutoToolModelMap(map: Record<string, string>, updatedBy?: string): Promise<void> {
+  // Clean empty/null values from the map
+  const cleaned: Record<string, string> = {};
+  for (const [key, value] of Object.entries(map)) {
+    if (value && value.trim()) {
+      cleaned[key] = value.trim();
+    }
+  }
+  await setSetting('auto-tool-model-map', cleaned, updatedBy);
+}
+
+// ============ Model Scoring Weights (Auto selection) ============
+
+export interface ModelScoringWeights {
+  capability: number;
+  contextFit: number;
+  cost: number;
+  latency: number;
+}
+
+const DEFAULT_SCORING_WEIGHTS: ModelScoringWeights = {
+  capability: 0.5,
+  contextFit: 0.2,
+  cost: 0.15,
+  latency: 0.15,
+};
+
+/**
+ * Get the model scoring weights for Auto model selection.
+ * Returns defaults when no custom weights are configured.
+ */
+export async function getModelScoringWeights(): Promise<ModelScoringWeights> {
+  const weights = await getSetting<ModelScoringWeights>('model-scoring-weights');
+  if (!weights) return { ...DEFAULT_SCORING_WEIGHTS };
+  // Merge with defaults to ensure all keys are present
+  return {
+    capability: weights.capability ?? DEFAULT_SCORING_WEIGHTS.capability,
+    contextFit: weights.contextFit ?? DEFAULT_SCORING_WEIGHTS.contextFit,
+    cost:       weights.cost ?? DEFAULT_SCORING_WEIGHTS.cost,
+    latency:    weights.latency ?? DEFAULT_SCORING_WEIGHTS.latency,
+  };
+}
+
+/**
+ * Set custom model scoring weights for Auto model selection.
+ */
+export async function setModelScoringWeights(weights: ModelScoringWeights, updatedBy?: string): Promise<void> {
+  await setSetting('model-scoring-weights', weights, updatedBy);
+}
+
 // ============ Bulk Operations ============
 
 export async function getAllSettings(): Promise<{

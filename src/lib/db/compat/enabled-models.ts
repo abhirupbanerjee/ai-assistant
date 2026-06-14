@@ -14,12 +14,14 @@ export type {
   EnabledModel,
   CreateEnabledModelInput,
   UpdateEnabledModelInput,
+  CapabilityScores,
 } from '../enabled-models';
 
 import type {
   EnabledModel,
   CreateEnabledModelInput,
   UpdateEnabledModelInput,
+  CapabilityScores,
 } from '../enabled-models';
 
 // ============ Row Mapper ============
@@ -41,6 +43,7 @@ interface EnabledModelRow {
   enabled: number;
   provider_enabled?: number;
   sort_order: number;
+  capability_scores: unknown | null;
   created_at: string;
   updated_at: string;
 }
@@ -63,6 +66,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     enabled: row.enabled === 1,
     providerEnabled: row.provider_enabled !== undefined ? row.provider_enabled === 1 : undefined,
     sortOrder: row.sort_order,
+    capabilityScores: row.capability_scores as CapabilityScores | null ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -323,6 +327,9 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
   }
   if (input.sortOrder !== undefined) {
     updateObj.sort_order = input.sortOrder;
+  }
+  if (input.capabilityScores !== undefined) {
+    updateObj.capability_scores = input.capabilityScores ? JSON.stringify(input.capabilityScores) : null;
   }
 
   if (Object.keys(updateObj).length === 0) return existing;

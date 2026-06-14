@@ -26,8 +26,17 @@ export interface EnabledModel {
   enabled: boolean;        // false = disabled/hidden
   providerEnabled?: boolean; // Whether the provider is enabled (for UI display)
   sortOrder: number;
+  capabilityScores?: CapabilityScores | null;  // Auto model selection scores
   createdAt: string;
   updatedAt: string;
+}
+
+/** Capability scores for Auto model selection (0..1 each) */
+export interface CapabilityScores {
+  function_calling: number;
+  visual_reasoning: number;
+  reasoning: number;
+  code_quality: number;
 }
 
 interface EnabledModelRow {
@@ -47,6 +56,7 @@ interface EnabledModelRow {
   enabled: number;
   provider_enabled?: number;
   sort_order: number;
+  capability_scores: unknown | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +93,7 @@ export interface UpdateEnabledModelInput {
   isDefault?: boolean;
   enabled?: boolean;
   sortOrder?: number;
+  capabilityScores?: CapabilityScores | null;
 }
 
 // ============ Row Mapper ============
@@ -105,6 +116,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     enabled: row.enabled === 1,
     providerEnabled: row.provider_enabled !== undefined ? row.provider_enabled === 1 : undefined,
     sortOrder: row.sort_order,
+    capabilityScores: row.capability_scores as CapabilityScores | null ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

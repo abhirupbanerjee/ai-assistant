@@ -150,6 +150,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const [displaySettings, setDisplaySettings] = useState({ sourcesEnabled: true, citationTrajectoryEnabled: true });
   const [pendingCategoryId, setPendingCategoryId] = useState<number | null>(null);
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
+  const [lastAutoPick, setLastAutoPick] = useState<string | null>(null);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -289,6 +290,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     setLoading(false);
   }, []);
 
+  const handleModelSwitch = useCallback((originalModel: string, newModel: string, _reason: string, message: string) => {
+    // When Auto mode picks a model, store the display name for the selector subtitle
+    if (originalModel === 'auto') {
+      // Extract display name from the SSE message: "Auto-selected GPT-4o (tool preference)"
+      const match = message.match(/^Auto-selected\s+(.+?)\s*\(/);
+      setLastAutoPick(match ? match[1] : newModel);
+    }
+  }, []);
+
   const {
     state: streamingState,
     sendMessage: sendStreamingMessage,
@@ -303,6 +313,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   } = useStreamingChat({
     onComplete: handleStreamComplete,
     onError: handleStreamError,
+    onModelSwitch: handleModelSwitch,
   });
 
   // Always-current streaming flag for scroll handler (avoids recreating callback)
@@ -387,9 +398,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
 
     resetStreaming();
 
-    // Reset pending uploads/sources when switching threads
+    // Reset pending uploads/sources and auto-pick when switching threads
     setPendingUploads([]);
     setPendingUrlSources([]);
+    setLastAutoPick(null);
 
     if (activeThread) {
       setPendingModelId(null);
@@ -1202,6 +1214,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            onBlur={onInputBlur}
            categoryChipSlot={categoryChipSlot}
            attachmentChipsSlot={attachmentChipsSlot}
+           lastAutoPick={lastAutoPick}
          />
        </ErrorBoundary>
 

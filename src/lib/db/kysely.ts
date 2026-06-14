@@ -573,6 +573,25 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await ensureSlashCommandsExist('system');
   console.log('[Kysely] Ensured default slash commands exist');
 
+  // Migration: Create model_latency_log table for Auto model selection
+  await sql`
+    CREATE TABLE IF NOT EXISTS model_latency_log (
+      id BIGSERIAL PRIMARY KEY,
+      model_id TEXT NOT NULL,
+      latency_ms INTEGER NOT NULL,
+      output_tokens INTEGER,
+      success INTEGER NOT NULL DEFAULT 1,
+      error_type TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_model_latency_model_time ON model_latency_log(model_id, created_at DESC)`.execute(database);
+  console.log('[Kysely] Ensured model_latency_log table exists');
+
+  // Migration: Add capability_scores JSONB column to enabled_models
+  await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS capability_scores JSONB DEFAULT NULL`.execute(database);
+  console.log('[Kysely] Ensured enabled_models.capability_scores column exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

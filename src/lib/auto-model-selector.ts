@@ -14,14 +14,17 @@
  *   2. Vision — hard-filter to vision models when images are present
  *   3. Context length — hard-filter to models that fit estimated tokens
  *   4. Tool preference — if a forced tool has a preferred model in the map
- *   5. Default-best — tool-capable > highest context > admin sort_order
+ *   5. Weighted scoring — capability × wc + contextFit × wf + cost × wo + latency × wl
  */
 
 import { getActiveModels } from './db/compat/enabled-models';
-import { getRoutesSettings, getAutoToolModelMap } from './db/compat/config';
+import { getRoutesSettings, getAutoToolModelMap, getModelScoringWeights } from './db/compat/config';
+import { getAllModelP50Latencies } from './db/compat/model-latency';
 import { resolveToolRouting } from './tool-routing';
 import { isRoute2Model, isRoute3Model, isRoute4Model, isModelHealthy } from './llm-fallback';
 import { AUTO_MODEL_SENTINEL } from './constants';
+import { deriveScores } from './auto-model-scores';
+import type { EnabledModel, CapabilityScores } from './db/enabled-models';
 
 // ============ Types ============
 
@@ -40,7 +43,8 @@ export type AutoSelectionReason =
   | 'tool_preference'    // A forced tool had a preferred model in the map
   | 'vision_required'    // Filtered to vision models because images present
   | 'long_context'       // Filtered to models with sufficient context window
-  | 'default_best';      // Best available by capability ranking
+  | 'best_score'         // Best available by weighted scoring (replaces default_best)
+  | 'default_best';      // Legacy fallback — kept for backward compatibility
 
 export interface AutoSelectionResult {
   /** The concrete model id to use (never 'auto') */
@@ -49,6 +53,8 @@ export interface AutoSelectionResult {
   displayName: string;
   /** Why this model was chosen */
   reason: AutoSelectionReason;
+  /** Dominant scoring factor (e.g., "quality", "speed") for UI feedback */
+  dominantFactor?: string;
 }
 
 // ============ Helper ============
@@ -131,19 +137,38 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     }
   }
 
-  // ── Step 5: Default-best ranking ──
-  // Deterministic tie-breaking: tool-capable first, then highest context,
-  // then admin-configured sort order.
+  // ── Step 5: Weighted scoring ranking ──
+  // Replaces the old default-best sort with a data-driven weighted score.
+  // Steps 1–4 and the function signature are unchanged.
+
+  const latencies = await getAllModelP50Latencies();  // {} when no data
+  const weights = await getModelScoringWeights();      // settings with defaults
+
+  // Pick the task dimension from signals already in scope
+  const dimension: keyof CapabilityScores =
+    input.hasImages ? 'visual_reasoning'
+    : forced        ? 'function_calling'   // `forced` already computed in Step 4
+    : 'reasoning';
+
+  function scoreOf(m: EnabledModel): number {
+    const caps = (m.capabilityScores ?? deriveScores(m)) as CapabilityScores;
+    const capability = caps[dimension] ?? (m.toolCapable ? 0.7 : 0.3);
+    const contextFit = input.estimatedTokens
+      ? Math.min(1, (m.maxInputTokens ?? 0) / input.estimatedTokens)
+      : 1;
+    const cost = m.inputCostPer1M ? 1 / (1 + m.inputCostPer1M) : 0.5;   // cheaper → higher
+    const p50 = latencies[m.id];
+    const latency = p50 ? 1 / (1 + p50 / 1000) : 0.5;                   // faster → higher
+    return capability * weights.capability
+         + contextFit * weights.contextFit
+         + cost       * weights.cost
+         + latency    * weights.latency;
+  }
+
   candidates.sort((a, b) => {
-    // Prefer tool-capable models (they can use the full tool ecosystem)
-    if (a.toolCapable !== b.toolCapable) return a.toolCapable ? -1 : 1;
-
-    // Prefer models with larger context windows (more room for RAG + history)
-    const ctxDiff = (b.maxInputTokens ?? 0) - (a.maxInputTokens ?? 0);
-    if (ctxDiff !== 0) return ctxDiff;
-
-    // Final tie-break: admin sort order (lower = higher priority)
-    return a.sortOrder - b.sortOrder;
+    const d = scoreOf(b) - scoreOf(a);
+    if (Math.abs(d) > 1e-9) return d;
+    return a.sortOrder - b.sortOrder;   // deterministic final tie-break (unchanged)
   });
 
   const best = candidates[0];
@@ -155,13 +180,41 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
   } else if (input.estimatedTokens && input.estimatedTokens > 100000 && (best.maxInputTokens ?? 0) >= input.estimatedTokens) {
     reason = 'long_context';
   } else {
-    reason = 'default_best';
+    reason = 'best_score';
   }
+
+  // Determine the dominant scoring factor for richer feedback
+  const bestCaps = (best.capabilityScores ?? deriveScores(best)) as CapabilityScores;
+  const bestCapability = bestCaps[dimension] ?? (best.toolCapable ? 0.7 : 0.3);
+  const bestContextFit = input.estimatedTokens
+    ? Math.min(1, (best.maxInputTokens ?? 0) / input.estimatedTokens)
+    : 1;
+  const bestCost = best.inputCostPer1M ? 1 / (1 + best.inputCostPer1M) : 0.5;
+  const bestP50 = latencies[best.id];
+  const bestLatency = bestP50 ? 1 / (1 + bestP50 / 1000) : 0.5;
+
+  const contributions = {
+    capability: bestCapability * weights.capability,
+    contextFit: bestContextFit * weights.contextFit,
+    cost:       bestCost * weights.cost,
+    latency:    bestLatency * weights.latency,
+  };
+
+  const dominantFactor = Object.entries(contributions)
+    .sort(([, a], [, b]) => b - a)[0][0];
+
+  const factorLabels: Record<string, string> = {
+    capability: 'quality',
+    contextFit: 'context fit',
+    cost:       'cost efficiency',
+    latency:    'speed',
+  };
 
   return {
     modelId: best.id,
     displayName: best.displayName || best.id,
     reason,
+    dominantFactor: factorLabels[dominantFactor] ?? dominantFactor,
   };
 }
 

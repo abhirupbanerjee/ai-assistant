@@ -312,6 +312,7 @@ export interface EnabledModelsTable {
   is_default: Generated<number>;
   enabled: Generated<number>;
   sort_order: Generated<number>;
+  capability_scores: unknown | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }
@@ -1074,6 +1075,8 @@ export interface DB {
   citation_trajectories: CitationTrajectoriesTable;
   // Slash Commands
   slash_command_configs: SlashCommandConfigsTable;
+  // Model Latency Log (Auto selection)
+  model_latency_log: ModelLatencyLogTable;
 }
 
 // ============ WhatsApp Channels ============
@@ -1138,3 +1141,18 @@ export interface WorkspaceWhatsappMessagesTable {
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }
+
+// ============ Model Latency Log ============
+
+export interface ModelLatencyLogTable {
+  id: Generated<number>;
+  model_id: string;
+  latency_ms: number;
+  output_tokens: number | null;
+  success: Generated<number>;
+  error_type: string | null;
+  created_at: Generated<string>;
+}
+
+export type ModelLatencyLog = Selectable<ModelLatencyLogTable>;
+export type NewModelLatencyLog = Insertable<ModelLatencyLogTable>;

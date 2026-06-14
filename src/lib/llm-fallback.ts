@@ -458,13 +458,28 @@ export async function withModelFallback<T>(options: {
 
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
+    const t0 = Date.now();
 
     try {
       const result = await execute(model);
+      // Fire-and-forget latency logging (never blocks response)
+      void import('./model-latency-logger').then(({ recordModelLatency }) => {
+        recordModelLatency({ modelId: model, latencyMs: Date.now() - t0, success: true });
+      }).catch(() => { /* ignore */ });
       return { result, usedModel: model, switches };
     } catch (error) {
       lastError = error as Error;
       const reason = isRecoverableApiError(lastError);
+
+      // Fire-and-forget latency logging for failures
+      void import('./model-latency-logger').then(({ recordModelLatency }) => {
+        recordModelLatency({
+          modelId: model,
+          latencyMs: Date.now() - t0,
+          success: false,
+          errorType: reason ?? 'api_error',
+        });
+      }).catch(() => { /* ignore */ });
 
       // Log the event
       logFallbackEvent({

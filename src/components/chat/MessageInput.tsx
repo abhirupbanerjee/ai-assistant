@@ -56,6 +56,8 @@ interface MessageInputProps {
   // Chip slots for CategoryChip and AttachmentChipsRow
   categoryChipSlot?: React.ReactNode;
   attachmentChipsSlot?: React.ReactNode;
+  // Auto model selection — last picked model display name
+  lastAutoPick?: string | null;
 }
 
 interface CurrentModelInfo {
@@ -85,6 +87,7 @@ const MessageInput = memo(function MessageInput({
   onBlur,
   categoryChipSlot,
   attachmentChipsSlot,
+  lastAutoPick,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   // Mode defaults to normal on every page load.
@@ -562,6 +565,7 @@ const MessageInput = memo(function MessageInput({
             onPendingModelChange={onPendingModelChange}
             onModelStatusChange={onModelStatusChange}
             onModelInfoChange={handleModelInfoChange}
+            lastAutoPick={lastAutoPick}
           />
 
           {/* Right action: Send or Stop (during streaming) */}

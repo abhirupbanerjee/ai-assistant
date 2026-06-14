@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail } from '@/lib/db/compat';
+import { getUserByEmail, getEffectiveModelForThread } from '@/lib/db/compat';
 import { rateLimitMiddleware } from '@/lib/rate-limiter';
 import { ragQuery } from '@/lib/rag';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
@@ -24,6 +24,8 @@ import {
   withModelFallback,
   LlmFallbackError,
 } from '@/lib/llm-fallback';
+import { AUTO_MODEL_SENTINEL } from '@/lib/constants';
+import { selectBestModel, isAutoSentinel } from '@/lib/auto-model-selector';
 import type { Message, ChatRequest, ChatResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -118,12 +120,41 @@ export async function POST(request: NextRequest) {
     // Create message ID for context (used by autonomous tools)
     const assistantMessageId = uuidv4();
 
+    // Resolve effective model for this thread (may be AUTO_MODEL_SENTINEL)
+    let effectiveModel = await getEffectiveModelForThread(threadId);
+
+    // ── Resolve Auto model selection ──
+    // Non-streaming route doesn't handle images, so hasImages is always false.
+    if (isAutoSentinel(effectiveModel)) {
+      try {
+        const estimatedTokens = countTokens(message)
+          + conversationHistory.reduce((sum, m) => sum + countTokens(m.content || ''), 0);
+        const picked = await selectBestModel({
+          userMessage: message,
+          categoryIds,
+          hasImages: false,
+          estimatedTokens,
+        });
+        effectiveModel = picked.modelId;
+        const autoMsg = picked.reason === 'best_score' && picked.dominantFactor
+          ? `Auto-selected ${picked.displayName} (best ${picked.dominantFactor})`
+          : `Auto-selected ${picked.displayName} (${picked.reason.replace(/_/g, ' ')})`;
+        console.log(`[Chat API] ${autoMsg}`);
+      } catch (err) {
+        // Auto selection failed — fall back to global default
+        console.error('[Chat API] Auto model selection failed, falling back to default:', err);
+        const { getDefaultModel } = await import('@/lib/db/compat/enabled-models');
+        const defaultModel = await getDefaultModel();
+        effectiveModel = defaultModel?.id || null;
+      }
+    }
+
     // Build models to try based on capabilities
     // Non-streaming route doesn't handle images, so no vision requirement
     const { models: modelsToTry } = await buildModelsToTry(
-      null,   // No per-thread model selection in non-streaming route
-      false,  // No vision requirement (images handled by streaming route)
-      true    // Tools are enabled
+      effectiveModel,  // Resolved model (or null if Auto failed with no default)
+      false,           // No vision requirement (images handled by streaming route)
+      true             // Tools are enabled
     );
 
     // Handle edge case: no models available

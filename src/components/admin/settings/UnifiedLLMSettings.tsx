@@ -6,7 +6,7 @@ import {
   ChevronUp, ChevronDown, Settings2, Wrench, Eye, Star,
   MoreVertical, Trash2, EyeOff, Edit2, Check, FileText, Languages,
   Image, Mic, Database, Search, ExternalLink, CheckCircle, RotateCcw, Sparkles, Info,
-  Zap, Brain,
+  Zap, Brain, Loader2,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -64,7 +64,7 @@ interface DetailsResult {
   sources: string[];
 }
 
-type SectionId = 'providers' | 'models' | 'overview';
+type SectionId = 'providers' | 'models' | 'auto-model-map' | 'overview';
 
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
@@ -141,6 +141,13 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   // Get Details state
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
   const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult; applyError?: string } | null>(null);
+
+  // Auto Model Map state
+  const [autoToolMap, setAutoToolMap] = useState<Record<string, string>>({});
+  const [autoMapTools, setAutoMapTools] = useState<Array<{ name: string; displayName: string }>>([]);
+  const [autoMapModels, setAutoMapModels] = useState<Array<{ id: string; displayName: string; toolCapable: boolean }>>([]);
+  const [autoMapSaving, setAutoMapSaving] = useState(false);
+  const [autoMapError, setAutoMapError] = useState<string | null>(null);
 
   // ============ Route Gating (derived) ============
 
@@ -238,17 +245,30 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     }
   }, []);
 
+  const fetchAutoModelMap = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/auto-model-map');
+      if (!res.ok) return;
+      const data = await res.json();
+      setAutoToolMap(data.map || {});
+      setAutoMapTools(data.tools || []);
+      setAutoMapModels(data.models || []);
+    } catch {
+      // Non-critical — degrade gracefully
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      await Promise.all([fetchProviders(), fetchModels(), fetchFallbackModelId(), fetchRoutesSettings()]);
+      await Promise.all([fetchProviders(), fetchModels(), fetchFallbackModelId(), fetchRoutesSettings(), fetchAutoModelMap()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
       setIsLoading(false);
     }
-  }, [fetchProviders, fetchModels, fetchFallbackModelId, fetchRoutesSettings]);
+  }, [fetchProviders, fetchModels, fetchFallbackModelId, fetchRoutesSettings, fetchAutoModelMap]);
 
   useEffect(() => {
     loadData();
@@ -580,6 +600,31 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to apply details';
       setDetailsPreview(prev => prev ? { ...prev, applyError: msg } : prev);
+    }
+  };
+
+  // ============ Auto Model Map Actions ============
+
+  const handleSaveAutoModelMap = async () => {
+    setAutoMapSaving(true);
+    setAutoMapError(null);
+    try {
+      const res = await fetch('/api/admin/auto-model-map', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ map: autoToolMap }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error || 'Failed to save');
+      }
+      const data = await res.json();
+      setAutoToolMap(data.map || {});
+      showSuccess('Auto tool→model map saved');
+    } catch (err) {
+      setAutoMapError(err instanceof Error ? err.message : 'Failed to save auto model map');
+    } finally {
+      setAutoMapSaving(false);
     }
   };
 
@@ -1096,6 +1141,100 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
               </div>
             )}
           </>
+        )}
+      </div>
+
+      {/* ============ Section 2.5: Auto Model Map ============ */}
+      <div className="bg-white rounded-lg border shadow-sm">
+        <SectionHeader id="auto-model-map" title="Auto Model Selection — Tool Preferences"
+          subtitle="When a user selects 'Auto', map specific tools to preferred models. Unmapped tools use the default ranking." />
+        {expandedSections.has('auto-model-map') && (
+          <div className="p-6 space-y-4">
+            {/* Info banner */}
+            <div className="flex items-start gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+              <Sparkles size={16} className="text-purple-600 mt-0.5 shrink-0" />
+              <div className="text-sm text-purple-800">
+                <span className="font-medium">How it works:</span> When a user picks <span className="font-mono text-xs bg-purple-100 px-1 rounded">Auto</span> in the chat dropdown and a forced tool is matched by routing rules, the system checks this map first. If a preferred model is set and still active, Auto uses it. Otherwise, the default heuristic ranking applies.
+              </div>
+            </div>
+
+            {autoMapError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+                <p className="text-sm text-red-700">{autoMapError}</p>
+                <button onClick={() => setAutoMapError(null)} className="text-red-500 hover:text-red-700">×</button>
+              </div>
+            )}
+
+            {autoMapTools.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4 text-center">No tools available. Enable tools in the Tools settings first.</p>
+            ) : autoMapModels.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4 text-center">No active models available. Enable models above first.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-2 py-1 text-xs font-medium text-gray-500">
+                  <span>Tool</span>
+                  <span>Preferred Model</span>
+                  <span></span>
+                </div>
+                {autoMapTools.map(tool => {
+                  const currentModelId = autoToolMap[tool.name] || '';
+                  const currentModel = currentModelId ? autoMapModels.find(m => m.id === currentModelId) : null;
+                  return (
+                    <div key={tool.name} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center px-2 py-1.5 rounded hover:bg-gray-50">
+                      <div className="flex items-center gap-2">
+                        <Wrench size={14} className="text-gray-400 shrink-0" />
+                        <div>
+                          <span className="text-sm font-medium text-gray-900">{tool.displayName}</span>
+                          <span className="text-xs text-gray-400 ml-1.5 font-mono">{tool.name}</span>
+                        </div>
+                      </div>
+                      <select
+                        value={currentModelId}
+                        onChange={(e) => {
+                          const newMap = { ...autoToolMap };
+                          if (e.target.value) {
+                            newMap[tool.name] = e.target.value;
+                          } else {
+                            delete newMap[tool.name];
+                          }
+                          setAutoToolMap(newMap);
+                        }}
+                        disabled={readOnly}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:opacity-75"
+                      >
+                        <option value="">— default ranking —</option>
+                        {autoMapModels.map(model => (
+                          <option key={model.id} value={model.id}>
+                            {model.displayName}{model.toolCapable ? ' 🔧' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {currentModelId && currentModel && (
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          {currentModel.toolCapable ? '🔧' : '⚠️'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Save button */}
+            {!readOnly && autoMapTools.length > 0 && autoMapModels.length > 0 && (
+              <div className="flex items-center justify-end gap-3 pt-2 border-t">
+                <span className="text-xs text-gray-400">
+                  {Object.keys(autoToolMap).length} tool{Object.keys(autoToolMap).length !== 1 ? 's' : ''} mapped
+                </span>
+                <Button
+                  onClick={handleSaveAutoModelMap}
+                  disabled={autoMapSaving}
+                >
+                  {autoMapSaving ? <><Loader2 size={14} className="animate-spin mr-1.5" />Saving...</> : 'Save Map'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
