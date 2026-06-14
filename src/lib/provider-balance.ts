@@ -4,7 +4,7 @@
  * Fetches remaining balance/credits or spend data from LLM provider APIs where available.
  *
  * Data types:
- * - 'balance': Provider returns remaining wallet credit (e.g. DeepSeek, Fireworks, Moonshot)
+ * - 'balance': Provider returns remaining wallet credit (e.g. DeepSeek, Moonshot)
  * - 'spend':   Provider returns consumption/spend for a period (e.g. OpenAI, Anthropic)
  *
  * Providers without a public balance/cost API return null.
@@ -44,7 +44,6 @@ const PROVIDER_NAMES: Record<string, string> = {
   gemini: 'Google Gemini',
   mistral: 'Mistral AI',
   deepseek: 'DeepSeek',
-  fireworks: 'Fireworks AI',
   moonshot: 'Moonshot AI',
   ollama: 'Ollama (Local)',
   'ollama-cloud': 'Ollama Cloud',
@@ -100,9 +99,6 @@ export async function getProviderBalance(providerId: string): Promise<ProviderBa
       break;
     case 'moonshot':
       result = await getMoonshotBalance();
-      break;
-    case 'fireworks':
-      result = await getFireworksBalance();
       break;
     default:
       return null;
@@ -407,7 +403,13 @@ async function getDeepSeekBalance(): Promise<ProviderBalance | null> {
 /**
  * Moonshot AI — Wallet balance via GET /v1/users/me/balance
  *
- * Uses the standard API key. Returns remaining balance.
+ * Uses the standard API key. Returns remaining balance in CNY.
+ *
+ * Response format (from Kimi/Moonshot API docs):
+ * { "code": 0, "data": { "available_balance": 49.59, "voucher_balance": 46.59, "cash_balance": 3.00 }, "scode": "0x0", "status": true }
+ *
+ * Note: The DB api_base for moonshot is typically "https://api.moonshot.ai/v1" (includes /v1).
+ * We strip the trailing /v1 to avoid double /v1/v1/... in the URL.
  */
 async function getMoonshotBalance(): Promise<ProviderBalance | null> {
   const apiKey = await getProviderApiKey('moonshot');
@@ -427,7 +429,9 @@ async function getMoonshotBalance(): Promise<ProviderBalance | null> {
   }
 
   try {
-    const baseUrl = apiBase || 'https://api.moonshot.cn';
+    // Strip trailing /v1 from apiBase to avoid double /v1/v1/... in URL
+    // DB stores "https://api.moonshot.ai/v1" but we need "https://api.moonshot.ai"
+    const baseUrl = (apiBase || 'https://api.moonshot.ai').replace(/\/v1\/?$/, '');
     const res = await fetch(`${baseUrl}/v1/users/me/balance`, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -450,37 +454,30 @@ async function getMoonshotBalance(): Promise<ProviderBalance | null> {
     }
 
     const data = (await res.json()) as {
+      code?: number;
       data?: {
-        available_balance?: string;
-        cash_balance?: string;
-        gifted_balance?: string;
-        total_balance?: string;
-        currency?: string;
+        available_balance?: number;
+        voucher_balance?: number;
+        cash_balance?: number;
       };
-      available_balance?: string;
-      cash_balance?: string;
-      gifted_balance?: string;
-      total_balance?: string;
-      currency?: string;
     };
 
-    // Moonshot returns balance either nested in data or at top level
-    const info = data.data || data;
-    const totalBalance = info.total_balance ? parseFloat(info.total_balance) : null;
-    const available = info.available_balance ? parseFloat(info.available_balance) : null;
-    const gifted = info.gifted_balance ? parseFloat(info.gifted_balance) : null;
-    const currency = info.currency || 'CNY';
+    // Moonshot returns balance nested in data object
+    // Fields: available_balance (total available), voucher_balance (credits/vouchers), cash_balance (topped-up cash)
+    // Currency is always CNY — no currency field in the response
+    const info = data.data;
+    const available = info?.available_balance ?? null;
+    const voucher = info?.voucher_balance ?? null;
+    const cash = info?.cash_balance ?? null;
 
     return {
       providerId: 'moonshot',
       providerName: PROVIDER_NAMES.moonshot,
       dataType: 'balance',
-      balance: available ?? totalBalance,
-      currency,
-      limit: gifted,
-      usageThisMonth: totalBalance !== null && available !== null
-        ? Math.max(0, totalBalance - available)
-        : null,
+      balance: available,
+      currency: 'CNY',
+      limit: voucher,
+      usageThisMonth: cash,
       lastUpdated: new Date().toISOString(),
     };
   } catch (err) {
@@ -490,70 +487,6 @@ async function getMoonshotBalance(): Promise<ProviderBalance | null> {
       dataType: 'balance',
       balance: null,
       currency: 'CNY',
-      limit: null,
-      usageThisMonth: null,
-      lastUpdated: new Date().toISOString(),
-      error: err instanceof Error ? err.message : 'Unknown error',
-    };
-  }
-}
-
-/**
- * Fireworks AI — Wallet balance via GET /billing/v1/balance
- *
- * Uses the standard API key. Returns remaining balance.
- */
-async function getFireworksBalance(): Promise<ProviderBalance | null> {
-  const apiKey = await getProviderApiKey('fireworks');
-  if (!apiKey) {
-    return {
-      providerId: 'fireworks',
-      providerName: PROVIDER_NAMES.fireworks,
-      dataType: 'balance',
-      balance: null,
-      currency: 'USD',
-      limit: null,
-      usageThisMonth: null,
-      lastUpdated: new Date().toISOString(),
-      error: 'No API key configured',
-    };
-  }
-
-  try {
-    const res = await fetch('https://api.fireworks.ai/billing/v1/balance', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (!res.ok) {
-      return {
-        providerId: 'fireworks',
-        providerName: PROVIDER_NAMES.fireworks,
-        dataType: 'balance',
-        balance: null,
-        currency: 'USD',
-        limit: null,
-        usageThisMonth: null,
-        lastUpdated: new Date().toISOString(),
-        error: `API error: ${res.status}`,
-      };
-    }
-    const data = (await res.json()) as { balance?: number; currency?: string };
-    return {
-      providerId: 'fireworks',
-      providerName: PROVIDER_NAMES.fireworks,
-      dataType: 'balance',
-      balance: data.balance ?? null,
-      currency: data.currency || 'USD',
-      limit: null,
-      usageThisMonth: null,
-      lastUpdated: new Date().toISOString(),
-    };
-  } catch (err) {
-    return {
-      providerId: 'fireworks',
-      providerName: PROVIDER_NAMES.fireworks,
-      dataType: 'balance',
-      balance: null,
-      currency: 'USD',
       limit: null,
       usageThisMonth: null,
       lastUpdated: new Date().toISOString(),
