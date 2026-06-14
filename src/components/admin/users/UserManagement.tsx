@@ -451,10 +451,13 @@ export default function UserManagement() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          user.role === 'super_admin' ? 'bg-purple-100' :
                           user.role === 'admin' ? 'bg-purple-100' :
                           user.role === 'superuser' ? 'bg-orange-100' : 'bg-gray-100'
                         }`}>
-                          {user.role === 'admin' ? (
+                          {user.role === 'super_admin' ? (
+                            <Shield size={16} className="text-purple-600" />
+                          ) : user.role === 'admin' ? (
                             <Shield size={16} className="text-purple-600" />
                           ) : user.role === 'superuser' ? (
                             <UserPlus size={16} className="text-orange-600" />
@@ -473,13 +476,15 @@ export default function UserManagement() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5">
                         <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                          user.role === 'admin'
+                          user.role === 'super_admin'
+                            ? 'bg-purple-100 text-purple-700'
+                            : user.role === 'admin'
                             ? 'bg-purple-100 text-purple-700'
                             : user.role === 'superuser'
                             ? 'bg-orange-100 text-orange-700'
                             : 'bg-gray-100 text-gray-700'
                         }`}>
-                          {user.role === 'superuser' ? 'super user' : user.role}
+                          {user.role === 'super_admin' ? 'super admin' : user.role === 'superuser' ? 'super user' : user.role}
                         </span>
                         {user.isRootAdmin && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-gray-200 text-gray-600" title="Defined in ADMIN_EMAILS env var">
@@ -491,7 +496,7 @@ export default function UserManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
-                        {user.role === 'admin' ? (
+                        {user.role === 'super_admin' || user.role === 'admin' ? (
                           <span className="text-gray-400 text-xs italic">All access</span>
                         ) : user.role === 'superuser' ? (
                           <>
@@ -550,7 +555,7 @@ export default function UserManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
-                        {user.role !== 'admin' && (
+                        {user.role !== 'admin' && user.role !== 'super_admin' && (
                           <button
                             onClick={() => handleManageUserSubs(user)}
                             className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"

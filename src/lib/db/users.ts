@@ -163,7 +163,7 @@ export function userExists(email: string): boolean {
  */
 export function isAdmin(email: string): boolean {
   const user = getUserByEmail(email);
-  return user?.role === 'admin';
+  return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
 /**

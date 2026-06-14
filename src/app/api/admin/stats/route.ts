@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isElevatedRole } from '@/lib/auth';
 import {
   getSystemStats,
   getRecentActivity,
@@ -38,7 +38,7 @@ export async function GET() {
     }
 
     // Allow both admin and superuser roles
-    if (user.role !== 'admin' && user.role !== 'superuser') {
+    if (!isElevatedRole(user.role)) {
       return NextResponse.json(
         { error: 'Admin or superuser access required' } as ApiError,
         { status: 403 }

@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isElevatedRole } from '@/lib/auth';
 import {
   getProvider,
   updateProvider,
@@ -29,7 +29,7 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser();
-    if (user?.role !== 'admin' && user?.role !== 'superuser') {
+    if (!isElevatedRole(user?.role)) {
       return NextResponse.json<ApiError>(
         { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }

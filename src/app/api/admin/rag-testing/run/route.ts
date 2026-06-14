@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
-import { getUserRole } from '@/lib/users';
+import { getCurrentUser, isAdminRole } from '@/lib/auth';
 import { saveTestResult, type TopChunk } from '@/lib/db/compat';
 import { getRagSettings, getCategoryById } from '@/lib/db/compat';
 import { createEmbedding } from '@/lib/openai';
@@ -13,8 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const role = await getUserRole(user.email);
-    if (role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

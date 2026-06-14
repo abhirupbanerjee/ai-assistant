@@ -8,8 +8,8 @@
  */
 
 import { redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth';
-import { getUserRole, getUserId } from '@/lib/users';
+import { getCurrentUser, isElevatedRole } from '@/lib/auth';
+import { getUserId } from '@/lib/users';
 import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
 import AgentBotDocsContent from './AgentBotDocsContent';
 
@@ -26,9 +26,9 @@ export default async function AgentBotDocsPage({ params }: PageProps) {
     redirect('/login');
   }
 
-  // Check user role
-  const role = await getUserRole(user.email);
-  if (role !== 'admin' && role !== 'superuser') {
+  // Check user role (super_admin is treated as admin — full access, no category scoping)
+  const role = user.role;
+  if (!isElevatedRole(user.role)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">

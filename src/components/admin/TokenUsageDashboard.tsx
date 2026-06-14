@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { BarChart3, RefreshCw, DollarSign, AlertTriangle, Wallet } from 'lucide-react';
+import { BarChart3, RefreshCw, DollarSign, AlertTriangle, Wallet, TrendingUp, KeyRound } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -63,10 +63,14 @@ interface ActiveFilters {
 interface ProviderBalance {
   providerId: string;
   providerName: string;
-  balance: number;
+  /** 'balance' = remaining wallet credit; 'spend' = consumption this period */
+  dataType: 'balance' | 'spend';
+  balance: number | null;
   currency: string;
   limit: number | null;
   usageThisMonth: number | null;
+  error?: string;
+  adminKeyRequired?: boolean;
 }
 
 type Metric = 'token' | 'cost';
@@ -158,11 +162,12 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
     [filters]
   );
 
-  const fetchBalances = useCallback(async () => {
+  const fetchBalances = useCallback(async (nocache = false) => {
     try {
       setBalancesLoading(true);
       setBalancesError(null);
-      const res = await fetch('/api/admin/provider-balances');
+      const url = nocache ? '/api/admin/provider-balances?nocache=1' : '/api/admin/provider-balances';
+      const res = await fetch(url);
       if (res.status === 403) {
         setBalancesError('Super admin access required');
         return;
@@ -223,7 +228,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => activeTab === 'pricing' ? fetchBalances() : fetchData(true)}
+          onClick={() => activeTab === 'pricing' ? fetchBalances(true) : fetchData(true)}
           loading={loading || balancesLoading}
         >
           <RefreshCw size={14} className="mr-1.5" />
@@ -285,66 +290,164 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
 
           {!balancesLoading && !balancesError && (
             <>
-              {/* Provider Balance Cards */}
-              {balances.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {balances.map((b) => (
-                    <div key={b.providerId} className="bg-white rounded-lg border shadow-sm p-5">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Wallet size={18} className="text-blue-600" />
-                        <h3 className="font-semibold text-gray-900 text-sm">{b.providerName}</h3>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Balance</span>
-                          <span className="font-medium text-gray-900">
-                            {b.currency === 'USD' ? '$' : ''}{b.balance.toFixed(2)}
-                            {b.currency !== 'USD' ? ` ${b.currency}` : ''}
-                          </span>
+              {/* Wallet Balance Providers */}
+              {balances.filter((b) => b.dataType === 'balance').length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Wallet size={16} className="text-blue-600" />
+                    Wallet Balance
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {balances
+                      .filter((b) => b.dataType === 'balance')
+                      .map((b) => (
+                        <div key={b.providerId} className="bg-white rounded-lg border shadow-sm p-5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Wallet size={18} className="text-blue-600" />
+                            <h3 className="font-semibold text-gray-900 text-sm">{b.providerName}</h3>
+                          </div>
+                          {b.error ? (
+                            <div className="space-y-2">
+                              <div className="bg-red-50 text-red-600 text-xs px-2 py-1.5 rounded border border-red-200">
+                                {b.error}
+                              </div>
+                              {b.adminKeyRequired && (
+                                <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                                  <KeyRound size={12} className="mt-0.5 flex-shrink-0" />
+                                  <span>Requires admin API key. Set the appropriate env var and restart.</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-500">Available Balance</span>
+                                <span className="font-medium text-gray-900">
+                                  {b.currency === 'USD' ? '$' : ''}{(b.balance ?? 0).toFixed(2)}
+                                  {b.currency !== 'USD' ? ` ${b.currency}` : ''}
+                                </span>
+                              </div>
+                              {b.limit !== null && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Granted Credits</span>
+                                  <span className="font-medium text-gray-900">
+                                    {b.currency === 'USD' ? '$' : ''}{b.limit.toFixed(2)}
+                                    {b.currency !== 'USD' ? ` ${b.currency}` : ''}
+                                  </span>
+                                </div>
+                              )}
+                              {b.usageThisMonth !== null && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Used This Month</span>
+                                  <span className="font-medium text-gray-900">
+                                    {b.currency === 'USD' ? '$' : ''}{b.usageThisMonth.toFixed(2)}
+                                    {b.currency !== 'USD' ? ` ${b.currency}` : ''}
+                                  </span>
+                                </div>
+                              )}
+                              {b.limit !== null && b.usageThisMonth !== null && b.limit > 0 && (
+                                <div className="mt-2">
+                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span>Usage</span>
+                                    <span>{((b.usageThisMonth / b.limit) * 100).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-blue-600 rounded-full h-2 transition-all"
+                                      style={{
+                                        width: `${Math.min(100, (b.usageThisMonth / b.limit) * 100)}%`,
+                                        backgroundColor:
+                                          b.usageThisMonth / b.limit > 0.9
+                                            ? '#EF4444'
+                                            : b.usageThisMonth / b.limit > 0.7
+                                              ? '#F59E0B'
+                                              : '#3B82F6',
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        {b.limit !== null && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Monthly Limit</span>
-                            <span className="font-medium text-gray-900">
-                              {b.currency === 'USD' ? '$' : ''}{b.limit.toFixed(2)}
-                              {b.currency !== 'USD' ? ` ${b.currency}` : ''}
-                            </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Spend Tracking Providers */}
+              {balances.filter((b) => b.dataType === 'spend').length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <TrendingUp size={16} className="text-purple-600" />
+                    Spend This Period
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {balances
+                      .filter((b) => b.dataType === 'spend')
+                      .map((b) => (
+                        <div key={b.providerId} className="bg-white rounded-lg border shadow-sm p-5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <TrendingUp size={18} className="text-purple-600" />
+                            <h3 className="font-semibold text-gray-900 text-sm">{b.providerName}</h3>
                           </div>
-                        )}
-                        {b.usageThisMonth !== null && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Usage This Month</span>
-                            <span className="font-medium text-gray-900">
-                              {b.currency === 'USD' ? '$' : ''}{b.usageThisMonth.toFixed(2)}
-                              {b.currency !== 'USD' ? ` ${b.currency}` : ''}
-                            </span>
-                          </div>
-                        )}
-                        {b.limit !== null && b.usageThisMonth !== null && (
-                          <div className="mt-2">
-                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                              <span>Usage</span>
-                              <span>{((b.usageThisMonth / b.limit) * 100).toFixed(1)}%</span>
+                          {b.error ? (
+                            <div className="space-y-2">
+                              <div className="bg-red-50 text-red-600 text-xs px-2 py-1.5 rounded border border-red-200">
+                                {b.error}
+                              </div>
+                              {b.adminKeyRequired && (
+                                <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                                  <KeyRound size={12} className="mt-0.5 flex-shrink-0" />
+                                  <span>Requires admin API key. Set the appropriate env var and restart.</span>
+                                </div>
+                              )}
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-blue-600 rounded-full h-2 transition-all"
-                                style={{
-                                  width: `${Math.min(100, (b.usageThisMonth / b.limit) * 100)}%`,
-                                  backgroundColor:
-                                    b.usageThisMonth / b.limit > 0.9
-                                      ? '#EF4444'
-                                      : b.usageThisMonth / b.limit > 0.7
-                                        ? '#F59E0B'
-                                        : '#3B82F6',
-                                }}
-                              />
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-500">Spend This Month</span>
+                                <span className="font-medium text-gray-900">
+                                  {b.currency === 'USD' ? '$' : ''}{(b.usageThisMonth ?? b.balance ?? 0).toFixed(2)}
+                                  {b.currency !== 'USD' ? ` ${b.currency}` : ''}
+                                </span>
+                              </div>
+                              {b.limit !== null && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Monthly Limit</span>
+                                  <span className="font-medium text-gray-900">
+                                    {b.currency === 'USD' ? '$' : ''}{b.limit.toFixed(2)}
+                                    {b.currency !== 'USD' ? ` ${b.currency}` : ''}
+                                  </span>
+                                </div>
+                              )}
+                              {b.limit !== null && (b.usageThisMonth ?? 0) > 0 && b.limit > 0 && (
+                                <div className="mt-2">
+                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span>Usage</span>
+                                    <span>{(((b.usageThisMonth ?? 0) / b.limit) * 100).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-purple-600 rounded-full h-2 transition-all"
+                                      style={{
+                                        width: `${Math.min(100, ((b.usageThisMonth ?? 0) / b.limit) * 100)}%`,
+                                        backgroundColor:
+                                          (b.usageThisMonth ?? 0) / b.limit > 0.9
+                                            ? '#EF4444'
+                                            : (b.usageThisMonth ?? 0) / b.limit > 0.7
+                                              ? '#F59E0B'
+                                              : '#7C3AED',
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                          )}
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
 
@@ -352,7 +455,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
               {unavailableProviders.length > 0 && (
                 <div className="bg-white rounded-lg border shadow-sm p-5">
                   <h3 className="font-semibold text-gray-900 text-sm mb-3">
-                    Providers Without Balance API
+                    Providers Without Balance/Cost API
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     {unavailableProviders.map((id) => (
@@ -365,7 +468,7 @@ export default function TokenUsageDashboard({ userRole = 'admin' }: TokenUsageDa
                     ))}
                   </div>
                   <p className="text-xs text-gray-400 mt-2">
-                    These providers do not offer a balance query API or their API keys are not configured.
+                    These providers do not offer a balance or cost query API (Mistral, Gemini, Ollama) or their API keys are not configured.
                   </p>
                 </div>
               )}

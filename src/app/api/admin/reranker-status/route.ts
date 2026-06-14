@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isElevatedRole } from '@/lib/auth';
 import { getApiKey } from '@/lib/provider-helpers';
 import type { ApiError } from '@/types';
 
@@ -224,8 +224,8 @@ export async function GET() {
       );
     }
 
-    // Allow both admin and superuser to read reranker status (for dashboard overview)
-    if (user.role !== 'admin' && user.role !== 'superuser') {
+    // Allow admin, super_admin, and superuser to read reranker status (for dashboard overview)
+    if (!isElevatedRole(user.role)) {
       return NextResponse.json<ApiError>(
         { error: 'Admin or superuser access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }

@@ -8,8 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
-import { getUserRole, getUserId } from '@/lib/users';
+import { getCurrentUser, isElevatedRole } from '@/lib/auth';
+import { getUserId } from '@/lib/users';
 import { getSuperUserWithAssignments, getAgentBotBySlug, checkSuperuserAgentBotAccess, getDefaultVersion } from '@/lib/db/compat';
 import { normalizeBaseUrl } from '@/lib/url-utils';
 import type { AgentBotVersionWithRelations } from '@/types/agent-bot';
@@ -27,9 +27,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Check user role
-  const role = await getUserRole(user.email);
-  if (role !== 'admin' && role !== 'superuser') {
+  // Check user role (super_admin is treated as admin — full access)
+  const role = user.role;
+  if (!isElevatedRole(user.role)) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 

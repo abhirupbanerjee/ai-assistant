@@ -79,8 +79,8 @@ export async function GET() {
       );
     }
 
-    // Allow both admin and superuser to read settings (for dashboard overview)
-    if (user.role !== 'admin' && user.role !== 'superuser') {
+    // Allow admin, super_admin, and superuser to read settings (for dashboard overview)
+    if (user.role !== 'super_admin' && user.role !== 'admin' && user.role !== 'superuser') {
       return NextResponse.json<ApiError>(
         { error: 'Admin or superuser access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }
@@ -263,7 +263,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (user.role !== 'admin' && user.role !== 'superuser') {
+    if (user.role !== 'super_admin' && user.role !== 'admin' && user.role !== 'superuser') {
       return NextResponse.json<ApiError>(
         { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
         { status: 403 }

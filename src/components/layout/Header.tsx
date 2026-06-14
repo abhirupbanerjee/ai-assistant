@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Settings, LogOut, User, ChevronDown } from 'lucide-react';
@@ -8,14 +8,10 @@ import { Settings, LogOut, User, ChevronDown } from 'lucide-react';
 export default function Header() {
   const { data: session } = useSession();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    // Check if user is admin (in dev mode, always true)
-    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
-    const userEmail = session?.user?.email?.toLowerCase() || '';
-    setIsAdmin(process.env.NODE_ENV === 'development' || adminEmails.includes(userEmail));
-  }, [session]);
+  // Use authoritative role from session (set by /api/auth/me)
+  const userRole = (session?.user as { role?: string })?.role;
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   const handleSignOut = () => {
     signOut({ callbackUrl: '/' });

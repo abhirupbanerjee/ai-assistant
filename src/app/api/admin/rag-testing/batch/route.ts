@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
-import { getUserRole } from '@/lib/users';
+import { getCurrentUser, isAdminRole } from '@/lib/auth';
 import { saveBatchSuite, getBatchSuites, getBatchSuiteDetail, cleanupBatchSuites } from '@/lib/db/rag-profiling';
 import { createEmbedding } from '@/lib/openai';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
@@ -13,8 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const role = await getUserRole(user.email);
-    if (role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -114,8 +112,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const role = await getUserRole(user.email);
-    if (role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -149,8 +146,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const role = await getUserRole(user.email);
-    if (role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

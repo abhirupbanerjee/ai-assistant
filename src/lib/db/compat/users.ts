@@ -107,7 +107,7 @@ export async function userExists(email: string): Promise<boolean> {
 
 export async function isAdmin(email: string): Promise<boolean> {
   const user = await getUserByEmail(email);
-  return user?.role === 'admin';
+  return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
 export async function isSuperUser(email: string): Promise<boolean> {

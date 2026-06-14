@@ -56,7 +56,7 @@ export default function MobileThreadsMenu({
   const [availableCategories, setAvailableCategories] = useState<{id: number; name: string}[]>([]);
 
   const userRole = (session?.user as { role?: string })?.role;
-  const isAdmin = userRole === 'admin';
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isSuperUser = userRole === 'superuser';
   const isRegularUser = userRole === 'user';
   const requiresSingleCategory = isRegularUser;

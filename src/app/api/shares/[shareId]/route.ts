@@ -55,8 +55,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only creator or admin can view share details
-    if (share.createdBy !== dbUser.id && dbUser.role !== 'admin') {
+    // Only creator or admin/super_admin can view share details
+    if (share.createdBy !== dbUser.id && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }
@@ -127,8 +127,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only creator or admin can update
-    if (existingShare.createdBy !== dbUser.id && dbUser.role !== 'admin') {
+    // Only creator or admin/super_admin can update
+    if (existingShare.createdBy !== dbUser.id && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }
@@ -205,8 +205,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only creator or admin can revoke
-    if (existingShare.createdBy !== dbUser.id && dbUser.role !== 'admin') {
+    // Only creator or admin/super_admin can revoke
+    if (existingShare.createdBy !== dbUser.id && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }

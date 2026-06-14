@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isAdminRole, isElevatedRole } from '@/lib/auth';
 import { getSetting, setSetting, getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig, getStreamingConfig, setStreamingConfig, getSummarizerSystemPrompt, setSummarizerSystemPrompt, getPlannerSystemPrompt, setPlannerSystemPrompt, getExecutorSystemPrompt, setExecutorSystemPrompt, getCheckerSystemPrompt, setCheckerSystemPrompt, getAutonomousModeEnabled, setAutonomousModeEnabled, getExecutorModelProfiles, setExecutorModelProfiles, getSubagentConfig, setSubagentConfig } from '@/lib/db/compat';
 import { getEnabledModel } from '@/lib/db/compat/enabled-models';
 
@@ -30,8 +30,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin or superuser role
-    if (user.role !== 'admin' && user.role !== 'superuser') {
+    // Check if user has elevated role (admin, super_admin, or superuser)
+    if (!isElevatedRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -100,8 +100,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin role (only admins can modify settings)
-    if (user.role !== 'admin') {
+    // Check if user has admin role (only admins/super_admins can modify settings)
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

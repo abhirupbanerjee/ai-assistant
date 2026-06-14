@@ -37,7 +37,7 @@ export async function GET(
   if (!apiKeyString) {
     // No API key provided — try admin session fallback (browser download links)
     const user = await getCurrentUser();
-    if (user?.role === 'admin' || user?.role === 'superuser') {
+    if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'superuser') {
       const bot = await getActiveAgentBotBySlug(slug);
       if (bot) {
         agentBot = bot;

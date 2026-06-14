@@ -40,7 +40,7 @@ async function isAdminTest(request: NextRequest): Promise<boolean> {
   // Verify user is authenticated as admin
   try {
     const user = await getCurrentUser();
-    return user?.role === 'admin' || user?.role === 'superuser';
+    return user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'superuser';
   } catch {
     return false;
   }

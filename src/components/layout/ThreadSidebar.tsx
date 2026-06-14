@@ -141,7 +141,7 @@ const ThreadSidebar = forwardRef<ThreadSidebarRef, ThreadSidebarProps>(function 
   }), [setIsCollapsed]);
 
   const userRole = (session?.user as { role?: string })?.role;
-  const isAdmin = userRole === 'admin';
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isSuperUser = userRole === 'superuser';
   const isRegularUser = userRole === 'user';
 

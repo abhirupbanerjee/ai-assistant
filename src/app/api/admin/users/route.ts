@@ -206,8 +206,8 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Prevent admin from demoting themselves
-    if (email.toLowerCase() === admin.email.toLowerCase() && role !== 'admin') {
+    // Prevent admin/super_admin from changing their own role
+    if (email.toLowerCase() === admin.email.toLowerCase() && role !== admin.role) {
       return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 });
     }
 

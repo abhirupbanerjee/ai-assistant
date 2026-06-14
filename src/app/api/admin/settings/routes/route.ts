@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isAdminRole, isElevatedRole } from '@/lib/auth';
 import {
   getRoutesSettings,
   setRoutesSettings,
@@ -26,8 +26,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin or superuser role
-    if (user.role !== 'admin' && user.role !== 'superuser') {
+    // Check if user has elevated role (admin, super_admin, or superuser)
+    if (!isElevatedRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -53,8 +53,8 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has admin role (only admins can modify settings)
-    if (user.role !== 'admin') {
+    // Check if user has admin role (only admins/super_admins can modify settings)
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

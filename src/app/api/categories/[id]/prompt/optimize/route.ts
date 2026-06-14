@@ -30,7 +30,7 @@ async function checkCategoryAccess(categoryId: number): Promise<void> {
     throw new Error('User not found');
   }
 
-  const isAdmin = dbUser.role === 'admin';
+  const isAdmin = dbUser.role === 'admin' || dbUser.role === 'super_admin';
   const isSuperUser = dbUser.role === 'superuser';
 
   // Admins can access all categories

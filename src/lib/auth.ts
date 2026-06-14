@@ -92,6 +92,24 @@ export async function requireSuperAdmin(): Promise<User> {
   return user;
 }
 
+/**
+ * Synchronous helper: does the given role string represent an admin-level user
+ * (admin or super_admin)? Use this for inline role gates where you already
+ * have the role from getCurrentUser().
+ */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return role === 'admin' || role === 'super_admin';
+}
+
+/**
+ * Synchronous helper: does the given role string represent an elevated user
+ * (super_admin, admin, or superuser)? Use this for inline role gates where
+ * you already have the role from getCurrentUser().
+ */
+export function isElevatedRole(role: string | null | undefined): boolean {
+  return role === 'super_admin' || role === 'admin' || role === 'superuser';
+}
+
 export async function requireElevated(): Promise<User & { role: 'super_admin' | 'admin' | 'superuser' }> {
   const user = await requireAuth();
   // Use the role already computed in getCurrentUser instead of doing another lookup

@@ -8,8 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as fs from 'fs';
 import path from 'path';
-import { getCurrentUser } from '@/lib/auth';
-import { getUserRole } from '@/lib/users';
+import { getCurrentUser, isAdminRole } from '@/lib/auth';
 import { getDocumentById } from '@/lib/db/compat';
 import { getGlobalDocsDir } from '@/lib/storage';
 
@@ -36,8 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const role = await getUserRole(user.email);
-    if (role !== 'admin') {
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

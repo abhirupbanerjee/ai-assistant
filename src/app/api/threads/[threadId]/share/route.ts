@@ -64,8 +64,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only owner can view shares (admin can also view)
-    if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin') {
+    // Only owner can view shares (admin/super_admin can also view)
+    if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }
@@ -151,8 +151,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Only owner can share (admin can also share)
-    if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin') {
+    // Only owner can share (admin/super_admin can also share)
+    if (!(await userOwnsThread(dbUser.id, threadId)) && dbUser.role !== 'admin' && dbUser.role !== 'super_admin') {
       return NextResponse.json<ApiError>(
         { error: 'Access denied', code: 'AUTH_REQUIRED' },
         { status: 403 }

@@ -1,12 +1,15 @@
 /**
  * Admin Provider Balances API
  *
- * GET /api/admin/provider-balances — Fetch balance for configured LLM providers
+ * GET /api/admin/provider-balances — Fetch balance/spend for configured LLM providers
+ * Query params:
+ *   nocache=1 — Bypass Redis cache and fetch fresh data
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireSuperAdmin } from '@/lib/auth';
 import { getProviderBalance } from '@/lib/provider-balance';
+import { getRedisClient } from '@/lib/redis';
 
 const PROVIDER_IDS = [
   'openai',
@@ -20,9 +23,24 @@ const PROVIDER_IDS = [
   'ollama-cloud',
 ];
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     await requireSuperAdmin();
+
+    const nocache = request.nextUrl.searchParams.get('nocache') === '1';
+
+    // If nocache, invalidate all cached balances first
+    if (nocache) {
+      try {
+        const redis = await getRedisClient();
+        const keys = await redis.keys('provider-balance:*');
+        if (keys.length > 0) {
+          await redis.del(keys);
+        }
+      } catch {
+        // Redis failure is non-critical
+      }
+    }
 
     const balances = await Promise.all(
       PROVIDER_IDS.map((id) => getProviderBalance(id))

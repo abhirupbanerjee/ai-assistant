@@ -45,7 +45,7 @@ import {
 // ============ Interfaces ============
 
 interface WelcomeScreenProps {
-  userRole: 'user' | 'superuser' | 'admin';
+  userRole: 'user' | 'superuser' | 'admin' | 'super_admin';
   brandingName: string;
   onNewThread?: () => void;
 }
@@ -74,7 +74,7 @@ interface ToolEntry {
 
 // ============ Constants ============
 
-const ROLE_HIERARCHY = { user: 0, superuser: 1, admin: 2 };
+const ROLE_HIERARCHY = { user: 0, superuser: 1, admin: 2, super_admin: 3 };
 
 const TIER_COLORS = {
   1: { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   badge: 'bg-blue-100 text-blue-700' },
@@ -128,17 +128,18 @@ Policy Bot solves this by providing:
 };
 
 function canAccess(
-  userRole: 'user' | 'superuser' | 'admin',
+  userRole: 'user' | 'superuser' | 'admin' | 'super_admin',
   minRole: 'user' | 'superuser' | 'admin'
 ): boolean {
   return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[minRole];
 }
 
-function RoleTag({ role }: { role: 'user' | 'superuser' | 'admin' }) {
+function RoleTag({ role }: { role: 'user' | 'superuser' | 'admin' | 'super_admin' }) {
   const config = {
     user: { label: 'All Users', className: 'bg-gray-100 text-gray-600' },
     superuser: { label: 'Superuser', className: 'bg-blue-100 text-blue-700' },
     admin: { label: 'Admin', className: 'bg-purple-100 text-purple-700' },
+    super_admin: { label: 'Super Admin', className: 'bg-purple-100 text-purple-700' },
   };
   const { label, className } = config[role];
   return (
@@ -448,7 +449,7 @@ export default function WelcomeScreen({
     : [];
 
   const searchTools =
-    isSearching && (userRole === 'admin' || userRole === 'superuser')
+    isSearching && (userRole === 'super_admin' || userRole === 'admin' || userRole === 'superuser')
       ? toolsList.filter(
           (t) =>
             t.name.toLowerCase().includes(q) ||
@@ -657,7 +658,7 @@ export default function WelcomeScreen({
                   </span>
                 </button>
 
-                {(userRole === 'admin' || userRole === 'superuser') && (
+                {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'superuser') && (
                   <button
                     onClick={() => setActiveTab('tools')}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
@@ -769,7 +770,7 @@ export default function WelcomeScreen({
             )}
 
             {/* ── Tools Tab ── */}
-            {activeTab === 'tools' && (userRole === 'admin' || userRole === 'superuser') && (
+            {activeTab === 'tools' && (userRole === 'super_admin' || userRole === 'admin' || userRole === 'superuser') && (
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
                   <table className="w-full text-sm">
