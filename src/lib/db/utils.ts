@@ -521,7 +521,7 @@ export interface AgentModelConfigForValidation {
 }
 
 export function validateAgentModelConfig(config: AgentModelConfigForValidation): boolean {
-  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'deepseek', 'ollama', 'ollama-cloud', 'moonshot'].includes(config.provider)) {
+  if (!config.provider || !['openai', 'gemini', 'mistral', 'anthropic', 'fireworks', 'deepseek', 'ollama', 'ollama-cloud', 'moonshot', 'auto'].includes(config.provider)) {
     return false;
   }
   if (!config.model || config.model.trim() === '') {
