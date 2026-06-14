@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useRef, useLayoutEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import type { Message, MessageMetadata } from '@/types';
 import SourceCard from './SourceCard';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
@@ -198,6 +198,9 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [collapsed, setCollapsed] = useState(true);
+  const [needsClamp, setNeedsClamp] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const isUser = message.role === 'user';
 
   // Extract <think>…</think> blocks from content as fallback for historical messages
@@ -217,6 +220,18 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
       effectiveThinking: extracted || undefined,
     };
   }, [message.content, message.thinkingContent]);
+
+  // Measure user-message content height to decide if collapse toggle is needed
+  useLayoutEffect(() => {
+    if (!isUser || isStreaming || !contentRef.current) return;
+    const el = contentRef.current;
+    const fullHeight = el.scrollHeight;
+    const computedLineHeight = parseFloat(getComputedStyle(el).lineHeight);
+    // Fallback when line-height is "normal" (parseFloat returns NaN)
+    const lineHeight = computedLineHeight || parseFloat(getComputedStyle(el).fontSize) * 1.5;
+    const clampHeight = Math.round(lineHeight * 3);
+    setNeedsClamp(fullHeight > clampHeight + 4);
+  }, [displayContent, isUser, isStreaming]);
 
   // Sort sources by score (highest first) and limit to top sources
   const sortedSources = useMemo(() => {
@@ -325,12 +340,37 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
             </div>
           </div>
         ) : (
-          <div className="markdown-content">
-            <StreamingMarkdown
-              content={displayContent}
-              isStreaming={isStreaming}
-              isUser={isUser}
-            />
+          <div className="markdown-content relative">
+            <div
+              ref={isUser ? contentRef : undefined}
+              className={isUser && needsClamp && collapsed ? 'user-bubble-collapsed' : ''}
+              style={isUser && needsClamp && collapsed ? { maxHeight: '4.5em', overflow: 'hidden' } : undefined}
+            >
+              <StreamingMarkdown
+                content={displayContent}
+                isStreaming={isStreaming}
+                isUser={isUser}
+              />
+            </div>
+            {/* Show more / Show less toggle — user messages only, when content overflows 3 lines */}
+            {isUser && needsClamp && (
+              <button
+                onClick={() => setCollapsed(v => !v)}
+                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 mt-1 transition-colors"
+              >
+                {collapsed ? (
+                  <>
+                    <ChevronDown size={14} />
+                    Show more
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp size={14} />
+                    Show less
+                  </>
+                )}
+              </button>
+            )}
             {/* Edit pencil — user messages only, appears on hover */}
             {isUser && !isStreaming && onEdit && (
               <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 flex justify-end">

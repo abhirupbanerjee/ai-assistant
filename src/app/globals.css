@@ -304,6 +304,22 @@ body {
   background-color: #f3f4f6;
 }
 
+/* Collapsed user-bubble fade-out gradient */
+.user-bubble-collapsed {
+  position: relative;
+}
+
+.user-bubble-collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.8em;
+  background: linear-gradient(to bottom, transparent, white);
+  pointer-events: none;
+}
+
 /* Loading animation */
 @keyframes pulse {
   0%, 100% {
