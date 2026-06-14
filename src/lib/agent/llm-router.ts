@@ -791,7 +791,9 @@ export async function generateWithModelFallback(
 }
 
 /**
- * Get model spec for a specific agent role
+ * Get model spec for a specific agent role (sync, no Auto resolution).
+ * @deprecated Use `resolveModelForRole()` from auto-role.ts for Auto support.
+ * Kept for backward compatibility where Auto is not needed.
  */
 export function getModelForRole(role: 'planner' | 'executor' | 'checker' | 'summarizer', config: AgentModelConfig): ModelSpec {
   return config[role];

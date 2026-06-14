@@ -42,6 +42,7 @@ import { getWorkspaceCategorySlugs, getCategoryIdsBySlugs } from '@/lib/db/compa
 import { runWithContextAsync } from '@/lib/request-context';
 import { generateResponseWithTools } from '@/lib/openai';
 import { recordTokenUsage } from '@/lib/token-logger';
+import { selectBestModel, isAutoSentinel } from '@/lib/auto-model-selector';
 import {
   createSSEEncoder,
   getSSEHeaders,
@@ -187,6 +188,30 @@ export async function POST(
         // Resolve effective LLM config (workspace override → global default)
         const workspaceLLMConfig = await getWorkspaceLLMConfig(workspace);
 
+        // Resolve Auto model sentinel — workspace model can be set to 'auto'
+        let effectiveWorkspaceModel = workspaceLLMConfig.model;
+        if (isAutoSentinel(effectiveWorkspaceModel)) {
+          try {
+            const estimatedTokens = countTokens(message);
+            const picked = await selectBestModel({
+              userMessage: message,
+              categoryIds,
+              hasImages: false,
+              estimatedTokens,
+            });
+            effectiveWorkspaceModel = picked.modelId;
+            const autoMsg = picked.reason === 'best_score' && picked.dominantFactor
+              ? `[Workspace Auto] Auto-selected ${picked.displayName} (best ${picked.dominantFactor})`
+              : `[Workspace Auto] Auto-selected ${picked.displayName} (${picked.reason.replace(/_/g, ' ')})`;
+            console.log(autoMsg);
+          } catch (err) {
+            console.error('[Workspace Auto] selection failed, using default:', err);
+            const { getDefaultModel } = await import('@/lib/db/compat/enabled-models');
+            const defaultModel = await getDefaultModel();
+            effectiveWorkspaceModel = defaultModel?.id || '';
+          }
+        }
+
         // Get system prompt
         const systemPromptOverride = await getWorkspaceSystemPrompt(workspace);
 
@@ -252,7 +277,7 @@ export async function POST(
             let imageContents: ImageContent[] = [];
 
             // Check image processing capabilities for current model
-            const imageCapabilities = await getImageCapabilities(workspaceLLMConfig.model);
+            const imageCapabilities = await getImageCapabilities(effectiveWorkspaceModel);
 
             if (attachments && attachments.length > 0 && workspace.file_upload_enabled) {
               const uploadDetails = await getWorkspaceUploadDetails(
@@ -396,7 +421,7 @@ export async function POST(
               undefined, // categorySlugs
               excludeTools.length > 0 ? excludeTools : undefined,
               imageCapabilities, // Image processing strategy
-              workspaceLLMConfig.model || undefined // modelOverride
+              effectiveWorkspaceModel || undefined // modelOverride
             );
             const llmMs = Date.now() - llmStart;
 
@@ -460,7 +485,7 @@ export async function POST(
               sources: workspaceSources,
               latencyMs: Date.now() - new Date(userMessage.created_at).getTime(),
               tokensUsed: toolResult.totalTokens || undefined,
-              model: workspaceLLMConfig.model || undefined,
+              model: effectiveWorkspaceModel || undefined,
             });
 
             // Increment session message count for assistant message
@@ -469,7 +494,7 @@ export async function POST(
             // Log token usage for dashboard
             recordTokenUsage({
               category: 'workspace',
-              model: workspaceLLMConfig.model || 'unknown',
+              model: effectiveWorkspaceModel || 'unknown',
               totalTokens: toolResult.totalTokens,
             });
 
@@ -478,7 +503,7 @@ export async function POST(
               type: 'done',
               messageId: assistantMessageId,
               threadId: currentThreadId || sessionId,
-              model: workspaceLLMConfig.model || undefined,
+              model: effectiveWorkspaceModel || undefined,
               totalMs: Date.now() - requestStart,
               llmMs,
               ragMs,

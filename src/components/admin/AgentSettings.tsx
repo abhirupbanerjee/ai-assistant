@@ -5,8 +5,10 @@ import { Brain, Save, RotateCcw } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
+import { AUTO_MODEL_SENTINEL } from '@/lib/auto-model-constants';
+
 interface AgentModelConfig {
-  provider: 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot';
+  provider: 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot' | 'auto';
   model: string;
   temperature: number;
   max_tokens?: number;
@@ -426,6 +428,30 @@ export default function AgentSettingsTab() {
   /** Handle model selection from dropdown — also auto-sets the provider */
   const handleModelSelect = (modelKey: typeof MODEL_KEYS[number], modelId: string) => {
     if (!editedSettings) return;
+    // Handle Auto sentinel selection
+    if (modelId === AUTO_MODEL_SENTINEL) {
+      const nextModel = {
+        ...editedSettings[modelKey],
+        model: AUTO_MODEL_SENTINEL,
+        provider: 'auto' as AgentModelConfig['provider'],
+        thinking_enabled: false,
+      };
+      if (modelKey === 'executorModel') {
+        setEditedSettings({
+          ...editedSettings,
+          executorModel: nextModel,
+          executorModelProfiles: ensureExecutorProfiles(nextModel, editedSettings.executorModelProfiles),
+        });
+        setIsModified(true);
+        return;
+      }
+      setEditedSettings({
+        ...editedSettings,
+        [modelKey]: nextModel
+      });
+      setIsModified(true);
+      return;
+    }
     const selectedModel = availableModels.find(m => m.id === modelId);
     const provider = selectedModel ? mapProviderForAgent(selectedModel.providerId) : editedSettings[modelKey].provider;
     const nextModel = {
@@ -497,6 +523,30 @@ export default function AgentSettingsTab() {
 
     if (profileKey === 'default') {
       handleModelSelect('executorModel', modelId);
+      return;
+    }
+
+    // Handle Auto sentinel for executor profiles (except local_private)
+    if (modelId === AUTO_MODEL_SENTINEL) {
+      if (profileKey === 'local_private') {
+        console.warn('[AgentSettings] local_private profile cannot use Auto — air-gapped deployments must stay on Route 3');
+        return;
+      }
+      const current = editedSettings.executorModelProfiles[profileKey] || { ...editedSettings.executorModel };
+      const nextProfiles: ExecutorModelProfiles = {
+        ...editedSettings.executorModelProfiles,
+        [profileKey]: {
+          ...current,
+          model: AUTO_MODEL_SENTINEL,
+          provider: 'auto' as AgentModelConfig['provider'],
+          thinking_enabled: false,
+        },
+      };
+      setEditedSettings({
+        ...editedSettings,
+        executorModelProfiles: ensureExecutorProfiles(editedSettings.executorModel, nextProfiles),
+      });
+      setIsModified(true);
       return;
     }
 
@@ -945,6 +995,7 @@ export default function AgentSettingsTab() {
                               {currentModel.model} ({currentModel.provider})
                             </option>
                           )}
+                          <option value={AUTO_MODEL_SENTINEL}>⚡ Auto (smart selection per role)</option>
                           {Object.entries(modelsByProvider).map(([providerId, models]) => (
                             <optgroup key={providerId} label={providerId}>
                               {models.map((model) => (
@@ -1088,6 +1139,9 @@ export default function AgentSettingsTab() {
                                 <option value={currentModel.model}>
                                   {currentModel.model} ({currentModel.provider})
                                 </option>
+                              )}
+                              {profileKey !== 'local_private' && (
+                                <option value={AUTO_MODEL_SENTINEL}>⚡ Auto (smart per-profile selection)</option>
                               )}
                               {Object.entries(modelsByProvider).map(([providerId, models]) => (
                                 <optgroup key={providerId} label={providerId}>

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
+import { AUTO_MODEL_SENTINEL } from '@/lib/auto-model-constants';
 import Modal from '@/components/ui/Modal';
 
 interface Category {
@@ -1440,12 +1441,18 @@ function WorkspaceForm({
             <select
               value={formData.llmModel}
               onChange={(e) => {
-                const selected = availableModels.find((m) => m.id === e.target.value);
-                setFormData({ ...formData, llmModel: e.target.value, llmProvider: selected?.providerId || '' });
+                const value = e.target.value;
+                if (value === AUTO_MODEL_SENTINEL) {
+                  setFormData({ ...formData, llmModel: AUTO_MODEL_SENTINEL, llmProvider: 'auto' });
+                } else {
+                  const selected = availableModels.find((m) => m.id === value);
+                  setFormData({ ...formData, llmModel: value, llmProvider: selected?.providerId || '' });
+                }
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Use global default</option>
+              <option value={AUTO_MODEL_SENTINEL}>⚡ Auto (smart selection)</option>
               {availableModels.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.displayName}

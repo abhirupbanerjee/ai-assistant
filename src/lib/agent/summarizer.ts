@@ -7,6 +7,7 @@
 
 import type { AgentPlan, AgentModelConfig } from '@/types/agent';
 import { generateWithModelFallback, getModelForRole } from './llm-router';
+import { resolveModelForRole } from './auto-role';
 import { getSummarizerSystemPrompt } from '@/lib/db/compat/agent-config';
 
 /**
@@ -24,7 +25,7 @@ export async function generateSummary(
 
   try {
     // Get summarizer model
-    const summarizerModel = getModelForRole('summarizer', modelConfig);
+    const summarizerModel = await resolveModelForRole('summarizer', modelConfig);
 
     // Load configurable system prompt (falls back to default)
     const systemPrompt = await getSummarizerSystemPrompt();
@@ -162,7 +163,7 @@ export async function generatePlanIntro(
   tasks: { description: string; type: string }[],
   modelConfig: AgentModelConfig
 ): Promise<{ content: string; tokens_used: number; llm_calls: number }> {
-  const summarizerModel = getModelForRole('summarizer', modelConfig);
+  const summarizerModel = await resolveModelForRole('summarizer', modelConfig);
   const taskList = tasks.map((t, i) => `${i + 1}. ${t.description}`).join('\n');
 
   const prompt = `The user asked: "${originalRequest}"
@@ -195,7 +196,7 @@ export async function generateIncrementalSummary(
   newTask: { description: string; result: string; type: string },
   modelConfig: AgentModelConfig
 ): Promise<{ content: string; tokens_used: number; llm_calls: number }> {
-  const summarizerModel = getModelForRole('summarizer', modelConfig);
+  const summarizerModel = await resolveModelForRole('summarizer', modelConfig);
 
   // For tool outputs (file generation), just report the result directly
   const isToolOutput = /(?:Document|Spreadsheet|Presentation|Image|Diagram|Podcast) generated:/i.test(newTask.result);
@@ -243,7 +244,7 @@ export async function generateConclusion(
   failedTypes: string[],
   modelConfig: AgentModelConfig
 ): Promise<{ content: string; tokens_used: number; llm_calls: number }> {
-  const summarizerModel = getModelForRole('summarizer', modelConfig);
+  const summarizerModel = await resolveModelForRole('summarizer', modelConfig);
 
   const truncatedContent = contentSoFar.length > 3000 ? '...' + contentSoFar.slice(-3000) : contentSoFar;
   const gapNote = failedTypes.length > 0

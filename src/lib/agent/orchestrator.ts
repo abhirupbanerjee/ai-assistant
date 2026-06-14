@@ -287,10 +287,10 @@ async function executeTasksInOrder(
     wave.sort((a, b) => (b.priority || 1) - (a.priority || 1));
     const budgetPct = computeBudgetPct(currentPlan);
     const downgradeBudgetStatus = budgetPct >= 80 ? { pct: Math.round(budgetPct) } : undefined;
-    const routedWave = wave.map((task) => ({
+    const routedWave = await Promise.all(wave.map(async (task) => ({
       ...task,
-      executor_profile: resolveExecutorModelForTask(task, modelConfig, currentPlan, downgradeBudgetStatus).profileUsed,
-    }));
+      executor_profile: (await resolveExecutorModelForTask(task, modelConfig, currentPlan, downgradeBudgetStatus)).profileUsed,
+    })));
 
     // 4. Notify wave and task starts
     if (routedWave.length > 1) {
@@ -503,10 +503,10 @@ async function executeTasksInOrder(
             );
 
             if (replanResult.tasks.length > 0) {
-              const routedReplacementTasks = replanResult.tasks.map((task) => ({
+              const routedReplacementTasks = await Promise.all(replanResult.tasks.map(async (task) => ({
                 ...task,
-                executor_profile: resolveExecutorModelForTask(task, modelConfig, currentPlan).profileUsed,
-              }));
+                executor_profile: (await resolveExecutorModelForTask(task, modelConfig, currentPlan)).profileUsed,
+              })));
               await resetFailedTasks(plan.id, failedTasks.map(t => t.id), routedReplacementTasks);
               await incrementBudgetUsage(plan.id, {
                 llm_calls: replanResult.llm_calls || 0,
@@ -603,7 +603,7 @@ async function executeSingleTask(
     // Resolve executor model for state tracking
     const budgetPct = computeBudgetPct(plan);
     const budgetStatus = budgetPct >= 80 ? { pct: Math.round(budgetPct) } : undefined;
-    const { model: executorSelection } = resolveExecutorModelForTask(task, modelConfig, plan, budgetStatus);
+    const { model: executorSelection } = await resolveExecutorModelForTask(task, modelConfig, plan, budgetStatus);
     const effectiveModel = executorSelection.model;
 
     // Mark as running
@@ -996,10 +996,10 @@ export async function createAndExecuteAutonomousPlan(
       };
     }
 
-    const plannedTasks = planResult.tasks.map((task) => ({
+    const plannedTasks = await Promise.all(planResult.tasks.map(async (task) => ({
       ...task,
-      executor_profile: resolveExecutorModelForTask(task, planConfig.modelConfig).profileUsed,
-    }));
+      executor_profile: (await resolveExecutorModelForTask(task, planConfig.modelConfig)).profileUsed,
+    })));
 
     // Create plan in database
     const planId = await createAutonomousPlan(
@@ -1082,10 +1082,10 @@ export async function createAndExecuteAutonomousPlan(
           break;
         }
 
-        const revisedTasks = revisedResult.tasks.map((task) => ({
+        const revisedTasks = await Promise.all(revisedResult.tasks.map(async (task) => ({
           ...task,
-          executor_profile: resolveExecutorModelForTask(task, planConfig.modelConfig).profileUsed,
-        }));
+          executor_profile: (await resolveExecutorModelForTask(task, planConfig.modelConfig)).profileUsed,
+        })));
 
         await replacePlanTasks(planId, revisedTasks, revisedResult.title);
         if (revisedResult.llm_calls || revisedResult.tokens_used) {

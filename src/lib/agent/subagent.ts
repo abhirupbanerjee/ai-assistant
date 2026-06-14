@@ -229,7 +229,7 @@ export async function runSubagentTaskLoop(
   maxIterations: number = 15,
   budget?: SubagentBudget
 ): Promise<SubagentResult> {
-  const executorSelection = resolveExecutorModelForTask(task, modelConfig, plan);
+  const executorSelection = await resolveExecutorModelForTask(task, modelConfig, plan);
   const effectiveModel = executorSelection.model.model;
 
   // Resolve enabled tools for this plan/category

@@ -37,6 +37,14 @@ export interface AutoSelectionInput {
   hasImages: boolean;
   /** Estimated token count for the full prompt context (optional) */
   estimatedTokens?: number;
+  /**
+   * Override the capability dimension used for scoring (Phase 5 bridge).
+   * When absent, the dimension is auto-detected from signals (images → visual_reasoning,
+   * forced tool → function_calling, else → reasoning).
+   * When present, this dimension is used directly — enabling per-role Auto for
+   * agent/autonomous mode (e.g. executor → function_calling, planner → reasoning).
+   */
+  dimensionOverride?: keyof CapabilityScores;
 }
 
 export type AutoSelectionReason =
@@ -144,11 +152,12 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
   const latencies = await getAllModelP50Latencies();  // {} when no data
   const weights = await getModelScoringWeights();      // settings with defaults
 
-  // Pick the task dimension from signals already in scope
+  // Pick the task dimension: explicit override > signal-derived default
   const dimension: keyof CapabilityScores =
-    input.hasImages ? 'visual_reasoning'
-    : forced        ? 'function_calling'   // `forced` already computed in Step 4
-    : 'reasoning';
+    input.dimensionOverride
+    || (input.hasImages ? 'visual_reasoning'
+      : forced          ? 'function_calling'   // `forced` already computed in Step 4
+      : 'reasoning');
 
   function scoreOf(m: EnabledModel): number {
     const caps = (m.capabilityScores ?? deriveScores(m)) as CapabilityScores;

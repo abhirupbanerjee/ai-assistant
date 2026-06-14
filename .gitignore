@@ -103,3 +103,4 @@ docker-compose.local.yml
 GEMINI.md
 .env.local
 plans/*
+.gitignore

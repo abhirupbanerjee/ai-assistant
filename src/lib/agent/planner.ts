@@ -10,6 +10,7 @@
 import type { AgentTask, AgentModelConfig, PlannerResponse } from '@/types/agent';
 import type { SubagentConfig } from '../db/compat/agent-config';
 import { generateWithModelFallback, getModelForRole } from './llm-router';
+import { resolveModelForRole } from './auto-role';
 import { parsePlannerResponse } from './json-parser';
 import { validateDependencyGraph } from './dependency-validator';
 import { getPlannerSystemPrompt } from '../db/compat/agent-config';
@@ -58,7 +59,9 @@ export async function createPlan(
 
   try {
     // Get planner model
-    const plannerModel = getModelForRole('planner', modelConfig);
+    const plannerModel = await resolveModelForRole('planner', modelConfig, {
+      userMessage: userRequest,
+    });
 
     // Load configurable system prompt (falls back to default)
     const systemPrompt = await getPlannerSystemPrompt();
@@ -195,7 +198,9 @@ async function reflectOnPlan(
   plan: PlannerResponse,
   modelConfig: AgentModelConfig
 ): Promise<{ plan: PlannerResponse | null; tokens_used: number; llm_calls: number }> {
-  const plannerModel = getModelForRole('planner', modelConfig);
+  const plannerModel = await resolveModelForRole('planner', modelConfig, {
+    userMessage: userRequest,
+  });
 
   const prompt = `Reflect on this generated plan. For each check, answer PASS or FAIL with a brief reason:
 

@@ -9,11 +9,12 @@
  * - Tool execution (document generation, image generation, web search)
  */
 
-import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig, ModelSpec } from '@/types/agent';
+import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig, ModelSpec, ExecutorProfileName } from '@/types/agent';
 import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import type { ResolvedSkills } from '../skills/types';
 import { generateWithModelFallback, getModelForRole } from './llm-router';
+import { isAutoRoleSpec, resolveModelForRole, profileToDimension } from './auto-role';
 import { isRecoverableApiError } from '../llm-fallback';
 import { extractJSON } from './json-parser';
 import { checkTaskQuality } from './checker';
@@ -249,14 +250,44 @@ function detectToolForTask(task: AgentTask, planId?: string): string | null {
   return null;
 }
 
-export function resolveExecutorModelForTask(
+export async function resolveExecutorModelForTask(
   task: AgentTask,
   modelConfig: AgentModelConfig,
   plan?: AgentPlan,
   budgetStatus?: { pct: number }
-): ExecutorRouting {
+): Promise<ExecutorRouting> {
   const configuredProfiles = modelConfig.executor_profiles;
-  const defaultModel = configuredProfiles?.default || getModelForRole('executor', modelConfig);
+  let defaultModel = configuredProfiles?.default || getModelForRole('executor', modelConfig);
+
+  // Resolve Auto sentinel on the default executor model
+  if (isAutoRoleSpec(defaultModel)) {
+    defaultModel = await resolveModelForRole('executor', modelConfig, {
+      userMessage: `${task.description} ${task.target}`,
+      executorProfile: 'default',
+    });
+  }
+
+  // Pre-resolve Auto sentinels in executor profiles
+  // Build a resolved profiles map so resolveFromProfile stays sync
+  const resolvedProfiles: Record<string, ModelSpec> = {};
+  if (configuredProfiles) {
+    for (const [profileName, profileSpec] of Object.entries(configuredProfiles)) {
+      if (profileSpec && isAutoRoleSpec(profileSpec)) {
+        // local_private must never resolve to Auto
+        if (profileName === 'local_private') {
+          console.warn('[Executor] local_private profile is Auto — skipping Auto resolution, using default');
+          resolvedProfiles[profileName] = defaultModel;
+        } else {
+          resolvedProfiles[profileName] = await resolveModelForRole('executor', modelConfig, {
+            userMessage: `${task.description} ${task.target}`,
+            executorProfile: profileName as ExecutorProfileName,
+          });
+        }
+      } else if (profileSpec) {
+        resolvedProfiles[profileName] = profileSpec;
+      }
+    }
+  }
 
   const availableProfileKeys = new Set(
     Object.keys(configuredProfiles || {})
@@ -265,7 +296,7 @@ export function resolveExecutorModelForTask(
   const resolveFromProfile = (
     profile: ExecutorProfileUsed
   ): ExecutorRouting => {
-    const profileModel = configuredProfiles?.[profile];
+    const profileModel = resolvedProfiles[profile];
     if (!profileModel) {
       if (profile !== 'default') {
         console.warn(
@@ -424,7 +455,7 @@ export async function executeTask(
     status: (freshTask?.status as AgentTask['status']) || task.status,
     executor_profile: freshTask?.executor_profile || task.executor_profile,
   };
-  const executorSelection = resolveExecutorModelForTask(selectionTask, modelConfig, plan);
+  const executorSelection = await resolveExecutorModelForTask(selectionTask, modelConfig, plan);
 
   // Mark as running and save state history
   try {
@@ -570,7 +601,7 @@ async function performTaskExecution(
     (task.retry_strategy === 'fallback_ascii_diagram' || task.retry_strategy === 'fallback_text_description');
 
   const toolType = isRetryWithFallback ? null : detectToolForTask(task, plan.id);
-  const { model: taskExecutorModel } = executorSelection || resolveExecutorModelForTask(task, modelConfig, plan);
+  const { model: taskExecutorModel } = executorSelection || await resolveExecutorModelForTask(task, modelConfig, plan);
 
   if (toolType) {
     return executeToolForTask(task, plan, taskExecutorModel, toolType, callbacks);

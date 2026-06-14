@@ -11,6 +11,7 @@
 
 import type { AgentTask, CheckerResult, AgentModelConfig } from '@/types/agent';
 import { generateWithModelFallback, getModelForRole } from './llm-router';
+import { resolveModelForRole } from './auto-role';
 import { parseCheckerResponse } from './json-parser';
 import { getSetting } from '../db/compat/config';
 import { getCheckerSystemPrompt } from '../db/compat/agent-config';
@@ -304,7 +305,7 @@ export async function checkTaskQuality(
 
   try {
     // Get checker model
-    const checkerModel = getModelForRole('checker', modelConfig);
+    const checkerModel = await resolveModelForRole('checker', modelConfig);
 
     // Load configurable checker system prompt (falls back to default)
     const checkerPrompt = await getCheckerSystemPrompt();
