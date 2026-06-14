@@ -1576,6 +1576,13 @@ Manage agent bots via Admin → Agent Bots:
 
 ## User Roles & Permissions
 
+### Super Admin Users
+- All admin capabilities, **plus** exclusive access to sensitive financial data
+- Seeded from the `ADMIN_EMAILS` environment variable (existing matching users are re-promoted to `super_admin`)
+- Only role that can view aggregated cost data (cost views in Admin > Settings > Usage)
+- Only role that can view the **Pricing** tab and provider account balances
+- Cost data is gated both server-side (the `/api/admin/usage` endpoint strips cost fields for non-super-admins) and in the UI
+
 ### Admin Users
 - Full system access
 - Can access `/admin` dashboard
@@ -1583,6 +1590,7 @@ Manage agent bots via Admin → Agent Bots:
 - Assign categories to super users
 - Manage user subscriptions
 - Configure system settings
+- **Cannot** view cost/financial data (token usage only)
 - All standard user capabilities
 
 ### Super Users
@@ -1782,7 +1790,8 @@ Admin/Super User manages subscriptions:
 - Admin users initially seeded from ADMIN_EMAILS environment variable
 
 ### Authorization
-- Three-tier role system (admin, superuser, user)
+- Four-tier role system (super_admin, admin, superuser, user)
+- `super_admin` adds exclusive access to financial data (cost views and provider balances); seeded from `ADMIN_EMAILS`
 - Category-based document access
 - Super users can only manage their assigned categories
 - Users can only access subscribed category documents

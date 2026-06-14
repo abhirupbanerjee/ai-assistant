@@ -301,9 +301,12 @@ ALLOWED_DOMAINS=company.com,partner.org
 
 | Role | Permissions |
 |------|-------------|
-| `admin` | Full system access, manage all users, configure settings |
+| `super_admin` | Full admin access **plus** exclusive access to sensitive financial data (cost views in Admin > Settings > Usage and the Pricing tab with provider balances). Seeded from `ADMIN_EMAILS`. |
+| `admin` | Full system access, manage all users, configure settings. Cannot view cost/financial data. |
 | `superuser` | Manage assigned categories, limited admin functions |
 | `user` | Access assigned categories, chat functionality |
+
+> **Note:** Emails listed in `ADMIN_EMAILS` are seeded as `super_admin` on first startup. Existing users matching `ADMIN_EMAILS` are automatically re-promoted to `super_admin`. The `super_admin` role is the only role that can view aggregated cost data and provider account balances.
 
 ### Managing Users (Admin UI)
 

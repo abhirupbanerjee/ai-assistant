@@ -27,6 +27,7 @@ export async function GET() {
       image: user.image,
       role: user.role || 'user',
       isAdmin: user.isAdmin,
+      isSuperAdmin: user.isSuperAdmin || false,
     });
   } catch (error) {
     console.error('Failed to get current user:', error);

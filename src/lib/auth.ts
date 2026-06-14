@@ -22,13 +22,19 @@ const AUTH_DISABLED = ((): boolean => {
 export async function isAdmin(email: string | null | undefined): Promise<boolean> {
   if (!email) return false;
   const role = await getUserRole(email);
-  return role === 'admin';
+  return role === 'admin' || role === 'super_admin';
+}
+
+export async function isSuperAdmin(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false;
+  const role = await getUserRole(email);
+  return role === 'super_admin';
 }
 
 export async function canAccessAdminDashboard(email: string | null | undefined): Promise<boolean> {
   if (!email) return false;
   const role = await getUserRole(email);
-  return role === 'admin' || role === 'superuser';
+  return role === 'super_admin' || role === 'admin' || role === 'superuser';
 }
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -38,7 +44,8 @@ export async function getCurrentUser(): Promise<User | null> {
       email: 'dev@localhost',
       name: 'Development User',
       isAdmin: true,
-      role: 'admin',
+      isSuperAdmin: true,
+      role: 'super_admin',
     };
   }
 
@@ -55,7 +62,8 @@ export async function getCurrentUser(): Promise<User | null> {
     email: session.user.email,
     name: session.user.name || 'User',
     image: session.user.image || undefined,
-    isAdmin: role === 'admin',
+    isAdmin: role === 'admin' || role === 'super_admin',
+    isSuperAdmin: role === 'super_admin',
     role: role || 'user',
   };
 }
@@ -76,11 +84,19 @@ export async function requireAdmin(): Promise<User> {
   return user;
 }
 
-export async function requireElevated(): Promise<User & { role: 'admin' | 'superuser' }> {
+export async function requireSuperAdmin(): Promise<User> {
+  const user = await requireAuth();
+  if (!user.isSuperAdmin) {
+    throw new Error('Super admin access required');
+  }
+  return user;
+}
+
+export async function requireElevated(): Promise<User & { role: 'super_admin' | 'admin' | 'superuser' }> {
   const user = await requireAuth();
   // Use the role already computed in getCurrentUser instead of doing another lookup
-  if (user.role !== 'admin' && user.role !== 'superuser') {
+  if (user.role !== 'super_admin' && user.role !== 'admin' && user.role !== 'superuser') {
     throw new Error('Elevated access required');
   }
-  return { ...user, role: user.role as 'admin' | 'superuser' };
+  return { ...user, role: user.role as 'super_admin' | 'admin' | 'superuser' };
 }

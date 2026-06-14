@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   name TEXT,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'superuser', 'user')),
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'superuser', 'user')),
   added_by TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS skills (
   priority INTEGER DEFAULT 100,
   is_active INTEGER DEFAULT 1,
   is_core INTEGER DEFAULT 0,
-  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
   token_estimate INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -695,8 +695,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
   max_file_size_mb INTEGER DEFAULT 5,
 
   -- Ownership & Timestamps
-  created_by TEXT NOT NULL,                     -- User ID (admin or superuser)
-  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_by TEXT NOT NULL,                     -- User ID (super_admin, admin, or superuser)
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -849,7 +849,7 @@ Primary user table with role-based access control.
 | id | INTEGER | Auto-increment primary key |
 | email | TEXT | Unique email (case-insensitive lookup) |
 | name | TEXT | Optional display name |
-| role | TEXT | `admin`, `superuser`, or `user` |
+| role | TEXT | `super_admin`, `admin`, `superuser`, or `user` (super_admin is seeded from `ADMIN_EMAILS`) |
 | added_by | TEXT | Email of admin who added (or 'system') |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
@@ -1180,7 +1180,7 @@ Modular prompt components that can be dynamically injected into the system promp
 | priority | INTEGER | Lower = higher priority (core: 1-9, high: 10-99, medium: 100-499, low: 500+) |
 | is_active | INTEGER | 1=enabled, 0=disabled |
 | is_core | INTEGER | 1=core skill (cannot be deleted) |
-| created_by_role | TEXT | `admin` or `superuser` |
+| created_by_role | TEXT | `super_admin`, `admin`, or `superuser` |
 | token_estimate | INTEGER | Estimated token count (~4 chars per token) |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
@@ -1556,7 +1556,7 @@ Workspace configurations for embed and standalone chatbot instances.
 | file_upload_enabled | INTEGER | 1=file upload enabled |
 | max_file_size_mb | INTEGER | Maximum upload file size |
 | created_by | TEXT | User ID of creator |
-| created_by_role | TEXT | `admin` or `superuser` |
+| created_by_role | TEXT | `super_admin`, `admin`, or `superuser` |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
 
@@ -1749,7 +1749,7 @@ Per-wave working memory for autonomous agent plans. Stores deterministic summari
 ```typescript
 // src/lib/db/users.ts
 
-export type UserRole = 'admin' | 'superuser' | 'user';
+export type UserRole = 'super_admin' | 'admin' | 'superuser' | 'user';
 
 export interface DbUser {
   id: number;
@@ -1948,7 +1948,7 @@ export interface Workspace {
   category_ids: number[];
   user_ids?: string[];             // Explicit user list
   created_by: string;
-  created_by_role: 'admin' | 'superuser';
+  created_by_role: 'super_admin' | 'admin' | 'superuser';
   created_at: string;
   updated_at: string;
 }

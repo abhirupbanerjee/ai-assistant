@@ -150,7 +150,7 @@ export async function updateUserRole(email: string, role: UserRole): Promise<boo
  */
 export async function isUserAdmin(email: string): Promise<boolean> {
   const role = await getUserRole(email);
-  return role === 'admin';
+  return role === 'admin' || role === 'super_admin';
 }
 
 /**
@@ -166,5 +166,5 @@ export async function isUserSuperUser(email: string): Promise<boolean> {
  */
 export async function hasElevatedAccess(email: string): Promise<boolean> {
   const role = await getUserRole(email);
-  return role === 'admin' || role === 'superuser';
+  return role === 'super_admin' || role === 'admin' || role === 'superuser';
 }

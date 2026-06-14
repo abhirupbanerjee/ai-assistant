@@ -14,6 +14,8 @@ export interface TokenUsageContext {
   category: UsageCategory;
   model: string;
   totalTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -28,6 +30,8 @@ export function recordTokenUsage(ctx: TokenUsageContext): void {
     category: ctx.category,
     model: ctx.model,
     total_tokens: ctx.totalTokens,
+    input_tokens: ctx.inputTokens ?? null,
+    output_tokens: ctx.outputTokens ?? null,
     metadata_json: ctx.metadata ? JSON.stringify(ctx.metadata) : null,
   }).catch((err) => {
     console.error('[TokenLogger] Failed to log usage:', err);

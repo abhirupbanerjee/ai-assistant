@@ -73,7 +73,8 @@ Built with enterprise-grade, open-source technologies:
 - **Compliance Checking** - Compare user documents against policies
 
 ### Access Control
-- **Three-Tier Roles** - Admin > Superuser > User hierarchy (superusers are category-scoped)
+- **Four-Tier Roles** - Super Admin > Admin > Superuser > User hierarchy (superusers are category-scoped)
+- **Super Admin** - Seeded from `ADMIN_EMAILS`; exclusive access to sensitive financial data (cost views and provider balances)
 - **Category Subscriptions** - Users access only subscribed categories
 - **Multi-Provider Auth** - Azure AD, Google OAuth, and email/password credentials
 - **Flexible Authentication** - Credentials login enabled by default for fresh deployments, can be disabled after OAuth setup

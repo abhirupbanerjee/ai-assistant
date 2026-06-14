@@ -20,7 +20,8 @@ export interface User {
   name: string;
   image?: string;
   isAdmin: boolean;
-  role?: 'admin' | 'superuser' | 'user';
+  isSuperAdmin?: boolean;
+  role?: 'super_admin' | 'admin' | 'superuser' | 'user';
 }
 
 // ============ Category Types ============

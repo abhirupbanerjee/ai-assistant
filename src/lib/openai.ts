@@ -445,6 +445,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
         category: 'embeddings',
         model,
         totalTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
+        inputTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
+        outputTokens: 0,
       });
       return response.data[0].embedding;
     }
@@ -460,6 +462,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
       category: 'embeddings',
       model,
       totalTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
+      inputTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
+      outputTokens: 0,
     });
     return response.data[0].embedding;
   } catch (error) {
@@ -531,6 +535,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
         category: 'embeddings',
         model,
         totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        inputTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        outputTokens: 0,
       });
       if (embeddings.length > 0) {
         console.log(`[Embedding] Fireworks direct — Model: ${fwModel}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
@@ -550,6 +556,8 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       category: 'embeddings',
       model,
       totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+      inputTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+      outputTokens: 0,
     });
     // Debug: Log embedding dimensions
     if (embeddings.length > 0) {

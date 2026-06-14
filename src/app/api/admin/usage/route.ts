@@ -3,20 +3,53 @@
  *
  * GET /api/admin/usage — Dashboard data with filters
  * Query params: days, category, userId, model, nocache
+ *
+ * Cost fields are only included for super_admin users.
+ * Regular admins receive token-only data.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { getTokenUsageSummary } from '@/lib/db/compat';
-import type { TokenUsageFilters } from '@/lib/db/compat';
+import type { TokenUsageFilters, TokenUsageSummary } from '@/lib/db/compat';
 import { hashQuery, cacheQuery, getCachedQuery } from '@/lib/redis';
 
 const CACHE_TTL = 3600; // 1 hour
 const CACHE_PREFIX = 'usage:';
 
+/** Strip all cost-related fields from the summary for non-super_admin users */
+function stripCostData(summary: TokenUsageSummary): TokenUsageSummary {
+  return {
+    total_tokens: summary.total_tokens,
+    total_calls: summary.total_calls,
+    total_cost: 0,
+    byCategory: summary.byCategory.map((c) => ({
+      ...c,
+      total_cost: 0,
+    })),
+    byUser: summary.byUser.map((u) => ({
+      ...u,
+      total_cost: 0,
+    })),
+    byModel: summary.byModel.map((m) => ({
+      ...m,
+      total_cost: 0,
+    })),
+    daily: summary.daily.map((d) => ({
+      ...d,
+      chat_cost: 0,
+      autonomous_cost: 0,
+      embeddings_cost: 0,
+      workspace_cost: 0,
+    })),
+    modelsWithoutCost: [],
+  };
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    await requireAdmin();
+    const user = await requireAdmin();
+    const includeCost = user.isSuperAdmin === true;
 
     const url = new URL(request.url);
     const filters: TokenUsageFilters = {
@@ -29,8 +62,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     };
     const noCache = url.searchParams.get('nocache') === '1';
 
-    // Check cache unless bypass requested
-    const cacheKey = `${CACHE_PREFIX}${hashQuery(JSON.stringify(filters))}`;
+    // Cache key includes includeCost flag to prevent cost data leaking
+    // between super_admin and regular admin cached responses
+    const cacheKey = `${CACHE_PREFIX}${includeCost}:${hashQuery(JSON.stringify(filters))}`;
     if (!noCache) {
       const cached = await getCachedQuery(cacheKey);
       if (cached) {
@@ -38,9 +72,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const summary = await getTokenUsageSummary(filters);
+    let summary = await getTokenUsageSummary(filters);
 
-    // Cache the result
+    // Strip cost data for non-super_admin users
+    if (!includeCost) {
+      summary = stripCostData(summary);
+    }
+
+    // Cache the result (already stripped if needed)
     await cacheQuery(cacheKey, JSON.stringify(summary), CACHE_TTL);
 
     return NextResponse.json(summary);

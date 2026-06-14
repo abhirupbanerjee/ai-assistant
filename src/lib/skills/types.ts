@@ -31,7 +31,7 @@ export interface Skill {
   priority: number;
   is_active: boolean;
   is_core: boolean;
-  created_by_role: 'admin' | 'superuser';
+  created_by_role: 'super_admin' | 'admin' | 'superuser';
   token_estimate: number | null;
   created_at: string;
   updated_at: string;

@@ -46,7 +46,7 @@ interface PgSkillRow {
   priority: number;
   is_active: number;
   is_core: number;
-  created_by_role: 'admin' | 'superuser';
+  created_by_role: 'super_admin' | 'admin' | 'superuser';
   token_estimate: number | null;
   created_at: string | Date;
   updated_at: string | Date;
@@ -367,7 +367,7 @@ export async function isToolRoutingMigrated(): Promise<boolean> {
 export async function createSkill(
   input: CreateSkillInput,
   createdBy: string,
-  role: 'admin' | 'superuser'
+  role: 'super_admin' | 'admin' | 'superuser'
 ): Promise<number> {
   const db = await getDb();
   const tokenEstimate = Math.ceil(input.prompt_content.length / 4);

@@ -79,7 +79,8 @@ All endpoints except `/api/auth/*` and `/api/branding` require authentication vi
 
 | Role | Access Level |
 |------|--------------|
-| `admin` | Full system access: manage categories, users, documents, settings |
+| `super_admin` | Full admin access **plus** exclusive access to financial data: cost views in the Usage dashboard and provider account balances. Seeded from `ADMIN_EMAILS`. |
+| `admin` | Full system access: manage categories, users, documents, settings. Cannot view cost/financial data. |
 | `superuser` | Manage documents and user subscriptions for assigned categories |
 | `user` | Query documents in subscribed categories, manage own threads |
 
@@ -134,6 +135,8 @@ When `AUTH_DISABLED=true` in environment:
 | GET | `/api/admin/system-prompt` | Yes | Admin | Get system prompt |
 | PUT | `/api/admin/system-prompt` | Yes | Admin | Update system prompt |
 | GET | `/api/admin/reranker-status` | Yes | Admin | Check reranker status |
+| GET | `/api/admin/usage` | Yes | Admin | Token usage dashboard data. Cost fields are included only for `super_admin`; regular admins receive token-only data (cost fields zeroed). |
+| GET | `/api/admin/provider-balances` | Yes | Super Admin | Fetch account balances for configured LLM providers. Returns 403 for non-super-admins. |
 | GET | `/api/superuser/documents` | Yes | Superuser | List assigned documents |
 | POST | `/api/superuser/documents` | Yes | Superuser | Upload to category |
 | POST | `/api/superuser/documents/text` | Yes | Superuser | Upload text to category |

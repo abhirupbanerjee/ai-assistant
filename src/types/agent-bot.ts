@@ -14,7 +14,7 @@ import type { Source } from './index';
 // Core Types
 // ============================================================================
 
-export type CreatorRole = 'admin' | 'superuser';
+export type CreatorRole = 'super_admin' | 'admin' | 'superuser';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type OutputType = 'text' | 'json' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'podcast' | 'md' | 'chart' | 'diagram';
 export type FileExtractionStatus = 'pending' | 'processing' | 'ready' | 'error';

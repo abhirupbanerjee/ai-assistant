@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   name TEXT,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'superuser', 'user')),
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'superuser', 'user')),
   added_by TEXT,
   password_hash TEXT,
   credentials_enabled INTEGER DEFAULT 1,
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS skills (
   priority INTEGER DEFAULT 100,
   is_active INTEGER DEFAULT 1,
   is_core INTEGER DEFAULT 0,
-  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
   token_estimate INTEGER,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
@@ -701,7 +701,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   file_upload_enabled INTEGER DEFAULT 0,
   max_file_size_mb INTEGER DEFAULT 5,
   created_by TEXT NOT NULL,
-  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   auth_required INTEGER DEFAULT 0,
@@ -916,7 +916,7 @@ CREATE TABLE IF NOT EXISTS agent_bots (
   description TEXT,
   is_active INTEGER DEFAULT 1,
   created_by TEXT NOT NULL,
-  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -1267,6 +1267,8 @@ CREATE TABLE IF NOT EXISTS token_usage_log (
   category TEXT NOT NULL,
   model TEXT NOT NULL,
   total_tokens INTEGER NOT NULL DEFAULT 0,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
   metadata_json TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

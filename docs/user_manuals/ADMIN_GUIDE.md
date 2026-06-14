@@ -272,9 +272,12 @@ Manage all user accounts and access.
 |------|-------------|
 | **User** | Chat, upload to threads only, access subscribed categories |
 | **Superuser** | Manage assigned categories + can be subscribed to other categories for read access |
-| **Admin** | Full system access |
+| **Admin** | Full system access (cannot view cost/financial data) |
+| **Super Admin** | Full admin access **plus** exclusive access to financial data: cost views in Settings > Usage and the Pricing tab with provider balances |
 
 > **Note:** Superusers support a hybrid role model where they can both manage their assigned categories (full access) and be subscribed to other categories (read-only access for chat/queries).
+
+> **Super Admin:** This role is seeded from the `ADMIN_EMAILS` environment variable and cannot be assigned through the User Management UI. It is the only role that can see model/provider cost figures and provider account balances. Regular admins see token usage only.
 
 ### Editing a User
 

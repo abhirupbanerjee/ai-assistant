@@ -435,12 +435,13 @@ export async function initializeAdminsFromEnv(): Promise<void> {
     if (!existing) {
       await createUser({
         email,
-        role: 'admin',
+        role: 'super_admin',
         addedBy: 'system',
       });
-    } else if (existing.role !== 'admin') {
-      await updateUser(existing.id, { role: 'admin' });
-      console.log(`[Auth] Re-promoted env admin: ${email}`);
+      console.log(`[Auth] Created super_admin from env: ${email}`);
+    } else if (existing.role !== 'super_admin') {
+      await updateUser(existing.id, { role: 'super_admin' });
+      console.log(`[Auth] Re-promoted env admin to super_admin: ${email}`);
     }
   }
 }

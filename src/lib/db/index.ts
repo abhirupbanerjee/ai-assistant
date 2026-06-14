@@ -204,7 +204,7 @@ function runMigrations(database: Database.Database): void {
         priority INTEGER DEFAULT 100,
         is_active INTEGER DEFAULT 1,
         is_core INTEGER DEFAULT 0,
-        created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+        created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
         token_estimate INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -977,7 +977,7 @@ function runMigrations(database: Database.Database): void {
 
         -- Ownership & Timestamps
         created_by TEXT NOT NULL,
-        created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+        created_by_role TEXT NOT NULL CHECK (created_by_role IN ('super_admin', 'admin', 'superuser')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -1557,7 +1557,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT UNIQUE NOT NULL,
   name TEXT,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'superuser', 'user')),
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'superuser', 'user')),
   added_by TEXT,
   password_hash TEXT,
   credentials_enabled INTEGER DEFAULT 1,

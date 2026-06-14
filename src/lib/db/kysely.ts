@@ -475,6 +475,11 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Updated Fireworks DeepSeek V4 Pro / Flash pricing');
 
+  // Migration: Add input_tokens and output_tokens to token_usage_log
+  await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS input_tokens INTEGER DEFAULT 0`.execute(database);
+  await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS output_tokens INTEGER DEFAULT 0`.execute(database);
+  console.log('[Kysely] Ensured input_tokens and output_tokens columns exist');
+
   await sql`
     UPDATE enabled_models
     SET thinking_capable = 1
@@ -591,6 +596,27 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   // Migration: Add capability_scores JSONB column to enabled_models
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS capability_scores JSONB DEFAULT NULL`.execute(database);
   console.log('[Kysely] Ensured enabled_models.capability_scores column exists');
+
+  // Migration: Update CHECK constraints to include 'super_admin' role
+  // Users table role CHECK
+  await sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`.execute(database);
+  await sql`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super_admin', 'admin', 'superuser', 'user'))`.execute(database);
+  console.log('[Kysely] Updated users.role CHECK constraint to include super_admin');
+
+  // Skills table created_by_role CHECK
+  await sql`ALTER TABLE skills DROP CONSTRAINT IF EXISTS skills_created_by_role_check`.execute(database);
+  await sql`ALTER TABLE skills ADD CONSTRAINT skills_created_by_role_check CHECK (created_by_role IN ('super_admin', 'admin', 'superuser'))`.execute(database);
+  console.log('[Kysely] Updated skills.created_by_role CHECK constraint to include super_admin');
+
+  // Workspaces table created_by_role CHECK
+  await sql`ALTER TABLE workspaces DROP CONSTRAINT IF EXISTS workspaces_created_by_role_check`.execute(database);
+  await sql`ALTER TABLE workspaces ADD CONSTRAINT workspaces_created_by_role_check CHECK (created_by_role IN ('super_admin', 'admin', 'superuser'))`.execute(database);
+  console.log('[Kysely] Updated workspaces.created_by_role CHECK constraint to include super_admin');
+
+  // Agent bots table created_by_role CHECK
+  await sql`ALTER TABLE agent_bots DROP CONSTRAINT IF EXISTS agent_bots_created_by_role_check`.execute(database);
+  await sql`ALTER TABLE agent_bots ADD CONSTRAINT agent_bots_created_by_role_check CHECK (created_by_role IN ('super_admin', 'admin', 'superuser'))`.execute(database);
+  console.log('[Kysely] Updated agent_bots.created_by_role CHECK constraint to include super_admin');
 
   console.log('[Kysely] PostgreSQL migrations completed');
 

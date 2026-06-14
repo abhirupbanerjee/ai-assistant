@@ -16,7 +16,7 @@ export interface UsersTable {
   id: Generated<number>;
   email: string;
   name: string | null;
-  role: 'admin' | 'superuser' | 'user';
+  role: 'super_admin' | 'admin' | 'superuser' | 'user';
   added_by: string | null;
   password_hash: string | null;
   credentials_enabled: Generated<number>;
@@ -88,7 +88,7 @@ export interface SkillsTable {
   priority: Generated<number>;
   is_active: Generated<number>;
   is_core: Generated<number>;
-  created_by_role: 'admin' | 'superuser';
+  created_by_role: 'super_admin' | 'admin' | 'superuser';
   token_estimate: number | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
@@ -594,7 +594,7 @@ export interface WorkspacesTable {
   file_upload_enabled: Generated<number>;
   max_file_size_mb: Generated<number>;
   created_by: string;
-  created_by_role: 'admin' | 'superuser';
+  created_by_role: 'super_admin' | 'admin' | 'superuser';
   created_at: Generated<string>;
   updated_at: Generated<string>;
   auth_required: Generated<number>;
@@ -786,7 +786,7 @@ export interface AgentBotsTable {
   description: string | null;
   is_active: Generated<number>;
   created_by: string;
-  created_by_role: 'admin' | 'superuser';
+  created_by_role: 'super_admin' | 'admin' | 'superuser';
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }
@@ -990,6 +990,8 @@ export interface TokenUsageLogTable {
   category: 'chat' | 'autonomous' | 'embeddings' | 'workspace';
   model: string;
   total_tokens: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
   metadata_json: string | null;
   created_at: Generated<string>;
 }

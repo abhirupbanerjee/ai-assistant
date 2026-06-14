@@ -42,7 +42,7 @@ interface AllowedUser {
   id?: number;
   email: string;
   name?: string;
-  role: 'admin' | 'superuser' | 'user';
+  role: 'super_admin' | 'admin' | 'superuser' | 'user';
   addedAt: string;
   addedBy: string;
   subscriptions?: { categoryId: number; categoryName: string; isActive: boolean }[];
@@ -261,7 +261,7 @@ function AdminPageContent() {
   const tabParam = searchParams.get('tab') as TabType | null;
   const sectionParam = searchParams.get('section');
   const [activeTab, setActiveTab] = useState<TabType>(tabParam || 'dashboard');
-  const [userRole, setUserRole] = useState<'admin' | 'superuser' | 'user'>('admin');
+  const [userRole, setUserRole] = useState<'super_admin' | 'admin' | 'superuser' | 'user'>('admin');
 
   // RAG/LLM settings state
   // Section state for expandable menus
@@ -392,7 +392,7 @@ function AdminPageContent() {
         const data = await response.json();
         setUserRole(data.role || 'user');
         // If user is not admin or superuser, redirect to home
-        if (data.role !== 'admin' && data.role !== 'superuser') {
+        if (data.role !== 'super_admin' && data.role !== 'admin' && data.role !== 'superuser') {
           router.push('/chat');
           return false;
         }
@@ -1208,8 +1208,8 @@ function AdminPageContent() {
                 </div>
               )}
 
-              {/* Usage Section - Token Usage Dashboard */}
-              {settingsSection === 'usage' && <TokenUsageDashboard />}
+              {/* Usage Section - Usage Dashboard */}
+              {settingsSection === 'usage' && <TokenUsageDashboard userRole={userRole} />}
 
               {/* API Keys Section */}
               {settingsSection === 'api-keys' && <ApiKeysSettings />}

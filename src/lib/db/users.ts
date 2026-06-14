@@ -9,7 +9,7 @@ import { execute, queryAll, queryOne, transaction } from './index';
 
 // ============ Types ============
 
-export type UserRole = 'admin' | 'superuser' | 'user';
+export type UserRole = 'super_admin' | 'admin' | 'superuser' | 'user';
 
 export interface DbUser {
   id: number;

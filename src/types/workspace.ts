@@ -12,7 +12,7 @@
 
 export type WorkspaceType = 'embed' | 'standalone';
 export type AccessMode = 'category' | 'explicit';
-export type CreatorRole = 'admin' | 'superuser';
+export type CreatorRole = 'super_admin' | 'admin' | 'superuser';
 
 // ============================================================================
 // Workspace

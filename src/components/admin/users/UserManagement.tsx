@@ -10,7 +10,7 @@ interface AllowedUser {
   id?: number;
   email: string;
   name?: string;
-  role: 'admin' | 'superuser' | 'user';
+  role: 'super_admin' | 'admin' | 'superuser' | 'user';
   addedAt: string;
   addedBy: string;
   subscriptions?: { categoryId: number; categoryName: string; isActive: boolean }[];

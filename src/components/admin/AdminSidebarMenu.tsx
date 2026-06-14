@@ -146,7 +146,7 @@ export const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] =
 const SUPERUSER_ALLOWED_TABS: TabType[] = ['dashboard'];
 
 // Filter menu items based on user role
-const getFilteredMenuConfig = (userRole?: 'admin' | 'superuser' | 'user'): MenuConfigItem[] => {
+const getFilteredMenuConfig = (userRole?: 'super_admin' | 'admin' | 'superuser' | 'user'): MenuConfigItem[] => {
   if (userRole === 'superuser') {
     return MENU_CONFIG.filter(item => SUPERUSER_ALLOWED_TABS.includes(item.id));
   }
@@ -164,7 +164,7 @@ interface AdminSidebarMenuProps {
   promptsSection: PromptsSection;
   toolsSection: ToolsSection;
   settingsSection: SettingsSection;
-  userRole?: 'admin' | 'superuser' | 'user';
+  userRole?: 'super_admin' | 'admin' | 'superuser' | 'user';
   onTabChange: (tab: TabType) => void;
   onDocumentsChange: (section: DocumentsSection) => void;
   onUsersChange: (section: UsersSection) => void;
