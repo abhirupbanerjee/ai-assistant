@@ -28,6 +28,7 @@ import {
   PARAMETER_TYPES,
   ALL_OUTPUT_TYPES,
 } from '@/lib/constants/agent-bot-config';
+import { AUTO_MODEL_SENTINEL } from '@/lib/auto-model-constants';
 
 interface Version {
   id: string;
@@ -1028,6 +1029,7 @@ export default function VersionEditor({
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
               >
                 <option value="">Use system default</option>
+                <option value={AUTO_MODEL_SENTINEL}>⚡ Auto (smart selection)</option>
                 {availableModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.displayName}

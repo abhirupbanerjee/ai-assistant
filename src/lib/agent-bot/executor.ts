@@ -26,6 +26,7 @@ import {
 } from '@/lib/db/compat';
 import { generateResponseWithTools } from '@/lib/openai';
 import { performRAGRetrieval } from '@/lib/streaming';
+import { selectBestModel, isAutoSentinel } from '@/lib/auto-model-selector';
 import { getSkillById } from '@/lib/db/compat/skills';
 import { getToolDefinitions, AVAILABLE_TOOLS, isToolEnabled } from '@/lib/tools';
 import { generateOutput as generateOutputFile } from './output-generator';
@@ -217,6 +218,27 @@ async function executeLlm(
   // Empty conversation history for single-turn API calls
   const conversationHistory: Message[] = [];
 
+  // Resolve Auto sentinel for agent bot model override
+  let effectiveModel: string | undefined = version.llm_model || undefined;
+  if (effectiveModel && isAutoSentinel(effectiveModel)) {
+    try {
+      const estimatedTokens = Math.ceil(userMessage.length / 4);
+      const picked = await selectBestModel({
+        userMessage,
+        categoryIds: version.category_ids || undefined,
+        hasImages: false,
+        estimatedTokens,
+      });
+      effectiveModel = picked.modelId;
+      console.log(`[AgentBot Auto] ${version.agent_bot_id} v${version.version_number}: selected ${picked.modelId} (reason: ${picked.reason}, factor: ${picked.dominantFactor || 'N/A'})`);
+    } catch (err) {
+      console.error('[AgentBot Auto] selection failed, using default:', err);
+      const { getDefaultModel } = await import('@/lib/db/compat/enabled-models');
+      const defaultModel = await getDefaultModel();
+      effectiveModel = defaultModel?.id || undefined;
+    }
+  }
+
   // Get excluded tools (inverse of enabled tools)
   const enabledTools = await getEnabledTools(version);
   const excludedTools = getExcludedTools(enabledTools);
@@ -243,7 +265,7 @@ async function executeLlm(
     version.category_names, // categorySlugs
     excludedTools,
     undefined, // No image capabilities
-    version.llm_model || undefined // Model override
+    effectiveModel // Model override (resolved from Auto if needed)
   );
 
   // Estimate token usage (actual tracking would require OpenAI response)
