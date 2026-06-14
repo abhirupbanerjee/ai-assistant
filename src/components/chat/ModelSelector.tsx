@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, Check, ChevronDown, Loader2, Wrench, Eye, AlertTriangle, Brain, Sparkles } from 'lucide-react';
-import { AUTO_MODEL_SENTINEL } from '@/lib/constants';
+import { AUTO_MODEL_SENTINEL } from '@/lib/auto-model-constants';
 
 interface EnabledModel {
   id: string;
