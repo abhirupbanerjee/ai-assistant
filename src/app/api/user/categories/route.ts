@@ -3,7 +3,7 @@
  *
  * GET /api/user/categories
  * Returns categories available to the current user based on their role:
- * - Admin: All categories
+ * - Super admin / Admin: All categories
  * - Super User: Assigned categories
  * - Regular User: Subscribed categories
  */
@@ -37,7 +37,8 @@ export async function GET() {
 
     switch (user.role) {
       case 'admin':
-        // Admins can access all categories
+      case 'super_admin':
+        // Super admins and admins can access all categories
         categories = await getAllCategories();
         break;
 

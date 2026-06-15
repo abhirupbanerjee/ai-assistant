@@ -3,7 +3,7 @@
  *
  * GET /api/user/subscriptions
  * Returns the current user's effective subscriptions based on role:
- * - Admin: all categories (treated as active subscriptions)
+ * - Super admin / Admin: all categories (treated as active subscriptions)
  * - Superuser: assigned categories + subscribed categories
  * - Regular user: subscribed categories
  */
@@ -40,8 +40,9 @@ export async function GET() {
     let response;
 
     switch (user.role) {
-      case 'admin': {
-        // Admins can access all categories — treat them as active subscriptions
+      case 'admin':
+      case 'super_admin': {
+        // Super admins and admins can access all categories — treat them as active subscriptions
         const categories = await getAllCategories();
         response = categories.map((cat) => ({
           categoryId: cat.id,
