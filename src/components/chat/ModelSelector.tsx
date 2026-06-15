@@ -85,17 +85,26 @@ export default function ModelSelector({
             ? models.find((m: EnabledModel) => m.id === pendingModelId)
             : null;
           // 'auto' sentinel is valid even though it's not in the models list
-          const isAuto = pendingModelId === AUTO_MODEL_SENTINEL;
-          const nextEffectiveModel = isAuto
+          let isAuto = pendingModelId === AUTO_MODEL_SENTINEL;
+          let nextEffectiveModel = isAuto
             ? AUTO_MODEL_SENTINEL
             : (pendingModel?.id || defaultModel?.id || '');
+          let nextSelectedModel = isAuto ? AUTO_MODEL_SENTINEL : (pendingModel?.id || null);
+
+          // If nothing is selected and there is no valid default, fall back to Auto
+          if (!nextEffectiveModel && models.length > 0) {
+            isAuto = true;
+            nextEffectiveModel = AUTO_MODEL_SENTINEL;
+            nextSelectedModel = AUTO_MODEL_SENTINEL;
+          }
+
           const isValid = isAuto
             ? true
             : (nextEffectiveModel
               ? models.some((m: EnabledModel) => m.id === nextEffectiveModel)
               : false);
 
-          setSelectedModel(isAuto ? AUTO_MODEL_SENTINEL : (pendingModel?.id || null));
+          setSelectedModel(nextSelectedModel);
           setGlobalDefault(defaultModel?.id || '');
           setEffectiveModel(nextEffectiveModel);
           setEffectiveModelValid(isValid);
@@ -135,20 +144,29 @@ export default function ModelSelector({
     if (!threadId) {
       const modelToSet = newModelId === 'default' ? null : newModelId;
       // 'auto' sentinel is valid even though it's not in the models list
-      const isAuto = modelToSet === AUTO_MODEL_SENTINEL;
-      const nextEffectiveModel = isAuto
+      let isAuto = modelToSet === AUTO_MODEL_SENTINEL;
+      let nextEffectiveModel = isAuto
         ? AUTO_MODEL_SENTINEL
         : (modelToSet || globalDefault || availableModels.find((m) => m.isDefault)?.id || '');
+      let nextSelectedModel = modelToSet;
+
+      // If nothing is selected and there is no valid default, fall back to Auto
+      if (!nextEffectiveModel && availableModels.length > 0) {
+        isAuto = true;
+        nextEffectiveModel = AUTO_MODEL_SENTINEL;
+        nextSelectedModel = AUTO_MODEL_SENTINEL;
+      }
+
       const isValid = isAuto
         ? true
         : (nextEffectiveModel
           ? availableModels.some((m) => m.id === nextEffectiveModel)
           : false);
 
-      setSelectedModel(modelToSet);
+      setSelectedModel(nextSelectedModel);
       setEffectiveModel(nextEffectiveModel);
       setEffectiveModelValid(isValid);
-      onPendingModelChange?.(modelToSet);
+      onPendingModelChange?.(nextSelectedModel);
       updateModelStatus(availableModels, isValid, nextEffectiveModel || null);
       setShowDropdown(false);
       return;
