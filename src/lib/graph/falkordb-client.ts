@@ -1,0 +1,102 @@
+/**
+ * FalkorDB Client Singleton
+ *
+ * Provides a lazy-initialized FalkorDB graph handle with health check
+ * and schema initialization for graph-augmented RAG (Phase 2).
+ *
+ * FalkorDB uses port 6380 to avoid conflict with Redis on 6379.
+ * Connection params come from FALKORDB_HOST / FALKORDB_PORT / FALKORDB_GRAPH_NAME env vars.
+ */
+
+import { FalkorDB } from 'falkordb';
+
+const DEFAULT_HOST = 'localhost';
+const DEFAULT_PORT = 6380;
+const DEFAULT_GRAPH_NAME = 'policybot';
+
+let graphInstance: any = null;
+let dbInstance: any = null;
+
+function getConfig() {
+  return {
+    host: process.env.FALKORDB_HOST || DEFAULT_HOST,
+    port: parseInt(process.env.FALKORDB_PORT || String(DEFAULT_PORT), 10),
+    graphName: process.env.FALKORDB_GRAPH_NAME || DEFAULT_GRAPH_NAME,
+  };
+}
+
+/**
+ * Get or create the FalkorDB connection and graph handle.
+ * Lazy singleton — connects on first use, reuses thereafter.
+ */
+export async function getGraph(): Promise<any> {
+  if (graphInstance) return graphInstance;
+
+  const { host, port, graphName } = getConfig();
+
+  dbInstance = await FalkorDB.connect({
+    socket: { host, port },
+  });
+
+  graphInstance = dbInstance.selectGraph(graphName);
+  return graphInstance;
+}
+
+/**
+ * Health check — returns true if FalkorDB is reachable and responsive.
+ */
+export async function isGraphHealthy(): Promise<boolean> {
+  try {
+    const graph = await getGraph();
+    // Run a lightweight Cypher query to verify connectivity
+    await graph.query('RETURN 1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Initialize the graph schema (indices, constraints).
+ * Idempotent — safe to call on every startup.
+ */
+export async function initGraphSchema(): Promise<void> {
+  const graph = await getGraph();
+
+  const statements = [
+    'CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.id)',
+    'CREATE INDEX IF NOT EXISTS FOR (c:Chunk) ON (c.qdrantId)',
+    'CREATE INDEX IF NOT EXISTS FOR (d:Document) ON (d.id)',
+  ];
+
+  for (const stmt of statements) {
+    await graph.query(stmt);
+  }
+}
+
+/**
+ * Delete all Chunk nodes for a document and orphaned Entity nodes.
+ * Called when a document is removed from Qdrant.
+ */
+export async function cleanupGraphForDocument(documentId: string): Promise<void> {
+  const graph = await getGraph();
+
+  // Delete Chunk nodes (DETACH DELETE removes their relationships too)
+  await graph.query(
+    'MATCH (c:Chunk {documentId: $id}) DETACH DELETE c',
+    { params: { id: documentId } }
+  );
+
+  // Delete orphaned Entity nodes (no remaining MENTIONS edges)
+  await graph.query(
+    'MATCH (e:Entity) WHERE NOT (e)-[:MENTIONS]->(:Chunk) DELETE e'
+  );
+}
+
+/**
+ * Reset the client (e.g., after config change). Next getGraph() reconnects.
+ */
+export function resetGraphClient(): void {
+  graphInstance = null;
+  dbInstance = null;
+}

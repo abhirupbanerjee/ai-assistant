@@ -377,6 +377,34 @@ The proposed 3-phase plan is **partially correct**:
 
 ---
 
+## Phase 2: Graph-Augmented RAG (Planned)
+
+### Entity Extraction LLM Decision
+
+Entity extraction for the FalkorDB knowledge graph will use `createInternalCompletion()` from
+`src/lib/llm-client.ts`, which routes through the existing four-route architecture (LiteLLM proxy,
+Fireworks/Anthropic/DeepSeek direct, Ollama local, Ollama cloud). This avoids coupling extraction
+to any specific model or provider.
+
+**Ollama is intentionally not required for Phase 2.** The extraction prompt is lightweight
+(~500 tokens input, ~300 tokens output per chunk) and works with any cheap/fast model configured
+in the existing LLM stack. Users who only have Ollama can still use it via Route 3, but the system
+does not depend on it. The `createInternalCompletion()` fallback chain ensures extraction proceeds
+as long as at least one route is live.
+
+### Key Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| Use `createInternalCompletion()` not Ollama directly | Reuses existing multi-route fallback; no new model dependency |
+| 1-3 chunks per extraction call | Keeps prompt small enough for any model; concurrency cap of 5 |
+| Extraction runs in `processDocumentAsync` background flow | Offline cost, never on the query path |
+| FalkorDB port 6380 (not 6379) | Avoids conflict with Redis on default port |
+| Graph cleanup on document delete | `cleanupGraphForDocument(docId)` cascades to orphaned entities |
+| Conditional graph skip when Qdrant top-1 score > 0.85 | Avoids graph round-trip for obvious single-doc answers |
+
+---
+
 ## References
 
 - `src/lib/rag.ts` — RAG pipeline

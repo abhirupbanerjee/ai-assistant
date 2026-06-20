@@ -1430,3 +1430,34 @@ CREATE TRIGGER update_workspace_whatsapp_message_timestamp
   BEFORE UPDATE ON workspace_whatsapp_messages
   FOR EACH ROW
   EXECUTE FUNCTION update_workspace_whatsapp_message_timestamp();
+
+-- ============ Graph-Augmented RAG (Phase 2) ============
+
+-- Query logs for graph-augmented retrieval analytics
+CREATE TABLE IF NOT EXISTS query_logs (
+  id BIGSERIAL PRIMARY KEY,
+  query TEXT NOT NULL,
+  category_slugs TEXT,
+  graph_enabled BOOLEAN DEFAULT FALSE,
+  graph_skipped BOOLEAN DEFAULT FALSE,
+  skip_reason TEXT,
+  latency_ms INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_logs_created ON query_logs(created_at DESC);
+
+-- Per-query retrieval traces for Phase 3 query observer
+CREATE TABLE IF NOT EXISTS retrieval_traces (
+  id BIGSERIAL PRIMARY KEY,
+  query_log_id BIGINT REFERENCES query_logs(id) ON DELETE CASCADE,
+  seed_entity_ids TEXT,
+  ppr_top_entities TEXT,
+  traversal_paths TEXT,
+  graph_chunk_ids TEXT,
+  final_chunk_ids TEXT,
+  rerank_scores TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_traces_query ON retrieval_traces(query_log_id);

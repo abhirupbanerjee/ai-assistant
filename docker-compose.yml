@@ -201,6 +201,32 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
+  # FalkorDB Graph Database (optional - enables graph-augmented RAG)
+  # Start with: docker compose --profile falkordb up -d
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: policy-bot-falkordb
+    profiles:
+      - falkordb
+    command: --port 6380
+    environment:
+      - REDIS_ARGS=--port 6380
+    volumes:
+      - ./data/falkordb:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 6380 ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
   litellm:
     image: ghcr.io/berriai/litellm:v1.82.3-stable.patch.2
     container_name: policy-bot-litellm

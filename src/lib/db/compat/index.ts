@@ -1072,3 +1072,14 @@ export {
   getTokenUsageSummary,
   getFilterOptions as getTokenUsageFilterOptions,
 } from './token-usage';
+
+// ============ Query Logs (Graph-Augmented RAG Phase 2) ============
+export {
+  type QueryLogRecord,
+  type RetrievalTraceRecord,
+  insertQueryLog,
+  getRecentQueryLogs,
+  insertRetrievalTrace,
+  getTracesForQuery,
+  cleanupOldQueryLogs,
+} from './query-logs';

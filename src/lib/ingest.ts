@@ -337,6 +337,23 @@ async function processDocumentAsync(
       status: 'ready',
     });
 
+    // Phase 2: Graph-augmented RAG — extract entities into FalkorDB
+    try {
+      const { extractEntitiesFromChunks } = await import('./graph/entity-extraction');
+      const entityChunks = chunks.map(c => ({
+        qdrantId: c.id,
+        text: c.text,
+        documentId: docIdStr,
+        pageNumber: c.metadata.pageNumber,
+        documentName: filename,
+      }));
+      const { processed, skipped, failed } = await extractEntitiesFromChunks(entityChunks);
+      console.log(`[Ingest] Graph extraction for "${filename}": ${processed} processed, ${skipped} skipped, ${failed} failed`);
+    } catch (err) {
+      // Graph extraction is non-blocking — document is still ingested
+      console.warn(`[Ingest] Graph extraction failed for "${filename}" (non-blocking):`, err);
+    }
+
     console.log(`[Ingest] Document "${filename}" processed: ${chunks.length} chunks`);
   } catch (error) {
     await updateDocument(docId, {
@@ -538,6 +555,16 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
 
   // Delete from DB
   await dbDeleteDocument(numericId);
+
+  // Phase 2: Clean up graph nodes for this document
+  try {
+    const { cleanupGraphForDocument } = await import('./graph/falkordb-client');
+    await cleanupGraphForDocument(docId);
+    console.log(`[Ingest] Graph cleanup completed for document ${docId}`);
+  } catch (err) {
+    // Graph cleanup is non-blocking
+    console.warn(`[Ingest] Graph cleanup failed for document ${docId} (non-blocking):`, err);
+  }
 
   return {
     filename: doc.filename,
