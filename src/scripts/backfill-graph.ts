@@ -7,6 +7,7 @@
  * Usage: npx tsx src/scripts/backfill-graph.ts
  */
 
+import 'dotenv/config';
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { getAllDocumentsWithCategories } from '@/lib/db/compat/documents';
 import { getDb } from '@/lib/db/kysely';
