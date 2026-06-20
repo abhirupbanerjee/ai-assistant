@@ -14,7 +14,7 @@
  * does not support seed-node personalization.
  */
 
-import { getGraph, isGraphHealthy } from './falkordb-client';
+import { getGraph, isGraphHealthy, retryGraphQuery } from './falkordb-client';
 import { getVectorStore } from '@/lib/vector-store';
 import type { RetrievedChunk } from '@/types';
 
@@ -43,9 +43,15 @@ const PPR_MAX_ITERATIONS = 50;
 const PPR_CONVERGENCE_THRESHOLD = 1e-6;
 const SUBGRAPH_MAX_HOPS = 3;
 const SUBGRAPH_RESULT_CAP = 1000; // Path-explosion guard
-const SEED_CHUNK_COUNT = 10; // Top-N Qdrant chunks used for seeding
-const PPR_TOP_K = 20; // Top-K PPR entities to expand
-const CHUNKS_PER_ENTITY = 5; // Max chunks to fetch per PPR entity
+const DEFAULT_SEED_CHUNK_COUNT = 10; // Top-N Qdrant chunks used for seeding
+const DEFAULT_PPR_TOP_K = 20; // Top-K PPR entities to expand
+const DEFAULT_CHUNKS_PER_ENTITY = 5; // Max chunks to fetch per PPR entity
+
+export interface GraphRetrievalOptions {
+  seedChunkCount?: number;
+  pprTopK?: number;
+  chunksPerEntity?: number;
+}
 
 // ============ Seed Selection ============
 
@@ -55,15 +61,17 @@ const CHUNKS_PER_ENTITY = 5; // Max chunks to fetch per PPR entity
 async function selectSeedEntities(
   topChunks: RetrievedChunk[],
   graph: any,
+  seedChunkCount: number = DEFAULT_SEED_CHUNK_COUNT,
 ): Promise<string[]> {
-  const chunkIds = topChunks.slice(0, SEED_CHUNK_COUNT).map(c => c.id);
+  const chunkIds = topChunks.slice(0, seedChunkCount).map(c => c.id);
   const seedIds = new Set<string>();
 
   for (const chunkId of chunkIds) {
     try {
-      const result = await graph.query(
+      const result = await retryGraphQuery(
+        graph,
         'MATCH (e:Entity)-[:MENTIONS]->(c:Chunk {qdrantId: $id}) RETURN e.id',
-        { params: { id: chunkId } }
+        { id: chunkId }
       );
 
       for (const row of result.data || result || []) {
@@ -97,7 +105,8 @@ async function fetchSubgraph(
 
   try {
     // Fetch entities and their relationships via bounded traversal
-    const result = await graph.query(
+    const result = await retryGraphQuery(
+      graph,
       `MATCH (e:Entity)-[r:RELATES_TO|SAME_AS*1..${SUBGRAPH_MAX_HOPS}]-(neighbor:Entity)
        WHERE e.id IN $seedIds
        RETURN DISTINCT e, neighbor, r
@@ -157,6 +166,7 @@ async function fetchSubgraph(
 function runPPR(
   subgraph: SubgraphData,
   seedIds: string[],
+  pprTopK: number = DEFAULT_PPR_TOP_K,
 ): PprResult[] {
   const { entities, edges } = subgraph;
 
@@ -248,7 +258,7 @@ function runPPR(
   return nodeIds
     .map((id, i) => ({ entityId: id, score: rank[i] }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, PPR_TOP_K);
+    .slice(0, pprTopK);
 }
 
 // ============ Chunk Expansion ============
@@ -261,6 +271,7 @@ async function expandToChunks(
   rankedEntities: PprResult[],
   originalChunkIds: Set<string>,
   graph: any,
+  chunksPerEntity: number = DEFAULT_CHUNKS_PER_ENTITY,
 ): Promise<RetrievedChunk[]> {
   if (rankedEntities.length === 0) return [];
 
@@ -269,11 +280,12 @@ async function expandToChunks(
 
   for (const entity of rankedEntities) {
     try {
-      const result = await graph.query(
+      const result = await retryGraphQuery(
+        graph,
         `MATCH (e:Entity {id: $id})-[:MENTIONS]->(c:Chunk)
          RETURN c.qdrantId, c.documentId, c.pageNumber
-         LIMIT ${CHUNKS_PER_ENTITY}`,
-        { params: { id: entity.entityId } }
+         LIMIT ${chunksPerEntity}`,
+        { id: entity.entityId }
       );
 
       const rows = result.data || result || [];
@@ -358,7 +370,11 @@ export interface GraphAugmentationResult {
  */
 export async function graphAugmentedRetrieval(
   topChunks: RetrievedChunk[],
+  options: GraphRetrievalOptions = {},
 ): Promise<GraphAugmentationResult> {
+  const seedChunkCount = options.seedChunkCount ?? DEFAULT_SEED_CHUNK_COUNT;
+  const pprTopK = options.pprTopK ?? DEFAULT_PPR_TOP_K;
+  const chunksPerEntity = options.chunksPerEntity ?? DEFAULT_CHUNKS_PER_ENTITY;
   const empty: GraphAugmentationResult = {
     graphChunks: [],
     seedEntityIds: [],
@@ -374,7 +390,7 @@ export async function graphAugmentedRetrieval(
     const graph = await getGraph();
 
     // Step 1: Seed selection
-    const seedIds = await selectSeedEntities(topChunks, graph);
+    const seedIds = await selectSeedEntities(topChunks, graph, seedChunkCount);
     if (seedIds.length === 0) return empty;
 
     // Step 2: Subgraph fetch
@@ -382,17 +398,17 @@ export async function graphAugmentedRetrieval(
     if (subgraph.entities.size === 0) return empty;
 
     // Step 3: In-process PPR
-    const rankedEntities = runPPR(subgraph, seedIds);
+    const rankedEntities = runPPR(subgraph, seedIds, pprTopK);
     if (rankedEntities.length === 0) return empty;
 
     // Step 4: Chunk expansion
     const originalChunkIds = new Set(topChunks.map(c => c.id));
-    const graphChunks = await expandToChunks(rankedEntities, originalChunkIds, graph);
+    const graphChunks = await expandToChunks(rankedEntities, originalChunkIds, graph, chunksPerEntity);
 
     return {
       graphChunks,
       seedEntityIds: seedIds,
-      pprTopEntities: rankedEntities.slice(0, PPR_TOP_K).map(e => e.entityId),
+      pprTopEntities: rankedEntities.slice(0, pprTopK).map(e => e.entityId),
       used: true,
     };
   } catch (err) {
@@ -406,7 +422,10 @@ export async function graphAugmentedRetrieval(
  * Skips when the top Qdrant chunk has a very high score (> 0.85),
  * indicating a clear single-document answer that doesn't need graph expansion.
  */
-export function shouldSkipGraphAugmentation(topChunks: RetrievedChunk[]): boolean {
+export function shouldSkipGraphAugmentation(
+  topChunks: RetrievedChunk[],
+  skipThreshold: number = 0.85,
+): boolean {
   if (topChunks.length === 0) return true;
-  return (topChunks[0]?.score ?? 0) > 0.85;
+  return (topChunks[0]?.score ?? 0) > skipThreshold;
 }

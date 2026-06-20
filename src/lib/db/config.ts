@@ -470,7 +470,9 @@ export type SettingKey =
   | 'agent_working_memory_enabled'
   // Auto Model Selection
   | 'auto-tool-model-map'
-  | 'model-scoring-weights';
+  | 'model-scoring-weights'
+  // Graph-Augmented RAG (Phase 2)
+  | 'graph-settings';
 
 // ============ Speech Settings Types ============
 

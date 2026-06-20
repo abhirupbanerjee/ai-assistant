@@ -979,3 +979,52 @@ export async function upsertToolConfigAsync(
     )
     .execute();
 }
+
+// ============ Graph-Augmented RAG Settings (Phase 2) ============
+
+export interface GraphSettings {
+  graphAugmentationEnabled: boolean;
+  skipThreshold: number;
+  pprTopK: number;
+  seedChunkCount: number;
+  resolutionThreshold: number;
+  extractionModel: string;
+  maxTokens: number;
+  concurrency: number;
+}
+
+export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
+  graphAugmentationEnabled: false,
+  skipThreshold: 0.85,
+  pprTopK: 20,
+  seedChunkCount: 10,
+  resolutionThreshold: 0.92,
+  extractionModel: '',
+  maxTokens: 1024,
+  concurrency: 5,
+};
+
+export async function getGraphSettings(): Promise<GraphSettings> {
+  const raw = await getSetting<Partial<GraphSettings>>('graph-settings');
+  if (!raw) return { ...DEFAULT_GRAPH_SETTINGS };
+  return {
+    graphAugmentationEnabled: raw.graphAugmentationEnabled ?? DEFAULT_GRAPH_SETTINGS.graphAugmentationEnabled,
+    skipThreshold: raw.skipThreshold ?? DEFAULT_GRAPH_SETTINGS.skipThreshold,
+    pprTopK: raw.pprTopK ?? DEFAULT_GRAPH_SETTINGS.pprTopK,
+    seedChunkCount: raw.seedChunkCount ?? DEFAULT_GRAPH_SETTINGS.seedChunkCount,
+    resolutionThreshold: raw.resolutionThreshold ?? DEFAULT_GRAPH_SETTINGS.resolutionThreshold,
+    extractionModel: raw.extractionModel ?? DEFAULT_GRAPH_SETTINGS.extractionModel,
+    maxTokens: raw.maxTokens ?? DEFAULT_GRAPH_SETTINGS.maxTokens,
+    concurrency: raw.concurrency ?? DEFAULT_GRAPH_SETTINGS.concurrency,
+  };
+}
+
+export async function setGraphSettings(
+  settings: Partial<GraphSettings>,
+  updatedBy?: string,
+): Promise<GraphSettings> {
+  const current = await getGraphSettings();
+  const merged = { ...current, ...settings };
+  await setSetting('graph-settings', merged, updatedBy);
+  return merged;
+}

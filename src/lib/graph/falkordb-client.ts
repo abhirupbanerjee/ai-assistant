@@ -120,6 +120,33 @@ export async function cleanupGraphForDocument(documentId: string): Promise<void>
 }
 
 /**
+ * Retry wrapper for FalkorDB graph.query() with exponential backoff.
+ *
+ * Handles transient socket drops and connection resets during heavy parallel writes.
+ * Retries up to 3 times with 100ms, 200ms, 400ms delays.
+ */
+export async function retryGraphQuery(
+  graph: any,
+  query: string,
+  params?: Record<string, any>,
+  maxRetries: number = 3,
+): Promise<any> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await graph.query(query, { params: params || {} });
+    } catch (err: any) {
+      lastError = err;
+      const isTransient = /ECONNRESET|ETIMEDOUT|socket hang up|Connection refused/i.test(String(err));
+      if (!isTransient || attempt === maxRetries) break;
+      const delay = 100 * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Reset the client (e.g., after config change). Next getGraph() reconnects.
  */
 export function resetGraphClient(): void {

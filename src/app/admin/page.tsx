@@ -27,6 +27,7 @@ import RerankerSettingsTab from '@/components/admin/settings/RerankerSettings';
 import DocumentProcessingTab from '@/components/admin/settings/DocumentProcessing';
 import SpeechSettingsTab from '@/components/admin/settings/SpeechSettings';
 import DisplaySettingsPanel from '@/components/admin/settings/DisplaySettingsPanel';
+import GraphSettings from '@/components/admin/settings/GraphSettings';
 import DashboardPage from '@/components/admin/dashboard/DashboardPage';
 import UserManagement from '@/components/admin/users/UserManagement';
 import CategoriesManagement from '@/components/admin/categories/CategoriesManagement';
@@ -116,7 +117,7 @@ type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display' | 'graph';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = SidebarToolsSection;
@@ -253,7 +254,7 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['branding', 'tokens', 'usage', 'api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['branding', 'tokens', 'usage', 'api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display', 'graph'];
 
 function AdminPageContent() {
   const router = useRouter();
@@ -1246,6 +1247,11 @@ function AdminPageContent() {
               {/* Backup Section */}
               {settingsSection === 'backup' && (
                 <BackupTab />
+              )}
+
+              {/* Graph RAG Section */}
+              {settingsSection === 'graph' && (
+                <GraphSettings />
               )}
           </>
         )}

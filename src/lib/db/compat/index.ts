@@ -104,6 +104,7 @@ export {
   type SttProviderConfig,
   type SttRouteConfig,
   type TtsProviderConfig,
+  type GraphSettings,
   // Display Settings
   getDisplaySettings,
   setDisplaySettings,
@@ -174,6 +175,10 @@ export {
   // LLM Routes
   getRoutesSettings,
   setRoutesSettings,
+  // Graph-Augmented RAG (Phase 2)
+  DEFAULT_GRAPH_SETTINGS,
+  getGraphSettings,
+  setGraphSettings,
   // Speech (STT + TTS)
   getSpeechSettings,
   setSpeechSettings,
@@ -1082,4 +1087,11 @@ export {
   insertRetrievalTrace,
   getTracesForQuery,
   cleanupOldQueryLogs,
+  // Extraction failures (Phase 2)
+  type ExtractionFailure,
+  logExtractionFailure,
+  getExtractionFailures,
+  clearExtractionFailure,
+  clearAllExtractionFailures,
+  getExtractionFailureStats,
 } from './query-logs';

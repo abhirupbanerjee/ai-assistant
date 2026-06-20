@@ -1461,3 +1461,17 @@ CREATE TABLE IF NOT EXISTS retrieval_traces (
 );
 
 CREATE INDEX IF NOT EXISTS idx_retrieval_traces_query ON retrieval_traces(query_log_id);
+
+-- Extraction failures for graph-augmented RAG (Phase 2)
+CREATE TABLE IF NOT EXISTS extraction_failures (
+  id BIGSERIAL PRIMARY KEY,
+  qdrant_id TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  document_name TEXT,
+  error TEXT NOT NULL,
+  retry_count INTEGER DEFAULT 0,
+  max_retries INTEGER DEFAULT 3,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_failures_qdrant ON extraction_failures(qdrant_id);

@@ -116,3 +116,105 @@ export async function cleanupOldQueryLogs(retentionDays: number = 90): Promise<v
     .where('created_at', '<', sql`NOW() - INTERVAL '${sql.raw(String(retentionDays))} days'`)
     .execute();
 }
+
+// ============ Extraction Failures (Phase 2) ============
+
+export interface ExtractionFailure {
+  id?: number;
+  qdrant_id: string;
+  document_id: string;
+  document_name: string | null;
+  error: string;
+  retry_count: number;
+  max_retries: number;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+/**
+ * Log a failed extraction attempt. Upserts by qdrant_id.
+ */
+export async function logExtractionFailure(
+  qdrantId: string,
+  documentId: string,
+  documentName: string | null,
+  error: string,
+): Promise<void> {
+  const db = await getDb();
+  await db
+    .insertInto('extraction_failures' as any)
+    .values({
+      qdrant_id: qdrantId,
+      document_id: documentId,
+      document_name: documentName,
+      error,
+      retry_count: 0,
+      max_retries: 3,
+    } as any)
+    .onConflict((oc: any) =>
+      oc.column('qdrant_id').doUpdateSet({
+        error,
+        retry_count: sql`extraction_failures.retry_count + 1`,
+        updated_at: sql`NOW()`,
+      })
+    )
+    .execute();
+}
+
+/**
+ * Get paginated list of extraction failures.
+ */
+export async function getExtractionFailures(
+  limit: number = 50,
+  offset: number = 0,
+): Promise<ExtractionFailure[]> {
+  const db = await getDb();
+  return db
+    .selectFrom('extraction_failures' as any)
+    .selectAll()
+    .orderBy('created_at', 'desc')
+    .limit(limit)
+    .offset(offset)
+    .execute() as any;
+}
+
+/**
+ * Clear a single extraction failure record.
+ */
+export async function clearExtractionFailure(qdrantId: string): Promise<void> {
+  const db = await getDb();
+  await db
+    .deleteFrom('extraction_failures' as any)
+    .where('qdrant_id', '=', qdrantId)
+    .execute();
+}
+
+/**
+ * Clear all extraction failure records.
+ */
+export async function clearAllExtractionFailures(): Promise<void> {
+  const db = await getDb();
+  await db.deleteFrom('extraction_failures' as any).execute();
+}
+
+/**
+ * Get failure statistics (counts).
+ */
+export async function getExtractionFailureStats(): Promise<{ total: number; maxRetryReached: number }> {
+  const db = await getDb();
+  const total = await db
+    .selectFrom('extraction_failures' as any)
+    .select(sql<number>`COUNT(*)`.as('count'))
+    .executeTakeFirst() as any;
+
+  const maxRetry = await db
+    .selectFrom('extraction_failures' as any)
+    .select(sql<number>`COUNT(*)`.as('count'))
+    .where('retry_count', '>=', sql`max_retries`)
+    .executeTakeFirst() as any;
+
+  return {
+    total: total?.count ?? 0,
+    maxRetryReached: maxRetry?.count ?? 0,
+  };
+}

@@ -32,6 +32,7 @@ import {
   shouldSkipGraphAugmentation,
   type GraphAugmentationResult,
 } from './graph/retrieval';
+import { getGraphSettings } from './db/compat';
 import { insertQueryLog, insertRetrievalTrace } from './db/compat/query-logs';
 import {
   MAX_QUERY_EXPANSIONS,
@@ -634,14 +635,18 @@ export async function ragQuery(
   );
 
   // ============ Phase 2: Graph-Augmented Retrieval ============
-  const graphEnabled = process.env.GRAPH_AUGMENTATION_ENABLED === 'true';
+  const graphSettings = await getGraphSettings();
+  const graphEnabled = graphSettings.graphAugmentationEnabled;
   let graphResult: GraphAugmentationResult = { graphChunks: [], seedEntityIds: [], pprTopEntities: [], used: false };
   let mergedGlobalChunks = globalChunks;
 
-  if (graphEnabled && !shouldSkipGraphAugmentation(globalChunks)) {
+  if (graphEnabled && !shouldSkipGraphAugmentation(globalChunks, graphSettings.skipThreshold)) {
     const graphStart = Date.now();
     try {
-      graphResult = await graphAugmentedRetrieval(globalChunks);
+      graphResult = await graphAugmentedRetrieval(globalChunks, {
+        seedChunkCount: graphSettings.seedChunkCount,
+        pprTopK: graphSettings.pprTopK,
+      });
       if (graphResult.used && graphResult.graphChunks.length > 0) {
         mergedGlobalChunks = deduplicateChunks([...globalChunks, ...graphResult.graphChunks]);
         logger.debug('Graph augmentation added chunks', {

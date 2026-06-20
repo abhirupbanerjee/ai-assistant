@@ -37,7 +37,7 @@ type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
 type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
-type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display' | 'graph';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -101,6 +101,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'cache', label: 'Cache' },
       { id: 'backup', label: 'Backup' },
       { id: 'display', label: 'Display' },
+      { id: 'graph', label: 'Graph RAG' },
     ]
   },
 ];
