@@ -8,14 +8,30 @@
  * Connection params come from FALKORDB_HOST / FALKORDB_PORT / FALKORDB_GRAPH_NAME env vars.
  */
 
-import { FalkorDB } from 'falkordb';
-
 const DEFAULT_HOST = 'localhost';
 const DEFAULT_PORT = 6380;
 const DEFAULT_GRAPH_NAME = 'policybot';
 
 let graphInstance: any = null;
 let dbInstance: any = null;
+let FalkorDBSdk: any = null;
+
+/**
+ * Lazily load the FalkorDB SDK. Uses dynamic import so the app boots
+ * even when falkordb is not installed (graph features gracefully degrade).
+ */
+async function getFalkorDBSdk(): Promise<any> {
+  if (FalkorDBSdk) return FalkorDBSdk;
+  try {
+    const mod = await import('falkordb');
+    FalkorDBSdk = mod.FalkorDB || mod.default?.FalkorDB || mod.default;
+    return FalkorDBSdk;
+  } catch {
+    throw new Error(
+      'FalkorDB SDK not installed. Run: npm install falkordb'
+    );
+  }
+}
 
 function getConfig() {
   return {
@@ -33,6 +49,7 @@ export async function getGraph(): Promise<any> {
   if (graphInstance) return graphInstance;
 
   const { host, port, graphName } = getConfig();
+  const FalkorDB = await getFalkorDBSdk();
 
   dbInstance = await FalkorDB.connect({
     socket: { host, port },

@@ -10,11 +10,25 @@
 import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { getAllDocumentsWithCategories } from '@/lib/db/compat/documents';
 import { getDb } from '@/lib/db/kysely';
-import { extractEntitiesFromChunks, resetExtractionCache } from '@/lib/graph/entity-extraction';
-import { initGraphSchema, isGraphHealthy } from '@/lib/graph/falkordb-client';
 
 async function main() {
   console.log('[BackfillGraph] Starting graph backfill...');
+
+  // Pre-check: verify falkordb SDK is available
+  try {
+    require.resolve('falkordb');
+  } catch {
+    console.error(
+      '[BackfillGraph] FalkorDB SDK not installed.\n' +
+      '  Install it first: npm install --legacy-peer-deps\n' +
+      '  Then ensure FalkorDB is running: docker compose --profile falkordb up -d'
+    );
+    process.exit(1);
+  }
+
+  // Lazy imports after pre-check
+  const { extractEntitiesFromChunks, resetExtractionCache } = await import('@/lib/graph/entity-extraction');
+  const { initGraphSchema, isGraphHealthy } = await import('@/lib/graph/falkordb-client');
 
   // Check FalkorDB health
   const healthy = await isGraphHealthy();
