@@ -117,6 +117,9 @@ services:
     profiles:
       - qdrant
     restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - ./data/qdrant:/qdrant/storage
     environment:
@@ -142,6 +145,8 @@ services:
     restart: unless-stopped
     profiles:
       - postgres
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-policybot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
