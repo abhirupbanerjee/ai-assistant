@@ -91,8 +91,9 @@ export async function initGraphSchema(): Promise<void> {
     try {
       await graph.query(stmt);
     } catch (err: any) {
-      // Index already exists — safe to ignore
-      if (!err?.message?.includes('already exists')) {
+      // Index already exists — safe to ignore (FalkorDB error messages vary)
+      const msg = err?.message || '';
+      if (!msg.includes('already exists') && !msg.includes('already indexed')) {
         throw err;
       }
     }
