@@ -64,11 +64,31 @@ async function main() {
     console.log(`[BackfillGraph] Processing document "${doc.filename}" (id=${docIdStr}, chunks=${doc.chunk_count})...`);
 
     try {
-      // Fetch chunks from Qdrant using the document-scoped retrieval method
-      const docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
+      // Determine which collection to query based on document's categories
+      let docChunks: any[] = [];
+      const categorySlugs = doc.categories?.map((c: any) => c.slug) || [];
+
+      if (doc.isGlobal) {
+        // Global docs: chunks are in global_documents collection
+        docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
+      } else if (categorySlugs.length > 0) {
+        // Category docs: try each category collection (chunks are in category-specific collections)
+        for (const slug of categorySlugs) {
+          const chunks = await store.getDocumentChunksByDocId(collNames.forCategory(slug), docIdStr);
+          if (chunks.length > 0) {
+            docChunks = chunks;
+            break;
+          }
+        }
+      }
+
+      // Fallback: try legacy collection
+      if (docChunks.length === 0) {
+        docChunks = await store.getDocumentChunksByDocId(collNames.legacy, docIdStr);
+      }
 
       if (docChunks.length === 0) {
-        console.log(`[BackfillGraph]   No chunks found in Qdrant for document ${docIdStr}, skipping.`);
+        console.log(`[BackfillGraph]   No chunks found in Qdrant for document ${docIdStr} (global=${doc.isGlobal}, categories=${categorySlugs.join(',') || 'none'}), skipping.`);
         continue;
       }
 
