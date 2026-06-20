@@ -238,6 +238,8 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:v1.82.3-stable.patch.2
     container_name: policy-bot-litellm
+    ports:
+      - "4000:4000"
     volumes:
       - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
     # NOTE: Do NOT use env_file here. Loading .env passes DATABASE_URL to Prisma,

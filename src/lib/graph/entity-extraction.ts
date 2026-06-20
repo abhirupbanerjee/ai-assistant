@@ -291,7 +291,22 @@ export async function extractEntitiesFromChunk(
     });
 
     const jsonStr = extractJsonObject(response);
-    const result: ExtractionResult = JSON.parse(jsonStr);
+
+    // Handle empty or invalid JSON responses gracefully
+    if (!jsonStr || jsonStr === '{}') {
+      processedChunks.add(qdrantId);
+      return; // LLM returned empty — skip without error
+    }
+
+    let result: ExtractionResult;
+    try {
+      result = JSON.parse(jsonStr);
+    } catch {
+      // Malformed JSON — log and skip
+      console.warn(`[EntityExtraction] Invalid JSON from LLM for chunk ${qdrantId}: ${jsonStr.slice(0, 100)}`);
+      processedChunks.add(qdrantId);
+      return;
+    }
 
     if (!result.entities || !Array.isArray(result.entities)) {
       console.warn(`[EntityExtraction] Invalid extraction result for chunk ${qdrantId}`);
