@@ -75,19 +75,27 @@ export async function isGraphHealthy(): Promise<boolean> {
 
 /**
  * Initialize the graph schema (indices, constraints).
- * Idempotent — safe to call on every startup.
+ * Idempotent — safe to call on every startup. Errors on duplicate
+ * indices are caught and ignored (FalkorDB doesn't support IF NOT EXISTS).
  */
 export async function initGraphSchema(): Promise<void> {
   const graph = await getGraph();
 
   const statements = [
-    'CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.id)',
-    'CREATE INDEX IF NOT EXISTS FOR (c:Chunk) ON (c.qdrantId)',
-    'CREATE INDEX IF NOT EXISTS FOR (d:Document) ON (d.id)',
+    'CREATE INDEX FOR (e:Entity) ON (e.id)',
+    'CREATE INDEX FOR (c:Chunk) ON (c.qdrantId)',
+    'CREATE INDEX FOR (d:Document) ON (d.id)',
   ];
 
   for (const stmt of statements) {
-    await graph.query(stmt);
+    try {
+      await graph.query(stmt);
+    } catch (err: any) {
+      // Index already exists — safe to ignore
+      if (!err?.message?.includes('already exists')) {
+        throw err;
+      }
+    }
   }
 }
 
