@@ -259,22 +259,54 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }
   console.log('[Kysely] Renamed Ollama model IDs to actual model names');
 
-  // Migration: Seed new Fireworks models added to litellm_config.yaml
+  // Migration: Seed current Fireworks serverless chat models
   const newFireworksModels = [
     {
-      id: 'fireworks/glm-5p1',
-      display_name: 'GLM-5.1 (Fireworks)',
+      id: 'fireworks/glm-5p2',
+      display_name: 'GLM 5.2 (Fireworks)',
       tool_capable: 1,
       vision_capable: 0,
-      max_input_tokens: 202000,
+      max_input_tokens: 1048576,
       max_output_tokens: 16384,
     },
     {
-      id: 'fireworks/minimax-m2p7',
-      display_name: 'MiniMax M2.7 (Fireworks)',
+      id: 'fireworks/glm-5p1',
+      display_name: 'GLM 5.1 (Fireworks)',
       tool_capable: 1,
       vision_capable: 0,
-      max_input_tokens: 131072,
+      max_input_tokens: 202752,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/kimi-k2p7-code',
+      display_name: 'Kimi K2.7 Code (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 262144,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/kimi-k2p6',
+      display_name: 'Kimi K2.6 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 262144,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/kimi-k2p5',
+      display_name: 'Kimi K2.5 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 262144,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/qwen3p7-plus',
+      display_name: 'Qwen3.7 Plus (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 1,
+      max_input_tokens: 262144,
       max_output_tokens: 16384,
     },
     {
@@ -282,12 +314,44 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       display_name: 'MiniMax M3 (Fireworks)',
       tool_capable: 1,
       vision_capable: 1,
-      max_input_tokens: 500000,
+      max_input_tokens: 512000,
       max_output_tokens: 32768,
     },
     {
-      id: 'fireworks/kimi-k2p7-code',
-      display_name: 'Kimi K2.7 Code (Fireworks)',
+      id: 'fireworks/minimax-m2p7',
+      display_name: 'MiniMax M2.7 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 196608,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/minimax-m2p5',
+      display_name: 'MiniMax M2.5 (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 196608,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/gpt-oss-120b',
+      display_name: 'OpenAI GPT-OSS 120B (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 131072,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/gpt-oss-20b',
+      display_name: 'OpenAI GPT-OSS 20B (Fireworks)',
+      tool_capable: 1,
+      vision_capable: 0,
+      max_input_tokens: 131072,
+      max_output_tokens: 16384,
+    },
+    {
+      id: 'fireworks/nemotron-3-ultra-nvfp4',
+      display_name: 'NVIDIA Nemotron 3 Ultra NVFP4 (Fireworks)',
       tool_capable: 1,
       vision_capable: 0,
       max_input_tokens: 262144,
@@ -474,6 +538,50 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     WHERE id = 'fireworks/deepseek-v4-flash'
   `.execute(database);
   console.log('[Kysely] Updated Fireworks DeepSeek V4 Pro / Flash pricing');
+
+  // Migration: Sync Fireworks serverless chat model specs and pricing from current catalog.
+  // Context windows, vision tags and prices verified from the public Fireworks serverless
+  // catalog (https://fireworks.ai/models?modelTypes=Serverless) and pricing page
+  // (https://docs.fireworks.ai/serverless/pricing).
+  const fireworksServerlessSpecs: Array<{
+    id: string;
+    max_input_tokens: number;
+    max_output_tokens: number;
+    vision_capable: number;
+    input_cost_per_1m: number;
+    output_cost_per_1m: number;
+    forced_tool_capable: number;
+  }> = [
+    { id: 'fireworks/glm-5p2', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 1.40, output_cost_per_1m: 4.40, forced_tool_capable: 1 },
+    { id: 'fireworks/glm-5p1', max_input_tokens: 202752, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 1.40, output_cost_per_1m: 4.40, forced_tool_capable: 1 },
+    { id: 'fireworks/kimi-k2p7-code', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 0.95, output_cost_per_1m: 4.00, forced_tool_capable: 1 },
+    { id: 'fireworks/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 0.95, output_cost_per_1m: 4.00, forced_tool_capable: 1 },
+    { id: 'fireworks/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
+    { id: 'fireworks/qwen3p7-plus', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 0.40, output_cost_per_1m: 1.60, forced_tool_capable: 1 },
+    { id: 'fireworks/minimax-m3', max_input_tokens: 512000, max_output_tokens: 32768, vision_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20, forced_tool_capable: 1 },
+    { id: 'fireworks/minimax-m2p7', max_input_tokens: 196608, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20, forced_tool_capable: 1 },
+    { id: 'fireworks/minimax-m2p5', max_input_tokens: 196608, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20, forced_tool_capable: 1 },
+    { id: 'fireworks/gpt-oss-120b', max_input_tokens: 131072, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.15, output_cost_per_1m: 0.60, forced_tool_capable: 0 },
+    { id: 'fireworks/gpt-oss-20b', max_input_tokens: 131072, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.07, output_cost_per_1m: 0.30, forced_tool_capable: 0 },
+    { id: 'fireworks/nemotron-3-ultra-nvfp4', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.60, output_cost_per_1m: 2.40, forced_tool_capable: 1 },
+    { id: 'fireworks/deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28, forced_tool_capable: 1 },
+    { id: 'fireworks/deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 1.74, output_cost_per_1m: 3.48, forced_tool_capable: 0 },
+  ];
+  for (const m of fireworksServerlessSpecs) {
+    await sql`
+      UPDATE enabled_models
+      SET
+        max_input_tokens = ${m.max_input_tokens},
+        max_output_tokens = ${m.max_output_tokens},
+        vision_capable = ${m.vision_capable},
+        tool_capable = 1,
+        input_cost_per_1m = ${m.input_cost_per_1m},
+        output_cost_per_1m = ${m.output_cost_per_1m},
+        forced_tool_capable = ${m.forced_tool_capable}
+      WHERE id = ${m.id}
+    `.execute(database);
+  }
+  console.log('[Kysely] Synced Fireworks serverless model specs and pricing');
 
   // Migration: Add input_tokens and output_tokens to token_usage_log
   await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS input_tokens INTEGER DEFAULT 0`.execute(database);

@@ -49,7 +49,6 @@ const TOOL_CAPABLE_PATTERNS = [
   /^mistral-small/,
   /^mistral-medium/,
   /^codestral/,
-  /^pixtral/,
   // Anthropic Claude
   /^claude/,
   // DeepSeek V4 (flash and pro both support tool calling)
@@ -64,6 +63,9 @@ const TOOL_CAPABLE_PATTERNS = [
   // MiniMax
   /^fireworks\/minimax/,
   /^accounts\/fireworks\/models\/minimax/,
+  // Fireworks-hosted chat models (serverless)
+  /^fireworks\//,
+  /^accounts\/fireworks\//,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing
@@ -86,6 +88,20 @@ const VISION_CAPABLE_PATTERNS = [
   // MiniMax M3 is natively multimodal (text + image + video)
   /^fireworks\/minimax-m3/,
   /^accounts\/fireworks\/models\/minimax-m3/,
+  // Kimi K2.x and Qwen3.7 Plus support vision on Fireworks
+  /^fireworks\/kimi-k2p[567]/,
+  /^accounts\/fireworks\/models\/kimi-k2p[567]/,
+  /^fireworks\/kimi-k2-thinking/,
+  /^accounts\/fireworks\/models\/kimi-k2-thinking/,
+  /^fireworks\/qwen3p7-plus/,
+  /^accounts\/fireworks\/models\/qwen3p7-plus/,
+  // Qwen vision-language models
+  /^fireworks\/qwen.*vl/,
+  /^accounts\/fireworks\/models\/qwen.*vl/,
+  // Llama / Gemma vision models
+  /^fireworks\/llama.*vision/,
+  /^fireworks\/llama4/,
+  /^fireworks\/gemma-4/,
   // Note: DeepSeek does NOT support vision
 ];
 
@@ -213,6 +229,36 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'deepseek-v4-flash': 1048576,
   'deepseek-v4-pro': 1048576,
 
+  // Fireworks serverless chat models
+  'fireworks/glm-5p2': 1048576,
+  'fireworks/glm-5p1': 202752,
+  'fireworks/glm-5': 202752,
+  'fireworks/kimi-k2p6': 262144,
+  'fireworks/kimi-k2p5': 262144,
+  'fireworks/kimi-k2p7-code': 262144,
+  'fireworks/kimi-k2-thinking': 262144,
+  'fireworks/minimax-m2p5': 196608,
+  'fireworks/minimax-m2p7': 196608,
+  'fireworks/minimax-m3': 512000,
+  'fireworks/gpt-oss-20b': 131072,
+  'fireworks/gpt-oss-120b': 131072,
+  'fireworks/nemotron-3-ultra-nvfp4': 262144,
+  'fireworks/qwen3p7-plus': 262144,
+  'accounts/fireworks/models/glm-5p2': 1048576,
+  'accounts/fireworks/models/glm-5p1': 202752,
+  'accounts/fireworks/models/glm-5': 202752,
+  'accounts/fireworks/models/kimi-k2p6': 262144,
+  'accounts/fireworks/models/kimi-k2p5': 262144,
+  'accounts/fireworks/models/kimi-k2p7-code': 262144,
+  'accounts/fireworks/models/kimi-k2-thinking': 262144,
+  'accounts/fireworks/models/minimax-m2p5': 196608,
+  'accounts/fireworks/models/minimax-m2p7': 196608,
+  'accounts/fireworks/models/minimax-m3': 512000,
+  'accounts/fireworks/models/gpt-oss-20b': 131072,
+  'accounts/fireworks/models/gpt-oss-120b': 131072,
+  'accounts/fireworks/models/nemotron-3-ultra-nvfp4': 262144,
+  'accounts/fireworks/models/qwen3p7-plus': 262144,
+
 };
 
 // Provider-specific default output token limits
@@ -223,6 +269,7 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
   anthropic: 32000,
   gemini: 16000,
   mistral: 8000,
+  fireworks: 16384,
 };
 
 /**
@@ -230,6 +277,22 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
  */
 export function getDefaultOutputTokens(provider: string): number {
   return DEFAULT_OUTPUT_TOKENS[provider] ?? 16000;
+}
+
+function getFireworksOutputTokens(modelId: string): number {
+  if (/minimax-m3/i.test(modelId)) return 32768;
+  return getDefaultOutputTokens('fireworks');
+}
+
+// Fireworks-specific chat filter: keep instruct-tuned chat models,
+// but drop embeddings, audio, image-generation, moderation, and non-chat models.
+function isFireworksChatModel(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return EXCLUDED_PATTERNS.every(pattern => {
+    // Don't reject instruct-tuned chat models on Fireworks (e.g. llama-v3p1-8b-instruct)
+    if (pattern.source === 'instruct(?!.*(gpt|turbo))') return true;
+    return !pattern.test(id);
+  });
 }
 
 // ============ Capability Detection ============
@@ -315,6 +378,20 @@ function getContextWindow(modelId: string): number | null {
     [/^deepseek-v4/, 1048576],
     [/^fireworks\/deepseek-v4/, 1048576],
     [/^accounts\/fireworks\/models\/deepseek-v4/, 1048576],
+    [/^fireworks\/glm/, 200000],
+    [/^accounts\/fireworks\/models\/glm/, 200000],
+    [/^fireworks\/kimi-k2/, 262144],
+    [/^accounts\/fireworks\/models\/kimi-k2/, 262144],
+    [/^fireworks\/minimax-m2/, 200000],
+    [/^accounts\/fireworks\/models\/minimax-m2/, 200000],
+    [/^fireworks\/minimax-m3/, 512000],
+    [/^accounts\/fireworks\/models\/minimax-m3/, 512000],
+    [/^fireworks\/gpt-oss/, 131072],
+    [/^accounts\/fireworks\/models\/gpt-oss/, 131072],
+    [/^fireworks\/qwen3p7-plus/, 262144],
+    [/^accounts\/fireworks\/models\/qwen3p7-plus/, 262144],
+    [/^fireworks\/nemotron-3/, 262144],
+    [/^accounts\/fireworks\/models\/nemotron-3/, 262144],
   ];
 
   for (const [pattern, value] of familyPatterns) {
@@ -587,8 +664,15 @@ async function discoverDeepSeekModels(apiKey: string): Promise<DiscoveredModel[]
 }
 
 /**
- * Curated Fireworks AI models (Zero Data Retention, SOC2/GDPR/HIPAA)
- * Returns the approved serverless models rather than the full Fireworks catalog (300+)
+ * Curated Fireworks AI serverless chat models
+ *
+ * Context windows, vision tags and pricing verified from the public Fireworks
+ * serverless catalog (https://fireworks.ai/models?modelTypes=Serverless) and
+ * pricing page (https://docs.fireworks.ai/serverless/pricing).
+ *
+ * For models not in this curated list, admins can use the Tavily-powered
+ * "Get Model Details" endpoint at /api/admin/llm/models/get-details to auto-fill
+ * capabilities and pricing from web search.
  */
 async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[]> {
   // Validate API key by calling the models endpoint
@@ -602,21 +686,30 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
 
   const FIREWORKS_MODELS = [
     {
-      id: 'fireworks/minimax-m2p5',
-      name: 'MiniMax M2.5',
+      id: 'fireworks/glm-5p2',
+      name: 'GLM 5.2',
       toolCapable: true,
       visionCapable: false,
       forcedToolCapable: true,
-      maxInputTokens: 131072,
+      maxInputTokens: 1048576,
       maxOutputTokens: 16384,
     },
     {
       id: 'fireworks/glm-5p1',
-      name: 'GLM-5.1',
+      name: 'GLM 5.1',
       toolCapable: true,
       visionCapable: false,
       forcedToolCapable: true,
-      maxInputTokens: 202000,
+      maxInputTokens: 202752,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/kimi-k2p7-code',
+      name: 'Kimi K2.7 Code',
+      toolCapable: true,
+      visionCapable: true,
+      forcedToolCapable: true,
+      maxInputTokens: 262144,
       maxOutputTokens: 16384,
     },
     {
@@ -625,34 +718,25 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       toolCapable: true,
       visionCapable: true,
       forcedToolCapable: true,
-      maxInputTokens: 131072,
+      maxInputTokens: 262144,
       maxOutputTokens: 16384,
     },
     {
       id: 'fireworks/kimi-k2p5',
       name: 'Kimi K2.5',
       toolCapable: true,
-      visionCapable: false,
+      visionCapable: true,
       forcedToolCapable: true,
-      maxInputTokens: 131072,
+      maxInputTokens: 262144,
       maxOutputTokens: 16384,
     },
     {
-      id: 'fireworks/gpt-oss-120b',
-      name: 'OpenAI GPT-OSS 120B',
+      id: 'fireworks/qwen3p7-plus',
+      name: 'Qwen3.7 Plus',
       toolCapable: true,
-      visionCapable: false,
+      visionCapable: true,
       forcedToolCapable: true,
-      maxInputTokens: 131072,
-      maxOutputTokens: 16384,
-    },
-    {
-      id: 'fireworks/minimax-m2p7',
-      name: 'MiniMax M2.7',
-      toolCapable: true,
-      visionCapable: false,
-      forcedToolCapable: true,
-      maxInputTokens: 131072,
+      maxInputTokens: 262144,
       maxOutputTokens: 16384,
     },
     {
@@ -661,12 +745,48 @@ async function discoverFireworksModels(apiKey: string): Promise<DiscoveredModel[
       toolCapable: true,
       visionCapable: true,
       forcedToolCapable: true,
-      maxInputTokens: 500000,
+      maxInputTokens: 512000,
       maxOutputTokens: 32768,
     },
     {
-      id: 'fireworks/kimi-k2p7-code',
-      name: 'Kimi K2.7 Code',
+      id: 'fireworks/minimax-m2p7',
+      name: 'MiniMax M2.7',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: true,
+      maxInputTokens: 196608,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/minimax-m2p5',
+      name: 'MiniMax M2.5',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: true,
+      maxInputTokens: 196608,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/gpt-oss-120b',
+      name: 'OpenAI GPT-OSS 120B',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/gpt-oss-20b',
+      name: 'OpenAI GPT-OSS 20B',
+      toolCapable: true,
+      visionCapable: false,
+      forcedToolCapable: false,
+      maxInputTokens: 131072,
+      maxOutputTokens: 16384,
+    },
+    {
+      id: 'fireworks/nemotron-3-ultra-nvfp4',
+      name: 'NVIDIA Nemotron 3 Ultra NVFP4',
       toolCapable: true,
       visionCapable: false,
       forcedToolCapable: true,
