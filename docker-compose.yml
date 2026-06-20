@@ -62,6 +62,9 @@ services:
       # Vector Store Configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      # Graph Database Configuration (Phase 2 - internal Docker network)
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
       # Database Configuration
       - DATABASE_PROVIDER=${DATABASE_PROVIDER:-sqlite}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-policybot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-policybot}
@@ -208,9 +211,9 @@ services:
     container_name: policy-bot-falkordb
     profiles:
       - falkordb
-    command: --port 6380
-    environment:
-      - REDIS_ARGS=--port 6380
+    # Internal port 6379 (default), mapped to host 6380 to avoid Redis conflict
+    ports:
+      - "6380:6379"
     volumes:
       - ./data/falkordb:/data
     deploy:
@@ -218,7 +221,7 @@ services:
         limits:
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -p 6380 ping || exit 1"]
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
