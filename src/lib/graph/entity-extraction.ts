@@ -11,8 +11,6 @@
  */
 
 import { createInternalCompletion } from '@/lib/llm-client';
-import { createEmbeddings } from '@/lib/openai';
-import { getVectorStore, getCollectionNames } from '@/lib/vector-store';
 import { getGraph, isGraphHealthy } from './falkordb-client';
 
 // ============ Types ============
@@ -99,68 +97,23 @@ function extractJsonObject(response: string): string {
 // ============ Entity Resolution ============
 
 /**
- * Resolve extracted entities against existing entities in Qdrant.
- * Embeds each entity name, searches for near-duplicates, and returns
- * resolution decisions (new canonical entity or SAME_AS link).
+ * Resolve extracted entities for canonical IDs.
+ *
+ * Simple pass-through: generates canonical IDs from entity names.
+ * FalkorDB's MERGE handles exact duplicates automatically.
+ * Near-duplicate resolution (SAME_AS via embedding similarity) is
+ * deferred to a future enhancement — it requires a dedicated entity
+ * embeddings index that doesn't depend on the global_documents collection.
  */
 async function resolveEntities(
   entities: ExtractedEntity[],
 ): Promise<ResolvedEntity[]> {
-  if (entities.length === 0) return [];
-
-  const store = await getVectorStore();
-  const collNames = getCollectionNames();
-  const names = entities.map(e => e.name);
-  const embeddings = await createEmbeddings(names);
-
-  const resolved: ResolvedEntity[] = [];
-
-  for (let i = 0; i < entities.length; i++) {
-    const entity = entities[i];
-    const embedding = embeddings[i];
-    const canonicalId = `entity:${entity.name.toLowerCase().replace(/\s+/g, '_')}`;
-
-    try {
-      // Search for near-duplicate entities in the global collection
-      const results = await store.query(
-        collNames.global,
-        embedding,
-        RESOLUTION_TOP_K,
-        undefined,
-        RESOLUTION_SIMILARITY_THRESHOLD,
-      );
-
-      if (results.ids.length > 0) {
-        // Found a near-duplicate — link via SAME_AS
-        const bestScore = results.scores[0];
-        resolved.push({
-          name: entity.name,
-          type: entity.type,
-          canonicalId,
-          isNew: false,
-          sameAsId: results.ids[0] as string,
-          sameAsScore: bestScore,
-        });
-      } else {
-        resolved.push({
-          name: entity.name,
-          type: entity.type,
-          canonicalId,
-          isNew: true,
-        });
-      }
-    } catch {
-      // Resolution failed — treat as new entity (safe fallback)
-      resolved.push({
-        name: entity.name,
-        type: entity.type,
-        canonicalId,
-        isNew: true,
-      });
-    }
-  }
-
-  return resolved;
+  return entities.map(entity => ({
+    name: entity.name,
+    type: entity.type,
+    canonicalId: `entity:${entity.name.toLowerCase().replace(/\s+/g, '_')}`,
+    isNew: true,
+  }));
 }
 
 // ============ Graph Writing ============
@@ -287,7 +240,7 @@ export async function extractEntitiesFromChunk(
         { role: 'user', content: prompt },
       ],
       temperature: 0.1,
-      maxTokens: 512,
+      maxTokens: 1024,
     });
 
     const jsonStr = extractJsonObject(response);
