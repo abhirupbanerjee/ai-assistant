@@ -110,6 +110,9 @@ const nextConfig: NextConfig = {
     // ("Cannot find package 'file-type' imported from .next/server/chunks/...").
     'officeparser',
     'file-type',
+    // falkordb uses BigInt/long polyfills that break Turbopack bundling.
+    // Externalize to avoid "a.BigInt is not a function" at build time.
+    'falkordb',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {
@@ -121,6 +124,7 @@ const nextConfig: NextConfig = {
   },
   // Include PDFKit font files in standalone output (required for PDF generation)
   // Include vendor bundles for self-contained HTML generation (Chart.js, Mermaid, datalabels plugin)
+  // Include falkordb for graph-augmented RAG (Phase 2)
   outputFileTracingIncludes: {
     '/api/**': [
       './node_modules/pdfkit/js/data/**/*',
@@ -137,6 +141,8 @@ const nextConfig: NextConfig = {
       './node_modules/strtok3/**/*',
       './node_modules/token-types/**/*',
       './node_modules/uint8array-extras/**/*',
+      // falkordb — Redis-based graph DB client (Phase 2)
+      './node_modules/falkordb/**/*',
     ],
   },
   // Exclude data directory from build (contains Redis files with restricted permissions)
