@@ -224,7 +224,7 @@ Runs during background ingestion (`processDocumentAsync`), never on the query pa
 | Setting | Default | Range | Purpose |
 |---------|---------|-------|---------|
 | `extractionModel` | (system default) | Any route-compatible model | LLM for entity extraction |
-| `maxTokens` | 1024 | 128–4096 | Max tokens for extraction response |
+| `maxTokens` | 4096 | 128–4096 | Max tokens for extraction response |
 | `concurrency` | 5 | 1–10 | Parallel chunk processing limit |
 
 **Failure persistence:** Extraction failures are logged to `extraction_failures` table in Postgres, visible in Admin > Settings > Graph RAG > Failures tab. Supports one-click reprocessing.
@@ -451,7 +451,7 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 | `seedChunkCount` | 10 | Qdrant chunks used for seeding PPR |
 | `resolutionThreshold` | 0.92 | Entity similarity for SAME_AS linking |
 | `extractionModel` | (system default) | LLM model for entity extraction |
-| `maxTokens` | 1024 | Max tokens for extraction response |
+| `maxTokens` | 4096 | Max tokens for extraction response |
 | `concurrency` | 5 | Parallel chunk extraction limit |
 
 ### Reranker Settings (Admin > Settings > Reranker)

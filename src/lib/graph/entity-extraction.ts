@@ -45,7 +45,7 @@ export interface ResolvedEntity {
 // ============ Constants ============
 
 const DEFAULT_MAX_CONCURRENT_CALLS = 5;
-const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_MAX_TOKENS = 4096;
 const CHUNKS_PER_CALL = 2; // Conservative: 1-3 chunks per LLM call
 const RESOLUTION_SIMILARITY_THRESHOLD = 0.92;
 const RESOLUTION_TOP_K = 3;
@@ -67,6 +67,7 @@ IMPORTANT RULES:
 - DO NOT extract page headers, footers, page numbers, or watermark text
 - DO NOT extract generic terms like "document", "section", "chapter", "page", "attachment"
 - Focus on REAL-WORLD entities: people, organizations, policies, regulations, locations, concepts, roles, departments, legal instruments
+- If a chunk contains many entities, return the 30 most significant/relevant entities and up to 20 most relevant relations. Stay within these limits to ensure valid JSON output.
 
 For each chunk, identify:
 - Entities: named people, organizations, policies, regulations, dates, locations, concepts, roles, departments
@@ -322,8 +323,10 @@ export async function extractEntitiesFromChunk(
       result = JSON.parse(jsonStr);
     } catch {
       // Malformed JSON — log failure and skip
-      console.warn(`[EntityExtraction] Invalid JSON from LLM for chunk ${qdrantId}: ${jsonStr.slice(0, 100)}`);
-      await logExtractionFailure(qdrantId, documentId, documentName, 'JSON truncated or malformed').catch(() => {});
+      const isTruncated = !jsonStr.trim().endsWith('}');
+      const reason = isTruncated ? 'JSON truncated (max_tokens exceeded)' : 'JSON malformed';
+      console.warn(`[EntityExtraction] ${reason} for chunk ${qdrantId}: ${jsonStr.slice(0, 100)}`);
+      await logExtractionFailure(qdrantId, documentId, documentName, reason).catch(() => {});
       processedChunks.add(qdrantId);
       return;
     }

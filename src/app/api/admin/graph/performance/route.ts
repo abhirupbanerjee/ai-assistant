@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       .select([
         sql<number>`COUNT(*)`.as('traceCount'),
         sql<number>`COALESCE(AVG(
-          JSON_ARRAY_LENGTH(COALESCE(graph_chunk_ids, '[]'))
+          JSON_ARRAY_LENGTH(COALESCE(graph_chunk_ids, '[]')::json)
         ), 0)`.as('avgChunkExpansion'),
       ])
       .where('created_at', '>', sql`NOW() - INTERVAL '${sql.raw(String(days))} days'`)
