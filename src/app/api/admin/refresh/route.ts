@@ -35,15 +35,85 @@ export async function POST(request: Request) {
     const url = new URL(request.url);
     const mode = (url.searchParams.get('mode') || 'all') as 'vector' | 'graph' | 'all';
 
-    // mode=graph: delegate to graph backfill endpoint
+    // mode=graph: run graph backfill directly (no self-referential fetch — avoids SSL issues behind Traefik)
     if (mode === 'graph') {
-      const backfillUrl = new URL('/api/admin/graph/backfill', request.url);
-      const backfillResponse = await fetch(backfillUrl, { method: 'POST', headers: { Cookie: request.headers.get('cookie') || '' } });
-      const backfillData = await backfillResponse.json();
+      const { getVectorStore, getCollectionNames } = await import('@/lib/vector-store');
+      const { getAllDocumentsWithCategories } = await import('@/lib/db/compat/documents');
+
+      const documents = await getAllDocumentsWithCategories();
+      const readyDocs = documents.filter(d => d.status === 'ready');
+      const store = await getVectorStore();
+      const collNames = getCollectionNames();
+
+      // Helper: find chunks across all possible collections
+      async function getChunksForDoc(docId: number, isGlobal: boolean, categorySlugs: string[]): Promise<any[]> {
+        const docIdStr = String(docId);
+        const candidateCollections = isGlobal
+          ? [collNames.global, ...categorySlugs.map(s => collNames.forCategory(s))]
+          : [collNames.legacy, ...categorySlugs.map(s => collNames.forCategory(s))];
+        for (const coll of candidateCollections) {
+          try {
+            const chunks = await store.getDocumentChunksByDocId(coll, docIdStr);
+            if (chunks.length > 0) return chunks;
+          } catch { /* collection may not exist */ }
+        }
+        return [];
+      }
+
+      // Count chunks
+      let totalChunks = 0;
+      for (const doc of readyDocs) {
+        try {
+          const docChunks = await getChunksForDoc(doc.id, doc.isGlobal, doc.categories.map(c => c.slug));
+          totalChunks += docChunks.length;
+        } catch { /* skip */ }
+      }
+
+      if (totalChunks === 0) {
+        return NextResponse.json({
+          success: true,
+          mode: 'graph',
+          status: 'nothing_to_do',
+          message: 'No documents with chunks found — nothing to backfill',
+          documentCount: readyDocs.length,
+          chunkCount: 0,
+        });
+      }
+
+      // Fire and forget — run backfill in background
+      (async () => {
+        const { extractEntitiesFromChunks } = await import('@/lib/graph/entity-extraction');
+        const { updateDocument } = await import('@/lib/db/compat/documents');
+
+        for (const doc of readyDocs) {
+          try {
+            const docIdStr = String(doc.id);
+            const docChunks = await getChunksForDoc(doc.id, doc.isGlobal, doc.categories.map(c => c.slug));
+            if (docChunks.length === 0) continue;
+
+            await updateDocument(doc.id, { graphExtractionStatus: 'processing' });
+            const chunks = docChunks.map((c: any) => ({
+              qdrantId: c.id,
+              text: c.text,
+              documentId: docIdStr,
+              pageNumber: c.metadata?.pageNumber || 1,
+              documentName: doc.filename,
+            }));
+            await extractEntitiesFromChunks(chunks);
+            await updateDocument(doc.id, { graphExtractionStatus: 'completed' });
+          } catch {
+            await updateDocument(doc.id, { graphExtractionStatus: 'failed' }).catch(() => {});
+          }
+        }
+      })().catch(console.error);
+
       return NextResponse.json({
         success: true,
         mode: 'graph',
-        ...backfillData,
+        status: 'started',
+        message: `Graph backfill started: ${readyDocs.length} documents, ${totalChunks} chunks`,
+        documentCount: readyDocs.length,
+        chunkCount: totalChunks,
       });
     }
 
