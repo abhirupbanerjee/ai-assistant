@@ -68,12 +68,30 @@ export async function POST(request: NextRequest) {
     const store = await getVectorStore();
     const collNames = getCollectionNames();
 
+    // Helper: find chunks for a document across all possible collections.
+    // Documents may be in global_documents, category_{slug}, or organizational_documents.
+    async function getChunksForDoc(docId: number, isGlobal: boolean, categorySlugs: string[]): Promise<any[]> {
+      const docIdStr = String(docId);
+      const candidateCollections = isGlobal
+        ? [collNames.global, ...categorySlugs.map(s => collNames.forCategory(s))]
+        : [collNames.legacy, ...categorySlugs.map(s => collNames.forCategory(s))];
+
+      for (const coll of candidateCollections) {
+        try {
+          const chunks = await store.getDocumentChunksByDocId(coll, docIdStr);
+          if (chunks.length > 0) return chunks;
+        } catch {
+          // Collection may not exist
+        }
+      }
+      return [];
+    }
+
     // Count total chunks across all ready documents
     let totalChunks = 0;
     for (const doc of readyDocs) {
       try {
-        const docIdStr = String(doc.id);
-        const docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
+        const docChunks = await getChunksForDoc(doc.id, doc.isGlobal, doc.categories.map(c => c.slug));
         totalChunks += docChunks.length;
       } catch {
         // Skip uncountable docs
@@ -98,7 +116,7 @@ export async function POST(request: NextRequest) {
       for (const doc of readyDocs) {
         try {
           const docIdStr = String(doc.id);
-          const docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
+          const docChunks = await getChunksForDoc(doc.id, doc.isGlobal, doc.categories.map(c => c.slug));
           if (docChunks.length === 0) continue;
 
           await updateDocument(doc.id, { graphExtractionStatus: 'processing' });

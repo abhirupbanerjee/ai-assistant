@@ -586,8 +586,13 @@ export async function deleteDocument(docId: string): Promise<{ filename: string;
 
 /**
  * Reindex a document (re-extract and re-embed)
+ * @param docId - Document ID to reindex
+ * @param options - Optional flags: skipGraphExtraction skips inline entity extraction
  */
-export async function reindexDocument(docId: string): Promise<GlobalDocument | null> {
+export async function reindexDocument(
+  docId: string,
+  options: { skipGraphExtraction?: boolean } = {}
+): Promise<GlobalDocument | null> {
   const numericId = parseInt(docId, 10);
   const doc = await getDocumentWithCategories(numericId);
 
@@ -657,12 +662,43 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
       }
     }
 
-    // Update document status
+    // Update document status — reset graph status since old qdrantIds are now stale
     await updateDocument(numericId, {
       chunkCount: chunks.length,
       status: 'ready',
       errorMessage: null,
+      graphExtractionStatus: 'pending',
     });
+
+    // Phase 2: Inline graph extraction — chunks are already in memory,
+    // so we can extract entities without a Qdrant read-back (same pattern as processDocumentAsync)
+    // Skip when caller only wants vector refresh (mode=vector)
+    if (!options.skipGraphExtraction) {
+    try {
+      const { isGraphHealthy } = await import('./graph/falkordb-client');
+      const graphHealthy = await isGraphHealthy();
+      if (!graphHealthy) {
+        await updateDocument(numericId, { graphExtractionStatus: 'skipped' });
+        console.log(`[Ingest] Graph extraction skipped for reindexed "${doc.filename}" — FalkorDB not available`);
+      } else {
+        await updateDocument(numericId, { graphExtractionStatus: 'processing' });
+        const { extractEntitiesFromChunks } = await import('./graph/entity-extraction');
+        const entityChunks = chunks.map(c => ({
+          qdrantId: c.id,
+          text: c.text,
+          documentId: String(numericId),
+          pageNumber: c.metadata.pageNumber,
+          documentName: doc.filename,
+        }));
+        const { processed, skipped, failed } = await extractEntitiesFromChunks(entityChunks);
+        console.log(`[Ingest] Graph extraction for reindexed "${doc.filename}": ${processed} processed, ${skipped} skipped, ${failed} failed`);
+        await updateDocument(numericId, { graphExtractionStatus: 'completed' });
+      }
+    } catch (err) {
+      console.warn(`[Ingest] Graph extraction failed for reindexed "${doc.filename}" (non-blocking):`, err);
+      await updateDocument(numericId, { graphExtractionStatus: 'failed' }).catch(() => {});
+    }
+    } // end if (!options.skipGraphExtraction)
 
     const updatedDoc = await getDocumentWithCategories(numericId);
     return toGlobalDocument(updatedDoc!);

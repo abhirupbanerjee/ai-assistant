@@ -7,7 +7,14 @@ import { getGlobalDocsDir } from '@/lib/storage';
 import path from 'path';
 import type { ApiError } from '@/types';
 
-export async function POST() {
+/**
+ * POST /api/admin/refresh?mode=vector|graph|all
+ *
+ * mode=vector: Clear cache + reindex all docs into Qdrant only (skip graph extraction)
+ * mode=graph:  Trigger graph backfill only (no vector reindex)
+ * mode=all:    Clear cache + reindex all docs with inline graph extraction (default)
+ */
+export async function POST(request: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -24,6 +31,23 @@ export async function POST() {
       );
     }
 
+    // Parse mode from query params
+    const url = new URL(request.url);
+    const mode = (url.searchParams.get('mode') || 'all') as 'vector' | 'graph' | 'all';
+
+    // mode=graph: delegate to graph backfill endpoint
+    if (mode === 'graph') {
+      const backfillUrl = new URL('/api/admin/graph/backfill', request.url);
+      const backfillResponse = await fetch(backfillUrl, { method: 'POST', headers: { Cookie: request.headers.get('cookie') || '' } });
+      const backfillData = await backfillResponse.json();
+      return NextResponse.json({
+        success: true,
+        mode: 'graph',
+        ...backfillData,
+      });
+    }
+
+    // mode=vector or mode=all: clear cache + reindex documents
     // Clear Redis cache
     await clearAllCache();
 
@@ -33,6 +57,8 @@ export async function POST() {
     let skippedCount = 0;
     const errors: string[] = [];
     const missingFiles: { id: string; filename: string; filepath: string }[] = [];
+
+    const skipGraph = mode === 'vector';
 
     for (const doc of documents) {
       // Pre-check: verify document file exists on disk
@@ -47,7 +73,7 @@ export async function POST() {
       }
 
       try {
-        await reindexDocument(doc.id);
+        await reindexDocument(doc.id, { skipGraphExtraction: skipGraph });
         reindexedCount++;
       } catch (error) {
         errors.push(`${doc.filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -57,6 +83,7 @@ export async function POST() {
     // Report missing files prominently so the admin can clean them up
     const response: Record<string, unknown> = {
       success: true,
+      mode,
       documentsReindexed: reindexedCount,
       totalDocuments: documents.length,
       documentsSkipped: skippedCount,

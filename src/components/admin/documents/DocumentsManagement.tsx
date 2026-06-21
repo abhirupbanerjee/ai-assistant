@@ -748,9 +748,14 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     }
   };
 
-  // Refresh all documents
-  const handleRefreshAll = async () => {
-    if (!confirm('This will clear the response cache and reindex all documents. This may take a few minutes. Continue?')) {
+  // Refresh documents with mode selection
+  const handleRefresh = async (mode: 'vector' | 'graph' | 'all') => {
+    const modeLabels = {
+      vector: 'Refresh Vector: Re-embed all documents into Qdrant (graph status will reset to pending)',
+      graph: 'Refresh Graph: Extract entities from existing Qdrant chunks into FalkorDB',
+      all: 'Refresh All: Re-embed all documents and extract entities (full rebuild)',
+    };
+    if (!confirm(`${modeLabels[mode]}. This may take a few minutes. Continue?`)) {
       return;
     }
 
@@ -758,7 +763,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     setError(null);
 
     try {
-      const response = await fetch('/api/admin/refresh', {
+      const response = await fetch(`/api/admin/refresh?mode=${mode}`, {
         method: 'POST',
       });
 
@@ -1110,16 +1115,37 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents, {totalChunks} chunks indexed
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="secondary"
                   disabled={refreshingAll || documents.length === 0}
                   loading={refreshingAll}
-                  onClick={handleRefreshAll}
-                  title="Clear cache and reindex all documents"
+                  onClick={() => handleRefresh('all')}
+                  title="Re-embed all documents and extract entities (full rebuild)"
+                  className="text-xs px-2.5 py-1.5"
                 >
-                  <RefreshCw size={18} className={`mr-2 ${refreshingAll ? 'animate-spin' : ''}`} />
+                  <RefreshCw size={14} className={`mr-1 ${refreshingAll ? 'animate-spin' : ''}`} />
                   {refreshingAll ? 'Refreshing...' : 'Refresh All'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={refreshingAll || documents.length === 0}
+                  onClick={() => handleRefresh('vector')}
+                  title="Re-embed all documents into Qdrant only (graph status will reset)"
+                  className="text-xs px-2.5 py-1.5"
+                >
+                  <RefreshCw size={14} className="mr-1" />
+                  Vector
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={refreshingAll || documents.length === 0}
+                  onClick={() => handleRefresh('graph')}
+                  title="Extract entities from existing Qdrant chunks into FalkorDB"
+                  className="text-xs px-2.5 py-1.5"
+                >
+                  <RefreshCw size={14} className="mr-1" />
+                  Graph
                 </Button>
                 <Button
                   disabled={uploading}
