@@ -59,18 +59,42 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Full backfill
+    // Full backfill — count documents first for the response
+    const { getVectorStore, getCollectionNames } = await import('@/lib/vector-store');
+    const { getAllDocumentsWithCategories } = await import('@/lib/db/compat/documents');
+
+    const documents = await getAllDocumentsWithCategories();
+    const readyDocs = documents.filter(d => d.status === 'ready');
+    const store = await getVectorStore();
+    const collNames = getCollectionNames();
+
+    // Count total chunks across all ready documents
+    let totalChunks = 0;
+    for (const doc of readyDocs) {
+      try {
+        const docIdStr = String(doc.id);
+        const docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
+        totalChunks += docChunks.length;
+      } catch {
+        // Skip uncountable docs
+      }
+    }
+
+    if (totalChunks === 0) {
+      return NextResponse.json({
+        status: 'nothing_to_do',
+        mode: 'full',
+        message: 'No documents with chunks found — nothing to backfill',
+        documentCount: readyDocs.length,
+        chunkCount: 0,
+      });
+    }
+
+    // Don't await — fire and forget
     (async () => {
-      const { getVectorStore, getCollectionNames } = await import('@/lib/vector-store');
-      const { getAllDocumentsWithCategories } = await import('@/lib/db/compat/documents');
       const { extractEntitiesFromChunks, resetExtractionCache } = await import('@/lib/graph/entity-extraction');
 
-      const documents = await getAllDocumentsWithCategories();
-      const store = await getVectorStore();
-      const collNames = getCollectionNames();
-
-      for (const doc of documents) {
-        if (doc.status !== 'ready') continue;
+      for (const doc of readyDocs) {
         try {
           const docIdStr = String(doc.id);
           const docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
@@ -93,7 +117,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       status: 'started',
       mode: 'full',
-      message: 'Full backfill started',
+      message: `Backfill started: ${readyDocs.length} documents, ${totalChunks} chunks`,
+      documentCount: readyDocs.length,
+      chunkCount: totalChunks,
     });
   } catch (err) {
     return NextResponse.json<ApiError>(

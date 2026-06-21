@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Save, RefreshCw, Trash2, AlertCircle, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
+import ExtractionModelSelector from './ExtractionModelSelector';
 
 interface GraphSettingsData {
   graphAugmentationEnabled: boolean;
@@ -18,9 +19,14 @@ interface GraphSettingsData {
 
 interface GraphStatus {
   healthy: boolean;
+  graphExists: boolean;
   entityCount: number;
   chunkCount: number;
   relationCount: number;
+  documentCount: number;
+  qdrantChunkCount: number;
+  pendingChunks: number;
+  statsError: string | null;
 }
 
 interface ExtractionFailure {
@@ -165,8 +171,16 @@ export default function GraphSettings() {
       });
       if (res.ok) {
         const data = await res.json();
-        setMessage({ type: 'success', text: data.message || 'Backfill started' });
-        setTimeout(fetchData, 3000);
+        if (data.status === 'nothing_to_do') {
+          setMessage({ type: 'success', text: data.message });
+        } else {
+          setMessage({ type: 'success', text: data.message || 'Backfill started' });
+          // Refresh status after a delay to show progress
+          setTimeout(fetchData, 5000);
+        }
+      } else {
+        const errData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        setMessage({ type: 'error', text: errData.error || 'Failed to start backfill' });
       }
     } catch {
       setMessage({ type: 'error', text: 'Failed to start backfill' });
@@ -176,7 +190,7 @@ export default function GraphSettings() {
   };
 
   const handleClear = async () => {
-    if (!confirm('This will delete ALL graph data (entities, chunks, relations). Continue?')) return;
+    if (!confirm('This will delete ALL graph data (entities, chunks, relations) and reset the extraction cache. Continue?')) return;
     setClearing(true);
     try {
       const res = await fetch('/api/admin/graph/clear', {
@@ -185,8 +199,12 @@ export default function GraphSettings() {
         body: JSON.stringify({ confirm: true }),
       });
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Graph cleared' });
+        const data = await res.json();
+        setMessage({ type: 'success', text: data.message || 'Graph cleared' });
         fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        setMessage({ type: 'error', text: errData.error || 'Failed to clear graph' });
       }
     } catch {
       setMessage({ type: 'error', text: 'Failed to clear graph' });
@@ -284,11 +302,36 @@ export default function GraphSettings() {
                 </span>
               )}
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">Graph:</span>
+              {status.graphExists ? (
+                <span className="text-green-700 font-medium">Initialized</span>
+              ) : status.healthy ? (
+                <span className="text-amber-600 font-medium">Not initialized — run backfill</span>
+              ) : (
+                <span className="text-gray-400">—</span>
+              )}
+            </div>
             <div><span className="text-gray-500">Entities:</span> <span className="font-medium">{status.entityCount.toLocaleString()}</span></div>
             <div><span className="text-gray-500">Chunks:</span> <span className="font-medium">{status.chunkCount.toLocaleString()}</span></div>
             <div><span className="text-gray-500">Relations:</span> <span className="font-medium">{status.relationCount.toLocaleString()}</span></div>
+            <div><span className="text-gray-500">Documents:</span> <span className="font-medium">{status.documentCount?.toLocaleString() ?? '0'}</span></div>
+            <div>
+              <span className="text-gray-500">Pending:</span>{' '}
+              <span className={`font-medium ${status.pendingChunks > 0 ? 'text-amber-600' : 'text-green-700'}`}>
+                {status.pendingChunks?.toLocaleString() ?? '0'}
+              </span>
+              {status.qdrantChunkCount > 0 && (
+                <span className="text-xs text-gray-400 ml-1">/ {status.qdrantChunkCount.toLocaleString()} total</span>
+              )}
+            </div>
             <div><span className="text-gray-500">Failed:</span> <span className={failureTotal > 0 ? 'text-red-600 font-medium' : 'font-medium'}>{failureTotal.toLocaleString()}</span></div>
           </div>
+          {status.statsError && (
+            <div className="mt-3 p-3 bg-amber-50 text-amber-800 text-xs rounded-lg">
+              <strong>Stats error:</strong> {status.statsError}
+            </div>
+          )}
         </div>
       )}
 
@@ -298,14 +341,10 @@ export default function GraphSettings() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Extraction Model</label>
-            <input
-              type="text"
+            <ExtractionModelSelector
               value={settings.extractionModel}
-              onChange={(e) => setSettings(s => ({ ...s, extractionModel: e.target.value }))}
-              placeholder="Default (auto — uses fallback chain)"
-              className="w-full px-3 py-2 border rounded-lg text-sm"
+              onChange={(modelId) => setSettings(s => ({ ...s, extractionModel: modelId }))}
             />
-            <div className="text-xs text-gray-400 mt-1">Leave empty for automatic model selection</div>
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">
@@ -478,6 +517,18 @@ export default function GraphSettings() {
       {/* Maintenance */}
       <div className="bg-white rounded-lg border p-6">
         <h3 className="font-medium text-gray-900 mb-4">Maintenance</h3>
+        {status && status.pendingChunks > 0 && !backfilling && (
+          <div className="mb-3 p-3 bg-amber-50 text-amber-800 text-sm rounded-lg flex items-center gap-2">
+            <AlertCircle size={16} />
+            {status.pendingChunks.toLocaleString()} chunks pending extraction — run Backfill All to process them
+          </div>
+        )}
+        {status && status.pendingChunks === 0 && status.graphExists && !backfilling && (
+          <div className="mb-3 p-3 bg-green-50 text-green-700 text-sm rounded-lg flex items-center gap-2">
+            <CheckCircle size={16} />
+            All chunks extracted — no backfill needed
+          </div>
+        )}
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => handleBackfill('full')}

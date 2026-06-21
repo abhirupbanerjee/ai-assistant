@@ -40,6 +40,23 @@ export interface InternalCompletionOptions {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  /** Optional callback invoked with token usage data after a successful completion. */
+  onUsage?: (usage: { inputTokens: number; outputTokens: number; model: string }) => void;
+}
+
+// ============ Usage helper ============
+
+function emitUsage(
+  opts: InternalCompletionOptions,
+  usage: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number } | undefined,
+  model: string,
+): void {
+  if (!opts.onUsage || !usage) return;
+  const inputTokens = usage.prompt_tokens ?? usage.input_tokens ?? 0;
+  const outputTokens = usage.completion_tokens ?? usage.output_tokens ?? 0;
+  if (inputTokens > 0 || outputTokens > 0) {
+    opts.onUsage({ inputTokens, outputTokens, model });
+  }
 }
 
 // ============ Clients (lazy singletons) ============
@@ -142,6 +159,7 @@ async function callLiteLLM(model: string, opts: InternalCompletionOptions): Prom
     temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
+  emitUsage(opts, response.usage, model);
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
@@ -160,6 +178,7 @@ async function callFireworks(model: string, opts: InternalCompletionOptions): Pr
     temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
+  emitUsage(opts, response.usage, model);
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
@@ -180,6 +199,7 @@ async function callAnthropic(model: string, opts: InternalCompletionOptions): Pr
     temperature: getTemperatureForModel(model, baseTemp),
   });
 
+  emitUsage(opts, { input_tokens: response.usage?.input_tokens, output_tokens: response.usage?.output_tokens }, model);
   const textBlock = response.content.find(b => b.type === 'text');
   return stripThinkTags(textBlock?.text?.trim() || '');
 }
@@ -197,6 +217,7 @@ async function callOllama(model: string, opts: InternalCompletionOptions): Promi
     temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: opts.maxTokens ?? 2000,
   });
+  emitUsage(opts, response.usage, model);
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
@@ -213,6 +234,7 @@ async function callMoonshot(model: string, opts: InternalCompletionOptions): Pro
     temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
+  emitUsage(opts, response.usage, model);
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 
@@ -227,6 +249,7 @@ async function callDeepSeek(model: string, opts: InternalCompletionOptions): Pro
     temperature: getTemperatureForModel(model, baseTemp),
     max_tokens: maxTokens,
   });
+  emitUsage(opts, response.usage, model);
   return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
 }
 

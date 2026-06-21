@@ -21,14 +21,23 @@ export async function POST(request: NextRequest) {
     }
 
     const { getGraph } = await import('@/lib/graph/falkordb-client');
+    const { resetExtractionCache } = await import('@/lib/graph/entity-extraction');
+    const { clearAllExtractionFailures } = await import('@/lib/db/compat/query-logs');
+
     const graph = await getGraph();
 
-    // Delete all nodes and edges
+    // Delete all nodes and edges from FalkorDB
     await graph.query('MATCH (n) DETACH DELETE n');
+
+    // Reset in-memory processed chunks cache so backfill can re-extract
+    resetExtractionCache();
+
+    // Clear extraction failure records from Postgres
+    await clearAllExtractionFailures();
 
     return NextResponse.json({
       status: 'cleared',
-      message: 'Graph data cleared successfully',
+      message: 'Graph data, extraction cache, and failure records cleared successfully',
     });
   } catch (err) {
     return NextResponse.json<ApiError>(

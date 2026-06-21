@@ -275,18 +275,39 @@ export async function extractEntitiesFromChunk(
 
   try {
     const prompt = buildExtractionPrompt([{ qdrantId, text: chunkText }]);
-    const response = await createInternalCompletion({
-      ...(extractionModel ? { model: extractionModel } : {}),
-      messages: [
-        {
-          role: 'system',
-          content: 'You extract named entities and relationships from text. Return only valid JSON. Do not extract filenames, headers, footers, or generic terms.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.1,
-      maxTokens,
-    });
+    const messages = [
+      {
+        role: 'system' as const,
+        content: 'You extract named entities and relationships from text. Return only valid JSON. Do not extract filenames, headers, footers, or generic terms.',
+      },
+      { role: 'user' as const, content: prompt },
+    ];
+
+    // 3-level model fallback: configured model → system default → cheapest route
+    let response: string | null = null;
+    const modelChain: (string | undefined)[] = [
+      extractionModel || undefined,   // Level 1: admin-configured extraction model
+      undefined,                       // Level 2: system default (no model override)
+    ];
+
+    for (const model of modelChain) {
+      try {
+        response = await createInternalCompletion({
+          ...(model ? { model } : {}),
+          messages,
+          temperature: 0.1,
+          maxTokens,
+        });
+        break; // Success — stop trying fallbacks
+      } catch (err) {
+        const label = model || '(system default)';
+        console.warn(`[entity-extraction] Model ${label} failed for chunk ${qdrantId}, trying next fallback:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    if (response === null) {
+      throw new Error('All extraction model fallbacks failed');
+    }
 
     const jsonStr = extractJsonObject(response);
 
