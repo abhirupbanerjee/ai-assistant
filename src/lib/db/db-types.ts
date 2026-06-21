@@ -129,6 +129,7 @@ export interface DocumentsTable {
   created_at: Generated<string>;
   folder_sync_id: string | null;
   original_relative_path: string | null;
+  graph_extraction_status: Generated<'pending' | 'processing' | 'completed' | 'failed' | 'skipped'>;
 }
 
 export type Document = Selectable<DocumentsTable>;
@@ -715,7 +716,7 @@ export interface CitationTrajectoriesTable {
   was_selected: number;  // 0 or 1
   rank_before: number | null;
   rank_after: number | null;
-  source_type: 'vector' | 'user_upload' | 'web';
+  source_type: 'vector' | 'graph' | 'user_upload' | 'web';
   created_at: Generated<string>;
 }
 

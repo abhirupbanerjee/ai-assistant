@@ -530,6 +530,7 @@ function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChu
       pageNumber: chunk.pageNumber,
       chunkText: chunk.text.substring(0, CHUNK_PREVIEW_LENGTH) + (chunk.text.length > CHUNK_PREVIEW_LENGTH ? '...' : ''),
       score: chunk.score,
+      retrievalMethod: chunk.retrievalMethod,
     };
     const existing = byDocument.get(chunk.documentName);
     if (!existing || candidate.score > existing.score) {

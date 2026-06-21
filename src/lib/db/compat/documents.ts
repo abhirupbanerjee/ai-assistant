@@ -67,6 +67,7 @@ export async function getAllDocumentsWithCategories(): Promise<DocumentWithCateg
       'd.error_message',
       'd.uploaded_by',
       'd.created_at',
+      'd.graph_extraction_status',
       'c.id as cat_id',
       'c.name as cat_name',
       'c.slug as cat_slug',
@@ -91,6 +92,7 @@ export async function getAllDocumentsWithCategories(): Promise<DocumentWithCateg
         uploaded_by: (row.uploaded_by || '') as string,
         created_at: row.created_at as string,
         isGlobal: Boolean(row.is_global),
+        graph_extraction_status: (row.graph_extraction_status as 'pending' | 'processing' | 'completed' | 'failed' | 'skipped') || 'pending',
         categories: [],
       });
     }
@@ -202,6 +204,10 @@ export async function updateDocument(
 
   if (input.errorMessage !== undefined) {
     updates.error_message = input.errorMessage;
+  }
+
+  if (input.graphExtractionStatus !== undefined) {
+    updates.graph_extraction_status = input.graphExtractionStatus;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -431,5 +437,17 @@ export async function updateDocumentFolderSync(
       original_relative_path: relativePath,
     })
     .where('id', '=', id)
+    .execute();
+}
+
+/**
+ * Reset all documents' graph_extraction_status back to 'pending'.
+ * Used when clearing the graph so backfill can re-extract everything.
+ */
+export async function resetAllGraphExtractionStatuses(): Promise<void> {
+  const db = await getDb();
+  await db
+    .updateTable('documents')
+    .set({ graph_extraction_status: 'pending' })
     .execute();
 }

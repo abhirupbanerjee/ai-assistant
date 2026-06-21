@@ -203,6 +203,7 @@ function toGlobalDocument(doc: DocumentWithCategories): GlobalDocument {
     errorMessage: doc.error_message || undefined,
     isGlobal: doc.isGlobal,
     categories: doc.categories,
+    graphExtractionStatus: doc.graph_extraction_status,
   };
 }
 
@@ -335,23 +336,34 @@ async function processDocumentAsync(
     await updateDocument(docId, {
       chunkCount: chunks.length,
       status: 'ready',
+      graphExtractionStatus: 'pending',
     });
 
     // Phase 2: Graph-augmented RAG — extract entities into FalkorDB
     try {
-      const { extractEntitiesFromChunks } = await import('./graph/entity-extraction');
-      const entityChunks = chunks.map(c => ({
-        qdrantId: c.id,
-        text: c.text,
-        documentId: docIdStr,
-        pageNumber: c.metadata.pageNumber,
-        documentName: filename,
-      }));
-      const { processed, skipped, failed } = await extractEntitiesFromChunks(entityChunks);
-      console.log(`[Ingest] Graph extraction for "${filename}": ${processed} processed, ${skipped} skipped, ${failed} failed`);
+      const { isGraphHealthy } = await import('./graph/falkordb-client');
+      const graphHealthy = await isGraphHealthy();
+      if (!graphHealthy) {
+        await updateDocument(docId, { graphExtractionStatus: 'skipped' });
+        console.log(`[Ingest] Graph extraction skipped for "${filename}" — FalkorDB not available`);
+      } else {
+        await updateDocument(docId, { graphExtractionStatus: 'processing' });
+        const { extractEntitiesFromChunks } = await import('./graph/entity-extraction');
+        const entityChunks = chunks.map(c => ({
+          qdrantId: c.id,
+          text: c.text,
+          documentId: docIdStr,
+          pageNumber: c.metadata.pageNumber,
+          documentName: filename,
+        }));
+        const { processed, skipped, failed } = await extractEntitiesFromChunks(entityChunks);
+        console.log(`[Ingest] Graph extraction for "${filename}": ${processed} processed, ${skipped} skipped, ${failed} failed`);
+        await updateDocument(docId, { graphExtractionStatus: 'completed' });
+      }
     } catch (err) {
       // Graph extraction is non-blocking — document is still ingested
       console.warn(`[Ingest] Graph extraction failed for "${filename}" (non-blocking):`, err);
+      await updateDocument(docId, { graphExtractionStatus: 'failed' }).catch(() => {});
     }
 
     console.log(`[Ingest] Document "${filename}" processed: ${chunks.length} chunks`);

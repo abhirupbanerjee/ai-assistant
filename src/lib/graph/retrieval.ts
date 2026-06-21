@@ -335,6 +335,7 @@ async function expandToChunks(
             pageNumber: results.metadatas[0]?.pageNumber || 1,
             score: 0,
             source: 'global',
+            retrievalMethod: 'graph',
           });
         }
       } catch {

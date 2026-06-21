@@ -180,6 +180,7 @@ export interface Source {
   readonly pageNumber: number;
   readonly chunkText: string;
   readonly score: number;
+  readonly retrievalMethod?: 'vector' | 'graph';
 }
 
 // ============ Document Types ============
@@ -202,6 +203,7 @@ export interface GlobalDocument {
   errorMessage?: string;
   isGlobal?: boolean;
   categories?: DocumentCategory[];
+  graphExtractionStatus?: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
 }
 
 export interface DocumentChunk {
@@ -403,6 +405,7 @@ export interface RetrievedChunk {
   readonly pageNumber: number;
   readonly score: number;
   readonly source: 'global' | 'user' | 'web';
+  readonly retrievalMethod?: 'vector' | 'graph';
 }
 
 export interface RAGResponse {

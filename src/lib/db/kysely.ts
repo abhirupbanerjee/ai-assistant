@@ -726,6 +726,18 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE agent_bots ADD CONSTRAINT agent_bots_created_by_role_check CHECK (created_by_role IN ('super_admin', 'admin', 'superuser'))`.execute(database);
   console.log('[Kysely] Updated agent_bots.created_by_role CHECK constraint to include super_admin');
 
+  // Migration: Add graph_extraction_status column to documents table
+  await sql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS graph_extraction_status TEXT DEFAULT 'pending'`.execute(database);
+  // Drop and re-add CHECK constraint to include the new valid values
+  await sql`ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_graph_extraction_status_check`.execute(database);
+  await sql`ALTER TABLE documents ADD CONSTRAINT documents_graph_extraction_status_check CHECK (graph_extraction_status IN ('pending', 'processing', 'completed', 'failed', 'skipped'))`.execute(database);
+  console.log('[Kysely] Ensured documents.graph_extraction_status column exists');
+
+  // Migration: Update citation_trajectories source_type CHECK to include 'graph'
+  await sql`ALTER TABLE citation_trajectories DROP CONSTRAINT IF EXISTS citation_trajectories_source_type_check`.execute(database);
+  await sql`ALTER TABLE citation_trajectories ADD CONSTRAINT citation_trajectories_source_type_check CHECK (source_type IN ('vector', 'graph', 'user_upload', 'web'))`.execute(database);
+  console.log('[Kysely] Updated citation_trajectories.source_type CHECK to include graph');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

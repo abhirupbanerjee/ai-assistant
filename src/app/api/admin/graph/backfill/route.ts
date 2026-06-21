@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
     // Don't await — fire and forget
     (async () => {
       const { extractEntitiesFromChunks, resetExtractionCache } = await import('@/lib/graph/entity-extraction');
+      const { updateDocument } = await import('@/lib/db/compat/documents');
 
       for (const doc of readyDocs) {
         try {
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
           const docChunks = await store.getDocumentChunksByDocId(collNames.global, docIdStr);
           if (docChunks.length === 0) continue;
 
+          await updateDocument(doc.id, { graphExtractionStatus: 'processing' });
           const chunks = docChunks.map((c: any) => ({
             qdrantId: c.id,
             text: c.text,
@@ -108,8 +110,10 @@ export async function POST(request: NextRequest) {
             documentName: doc.filename,
           }));
           await extractEntitiesFromChunks(chunks);
-        } catch {
-          // Continue with next document
+          await updateDocument(doc.id, { graphExtractionStatus: 'completed' });
+        } catch (err) {
+          // Mark as failed but continue with next document
+          await updateDocument(doc.id, { graphExtractionStatus: 'failed' }).catch(() => {});
         }
       }
     })().catch(console.error);

@@ -128,7 +128,8 @@ CREATE TABLE IF NOT EXISTS documents (
   uploaded_by TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   folder_sync_id TEXT,
-  original_relative_path TEXT
+  original_relative_path TEXT,
+  graph_extraction_status TEXT DEFAULT 'pending' CHECK (graph_extraction_status IN ('pending', 'processing', 'completed', 'failed', 'skipped'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
@@ -250,7 +251,7 @@ CREATE TABLE IF NOT EXISTS citation_trajectories (
   was_selected INTEGER NOT NULL,
   rank_before INTEGER,
   rank_after INTEGER,
-  source_type TEXT DEFAULT 'vector' CHECK (source_type IN ('vector', 'user_upload', 'web')),
+  source_type TEXT DEFAULT 'vector' CHECK (source_type IN ('vector', 'graph', 'user_upload', 'web')),
   created_at TIMESTAMP DEFAULT NOW(),
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
   FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE

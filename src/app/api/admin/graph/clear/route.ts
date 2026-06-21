@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     const { getGraph } = await import('@/lib/graph/falkordb-client');
     const { resetExtractionCache } = await import('@/lib/graph/entity-extraction');
     const { clearAllExtractionFailures } = await import('@/lib/db/compat/query-logs');
+    const { resetAllGraphExtractionStatuses } = await import('@/lib/db/compat/documents');
 
     const graph = await getGraph();
 
@@ -35,9 +36,12 @@ export async function POST(request: NextRequest) {
     // Clear extraction failure records from Postgres
     await clearAllExtractionFailures();
 
+    // Reset all documents' graph_extraction_status to 'pending'
+    await resetAllGraphExtractionStatuses();
+
     return NextResponse.json({
       status: 'cleared',
-      message: 'Graph data, extraction cache, and failure records cleared successfully',
+      message: 'Graph data, extraction cache, failure records, and document statuses cleared successfully',
     });
   } catch (err) {
     return NextResponse.json<ApiError>(

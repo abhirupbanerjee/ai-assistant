@@ -359,6 +359,8 @@ export {
   getTotalStorageSize,
   // Folder Sync Operations
   updateDocumentFolderSync,
+  // Graph Extraction Status
+  resetAllGraphExtractionStatuses,
 } from './documents';
 
 // ============ Skills ============

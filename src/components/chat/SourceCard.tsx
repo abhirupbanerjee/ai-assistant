@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText } from 'lucide-react';
+import { FileText, Network } from 'lucide-react';
 import type { Source } from '@/types';
 
 interface SourceCardProps {
@@ -32,6 +32,12 @@ export default function SourceCard({ source }: SourceCardProps) {
           <span className="font-medium truncate">{source.documentName}</span>
           {source.pageNumber > 0 && (
             <span className="text-gray-500 text-xs shrink-0">Page {source.pageNumber}</span>
+          )}
+          {source.retrievalMethod === 'graph' && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full shrink-0" title="Found via graph traversal">
+              <Network size={10} />
+              Graph
+            </span>
           )}
         </div>
         <div className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${getRelevanceColor(source.score)}`}>

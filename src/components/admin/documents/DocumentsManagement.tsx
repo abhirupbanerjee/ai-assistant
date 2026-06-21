@@ -1358,17 +1358,37 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                       </td>
                       <td className="px-6 py-4 text-gray-600">{doc.chunkCount}</td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                            doc.status === 'ready'
-                              ? 'bg-green-100 text-green-700'
-                              : doc.status === 'processing'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {doc.status}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                              doc.status === 'ready'
+                                ? 'bg-green-100 text-green-700'
+                                : doc.status === 'processing'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {doc.status}
+                          </span>
+                          {doc.status === 'ready' && doc.graphExtractionStatus && (
+                            <span
+                              className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                                doc.graphExtractionStatus === 'completed'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : doc.graphExtractionStatus === 'processing'
+                                  ? 'bg-indigo-100 text-indigo-700'
+                                  : doc.graphExtractionStatus === 'failed'
+                                  ? 'bg-red-100 text-red-700'
+                                  : doc.graphExtractionStatus === 'skipped'
+                                  ? 'bg-gray-100 text-gray-500'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}
+                              title={`Graph extraction: ${doc.graphExtractionStatus}`}
+                            >
+                              G:{doc.graphExtractionStatus}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-gray-600">
                         {formatDate(doc.uploadedAt)}
