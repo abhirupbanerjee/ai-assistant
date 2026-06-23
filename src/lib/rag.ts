@@ -142,7 +142,7 @@ export async function expandQueries(originalQuery: string, enabled: boolean, llm
 /**
  * Deduplicate chunks based on document and page, keeping highest scored
  */
-function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
+export function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
   const seen = new Map<string, RetrievedChunk>();
 
   for (const chunk of chunks) {

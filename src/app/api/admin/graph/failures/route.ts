@@ -8,6 +8,34 @@ import {
 } from '@/lib/db/compat/query-logs';
 import type { ApiError } from '@/types';
 
+/**
+ * Find a single chunk across all collections where the document may live.
+ * Mirrors the search logic used by full backfill.
+ */
+async function findChunkAcrossCollections(
+  store: any,
+  collNames: { global: string; legacy: string; forCategory: (slug: string) => string },
+  documentId: string,
+  qdrantId: string,
+  isGlobal: boolean,
+  categorySlugs: string[]
+): Promise<{ id: string; text: string; metadata?: { pageNumber?: number } } | undefined> {
+  const candidateCollections = isGlobal
+    ? [collNames.global, ...categorySlugs.map(s => collNames.forCategory(s))]
+    : [collNames.legacy, ...categorySlugs.map(s => collNames.forCategory(s))];
+
+  for (const coll of candidateCollections) {
+    try {
+      const docChunks = await store.getDocumentChunksByDocId(coll, documentId);
+      const chunk = docChunks.find((c: any) => c.id === qdrantId);
+      if (chunk) return chunk;
+    } catch {
+      // Collection may not exist
+    }
+  }
+  return undefined;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser();
@@ -33,6 +61,7 @@ export async function GET(request: NextRequest) {
       offset,
     });
   } catch (err) {
+    console.error('[GraphFailures] Failed to get failures:', err);
     return NextResponse.json<ApiError>(
       { error: 'Failed to get failures' },
       { status: 500 }
@@ -73,14 +102,29 @@ export async function POST(request: NextRequest) {
           try {
             const failures = await getExtractionFailures(500, 0);
             const failure = failures.find((f: any) => f.qdrant_id === qdrantId);
-            if (!failure) continue;
+            if (!failure) {
+              console.warn(`[GraphFailures/reprocess] Failure record not found for ${qdrantId}`);
+              continue;
+            }
 
             const doc = await getDocumentWithCategories(parseInt(failure.document_id, 10));
-            if (!doc) continue;
+            if (!doc) {
+              console.warn(`[GraphFailures/reprocess] Document ${failure.document_id} not found for ${qdrantId}`);
+              continue;
+            }
 
-            const docChunks = await store.getDocumentChunksByDocId(collNames.global, failure.document_id);
-            const chunk = docChunks.find((c: any) => c.id === qdrantId);
-            if (!chunk) continue;
+            const chunk = await findChunkAcrossCollections(
+              store,
+              collNames,
+              failure.document_id,
+              qdrantId,
+              doc.isGlobal,
+              doc.categories.map(c => c.slug)
+            );
+            if (!chunk) {
+              console.warn(`[GraphFailures/reprocess] Chunk ${qdrantId} not found in any collection for document ${failure.document_id}`);
+              continue;
+            }
 
             await extractEntitiesFromChunk(
               chunk.text,
@@ -90,8 +134,9 @@ export async function POST(request: NextRequest) {
               doc.filename,
             );
             await clearExtractionFailure(qdrantId);
-          } catch {
-            // Will remain in failures for next retry
+          } catch (err) {
+            console.error(`[GraphFailures/reprocess] Reprocessing failed for ${qdrantId}:`, err);
+            // Failure record remains for later retry
           }
         }
       })().catch(console.error);
@@ -107,6 +152,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (err) {
+    console.error('[GraphFailures] Failed to process failures:', err);
     return NextResponse.json<ApiError>(
       { error: 'Failed to process failures' },
       { status: 500 }

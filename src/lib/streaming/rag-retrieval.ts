@@ -8,7 +8,7 @@
 import type { Source, StreamEvent, SkillInfo, UploadExtractionState, Message } from '@/types';
 import type { RetrievedChunk } from '@/types';
 import { createEmbeddings } from '../openai';
-import { buildContext, expandQueries } from '../rag';
+import { buildContext, expandQueries, deduplicateChunks } from '../rag';
 import { rerankChunks } from '../reranker';
 import { getRagSettings, getAcronymMappings } from '../db/compat/config';
 import { getResolvedSystemPrompt } from '../db/compat/category-prompts';
@@ -25,6 +25,13 @@ import {
   MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
 } from '../constants';
 import { detectFollowUp } from '../conversation-context';
+import {
+  graphAugmentedRetrieval,
+  shouldSkipGraphAugmentation,
+  type GraphAugmentationResult,
+} from '../graph/retrieval';
+import { getGraphSettings } from '../db/compat';
+import { insertQueryLog, insertRetrievalTrace } from '../db/compat/query-logs';
 
 /**
  * Matched skill info for compliance checking
@@ -69,7 +76,7 @@ export interface ChunkTrajectoryData {
   wasSelected: boolean;
   rankBefore: number;
   rankAfter: number | null;
-  sourceType: 'vector' | 'user_upload';
+  sourceType: 'vector' | 'graph' | 'user_upload';
 }
 
 /**
@@ -257,6 +264,79 @@ export async function performRAGRetrieval(
     userMessage
   );
 
+  // ============ Phase 2b: Graph-Augmented Retrieval ============
+  const graphSettings = await getGraphSettings();
+  const graphEnabled = graphSettings.graphAugmentationEnabled;
+  let graphResult: GraphAugmentationResult = {
+    graphChunks: [],
+    seedEntityIds: [],
+    pprTopEntities: [],
+    used: false,
+  };
+  let mergedGlobalChunks = globalChunks;
+
+  if (graphEnabled && !shouldSkipGraphAugmentation(globalChunks, graphSettings.skipThreshold)) {
+    const graphStart = Date.now();
+    try {
+      send?.({ type: 'operation_log', category: 'rag', message: 'Expanding via knowledge graph' });
+      graphResult = await graphAugmentedRetrieval(globalChunks, {
+        seedChunkCount: graphSettings.seedChunkCount,
+        pprTopK: graphSettings.pprTopK,
+      });
+      if (graphResult.used && graphResult.graphChunks.length > 0) {
+        mergedGlobalChunks = deduplicateChunks([...globalChunks, ...graphResult.graphChunks]);
+        logger.debug('Graph augmentation added chunks', {
+          originalCount: globalChunks.length,
+          graphChunkCount: graphResult.graphChunks.length,
+          mergedCount: mergedGlobalChunks.length,
+          seedEntities: graphResult.seedEntityIds.length,
+          pprTopEntities: graphResult.pprTopEntities.length,
+        });
+      }
+    } catch (err) {
+      logger.warn('Graph augmentation failed, falling back to pure RAG', { error: String(err) });
+    }
+    const graphLatency = Date.now() - graphStart;
+
+    // Log to query_logs + retrieval_traces (Phase 3 foundation)
+    try {
+      const queryLogId = await insertQueryLog({
+        query: userMessage,
+        category_slugs: categorySlugs?.join(',') || null,
+        graph_enabled: true,
+        graph_skipped: !graphResult.used,
+        skip_reason: graphResult.used ? null : 'no_seed_entities_or_ppr_empty',
+        latency_ms: graphLatency,
+      });
+      if (graphResult.used) {
+        await insertRetrievalTrace({
+          query_log_id: queryLogId,
+          seed_entity_ids: JSON.stringify(graphResult.seedEntityIds),
+          ppr_top_entities: JSON.stringify(graphResult.pprTopEntities),
+          traversal_paths: null,
+          graph_chunk_ids: JSON.stringify(graphResult.graphChunks.map(c => c.id)),
+          final_chunk_ids: null,
+          rerank_scores: null,
+        });
+      }
+    } catch (logErr) {
+      // Logging is non-blocking
+      logger.warn('Failed to write query log', { error: String(logErr) });
+    }
+  } else if (graphEnabled) {
+    // Graph was enabled but skipped (high-confidence Qdrant result)
+    try {
+      await insertQueryLog({
+        query: userMessage,
+        category_slugs: categorySlugs?.join(',') || null,
+        graph_enabled: true,
+        graph_skipped: true,
+        skip_reason: 'high_confidence_qdrant',
+        latency_ms: 0,
+      });
+    } catch { /* non-blocking */ }
+  }
+
   // Detect follow-up and extract previous sources for boosting
   const { isFollowUp } = detectFollowUp(userMessage);
   let boostDocuments: string[] = [];
@@ -286,7 +366,7 @@ export async function performRAGRetrieval(
 
   // Rerank global and user chunks concurrently
   const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
-    rerankChunks(userMessage, globalChunks, { boostDocuments }),
+    rerankChunks(userMessage, mergedGlobalChunks, { boostDocuments }),
     rerankChunks(userMessage, userChunks, {
       minScoreOverride: uploadDirected ? 0 : USER_UPLOAD_MIN_RERANK_SCORE,
       boostDocuments,
@@ -467,11 +547,12 @@ export async function performRAGRetrieval(
   // ============ Build Citation Trajectory Data ============
   // Capture pre-rerank and post-rerank scores for each chunk
   // to enable the Citation Trajectory visualization.
-  const allPreRerank = [...globalChunks, ...userChunks];
+  const allPreRerank = [...mergedGlobalChunks, ...userChunks];
   const allPostRerank = [...rerankedGlobalChunks, ...rerankedUserChunks];
 
-  // Track which chunk IDs belong to user uploads so we can label them correctly
+  // Track which chunk IDs belong to user uploads or graph expansion so we can label them correctly
   const userChunkIds = new Set(userChunks.map(c => c.id));
+  const graphChunkIds = new Set(graphResult.graphChunks.map(c => c.id));
 
   // Build a map of post-rerank chunks by their ID for quick lookup
   const postRerankMap = new Map<string, { score: number; index: number }>();
@@ -492,7 +573,11 @@ export async function performRAGRetrieval(
         wasSelected: postRerank !== undefined,
         rankBefore: index + 1,
         rankAfter: postRerank !== undefined ? postRerank.index + 1 : null,
-        sourceType: userChunkIds.has(chunk.id) ? 'user_upload' as const : 'vector' as const,
+        sourceType: userChunkIds.has(chunk.id)
+          ? 'user_upload' as const
+          : graphChunkIds.has(chunk.id)
+            ? 'graph' as const
+            : 'vector' as const,
       };
     })
     // Sort by rank after reranking (selected chunks first, then by rerank position)

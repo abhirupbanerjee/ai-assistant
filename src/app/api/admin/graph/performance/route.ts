@@ -80,14 +80,17 @@ export async function GET(request: NextRequest) {
       .orderBy(sql`DATE(created_at)`, 'asc')
       .execute() as any[];
 
-    const trend = trendResult.map(r => ({
-      date: r.date,
-      hitRate: Number(r.total) > 0 ? Number(r.hits) / Number(r.total) : 0,
-      skipRate: Number(r.total) > 0 ? Number(r.skips) / Number(r.total) : 0,
-      avgLatencyMs: Math.round(Number(r.avgLatency ?? 0)),
-      total: Number(r.total),
-      hits: Number(r.hits),
-    }));
+    const trend = trendResult.map(r => {
+      const graphEnabledCount = Number(r.hits) + Number(r.skips);
+      return {
+        date: r.date,
+        hitRate: graphEnabledCount > 0 ? Number(r.hits) / graphEnabledCount : 0,
+        skipRate: graphEnabledCount > 0 ? Number(r.skips) / graphEnabledCount : 0,
+        avgLatencyMs: Math.round(Number(r.avgLatency ?? 0)),
+        total: Number(r.total),
+        hits: Number(r.hits),
+      };
+    });
 
     // Top expanded entities from retrieval_traces (seed_entity_ids)
     const topEntitiesResult = await db
