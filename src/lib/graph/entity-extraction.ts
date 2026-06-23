@@ -128,16 +128,15 @@ async function buildExtractionModelChain(
     console.warn('[entity-extraction] Could not read system default model:', err);
   }
 
-  // Level 3+: cheapest enabled model from each different provider
-  const alternatives = activeModels
+  // Level 3+: cheapest enabled model from each *different* provider.
+  // We iterate one-by-one so seenProviders is updated after each add.
+  const alternativeCandidates = activeModels
     .filter(m => m.enabled && !seenModels.has(m.id))
-    .filter(m => {
-      const providerId = inferProviderId(m.id, modelMap);
-      return providerId && !seenProviders.has(providerId);
-    })
     .sort((a, b) => modelEstimatedCost(a) - modelEstimatedCost(b));
 
-  for (const m of alternatives) {
+  for (const m of alternativeCandidates) {
+    const providerId = inferProviderId(m.id, modelMap);
+    if (providerId && seenProviders.has(providerId)) continue;
     addModel(m.id, 'alternative provider');
   }
 
