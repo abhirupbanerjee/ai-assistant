@@ -119,6 +119,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [docCategoryFilter, setDocCategoryFilter] = useState<number | 'all' | 'global' | 'uncategorized'>('all');
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'ready' | 'error' | 'processing'>('all');
+  const [docGraphStatusFilter, setDocGraphStatusFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed' | 'skipped'>('all');
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
   const [docSortKey, setDocSortKey] = useState<keyof GlobalDocument | null>(null);
   const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
@@ -384,7 +385,9 @@ export default function DocumentsManagement({ documentsSection: initialSection }
 
   // Poll for processing documents (refresh every 5s while any doc is 'processing')
   useEffect(() => {
-    const hasProcessing = documents.some(d => d.status === 'processing');
+    const hasProcessing = documents.some(
+      d => d.status === 'processing' || d.graphExtractionStatus === 'processing'
+    );
     if (!hasProcessing) return;
 
     const interval = setInterval(async () => {
@@ -943,7 +946,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   // Clear selection when filters change
   useEffect(() => {
     setSelectedDocIds(new Set());
-  }, [docCategoryFilter, docStatusFilter, docSearchTerm]);
+  }, [docCategoryFilter, docStatusFilter, docGraphStatusFilter, docSearchTerm]);
 
   // Filtered and sorted documents
   const filteredAndSortedDocs = useMemo(() => {
@@ -963,6 +966,11 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     // Apply status filter
     if (docStatusFilter !== 'all') {
       result = result.filter(doc => doc.status === docStatusFilter);
+    }
+
+    // Apply graph status filter
+    if (docGraphStatusFilter !== 'all') {
+      result = result.filter(doc => doc.graphExtractionStatus === docGraphStatusFilter);
     }
 
     // Apply fuzzy search
@@ -1047,7 +1055,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     }
 
     return result;
-  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docStatusFilter, docSortOption]);
+  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docStatusFilter, docGraphStatusFilter, docSortOption]);
 
   // Sortable header component
   const SortableDocHeader = ({ columnKey, label, className = '' }: { columnKey: keyof GlobalDocument; label: string; className?: string }) => {
@@ -1226,6 +1234,22 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   </select>
                 </div>
 
+                {/* Graph Status Filter */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={docGraphStatusFilter}
+                    onChange={(e) => setDocGraphStatusFilter(e.target.value as typeof docGraphStatusFilter)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="all">All Graph Status</option>
+                    <option value="pending">Pending ({documents.filter(d => d.graphExtractionStatus === 'pending').length})</option>
+                    <option value="processing">Processing ({documents.filter(d => d.graphExtractionStatus === 'processing').length})</option>
+                    <option value="completed">Completed ({documents.filter(d => d.graphExtractionStatus === 'completed').length})</option>
+                    <option value="failed">Failed ({documents.filter(d => d.graphExtractionStatus === 'failed').length})</option>
+                    <option value="skipped">Skipped ({documents.filter(d => d.graphExtractionStatus === 'skipped').length})</option>
+                  </select>
+                </div>
+
                 {/* Sort Dropdown */}
                 <div className="flex items-center gap-2">
                   <SortAsc size={16} className="text-gray-400" />
@@ -1244,11 +1268,12 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 </div>
 
                 {/* Clear filters button */}
-                {(docCategoryFilter !== 'all' || docStatusFilter !== 'all' || docSearchTerm) && (
+                {(docCategoryFilter !== 'all' || docStatusFilter !== 'all' || docGraphStatusFilter !== 'all' || docSearchTerm) && (
                   <button
                     onClick={() => {
                       setDocCategoryFilter('all');
                       setDocStatusFilter('all');
+                      setDocGraphStatusFilter('all');
                       setDocSearchTerm('');
                     }}
                     className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1278,6 +1303,8 @@ export default function DocumentsManagement({ documentsSection: initialSection }
               <button
                 onClick={() => {
                   setDocCategoryFilter('all');
+                  setDocStatusFilter('all');
+                  setDocGraphStatusFilter('all');
                   setDocSearchTerm('');
                 }}
                 className="text-blue-600 hover:text-blue-700 text-sm font-medium"
