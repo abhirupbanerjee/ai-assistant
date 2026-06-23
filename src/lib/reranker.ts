@@ -143,26 +143,58 @@ async function rerankWithFireworks(
     throw new Error(`Fireworks rerank API error: ${response.status} ${response.statusText} ${errorText}`);
   }
 
-  const data = await response.json() as { results?: { index: number; relevance_score: number }[] };
+  const data = await response.json() as Record<string, unknown>;
 
-  // Guard against unexpected API response format
-  if (!data.results || !Array.isArray(data.results)) {
-    throw new Error(`Fireworks rerank API returned invalid response format: missing 'results' array`);
+  // Fireworks' rerank response has historically used `results`. Some versions/accounts
+  // return an OpenAI-compatible `data` list. Normalize both shapes and log surprises.
+  let rawResults: unknown[] | undefined;
+  if (Array.isArray(data.results)) {
+    rawResults = data.results;
+  } else if (Array.isArray(data.data)) {
+    rawResults = data.data;
+  }
+
+  if (!rawResults) {
+    const bodyPreview = JSON.stringify(data).slice(0, 500);
+    console.error('[Reranker] Fireworks unexpected response body:', bodyPreview);
+    throw new Error(`Fireworks rerank API returned invalid response format: missing 'results' or 'data' array`);
+  }
+
+  const results: { index: number; relevance_score: number }[] = rawResults
+    .map((item: unknown) => {
+      if (typeof item !== 'object' || item === null) return null;
+      const r = item as Record<string, unknown>;
+      const index = typeof r.index === 'number' ? r.index : undefined;
+      const score =
+        typeof r.relevance_score === 'number'
+          ? r.relevance_score
+          : typeof r.relevanceScore === 'number'
+            ? r.relevanceScore
+            : undefined;
+      if (index === undefined || score === undefined) return null;
+      return { index, relevance_score: score };
+    })
+    .filter((r): r is { index: number; relevance_score: number } => r !== null);
+
+  if (results.length === 0) {
+    const bodyPreview = JSON.stringify(data).slice(0, 500);
+    console.error('[Reranker] Fireworks response contained no usable results:', bodyPreview);
+    throw new Error(`Fireworks rerank API returned empty or malformed results array`);
   }
 
   // CRITICAL FIX: Validate that all chunks received scores
   // Partial results cause score misalignment - missing chunks get wrong scores mapped to them
-  if (data.results.length !== chunks.length) {
+  if (results.length !== chunks.length) {
     console.warn(
-      `[Reranker] Fireworks returned ${data.results.length} results for ${chunks.length} chunks. ` +
+      `[Reranker] Fireworks returned ${results.length} results for ${chunks.length} chunks. ` +
       `Padding missing chunks with original scores.`
     );
     // Create a map of indices that have results
-    const resultIndices = new Set(data.results.map(r => r.index));
+    const resultIndices = new Set(results.map(r => r.index));
     // Add missing chunks with their original scores
     for (let i = 0; i < chunks.length; i++) {
       if (!resultIndices.has(i)) {
-        data.results.push({
+        results.push({
           index: i,
           relevance_score: chunks[i].score, // Use original score
         });
@@ -170,7 +202,7 @@ async function rerankWithFireworks(
     }
   }
 
-  const rerankedChunks: RetrievedChunk[] = data.results
+  const rerankedChunks: RetrievedChunk[] = results
     .filter((result) => result.relevance_score >= minScore)
     .map((result) => ({
       ...chunks[result.index],

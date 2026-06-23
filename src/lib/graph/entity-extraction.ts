@@ -12,8 +12,9 @@
 
 import { createInternalCompletion } from '@/lib/llm-client';
 import { getGraph, isGraphHealthy, retryGraphQuery } from './falkordb-client';
-import { getGraphSettings } from '@/lib/db/compat';
+import { getGraphSettings, getActiveModels, getLlmSettings } from '@/lib/db/compat';
 import { logExtractionFailure } from '@/lib/db/compat/query-logs';
+import type { EnabledModel } from '@/lib/db/compat';
 
 // ============ Types ============
 
@@ -52,6 +53,144 @@ const RESOLUTION_TOP_K = 3;
 
 // Track processed qdrantIds in memory to avoid re-extraction within a session
 const processedChunks = new Set<string>();
+
+// ============ Rate-Limit Resilience Helpers ============
+
+const RATE_LIMIT_RETRY_ATTEMPTS = 3;
+const RATE_LIMIT_BASE_DELAY_MS = 1000;
+
+function isRateLimitError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /429|rate limit|rate_limit|too many requests|throttled/i.test(msg);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function inferProviderId(modelId: string, modelMap: Map<string, EnabledModel>): string | null {
+  const model = modelMap.get(modelId);
+  if (model?.providerId) return model.providerId;
+
+  // Prefix heuristics for models not present in the registry
+  if (modelId.startsWith('fireworks/') || modelId.startsWith('accounts/fireworks/')) return 'fireworks';
+  if (modelId.startsWith('ollama-') || modelId.startsWith('ollama/')) return 'ollama';
+  if (modelId.startsWith('claude-') || modelId.startsWith('anthropic/')) return 'anthropic';
+  if (modelId.startsWith('deepseek-') || modelId.startsWith('deepseek/')) return 'deepseek';
+  if (modelId.startsWith('moonshot/')) return 'moonshot';
+  if (modelId.startsWith('gemini-')) return 'gemini';
+  if (modelId.startsWith('mistral-')) return 'mistral';
+  if (modelId.startsWith('gpt-') || /^o[0-9]/.test(modelId)) return 'openai';
+  return null;
+}
+
+function modelEstimatedCost(m: EnabledModel): number {
+  return (m.inputCostPer1M ?? Number.POSITIVE_INFINITY) + (m.outputCostPer1M ?? 0);
+}
+
+/**
+ * Build a provider-diverse fallback chain for entity extraction.
+ *
+ * Order:
+ * 1. Admin-configured extraction model
+ * 2. System default chat model
+ * 3. Cheapest enabled model from each *different* provider
+ * 4. Any remaining enabled models by cost
+ */
+async function buildExtractionModelChain(
+  configuredModel: string | undefined,
+): Promise<(string | undefined)[]> {
+  const chain: (string | undefined)[] = [];
+  const seenProviders = new Set<string>();
+  const seenModels = new Set<string>();
+
+  const activeModels = await getActiveModels();
+  const modelMap = new Map(activeModels.map(m => [m.id, m]));
+
+  const addModel = (modelId: string | undefined, label: string) => {
+    if (!modelId) return;
+    if (seenModels.has(modelId)) return;
+    seenModels.add(modelId);
+    const providerId = inferProviderId(modelId, modelMap);
+    if (providerId) seenProviders.add(providerId);
+    chain.push(modelId);
+    console.log(`[entity-extraction] Fallback chain #${chain.length}: ${label} (${modelId}${providerId ? ` / ${providerId}` : ''})`);
+  };
+
+  // Level 1: configured extraction model
+  addModel(configuredModel, 'configured');
+
+  // Level 2: system default chat model
+  try {
+    const llmSettings = await getLlmSettings();
+    addModel(llmSettings.model, 'system default');
+  } catch (err) {
+    console.warn('[entity-extraction] Could not read system default model:', err);
+  }
+
+  // Level 3+: cheapest enabled model from each different provider
+  const alternatives = activeModels
+    .filter(m => m.enabled && !seenModels.has(m.id))
+    .filter(m => {
+      const providerId = inferProviderId(m.id, modelMap);
+      return providerId && !seenProviders.has(providerId);
+    })
+    .sort((a, b) => modelEstimatedCost(a) - modelEstimatedCost(b));
+
+  for (const m of alternatives) {
+    addModel(m.id, 'alternative provider');
+  }
+
+  // Final backstop: any remaining enabled models by cost
+  const remaining = activeModels
+    .filter(m => m.enabled && !seenModels.has(m.id))
+    .sort((a, b) => modelEstimatedCost(a) - modelEstimatedCost(b));
+
+  for (const m of remaining) {
+    addModel(m.id, 'cost fallback');
+  }
+
+  // Last resort: let createInternalCompletion use the system default with no override
+  if (chain.length === 0) {
+    chain.push(undefined);
+  }
+
+  return chain;
+}
+
+/**
+ * Try a single model with exponential backoff + jitter on rate-limit (429) errors.
+ * Returns null on non-rate-limit errors or when all retries are exhausted.
+ */
+async function tryModelWithBackoff(
+  model: string | undefined,
+  messages: { role: 'system' | 'user'; content: string }[],
+  maxTokens: number,
+  qdrantId: string,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < RATE_LIMIT_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await createInternalCompletion({
+        ...(model ? { model } : {}),
+        messages,
+        temperature: 0.1,
+        maxTokens,
+      });
+    } catch (err) {
+      const label = model || '(system default)';
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isRateLimitError(err) && attempt < RATE_LIMIT_RETRY_ATTEMPTS - 1) {
+        const delay = RATE_LIMIT_BASE_DELAY_MS * 2 ** attempt + Math.random() * 1000;
+        console.warn(`[entity-extraction] ${label} rate-limited for chunk ${qdrantId} (attempt ${attempt + 1}/${RATE_LIMIT_RETRY_ATTEMPTS}), retrying in ${Math.round(delay)}ms: ${msg}`);
+        await sleep(delay);
+        continue;
+      }
+      console.warn(`[entity-extraction] Model ${label} failed for chunk ${qdrantId}, trying next fallback: ${msg}`);
+      return null;
+    }
+  }
+  return null;
+}
 
 // ============ Extraction Prompt ============
 
@@ -258,6 +397,7 @@ export async function extractEntitiesFromChunk(
   documentId: string,
   pageNumber: number,
   documentName: string,
+  prebuiltModelChain?: (string | undefined)[],
 ): Promise<void> {
   // Idempotency check
   if (processedChunks.has(qdrantId)) return;
@@ -284,26 +424,13 @@ export async function extractEntitiesFromChunk(
       { role: 'user' as const, content: prompt },
     ];
 
-    // 3-level model fallback: configured model → system default → cheapest route
+    // Provider-diverse model fallback with rate-limit backoff
     let response: string | null = null;
-    const modelChain: (string | undefined)[] = [
-      extractionModel || undefined,   // Level 1: admin-configured extraction model
-      undefined,                       // Level 2: system default (no model override)
-    ];
+    const modelChain = prebuiltModelChain ?? await buildExtractionModelChain(extractionModel);
 
     for (const model of modelChain) {
-      try {
-        response = await createInternalCompletion({
-          ...(model ? { model } : {}),
-          messages,
-          temperature: 0.1,
-          maxTokens,
-        });
-        break; // Success — stop trying fallbacks
-      } catch (err) {
-        const label = model || '(system default)';
-        console.warn(`[entity-extraction] Model ${label} failed for chunk ${qdrantId}, trying next fallback:`, err instanceof Error ? err.message : err);
-      }
+      response = await tryModelWithBackoff(model, messages, maxTokens, qdrantId);
+      if (response !== null) break;
     }
 
     if (response === null) {
@@ -383,6 +510,9 @@ export async function extractEntitiesFromChunks(
   const graphSettings = await getGraphSettings();
   const concurrency = graphSettings.concurrency || DEFAULT_MAX_CONCURRENT_CALLS;
 
+  // Build the provider-diverse fallback chain once per batch to avoid repeated DB calls
+  const modelChain = await buildExtractionModelChain(graphSettings.extractionModel || undefined);
+
   for (let i = 0; i < pending.length; i += concurrency) {
     const batch = pending.slice(i, i + concurrency);
     const results = await Promise.allSettled(
@@ -393,6 +523,7 @@ export async function extractEntitiesFromChunks(
           chunk.documentId,
           chunk.pageNumber,
           chunk.documentName,
+          modelChain,
         )
       )
     );

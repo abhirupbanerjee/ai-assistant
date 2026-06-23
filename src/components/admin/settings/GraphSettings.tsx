@@ -523,10 +523,16 @@ export default function GraphSettings() {
             {status.pendingChunks.toLocaleString()} chunks pending extraction — run Backfill All to process them
           </div>
         )}
-        {status && status.pendingChunks === 0 && status.graphExists && !backfilling && (
+        {status && status.pendingChunks === 0 && failureTotal === 0 && status.graphExists && !backfilling && (
           <div className="mb-3 p-3 bg-green-50 text-green-700 text-sm rounded-lg flex items-center gap-2">
             <CheckCircle size={16} />
             All chunks extracted — no backfill needed
+          </div>
+        )}
+        {status && status.pendingChunks === 0 && failureTotal > 0 && status.graphExists && !backfilling && (
+          <div className="mb-3 p-3 bg-amber-50 text-amber-800 text-sm rounded-lg flex items-center gap-2">
+            <AlertCircle size={16} />
+            {failureTotal.toLocaleString()} chunk extraction(s) failed — reprocess failed chunks below
           </div>
         )}
         <div className="flex flex-wrap gap-3">
