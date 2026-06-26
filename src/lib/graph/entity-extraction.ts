@@ -45,7 +45,7 @@ export interface ResolvedEntity {
 
 // ============ Constants ============
 
-const DEFAULT_MAX_CONCURRENT_CALLS = 5;
+const DEFAULT_MAX_CONCURRENT_CALLS = 4;
 const DEFAULT_MAX_TOKENS = 4096;
 const CHUNKS_PER_CALL = 2; // Conservative: 1-3 chunks per LLM call
 const RESOLUTION_SIMILARITY_THRESHOLD = 0.92;

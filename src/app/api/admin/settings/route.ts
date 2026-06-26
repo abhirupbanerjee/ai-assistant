@@ -89,7 +89,7 @@ export async function GET() {
       );
     }
 
-    // Get all settings from SQLite
+    // Get all settings from PostgreSQL via Kysely
     const ragSettings = await getRagSettings();
     const llmSettings = await getLlmSettings();
     const acronymMappings = await getAcronymMappings();

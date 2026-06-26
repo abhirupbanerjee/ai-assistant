@@ -72,7 +72,7 @@ export default function GraphSettings() {
     resolutionThreshold: 0.92,
     extractionModel: '',
     maxTokens: 1024,
-    concurrency: 5,
+    concurrency: 4,
   });
   const [status, setStatus] = useState<GraphStatus | null>(null);
   const [failures, setFailures] = useState<ExtractionFailure[]>([]);
@@ -107,7 +107,7 @@ export default function GraphSettings() {
             resolutionThreshold: data.graph.resolutionThreshold ?? 0.92,
             extractionModel: data.graph.extractionModel ?? '',
             maxTokens: data.graph.maxTokens ?? 1024,
-            concurrency: data.graph.concurrency ?? 5,
+            concurrency: data.graph.concurrency ?? 4,
           });
         }
       }

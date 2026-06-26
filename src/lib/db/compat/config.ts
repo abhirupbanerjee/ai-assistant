@@ -1001,7 +1001,7 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   resolutionThreshold: 0.92,
   extractionModel: '',
   maxTokens: 1024,
-  concurrency: 5,
+  concurrency: 4,
 };
 
 export async function getGraphSettings(): Promise<GraphSettings> {
