@@ -630,7 +630,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   }, [onScrollHide]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
     setIsScrolledUp(false);
   }, []);
 
