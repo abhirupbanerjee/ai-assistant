@@ -198,7 +198,7 @@ async function createSummaryAndArchive(
 
     const summaryId = result.id;
 
-    // Archive messages
+    // Archive messages (ON CONFLICT DO NOTHING to handle concurrent summarization)
     for (const msg of messagesToArchive) {
       await trx
         .insertInto('archived_messages')
@@ -211,6 +211,7 @@ async function createSummaryAndArchive(
           created_at: msg.created_at,
           summary_id: summaryId,
         })
+        .onConflict((oc) => oc.column('id').doNothing())
         .execute();
     }
 

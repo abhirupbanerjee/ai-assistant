@@ -65,6 +65,15 @@ RUN npx playwright install chromium --with-deps && \
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 --gid nodejs nextjs
 
+# Move Playwright browsers to a shared location accessible by the nextjs user at runtime.
+# Playwright was installed as root above; the runtime user (nextjs) has a different $HOME.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN mkdir -p /opt/playwright-browsers && \
+    cp -r /root/.cache/ms-playwright/* /opt/playwright-browsers/ && \
+    chown -R nextjs:nodejs /opt/playwright-browsers && \
+    echo "=== Playwright browsers copied to shared location ===" && \
+    ls -la /opt/playwright-browsers/
+
 # Copy built application
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./

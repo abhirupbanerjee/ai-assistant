@@ -63,13 +63,21 @@ async function rewriteQueryWithLLM(query: string): Promise<string[]> {
       }
     }
 
-    const prompt = `Generate 3-5 alternative phrasings for the search query below.
-Return ONLY a JSON array of strings. No markdown, no preamble, no explanation.
-Query: "${query}"`;
+    const prompt = `Generate 3-5 alternative search queries for: "${query}"
+
+CRITICAL: Your ENTIRE response must be a single valid JSON array. Nothing else.
+
+Example correct response:
+["alternative query one", "alternative query two", "alternative query three"]
+
+Rules:
+- Start with [ and end with ]
+- Each query in double quotes, separated by commas
+- No explanation, no markdown, no code fences`;
 
     const response = await createInternalCompletion({
       messages: [
-        { role: 'system', content: 'You are a helpful assistant that generates search query variations. Always return a valid JSON array of strings — start your reply with [ and end with ]. Do not include any other text.' },
+        { role: 'system', content: 'You generate search query variations. Output ONLY a JSON array of strings. Start with [ and end with ]. No other text.' },
         { role: 'user', content: prompt },
         { role: 'assistant', content: '[' },
       ],
@@ -77,11 +85,26 @@ Query: "${query}"`;
       temperature: 0.3,
     });
 
-    // Extract JSON array from response. Use greedy match from first '[' to last ']'
-    // so we capture nested/multiline arrays even when the model wraps them in prose.
-    const first = response.indexOf('[');
-    const last = response.lastIndexOf(']');
-    const jsonStr = first !== -1 && last > first ? response.slice(first, last + 1) : response;
+    // Extract and repair JSON array from response.
+    // Use greedy match from first '[' to last ']'.
+    let jsonStr = response.trim();
+    // Strip markdown code fences if present
+    jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const first = jsonStr.indexOf('[');
+    const last = jsonStr.lastIndexOf(']');
+    jsonStr = first !== -1 && last > first ? jsonStr.slice(first, last + 1) : jsonStr;
+
+    // Repair truncated JSON: if opening [ exists but no closing ], try to close at last complete string
+    if (jsonStr.startsWith('[') && !jsonStr.endsWith(']')) {
+      const lastComma = jsonStr.lastIndexOf(',');
+      const lastQuote = jsonStr.lastIndexOf('"');
+      if (lastQuote > lastComma && lastQuote > 0) {
+        jsonStr = jsonStr.slice(0, lastQuote + 1) + ']';
+      } else {
+        jsonStr = jsonStr + ']';
+      }
+    }
+
     const variations = JSON.parse(jsonStr) as string[];
 
     if (!Array.isArray(variations) || !variations.every(q => typeof q === 'string')) {

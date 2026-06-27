@@ -784,6 +784,11 @@ export async function updateDocumentCategories(
         console.warn(`[Ingest] No existing chunks found in vector store for doc ${docId}, falling back to full re-embed`);
         const globalDocsDir = getGlobalDocsDir();
         const filePath = path.join(globalDocsDir, doc.filepath);
+        if (!await fileExists(filePath)) {
+          console.warn(`[Ingest] Skipping re-embed for doc ${docId}: file missing at ${filePath}`);
+          await setDocumentCategories(numericId, categoryIds);
+          return;
+        }
         const buffer = await readFileBuffer(filePath);
         const mimeType = getMimeTypeFromFilename(doc.filename);
         const { text, pages } = await extractText(buffer, mimeType, doc.filename);
@@ -872,6 +877,11 @@ export async function toggleDocumentGlobal(
       console.warn(`[Ingest] No existing chunks found in vector store for doc ${docId}, falling back to full re-embed`);
       const globalDocsDir = getGlobalDocsDir();
       const filePath = path.join(globalDocsDir, doc.filepath);
+      if (!await fileExists(filePath)) {
+        console.warn(`[Ingest] Skipping re-embed for doc ${docId}: file missing at ${filePath}`);
+        await setDocumentGlobal(numericId, isGlobal);
+        return;
+      }
       const buffer = await readFileBuffer(filePath);
       const mimeType = getMimeTypeFromFilename(doc.filename);
       const { text, pages } = await extractText(buffer, mimeType, doc.filename);

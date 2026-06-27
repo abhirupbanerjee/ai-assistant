@@ -46,8 +46,8 @@ export interface ResolvedEntity {
 // ============ Constants ============
 
 const DEFAULT_MAX_CONCURRENT_CALLS = 4;
-const DEFAULT_MAX_TOKENS = 4096;
-const CHUNKS_PER_CALL = 2; // Conservative: 1-3 chunks per LLM call
+const DEFAULT_MAX_TOKENS = 8192; // Increased from 4096 to avoid JSON truncation on dense policy docs
+const CHUNKS_PER_CALL = 1; // Single chunk per call to avoid maxTokens truncation with dense entity lists
 const RESOLUTION_SIMILARITY_THRESHOLD = 0.92;
 const RESOLUTION_TOP_K = 3;
 
@@ -205,7 +205,11 @@ IMPORTANT RULES:
 - DO NOT extract page headers, footers, page numbers, or watermark text
 - DO NOT extract generic terms like "document", "section", "chapter", "page", "attachment"
 - Focus on REAL-WORLD entities: people, organizations, policies, regulations, locations, concepts, roles, departments, legal instruments
-- If a chunk contains many entities, return the 30 most significant/relevant entities and up to 20 most relevant relations. Stay within these limits to ensure valid JSON output.
+For each chunk, identify:=======
+- Return the 30 most significant entities and up to 20 most relevant relations. Stay within these limits to ensure valid, complete JSON output.
+- If your response would exceed the output limit, prioritize the most important entities and omit less significant ones.
+
+For each chunk, identify:>>>>>>> REPLACE
 
 For each chunk, identify:
 - Entities: named people, organizations, policies, regulations, dates, locations, concepts, roles, departments

@@ -186,6 +186,12 @@ const THINKING_CAPABLE_PATTERNS = [
   /^accounts\/fireworks\/models\/minimax-m3/,
 ];
 
+// Models known to be deprecated or unavailable — warns on discovery
+const DEPRECATED_MODELS = new Set([
+  'gpt-4.1-mini',
+  'gpt-4.1-nano',
+]);
+
 // Known context window sizes
 const CONTEXT_WINDOWS: Record<string, number> = {
   // OpenAI - GPT-5 family (assuming similar to GPT-4.1)
@@ -1018,6 +1024,11 @@ export async function discoverAllModels(): Promise<{
       results[provider] = result;
       if (result.success) {
         totalModels += result.models.length;
+        // Warn about deprecated models so admins can remove them from the registry
+        const deprecatedFound = result.models.filter(m => DEPRECATED_MODELS.has(m.id));
+        if (deprecatedFound.length > 0) {
+          console.warn(`[ModelDiscovery] Deprecated models found from ${provider}: ${deprecatedFound.map(m => m.id).join(', ')}. Consider removing these from enabled models.`);
+        }
       }
     }
   }

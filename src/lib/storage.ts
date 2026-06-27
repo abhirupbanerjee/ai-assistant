@@ -99,7 +99,14 @@ export async function getFileSize(filePath: string): Promise<number> {
 }
 
 export async function readFileBuffer(filePath: string): Promise<Buffer> {
-  return fs.readFile(filePath);
+  try {
+    return await fs.readFile(filePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`File not found: ${filePath}. The document record exists in the database but the physical file is missing from disk.`);
+    }
+    throw err;
+  }
 }
 
 export async function writeFileBuffer(filePath: string, buffer: Buffer): Promise<void> {
