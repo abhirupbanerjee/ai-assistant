@@ -318,28 +318,39 @@ async function expandToChunks(
     const collNames = (await import('@/lib/vector-store')).getCollectionNames();
     const zeroEmbedding = new Array(3072).fill(0);
 
+    // Determine which collections to search: global + all category collections
+    const allCollections = await store.listCollections();
+    const searchCollections = allCollections.filter(
+      name => collNames.isCategory(name) || name === collNames.global
+    );
+
+    // Fetch chunk text from Qdrant across all relevant collections
+    // Use originalId filter (Qdrant point id is a UUID, original string id is in payload.originalId)
     for (const chunkId of idList) {
-      try {
-        const results = await store.query(
-          collNames.global,
-          zeroEmbedding,
-          1,
-          { id: chunkId },
-          -1, // No score threshold for ID lookup
-        );
-        if (results.documents.length > 0) {
-          chunks.push({
-            id: results.ids[0],
-            text: results.documents[0],
-            documentName: results.metadatas[0]?.documentName || 'Unknown',
-            pageNumber: results.metadatas[0]?.pageNumber || 1,
-            score: 0,
-            source: 'global',
-            retrievalMethod: 'graph',
-          });
+      for (const collectionName of searchCollections) {
+        try {
+          const results = await store.query(
+            collectionName,
+            zeroEmbedding,
+            1,
+            { originalId: chunkId },
+            -1, // No score threshold for ID lookup
+          );
+          if (results.documents.length > 0) {
+            chunks.push({
+              id: results.ids[0],
+              text: results.documents[0],
+              documentName: results.metadatas[0]?.documentName || 'Unknown',
+              pageNumber: results.metadatas[0]?.pageNumber || 1,
+              score: 0,
+              source: 'global',
+              retrievalMethod: 'graph',
+            });
+            break; // Found the chunk, stop searching collections
+          }
+        } catch {
+          // Chunk may have been deleted or collection doesn't exist
         }
-      } catch {
-        // Chunk may have been deleted
       }
     }
   } catch (err) {

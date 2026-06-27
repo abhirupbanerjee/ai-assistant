@@ -767,9 +767,17 @@ export async function updateDocumentCategories(
       await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
     }
 
-    // Re-add to new categories by reusing existing embeddings from the global collection
+    // Re-add to new categories by reusing existing embeddings
+    // Determine source collection: global if doc is global, otherwise first category collection
     if (newSlugs.length > 0) {
-      const existingChunks = await store.getDocumentChunksByDocId(collNames.global, docId);
+      const sourceCollection = doc.isGlobal
+        ? collNames.global
+        : (() => {
+            const firstSlug = doc.categories[0]?.slug;
+            return firstSlug ? collNames.forCategory(firstSlug) : collNames.global;
+          })();
+
+      const existingChunks = await store.getDocumentChunksByDocId(sourceCollection, docId);
 
       if (existingChunks.length === 0) {
         // Fallback: embeddings missing from vector store, do full re-extraction
