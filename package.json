@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "sed -i -e 's/Generated<Date | null>/Generated<string>/g' -e 's/Generated<Date>/Generated<string>/g' -e 's/: Date | null;/: string | null;/g' -e 's/: Date;/: string;/g' src/lib/db/db-types.ts",
     "build": "next build",
     "build:embed": "npx tsx scripts/build-embed.ts",
     "start": "next start",
