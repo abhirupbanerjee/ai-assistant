@@ -16,8 +16,8 @@ import type { ApiError } from '@/types';
 interface ThreadExport {
   id: string;
   title: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string | null;
+  updatedAt: string | null;
   categories: {
     id: number;
     name: string;
@@ -27,7 +27,7 @@ interface ThreadExport {
     id: string;
     role: string;
     content: string;
-    createdAt: string;
+    createdAt: string | null;
   }[];
 }
 
@@ -125,14 +125,14 @@ export async function POST() {
       threadExports.push({
         id: thread.id,
         title: thread.title as string,
-        createdAt: thread.created_at as string,
-        updatedAt: thread.updated_at as string,
+        createdAt: thread.created_at?.toISOString() ?? null,
+        updatedAt: thread.updated_at?.toISOString() ?? null,
         categories: threadCategories,
         messages: messages.map(m => ({
           id: m.id,
           role: m.role,
           content: m.content,
-          createdAt: m.created_at as string,
+          createdAt: m.created_at?.toISOString() ?? null,
         })),
       });
     }
