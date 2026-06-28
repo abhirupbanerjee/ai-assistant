@@ -626,6 +626,7 @@ export default function ApiKeysSettings() {
   const route2Providers = providers.filter((p) => ROUTE_2_PROVIDERS.includes(p.id));
   const route3Providers = providers.filter((p) => ROUTE_3_PROVIDERS.includes(p.id));
   const route4Providers = providers.filter((p) => ROUTE_4_PROVIDERS.includes(p.id));
+  const route5Providers = providers.filter((p) => ROUTE_5_PROVIDERS.includes(p.id));
 
   return (
     <div className="space-y-6">
@@ -734,6 +735,16 @@ export default function ApiKeysSettings() {
           </div>
           <div className="divide-y divide-gray-100">
             {route4Providers.map(renderProviderRow)}
+          </div>
+        </div>
+
+        {/* Route 5 */}
+        <div className="mb-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
+            Route 5 — Aggregator Gateways
+          </div>
+          <div className="divide-y divide-gray-100">
+            {route5Providers.map(renderProviderRow)}
           </div>
         </div>
 

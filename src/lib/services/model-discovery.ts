@@ -972,6 +972,38 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         break;
       }
 
+      case 'azure-foundry': {
+        const apiKey = await getProviderApiKey('azure-foundry');
+        const apiBase = await getProviderApiBase('azure-foundry');
+        if (!apiKey || !apiBase) {
+          return { success: false, provider, models: [], error: 'API key or endpoint not configured' };
+        }
+        // Azure Foundry is OpenAI-compatible — list models from the /v1/models endpoint
+        const baseUrl = apiBase.replace(/\/$/, '');
+        const response = await fetch(`${baseUrl}/v1/models?api-version=2024-10-01-preview`, {
+          headers: { 'api-key': apiKey },
+        });
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          return { success: false, provider, models: [], error: `Azure Foundry API error: ${response.status} ${errorText}` };
+        }
+        const data = await response.json() as { data: Array<{ id: string }> };
+        const filtered = data.data.filter(m => isChatModel(m.id));
+        models = await Promise.all(filtered.map(async m => ({
+          id: `azure-foundry/${m.id}`,
+          name: generateDisplayName(m.id),
+          provider: 'azure-foundry',
+          toolCapable: isToolCapable(`azure-foundry/${m.id}`),
+          visionCapable: isVisionCapable(`azure-foundry/${m.id}`),
+          forcedToolCapable: isForcedToolCapable(`azure-foundry/${m.id}`),
+          maxInputTokens: getContextWindow(`azure-foundry/${m.id}`),
+          maxOutputTokens: getDefaultOutputTokens('azure-foundry'),
+          isEnabled: !!(await getEnabledModel(`azure-foundry/${m.id}`)),
+        })));
+        models.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      }
+
       default:
         return { success: false, provider, models: [], error: `Unknown provider: ${provider}` };
     }
