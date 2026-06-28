@@ -95,7 +95,7 @@ export interface SkillsTable {
   created_by: string;
   updated_by: string;
   // Tool routing columns
-  match_type: Generated<string | null>;
+  match_type: Generated<string>;
   tool_name: string | null;
   force_mode: string | null;
   tool_config_override: string | null;
@@ -187,7 +187,7 @@ export interface MessagesTable {
   generated_images_json: string | null;
   generated_diagrams_json: string | null;
   generated_podcasts_json: string | null;
-  mode: Generated<string | null>;
+  mode: Generated<string>;
   plan_id: string | null;
   metadata_json: string | null;
 }
@@ -391,10 +391,10 @@ export interface TaskPlansTable {
   created_at: Generated<string>;
   updated_at: Generated<string>;
   completed_at: string | null;
-  mode: Generated<string | null>;
-  budget_json: Generated<string | null>;
-  budget_used_json: Generated<string | null>;
-  model_config_json: Generated<string | null>;
+  mode: Generated<string>;
+  budget_json: Generated<string>;
+  budget_used_json: Generated<string>;
+  model_config_json: Generated<string>;
   paused_at: string | null;
   pause_reason: string | null;
   resumed_at: string | null;

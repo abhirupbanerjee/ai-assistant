@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "sed -i -e 's/Generated<Date | null>/Generated<string>/g' -e 's/Generated<Date>/Generated<string>/g' -e 's/: Date | null;/: string | null;/g' -e 's/: Date;/: string;/g' src/lib/db/db-types.ts",
+    "prebuild": "node -e \"const fs=require('fs');let f=fs.readFileSync('src/lib/db/db-types.ts','utf8');f=f.replace(/\\bDate\\b/g,'string').replace(/Generated<string\\s*\\|\\s*null>/g,'Generated<string>');fs.writeFileSync('src/lib/db/db-types.ts',f);\"",
     "build": "next build",
     "build:embed": "npx tsx scripts/build-embed.ts",
     "start": "next start",
@@ -17,7 +17,7 @@
     "docker:prod:down": "docker compose down",
     "docker:logs": "docker compose logs -f app",
     "db:setup": "npx tsx src/lib/db/setup.ts",
-    "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts && sed -i -e 's/Generated<Date | null>/Generated<string>/g' -e 's/Generated<Date>/Generated<string>/g' -e 's/: Date | null;/: string | null;/g' -e 's/: Date;/: string;/g' src/lib/db/db-types.ts",
+    "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts && node -e \"const fs=require('fs');let f=fs.readFileSync('src/lib/db/db-types.ts','utf8');f=f.replace(/\\bDate\\b/g,'string').replace(/Generated<string\\s*\\|\\s*null>/g,'Generated<string>');fs.writeFileSync('src/lib/db/db-types.ts',f);\"",
     "cleanup:expired": "npx tsx src/scripts/cleanup-expired-outputs.ts",
     "sonar:scan": "sonar-scanner",
     "sonar:pipeline": "bash scripts/sonar-scan.sh"
