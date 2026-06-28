@@ -16,7 +16,7 @@
     "docker:prod:down": "docker compose down",
     "docker:logs": "docker compose logs -f app",
     "db:setup": "npx tsx src/lib/db/setup.ts",
-    "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts",
+    "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts && sed -i 's/Generated<Date | null>/Generated<string>/g; s/Generated<Date>/Generated<string>/g' src/lib/db/db-types.ts",
     "cleanup:expired": "npx tsx src/scripts/cleanup-expired-outputs.ts",
     "sonar:scan": "sonar-scanner",
     "sonar:pipeline": "bash scripts/sonar-scan.sh"

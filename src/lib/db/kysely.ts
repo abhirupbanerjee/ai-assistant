@@ -10,8 +10,15 @@
  */
 
 import { Kysely, PostgresDialect, sql } from 'kysely';
-import { Pool } from 'pg';
+import { Pool, types as pgTypes } from 'pg';
 import type { DB } from './db-types';
+
+// Parse PostgreSQL TIMESTAMP / TIMESTAMPTZ columns as strings instead of Date objects.
+// The entire codebase (types, interfaces, compat layer) expects ISO date strings.
+// Without this, `kysely-codegen` generates `Date | null` and `next build` fails
+// with "Conversion of type 'Date | null' to type 'string'" in ~55+ files.
+pgTypes.setTypeParser(1114, (val: string) => val); // timestamp
+pgTypes.setTypeParser(1184, (val: string) => val); // timestamptz
 
 // Singleton instance
 let db: Kysely<DB> | null = null;

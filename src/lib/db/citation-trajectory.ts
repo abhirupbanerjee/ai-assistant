@@ -31,7 +31,7 @@ export interface CitationTrajectoryEntry {
   rankBefore: number | null;     // Position before reranking
   rankAfter: number | null;      // Position after reranking
   sourceType: TrajectorySourceType; // Origin of this source
-  createdAt: string;
+  createdAt: string | null;
 }
 
 export interface TrajectorySummary {
@@ -120,7 +120,9 @@ export async function getTrajectoryForMessage(
     rankBefore: row.rank_before,
     rankAfter: row.rank_after,
     sourceType: (row.source_type as TrajectorySourceType) || 'vector',
-    createdAt: row.created_at,
+    createdAt: row.created_at
+      ? new Date(row.created_at as unknown as string | Date).toISOString()
+      : null,
   }));
 }
 
