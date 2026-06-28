@@ -1476,3 +1476,52 @@ CREATE TABLE IF NOT EXISTS extraction_failures (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_failures_qdrant ON extraction_failures(qdrant_id);
+
+-- ============ Self-Evolving Knowledge Base ============
+
+-- User feedback on assistant answers
+CREATE TABLE IF NOT EXISTS user_feedback (
+  id          TEXT PRIMARY KEY,
+  query       TEXT NOT NULL,
+  answer      TEXT NOT NULL,
+  rating      TEXT NOT NULL CHECK (rating IN ('positive', 'negative')),
+  correction  TEXT,
+  category_slugs JSONB,
+  workspace_id TEXT,
+  user_id     INTEGER NOT NULL,
+  thread_id   TEXT,
+  message_id  TEXT NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  processed   BOOLEAN DEFAULT FALSE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_feedback_unique ON user_feedback(user_id, message_id);
+CREATE INDEX IF NOT EXISTS idx_user_feedback_thread ON user_feedback(thread_id);
+CREATE INDEX IF NOT EXISTS idx_user_feedback_processed ON user_feedback(processed, created_at);
+
+-- Per-user opt-in/out preferences
+CREATE TABLE IF NOT EXISTS user_evolved_kb_settings (
+  user_id         INTEGER PRIMARY KEY,
+  allow_learning  BOOLEAN DEFAULT TRUE,
+  show_provenance BOOLEAN DEFAULT TRUE,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Feature flag at instance level
+CREATE TABLE IF NOT EXISTS evolved_kb_settings (
+  id              TEXT PRIMARY KEY DEFAULT 'default',
+  enabled         BOOLEAN DEFAULT FALSE,
+  shadow_mode     BOOLEAN DEFAULT TRUE,
+  shadow_mode_sample_rate REAL DEFAULT 0.1,
+  auto_approve_threshold REAL DEFAULT 0.95,
+  pending_ttl_days INTEGER DEFAULT 30,
+  rejected_ttl_days INTEGER DEFAULT 30,
+  superseded_ttl_days INTEGER DEFAULT 90,
+  orphaned_ttl_days INTEGER DEFAULT 30,
+  verifier_model  TEXT,
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO evolved_kb_settings (id, enabled, shadow_mode) VALUES ('default', FALSE, TRUE)
+ON CONFLICT (id) DO NOTHING;

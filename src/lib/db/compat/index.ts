@@ -1097,3 +1097,18 @@ export {
   clearAllExtractionFailures,
   getExtractionFailureStats,
 } from './query-logs';
+
+// ============ Evolved KB (Self-Evolving Knowledge Base) ============
+export {
+  type FeedbackRecord,
+  type UserEvolvedKbSettings,
+  type EvolvedKbSettings,
+  insertUserFeedback,
+  getFeedbackByUserAndMessage,
+  getFeedbackByThread,
+  markFeedbackProcessed,
+  getUserEvolvedKbSettings,
+  updateUserEvolvedKbSettings,
+  getEvolvedKbSettings,
+  updateEvolvedKbSettings,
+} from './evolved-kb';

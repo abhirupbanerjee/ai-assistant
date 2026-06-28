@@ -888,7 +888,13 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           </div>
         )}
 
-        {messages.map((message, idx) => (
+        {messages.map((message, idx) => {
+          // Derive the query for feedback: preceding user message's content
+          const query = idx > 0 && messages[idx - 1].role === 'user'
+            ? messages[idx - 1].content
+            : undefined;
+
+          return (
           <Fragment key={message.id}>
             {idx === messages.length - 1 && (loading || streamingState.isStreaming) && (
               <div ref={newTurnAnchorRef} aria-hidden="true" />
@@ -900,9 +906,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               showCitationTrajectory={effectiveShowCitationTrajectory}
               onRegenerate={message.role === 'assistant' ? handleRegenerate : undefined}
               onEdit={message.role === 'user' ? handleEditMessage : undefined}
+              query={query}
             />
           </Fragment>
-        ))}
+          );
+        })}
 
         {/* Skeleton placeholder — shown while loading but no streaming content yet */}
         {loading && !streamingState.isStreaming && !streamingState.currentContent && !streamingState.currentThinkingContent && (

@@ -8,6 +8,7 @@ import rehypeHighlight from 'rehype-highlight';
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import type { Message, MessageMetadata } from '@/types';
 import SourceCard from './SourceCard';
+import FeedbackButtons from './FeedbackButtons';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
@@ -190,9 +191,13 @@ interface MessageBubbleProps {
   showSources?: boolean;
   /** Whether to show citation trajectory card */
   showCitationTrajectory?: boolean;
+  /** The original user query that prompted this assistant answer */
+  query?: string;
+  /** Workspace ID for feedback scoping */
+  workspaceId?: string | null;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onEdit, threadId, showSources = true, showCitationTrajectory = true }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onEdit, threadId, showSources = true, showCitationTrajectory = true, query, workspaceId }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -514,6 +519,17 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           <MessageActions
             content={message.content}
             onRegenerate={() => onRegenerate(message.id)}
+          />
+        )}
+
+        {/* Feedback buttons — assistant messages only, not while streaming, requires messageId */}
+        {!isUser && !isStreaming && message.id && message.id !== 'streaming' && (
+          <FeedbackButtons
+            query={query || ''}
+            answer={message.content}
+            messageId={message.id}
+            threadId={threadId || undefined}
+            workspaceId={workspaceId || undefined}
           />
         )}
       </div>
