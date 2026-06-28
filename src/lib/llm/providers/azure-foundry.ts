@@ -1,21 +1,19 @@
 /**
- * Azure AI Foundry Provider
+ * Azure AI Foundry Provider (via Azure OpenAI endpoint)
  *
- * Route 5 aggregator gateway provider. Uses the Azure AI Model Inference API
- * with the OpenAI SDK.
+ * Route 5 aggregator gateway provider. Uses the Azure OpenAI-compatible API
+ * with the standard OpenAI SDK.
  *
- * Endpoint pattern:
- *   POST {base}/models/chat/completions?api-version=2024-05-01-preview
+ * The endpoint is user-configurable via AZURE_FOUNDRY_ENDPOINT env var or
+ * Admin → Settings → API Keys. Set it to the full base URL including the
+ * /openai/v1 path (e.g. https://<resource>.openai.azure.com/openai/v1).
  *
- * The SDK's baseURL must end in /models so the SDK appends /chat/completions.
- * Model name goes in the request body (standard OpenAI SDK behavior).
- * Auth uses the api-key header (not Authorization: Bearer).
+ * Auth uses standard Authorization: Bearer (OpenAI SDK default).
+ * Model name goes in the request body.
  */
 
 import OpenAI from 'openai';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
-
-const API_VERSION = '2025-01-01-preview';
 
 let client: OpenAI | null = null;
 
@@ -37,20 +35,12 @@ export async function getAzureFoundryClient(): Promise<OpenAI> {
     if (!apiKey || !apiBase) {
       throw new Error('Azure AI Foundry not configured (AZURE_FOUNDRY_API_KEY + AZURE_FOUNDRY_ENDPOINT required)');
     }
-    // Validate endpoint is the root URL, not already including /models
+    // Use the endpoint as-is. SDK appends /chat/completions.
+    // Standard Azure OpenAI endpoint: https://<resource>.openai.azure.com/openai/v1
     const trimmed = apiBase.replace(/\/$/, '');
-    if (trimmed.endsWith('/models')) {
-      throw new Error(
-        'AZURE_FOUNDRY_ENDPOINT should be the root URL (e.g. https://<resource>.services.ai.azure.com). ' +
-        'Do not include /models — the client appends it automatically.'
-      );
-    }
-    // SDK appends /chat/completions → final URL: {base}/models/chat/completions?api-version=...
     client = new OpenAI({
       apiKey,
-      baseURL: `${trimmed}/models`,
-      defaultQuery: { 'api-version': API_VERSION },
-      defaultHeaders: { 'api-key': apiKey },
+      baseURL: trimmed,
       timeout: 300 * 1000, // 5 minutes — matches other providers
     });
   }
