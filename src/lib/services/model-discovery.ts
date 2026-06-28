@@ -66,6 +66,8 @@ const TOOL_CAPABLE_PATTERNS = [
   // Fireworks-hosted chat models (serverless)
   /^fireworks\//,
   /^accounts\/fireworks\//,
+  // Azure AI Foundry (Route 5)
+  /^azure-foundry\//,
   // Ollama (some models)
   /^llama3/,
   /^llama4/,  // Future-proofing
@@ -83,6 +85,8 @@ const VISION_CAPABLE_PATTERNS = [
   /^gemini-3/,
   /^mistral-large/,  // Mistral Large 3+ supports vision
   /^mistral-small/,
+  // Azure AI Foundry (Route 5) — same vision capabilities as OpenAI
+  /^azure-foundry\/gpt-4/,
   // Anthropic Claude (all Claude 3+ models support vision)
   /^claude/,
   // MiniMax M3 is natively multimodal (text + image + video)
@@ -132,6 +136,8 @@ const FORCED_TOOL_CAPABLE_PATTERNS = [
   // Fireworks hosted
   /^fireworks\//,
   /^accounts\/fireworks/,
+  // Azure AI Foundry (Route 5)
+  /^azure-foundry\//,
 ];
 
 // Models known to reliably handle parallel tool calls (multiple tool_calls in one response)
@@ -151,6 +157,8 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
   // Fireworks-hosted models (MiniMax, Kimi, etc.)
   /^fireworks\//,
   /^accounts\/fireworks/,
+  // Azure AI Foundry (Route 5) — same parallel capabilities as OpenAI
+  /^azure-foundry\//,
 ];
 // NOT parallel capable (default=0 in DB):
 //   gpt-5 (base) — 90% failure rate on parallel calls
@@ -276,6 +284,7 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
   gemini: 16000,
   mistral: 8000,
   fireworks: 16384,
+  'azure-foundry': 16000,
 };
 
 /**
@@ -1007,7 +1016,7 @@ export async function discoverAllModels(): Promise<{
   providers: Record<string, DiscoveryResult>;
   totalModels: number;
 }> {
-  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud', 'moonshot'];
+  const providers = ['openai', 'gemini', 'mistral', 'ollama', 'anthropic', 'deepseek', 'fireworks', 'ollama-cloud', 'moonshot', 'azure-foundry'];
   const results: Record<string, DiscoveryResult> = {};
   let totalModels = 0;
 

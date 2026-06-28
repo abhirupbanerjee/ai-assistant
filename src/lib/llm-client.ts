@@ -5,9 +5,10 @@
  * prompt optimization, translation) with multi-route fallback.
  *
  * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral)
- * Route 2: Fireworks AI direct + DeepSeek direct + Moonshot AI direct + Claude (Anthropic) direct
+ * Route 2: DeepSeek direct + Moonshot AI direct + Claude (Anthropic) direct
  * Route 3: Ollama direct (local / air-gapped)
  * Route 4: Ollama Cloud direct (hosted models)
+ * Route 5: Aggregator gateways (Azure AI Foundry, Fireworks AI, Ollama Cloud)
  */
 
 import OpenAI from 'openai';
@@ -15,6 +16,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings, getRoutesSettings } from './db/compat/config';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
+import { isAzureFoundryModel, getAzureFoundryClient } from './llm/providers/azure-foundry';
 import { getTemperatureForModel } from './llm-thinking';
 
 
@@ -273,6 +275,24 @@ async function callOllamaCloudDirect(model: string, opts: InternalCompletionOpti
   return stripThinkTags(data.message?.content?.trim() || '');
 }
 
+/**
+ * Call Azure AI Foundry (Route 5) — OpenAI-compatible API
+ */
+async function callAzureFoundry(model: string, opts: InternalCompletionOptions): Promise<string> {
+  const client = await getAzureFoundryClient();
+  const baseTemp = opts.temperature ?? 0.3;
+  const response = await client.chat.completions.create({
+    model,
+    messages: opts.messages.map(m => ({
+      role: m.role as 'system' | 'user' | 'assistant',
+      content: m.content,
+    })),
+    temperature: getTemperatureForModel(model, baseTemp),
+    max_tokens: opts.maxTokens ?? 4096,
+  });
+  return response.choices[0]?.message?.content || '';
+}
+
 // ============ Route Classification ============
 
 function isClaudeModel(model: string): boolean {
@@ -332,17 +352,23 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return callOllamaCloudDirect(model, opts);
   }
 
-  // Route 1 → try LiteLLM, fall back to Route 2/3/4 if enabled
+  // Route 5 models → aggregator gateways
+  if (isAzureFoundryModel(model)) {
+    return callAzureFoundry(model, opts);
+  }
+
+  // Route 1 → try LiteLLM, fall back to Route 2/3/4/5 if enabled
   try {
     return await callLiteLLM(model, opts);
   } catch (err) {
     const hasRoute2 = routes.route2Enabled;
     const hasRoute3 = routes.route3Enabled;
-    if (!hasRoute2 && !hasRoute3) throw err;
+    const hasRoute5 = routes.route5Enabled;
+    if (!hasRoute2 && !hasRoute3 && !hasRoute5) throw err;
 
     console.warn('[llm-client] Route 1 failed, trying fallback routes:', err instanceof Error ? err.message : err);
 
-    // Try Route 2 first (Fireworks → DeepSeek → Moonshot → Claude), then Route 3 (Ollama)
+    // Try Route 2 first (DeepSeek → Moonshot → Claude), then Route 3 (Ollama), then Route 5 (Fireworks)
     if (hasRoute2) {
       try {
         return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
@@ -370,6 +396,12 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     if (hasRoute3) {
       console.warn('[llm-client] Trying Route 3 (Ollama) fallback');
       return await callOllama('ollama-llama3.2', opts);
+    }
+
+    // Route 5 fallback (aggregator gateways) — use Fireworks model
+    if (hasRoute5) {
+      console.warn('[llm-client] Trying Route 5 (Aggregator) fallback');
+      return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
     }
 
     throw err;

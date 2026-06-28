@@ -109,6 +109,7 @@ function detectProviderFromId(modelId: string): ModelSpec['provider'] {
   if (modelId.startsWith('moonshot/')) return 'moonshot';
   if (modelId.startsWith('ollama-cloud/') || modelId.endsWith('-cloud') || modelId.includes(':cloud')) return 'ollama-cloud';
   if (modelId.startsWith('ollama-') || modelId.startsWith('ollama/')) return 'ollama';
+  if (modelId.startsWith('azure-foundry/')) return 'azure-foundry';
   if (modelId.startsWith('gemini')) return 'gemini';
   if (modelId.startsWith('mistral') || modelId.startsWith('codestral') || modelId.startsWith('pixtral')) return 'mistral';
   return 'openai';

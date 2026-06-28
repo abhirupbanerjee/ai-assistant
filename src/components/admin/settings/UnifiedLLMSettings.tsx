@@ -68,10 +68,10 @@ type SectionId = 'providers' | 'models' | 'auto-model-map' | 'overview';
 
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
-const ROUTE_2_PROVIDERS = new Set(['fireworks', 'anthropic', 'moonshot', 'deepseek']);
+const ROUTE_2_PROVIDERS = new Set(['anthropic', 'moonshot', 'deepseek']);
 const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
 
 const ROUTE_3_PROVIDERS = new Set(['ollama']);
 const isRoute3Provider = (id: string) => ROUTE_3_PROVIDERS.has(id);
@@ -81,6 +81,11 @@ const ROUTE_4_PROVIDERS = new Set(['ollama-cloud']);
 const isRoute4Provider = (id: string) => ROUTE_4_PROVIDERS.has(id);
 const isRoute4Model = (id: string) =>
   id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
+
+const ROUTE_5_PROVIDERS = new Set(['azure-foundry', 'fireworks', 'ollama-cloud']);
+const isRoute5Provider = (id: string) => ROUTE_5_PROVIDERS.has(id);
+const isRoute5Model = (id: string) =>
+  id.startsWith('azure-foundry/') || id.startsWith('fireworks/') || id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
 
 // ============ Component ============
 
@@ -131,7 +136,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     route2Enabled: boolean;
     route3Enabled: boolean;
     route4Enabled: boolean;
-    primaryRoute: 'route1' | 'route2' | 'route3' | 'route4';
+    route5Enabled: boolean;
+    primaryRoute: 'route1' | 'route2' | 'route3' | 'route4' | 'route5';
   } | null>(null);
 
   // Inline action errors
@@ -151,14 +157,17 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // ============ Route Gating (derived) ============
 
-  const allRoutesEnabled = routesSettings?.route1Enabled && routesSettings?.route2Enabled && routesSettings?.route3Enabled && routesSettings?.route4Enabled;
+  const allRoutesEnabled = routesSettings?.route1Enabled && routesSettings?.route2Enabled && routesSettings?.route3Enabled && routesSettings?.route4Enabled && routesSettings?.route5Enabled;
   const route1Disabled = routesSettings ? !routesSettings.route1Enabled : false;
   const route2Disabled = routesSettings ? !routesSettings.route2Enabled : false;
   const route3Disabled = routesSettings ? !routesSettings.route3Enabled : false;
   const route4Disabled = routesSettings ? !routesSettings.route4Enabled : false;
+  const route5Disabled = routesSettings ? !routesSettings.route5Enabled : false;
 
   const isModelOnDisabledRoute = (modelId: string) => {
     if (!routesSettings || allRoutesEnabled) return false;
+    // NOTE: Route 5 MUST be checked first
+    if (isRoute5Model(modelId)) return route5Disabled;
     if (isRoute4Model(modelId)) return route4Disabled;
     if (isRoute3Model(modelId)) return route3Disabled;
     return isRoute2Model(modelId) ? route2Disabled : route1Disabled;
@@ -166,6 +175,8 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   const isProviderOnDisabledRoute = (providerId: string) => {
     if (!routesSettings || allRoutesEnabled) return false;
+    // NOTE: Route 5 MUST be checked first
+    if (isRoute5Provider(providerId)) return route5Disabled;
     if (isRoute4Provider(providerId)) return route4Disabled;
     if (isRoute3Provider(providerId)) return route3Disabled;
     return isRoute2Provider(providerId) ? route2Disabled : route1Disabled;
@@ -722,7 +733,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
                   />
                   {routeDisabled && (
                     <p className="text-xs text-gray-400 mt-1 ml-5">
-                      {isRoute4Provider(provider.id) ? 'Route 4' : isRoute3Provider(provider.id) ? 'Route 3' : isRoute2Provider(provider.id) ? 'Route 2' : 'Route 1'} is disabled
+                      {isRoute5Provider(provider.id) ? 'Route 5' : isRoute4Provider(provider.id) ? 'Route 4' : isRoute3Provider(provider.id) ? 'Route 3' : isRoute2Provider(provider.id) ? 'Route 2' : 'Route 1'} is disabled
                     </p>
                   )}
                 </div>

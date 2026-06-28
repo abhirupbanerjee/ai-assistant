@@ -178,6 +178,7 @@ import {
 } from './conversation-context';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
+import { isAzureFoundryModel, getAzureFoundryClient } from '@/lib/llm/providers/azure-foundry';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -1242,6 +1243,7 @@ function detectProviderForToolCompletion(modelId: string): ModelSpec['provider']
   if (isOllamaModel(modelId)) return 'ollama';
   if (isMoonshotModel(modelId)) return 'moonshot';
   if (isDeepSeekModel(modelId)) return 'deepseek';
+  if (modelId.startsWith('azure-foundry/')) return 'azure-foundry';
   if (modelId.startsWith('gemini')) return 'gemini';
   if (modelId.startsWith('mistral') || modelId.startsWith('codestral') || modelId.startsWith('pixtral')) return 'mistral';
   return 'openai';
@@ -1279,6 +1281,7 @@ export async function generateToolCompletion(
   const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
+  const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
 
   // Build thinking profile (subagent doesn't need thinking, but some models require param handling)
   const modelThinkingCapable = await isModelThinkingCapable(effectiveModel);
@@ -1348,17 +1351,19 @@ export async function generateToolCompletion(
     };
   }
 
-  // OpenAI-compatible routes: LiteLLM, Fireworks, Ollama local, Moonshot, DeepSeek
+  // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
   const openai = useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
+    : useAzureFoundryDirect ? await getAzureFoundryClient()
     : await getOpenAI();
 
   const completionModel = useFireworksDirect ? getFireworksModelId(effectiveModel)
     : useOllamaDirect ? getOllamaModelId(effectiveModel)
     : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
     : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
+    : useAzureFoundryDirect ? effectiveModel
     : effectiveModel;
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
@@ -1628,12 +1633,14 @@ export async function generateResponseWithTools(
   const useOllamaCloudDirect = isOllamaCloudModel(effectiveModel);
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
+  const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
     : useOllamaCloudDirect ? 'Ollama Cloud directly'
     : useMoonshotDirect ? 'Moonshot AI directly'
     : useDeepSeekDirect ? 'DeepSeek API directly'
+    : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   const openai = useAnthropicDirect ? null
@@ -1642,6 +1649,7 @@ export async function generateResponseWithTools(
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
     : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
+    : useAzureFoundryDirect ? await getAzureFoundryClient()
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 

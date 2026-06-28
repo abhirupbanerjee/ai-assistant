@@ -186,6 +186,9 @@ async function dispatchGenerateWithModel(
     case 'moonshot':
       response = await generateMoonshot(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
       break;
+    case 'azure-foundry':
+      response = await generateAzureFoundry(modelSpec.model, prompt, systemPrompt, temperature, maxTokens, requestParams);
+      break;
     default:
       throw new Error(`Unknown LLM provider: ${modelSpec.provider}`);
   }
@@ -263,6 +266,45 @@ async function generateOpenAI(
     tokens_used: response.usage?.total_tokens || 0,
     model,
     provider: 'openai',
+    thinkingContent: thinking || undefined,
+  };
+}
+
+/**
+ * Generate using Azure AI Foundry (Route 5) — OpenAI-compatible API
+ */
+async function generateAzureFoundry(
+  model: string,
+  prompt: string,
+  systemPrompt: string,
+  temperature: number | undefined,
+  maxTokens: number,
+  requestParams: Record<string, unknown> = {}
+): Promise<LLMResponse> {
+  const { getAzureFoundryClient } = await import('@/lib/llm/providers/azure-foundry');
+  const client = await getAzureFoundryClient();
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const response = await client.chat.completions.create({
+    model,
+    messages,
+    ...(temperature !== undefined && { temperature }),
+    max_tokens: maxTokens,
+    ...requestParams,
+  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+
+  const rawContent = response.choices[0].message.content || '';
+  const { visible, thinking } = extractThinkTags(rawContent);
+  return {
+    content: visible,
+    tokens_used: response.usage?.total_tokens || 0,
+    model,
+    provider: 'azure-foundry',
     thinkingContent: thinking || undefined,
   };
 }

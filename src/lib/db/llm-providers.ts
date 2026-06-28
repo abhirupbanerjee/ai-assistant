@@ -56,6 +56,7 @@ export const DEFAULT_PROVIDERS: Omit<LLMProvider, 'createdAt' | 'updatedAt'>[] =
   { id: 'fireworks', name: 'Fireworks AI', apiKey: null, apiBase: null, enabled: true },
   { id: 'ollama-cloud', name: 'Ollama Cloud', apiKey: null, apiBase: null, enabled: true },
   { id: 'moonshot', name: 'Moonshot AI', apiKey: null, apiBase: null, enabled: true },
+  { id: 'azure-foundry', name: 'Azure AI Foundry', apiKey: null, apiBase: null, enabled: true },
 ];
 
 // Environment variable mapping for auto-seeding

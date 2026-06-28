@@ -22,6 +22,7 @@ const PROVIDER_MAP: Record<string, { prefix: string; envKey: string }> = {
   mistral:   { prefix: 'mistral/',   envKey: 'MISTRAL_API_KEY' },
   moonshot:  { prefix: '',           envKey: 'MOONSHOT_API_KEY' }, // DB IDs already include moonshot/ prefix
   ollama:    { prefix: 'ollama/',    envKey: '' }, // Uses api_base instead
+  'azure-foundry': { prefix: 'azure-foundry/', envKey: 'AZURE_FOUNDRY_API_KEY' }, // Route 5 — skip sync
 };
 
 /**
@@ -121,11 +122,12 @@ export async function syncModelToLiteLLM(
     return false;
   }
 
-  // Providers managed via litellm_config.yaml or direct Route 2 — skip dynamic sync
+  // Providers managed via litellm_config.yaml or direct Route 2/5 — skip dynamic sync
   // Ollama: YAML model names (e.g. "qwen2.5:3b") don't match DB IDs (e.g. "ollama-qwen2.5")
   // Fireworks: LiteLLM format ("fireworks_ai/accounts/fireworks/models/...") differs from DB IDs
   // DeepSeek: Chat always routes direct (Route 2); sync would create unused LiteLLM entries
-  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek') {
+  // Azure Foundry: Route 5 aggregator, not synced to LiteLLM
+  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek' || model.providerId === 'azure-foundry') {
     return true;
   }
 

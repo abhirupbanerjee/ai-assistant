@@ -15,7 +15,8 @@ interface RoutesSettings {
   route2Enabled: boolean;
   route3Enabled: boolean;
   route4Enabled: boolean;
-  primaryRoute: 'route1' | 'route2' | 'route3' | 'route4';
+  route5Enabled: boolean;
+  primaryRoute: 'route1' | 'route2' | 'route3' | 'route4' | 'route5';
 }
 
 interface RouteHealth {
@@ -39,6 +40,9 @@ const isRoute3Model = (id: string) =>
 const isRoute4Model = (id: string) =>
   id.startsWith('ollama-cloud/');
 
+const isRoute5ModelClient = (id: string) =>
+  id.startsWith('azure-foundry/') || id.startsWith('fireworks/') || id.startsWith('ollama-cloud/') || id.endsWith('-cloud') || id.includes(':cloud');
+
 // ============ Component ============
 
 export default function RoutesSettingsPanel() {
@@ -60,6 +64,7 @@ export default function RoutesSettingsPanel() {
     edited.route2Enabled !== settings.route2Enabled ||
     edited.route3Enabled !== settings.route3Enabled ||
     edited.route4Enabled !== settings.route4Enabled ||
+    edited.route5Enabled !== settings.route5Enabled ||
     edited.primaryRoute !== settings.primaryRoute
   );
 
@@ -179,7 +184,8 @@ export default function RoutesSettingsPanel() {
   const route2IsPrimary = edited.primaryRoute === 'route2';
   const route3IsPrimary = edited.primaryRoute === 'route3';
   const route4IsPrimary = edited.primaryRoute === 'route4';
-  const enabledCount = [edited.route1Enabled, edited.route2Enabled, edited.route3Enabled, edited.route4Enabled].filter(Boolean).length;
+  const route5IsPrimary = edited.primaryRoute === 'route5';
+  const enabledCount = [edited.route1Enabled, edited.route2Enabled, edited.route3Enabled, edited.route4Enabled, edited.route5Enabled].filter(Boolean).length;
   const onlyOneEnabled = enabledCount === 1;
 
   // Model route-conflict validation (uses edited for real-time feedback)
@@ -187,10 +193,12 @@ export default function RoutesSettingsPanel() {
     const isR2 = isRoute2Model(defaultModel.id);
     const isR3 = isRoute3Model(defaultModel.id);
     const isR4 = isRoute4Model(defaultModel.id);
+    const isR5 = isRoute5ModelClient(defaultModel.id);
+    if (isR5 && !edited.route5Enabled) return { model: defaultModel, route: 'Route 5' };
     if (isR4 && !edited.route4Enabled) return { model: defaultModel, route: 'Route 4' };
     if (isR3 && !edited.route3Enabled) return { model: defaultModel, route: 'Route 3' };
     if (isR2 && !edited.route2Enabled) return { model: defaultModel, route: 'Route 2' };
-    if (!isR2 && !isR3 && !isR4 && !edited.route1Enabled) return { model: defaultModel, route: 'Route 1' };
+    if (!isR2 && !isR3 && !isR4 && !isR5 && !edited.route1Enabled) return { model: defaultModel, route: 'Route 1' };
     return null;
   })();
 
@@ -198,10 +206,12 @@ export default function RoutesSettingsPanel() {
     const isR2 = isRoute2Model(fallbackModel.id);
     const isR3 = isRoute3Model(fallbackModel.id);
     const isR4 = isRoute4Model(fallbackModel.id);
+    const isR5 = isRoute5ModelClient(fallbackModel.id);
+    if (isR5 && !edited.route5Enabled) return { model: fallbackModel, route: 'Route 5' };
     if (isR4 && !edited.route4Enabled) return { model: fallbackModel, route: 'Route 4' };
     if (isR3 && !edited.route3Enabled) return { model: fallbackModel, route: 'Route 3' };
     if (isR2 && !edited.route2Enabled) return { model: fallbackModel, route: 'Route 2' };
-    if (!isR2 && !isR3 && !isR4 && !edited.route1Enabled) return { model: fallbackModel, route: 'Route 1' };
+    if (!isR2 && !isR3 && !isR4 && !isR5 && !edited.route1Enabled) return { model: fallbackModel, route: 'Route 1' };
     return null;
   })();
 
@@ -574,6 +584,70 @@ export default function RoutesSettingsPanel() {
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
               Requires: <code className="bg-gray-100 px-1 rounded">OLLAMA_API_KEY</code>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Route 5 Card */}
+      <div className={`border rounded-lg overflow-hidden ${edited.route5Enabled ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+        <div className="px-5 py-4 bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Cloud size={20} className="text-teal-500" />
+            <div>
+              <h3 className="font-medium text-gray-900">Route 5: Aggregator Gateways</h3>
+              <p className="text-xs text-gray-500">Azure AI Foundry, Fireworks AI, and Ollama Cloud — unified aggregator gateway access.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Primary badge */}
+            {edited.route5Enabled && route5IsPrimary && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-teal-100 text-teal-700 rounded-full">Primary</span>
+            )}
+            {edited.route5Enabled && !route5IsPrimary && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">Fallback</span>
+            )}
+            {/* Toggle */}
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={edited.route5Enabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setEdited(prev => {
+                    if (!prev) return prev;
+                    const next = { ...prev, route5Enabled: enabled };
+                    if (!enabled && prev.primaryRoute === 'route5') {
+                      next.primaryRoute = prev.route1Enabled ? 'route1' : prev.route2Enabled ? 'route2' : prev.route3Enabled ? 'route3' : 'route4';
+                    }
+                    if (!enabled && !prev.route1Enabled && !prev.route2Enabled && !prev.route3Enabled && !prev.route4Enabled) return prev;
+                    return next;
+                  });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
+            </label>
+          </div>
+        </div>
+        {edited.route5Enabled && (
+          <div className="px-5 py-3 border-t space-y-2">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setEdited(prev => prev ? { ...prev, primaryRoute: 'route5' } : prev)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md transition-colors ${
+                  route5IsPrimary ? 'bg-teal-50 text-teal-700 font-medium' : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <div className={`w-3 h-3 rounded-full border-2 ${route5IsPrimary ? 'border-teal-600 bg-teal-600' : 'border-gray-300'}`}>
+                  {route5IsPrimary && <div className="w-1 h-1 bg-white rounded-full m-auto mt-[2px]" />}
+                </div>
+                Set as Primary
+              </button>
+            </div>
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              <Shield size={12} />
+              Providers: <code className="bg-gray-100 px-1 rounded">Azure AI Foundry</code> · <code className="bg-gray-100 px-1 rounded">Fireworks AI</code> · <code className="bg-gray-100 px-1 rounded">Ollama Cloud</code>
             </div>
           </div>
         )}

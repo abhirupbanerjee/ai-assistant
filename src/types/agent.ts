@@ -59,7 +59,7 @@ export const DEFAULT_AGENT_BUDGET: AgentBudget = {
 
 // ============ Model Configuration ============
 
-export type LLMProvider = 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot' | 'auto';
+export type LLMProvider = 'openai' | 'gemini' | 'mistral' | 'anthropic' | 'fireworks' | 'deepseek' | 'ollama' | 'ollama-cloud' | 'moonshot' | 'azure-foundry' | 'auto';
 
 export type ExecutorProfileName =
   | 'default'

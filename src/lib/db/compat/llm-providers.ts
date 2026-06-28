@@ -50,6 +50,7 @@ export const PROVIDER_ENV_KEYS: Record<string, { apiKey?: string; apiBase?: stri
   fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
   'ollama-cloud': { apiKey: 'OLLAMA_API_KEY' },
   moonshot: { apiKey: 'MOONSHOT_API_KEY', apiBase: 'MOONSHOT_API_BASE' },
+  'azure-foundry': { apiKey: 'AZURE_FOUNDRY_API_KEY', apiBase: 'AZURE_FOUNDRY_ENDPOINT' },
 };
 
 // ============ CRUD Operations ============
