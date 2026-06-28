@@ -57,6 +57,7 @@ RUN apt-get update && \
 # This adds ~200MB to the image but eliminates client-side JS dependencies in generated HTML.
 # Browsers are installed directly to a shared location so the non-root nextjs user can access them.
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
+COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 RUN mkdir -p /opt/playwright-browsers && \
     node ./node_modules/playwright/cli.js install chromium --with-deps && \
