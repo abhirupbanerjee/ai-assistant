@@ -281,7 +281,7 @@ async function generateAzureFoundry(
   maxTokens: number,
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
-  const { getAzureFoundryClient } = await import('@/lib/llm/providers/azure-foundry');
+  const { getAzureFoundryClient, stripAzureFoundryPrefix } = await import('@/lib/llm/providers/azure-foundry');
   const client = await getAzureFoundryClient();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
@@ -290,13 +290,14 @@ async function generateAzureFoundry(
   }
   messages.push({ role: 'user', content: prompt });
 
+  const effectiveModel = stripAzureFoundryPrefix(model);
   const response = await client.chat.completions.create({
-    model,
+    model: effectiveModel,
     messages,
     ...(temperature !== undefined && { temperature }),
     max_tokens: maxTokens,
     ...requestParams,
-  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
+  });
 
   const rawContent = response.choices[0].message.content || '';
   const { visible, thinking } = extractThinkTags(rawContent);
@@ -748,6 +749,8 @@ export function resetLlmClients(): void {
   ollamaClient = null;
   moonshotClient = null;
   deepseekClient = null;
+  // Reset Azure Foundry singleton (uses its own module-level cache)
+  import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
 }
 
 /**

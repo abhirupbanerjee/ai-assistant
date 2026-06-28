@@ -16,7 +16,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getLlmSettings, getRoutesSettings } from './db/compat/config';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
-import { isAzureFoundryModel, getAzureFoundryClient } from './llm/providers/azure-foundry';
+import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, stripAzureFoundryPrefix } from './llm/providers/azure-foundry';
 import { getTemperatureForModel } from './llm-thinking';
 
 
@@ -145,6 +145,7 @@ export function resetLlmClients(): void {
   ollamaClient = null;
   moonshotClient = null;
   deepseekClient = null;
+  resetAzureFoundryClient();
 }
 
 // ============ Provider Callers ============
@@ -281,16 +282,20 @@ async function callOllamaCloudDirect(model: string, opts: InternalCompletionOpti
 async function callAzureFoundry(model: string, opts: InternalCompletionOptions): Promise<string> {
   const client = await getAzureFoundryClient();
   const baseTemp = opts.temperature ?? 0.3;
+  // Strip azure-foundry/ prefix for temperature lookup (bare model name used in overrides)
+  const cleanModel = stripAzureFoundryPrefix(model);
   const response = await client.chat.completions.create({
-    model,
+    model, // Provider strips prefix internally for API call
     messages: opts.messages.map(m => ({
       role: m.role as 'system' | 'user' | 'assistant',
       content: m.content,
     })),
-    temperature: getTemperatureForModel(model, baseTemp),
+    temperature: getTemperatureForModel(cleanModel, baseTemp),
     max_tokens: opts.maxTokens ?? 4096,
   });
-  return response.choices[0]?.message?.content || '';
+  const result = response.choices[0]?.message?.content || '';
+  emitUsage(opts, response.usage, model);
+  return result;
 }
 
 // ============ Route Classification ============

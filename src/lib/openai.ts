@@ -178,7 +178,7 @@ import {
 } from './conversation-context';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
-import { isAzureFoundryModel, getAzureFoundryClient } from '@/lib/llm/providers/azure-foundry';
+import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -409,6 +409,8 @@ export function resetLlmClients(): void {
   ollamaClient = null;
   moonshotClient = null;
   deepseekClient = null;
+  // Reset Azure Foundry singleton (uses its own module-level cache)
+  import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
 }
 
 /**
@@ -1352,7 +1354,8 @@ export async function generateToolCompletion(
   }
 
   // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
-  const openai = useFireworksDirect ? await getFireworksClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const openai: any = useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
@@ -1363,7 +1366,7 @@ export async function generateToolCompletion(
     : useOllamaDirect ? getOllamaModelId(effectiveModel)
     : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
     : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
-    : useAzureFoundryDirect ? effectiveModel
+    : useAzureFoundryDirect ? stripAzureFoundryPrefix(effectiveModel)
     : effectiveModel;
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
@@ -1643,7 +1646,8 @@ export async function generateResponseWithTools(
     : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
-  const openai = useAnthropicDirect ? null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const openai: any = useAnthropicDirect ? null
     : useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
@@ -1991,6 +1995,7 @@ export async function generateResponseWithTools(
       : useOllamaDirect ? getOllamaModelId(effectiveModel)
       : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
       : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
+      : useAzureFoundryDirect ? stripAzureFoundryPrefix(effectiveModel)
       : effectiveModel,
     messages,
     tools,
