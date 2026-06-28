@@ -53,26 +53,22 @@ RUN apt-get update && \
     apt-get purge -y --auto-remove curl && \
     rm -rf /var/lib/apt/lists/* /root/.gnupg
 
-# Install Playwright Chromium for server-side HTML chart/diagram rendering
-# This adds ~200MB to the image but eliminates client-side JS dependencies in generated HTML
+# Install Playwright Chromium for server-side HTML chart/diagram rendering.
+# This adds ~200MB to the image but eliminates client-side JS dependencies in generated HTML.
+# Browsers are installed directly to a shared location so the non-root nextjs user can access them.
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
-RUN npx playwright install chromium --with-deps && \
-    rm -rf /root/.cache/ms-playwright/.registry-* 2>/dev/null; \
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN mkdir -p /opt/playwright-browsers && \
+    npx playwright install chromium --with-deps && \
     echo "=== Playwright Chromium installed ===" && \
-    ls -la /root/.cache/ms-playwright/ 2>/dev/null || echo "Playwright cache location may differ"
+    ls -la /opt/playwright-browsers/
 
 # Create non-root user
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 --gid nodejs nextjs
 
-# Move Playwright browsers to a shared location accessible by the nextjs user at runtime.
-# Playwright was installed as root above; the runtime user (nextjs) has a different $HOME.
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
-RUN mkdir -p /opt/playwright-browsers && \
-    cp -r /root/.cache/ms-playwright/* /opt/playwright-browsers/ && \
-    chown -R nextjs:nodejs /opt/playwright-browsers && \
-    echo "=== Playwright browsers copied to shared location ===" && \
-    ls -la /opt/playwright-browsers/
+# Ensure the nextjs user can access the Playwright browsers
+RUN chown -R nextjs:nodejs /opt/playwright-browsers
 
 # Copy built application
 COPY --from=builder /app/public ./public
