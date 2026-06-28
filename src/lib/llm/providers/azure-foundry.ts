@@ -15,7 +15,7 @@
 import OpenAI from 'openai';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 
-const API_VERSION = '2024-05-01-preview';
+const API_VERSION = '2025-01-01-preview';
 
 let client: OpenAI | null = null;
 

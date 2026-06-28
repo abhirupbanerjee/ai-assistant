@@ -980,7 +980,7 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         }
         // Azure AI Foundry — list models from the endpoint
         const baseUrl = apiBase.replace(/\/$/, '');
-        const response = await fetch(`${baseUrl}/models?api-version=2024-05-01-preview`, {
+        const response = await fetch(`${baseUrl}/models?api-version=2025-01-01-preview`, {
           headers: { 'api-key': apiKey },
         });
         if (!response.ok) {

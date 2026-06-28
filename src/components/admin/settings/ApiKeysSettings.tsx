@@ -556,6 +556,7 @@ export default function ApiKeysSettings() {
     const source = getProviderSource(provider);
     const isOllama = provider.id === 'ollama';
     const isOllamaCloud = provider.id === 'ollama-cloud';
+    const isAzureFoundry = provider.id === 'azure-foundry';
     const capabilities = PROVIDER_CAPABILITIES[provider.id] || ['LLM'];
     const testResult = testResults[provider.id];
 
@@ -566,12 +567,28 @@ export default function ApiKeysSettings() {
           <CapabilityTags capabilities={capabilities} />
         </div>
         <div className="flex-1 relative">
-          <KeyInput
-            value={getLLMKeyValue(provider)}
-            onChange={(val) => handleLLMKeyChange(provider.id, val, isOllama)}
-            placeholder={isOllama ? 'http://localhost:11434' : 'Enter API key...'}
-            isUrl={isOllama}
-          />
+          {isAzureFoundry ? (
+            <div className="space-y-1.5">
+              <KeyInput
+                value={editedLLMKeys[provider.id]?.apiKey ?? (provider.apiKeyConfigured ? provider.apiKey : '')}
+                onChange={(val) => handleLLMKeyChange(provider.id, val, false)}
+                placeholder="Enter API key..."
+              />
+              <KeyInput
+                value={editedLLMKeys[provider.id]?.apiBase ?? provider.apiBase ?? ''}
+                onChange={(val) => handleLLMKeyChange(provider.id, val, true)}
+                placeholder="https://<resource>.services.ai.azure.com"
+                isUrl
+              />
+            </div>
+          ) : (
+            <KeyInput
+              value={getLLMKeyValue(provider)}
+              onChange={(val) => handleLLMKeyChange(provider.id, val, isOllama)}
+              placeholder={isOllama ? 'http://localhost:11434' : 'Enter API key...'}
+              isUrl={isOllama}
+            />
+          )}
         </div>
         <div className="flex-shrink-0 flex items-center gap-2">
           <StatusBadge source={source} />
