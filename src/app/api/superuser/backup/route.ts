@@ -125,14 +125,20 @@ export async function POST() {
       threadExports.push({
         id: thread.id,
         title: thread.title as string,
-        createdAt: thread.created_at?.toISOString() ?? null,
-        updatedAt: thread.updated_at?.toISOString() ?? null,
+        createdAt: thread.created_at
+          ? new Date(thread.created_at as unknown as string | Date).toISOString()
+          : null,
+        updatedAt: thread.updated_at
+          ? new Date(thread.updated_at as unknown as string | Date).toISOString()
+          : null,
         categories: threadCategories,
         messages: messages.map(m => ({
           id: m.id,
           role: m.role,
           content: m.content,
-          createdAt: m.created_at?.toISOString() ?? null,
+          createdAt: m.created_at
+            ? new Date(m.created_at as unknown as string | Date).toISOString()
+            : null,
         })),
       });
     }

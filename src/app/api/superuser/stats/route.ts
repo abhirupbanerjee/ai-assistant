@@ -42,12 +42,12 @@ interface SuperUserStats {
     categoryName: string;
     status: string;
     uploadedBy: string;
-    uploadedAt: string;
+    uploadedAt: string | null;
   }[];
   recentSubscriptions: {
     userEmail: string;
     categoryName: string;
-    subscribedAt: string;
+    subscribedAt: string | null;
     isActive: boolean;
   }[];
 }
@@ -172,9 +172,17 @@ export async function GET() {
       totalDocuments,
       totalSubscribers,
       categories,
-      recentDocuments,
+      recentDocuments: recentDocuments.map(d => ({
+        ...d,
+        uploadedAt: d.uploadedAt
+          ? new Date(d.uploadedAt as unknown as string | Date).toISOString()
+          : null,
+      })),
       recentSubscriptions: recentSubscriptions.map(s => ({
         ...s,
+        subscribedAt: s.subscribedAt
+          ? new Date(s.subscribedAt as unknown as string | Date).toISOString()
+          : null,
         isActive: Boolean(s.isActive),
       })),
     };
