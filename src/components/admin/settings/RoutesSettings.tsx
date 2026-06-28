@@ -22,10 +22,12 @@ interface RoutesSettings {
 interface RouteHealth {
   route1: { healthy: boolean; latencyMs: number | null; error?: string };
   route2: {
-    fireworks: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     deepseek: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     claude: { configured: boolean };
     moonshot: { configured: boolean; healthy?: boolean };
+  };
+  route5?: {
+    fireworks: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
   };
 }
 
@@ -368,23 +370,13 @@ export default function RoutesSettingsPanel() {
             <Zap size={20} className="text-orange-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 2: Direct Providers</h3>
-              <p className="text-xs text-gray-500">Fireworks AI, DeepSeek, Claude (Anthropic), Moonshot AI — bypasses LiteLLM</p>
+              <p className="text-xs text-gray-500">DeepSeek, Claude (Anthropic), Moonshot AI — bypasses LiteLLM</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Health indicator */}
             {health && (
               <span className="flex items-center gap-1 text-xs">
-                {health.route2.fireworks.configured ? (
-                  health.route2.fireworks.healthy ? (
-                    <><CheckCircle2 size={14} className="text-green-500" /> Fireworks OK{health.route2.fireworks.latencyMs != null && <span className="text-gray-400">({health.route2.fireworks.latencyMs}ms)</span>}</>
-                  ) : (
-                    <><XCircle size={14} className="text-red-500" /> Fireworks: {health.route2.fireworks.error || 'Unreachable'}</>
-                  )
-                ) : (
-                  <><XCircle size={14} className="text-gray-400" /> Fireworks not configured</>
-                )}
-                <span className="text-gray-300 mx-1">|</span>
                 {health.route2.deepseek.configured ? (
                   health.route2.deepseek.healthy ? (
                     <><CheckCircle2 size={14} className="text-green-500" /> DeepSeek OK{health.route2.deepseek.latencyMs != null && <span className="text-gray-400">({health.route2.deepseek.latencyMs}ms)</span>}</>
@@ -426,9 +418,9 @@ export default function RoutesSettingsPanel() {
                     if (!prev) return prev;
                     const next = { ...prev, route2Enabled: enabled };
                     if (!enabled && prev.primaryRoute === 'route2') {
-                      next.primaryRoute = prev.route1Enabled ? 'route1' : prev.route3Enabled ? 'route3' : 'route4';
+                      next.primaryRoute = prev.route1Enabled ? 'route1' : prev.route3Enabled ? 'route3' : prev.route5Enabled ? 'route5' : 'route4';
                     }
-                    if (!enabled && !prev.route1Enabled && !prev.route3Enabled && !prev.route4Enabled) return prev;
+                    if (!enabled && !prev.route1Enabled && !prev.route3Enabled && !prev.route5Enabled && !prev.route4Enabled) return prev;
                     return next;
                   });
                 }}
@@ -455,7 +447,7 @@ export default function RoutesSettingsPanel() {
             </div>
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
-              Requires: <code className="bg-gray-100 px-1 rounded">FIREWORKS_AI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">DEEPSEEK_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>
+              Requires: <code className="bg-gray-100 px-1 rounded">DEEPSEEK_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>
             </div>
           </div>
         )}

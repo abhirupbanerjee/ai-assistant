@@ -143,6 +143,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       deepseek: { apiKey: 'DEEPSEEK_API_KEY' },
       fireworks: { apiKey: 'FIREWORKS_AI_API_KEY' },
       'ollama-cloud': { apiKey: 'OLLAMA_API_KEY' },
+      'azure-foundry': { apiKey: 'AZURE_FOUNDRY_API_KEY', apiBase: 'AZURE_FOUNDRY_ENDPOINT' },
     };
 
     for (const provider of DEFAULT_PROVIDERS) {
@@ -205,6 +206,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     .onConflict(oc => oc.column('id').doNothing())
     .execute();
   console.log('[Kysely] Ensured Moonshot provider exists');
+
+  // Seed Azure AI Foundry provider (Route 5 aggregator — added after initial setup)
+  await database
+    .insertInto('llm_providers')
+    .values({
+      id: 'azure-foundry',
+      name: 'Azure AI Foundry',
+      api_key: process.env['AZURE_FOUNDRY_API_KEY'] || null,
+      api_base: process.env['AZURE_FOUNDRY_ENDPOINT'] || null,
+      enabled: 1,
+    })
+    .onConflict(oc => oc.column('id').doNothing())
+    .execute();
+  console.log('[Kysely] Ensured Azure AI Foundry provider exists');
 
   // Migration: Create reindex_jobs table if it doesn't exist
   await sql`

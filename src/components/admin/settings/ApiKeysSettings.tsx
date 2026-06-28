@@ -58,13 +58,15 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   anthropic: ['LLM'],
   'ollama-cloud': ['LLM'],
   moonshot: ['LLM'],
+  'azure-foundry': ['LLM', 'Embeddings'],
 };
 
 const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral'];
-const ROUTE_2_PROVIDERS = ['fireworks', 'deepseek', 'anthropic', 'moonshot'];
+const ROUTE_2_PROVIDERS = ['deepseek', 'anthropic', 'moonshot'];
 const ROUTE_3_PROVIDERS = ['ollama'];
-const ROUTE_4_PROVIDERS = ['ollama-cloud'];
-const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks', 'ollama'];
+const ROUTE_4_PROVIDERS: string[] = [];
+const ROUTE_5_PROVIDERS = ['azure-foundry', 'fireworks', 'ollama-cloud'];
+const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks', 'ollama', 'azure-foundry'];
 
 // ============================================================================
 // Status Badge Component
