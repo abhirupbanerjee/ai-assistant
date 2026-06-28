@@ -523,8 +523,8 @@ export default function RoutesSettingsPanel() {
           <div className="flex items-center gap-3">
             <Cloud size={20} className="text-indigo-500" />
             <div>
-              <h3 className="font-medium text-gray-900">Route 4: Ollama Cloud</h3>
-              <p className="text-xs text-gray-500">Direct connection to cloud-hosted Ollama models via ollama.com/api. Requires API key.</p>
+              <h3 className="font-medium text-gray-900">Route 4: Ollama Cloud (Deprecated)</h3>
+              <p className="text-xs text-gray-500">Now aliased to Route 5. Enable Route 5 for Ollama Cloud access.</p>
             </div>
           </div>
           <div className="flex items-center gap-3">

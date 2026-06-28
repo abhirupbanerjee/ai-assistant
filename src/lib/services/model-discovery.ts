@@ -978,9 +978,9 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
         if (!apiKey || !apiBase) {
           return { success: false, provider, models: [], error: 'API key or endpoint not configured' };
         }
-        // Azure Foundry is OpenAI-compatible — list models from the /v1/models endpoint
+        // Azure AI Foundry — list models from the endpoint
         const baseUrl = apiBase.replace(/\/$/, '');
-        const response = await fetch(`${baseUrl}/v1/models?api-version=2024-10-01-preview`, {
+        const response = await fetch(`${baseUrl}/models?api-version=2024-05-01-preview`, {
           headers: { 'api-key': apiKey },
         });
         if (!response.ok) {
