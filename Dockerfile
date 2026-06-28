@@ -59,7 +59,7 @@ RUN apt-get update && \
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 RUN mkdir -p /opt/playwright-browsers && \
-    npx playwright install chromium --with-deps && \
+    node ./node_modules/playwright/cli.js install chromium --with-deps && \
     echo "=== Playwright Chromium installed ===" && \
     ls -la /opt/playwright-browsers/
 
