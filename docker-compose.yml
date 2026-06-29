@@ -79,6 +79,11 @@ services:
       - XDG_CACHE_HOME=/tmp/cache
       # Hugging Face token for downloading gated models (local embeddings)
       - HF_TOKEN=${HF_TOKEN}
+      # Azure AI Foundry — Entra ID auth for serverless model access (Route 5)
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_FOUNDRY_ENDPOINT=${AZURE_FOUNDRY_ENDPOINT}
     env_file:
       - .env
     labels:
