@@ -1,19 +1,21 @@
 /**
- * Azure AI Foundry Provider (via Azure OpenAI endpoint)
+ * Azure AI Foundry Provider (Serverless via Foundry SDK)
  *
- * Route 5 aggregator gateway provider. Uses the Azure OpenAI-compatible API
- * with the standard OpenAI SDK.
+ * Route 5 aggregator gateway provider. Uses the Microsoft Foundry SDK
+ * (@azure/ai-projects) to access ALL catalog models without deployments.
  *
- * The endpoint is user-configurable via AZURE_FOUNDRY_ENDPOINT env var or
- * Admin → Settings → API Keys. Set it to the full base URL including the
- * /openai/v1 path (e.g. https://<resource>.openai.azure.com/openai/v1).
+ * Auth: Entra ID via DefaultAzureCredential (reads AZURE_CLIENT_ID,
+ * AZURE_CLIENT_SECRET, AZURE_TENANT_ID from environment).
  *
- * Auth uses standard Authorization: Bearer (OpenAI SDK default).
- * Model name goes in the request body.
+ * The project endpoint is the single entry point for all models.
+ * getOpenAIClient() returns a standard OpenAI SDK client that routes
+ * through the project endpoint for serverless model access.
  */
 
 import OpenAI from 'openai';
-import { getApiKey, getApiBase } from '@/lib/provider-helpers';
+import { AIProjectClient } from '@azure/ai-projects';
+import { DefaultAzureCredential } from '@azure/identity';
+import { getApiBase } from '@/lib/provider-helpers';
 
 let client: OpenAI | null = null;
 
@@ -30,19 +32,17 @@ export function resetAzureFoundryClient(): void {
 
 export async function getAzureFoundryClient(): Promise<OpenAI> {
   if (!client) {
-    const apiKey = await getApiKey('azure-foundry');
     const apiBase = await getApiBase('azure-foundry');
-    if (!apiKey || !apiBase) {
-      throw new Error('Azure AI Foundry not configured (AZURE_FOUNDRY_API_KEY + AZURE_FOUNDRY_ENDPOINT required)');
+    if (!apiBase) {
+      throw new Error('Azure AI Foundry not configured (AZURE_FOUNDRY_ENDPOINT required)');
     }
-    // Use the endpoint as-is. SDK appends /chat/completions.
-    // Standard Azure OpenAI endpoint: https://<resource>.openai.azure.com/openai/v1
-    const trimmed = apiBase.replace(/\/$/, '');
-    client = new OpenAI({
-      apiKey,
-      baseURL: trimmed,
-      timeout: 300 * 1000, // 5 minutes — matches other providers
-    });
+    const project = new AIProjectClient(
+      apiBase.replace(/\/$/, ''),
+      new DefaultAzureCredential(),
+    );
+    // Returns a standard openai client (from the 'openai' package).
+    // Supports .chat.completions.create() — all dispatch sites unchanged.
+    client = project.getOpenAIClient();
   }
   return client;
 }

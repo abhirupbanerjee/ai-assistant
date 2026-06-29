@@ -973,34 +973,35 @@ export async function discoverModels(provider: string): Promise<DiscoveryResult>
       }
 
       case 'azure-foundry': {
-        const apiKey = await getProviderApiKey('azure-foundry');
         const apiBase = await getProviderApiBase('azure-foundry');
-        if (!apiKey || !apiBase) {
-          return { success: false, provider, models: [], error: 'API key or endpoint not configured' };
+        if (!apiBase) {
+          return { success: false, provider, models: [], error: 'AZURE_FOUNDRY_ENDPOINT not configured' };
         }
-        // Azure AI Foundry — list models from the /v1/models endpoint
-        const baseUrl = apiBase.replace(/\/$/, '');
-        const response = await fetch(`${baseUrl}/v1/models?api-version=2025-01-01-preview`, {
-          headers: { 'api-key': apiKey },
-        });
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          return { success: false, provider, models: [], error: `Azure Foundry API error: ${response.status} ${errorText}` };
+        // Use Foundry SDK to list serverless catalog models
+        const { AIProjectClient } = await import('@azure/ai-projects');
+        const { DefaultAzureCredential } = await import('@azure/identity');
+        const project = new AIProjectClient(
+          apiBase.replace(/\/$/, ''),
+          new DefaultAzureCredential(),
+        );
+        const deployments: DiscoveredModel[] = [];
+        for await (const deployment of project.deployments.list()) {
+          if (deployment.type === 'ModelDeployment' && 'modelName' in deployment && 'modelPublisher' in deployment) {
+            const d = deployment as { name: string; modelName: string; modelPublisher: string };
+            deployments.push({
+              id: `azure-foundry/${d.name}`,
+              name: generateDisplayName(d.modelName),
+              provider: 'azure-foundry',
+              toolCapable: isToolCapable(`azure-foundry/${d.name}`),
+              visionCapable: isVisionCapable(`azure-foundry/${d.name}`),
+              forcedToolCapable: isForcedToolCapable(`azure-foundry/${d.name}`),
+              maxInputTokens: getContextWindow(`azure-foundry/${d.name}`),
+              maxOutputTokens: getDefaultOutputTokens('azure-foundry'),
+              isEnabled: !!(await getEnabledModel(`azure-foundry/${d.name}`)),
+            });
+          }
         }
-        const data = await response.json() as { data: Array<{ id: string }> };
-        const filtered = data.data.filter(m => isChatModel(m.id));
-        models = await Promise.all(filtered.map(async m => ({
-          id: `azure-foundry/${m.id}`,
-          name: generateDisplayName(m.id),
-          provider: 'azure-foundry',
-          toolCapable: isToolCapable(`azure-foundry/${m.id}`),
-          visionCapable: isVisionCapable(`azure-foundry/${m.id}`),
-          forcedToolCapable: isForcedToolCapable(`azure-foundry/${m.id}`),
-          maxInputTokens: getContextWindow(`azure-foundry/${m.id}`),
-          maxOutputTokens: getDefaultOutputTokens('azure-foundry'),
-          isEnabled: !!(await getEnabledModel(`azure-foundry/${m.id}`)),
-        })));
-        models.sort((a, b) => a.name.localeCompare(b.name));
+        models = deployments.sort((a, b) => a.name.localeCompare(b.name));
         break;
       }
 
