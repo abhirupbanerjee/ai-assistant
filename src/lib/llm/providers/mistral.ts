@@ -38,8 +38,11 @@ async function getMistralClient(): Promise<Mistral> {
  */
 export function isMistralModel(model: string): boolean {
   return model.startsWith('mistral/')
+    || model.startsWith('mistral-')
     || model.startsWith('codestral/')
-    || model.startsWith('pixtral/');
+    || model.startsWith('codestral-')
+    || model.startsWith('pixtral/')
+    || model.startsWith('pixtral-');
 }
 
 /**
@@ -48,8 +51,11 @@ export function isMistralModel(model: string): boolean {
  */
 export function stripMistralPrefix(model: string): string {
   if (model.startsWith('mistral/')) return model.slice('mistral/'.length);
+  if (model.startsWith('mistral-')) return model; // Preset models: mistral-large-2512 → pass as-is
   if (model.startsWith('codestral/')) return model.slice('codestral/'.length);
+  if (model.startsWith('codestral-')) return model;
   if (model.startsWith('pixtral/')) return model.slice('pixtral/'.length);
+  if (model.startsWith('pixtral-')) return model;
   return model;
 }
 
@@ -264,5 +270,5 @@ export async function createMistralEmbeddings(texts: string[]): Promise<number[]
  * Check if an embedding model ID belongs to Mistral.
  */
 export function isMistralEmbeddingModel(model: string): boolean {
-  return model === 'mistral-embed' || (model.startsWith('mistral/') && model.includes('embed'));
+  return model === 'mistral-embed' || (model.startsWith('mistral') && model.includes('embed'));
 }

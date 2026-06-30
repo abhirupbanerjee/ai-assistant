@@ -260,8 +260,11 @@ export function isRoute2Model(model: string): boolean {
     || model.startsWith('deepseek-')
     || model.startsWith('deepseek/')
     || model.startsWith('mistral/')
+    || model.startsWith('mistral-')
     || model.startsWith('codestral/')
-    || model.startsWith('pixtral/');
+    || model.startsWith('codestral-')
+    || model.startsWith('pixtral/')
+    || model.startsWith('pixtral-');
 }
 
 /**

@@ -35,7 +35,7 @@ interface RouteHealth {
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/') || id.startsWith('mistral/') || id.startsWith('codestral/') || id.startsWith('pixtral/');
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/') || id.startsWith('mistral/') || id.startsWith('mistral-') || id.startsWith('codestral/') || id.startsWith('codestral-') || id.startsWith('pixtral/') || id.startsWith('pixtral-');
 
 const isRoute3Model = (id: string) =>
   id.startsWith('ollama-') || id.startsWith('ollama/');
