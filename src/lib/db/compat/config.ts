@@ -679,7 +679,7 @@ export async function setLlmFallbackSettings(
 export async function getRoutesSettings(): Promise<RoutesSettings> {
   const raw = await getSetting<RoutesSettings>('routes-settings');
   if (!raw) return DEFAULT_ROUTES_SETTINGS;
-  // Back-compat: older DB rows may lack route3Enabled, route4Enabled, or route5Enabled
+  // Back-compat: older DB rows may lack route3Enabled or route5Enabled
   return { ...DEFAULT_ROUTES_SETTINGS, ...raw };
 }
 
@@ -689,12 +689,11 @@ export async function setRoutesSettings(
 ): Promise<RoutesSettings> {
   const current = await getRoutesSettings();
   const merged = { ...current, ...settings };
-  // Back-compat: ensure route3Enabled, route4Enabled, and route5Enabled exist for older DB rows
+  // Back-compat: ensure route3Enabled and route5Enabled exist for older DB rows
   if (merged.route3Enabled === undefined) merged.route3Enabled = false;
-  if (merged.route4Enabled === undefined) merged.route4Enabled = false;
   if (merged.route5Enabled === undefined) merged.route5Enabled = false;
   // Ensure at least one route is enabled
-  if (!merged.route1Enabled && !merged.route2Enabled && !merged.route3Enabled && !merged.route4Enabled && !merged.route5Enabled) {
+  if (!merged.route1Enabled && !merged.route2Enabled && !merged.route3Enabled && !merged.route5Enabled) {
     merged.route1Enabled = true;
   }
   // If primary route is disabled, switch primary to the first enabled route
@@ -702,14 +701,12 @@ export async function setRoutesSettings(
     (merged.primaryRoute === 'route1' && !merged.route1Enabled) ||
     (merged.primaryRoute === 'route2' && !merged.route2Enabled) ||
     (merged.primaryRoute === 'route3' && !merged.route3Enabled) ||
-    (merged.primaryRoute === 'route4' && !merged.route4Enabled) ||
     (merged.primaryRoute === 'route5' && !merged.route5Enabled)
   ) {
     merged.primaryRoute = merged.route1Enabled ? 'route1'
       : merged.route2Enabled ? 'route2'
       : merged.route3Enabled ? 'route3'
-      : merged.route5Enabled ? 'route5'
-      : 'route4';
+      : 'route5';
   }
   await setSetting('routes-settings', merged, updatedBy);
   return merged;

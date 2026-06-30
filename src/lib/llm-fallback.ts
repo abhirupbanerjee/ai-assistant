@@ -282,15 +282,6 @@ export function isRoute3Model(model: string): boolean {
 }
 
 /**
- * Check if a model belongs to Route 4 (Ollama Cloud direct)
- * @deprecated Route 4 models are now aliased to Route 5 via isRoute5Model().
- * This function is retained for backward compatibility in health checks and route gating.
- */
-export function isRoute4Model(model: string): boolean {
-  return isRoute5Model(model);
-}
-
-/**
  * Check if a model belongs to Route 5 (aggregator gateways: Azure AI Foundry, Fireworks AI, Ollama Cloud)
  */
 export function isRoute5Model(model: string): boolean {
@@ -350,16 +341,6 @@ export async function buildModelsToTry(
         }
       }
     }
-    if (routesSettings.route4Enabled && !isRoute4Model(selectedModel!)) {
-      const route4Fallbacks = await getActiveModels();
-      for (const m of route4Fallbacks) {
-        if (isRoute4Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
-          models.push(m.id);
-          break; // One Ollama Cloud fallback is enough
-        }
-      }
-    }
-
     return { models: models.filter(Boolean) };
   }
 
@@ -401,16 +382,6 @@ export async function buildModelsToTry(
       }
     }
   }
-  if (routesSettings.route4Enabled) {
-    const route4Models = await getActiveModels();
-    for (const m of route4Models) {
-      if (isRoute4Model(m.id) && !models.includes(m.id) && isModelHealthy(m.id)) {
-        models.push(m.id);
-        break;
-      }
-    }
-  }
-
   // Create capability switch event if we're switching due to capability mismatch
   const capabilitySwitch: ModelSwitchEvent | undefined = selectedModel && models.length > 0 ? {
     originalModel: selectedModel,

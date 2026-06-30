@@ -21,7 +21,7 @@ import { getActiveModels } from './db/compat/enabled-models';
 import { getRoutesSettings, getAutoToolModelMap, getModelScoringWeights } from './db/compat/config';
 import { getAllModelP50Latencies } from './db/compat/model-latency';
 import { resolveToolRouting } from './tool-routing';
-import { isRoute2Model, isRoute3Model, isRoute4Model, isRoute5Model, isModelHealthy } from './llm-fallback';
+import { isRoute2Model, isRoute3Model, isRoute5Model, isModelHealthy } from './llm-fallback';
 import { AUTO_MODEL_SENTINEL } from './constants';
 import { deriveScores } from './auto-model-scores';
 import type { EnabledModel, CapabilityScores } from './db/enabled-models';
@@ -96,7 +96,6 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     // Filter by route availability
     // NOTE: Route 5 MUST be checked first — models may match multiple route prefixes
     if (isRoute5Model(m.id)) return routesSettings.route5Enabled;
-    if (isRoute4Model(m.id)) return routesSettings.route4Enabled;
     if (isRoute3Model(m.id)) return routesSettings.route3Enabled;
     if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
     return routesSettings.route1Enabled; // Route 1 (LiteLLM) is the default

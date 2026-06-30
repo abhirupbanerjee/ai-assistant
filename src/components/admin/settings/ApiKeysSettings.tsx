@@ -64,7 +64,6 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
 const ROUTE_1_PROVIDERS: string[] = []; // All providers migrated to Route 2/5
 const ROUTE_2_PROVIDERS = ['openai', 'deepseek', 'anthropic', 'moonshot', 'mistral', 'gemini'];
 const ROUTE_3_PROVIDERS = ['ollama'];
-const ROUTE_4_PROVIDERS: string[] = [];
 const ROUTE_5_PROVIDERS = ['azure-foundry', 'fireworks', 'ollama-cloud'];
 const EMBEDDING_PROVIDERS = ['openai', 'gemini', 'mistral', 'fireworks', 'ollama', 'azure-foundry'];
 
@@ -642,7 +641,6 @@ export default function ApiKeysSettings() {
   const route1Providers = providers.filter((p) => ROUTE_1_PROVIDERS.includes(p.id));
   const route2Providers = providers.filter((p) => ROUTE_2_PROVIDERS.includes(p.id));
   const route3Providers = providers.filter((p) => ROUTE_3_PROVIDERS.includes(p.id));
-  const route4Providers = providers.filter((p) => ROUTE_4_PROVIDERS.includes(p.id));
   const route5Providers = providers.filter((p) => ROUTE_5_PROVIDERS.includes(p.id));
 
   return (
@@ -744,16 +742,6 @@ export default function ApiKeysSettings() {
           </div>
           <div className="divide-y divide-gray-100">
             {route3Providers.map(renderProviderRow)}
-          </div>
-        </div>
-
-        {/* Route 4 */}
-        <div className="mb-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
-            Route 4 — Ollama Cloud
-          </div>
-          <div className="divide-y divide-gray-100">
-            {route4Providers.map(renderProviderRow)}
           </div>
         </div>
 

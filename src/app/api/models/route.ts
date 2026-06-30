@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getActiveModels } from '@/lib/db/compat/enabled-models';
 import { getRoutesSettings } from '@/lib/db/compat/config';
-import { isRoute2Model, isRoute3Model, isRoute4Model, isRoute5Model } from '@/lib/llm-fallback';
+import { isRoute2Model, isRoute3Model, isRoute5Model } from '@/lib/llm-fallback';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -16,7 +16,6 @@ export async function GET() {
   const filteredModels = models.filter(m => {
     // NOTE: Route 5 MUST be checked first — models may match multiple route prefixes
     if (isRoute5Model(m.id)) return routesSettings.route5Enabled;
-    if (isRoute4Model(m.id)) return routesSettings.route4Enabled;
     if (isRoute3Model(m.id)) return routesSettings.route3Enabled;
     if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
     return routesSettings.route1Enabled;
