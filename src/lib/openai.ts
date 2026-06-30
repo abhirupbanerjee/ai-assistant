@@ -2584,6 +2584,58 @@ export async function generateResponseWithTools(
         callbacks?.onThinkingChunk,
       );
       accumulatedTokens += responseMessage.totalTokens;
+    } else if (useMistralDirect) {
+      const mistralMessages = messages.map(m => ({
+        role: m.role as string,
+        content: m.content,
+      }));
+      const mistralResult = await streamMistralCompletion(
+        effectiveModel,
+        mistralMessages,
+        {
+          temperature: effectiveTemperature,
+          maxTokens: effectiveMaxTokens,
+          tools: tools as any,
+          toolChoice: toolChoiceAppliedByRouting ? 'auto' : (effectiveToolChoice as any),
+          onChunk: callbacks?.onChunk,
+          onThinkingChunk: callbacks?.onThinkingChunk,
+        },
+      );
+      responseMessage = {
+        content: mistralResult.content,
+        tool_calls: mistralResult.tool_calls as any,
+        thinkingContent: mistralResult.thinkingContent,
+        totalTokens: mistralResult.totalTokens,
+      };
+      accumulatedTokens += mistralResult.totalTokens;
+    } else if (useGeminiDirect) {
+      const geminiMessages = messages.map(m => ({
+        role: m.role as string,
+        content: m.content,
+      }));
+      const geminiResult = await streamGeminiCompletion(
+        effectiveModel,
+        geminiMessages,
+        {
+          temperature: effectiveTemperature,
+          maxTokens: effectiveMaxTokens,
+          tools: tools as any,
+          toolChoice: toolChoiceAppliedByRouting ? 'auto' : (effectiveToolChoice as any),
+          systemPrompt,
+          thinkingConfig: thinkingProfile.enabled
+            ? { thinkingBudget: -1 }
+            : undefined,
+          onChunk: callbacks?.onChunk,
+          onThinkingChunk: callbacks?.onThinkingChunk,
+        },
+      );
+      responseMessage = {
+        content: geminiResult.content,
+        tool_calls: geminiResult.tool_calls as any,
+        thinkingContent: geminiResult.thinkingContent,
+        totalTokens: geminiResult.totalTokens,
+      };
+      accumulatedTokens += geminiResult.totalTokens;
     } else {
       responseMessage = await streamOneCompletionWithThinkingRetry(
         openai!,
@@ -2623,6 +2675,54 @@ export async function generateResponseWithTools(
         callbacks?.onThinkingChunk,
       );
       accumulatedTokens += responseMessage.totalTokens;
+    } else if (useMistralDirect || useGeminiDirect) {
+      // Mistral/Gemini: push user message and re-call with tools disabled
+      messages.push({ role: 'user' as const, content: maxToolsMsg } as any);
+      const finalMessages = messages.map(m => ({
+        role: m.role as string,
+        content: m.content,
+      }));
+      if (useMistralDirect) {
+        const mistralResult = await streamMistralCompletion(
+          effectiveModel,
+          finalMessages,
+          {
+            temperature: effectiveTemperature,
+            maxTokens: effectiveMaxTokens,
+            onChunk: callbacks?.onChunk,
+            onThinkingChunk: callbacks?.onThinkingChunk,
+          },
+        );
+        responseMessage = {
+          content: mistralResult.content,
+          tool_calls: undefined,
+          thinkingContent: mistralResult.thinkingContent,
+          totalTokens: mistralResult.totalTokens,
+        };
+        accumulatedTokens += mistralResult.totalTokens;
+      } else {
+        const geminiResult = await streamGeminiCompletion(
+          effectiveModel,
+          finalMessages,
+          {
+            temperature: effectiveTemperature,
+            maxTokens: effectiveMaxTokens,
+            systemPrompt,
+            thinkingConfig: thinkingProfile.enabled
+              ? { thinkingBudget: -1 }
+              : undefined,
+            onChunk: callbacks?.onChunk,
+            onThinkingChunk: callbacks?.onThinkingChunk,
+          },
+        );
+        responseMessage = {
+          content: geminiResult.content,
+          tool_calls: undefined,
+          thinkingContent: geminiResult.thinkingContent,
+          totalTokens: geminiResult.totalTokens,
+        };
+        accumulatedTokens += geminiResult.totalTokens;
+      }
     } else {
       const finalMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         ...messages,

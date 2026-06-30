@@ -159,10 +159,14 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
   /^accounts\/fireworks/,
   // Azure AI Foundry (Route 5) — same parallel capabilities as OpenAI
   /^azure-foundry\//,
+  // DeepSeek V4 — full tool calling with parallel support
+  /^deepseek-v4-(flash|pro)/,
+  /^fireworks\/deepseek-v4-(flash|pro)/,
+  /^accounts\/fireworks\/models\/deepseek-v4-(flash|pro)/,
 ];
 // NOT parallel capable (default=0 in DB):
 //   gpt-5 (base) — 90% failure rate on parallel calls
-//   legacy DeepSeek models are intentionally excluded
+//   legacy DeepSeek models (pre-V4) are intentionally excluded
 //   ollama models — generally unreliable
 //   o1, o3, o4 — reasoning models, tool_choice restrictions
 
@@ -219,17 +223,31 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'o1-mini': 128000,
   'o3': 200000,
   'o3-mini': 200000,
-  // Gemini
+  // Gemini 2.5
   'gemini-2.5-pro': 1000000,
   'gemini-2.5-flash': 1000000,
   'gemini-2.5-flash-lite': 1000000,
+  // Gemini 3.x
+  'gemini-3-flash-preview': 1000000,
+  'gemini-3.1-pro-preview': 1000000,
+  'gemini-3.5-flash': 1000000,
+  'gemini-3.1-flash-lite': 1000000,
+  // Gemini latest aliases
   'gemini-pro-latest': 1049000,
   'gemini-flash-latest': 1049000,
   'gemini-flash-lite-latest': 1049000,
 
   // Mistral
-  'mistral-large-latest': 256000,
-  'mistral-small-latest': 32000,
+  'mistral-large-latest': 262144,
+  'mistral-large-3': 262144,
+  'mistral-large-2512': 262144,
+  'mistral-medium-latest': 256000,
+  'mistral-medium-3.5': 256000,
+  'mistral-medium-3': 131072,
+  'mistral-small-latest': 128000,
+  'mistral-small-4': 128000,
+  'mistral-small-3.2': 128000,
+  'mistral-small-3': 32000,
   // Anthropic Claude
   'claude-sonnet-4-7': 1000000,
   'claude-sonnet-4-6': 1000000,
@@ -281,10 +299,11 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
   ollama: 2000,
   openai: 16000,
   anthropic: 32000,
-  gemini: 16000,
+  gemini: 64000,
   mistral: 8000,
   fireworks: 16384,
   'azure-foundry': 16000,
+  moonshot: 16000,
 };
 
 /**
