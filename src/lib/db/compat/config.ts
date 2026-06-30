@@ -989,7 +989,7 @@ export interface GraphSettings {
 
 export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   graphAugmentationEnabled: false,
-  skipThreshold: 0.85,
+  skipThreshold: 0.95,
   pprTopK: 20,
   seedChunkCount: 10,
   resolutionThreshold: 0.92,

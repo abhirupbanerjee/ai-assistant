@@ -1095,6 +1095,7 @@ export {
   clearExtractionFailure,
   clearAllExtractionFailures,
   getExtractionFailureStats,
+  cleanupOrphanedExtractionFailures,
 } from './query-logs';
 
 // ============ Evolved KB (Self-Evolving Knowledge Base) ============

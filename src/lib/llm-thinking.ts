@@ -27,16 +27,20 @@ export function isNonOOpenAIGpt5Model(modelId: string): boolean {
 }
 
 /**
- * Check if the model is gpt-5.5 (standard chat model, NOT gpt-5.5-pro).
- * gpt-5.5 rejects reasoning_effort with function tools in /v1/chat/completions
- * and requires /v1/responses instead. gpt-5.4 accepts both parameters together.
+ * Check if the model is a GPT-5.x model that rejects reasoning_effort with
+ * function tools in /v1/chat/completions and requires /v1/responses instead.
  *
- * Note: gpt-5.5-pro is excluded — it is NOT a chat model at all (only supports
- * legacy /v1/completions) and is handled separately by isNonChatOpenAIModel().
+ * Initially only gpt-5.5 exhibited this behavior, but gpt-5.4 was later
+ * observed to also reject reasoning_effort with function tools (400 error:
+ * "Function tools with reasoning_effort are not supported for gpt-5.4").
+ * This covers all GPT-5.x standard chat models.
+ *
+ * Note: gpt-5.5-pro / gpt-5.4-pro are excluded — they are NOT chat models
+ * (only legacy /v1/completions) and are handled by isNonChatOpenAIModel().
  */
-function isGpt55Model(modelId: string): boolean {
+function isGpt5ModelRejectingReasoningWithTools(modelId: string): boolean {
   const id = normalizeModelId(modelId);
-  return id === 'gpt-5.5';
+  return id === 'gpt-5.5' || id === 'gpt-5.4' || id === 'gpt-5.4-mini' || id === 'gpt-5.4-nano';
 }
 
 export function isTemperatureLockedModel(modelId: string): boolean {
@@ -178,10 +182,11 @@ export function buildThinkingRequestProfile(options: {
 
   if (!enabled) {
     if (isNonOOpenAIGpt5Model(options.modelId)) {
-      // gpt-5.5+ rejects reasoning_effort with function tools in /v1/chat/completions.
+      // gpt-5.4+ and gpt-5.5+ reject reasoning_effort with function tools in
+      // /v1/chat/completions and require /v1/responses instead.
       // Skipping 'none' is semantically safe — it means "don't think" and omitting
       // the param achieves the same outcome without triggering a 400 error.
-      if (!(options.toolsEnabled && isGpt55Model(options.modelId))) {
+      if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
         requestParams.reasoning_effort = 'none';
       }
     }
@@ -209,10 +214,11 @@ export function buildThinkingRequestProfile(options: {
     streamFields.add('thinking');
     streamFields.add('reasoning_content');
   } else if (isReasoningEffortModel(options.modelId)) {
-    // gpt-5.5+ rejects reasoning_effort with function tools in /v1/chat/completions
-    // and requires /v1/responses instead. Preserve the param so the fallback system
-    // can switch to a model that supports thinking+tools rather than silently degrading.
-    if (!(options.toolsEnabled && isGpt55Model(options.modelId))) {
+    // gpt-5.4+ and gpt-5.5+ reject reasoning_effort with function tools in
+    // /v1/chat/completions and require /v1/responses instead. Preserve the param
+    // so the fallback system can switch to a model that supports thinking+tools
+    // rather than silently degrading.
+    if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
       requestParams.reasoning_effort = 'high';
     }
     streamFields.add('reasoning_content');

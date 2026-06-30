@@ -81,7 +81,7 @@ Rules:
         { role: 'user', content: prompt },
         { role: 'assistant', content: '[' },
       ],
-      maxTokens: 256,
+      maxTokens: 512,
       temperature: 0.3,
     });
 
@@ -90,16 +90,27 @@ Rules:
     let jsonStr = response.trim();
     // Strip markdown code fences if present
     jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    // Strip any text before the first '[' (some models add preamble)
     const first = jsonStr.indexOf('[');
     const last = jsonStr.lastIndexOf(']');
-    jsonStr = first !== -1 && last > first ? jsonStr.slice(first, last + 1) : jsonStr;
+    if (first !== -1 && last > first) {
+      jsonStr = jsonStr.slice(first, last + 1);
+    } else if (first !== -1) {
+      // Has opening bracket but no closing bracket — truncated JSON
+      jsonStr = jsonStr.slice(first);
+    }
 
-    // Repair truncated JSON: if opening [ exists but no closing ], try to close at last complete string
+    // Repair truncated JSON
     if (jsonStr.startsWith('[') && !jsonStr.endsWith(']')) {
+      // Find the last complete JSON string entry by backtracking
       const lastComma = jsonStr.lastIndexOf(',');
       const lastQuote = jsonStr.lastIndexOf('"');
-      if (lastQuote > lastComma && lastQuote > 0) {
+      if (lastQuote > lastComma && lastQuote > 1) {
+        // Close the last string and the array
         jsonStr = jsonStr.slice(0, lastQuote + 1) + ']';
+      } else if (lastComma > 0) {
+        // Remove trailing incomplete entry after last comma and close
+        jsonStr = jsonStr.slice(0, lastComma) + ']';
       } else {
         jsonStr = jsonStr + ']';
       }
@@ -286,13 +297,20 @@ export async function buildContext(
   // Query with each embedding and collect results
   const allGlobalChunks: RetrievedChunk[] = [];
 
+  // Pre-fetch existing collections once to avoid querying non-existent
+  // collections (e.g., global_documents / organizational_documents may
+  // never have been created if no uncategorized docs were ingested).
+  const existingCollections = await store.listCollections();
+
   for (const embedding of allEmbeddings) {
     // Build list of collections to query.
     // Always include the legacy collection so documents that predate
     // proper categorization (or are intentionally uncategorized) are still found.
-    const collectionsToQuery = categorySlugs && categorySlugs.length > 0
+    // Filter to only collections that actually exist in Qdrant.
+    const collectionsToQuery = (categorySlugs && categorySlugs.length > 0
       ? [...categorySlugs.map(collNames.forCategory), collNames.global, collNames.legacy]
-      : [collNames.global, collNames.legacy];
+      : [collNames.global, collNames.legacy])
+      .filter(name => existingCollections.includes(name));
 
     logger.debug('Querying collections', { collectionsToQuery });
 

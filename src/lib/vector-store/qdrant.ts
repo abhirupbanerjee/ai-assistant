@@ -469,9 +469,10 @@ export class QdrantVectorStore implements VectorStoreClient {
     hybridSearch?: boolean,
     queryText?: string
   ): Promise<VectorQueryResult> {
-    // Check if collection exists
+    // Check if collection exists — silently return empty results.
+    // Missing collections are expected when no documents have been ingested
+    // into global_documents or organizational_documents yet.
     if (!(await this.collectionExists(collectionName))) {
-      console.log(`[Qdrant] Collection ${collectionName} does not exist, returning empty results`);
       return { ids: [], documents: [], metadatas: [], scores: [] };
     }
 
@@ -587,6 +588,72 @@ export class QdrantVectorStore implements VectorStoreClient {
       metadatas: sorted.map(r => r.metadata),
       scores: sorted.map(r => r.score),
     };
+  }
+
+  /**
+   * Backfill sparse vectors for all points in a collection that lack them.
+   * Returns the count of points updated.
+   *
+   * Old collections or documents ingested before hybridSearchEnabled was turned on
+   * will not have sparse vectors. This method scans all points and generates sparse
+   * vectors from their text payloads, enabling hybrid (dense + sparse) search.
+   */
+  async backfillSparseVectors(collectionName: string): Promise<number> {
+    if (!(await this.collectionExists(collectionName))) {
+      console.log(`[Qdrant] Collection ${collectionName} does not exist, skipping sparse backfill`);
+      return 0;
+    }
+
+    const qdrant = getClient();
+    let updatedCount = 0;
+    let offset: string | number | undefined = undefined;
+
+    do {
+      const response = await qdrant.scroll(collectionName, {
+        with_vector: false,
+        with_payload: true,
+        limit: 100,
+        ...(offset !== undefined ? { offset } : {}),
+      });
+
+      for (const point of response.points) {
+        // Skip points that already have sparse vectors
+        const vectorAny = point.vector as Record<string, unknown> | null;
+        if (vectorAny && typeof vectorAny === 'object' && 'text' in vectorAny) {
+          continue;
+        }
+
+        const payload = point.payload || {};
+        const text = (payload.text as string) || '';
+        if (!text) continue;
+
+        const sparseVec = tokenizeForSparseVector(text);
+        try {
+          // Qdrant JS client types don't expose sparse_vectors in PointStruct,
+          // but the REST API accepts it. Use type assertion to bypass TS check.
+          await qdrant.upsert(collectionName, {
+            wait: false,
+            points: [{
+              id: point.id,
+              vector: point.vector || {},
+              sparse_vectors: { text: sparseVec },
+              payload: payload as Record<string, unknown>,
+            } as any],
+          });
+          updatedCount++;
+        } catch (err) {
+          console.warn(`[Qdrant] Sparse backfill failed for point ${point.id} in ${collectionName}:`, err instanceof Error ? err.message : err);
+        }
+      }
+
+      const next = response.next_page_offset;
+      offset = (typeof next === 'string' || typeof next === 'number') ? next : undefined;
+    } while (offset !== undefined);
+
+    if (updatedCount > 0) {
+      console.log(`[Qdrant] Backfilled sparse vectors for ${updatedCount} points in ${collectionName}`);
+    }
+    return updatedCount;
   }
 }
 

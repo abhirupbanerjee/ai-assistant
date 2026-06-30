@@ -75,8 +75,9 @@ async function selectSeedEntities(
       );
 
       for (const row of result.data || result || []) {
-        const entityId = row['e.id'] || row[0];
-        if (entityId) seedIds.add(entityId);
+        // FalkorDB may return column as row['e.id'], row.e?.id, or row[0]
+        const entityId = row['e.id'] ?? row.e?.id ?? row[0];
+        if (entityId) seedIds.add(String(entityId));
       }
     } catch {
       // Chunk may not have entities yet — skip
@@ -104,14 +105,16 @@ async function fetchSubgraph(
   const edges: SubgraphEdge[] = [];
 
   try {
-    // Fetch entities and their relationships via bounded traversal
+    // Fetch entities and their relationships via bounded traversal.
+    // NOTE: retryGraphQuery wraps params in { params: ... } for the FalkorDB SDK,
+    // so we pass a flat object here — do NOT double-wrap with { params: { seedIds } }.
     const result = await retryGraphQuery(
       graph,
       `MATCH (e:Entity)-[r:RELATES_TO|SAME_AS*1..${SUBGRAPH_MAX_HOPS}]-(neighbor:Entity)
        WHERE e.id IN $seedIds
        RETURN DISTINCT e, neighbor, r
        LIMIT ${SUBGRAPH_RESULT_CAP}`,
-      { params: { seedIds } }
+      { seedIds }
     );
 
     const rows = result.data || result || [];
@@ -290,9 +293,10 @@ async function expandToChunks(
 
       const rows = result.data || result || [];
       for (const row of rows) {
-        const qdrantId = row['c.qdrantId'] || row[0];
-        if (qdrantId && !originalChunkIds.has(qdrantId)) {
-          chunkIds.add(qdrantId);
+        // FalkorDB may return column as row['c.qdrantId'], row.c?.qdrantId, or row[0]
+        const qdrantId = row['c.qdrantId'] ?? row.c?.qdrantId ?? row[0];
+        if (qdrantId && !originalChunkIds.has(String(qdrantId))) {
+          chunkIds.add(String(qdrantId));
         }
       }
     } catch {
@@ -313,19 +317,18 @@ async function expandToChunks(
   // Since we have chunk IDs but need text, we use the store's internal Qdrant client
   // This is a known limitation — in production, add a batch retrieve method
   try {
-    // We use query with a dummy embedding to get chunks by ID filter
-    // This is suboptimal but works within the existing interface
+    // Query with a zero vector and originalId filter to fetch specific chunks.
+    // score_threshold: -1 ensures all matching points are returned regardless of
+    // vector similarity (zero vector has no semantic meaning).
     const collNames = (await import('@/lib/vector-store')).getCollectionNames();
+    const allCollections = await store.listCollections();
     const zeroEmbedding = new Array(3072).fill(0);
 
-    // Determine which collections to search: global + all category collections
-    const allCollections = await store.listCollections();
+    // Search all relevant collections: category, global, AND legacy
     const searchCollections = allCollections.filter(
-      name => collNames.isCategory(name) || name === collNames.global
+      name => collNames.isCategory(name) || name === collNames.global || name === collNames.legacy
     );
 
-    // Fetch chunk text from Qdrant across all relevant collections
-    // Use originalId filter (Qdrant point id is a UUID, original string id is in payload.originalId)
     for (const chunkId of idList) {
       for (const collectionName of searchCollections) {
         try {
@@ -334,7 +337,7 @@ async function expandToChunks(
             zeroEmbedding,
             1,
             { originalId: chunkId },
-            -1, // No score threshold for ID lookup
+            -1, // No score threshold — match by filter only
           );
           if (results.documents.length > 0) {
             chunks.push({
@@ -431,13 +434,25 @@ export async function graphAugmentedRetrieval(
 
 /**
  * Check if graph augmentation should be skipped based on Qdrant scores.
- * Skips when the top Qdrant chunk has a very high score (> 0.85),
- * indicating a clear single-document answer that doesn't need graph expansion.
+ * Skips when the top Qdrant chunk has a very high score (> 0.95),
+ * indicating a near-exact match that doesn't need graph expansion.
+ *
+ * The threshold is deliberately high (0.95 not 0.85) because
+ * text-embedding-3-large commonly produces cosine similarities in the
+ * 0.85-0.97 range for relevant documents. A lower threshold would
+ * suppress graph augmentation on nearly every query.
  */
 export function shouldSkipGraphAugmentation(
   topChunks: RetrievedChunk[],
-  skipThreshold: number = 0.85,
+  skipThreshold: number = 0.95,
 ): boolean {
   if (topChunks.length === 0) return true;
-  return (topChunks[0]?.score ?? 0) > skipThreshold;
+  const topScore = topChunks[0]?.score ?? 0;
+  const shouldSkip = topScore > skipThreshold;
+  if (shouldSkip) {
+    console.log(`[Graph] Skipping augmentation — top Qdrant score ${topScore.toFixed(4)} > threshold ${skipThreshold}`);
+  } else {
+    console.log(`[Graph] Proceeding with augmentation — top Qdrant score ${topScore.toFixed(4)} <= threshold ${skipThreshold}`);
+  }
+  return shouldSkip;
 }

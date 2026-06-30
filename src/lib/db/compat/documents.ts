@@ -222,6 +222,21 @@ export async function updateDocument(
 
 export async function deleteDocument(id: number): Promise<boolean> {
   const db = await getDb();
+
+  // Cascade: delete orphaned extraction_failures for this document.
+  // Prevents "[GraphFailures/reprocess] Document X not found" warnings
+  // when admin reprocesses failure records for already-deleted documents.
+  await db.deleteFrom('extraction_failures' as any)
+    .where('document_id', '=', String(id))
+    .execute()
+    .catch(() => {});
+
+  // Cascade: delete document_category assignments
+  await db.deleteFrom('document_categories')
+    .where('document_id', '=', id)
+    .execute()
+    .catch(() => {});
+
   const result = await db.deleteFrom('documents').where('id', '=', id).executeTakeFirst();
   return (result.numDeletedRows ?? BigInt(0)) > BigInt(0);
 }

@@ -958,6 +958,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       initBackupScheduler().catch(err => console.warn('[Backup] Scheduler init failed:', err))
     )
     .catch(err => console.warn('[Backup] Module load failed:', err));
+
+  // Fire-and-forget: clean up orphaned extraction failure records
+  // (records whose parent document has been deleted without cascade cleanup)
+  import('../db/compat/query-logs')
+    .then(({ cleanupOrphanedExtractionFailures }) =>
+      cleanupOrphanedExtractionFailures().then((count: number) => {
+        if (count > 0) {
+          console.log(`[Kysely] Cleaned up ${count} orphaned extraction failure record(s)`);
+        }
+      })
+    )
+    .catch(() => {
+      /* ignore — table may not exist on very first boot */
+    });
 }
 
 /**

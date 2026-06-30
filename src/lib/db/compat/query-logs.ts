@@ -198,6 +198,33 @@ export async function clearAllExtractionFailures(): Promise<void> {
 }
 
 /**
+ * Delete extraction failure records whose document_id no longer exists
+ * in the documents table. Returns the count of removed orphan records.
+ *
+ * Orphaned failures accumulate when documents are deleted without also
+ * cleaning up their associated extraction_failures rows. These cause
+ * noisy "[GraphFailures/reprocess] Document X not found" warnings in
+ * the admin reprocessing UI.
+ */
+export async function cleanupOrphanedExtractionFailures(): Promise<number> {
+  const db = await getDb();
+  const result = await db
+    .deleteFrom('extraction_failures' as any)
+    .where('document_id', 'not in',
+      db.selectFrom('documents' as any).select('id')
+    )
+    .execute();
+  // Kysely delete returns DeleteResult[] with numAffectedRows
+  const count = Array.isArray(result) && result.length > 0
+    ? Number((result[0] as any)?.numAffectedRows ?? 0)
+    : 0;
+  if (count > 0) {
+    console.log(`[QueryLogs] Cleaned up ${count} orphaned extraction failure records`);
+  }
+  return count;
+}
+
+/**
  * Get failure statistics (counts).
  */
 export async function getExtractionFailureStats(): Promise<{ total: number; maxRetryReached: number }> {

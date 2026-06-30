@@ -140,6 +140,15 @@ export interface VectorStoreClient {
      hybridSearch?: boolean,
      queryText?: string
    ): Promise<VectorQueryResult>;
+
+  /**
+   * Backfill sparse vectors for all points in a collection that lack them.
+   * Returns the count of points updated with sparse vectors.
+   *
+   * Documents ingested before hybridSearchEnabled was turned on will not
+   * have sparse vectors, causing hybrid queries to return 0 sparse results.
+   */
+  backfillSparseVectors(collectionName: string): Promise<number>;
 }
 
 /**
