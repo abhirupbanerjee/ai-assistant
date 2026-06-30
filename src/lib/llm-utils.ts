@@ -27,6 +27,8 @@ interface CallLLMOptions {
    * '[' for JSON arrays.
    */
   assistantPrefix?: string;
+  /** Optional JSON schema for Gemini native responseSchema enforcement. Ignored by non-Gemini providers. */
+  responseSchema?: object;
 }
 
 /**
@@ -47,6 +49,7 @@ export async function callLLMForJson(
     maxTokens = 1000,
     systemPrompt,
     assistantPrefix,
+    responseSchema,
   } = options;
 
   const effectiveModel = model || (await getLlmSettings()).model;
@@ -74,6 +77,7 @@ export async function callLLMForJson(
     model: effectiveModel,
     temperature,
     maxTokens,
+    ...(responseSchema && { responseSchema }),
   });
 
   // Apply timeout via Promise.race

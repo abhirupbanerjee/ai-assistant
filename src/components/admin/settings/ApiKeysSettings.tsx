@@ -61,8 +61,8 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   'azure-foundry': ['LLM', 'Embeddings'],
 };
 
-const ROUTE_1_PROVIDERS = ['openai', 'gemini', 'mistral'];
-const ROUTE_2_PROVIDERS = ['deepseek', 'anthropic', 'moonshot'];
+const ROUTE_1_PROVIDERS = ['openai'];
+const ROUTE_2_PROVIDERS = ['deepseek', 'anthropic', 'moonshot', 'mistral', 'gemini'];
 const ROUTE_3_PROVIDERS = ['ollama'];
 const ROUTE_4_PROVIDERS: string[] = [];
 const ROUTE_5_PROVIDERS = ['azure-foundry', 'fireworks', 'ollama-cloud'];

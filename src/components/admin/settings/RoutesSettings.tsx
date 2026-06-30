@@ -295,7 +295,7 @@ export default function RoutesSettingsPanel() {
             <Server size={20} className="text-gray-600" />
             <div>
               <h3 className="font-medium text-gray-900">Route 1: LiteLLM Proxy</h3>
-              <p className="text-xs text-gray-500">OpenAI, Gemini, Mistral, Ollama</p>
+              <p className="text-xs text-gray-500">OpenAI</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -371,7 +371,7 @@ export default function RoutesSettingsPanel() {
             <Zap size={20} className="text-orange-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 2: Direct Providers</h3>
-              <p className="text-xs text-gray-500">DeepSeek, Claude (Anthropic), Moonshot AI, Mistral AI — bypasses LiteLLM</p>
+              <p className="text-xs text-gray-500">DeepSeek, Claude (Anthropic), Moonshot AI, Mistral AI, Google Gemini — bypasses LiteLLM</p>
             </div>
           </div>
           <div className="flex items-center gap-3">

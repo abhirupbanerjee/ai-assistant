@@ -180,6 +180,7 @@ import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
 import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, streamMistralCompletion, isMistralEmbeddingModel, createMistralEmbedding, createMistralEmbeddings } from '@/lib/llm/providers/mistral';
+import { isGeminiModel, streamGeminiCompletion, isGeminiEmbeddingModel, createGeminiEmbedding, createGeminiEmbeddings } from '@/lib/llm/providers/gemini';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -1324,6 +1325,7 @@ export async function generateToolCompletion(
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
   const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
+  const useGeminiDirect = isGeminiModel(effectiveModel);
 
   // Build thinking profile (subagent doesn't need thinking, but some models require param handling)
   const modelThinkingCapable = await isModelThinkingCapable(effectiveModel);
@@ -1390,6 +1392,32 @@ export async function generateToolCompletion(
       tool_calls: result.tool_calls,
       tokens_used: result.totalTokens,
       thinkingContent: result.thinkingContent ?? undefined,
+    };
+  }
+
+  if (useGeminiDirect) {
+    const geminiMessages = messages.map(m => ({
+      role: m.role as string,
+      content: m.content,
+    }));
+    const geminiResult = await streamGeminiCompletion(
+      effectiveModel,
+      geminiMessages,
+      {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools: tools as any,
+        toolChoice: toolChoice as any,
+        thinkingConfig: thinkingProfile.enabled
+          ? { thinkingBudget: -1 }
+          : undefined,
+      },
+    );
+    return {
+      content: geminiResult.content,
+      tool_calls: geminiResult.tool_calls as any,
+      tokens_used: geminiResult.totalTokens,
+      thinkingContent: geminiResult.thinkingContent ?? undefined,
     };
   }
 
@@ -1678,6 +1706,7 @@ export async function generateResponseWithTools(
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
   const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
   const useMistralDirect = isMistralModel(effectiveModel);
+  const useGeminiDirect = isGeminiModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
@@ -1686,6 +1715,7 @@ export async function generateResponseWithTools(
     : useDeepSeekDirect ? 'DeepSeek API directly'
     : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
     : useMistralDirect ? 'Mistral AI directly (Route 2)'
+    : useGeminiDirect ? 'Gemini directly (Route 2)'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1697,6 +1727,7 @@ export async function generateResponseWithTools(
     : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
     : useAzureFoundryDirect ? await getAzureFoundryClient()
     : useMistralDirect ? null // Mistral uses native SDK, not OpenAI SDK
+    : useGeminiDirect ? null // Gemini uses native @google/genai SDK, not OpenAI SDK
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
@@ -2115,6 +2146,35 @@ export async function generateResponseWithTools(
       totalTokens: mistralResult.totalTokens,
     };
     accumulatedTokens += mistralResult.totalTokens;
+  } else if (useGeminiDirect) {
+    // Gemini direct (Route 2) — use native @google/genai SDK streaming
+    const geminiMessages = messages.map(m => ({
+      role: m.role as string,
+      content: m.content,
+    }));
+    const geminiResult = await streamGeminiCompletion(
+      effectiveModel,
+      geminiMessages,
+      {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools: tools as any,
+        toolChoice: effectiveToolChoice as any,
+        systemPrompt,
+        thinkingConfig: thinkingProfile.enabled
+          ? { thinkingBudget: -1 }
+          : undefined,
+        onChunk: callbacks?.onChunk,
+        onThinkingChunk: callbacks?.onThinkingChunk,
+      },
+    );
+    responseMessage = {
+      content: geminiResult.content,
+      tool_calls: geminiResult.tool_calls as any,
+      thinkingContent: geminiResult.thinkingContent,
+      totalTokens: geminiResult.totalTokens,
+    };
+    accumulatedTokens += geminiResult.totalTokens;
   } else {
     responseMessage = await streamOneCompletionWithThinkingRetry(openai!, completionParams, thinkingProfile, callbacks?.onChunk, callbacks?.onThinkingChunk);
     accumulatedTokens += responseMessage.totalTokens;

@@ -128,7 +128,7 @@ export async function syncModelToLiteLLM(
   // DeepSeek: Chat always routes direct (Route 2); sync would create unused LiteLLM entries
   // Mistral: Moved to Route 2 direct SDK; no longer synced to LiteLLM
   // Azure Foundry: Route 5 aggregator, not synced to LiteLLM
-  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek' || model.providerId === 'mistral' || model.providerId === 'azure-foundry') {
+  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek' || model.providerId === 'mistral' || model.providerId === 'gemini' || model.providerId === 'azure-foundry') {
     return true;
   }
 

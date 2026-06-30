@@ -583,7 +583,7 @@ async function selectVoicesWithLLM(
   topic: string,
   geminiConfig: GeminiTTSConfig
 ): Promise<{ hostVoice: GeminiVoice; expertVoice: GeminiVoice }> {
-  const openai = await getChatClient();
+  const { createInternalCompletion } = await import('../llm-client');
   const llmSettings = await getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
@@ -628,17 +628,15 @@ Select the best matching voice for each role.`;
   console.log(`[PodcastGen] Auto-selecting voices with LLM for: Host="${geminiConfig.hostAccent || 'default'}", Expert="${geminiConfig.expertAccent || 'default'}"`);
 
   try {
-    const completion = await openai.chat.completions.create({
+    const response = await createInternalCompletion({
       model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       temperature: getTemperatureForModel(model, 0.3),
-      max_tokens: 100,
+      maxTokens: 100,
     });
-
-    const response = completion.choices[0]?.message?.content?.trim() || '';
 
     // Parse JSON response
     const jsonMatch = response.match(/\{[^}]+\}/);

@@ -18,6 +18,7 @@ import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
 import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, stripAzureFoundryPrefix } from './llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, callMistralChat } from './llm/providers/mistral';
+import { isGeminiModel, stripGeminiPrefix, callGeminiChat } from './llm/providers/gemini';
 import { getTemperatureForModel } from './llm-thinking';
 
 
@@ -45,6 +46,8 @@ export interface InternalCompletionOptions {
   maxTokens?: number;
   /** Optional callback invoked with token usage data after a successful completion. */
   onUsage?: (usage: { inputTokens: number; outputTokens: number; model: string }) => void;
+  /** Optional JSON schema for Gemini native responseSchema enforcement. Ignored by non-Gemini providers. */
+  responseSchema?: object;
 }
 
 // ============ Usage helper ============
@@ -351,6 +354,14 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     const result = await callMistralChat(model, opts.messages as Array<{ role: string; content: string }>, {
       temperature: opts.temperature,
       maxTokens: opts.maxTokens,
+    });
+    return result.content;
+  }
+  if (isGeminiModel(model)) {
+    const result = await callGeminiChat(model, opts.messages, {
+      temperature: opts.temperature,
+      maxTokens: opts.maxTokens,
+      ...(opts.responseSchema && { responseSchema: opts.responseSchema }),
     });
     return result.content;
   }

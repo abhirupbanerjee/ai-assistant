@@ -86,8 +86,8 @@ const TTS_PROVIDER_INFO: Record<TtsProvider, { label: string; description: strin
 };
 
 const ROUTE_STT_PROVIDERS: Record<string, SttProvider[]> = {
-  route1: ['openai', 'gemini', 'mistral'],
-  route2: ['fireworks'],
+  route1: ['openai', 'mistral'],
+  route2: ['fireworks', 'gemini'],
 };
 
 // ============ Component ============

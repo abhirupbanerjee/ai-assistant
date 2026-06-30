@@ -264,7 +264,9 @@ export function isRoute2Model(model: string): boolean {
     || model.startsWith('codestral/')
     || model.startsWith('codestral-')
     || model.startsWith('pixtral/')
-    || model.startsWith('pixtral-');
+    || model.startsWith('pixtral-')
+    || model.startsWith('gemini/')
+    || model.startsWith('gemini-');
 }
 
 /**
