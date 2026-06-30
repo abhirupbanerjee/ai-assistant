@@ -2775,6 +2775,56 @@ export async function generateResponseWithTools(
       );
       responseMessage = summaryResponse;
       accumulatedTokens += summaryResponse.totalTokens;
+    } else if (useMistralDirect) {
+      const summaryMessages = messages.map(m => ({
+        role: m.role as string,
+        content: m.content,
+      }));
+      summaryMessages.push({ role: 'user', content: summaryPrompt } as any);
+      const summaryResult = await streamMistralCompletion(
+        effectiveModel,
+        summaryMessages,
+        {
+          temperature: effectiveTemperature,
+          maxTokens: effectiveMaxTokens,
+          onChunk: callbacks?.onChunk,
+          onThinkingChunk: callbacks?.onThinkingChunk,
+        },
+      );
+      responseMessage = {
+        content: summaryResult.content,
+        tool_calls: undefined,
+        thinkingContent: summaryResult.thinkingContent,
+        totalTokens: summaryResult.totalTokens,
+      };
+      accumulatedTokens += summaryResult.totalTokens;
+    } else if (useGeminiDirect) {
+      const summaryMessages = messages.map(m => ({
+        role: m.role as string,
+        content: m.content,
+      }));
+      summaryMessages.push({ role: 'user', content: summaryPrompt } as any);
+      const summaryResult = await streamGeminiCompletion(
+        effectiveModel,
+        summaryMessages,
+        {
+          temperature: effectiveTemperature,
+          maxTokens: effectiveMaxTokens,
+          systemPrompt,
+          thinkingConfig: thinkingProfile.enabled
+            ? { thinkingBudget: -1 }
+            : undefined,
+          onChunk: callbacks?.onChunk,
+          onThinkingChunk: callbacks?.onThinkingChunk,
+        },
+      );
+      responseMessage = {
+        content: summaryResult.content,
+        tool_calls: undefined,
+        thinkingContent: summaryResult.thinkingContent,
+        totalTokens: summaryResult.totalTokens,
+      };
+      accumulatedTokens += summaryResult.totalTokens;
     } else {
       // Add the summary request to messages (tool result already present from tool execution)
       const summaryMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
