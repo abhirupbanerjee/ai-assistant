@@ -32,7 +32,6 @@ import {
   getLlmFallbackSettings as getDefaultLlmFallbackSettings,
   DEFAULT_ROUTES_SETTINGS,
   DEFAULT_SPEECH_SETTINGS,
-  ROUTE_STT_PROVIDERS,
 } from '../config';
 
 import type {
@@ -67,7 +66,6 @@ import type {
   SttProvider,
   TtsProvider,
   SttProviderConfig,
-  SttRouteConfig,
   TtsProviderConfig,
 } from '../config';
 import type { DisplaySettings } from '@/types/stream';
@@ -109,9 +107,7 @@ export type {
   SttProvider,
   TtsProvider,
   SttProviderConfig,
-  SttRouteConfig,
   TtsProviderConfig,
-  ROUTE_STT_PROVIDERS,
 } from '../config';
 
 // Re-export constants
@@ -679,8 +675,12 @@ export async function setLlmFallbackSettings(
 export async function getRoutesSettings(): Promise<RoutesSettings> {
   const raw = await getSetting<RoutesSettings>('routes-settings');
   if (!raw) return DEFAULT_ROUTES_SETTINGS;
-  // Back-compat: older DB rows may lack route3Enabled or route5Enabled
-  return { ...DEFAULT_ROUTES_SETTINGS, ...raw };
+  // Back-compat: older DB rows may lack route3Enabled or route5Enabled, or have stale route1Enabled
+  const result = { ...DEFAULT_ROUTES_SETTINGS, ...raw };
+  // Strip legacy route1Enabled from old DB rows
+  delete (result as any).route1Enabled;
+  if ((result as any).primaryRoute === 'route1') (result as any).primaryRoute = 'route2';
+  return result;
 }
 
 export async function setRoutesSettings(
@@ -692,19 +692,19 @@ export async function setRoutesSettings(
   // Back-compat: ensure route3Enabled and route5Enabled exist for older DB rows
   if (merged.route3Enabled === undefined) merged.route3Enabled = false;
   if (merged.route5Enabled === undefined) merged.route5Enabled = false;
+  // Strip legacy route1Enabled
+  delete (merged as any).route1Enabled;
   // Ensure at least one route is enabled
-  if (!merged.route1Enabled && !merged.route2Enabled && !merged.route3Enabled && !merged.route5Enabled) {
-    merged.route1Enabled = true;
+  if (!merged.route2Enabled && !merged.route3Enabled && !merged.route5Enabled) {
+    merged.route2Enabled = true;
   }
   // If primary route is disabled, switch primary to the first enabled route
   if (
-    (merged.primaryRoute === 'route1' && !merged.route1Enabled) ||
     (merged.primaryRoute === 'route2' && !merged.route2Enabled) ||
     (merged.primaryRoute === 'route3' && !merged.route3Enabled) ||
     (merged.primaryRoute === 'route5' && !merged.route5Enabled)
   ) {
-    merged.primaryRoute = merged.route1Enabled ? 'route1'
-      : merged.route2Enabled ? 'route2'
+    merged.primaryRoute = merged.route2Enabled ? 'route2'
       : merged.route3Enabled ? 'route3'
       : 'route5';
   }
@@ -719,11 +719,8 @@ export async function getSpeechSettings(): Promise<SpeechSettings> {
   if (!raw) return DEFAULT_SPEECH_SETTINGS;
   return {
     stt: {
-      defaultRoute: raw.stt?.defaultRoute ?? DEFAULT_SPEECH_SETTINGS.stt.defaultRoute,
-      routes: {
-        route1: { ...DEFAULT_SPEECH_SETTINGS.stt.routes.route1, ...(raw.stt?.routes?.route1 || {}) },
-        route2: { ...DEFAULT_SPEECH_SETTINGS.stt.routes.route2, ...(raw.stt?.routes?.route2 || {}) },
-      },
+      default: (raw.stt as any)?.default ?? DEFAULT_SPEECH_SETTINGS.stt.default,
+      fallback: (raw.stt as any)?.fallback ?? DEFAULT_SPEECH_SETTINGS.stt.fallback,
       providers: {
         openai:    { ...DEFAULT_SPEECH_SETTINGS.stt.providers.openai,    ...(raw.stt?.providers?.openai || {}) },
         fireworks: { ...DEFAULT_SPEECH_SETTINGS.stt.providers.fireworks, ...(raw.stt?.providers?.fireworks || {}) },
@@ -750,11 +747,8 @@ export async function setSpeechSettings(
   const current = await getSpeechSettings();
   const merged: SpeechSettings = {
     stt: {
-      defaultRoute: settings.stt?.defaultRoute ?? current.stt.defaultRoute,
-      routes: {
-        route1: { ...current.stt.routes.route1, ...(settings.stt?.routes?.route1 || {}) },
-        route2: { ...current.stt.routes.route2, ...(settings.stt?.routes?.route2 || {}) },
-      },
+      default: (settings.stt as any)?.default ?? current.stt.default,
+      fallback: (settings.stt as any)?.fallback ?? current.stt.fallback,
       providers: {
         openai:    { ...current.stt.providers.openai,    ...(settings.stt?.providers?.openai || {}) },
         fireworks: { ...current.stt.providers.fireworks, ...(settings.stt?.providers?.fireworks || {}) },

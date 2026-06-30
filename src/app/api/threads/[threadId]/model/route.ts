@@ -48,8 +48,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const availableModels = allModels.filter(m => {
       if (isRoute5Model(m.id)) return routesSettings.route5Enabled;
       if (isRoute3Model(m.id)) return routesSettings.route3Enabled;
-      if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
-      return routesSettings.route1Enabled;
+      return routesSettings.route2Enabled;
     });
 
     // Get global default

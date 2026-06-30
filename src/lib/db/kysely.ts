@@ -267,7 +267,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
 
   // Migration: Rename Ollama model IDs to match actual Ollama API model names
   // Old IDs used a display-friendly prefix (ollama-*); new IDs are the actual model names
-  // LiteLLM model_name entries in litellm_config.yaml updated to match
   const ollamaRenames: Array<{ oldId: string; newId: string }> = [
     { oldId: 'ollama-llama3.2',   newId: 'llama3.2:3b' },
     { oldId: 'ollama-qwen3',      newId: 'qwen3:4b' },

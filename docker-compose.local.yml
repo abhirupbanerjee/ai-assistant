@@ -39,8 +39,6 @@ services:
       POSTGRES_DB: policybot
     volumes:
       - policybot-pgdata-local:/var/lib/postgresql/data
-      # Auto-run on first init (only executes once when DB is created)
-      - ./src/lib/db/schema/00-create-litellm-db.sql:/docker-entrypoint-initdb.d/00-create-litellm-db.sql:ro
       - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U policybot"]
@@ -86,41 +84,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # LiteLLM Proxy
-  litellm:
-    image: ghcr.io/berriai/litellm:v1.82.3-stable.patch.2
-    container_name: policy-bot-litellm-local
-    restart: unless-stopped
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
-    env_file:
-      - .env.local
-    environment:
-      # Override DATABASE_URL from .env.local (which uses localhost) to Docker hostname.
-      # LiteLLM needs a DB for /model/new API (auto-sync models from app).
-      # Uses separate "litellm" database — created by 00-create-litellm-db.sql on first init.
-      - DATABASE_URL=postgresql://policybot:12f1ecab9910c6253261be41092a916a@postgres:5432/litellm
-      - DATABASE_PROVIDER=
-      - POSTGRES_PASSWORD=
-      - DATABASE_POOL_MAX=
-      - DATABASE_POOL_IDLE_TIMEOUT=
-      - DATABASE_POOL_CONNECTION_TIMEOUT=
-      # LiteLLM settings
-      - STORE_MODEL_IN_DB=True
-      - DISABLE_SPEND_LOGS=True
-    command: --config /app/config.yaml --port 4000
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
 
   # Ollama Local LLM Server
   # Start with: docker compose -f docker-compose.local.yml --profile ollama up -d

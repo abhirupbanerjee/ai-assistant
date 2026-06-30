@@ -102,7 +102,6 @@ export {
   type SttProvider,
   type TtsProvider,
   type SttProviderConfig,
-  type SttRouteConfig,
   type TtsProviderConfig,
   type GraphSettings,
   // Display Settings

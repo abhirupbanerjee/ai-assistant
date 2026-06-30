@@ -700,30 +700,8 @@ export default function ApiKeysSettings() {
       <div className="bg-white border rounded-xl p-5">
         <SectionHeader
           title="LLM Providers"
-          subtitle="All providers now direct · LiteLLM retained as legacy fallback"
+          subtitle="All providers connect directly via native SDKs"
         />
-
-        <div className="flex items-center gap-1.5 mb-4 text-xs text-gray-500">
-          <Info size={12} />
-          <span>
-            All providers now connect directly via native SDKs. LiteLLM is retained as a legacy fallback.{' '}
-            <a href="/admin?tab=settings&section=routes" className="text-blue-600 hover:underline inline-flex items-center gap-0.5">
-              See Routes <ExternalLink size={10} />
-            </a>
-          </span>
-        </div>
-
-        {/* Route 1 — hidden when empty (all providers migrated to Route 2/5) */}
-        {route1Providers.length > 0 && (
-          <div className="mb-4">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
-              Route 1 — LiteLLM Proxy
-            </div>
-            <div className="divide-y divide-gray-100">
-              {route1Providers.map(renderProviderRow)}
-            </div>
-          </div>
-        )}
 
         {/* Route 2 */}
         <div className="mb-4">

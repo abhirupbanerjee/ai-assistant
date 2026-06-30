@@ -241,22 +241,20 @@ export interface LlmFallbackSettings {
 
 /**
  * LLM Routes Settings
- * Controls primary/fallback routing between LiteLLM proxy and direct providers
+ * Controls primary/fallback routing between direct providers
  */
 export interface RoutesSettings {
-  route1Enabled: boolean;                  // Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral)
-  route2Enabled: boolean;                  // Route 2: Direct providers (Fireworks AI, DeepSeek, Claude/Anthropic, Moonshot AI)
+  route2Enabled: boolean;                  // Route 2: Direct providers (OpenAI, Claude, Gemini, Mistral, DeepSeek, Moonshot, Fireworks)
   route3Enabled: boolean;                  // Route 3: Local / Ollama direct (air-gapped capable)
   route5Enabled: boolean;                  // Route 5: Aggregator gateways (Azure AI Foundry, Fireworks AI, Ollama Cloud)
-  primaryRoute: 'route1' | 'route2' | 'route3' | 'route5';  // Which route is primary (others become fallback)
+  primaryRoute: 'route2' | 'route3' | 'route5';  // Which route is primary (others become fallback)
 }
 
 export const DEFAULT_ROUTES_SETTINGS: RoutesSettings = {
-  route1Enabled: true,
-  route2Enabled: false,
+  route2Enabled: true,
   route3Enabled: false,
   route5Enabled: false,
-  primaryRoute: 'route1',
+  primaryRoute: 'route2',
 };
 
 export interface LimitsSettings {
@@ -322,7 +320,7 @@ export interface AvailableModel {
 
 /**
  * Get available models
- * Priority: Database (admin-configured) > LiteLLM YAML > Hardcoded presets
+ * Priority: Database (admin-configured) > Hardcoded presets
  *
  * When admin has configured models via Settings → LLM,
  * those take precedence over YAML/preset discovery.
@@ -479,17 +477,6 @@ export type SettingKey =
 export type SttProvider = 'openai' | 'fireworks' | 'mistral' | 'gemini';
 export type TtsProvider = 'openai' | 'gemini';
 
-/** Which STT providers are reachable on each route */
-export const ROUTE_STT_PROVIDERS: Record<string, SttProvider[]> = {
-  route1: ['openai', 'gemini', 'mistral'],
-  route2: ['fireworks'],
-};
-
-export interface SttRouteConfig {
-  default: SttProvider;
-  fallback: SttProvider | 'none';
-}
-
 export interface SttProviderConfig {
   enabled: boolean;
   model: string;
@@ -501,11 +488,8 @@ export interface TtsProviderConfig {
 
 export interface SpeechSettings {
   stt: {
-    defaultRoute: 'route1' | 'route2';
-    routes: {
-      route1: SttRouteConfig;
-      route2: SttRouteConfig;
-    };
+    default: SttProvider;
+    fallback: SttProvider | 'none';
     providers: Record<SttProvider, SttProviderConfig>;
     recording: {
       minDurationSeconds: number;
@@ -521,11 +505,8 @@ export interface SpeechSettings {
 
 export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
   stt: {
-    defaultRoute: 'route1',
-    routes: {
-      route1: { default: 'openai', fallback: 'gemini' },
-      route2: { default: 'fireworks', fallback: 'none' },
-    },
+    default: 'openai',
+    fallback: 'gemini',
     providers: {
       openai:    { enabled: true,  model: 'whisper-1' },
       fireworks: { enabled: false, model: 'whisper-v3' },

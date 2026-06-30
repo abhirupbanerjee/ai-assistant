@@ -1,9 +1,8 @@
 /**
  * Routes Health Check API
  *
- * Returns health status for both LLM routes:
- * - Route 1: LiteLLM proxy health via /health/liveliness endpoint (no auth required)
- * - Route 2: Fireworks + DeepSeek + Moonshot + Mistral reachability + Anthropic API key configured
+ * Returns health status for direct LLM routes:
+ * - Route 2: OpenAI + Claude + Gemini + Mistral + DeepSeek + Moonshot + Fireworks
  */
 
 import { NextResponse } from 'next/server';
@@ -12,7 +11,6 @@ import { getApiBase, getApiKey } from '@/lib/provider-helpers';
 import { getMoonshotBaseUrl } from '@/lib/moonshot-config';
 
 interface RouteHealth {
-  route1: { healthy: boolean; latencyMs: number | null; error?: string };
   route2: {
     fireworks: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     deepseek: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
@@ -23,7 +21,7 @@ interface RouteHealth {
 }
 
 /**
- * GET - Check health of both routes
+ * GET - Check health of routes
  */
 export async function GET() {
   try {
@@ -32,9 +30,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Check both routes in parallel
-    const [route1Health, fireworksHealth, deepseekHealth, claudeConfigured, moonshotHealth, mistralHealth] = await Promise.all([
-      checkRoute1Health(),
+    const [fireworksHealth, deepseekHealth, claudeConfigured, moonshotHealth, mistralHealth] = await Promise.all([
       checkFireworksHealth(),
       checkDeepSeekHealth(),
       checkClaudeConfigured(),
@@ -43,7 +39,6 @@ export async function GET() {
     ]);
 
     const health: RouteHealth = {
-      route1: route1Health,
       route2: {
         fireworks: fireworksHealth,
         deepseek: deepseekHealth,
@@ -60,28 +55,6 @@ export async function GET() {
       { error: 'Failed to check route health' },
       { status: 500 }
     );
-  }
-}
-
-async function checkRoute1Health(): Promise<{ healthy: boolean; latencyMs: number | null; error?: string }> {
-  const baseUrl = process.env.OPENAI_BASE_URL;
-  if (!baseUrl) {
-    return { healthy: false, latencyMs: null, error: 'OPENAI_BASE_URL not configured' };
-  }
-
-  // Use /health/liveliness (no auth required) instead of /health (requires LITELLM_MASTER_KEY)
-  const healthUrl = baseUrl.replace(/\/v1\/?$/, '') + '/health/liveliness';
-  const start = Date.now();
-
-  try {
-    const res = await fetch(healthUrl, { signal: AbortSignal.timeout(5000) });
-    const latencyMs = Date.now() - start;
-    if (res.ok) {
-      return { healthy: true, latencyMs };
-    }
-    return { healthy: false, latencyMs, error: `HTTP ${res.status}` };
-  } catch (err) {
-    return { healthy: false, latencyMs: Date.now() - start, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
 

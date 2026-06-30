@@ -436,7 +436,7 @@ export function hasEnabledModels(): boolean {
 }
 
 /**
- * Seed models from LiteLLM config (for migration)
+ * Seed models from config (for migration)
  * This is called during app initialization to migrate from YAML to DB
  */
 export function seedModelsFromConfig(models: CreateEnabledModelInput[]): void {

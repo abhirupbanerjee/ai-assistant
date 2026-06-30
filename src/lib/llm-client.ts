@@ -305,9 +305,8 @@ function isDeepSeekModel(model: string): boolean {
 /**
  * Create a completion using the configured LLM route with automatic fallback.
  *
- * - Route 2 models (Fireworks, DeepSeek, Moonshot, Claude) always go direct.
+ * - All models route directly via their native SDK/API.
  * - Route 3 models (Ollama) always go direct.
- * - Route 1 models go via LiteLLM; on failure, fall back to Route 2/3 if enabled.
  */
 export async function createInternalCompletion(opts: InternalCompletionOptions): Promise<string> {
   const model = opts.model || (await getLlmSettings()).model;

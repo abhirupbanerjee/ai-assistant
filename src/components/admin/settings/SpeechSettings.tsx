@@ -86,8 +86,8 @@ const TTS_PROVIDER_INFO: Record<TtsProvider, { label: string; description: strin
 };
 
 const ROUTE_STT_PROVIDERS: Record<string, SttProvider[]> = {
-  route1: ['openai', 'mistral'],
-  route2: ['fireworks', 'gemini'],
+  route1: ['openai', 'gemini', 'mistral'],
+  route2: ['fireworks'],
 };
 
 // ============ Component ============
@@ -103,6 +103,39 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
   const [sttOpen, setSttOpen] = useState(true);
   const [ttsOpen, setTtsOpen] = useState(true);
 
+  // Map flat API format to legacy UI format for backward compat
+  const normalizeSettings = (data: any): SpeechSettings => {
+    const stt: any = data.stt || {};
+    return {
+      ...data,
+      stt: {
+        ...stt,
+        defaultRoute: stt.default ? (['fireworks', 'gemini'].includes(stt.default) ? 'route2' : 'route1') : 'route1',
+        routes: {
+          route1: { default: (stt.default && !['fireworks', 'gemini'].includes(stt.default)) ? stt.default : 'openai', fallback: stt.fallback && !['fireworks', 'gemini'].includes(stt.fallback) ? stt.fallback : 'none' },
+          route2: { default: stt.default === 'fireworks' ? 'fireworks' : 'gemini', fallback: stt.fallback === 'fireworks' || stt.fallback === 'gemini' ? stt.fallback : 'none' },
+        },
+      },
+    };
+  };
+
+  // Reverse-map old UI format back to flat API format for saving
+  const flatFormat = (data: SpeechSettings): any => {
+    const stt = data.stt;
+    const defaultRoute = stt.defaultRoute;
+    const defaultProvider = stt.routes[defaultRoute].default;
+    const fallbackProvider = stt.routes[defaultRoute].fallback;
+    return {
+      ...data,
+      stt: {
+        default: defaultProvider,
+        fallback: fallbackProvider,
+        providers: stt.providers,
+        recording: stt.recording,
+      },
+    };
+  };
+
   const fetchSettings = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -110,7 +143,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       if (!res.ok) throw new Error('Failed to fetch speech settings');
       const data = await res.json();
       setSettings(data.settings);
-      setEdited(data.settings);
+      setEdited(normalizeSettings(data.settings));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -134,7 +167,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       const res = await fetch('/api/admin/settings/speech', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(edited),
+        body: JSON.stringify(flatFormat(edited)),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -142,7 +175,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       }
       const data = await res.json();
       setSettings(data.settings);
-      setEdited(data.settings);
+      setEdited(normalizeSettings(data.settings));
       setSuccess('Speech settings saved');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -233,9 +266,6 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       </div>
     );
   }
-
-  const enabledSttOnRoute = (routeId: string) =>
-    (ROUTE_STT_PROVIDERS[routeId] || []).filter(p => edited.stt.providers[p].enabled);
 
   return (
     <div className="space-y-6">

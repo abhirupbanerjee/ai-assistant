@@ -198,7 +198,7 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     description: 'Generate Mermaid diagrams using the system default LLM',
     requires: {
       envVars: [
-        { name: 'OPENAI_API_KEY', description: 'OpenAI API key (or use LiteLLM proxy)' }
+        { name: 'OPENAI_API_KEY', description: 'OpenAI API key' }
       ]
     },
     validates: async () => {

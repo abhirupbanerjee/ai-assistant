@@ -21,15 +21,13 @@ export async function GET() {
       getRoutesSettings(),
     ]);
 
-    // Check if any STT provider is enabled and its route is active
     const { stt } = speechSettings;
-    const hasRoute1Stt = routesSettings.route1Enabled &&
-      Object.entries(stt.providers).some(([id, p]) => p.enabled && ['openai', 'gemini', 'mistral'].includes(id));
-    const hasRoute2Stt = routesSettings.route2Enabled &&
-      stt.providers.fireworks.enabled;
+
+    // Check if any STT provider is enabled and reachable
+    const hasStt = Object.values(stt.providers).some(p => p.enabled);
 
     return NextResponse.json({
-      enabled: hasRoute1Stt || hasRoute2Stt,
+      enabled: hasStt,
       minDurationSeconds: stt.recording.minDurationSeconds,
       maxDurationSeconds: stt.recording.maxDurationSeconds,
     });

@@ -1,9 +1,8 @@
 /**
  * LLM Routes Settings API
  *
- * Manages primary/fallback routing between LLM infrastructure paths.
- * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral)
- * Route 2: Direct providers (Fireworks AI, DeepSeek, Claude/Anthropic, Moonshot AI)
+ * Manages primary/fallback routing between direct provider paths.
+ * Route 2: Direct providers (OpenAI, Claude, Gemini, Mistral, DeepSeek, Moonshot, Fireworks)
  * Route 3: Local / Ollama direct (air-gapped capable)
  * Route 5: Aggregator gateways (Azure AI Foundry, Fireworks AI, Ollama Cloud)
  */
@@ -59,12 +58,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { route1Enabled, route2Enabled, route3Enabled, route5Enabled, primaryRoute } = body;
+    const { route2Enabled, route3Enabled, route5Enabled, primaryRoute } = body;
 
     // Validate types
-    if (route1Enabled !== undefined && typeof route1Enabled !== 'boolean') {
-      return NextResponse.json({ error: 'route1Enabled must be a boolean' }, { status: 400 });
-    }
     if (route2Enabled !== undefined && typeof route2Enabled !== 'boolean') {
       return NextResponse.json({ error: 'route2Enabled must be a boolean' }, { status: 400 });
     }
@@ -74,24 +70,23 @@ export async function PUT(request: NextRequest) {
     if (route5Enabled !== undefined && typeof route5Enabled !== 'boolean') {
       return NextResponse.json({ error: 'route5Enabled must be a boolean' }, { status: 400 });
     }
-    if (primaryRoute !== undefined && !['route1', 'route2', 'route3', 'route5'].includes(primaryRoute)) {
-      return NextResponse.json({ error: 'primaryRoute must be "route1", "route2", "route3", or "route5"' }, { status: 400 });
+    if (primaryRoute !== undefined && !['route2', 'route3', 'route5'].includes(primaryRoute)) {
+      return NextResponse.json({ error: 'primaryRoute must be "route2", "route3", or "route5"' }, { status: 400 });
     }
 
     // Cannot disable all routes
     const current = await getRoutesSettings();
-    const newR1 = route1Enabled ?? current.route1Enabled;
     const newR2 = route2Enabled ?? current.route2Enabled;
     const newR3 = route3Enabled ?? current.route3Enabled;
     const newR5 = route5Enabled ?? current.route5Enabled;
-    if (!newR1 && !newR2 && !newR3 && !newR5) {
+    if (!newR2 && !newR3 && !newR5) {
       return NextResponse.json({ error: 'At least one route must be enabled' }, { status: 400 });
     }
 
     // Primary route must be enabled
     const newPrimary = primaryRoute ?? current.primaryRoute;
     const routeEnabled: Record<string, boolean> = {
-      route1: newR1, route2: newR2, route3: newR3, route5: newR5,
+      route2: newR2, route3: newR3, route5: newR5,
     };
     if (!routeEnabled[newPrimary]) {
       return NextResponse.json({ error: 'Primary route must be enabled' }, { status: 400 });
@@ -99,7 +94,6 @@ export async function PUT(request: NextRequest) {
 
     // Build update
     const updates: Partial<RoutesSettings> = {};
-    if (route1Enabled !== undefined) updates.route1Enabled = route1Enabled;
     if (route2Enabled !== undefined) updates.route2Enabled = route2Enabled;
     if (route3Enabled !== undefined) updates.route3Enabled = route3Enabled;
     if (route5Enabled !== undefined) updates.route5Enabled = route5Enabled;

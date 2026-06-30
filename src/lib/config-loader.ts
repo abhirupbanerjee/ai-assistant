@@ -4,36 +4,12 @@
  * Loads settings from config/defaults.json and config/system-prompt.md
  * Provides typed getters with fallbacks to hardcoded defaults
  * Caches config in memory (reload on app restart)
- *
- * Model Discovery:
- * - Automatically discovers models from litellm_config.yaml
- * - Falls back to hardcoded defaults if YAML unavailable
  */
 
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { isTemperatureLockedModel, isTemperatureUnsupportedModel } from './llm-thinking';
-
-// Lazy imports to avoid circular dependency
-// These functions don't depend on loadConfig, so they're safe to call
-let _litellmFunctions: {
-  getLiteLLMChatModels: () => import('./litellm-validator').ParsedLiteLLMModel[];
-  getLiteLLMToolCapableModels: () => Set<string>;
-} | null = null;
-
-function getLiteLLMFunctions() {
-  if (!_litellmFunctions) {
-    // Dynamic require to avoid circular dependency at module load time
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const validator = require('./litellm-validator');
-    _litellmFunctions = {
-      getLiteLLMChatModels: validator.getLiteLLMChatModels,
-      getLiteLLMToolCapableModels: validator.getLiteLLMToolCapableModels,
-    };
-  }
-  return _litellmFunctions;
-}
 
 // ============ Types ============
 
@@ -777,51 +753,9 @@ export function clearConfigCache(): void {
 }
 
 /**
- * Get model presets - auto-discovers from LiteLLM config, falls back to hardcoded
- *
- * Priority:
- * 1. Parse litellm_config.yaml and build presets from discovered models
- * 2. Fall back to hardcoded modelPresets if YAML unavailable
+ * Get model presets from hardcoded defaults in config/defaults.json.
  */
 export function getModelPresetsFromConfig(): Record<string, ModelPresetConfig> {
-  // Try to get models from LiteLLM config first
-  try {
-    const { getLiteLLMChatModels } = getLiteLLMFunctions();
-    const litellmModels = getLiteLLMChatModels();
-
-    if (litellmModels.length > 0) {
-      // Build presets from discovered models
-      const presets: Record<string, ModelPresetConfig> = {};
-
-      for (const model of litellmModels) {
-        // Determine default settings based on model tier
-        const tierSettings = getDefaultSettingsForTier(model.id);
-
-        presets[model.id] = {
-          name: model.name,
-          description: model.description,
-          provider: model.provider,
-          temperature: tierSettings.temperature,
-          maxTokens: tierSettings.maxTokens,
-          // RAG settings (unused but required by interface)
-          topKChunks: tierSettings.topKChunks,
-          maxContextChunks: tierSettings.maxContextChunks,
-          similarityThreshold: 0.5,
-          chunkSize: 1200,
-          chunkOverlap: 200,
-          queryExpansionEnabled: true,
-          cacheEnabled: true,
-          cacheTTLSeconds: 3600,
-        };
-      }
-
-      return presets;
-    }
-  } catch {
-    // Fall through to hardcoded defaults
-  }
-
-  // Fall back to hardcoded defaults
   return loadConfig().modelPresets;
 }
 
@@ -888,23 +822,10 @@ export function getDefaultEmbeddingModel(): string {
 }
 
 /**
- * Get tool-capable models - auto-discovers from LiteLLM config, falls back to hardcoded
- * Returns a Set for O(1) lookup
+ * Get tool-capable models from hardcoded defaults.
+ * Returns a Set for O(1) lookup.
  */
 export function getToolCapableModels(): Set<string> {
-  // Try to get from LiteLLM config first
-  try {
-    const { getLiteLLMToolCapableModels } = getLiteLLMFunctions();
-    const litellmToolCapable = getLiteLLMToolCapableModels();
-
-    if (litellmToolCapable.size > 0) {
-      return litellmToolCapable;
-    }
-  } catch {
-    // Fall through to hardcoded defaults
-  }
-
-  // Fall back to hardcoded defaults
   const config = loadConfig();
   const toolCapable = config.models?.toolCapable || [];
   return new Set(toolCapable);

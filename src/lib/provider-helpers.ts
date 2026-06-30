@@ -86,7 +86,6 @@ export type ProviderId = typeof PROVIDERS[keyof typeof PROVIDERS];
 export const PROVIDER_ENV_VARS = {
   openai: {
     apiKey: 'OPENAI_API_KEY',
-    apiBase: 'OPENAI_BASE_URL',
   },
   gemini: {
     apiKey: 'GEMINI_API_KEY',

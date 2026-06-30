@@ -72,8 +72,6 @@ services:
       - REDIS_URL=redis://redis:6379
       - DATA_DIR=/app/data
       - CONFIG_DIR=/app/config
-      # Point to LiteLLM proxy for multi-provider LLM support
-      - OPENAI_BASE_URL=http://litellm:4000/v1
       # Fix transformers cache permission (reranker model caching)
       - TRANSFORMERS_CACHE=/tmp/transformers_cache
       - XDG_CACHE_HOME=/tmp/cache
@@ -104,8 +102,6 @@ services:
     # PostgreSQL: waits for healthy status when the postgres profile is active.
     depends_on:
       redis:
-        condition: service_healthy
-      litellm:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -158,8 +154,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-policybot}
     volumes:
       - policybot-pgdata:/var/lib/postgresql/data
-      # Auto-run on first init (only executes once when DB is created)
-      - ./src/lib/db/schema/00-create-litellm-db.sql:/docker-entrypoint-initdb.d/00-create-litellm-db.sql:ro
       - ./src/lib/db/schema/postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-policybot}"]
@@ -236,46 +230,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    networks:
-      - policy-bot-network
-    restart: unless-stopped
-
-  litellm:
-    image: ghcr.io/berriai/litellm:v1.82.3-stable.patch.2
-    container_name: policy-bot-litellm
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
-    # NOTE: Do NOT use env_file here. Loading .env passes DATABASE_URL to Prisma,
-    # which crashes LiteLLM when the URL format doesn't match expectations.
-    # Pass only needed vars explicitly via ${VAR} substitution from .env.
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - FIREWORKS_AI_API_KEY=${FIREWORKS_AI_API_KEY}
-      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
-      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-}
-      # LiteLLM needs a DB for /model/new API (auto-sync models from app).
-      # Uses a separate "litellm" database in the same Postgres instance.
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-policybot}:${POSTGRES_PASSWORD}@postgres:5432/litellm
-      - STORE_MODEL_IN_DB=True
-      - DISABLE_SPEND_LOGS=True
-    command: --config /app/config.yaml --port 4000
-    depends_on:
-      postgres:
-        condition: service_healthy
-        required: false  # Only enforced when postgres profile is active
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
     networks:
       - policy-bot-network
     restart: unless-stopped

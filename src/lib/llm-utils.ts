@@ -6,8 +6,7 @@
  *
  * Uses createInternalCompletion() which provides:
  * - DB-configured default model (admin UI override)
- * - Route-aware client selection (Claude direct, Fireworks direct, Moonshot direct, LiteLLM)
- * - Route 1 → Route 2 automatic fallback
+ * - Route-aware client selection (all providers use direct SDK/API)
  */
 
 import { createInternalCompletion } from './llm-client';

@@ -17,8 +17,7 @@ export async function GET() {
     // NOTE: Route 5 MUST be checked first — models may match multiple route prefixes
     if (isRoute5Model(m.id)) return routesSettings.route5Enabled;
     if (isRoute3Model(m.id)) return routesSettings.route3Enabled;
-    if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
-    return routesSettings.route1Enabled;
+    return routesSettings.route2Enabled;
   });
 
   return NextResponse.json({ models: filteredModels });

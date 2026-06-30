@@ -11,15 +11,13 @@ import Spinner from '@/components/ui/Spinner';
 // ============ Types ============
 
 interface RoutesSettings {
-  route1Enabled: boolean;
   route2Enabled: boolean;
   route3Enabled: boolean;
   route5Enabled: boolean;
-  primaryRoute: 'route1' | 'route2' | 'route3' | 'route5';
+  primaryRoute: 'route2' | 'route3' | 'route5';
 }
 
 interface RouteHealth {
-  route1: { healthy: boolean; latencyMs: number | null; error?: string };
   route2: {
     deepseek: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     claude: { configured: boolean };
@@ -67,7 +65,6 @@ export default function RoutesSettingsPanel() {
   const [fallbackModel, setFallbackModel] = useState<{ id: string; displayName: string } | null>(null);
 
   const isModified = edited && settings && (
-    edited.route1Enabled !== settings.route1Enabled ||
     edited.route2Enabled !== settings.route2Enabled ||
     edited.route3Enabled !== settings.route3Enabled ||
     edited.route5Enabled !== settings.route5Enabled ||
@@ -186,11 +183,10 @@ export default function RoutesSettingsPanel() {
 
   if (!edited) return null;
 
-  const route1IsPrimary = edited.primaryRoute === 'route1';
   const route2IsPrimary = edited.primaryRoute === 'route2';
   const route3IsPrimary = edited.primaryRoute === 'route3';
   const route5IsPrimary = edited.primaryRoute === 'route5';
-  const enabledCount = [edited.route1Enabled, edited.route2Enabled, edited.route3Enabled, edited.route5Enabled].filter(Boolean).length;
+  const enabledCount = [edited.route2Enabled, edited.route3Enabled, edited.route5Enabled].filter(Boolean).length;
   const onlyOneEnabled = enabledCount === 1;
 
   // Model route-conflict validation (uses edited for real-time feedback)
@@ -201,7 +197,6 @@ export default function RoutesSettingsPanel() {
     if (isR5 && !edited.route5Enabled) return { model: defaultModel, route: 'Route 5' };
     if (isR3 && !edited.route3Enabled) return { model: defaultModel, route: 'Route 3' };
     if (isR2 && !edited.route2Enabled) return { model: defaultModel, route: 'Route 2' };
-    if (!isR2 && !isR3 && !isR5 && !edited.route1Enabled) return { model: defaultModel, route: 'Route 1' };
     return null;
   })();
 
@@ -212,7 +207,6 @@ export default function RoutesSettingsPanel() {
     if (isR5 && !edited.route5Enabled) return { model: fallbackModel, route: 'Route 5' };
     if (isR3 && !edited.route3Enabled) return { model: fallbackModel, route: 'Route 3' };
     if (isR2 && !edited.route2Enabled) return { model: fallbackModel, route: 'Route 2' };
-    if (!isR2 && !isR3 && !isR5 && !edited.route1Enabled) return { model: fallbackModel, route: 'Route 1' };
     return null;
   })();
 
@@ -286,82 +280,6 @@ export default function RoutesSettingsPanel() {
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{success}</div>
       )}
 
-      {/* Route 1 Card */}
-      <div className={`border rounded-lg overflow-hidden ${edited.route1Enabled ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
-        <div className="px-5 py-4 bg-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Server size={20} className="text-gray-600" />
-            <div>
-              <h3 className="font-medium text-gray-900">Route 1: LiteLLM Proxy</h3>
-              <p className="text-xs text-gray-500">Legacy — all models migrated to Route 2/5</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Health indicator */}
-            {health && (
-              <span className="flex items-center gap-1 text-xs">
-                {health.route1.healthy ? (
-                  <><CheckCircle2 size={14} className="text-green-500" /> Healthy{health.route1.latencyMs != null && <span className="text-gray-400">({health.route1.latencyMs}ms)</span>}</>
-                ) : (
-                  <><XCircle size={14} className="text-red-500" /> {health.route1.error || 'Unreachable'}</>
-                )}
-              </span>
-            )}
-            {/* Primary badge */}
-            {edited.route1Enabled && route1IsPrimary && (
-              <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">Primary</span>
-            )}
-            {edited.route1Enabled && !route1IsPrimary && (
-              <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">Fallback</span>
-            )}
-            {/* Toggle */}
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={edited.route1Enabled}
-                onChange={(e) => {
-                  const enabled = e.target.checked;
-                  setEdited(prev => {
-                    if (!prev) return prev;
-                    const next = { ...prev, route1Enabled: enabled };
-                    // If disabling, switch primary to first available route
-                    if (!enabled && prev.primaryRoute === 'route1') {
-                      next.primaryRoute = prev.route2Enabled ? 'route2' : prev.route3Enabled ? 'route3' : 'route5';
-                    }
-                    // Don't allow disabling all
-                    if (!enabled && !prev.route2Enabled && !prev.route3Enabled && !prev.route5Enabled) return prev;
-                    return next;
-                  });
-                }}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-        </div>
-        {edited.route1Enabled && (
-          <div className="px-5 py-3 border-t space-y-2">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setEdited(prev => prev ? { ...prev, primaryRoute: 'route1' } : prev)}
-                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md transition-colors ${
-                  route1IsPrimary ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                <div className={`w-3 h-3 rounded-full border-2 ${route1IsPrimary ? 'border-blue-600 bg-blue-600' : 'border-gray-300'}`}>
-                  {route1IsPrimary && <div className="w-1 h-1 bg-white rounded-full m-auto mt-[2px]" />}
-                </div>
-                Set as Primary
-              </button>
-            </div>
-            <div className="text-xs text-gray-500 flex items-center gap-1">
-              <Shield size={12} />
-              Requires: <code className="bg-gray-100 px-1 rounded">OPENAI_BASE_URL</code>, <code className="bg-gray-100 px-1 rounded">LITELLM_MASTER_KEY</code>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Route 2 Card */}
       <div className={`border rounded-lg overflow-hidden ${edited.route2Enabled ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
         <div className="px-5 py-4 bg-gray-50 flex items-center justify-between">
@@ -427,9 +345,9 @@ export default function RoutesSettingsPanel() {
                     if (!prev) return prev;
                     const next = { ...prev, route2Enabled: enabled };
                     if (!enabled && prev.primaryRoute === 'route2') {
-                      next.primaryRoute = prev.route1Enabled ? 'route1' : prev.route3Enabled ? 'route3' : 'route5';
+                      next.primaryRoute = prev.route3Enabled ? 'route3' : 'route5';
                     }
-                    if (!enabled && !prev.route1Enabled && !prev.route3Enabled && !prev.route5Enabled) return prev;
+                    if (!enabled && !prev.route3Enabled && !prev.route5Enabled) return prev;
                     return next;
                   });
                 }}
@@ -491,9 +409,9 @@ export default function RoutesSettingsPanel() {
                     if (!prev) return prev;
                     const next = { ...prev, route3Enabled: enabled };
                     if (!enabled && prev.primaryRoute === 'route3') {
-                      next.primaryRoute = prev.route1Enabled ? 'route1' : prev.route2Enabled ? 'route2' : 'route5';
+                      next.primaryRoute = prev.route2Enabled ? 'route2' : 'route5';
                     }
-                    if (!enabled && !prev.route1Enabled && !prev.route2Enabled && !prev.route5Enabled) return prev;
+                    if (!enabled && !prev.route2Enabled && !prev.route5Enabled) return prev;
                     return next;
                   });
                 }}
@@ -555,9 +473,9 @@ export default function RoutesSettingsPanel() {
                     if (!prev) return prev;
                     const next = { ...prev, route5Enabled: enabled };
                     if (!enabled && prev.primaryRoute === 'route5') {
-                      next.primaryRoute = prev.route1Enabled ? 'route1' : prev.route2Enabled ? 'route2' : 'route3';
+                      next.primaryRoute = prev.route2Enabled ? 'route2' : 'route3';
                     }
-                    if (!enabled && !prev.route1Enabled && !prev.route2Enabled && !prev.route3Enabled) return prev;
+                    if (!enabled && !prev.route2Enabled && !prev.route3Enabled) return prev;
                     return next;
                   });
                 }}

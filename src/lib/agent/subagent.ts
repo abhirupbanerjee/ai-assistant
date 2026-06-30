@@ -9,7 +9,7 @@
  *
  * NOTE on multi-provider support:
  * This loop uses generateToolCompletionWithFallback() which routes across
- * all 6 direct routes + LiteLLM. Anthropic tool_use blocks are normalized
+ * all direct provider routes. Anthropic tool_use blocks are normalized
  * to OpenAI-shaped tool_calls so the loop can consume them uniformly.
  */
 

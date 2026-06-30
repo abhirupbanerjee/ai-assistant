@@ -97,8 +97,7 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     // NOTE: Route 5 MUST be checked first — models may match multiple route prefixes
     if (isRoute5Model(m.id)) return routesSettings.route5Enabled;
     if (isRoute3Model(m.id)) return routesSettings.route3Enabled;
-    if (isRoute2Model(m.id)) return routesSettings.route2Enabled;
-    return routesSettings.route1Enabled; // Route 1 (LiteLLM) is the default
+    return routesSettings.route2Enabled;
   }).filter(m => isModelHealthy(m.id));
 
   if (candidates.length === 0) {

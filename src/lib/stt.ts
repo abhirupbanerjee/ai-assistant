@@ -1,17 +1,15 @@
 /**
  * Speech-to-Text Service
  *
- * Supports 4 providers with route-based fallback:
- * - Route 1 (LiteLLM): OpenAI Whisper, Gemini (multimodal), Mistral Voxtral
- * - Route 2 (Direct): Fireworks Whisper
+ * Supports 4 providers: OpenAI Whisper, Gemini, Mistral Voxtral, Fireworks Whisper.
+ * All providers use direct API calls (no proxy).
  *
- * Fallback chain: route default → route fallback → other route default → other route fallback → fail
+ * Fallback chain: stt.default → stt.fallback → fail
  */
 
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/provider-helpers';
 import { getSpeechSettings } from '@/lib/db/compat/config';
-import { getRoutesSettings } from '@/lib/db/compat/config';
 import type { SttProvider, SttProviderConfig, SpeechSettings } from '@/lib/db/config';
 
 // ============ Provider file size limits ============
@@ -142,67 +140,31 @@ async function tryProvider(
   return { ...result, provider };
 }
 
-// ============ Route-based fallback chain ============
+// ============ Fallback chain ============
 
 /**
- * Build ordered list of providers to try based on route config and availability.
- *
- * Order: defaultRoute's default → defaultRoute's fallback →
- *        otherRoute's default → otherRoute's fallback
+ * Build ordered list of providers to try: default → fallback.
  */
-function buildProviderChain(
-  speechSettings: SpeechSettings,
-  route1Active: boolean,
-  route2Active: boolean
-): SttProvider[] {
+function buildProviderChain(speechSettings: SpeechSettings): SttProvider[] {
   const { stt } = speechSettings;
   const chain: SttProvider[] = [];
-  const seen = new Set<SttProvider>();
-
-  const addIfNew = (provider: SttProvider | 'none') => {
-    if (provider !== 'none' && !seen.has(provider)) {
-      seen.add(provider);
-      chain.push(provider);
-    }
-  };
-
-  // Primary route first
-  const primaryRoute = stt.defaultRoute;
-  const otherRoute = primaryRoute === 'route1' ? 'route2' : 'route1';
-  const primaryActive = primaryRoute === 'route1' ? route1Active : route2Active;
-  const otherActive = otherRoute === 'route1' ? route1Active : route2Active;
-
-  if (primaryActive) {
-    addIfNew(stt.routes[primaryRoute].default);
-    addIfNew(stt.routes[primaryRoute].fallback);
-  }
-  if (otherActive) {
-    addIfNew(stt.routes[otherRoute].default);
-    addIfNew(stt.routes[otherRoute].fallback);
-  }
-
+  if (stt.default) chain.push(stt.default);
+  if (stt.fallback && stt.fallback !== 'none') chain.push(stt.fallback);
   return chain;
 }
 
 // ============ Public API ============
 
 /**
- * Transcribe audio using configured providers with route-based fallback.
+ * Transcribe audio using configured providers with fallback.
  */
 export async function transcribeAudio(
   buffer: Buffer,
   filename: string
 ): Promise<{ text: string; duration: number; provider: string }> {
-  const [speechSettings, routesSettings] = await Promise.all([
-    getSpeechSettings(),
-    getRoutesSettings(),
-  ]);
+  const speechSettings = await getSpeechSettings();
 
-  const chain = buildProviderChain(
-    speechSettings,
-    routesSettings.route1Enabled,
-    routesSettings.route2Enabled
-  );
+  const chain = buildProviderChain(speechSettings);
 
   if (chain.length === 0) {
     throw new Error('No STT providers available. Enable at least one route with an STT provider.');
@@ -229,7 +191,6 @@ export async function transcribeAudio(
  */
 export async function getActiveMaxFileSize(): Promise<number> {
   const settings = await getSpeechSettings();
-  const defaultRoute = settings.stt.defaultRoute;
-  const defaultProvider = settings.stt.routes[defaultRoute].default;
+  const defaultProvider = settings.stt.default;
   return PROVIDER_MAX_FILE_SIZE[defaultProvider];
 }

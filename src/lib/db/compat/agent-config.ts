@@ -170,7 +170,7 @@ export async function getAgentModelConfigs(): Promise<StoredAgentModelConfigs> {
     if (provider === 'ollama') return 'ollama';
     if (provider === 'ollama-cloud') return 'ollama-cloud';
     if (provider === 'moonshot') return 'moonshot';
-    return 'openai'; // OpenAI and other unknown providers route through LiteLLM
+    return 'openai'; // OpenAI and other providers route directly
   };
 
   const defaultConfigs: StoredAgentModelConfigs = {

@@ -484,7 +484,7 @@ export async function hasEnabledModels(): Promise<boolean> {
 }
 
 /**
- * Seed models from LiteLLM config (for migration)
+ * Seed models from config (for migration)
  * This is called during app initialization to migrate from YAML to DB
  */
 export async function seedModelsFromConfig(models: CreateEnabledModelInput[]): Promise<void> {

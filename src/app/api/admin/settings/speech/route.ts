@@ -11,7 +11,7 @@ import {
   getSpeechSettings,
   setSpeechSettings,
 } from '@/lib/db/compat';
-import { ROUTE_STT_PROVIDERS, type SttProvider, type TtsProvider } from '@/lib/db/config';
+import { type SttProvider, type TtsProvider } from '@/lib/db/config';
 
 const VALID_STT_PROVIDERS: SttProvider[] = ['openai', 'fireworks', 'mistral', 'gemini'];
 const VALID_TTS_PROVIDERS: TtsProvider[] = ['openai', 'gemini'];
@@ -61,36 +61,21 @@ export async function PUT(request: NextRequest) {
 
     // Validate STT fields
     if (body.stt) {
-      // Validate defaultRoute
-      if (body.stt.defaultRoute && !['route1', 'route2'].includes(body.stt.defaultRoute)) {
-        return NextResponse.json({ error: 'defaultRoute must be "route1" or "route2"' }, { status: 400 });
+      // Validate default — accept any known STT provider
+      const validSttProviders: string[] = ['openai', 'gemini', 'mistral', 'fireworks'];
+      if (body.stt.default && typeof body.stt.default === 'string' && !validSttProviders.includes(body.stt.default)) {
+        return NextResponse.json({ error: `default must be one of: ${validSttProviders.join(', ')}` }, { status: 400 });
+      }
+      if (body.stt.fallback && body.stt.fallback !== 'none' && !validSttProviders.includes(body.stt.fallback)) {
+        return NextResponse.json({ error: `fallback must be one of: ${validSttProviders.join(', ')}, or "none"` }, { status: 400 });
       }
 
-      // Validate route configs: providers must belong to their route
-      if (body.stt.routes) {
-        for (const [routeId, routeConfig] of Object.entries(body.stt.routes) as [string, { default?: string; fallback?: string }][]) {
-          const allowed = ROUTE_STT_PROVIDERS[routeId];
-          if (!allowed) continue;
-
-          if (routeConfig.default && !allowed.includes(routeConfig.default as SttProvider)) {
-            return NextResponse.json(
-              { error: `${routeId} default must be one of: ${allowed.join(', ')}` },
-              { status: 400 }
-            );
-          }
-          if (routeConfig.fallback && routeConfig.fallback !== 'none' && !allowed.includes(routeConfig.fallback as SttProvider)) {
-            return NextResponse.json(
-              { error: `${routeId} fallback must be "none" or one of: ${allowed.join(', ')}` },
-              { status: 400 }
-            );
-          }
-          if (routeConfig.default && routeConfig.fallback && routeConfig.default === routeConfig.fallback) {
-            return NextResponse.json(
-              { error: `${routeId} default and fallback must differ` },
-              { status: 400 }
-            );
-          }
-        }
+      // Validate default/fallback providers
+      if (body.stt.default && body.stt.fallback && body.stt.default === body.stt.fallback) {
+        return NextResponse.json(
+          { error: 'STT default and fallback must differ' },
+          { status: 400 }
+        );
       }
 
       // Validate provider configs

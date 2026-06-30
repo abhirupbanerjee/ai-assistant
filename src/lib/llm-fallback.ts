@@ -225,33 +225,8 @@ export function isRecoverableApiError(error: Error): FallbackReason | null {
   return null;
 }
 
-// ============ LiteLLM Proxy Health ============
-
-let litellmHealthy = true;
-let lastHealthCheck = 0;
-const HEALTH_CHECK_INTERVAL_MS = 30_000; // 30 seconds
-
 /**
- * Check if the LiteLLM proxy is healthy (cached, checks at most every 30s)
- */
-export async function isLiteLLMProxyHealthy(): Promise<boolean> {
-  if (!process.env.OPENAI_BASE_URL) return true; // No proxy configured, assume healthy
-  if (Date.now() - lastHealthCheck < HEALTH_CHECK_INTERVAL_MS) return litellmHealthy;
-
-  try {
-    const baseUrl = process.env.OPENAI_BASE_URL.replace(/\/v1\/?$/, '');
-    // Use /health/liveliness (no auth required) instead of /health (requires LITELLM_MASTER_KEY)
-    const res = await fetch(`${baseUrl}/health/liveliness`, { signal: AbortSignal.timeout(3000) });
-    litellmHealthy = res.ok;
-  } catch {
-    litellmHealthy = false;
-  }
-  lastHealthCheck = Date.now();
-  return litellmHealthy;
-}
-
-/**
- * Check if a model belongs to Route 2 (direct cloud providers, bypasses LiteLLM)
+ * Check if a model belongs to Route 2 (direct cloud providers)
  */
 export function isRoute2Model(model: string): boolean {
   return model.startsWith('anthropic/')
@@ -360,16 +335,13 @@ export async function buildModelsToTry(
     models.push(settings.universalFallback);
   }
 
-  // Route-aware: if primary is unhealthy, try other routes as fallback
+  // Route-aware: inject cross-route fallback models if other routes are enabled
   const routesSettings = await getRoutesSettings();
   if (routesSettings.route2Enabled) {
-    const proxyHealthy = await isLiteLLMProxyHealthy();
-    if (!proxyHealthy || switchReason === 'model_unavailable') {
-      const route2Fallbacks = ['fireworks/minimax-m2p5', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
-      for (const fb of route2Fallbacks) {
-        if (!models.includes(fb) && isModelHealthy(fb)) {
-          models.push(fb);
-        }
+    const route2Fallbacks = ['fireworks/minimax-m2p5', 'deepseek-v4-flash', 'moonshot/kimi-k2p5', 'claude-haiku-4-5-20251001'];
+    for (const fb of route2Fallbacks) {
+      if (!models.includes(fb) && isModelHealthy(fb)) {
+        models.push(fb);
       }
     }
   }

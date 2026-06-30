@@ -825,7 +825,6 @@ export default function WelcomeScreen({
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-200 text-xs">
                           <th className="text-left px-4 py-2.5 font-semibold text-gray-500">Capability</th>
-                          <th className="text-left px-4 py-2.5 font-semibold text-blue-700 bg-blue-50">Route 1 — LiteLLM Proxy</th>
                           <th className="text-left px-4 py-2.5 font-semibold text-purple-700 bg-purple-50">Route 2 — Direct Cloud</th>
                           <th className="text-left px-4 py-2.5 font-semibold text-emerald-700 bg-emerald-50">Route 3 — Ollama Local</th>
                         </tr>
@@ -833,14 +832,12 @@ export default function WelcomeScreen({
                       <tbody className="divide-y divide-gray-100 text-xs">
                         <tr>
                           <td className="px-4 py-2.5 font-medium text-gray-700">Connection</td>
-                          <td className="px-4 py-2.5 text-gray-600">Via LiteLLM proxy</td>
                           <td className="px-4 py-2.5 text-gray-600">Direct SDK / API</td>
                           <td className="px-4 py-2.5 text-gray-600">Local Ollama server</td>
                         </tr>
                         <tr>
                           <td className="px-4 py-2.5 font-medium text-gray-700">Default</td>
                           <td className="px-4 py-2.5 text-gray-600">Enabled (Primary)</td>
-                          <td className="px-4 py-2.5 text-gray-600">Disabled</td>
                           <td className="px-4 py-2.5 text-gray-600">Disabled</td>
                         </tr>
                         <tr>

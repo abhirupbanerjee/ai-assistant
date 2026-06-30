@@ -136,11 +136,10 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // Routes settings for route-aware gating
   const [routesSettings, setRoutesSettings] = useState<{
-    route1Enabled: boolean;
     route2Enabled: boolean;
     route3Enabled: boolean;
     route5Enabled: boolean;
-    primaryRoute: 'route1' | 'route2' | 'route3' | 'route5';
+    primaryRoute: 'route2' | 'route3' | 'route5';
   } | null>(null);
 
   // Inline action errors
@@ -160,8 +159,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
 
   // ============ Route Gating (derived) ============
 
-  const allRoutesEnabled = routesSettings?.route1Enabled && routesSettings?.route2Enabled && routesSettings?.route3Enabled && routesSettings?.route5Enabled;
-  const route1Disabled = routesSettings ? !routesSettings.route1Enabled : false;
+  const allRoutesEnabled = routesSettings?.route2Enabled && routesSettings?.route3Enabled && routesSettings?.route5Enabled;
   const route2Disabled = routesSettings ? !routesSettings.route2Enabled : false;
   const route3Disabled = routesSettings ? !routesSettings.route3Enabled : false;
   const route5Disabled = routesSettings ? !routesSettings.route5Enabled : false;
@@ -171,7 +169,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     // NOTE: Route 5 MUST be checked first
     if (isRoute5Model(modelId)) return route5Disabled;
     if (isRoute3Model(modelId)) return route3Disabled;
-    return isRoute2Model(modelId) ? route2Disabled : route1Disabled;
+    return route2Disabled;
   };
 
   const isProviderOnDisabledRoute = (providerId: string) => {
@@ -179,7 +177,7 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     // NOTE: Route 5 MUST be checked first
     if (isRoute5Provider(providerId)) return route5Disabled;
     if (isRoute3Provider(providerId)) return route3Disabled;
-    return isRoute2Provider(providerId) ? route2Disabled : route1Disabled;
+    return route2Disabled;
   };
 
   // ============ Helpers ============
@@ -702,11 +700,10 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
           <div className="text-sm text-blue-800">
             <span className="font-medium">
               {[
-                route1Disabled && 'Route 1 (LiteLLM)',
                 route2Disabled && 'Route 2 (Direct Providers)',
                 route3Disabled && 'Route 3 (Ollama)',
               ].filter(Boolean).join(', ')}{' '}
-              {[route1Disabled, route2Disabled, route3Disabled].filter(Boolean).length > 1 ? 'are' : 'is'} disabled.
+              {[route2Disabled, route3Disabled].filter(Boolean).length > 1 ? 'are' : 'is'} disabled.
             </span>
             {' '}Providers and models for disabled routes are view-only. Default and fallback models must be selected from enabled routes.{' '}
             <a href="/admin?tab=settings&section=routes" className="text-blue-600 underline hover:text-blue-800">
