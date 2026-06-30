@@ -126,8 +126,9 @@ export async function syncModelToLiteLLM(
   // Ollama: YAML model names (e.g. "qwen2.5:3b") don't match DB IDs (e.g. "ollama-qwen2.5")
   // Fireworks: LiteLLM format ("fireworks_ai/accounts/fireworks/models/...") differs from DB IDs
   // DeepSeek: Chat always routes direct (Route 2); sync would create unused LiteLLM entries
+  // Mistral: Moved to Route 2 direct SDK; no longer synced to LiteLLM
   // Azure Foundry: Route 5 aggregator, not synced to LiteLLM
-  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek' || model.providerId === 'azure-foundry') {
+  if (model.providerId === 'ollama' || model.providerId === 'fireworks' || model.providerId === 'ollama-cloud' || model.providerId === 'deepseek' || model.providerId === 'mistral' || model.providerId === 'azure-foundry') {
     return true;
   }
 

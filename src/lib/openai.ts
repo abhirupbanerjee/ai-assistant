@@ -179,6 +179,7 @@ import {
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/lib/services/ollama-cloud';
 import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
+import { isMistralModel, stripMistralPrefix, streamMistralCompletion, isMistralEmbeddingModel, createMistralEmbedding, createMistralEmbeddings } from '@/lib/llm/providers/mistral';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -454,6 +455,19 @@ export async function createEmbedding(text: string): Promise<number[]> {
       return response.data[0].embedding;
     }
 
+    // Route Mistral embedding models directly (bypass LiteLLM)
+    if (isMistralEmbeddingModel(model)) {
+      const vector = await createMistralEmbedding(text);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: Math.ceil(text.length / 4),
+        inputTokens: Math.ceil(text.length / 4),
+        outputTokens: 0,
+      });
+      return vector;
+    }
+
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
     const openai = await getOpenAI();
     const litellmModel = getLiteLLMEmbeddingModelId(model);
@@ -493,6 +507,11 @@ export async function createEmbedding(text: string): Promise<number[]> {
         const fwModel = getFireworksEmbeddingModelId(fallbackModel);
         const response = await fwClient.embeddings.create({ model: fwModel, input: text });
         return response.data[0].embedding;
+      }
+
+      // Route Mistral fallback models directly
+      if (isMistralEmbeddingModel(fallbackModel)) {
+        return await createMistralEmbedding(text);
       }
 
       const openai = await getOpenAI();
@@ -547,6 +566,22 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       return embeddings;
     }
 
+    // Route Mistral embedding models directly (bypass LiteLLM)
+    if (isMistralEmbeddingModel(model)) {
+      const vectors = await createMistralEmbeddings(texts);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        inputTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        outputTokens: 0,
+      });
+      if (vectors.length > 0) {
+        console.log(`[Embedding] Mistral direct — Model: ${model}, Dimensions: ${vectors[0].length}, Count: ${vectors.length}`);
+      }
+      return vectors;
+    }
+
     // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
     const openai = await getOpenAI();
     const litellmModel = getLiteLLMEmbeddingModelId(model);
@@ -591,6 +626,11 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
         const fwModel = getFireworksEmbeddingModelId(fallbackModel);
         const response = await fwClient.embeddings.create({ model: fwModel, input: texts });
         return response.data.map(d => d.embedding);
+      }
+
+      // Route Mistral fallback models directly
+      if (isMistralEmbeddingModel(fallbackModel)) {
+        return await createMistralEmbeddings(texts);
       }
 
       const openai = await getOpenAI();
@@ -1637,6 +1677,7 @@ export async function generateResponseWithTools(
   const useMoonshotDirect = isMoonshotModel(effectiveModel);
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
   const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
+  const useMistralDirect = isMistralModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
@@ -1644,6 +1685,7 @@ export async function generateResponseWithTools(
     : useMoonshotDirect ? 'Moonshot AI directly'
     : useDeepSeekDirect ? 'DeepSeek API directly'
     : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
+    : useMistralDirect ? 'Mistral AI directly (Route 2)'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1654,6 +1696,7 @@ export async function generateResponseWithTools(
     : useDeepSeekDirect ? await getDeepSeekClient()
     : useOllamaCloudDirect ? null // Ollama Cloud uses native API, not OpenAI SDK
     : useAzureFoundryDirect ? await getAzureFoundryClient()
+    : useMistralDirect ? null // Mistral uses native SDK, not OpenAI SDK
     : await getOpenAI();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
@@ -2047,6 +2090,31 @@ export async function generateResponseWithTools(
       callbacks?.onThinkingChunk,
     );
     accumulatedTokens += responseMessage.totalTokens;
+  } else if (useMistralDirect) {
+    // Mistral direct (Route 2) — use native SDK streaming
+    const mistralMessages = messages.map(m => ({
+      role: m.role as string,
+      content: m.content,
+    }));
+    const mistralResult = await streamMistralCompletion(
+      effectiveModel,
+      mistralMessages,
+      {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools: tools as any,
+        toolChoice: effectiveToolChoice as any,
+        onChunk: callbacks?.onChunk,
+        onThinkingChunk: callbacks?.onThinkingChunk,
+      },
+    );
+    responseMessage = {
+      content: mistralResult.content,
+      tool_calls: mistralResult.tool_calls as any,
+      thinkingContent: mistralResult.thinkingContent,
+      totalTokens: mistralResult.totalTokens,
+    };
+    accumulatedTokens += mistralResult.totalTokens;
   } else {
     responseMessage = await streamOneCompletionWithThinkingRetry(openai!, completionParams, thinkingProfile, callbacks?.onChunk, callbacks?.onThinkingChunk);
     accumulatedTokens += responseMessage.totalTokens;

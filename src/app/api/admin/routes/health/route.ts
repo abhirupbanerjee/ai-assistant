@@ -3,7 +3,7 @@
  *
  * Returns health status for both LLM routes:
  * - Route 1: LiteLLM proxy health via /health/liveliness endpoint (no auth required)
- * - Route 2: Fireworks + DeepSeek + Moonshot reachability + Anthropic API key configured
+ * - Route 2: Fireworks + DeepSeek + Moonshot + Mistral reachability + Anthropic API key configured
  */
 
 import { NextResponse } from 'next/server';
@@ -18,6 +18,7 @@ interface RouteHealth {
     deepseek: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     claude: { configured: boolean };
     moonshot: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
+    mistral: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
   };
 }
 
@@ -32,12 +33,13 @@ export async function GET() {
     }
 
     // Check both routes in parallel
-    const [route1Health, fireworksHealth, deepseekHealth, claudeConfigured, moonshotHealth] = await Promise.all([
+    const [route1Health, fireworksHealth, deepseekHealth, claudeConfigured, moonshotHealth, mistralHealth] = await Promise.all([
       checkRoute1Health(),
       checkFireworksHealth(),
       checkDeepSeekHealth(),
       checkClaudeConfigured(),
       checkMoonshotHealth(),
+      checkMistralHealth(),
     ]);
 
     const health: RouteHealth = {
@@ -47,6 +49,7 @@ export async function GET() {
         deepseek: deepseekHealth,
         claude: { configured: claudeConfigured },
         moonshot: moonshotHealth,
+        mistral: mistralHealth,
       },
     };
 
@@ -142,6 +145,28 @@ async function checkMoonshotHealth(): Promise<{ healthy: boolean; latencyMs: num
   try {
     const baseUrl = await getMoonshotBaseUrl();
     const res = await fetch(`${baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    const latencyMs = Date.now() - start;
+    if (res.ok) {
+      return { healthy: true, latencyMs, configured: true };
+    }
+    return { healthy: false, latencyMs, configured: true, error: `HTTP ${res.status}` };
+  } catch (err) {
+    return { healthy: false, latencyMs: Date.now() - start, configured: true, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+async function checkMistralHealth(): Promise<{ healthy: boolean; latencyMs: number | null; configured: boolean; error?: string }> {
+  const apiKey = await getApiKey('mistral');
+  if (!apiKey) {
+    return { healthy: false, latencyMs: null, configured: false, error: 'MISTRAL_API_KEY not configured' };
+  }
+
+  const start = Date.now();
+  try {
+    const res = await fetch('https://api.mistral.ai/v1/models', {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(5000),
     });

@@ -17,6 +17,7 @@ import { getLlmSettings, getRoutesSettings } from './db/compat/config';
 import { getApiKey, getApiBase } from '@/lib/provider-helpers';
 import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './services/ollama-cloud';
 import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, stripAzureFoundryPrefix } from './llm/providers/azure-foundry';
+import { isMistralModel, stripMistralPrefix, callMistralChat } from './llm/providers/mistral';
 import { getTemperatureForModel } from './llm-thinking';
 
 
@@ -346,6 +347,13 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
   }
   if (isMoonshotModel(model)) return callMoonshot(model, opts);
   if (isDeepSeekModel(model)) return callDeepSeek(model, opts);
+  if (isMistralModel(model)) {
+    const result = await callMistralChat(model, opts.messages as Array<{ role: string; content: string }>, {
+      temperature: opts.temperature,
+      maxTokens: opts.maxTokens,
+    });
+    return result.content;
+  }
 
   // Route 3 models → always direct to Ollama
   if (isOllamaModel(model)) {

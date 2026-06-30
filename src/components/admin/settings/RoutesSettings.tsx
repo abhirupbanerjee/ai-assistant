@@ -25,6 +25,7 @@ interface RouteHealth {
     deepseek: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
     claude: { configured: boolean };
     moonshot: { configured: boolean; healthy?: boolean };
+    mistral?: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
   };
   route5?: {
     fireworks: { healthy: boolean; latencyMs: number | null; configured: boolean; error?: string };
@@ -34,7 +35,7 @@ interface RouteHealth {
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
+  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('fireworks/') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/') || id.startsWith('mistral/') || id.startsWith('codestral/') || id.startsWith('pixtral/');
 
 const isRoute3Model = (id: string) =>
   id.startsWith('ollama-') || id.startsWith('ollama/');
@@ -370,7 +371,7 @@ export default function RoutesSettingsPanel() {
             <Zap size={20} className="text-orange-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 2: Direct Providers</h3>
-              <p className="text-xs text-gray-500">DeepSeek, Claude (Anthropic), Moonshot AI — bypasses LiteLLM</p>
+              <p className="text-xs text-gray-500">DeepSeek, Claude (Anthropic), Moonshot AI, Mistral AI — bypasses LiteLLM</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -397,6 +398,16 @@ export default function RoutesSettingsPanel() {
                   <><CheckCircle2 size={14} className="text-green-500" /> Moonshot OK</>
                 ) : (
                   <><XCircle size={14} className="text-gray-400" /> Moonshot not configured</>
+                )}
+                <span className="text-gray-300 mx-1">|</span>
+                {health.route2.mistral?.configured ? (
+                  health.route2.mistral.healthy ? (
+                    <><CheckCircle2 size={14} className="text-green-500" /> Mistral OK{health.route2.mistral.latencyMs != null && <span className="text-gray-400">({health.route2.mistral.latencyMs}ms)</span>}</>
+                  ) : (
+                    <><XCircle size={14} className="text-red-500" /> Mistral: {health.route2.mistral.error || 'Unreachable'}</>
+                  )
+                ) : (
+                  <><XCircle size={14} className="text-gray-400" /> Mistral not configured</>
                 )}
               </span>
             )}
