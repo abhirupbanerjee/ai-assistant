@@ -181,7 +181,7 @@ import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/li
 import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, streamMistralCompletion, isMistralEmbeddingModel, createMistralEmbedding, createMistralEmbeddings } from '@/lib/llm/providers/mistral';
 import { isGeminiModel, streamGeminiCompletion, isGeminiEmbeddingModel, createGeminiEmbedding, createGeminiEmbeddings } from '@/lib/llm/providers/gemini';
-import { isOpenAIModel, stripOpenAIPrefix, streamOpenAICompletion, isOpenAIEmbeddingModel, createOpenAIEmbedding, createOpenAIEmbeddings, getOpenAIDirectClient } from '@/lib/llm/providers/openai';
+import { isOpenAIModel, stripOpenAIPrefix, streamOpenAICompletion, requiresMaxCompletionTokens, isOpenAIEmbeddingModel, createOpenAIEmbedding, createOpenAIEmbeddings, getOpenAIDirectClient } from '@/lib/llm/providers/openai';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -1460,14 +1460,38 @@ export async function generateToolCompletion(
     };
   }
 
-  // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5), OpenAI direct (Route 2)
+  if (useOpenAIDirect) {
+    // OpenAI direct (Route 2) — use native OpenAI SDK streaming
+    const openaiMessages = messages.map(m => ({
+      role: m.role as string,
+      content: m.content,
+    }));
+    const openaiResult = await streamOpenAICompletion(
+      effectiveModel,
+      openaiMessages,
+      {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools: tools as any,
+        toolChoice: toolChoice as any,
+      },
+    );
+    return {
+      content: openaiResult.content,
+      tool_calls: openaiResult.tool_calls as any,
+      tokens_used: openaiResult.totalTokens,
+      thinkingContent: openaiResult.thinkingContent ?? undefined,
+    };
+  }
+
+  // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
+  // (OpenAI direct already handled above — returns early)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openai: any = useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
     : useAzureFoundryDirect ? await getAzureFoundryClient()
-    : useOpenAIDirect ? await getOpenAIDirectClient() // OpenAI direct (Route 2)
     : await getOpenAI(); // Legacy LiteLLM fallback
 
   const completionModel = useFireworksDirect ? getFireworksModelId(effectiveModel)
@@ -1475,7 +1499,6 @@ export async function generateToolCompletion(
     : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
     : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
     : useAzureFoundryDirect ? stripAzureFoundryPrefix(effectiveModel)
-    : useOpenAIDirect ? stripOpenAIPrefix(effectiveModel)
     : effectiveModel;
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
@@ -2118,7 +2141,9 @@ export async function generateResponseWithTools(
     messages,
     tools,
     tool_choice: tools?.length ? effectiveToolChoice : undefined,
-    max_tokens: effectiveMaxTokens,
+    ...(useOpenAIDirect && requiresMaxCompletionTokens(effectiveModel)
+      ? { max_completion_tokens: effectiveMaxTokens }
+      : { max_tokens: effectiveMaxTokens }),
     temperature: effectiveTemperature,
     ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
     ...thinkingProfile.requestParams,
@@ -2219,6 +2244,33 @@ export async function generateResponseWithTools(
       totalTokens: geminiResult.totalTokens,
     };
     accumulatedTokens += geminiResult.totalTokens;
+  } else if (useOpenAIDirect) {
+    // OpenAI direct (Route 2) — use native OpenAI SDK streaming
+    const openaiMessages = messages.map(m => ({
+      role: m.role as string,
+      content: m.content,
+    }));
+    const openaiResult = await streamOpenAICompletion(
+      effectiveModel,
+      openaiMessages,
+      {
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        tools: tools as any,
+        toolChoice: effectiveToolChoice as any,
+        systemPrompt,
+        reasoningEffort: thinkingProfile.requestParams.reasoning_effort as string | undefined,
+        onChunk: callbacks?.onChunk,
+        onThinkingChunk: callbacks?.onThinkingChunk,
+      },
+    );
+    responseMessage = {
+      content: openaiResult.content,
+      tool_calls: openaiResult.tool_calls as any,
+      thinkingContent: openaiResult.thinkingContent,
+      totalTokens: openaiResult.totalTokens,
+    };
+    accumulatedTokens += openaiResult.totalTokens;
   } else {
     responseMessage = await streamOneCompletionWithThinkingRetry(openai!, completionParams, thinkingProfile, callbacks?.onChunk, callbacks?.onThinkingChunk);
     accumulatedTokens += responseMessage.totalTokens;

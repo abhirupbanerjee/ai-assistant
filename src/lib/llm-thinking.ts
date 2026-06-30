@@ -224,6 +224,13 @@ export function isTemperatureParamError(error: unknown): boolean {
 
 export function isUnsupportedThinkingParamError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  // Guard: max_tokens/max_completion_tokens errors are NOT thinking-param errors.
+  // Stripping thinking params won't fix them — they need the correct parameter name.
+  if (message.includes('max_tokens') || message.includes('max_completion_tokens')) {
+    return false;
+  }
+
   return (
     message.includes('reasoning_effort') ||
     message.includes('reasoning effort') ||

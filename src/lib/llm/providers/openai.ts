@@ -58,6 +58,19 @@ export function stripOpenAIPrefix(model: string): string {
   return model;
 }
 
+/**
+ * Detect if a model requires max_completion_tokens instead of max_tokens.
+ * GPT-5.x and o-series reasoning models reject max_tokens.
+ * See: https://platform.openai.com/docs/api-reference/chat/create
+ */
+export function requiresMaxCompletionTokens(model: string): boolean {
+  const id = model.toLowerCase();
+  return id.startsWith('gpt-5')
+    || id.startsWith('o1')
+    || id.startsWith('o3')
+    || id.startsWith('o4');
+}
+
 // ============ Non-Streaming Chat ============
 
 export interface OpenAIChatResult {
@@ -95,11 +108,15 @@ export async function callOpenAIChat(
     requestMessages.push(msg);
   }
 
+  const maxTokensParam = requiresMaxCompletionTokens(cleanModel)
+    ? { max_completion_tokens: options?.maxTokens ?? 4096 }
+    : { max_tokens: options?.maxTokens ?? 4096 };
+
   const requestParams: Record<string, unknown> = {
     model: cleanModel,
     messages: requestMessages,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
-    max_tokens: options?.maxTokens ?? 4096,
+    ...maxTokensParam,
   };
 
   // Native OpenAI structured output support
@@ -202,11 +219,15 @@ export async function streamOpenAICompletion(
   // overload resolution is strict about ReasoningEffort being a union literal,
   // and conditional spreads widen `string` types. Matching the pattern used
   // in streamOneCompletion() throughout openai.ts.
+  const maxTokensParam = requiresMaxCompletionTokens(cleanModel)
+    ? { max_completion_tokens: options?.maxTokens ?? 4096 }
+    : { max_tokens: options?.maxTokens ?? 4096 };
+
   const requestParams: Record<string, unknown> = {
     model: cleanModel,
     messages: requestMessages,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
-    max_tokens: options?.maxTokens ?? 4096,
+    ...maxTokensParam,
     ...(options?.tools?.length && { tools: options.tools }),
     ...(options?.toolChoice !== undefined && { tool_choice: options.toolChoice }),
     ...(options?.reasoningEffort && { reasoning_effort: options.reasoningEffort }),
