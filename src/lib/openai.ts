@@ -181,6 +181,7 @@ import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from '@/li
 import { isAzureFoundryModel, getAzureFoundryClient, stripAzureFoundryPrefix } from '@/lib/llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, streamMistralCompletion, isMistralEmbeddingModel, createMistralEmbedding, createMistralEmbeddings } from '@/lib/llm/providers/mistral';
 import { isGeminiModel, streamGeminiCompletion, isGeminiEmbeddingModel, createGeminiEmbedding, createGeminiEmbeddings } from '@/lib/llm/providers/gemini';
+import { isOpenAIModel, stripOpenAIPrefix, streamOpenAICompletion, isOpenAIEmbeddingModel, createOpenAIEmbedding, createOpenAIEmbeddings, getOpenAIDirectClient } from '@/lib/llm/providers/openai';
 
 /**
  * Terminal tools that should stop the tool loop after successful execution.
@@ -204,10 +205,15 @@ function getTerminalToolSummaryPrompt(toolName: string): string {
 
 let openaiClient: OpenAI | null = null;
 
+/**
+ * @deprecated This legacy client routes through LiteLLM proxy when OPENAI_BASE_URL is set.
+ * All OpenAI models now use the direct Route 2 provider (getOpenAIDirectClient).
+ * This function remains as a safety-net fallback for unrecognized models and will be
+ * removed when LiteLLM is fully retired.
+ */
 async function getOpenAI(): Promise<OpenAI> {
   if (!openaiClient) {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
+    // Legacy LiteLLM proxy fallback — not used by OpenAI/Gemini/Mistral models
     const apiKey = process.env.OPENAI_BASE_URL
       ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
       : await getApiKey('openai');
@@ -413,6 +419,8 @@ export function resetLlmClients(): void {
   deepseekClient = null;
   // Reset Azure Foundry singleton (uses its own module-level cache)
   import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
+  // Reset OpenAI direct singleton
+  import('@/lib/llm/providers/openai').then(m => m.resetOpenAIClient()).catch(() => {});
 }
 
 /**
@@ -469,7 +477,33 @@ export async function createEmbedding(text: string): Promise<number[]> {
       return vector;
     }
 
-    // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
+    // Route Gemini embedding models directly (bypass LiteLLM)
+    if (isGeminiEmbeddingModel(model)) {
+      const vector = await createGeminiEmbedding(text);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: Math.ceil(text.length / 4),
+        inputTokens: Math.ceil(text.length / 4),
+        outputTokens: 0,
+      });
+      return vector;
+    }
+
+    // Route OpenAI embedding models directly (bypass LiteLLM)
+    if (isOpenAIEmbeddingModel(model)) {
+      const vector = await createOpenAIEmbedding(text, model);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: Math.ceil(text.length / 4),
+        inputTokens: Math.ceil(text.length / 4),
+        outputTokens: 0,
+      });
+      return vector;
+    }
+
+    // Cloud provider path (unrecognized models — should rarely be reached after migration)
     const openai = await getOpenAI();
     const litellmModel = getLiteLLMEmbeddingModelId(model);
     const response = await openai.embeddings.create({
@@ -513,6 +547,16 @@ export async function createEmbedding(text: string): Promise<number[]> {
       // Route Mistral fallback models directly
       if (isMistralEmbeddingModel(fallbackModel)) {
         return await createMistralEmbedding(text);
+      }
+
+      // Route Gemini fallback models directly
+      if (isGeminiEmbeddingModel(fallbackModel)) {
+        return await createGeminiEmbedding(text);
+      }
+
+      // Route OpenAI fallback models directly
+      if (isOpenAIEmbeddingModel(fallbackModel)) {
+        return await createOpenAIEmbedding(text, fallbackModel);
       }
 
       const openai = await getOpenAI();
@@ -583,7 +627,39 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       return vectors;
     }
 
-    // Cloud provider path (OpenAI, Mistral, Gemini via LiteLLM)
+    // Route Gemini embedding models directly (bypass LiteLLM)
+    if (isGeminiEmbeddingModel(model)) {
+      const vectors = await createGeminiEmbeddings(texts);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        inputTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        outputTokens: 0,
+      });
+      if (vectors.length > 0) {
+        console.log(`[Embedding] Gemini direct — Model: ${model}, Dimensions: ${vectors[0].length}, Count: ${vectors.length}`);
+      }
+      return vectors;
+    }
+
+    // Route OpenAI embedding models directly (bypass LiteLLM)
+    if (isOpenAIEmbeddingModel(model)) {
+      const vectors = await createOpenAIEmbeddings(texts, model);
+      recordTokenUsage({
+        category: 'embeddings',
+        model,
+        totalTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        inputTokens: texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
+        outputTokens: 0,
+      });
+      if (vectors.length > 0) {
+        console.log(`[Embedding] OpenAI direct — Model: ${model}, Dimensions: ${vectors[0].length}, Count: ${vectors.length}`);
+      }
+      return vectors;
+    }
+
+    // Cloud provider path (unrecognized models — should rarely be reached after migration)
     const openai = await getOpenAI();
     const litellmModel = getLiteLLMEmbeddingModelId(model);
     const response = await openai.embeddings.create({
@@ -634,6 +710,16 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
         return await createMistralEmbeddings(texts);
       }
 
+      // Route Gemini fallback models directly
+      if (isGeminiEmbeddingModel(fallbackModel)) {
+        return await createGeminiEmbeddings(texts);
+      }
+
+      // Route OpenAI fallback models directly
+      if (isOpenAIEmbeddingModel(fallbackModel)) {
+        return await createOpenAIEmbeddings(texts, fallbackModel);
+      }
+
       const openai = await getOpenAI();
       const litellmModel = getLiteLLMEmbeddingModelId(fallbackModel);
       const response = await openai.embeddings.create({
@@ -646,54 +732,6 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
     // No fallback or fallback is same as primary - rethrow
     throw error;
   }
-}
-
-export async function generateResponse(
-  systemPrompt: string,
-  conversationHistory: Message[],
-  context: string,
-  userMessage: string
-): Promise<string> {
-  // Get LLM settings from database config
-  const llmSettings = await getLlmSettings();
-
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: systemPrompt },
-  ];
-
-  // Add conversation history (last N messages)
-  const recentHistory = conversationHistory.slice(-DEFAULT_CONVERSATION_HISTORY_LIMIT);
-  for (const msg of recentHistory) {
-    // Skip tool messages in non-tool-calling flow
-    if (msg.role === 'tool') continue;
-
-    messages.push({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    });
-  }
-
-  // Add context and current question
-  messages.push({
-    role: 'user',
-    content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
-  });
-
-  const isOllama = isOllamaModel(llmSettings.model);
-  const openai = isOllama ? await getOllamaClient() : await getOpenAI();
-
-  // Get effective max tokens (uses per-model override if configured, otherwise preset default)
-  const effectiveMaxTokens = await getEffectiveMaxTokens(llmSettings.model);
-
-  const response = await openai.chat.completions.create({
-    model: isOllama ? getOllamaModelId(llmSettings.model) : llmSettings.model,
-    messages,
-    max_tokens: effectiveMaxTokens,
-    temperature: getTemperatureForModel(llmSettings.model, llmSettings.temperature),
-    ...(isOllama && { num_ctx: OLLAMA_NUM_CTX }),
-  } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
-
-  return response.choices[0].message.content || '';
 }
 
 /**
@@ -1326,6 +1364,7 @@ export async function generateToolCompletion(
   const useDeepSeekDirect = isDeepSeekModel(effectiveModel);
   const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
   const useGeminiDirect = isGeminiModel(effectiveModel);
+  const useOpenAIDirect = isOpenAIModel(effectiveModel);
 
   // Build thinking profile (subagent doesn't need thinking, but some models require param handling)
   const modelThinkingCapable = await isModelThinkingCapable(effectiveModel);
@@ -1421,20 +1460,22 @@ export async function generateToolCompletion(
     };
   }
 
-  // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
+  // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5), OpenAI direct (Route 2)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openai: any = useFireworksDirect ? await getFireworksClient()
     : useOllamaDirect ? await getOllamaClient()
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
     : useAzureFoundryDirect ? await getAzureFoundryClient()
-    : await getOpenAI();
+    : useOpenAIDirect ? await getOpenAIDirectClient() // OpenAI direct (Route 2)
+    : await getOpenAI(); // Legacy LiteLLM fallback
 
   const completionModel = useFireworksDirect ? getFireworksModelId(effectiveModel)
     : useOllamaDirect ? getOllamaModelId(effectiveModel)
     : useMoonshotDirect ? getMoonshotModelId(effectiveModel)
     : useDeepSeekDirect ? getDeepSeekModelId(effectiveModel)
     : useAzureFoundryDirect ? stripAzureFoundryPrefix(effectiveModel)
+    : useOpenAIDirect ? stripOpenAIPrefix(effectiveModel)
     : effectiveModel;
 
   const completionParams: Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, 'stream'> = {
@@ -1707,6 +1748,7 @@ export async function generateResponseWithTools(
   const useAzureFoundryDirect = isAzureFoundryModel(effectiveModel);
   const useMistralDirect = isMistralModel(effectiveModel);
   const useGeminiDirect = isGeminiModel(effectiveModel);
+  const useOpenAIDirect = isOpenAIModel(effectiveModel);
   const routeLabel = useAnthropicDirect ? 'Anthropic SDK directly'
     : useFireworksDirect ? 'Fireworks AI directly'
     : useOllamaDirect ? 'Ollama directly'
@@ -1716,6 +1758,7 @@ export async function generateResponseWithTools(
     : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
     : useMistralDirect ? 'Mistral AI directly (Route 2)'
     : useGeminiDirect ? 'Gemini directly (Route 2)'
+    : useOpenAIDirect ? 'OpenAI directly (Route 2)'
     : 'LiteLLM/OpenAI path';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1728,7 +1771,8 @@ export async function generateResponseWithTools(
     : useAzureFoundryDirect ? await getAzureFoundryClient()
     : useMistralDirect ? null // Mistral uses native SDK, not OpenAI SDK
     : useGeminiDirect ? null // Gemini uses native @google/genai SDK, not OpenAI SDK
-    : await getOpenAI();
+    : useOpenAIDirect ? await getOpenAIDirectClient() // OpenAI direct (Route 2)
+    : await getOpenAI(); // Legacy LiteLLM fallback
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
   // Check if model supports tools, disable gracefully if not
@@ -2863,23 +2907,6 @@ export async function generateResponseWithTools(
     cacheable: ctx.cache.isCacheable,
     toolExecutionResults,
     totalTokens: accumulatedTokens,
-  };
-}
-
-export async function transcribeAudio(audioBuffer: Buffer, filename: string): Promise<{ text: string; duration: number }> {
-  const blob = new Blob([new Uint8Array(audioBuffer)], { type: 'audio/webm' });
-  const file = new File([blob], filename, { type: 'audio/webm' });
-
-  const openai = await getOpenAI();
-  const response = await openai.audio.transcriptions.create({
-    model: 'whisper-1',
-    file,
-    response_format: 'verbose_json',
-  });
-
-  return {
-    text: response.text,
-    duration: response.duration || 0,
   };
 }
 

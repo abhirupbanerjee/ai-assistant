@@ -266,7 +266,12 @@ export function isRoute2Model(model: string): boolean {
     || model.startsWith('pixtral/')
     || model.startsWith('pixtral-')
     || model.startsWith('gemini/')
-    || model.startsWith('gemini-');
+    || model.startsWith('gemini-')
+    || model.startsWith('openai/')
+    || model.startsWith('gpt-')
+    || model.startsWith('o1')
+    || model.startsWith('o3')
+    || model.startsWith('o4');
 }
 
 /**

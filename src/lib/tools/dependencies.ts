@@ -204,18 +204,15 @@ export const TOOL_DEPENDENCIES: Record<string, ToolDependency> = {
     validates: async () => {
       // Use centralized provider helper (DB-first, then env var fallback)
       const hasOpenAI = await isProviderConfigured('openai');
-      const hasLiteLLM = Boolean(process.env.OPENAI_BASE_URL);
-      const hasAny = hasOpenAI || hasLiteLLM;
 
       return {
-        ok: hasAny,
-        message: hasAny
-          ? `Ready - ${hasLiteLLM ? 'LiteLLM proxy' : 'OpenAI'} configured`
-          : 'Requires OpenAI API key or LiteLLM proxy',
+        ok: hasOpenAI,
+        message: hasOpenAI
+          ? 'Ready - OpenAI API key configured'
+          : 'Requires OpenAI API key',
         details: {
           envVars: [
             { name: 'OPENAI_API_KEY', set: hasOpenAI, source: hasOpenAI ? 'db/env' : undefined },
-            { name: 'OPENAI_BASE_URL', set: hasLiteLLM, source: hasLiteLLM ? 'env' : undefined }
           ]
         }
       };

@@ -295,7 +295,7 @@ export default function RoutesSettingsPanel() {
             <Server size={20} className="text-gray-600" />
             <div>
               <h3 className="font-medium text-gray-900">Route 1: LiteLLM Proxy</h3>
-              <p className="text-xs text-gray-500">OpenAI</p>
+              <p className="text-xs text-gray-500">Legacy — all models migrated to Route 2/5</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -371,7 +371,7 @@ export default function RoutesSettingsPanel() {
             <Zap size={20} className="text-orange-500" />
             <div>
               <h3 className="font-medium text-gray-900">Route 2: Direct Providers</h3>
-              <p className="text-xs text-gray-500">DeepSeek, Claude (Anthropic), Moonshot AI, Mistral AI, Google Gemini — bypasses LiteLLM</p>
+              <p className="text-xs text-gray-500">OpenAI, DeepSeek, Claude (Anthropic), Moonshot AI, Mistral AI, Google Gemini — direct SDKs, bypasses LiteLLM</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -458,7 +458,7 @@ export default function RoutesSettingsPanel() {
             </div>
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <Shield size={12} />
-              Requires: <code className="bg-gray-100 px-1 rounded">DEEPSEEK_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>
+              Requires: <code className="bg-gray-100 px-1 rounded">OPENAI_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">ANTHROPIC_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">DEEPSEEK_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MOONSHOT_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">MISTRAL_API_KEY</code>, <code className="bg-gray-100 px-1 rounded">GEMINI_API_KEY</code>
             </div>
           </div>
         )}

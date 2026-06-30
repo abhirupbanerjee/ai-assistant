@@ -337,8 +337,8 @@ function isFireworksChatModel(modelId: string): boolean {
  */
 export function isThinkTagModel(modelId: string): boolean {
   let id = modelId.toLowerCase();
-  // Strip single-segment prefixes (ollama-, ollama/, litellm/)
-  id = id.replace(/^(ollama[-/]|litellm\/)/, '');
+  // Strip single-segment prefixes (ollama-, ollama/)
+  id = id.replace(/^(ollama[-/])/, '');
   // For path-style IDs (fireworks, together, openrouter, etc.)
   // e.g. "accounts/fireworks/models/qwen3-235b-a22b" → "qwen3-235b-a22b"
   const lastSlash = id.lastIndexOf('/');

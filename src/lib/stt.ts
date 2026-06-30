@@ -28,8 +28,13 @@ export const PROVIDER_MAX_FILE_SIZE: Record<SttProvider, number> = {
 async function transcribeOpenAI(
   config: SttProviderConfig, buffer: Buffer, filename: string
 ): Promise<{ text: string; duration: number }> {
-  const getOpenAI = (await import('@/lib/openai')).default;
-  const client = await getOpenAI();
+  const { getApiKey } = await import('@/lib/provider-helpers');
+  const apiKey = await getApiKey('openai');
+  if (!apiKey) throw new Error('OpenAI API key not configured');
+  const client = new OpenAI({
+    apiKey,
+    baseURL: 'https://api.openai.com/v1', // Direct, bypasses LiteLLM
+  });
   const blob = new Blob([new Uint8Array(buffer)], { type: 'audio/webm' });
   const file = new File([blob], filename, { type: 'audio/webm' });
   const response = await client.audio.transcriptions.create({

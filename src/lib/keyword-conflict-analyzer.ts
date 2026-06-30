@@ -8,7 +8,7 @@
 import { getAllSkills, getCategoriesForSkill } from '@/lib/db/compat/skills';
 import { getAllRoutingRules } from '@/lib/db/compat/tool-routing';
 import { getLlmSettings } from '@/lib/db/compat/config';
-import getOpenAI from '@/lib/openai';
+import { createInternalCompletion } from '@/lib/llm-client';
 import { getTemperatureForModel } from '@/lib/llm-thinking';
 import type {
   KeywordSource,
@@ -418,9 +418,8 @@ export async function analyzeKeywordConflicts(
   const llmSettings = await getLlmSettings();
   const model = llmSettings.model;
 
-  // 5. Call LLM
-  const openai = await getOpenAI();
-  const response = await openai.chat.completions.create({
+  // 5. Call LLM via internal completion (routes through direct providers, no LiteLLM)
+  const llmResponse = await createInternalCompletion({
     model,
     messages: [
       {
@@ -430,12 +429,10 @@ export async function analyzeKeywordConflicts(
       },
       { role: 'user', content: prompt },
     ],
-    max_tokens: MAX_TOKENS,
+    maxTokens: MAX_TOKENS,
     temperature: getTemperatureForModel(model, 0.3),
-    response_format: { type: 'json_object' },
+    responseFormat: { type: 'json_object' },
   });
-
-  const llmResponse = response.choices[0]?.message?.content || '{}';
 
   // 6. Parse response and filter false positives
   return parseConflictResponse(llmResponse, skills, routingRules, model);

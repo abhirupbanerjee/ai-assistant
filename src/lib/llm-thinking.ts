@@ -11,7 +11,7 @@ export interface ThinkingRequestProfile {
 
 function normalizeModelId(modelId: string): string {
   let id = modelId.toLowerCase().trim();
-  id = id.replace(/^(ollama-cloud\/|ollama[-/]|litellm\/|openai\/|anthropic\/|deepseek\/|moonshot\/|mistral\/|gemini\/|google\/)/, '');
+  id = id.replace(/^(ollama-cloud\/|ollama[-/]|openai\/|anthropic\/|deepseek\/|moonshot\/|mistral\/|gemini\/|google\/)/, '');
   const lastSlash = id.lastIndexOf('/');
   if (lastSlash !== -1) id = id.slice(lastSlash + 1);
   return id.replace(/:.*$/, '');

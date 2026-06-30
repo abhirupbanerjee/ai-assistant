@@ -114,34 +114,8 @@ export async function isPodcastGenEnabled(): Promise<boolean> {
 
 // ===== OpenAI Clients =====
 
-// Two separate clients needed:
-// 1. chatClient: Uses LiteLLM proxy for chat completions (content formatting)
-// 2. ttsClient: Direct OpenAI API for TTS (not available via LiteLLM)
-
-let chatClient: OpenAI | null = null;
+// TTS client: Direct OpenAI API for TTS (not available via LiteLLM)
 let ttsClient: OpenAI | null = null;
-
-/**
- * Get client for chat completions (uses LiteLLM proxy if configured)
- */
-async function getChatClient(): Promise<OpenAI> {
-  if (!chatClient) {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
-      : await getApiKey('openai');
-
-    if (!apiKey && !process.env.OPENAI_BASE_URL) {
-      throw new Error('OpenAI API key or LiteLLM proxy required for podcast formatting');
-    }
-
-    chatClient = new OpenAI({
-      apiKey: apiKey || 'dummy-key-for-litellm',
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-    });
-  }
-  return chatClient;
-}
 
 /**
  * Get client for TTS (always direct OpenAI API)
@@ -202,7 +176,7 @@ async function formatContentForAudio(
   length: 'short' | 'medium' | 'long',
   config: PodcastGenConfig
 ): Promise<FormatterResult> {
-  const openai = await getChatClient();
+  const { createInternalCompletion } = await import('@/lib/llm-client');
   const llmSettings = await getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
@@ -224,24 +198,23 @@ async function formatContentForAudio(
 
   console.log(`[PodcastGen] Formatting content with model: ${model}, style: ${style}, length: ${length}`);
 
-  const completion = await openai.chat.completions.create({
+  const script = await createInternalCompletion({
     model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
     temperature: getTemperatureForModel(model, 0.7),
-    max_tokens: lengthConfig.words * 2, // Allow buffer
+    maxTokens: lengthConfig.words * 2,
   });
 
-  const script = completion.choices[0]?.message?.content?.trim() || '';
   const wordCount = script.split(/\s+/).length;
   const estimatedDuration = Math.ceil((wordCount / 150) * 60); // ~150 words per minute
 
   console.log(`[PodcastGen] Formatted script: ${wordCount} words, ~${estimatedDuration}s estimated`);
 
   return {
-    script,
+    script: script.trim(),
     estimatedDuration,
     wordCount,
   };
@@ -311,7 +284,7 @@ async function formatContentForDialogue(
   style: 'formal' | 'conversational' | 'news',
   length: 'short' | 'medium' | 'long'
 ): Promise<FormatterResult> {
-  const openai = await getChatClient();
+  const { createInternalCompletion } = await import('@/lib/llm-client');
   const llmSettings = await getLlmSettings();
   const model = llmSettings.model || 'gpt-4o-mini';
 
@@ -331,24 +304,23 @@ async function formatContentForDialogue(
 
   console.log(`[PodcastGen] Formatting content for dialogue with model: ${model}`);
 
-  const completion = await openai.chat.completions.create({
+  const script = await createInternalCompletion({
     model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
     temperature: getTemperatureForModel(model, 0.7),
-    max_tokens: lengthConfig.words * 2,
+    maxTokens: lengthConfig.words * 2,
   });
 
-  const script = completion.choices[0]?.message?.content?.trim() || '';
   const wordCount = script.split(/\s+/).length;
   const estimatedDuration = Math.ceil((wordCount / 150) * 60);
 
   console.log(`[PodcastGen] Formatted dialogue: ${wordCount} words, ~${estimatedDuration}s estimated`);
 
   return {
-    script,
+    script: script.trim(),
     estimatedDuration,
     wordCount,
   };

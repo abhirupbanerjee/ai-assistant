@@ -19,6 +19,7 @@ import { isOllamaCloudModel, getOllamaCloudModelId, callOllamaCloud } from './se
 import { isAzureFoundryModel, getAzureFoundryClient, resetAzureFoundryClient, stripAzureFoundryPrefix } from './llm/providers/azure-foundry';
 import { isMistralModel, stripMistralPrefix, callMistralChat } from './llm/providers/mistral';
 import { isGeminiModel, stripGeminiPrefix, callGeminiChat } from './llm/providers/gemini';
+import { isOpenAIModel, stripOpenAIPrefix, callOpenAIChat } from './llm/providers/openai';
 import { getTemperatureForModel } from './llm-thinking';
 
 
@@ -48,6 +49,8 @@ export interface InternalCompletionOptions {
   onUsage?: (usage: { inputTokens: number; outputTokens: number; model: string }) => void;
   /** Optional JSON schema for Gemini native responseSchema enforcement. Ignored by non-Gemini providers. */
   responseSchema?: object;
+  /** Optional response_format for OpenAI-native structured output. Passed directly to the OpenAI API. */
+  responseFormat?: { type: 'json_object' | 'text' } | { type: 'json_schema'; json_schema: { name: string; schema: object; strict?: boolean } };
 }
 
 // ============ Usage helper ============
@@ -74,6 +77,11 @@ let ollamaClient: OpenAI | null = null;
 let moonshotClient: OpenAI | null = null;
 let deepseekClient: OpenAI | null = null;
 
+/**
+ * @deprecated This legacy client routes through LiteLLM proxy. All OpenAI/Gemini/Mistral
+ * models now use direct Route 2 providers. This function remains as a safety-net fallback
+ * for unrecognized models and will be removed when LiteLLM is fully retired.
+ */
 async function getLiteLLMClient(): Promise<OpenAI> {
   if (!litellmClient) {
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
@@ -362,6 +370,15 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
       temperature: opts.temperature,
       maxTokens: opts.maxTokens,
       ...(opts.responseSchema && { responseSchema: opts.responseSchema }),
+    });
+    return result.content;
+  }
+  if (isOpenAIModel(model)) {
+    const result = await callOpenAIChat(model, opts.messages, {
+      temperature: opts.temperature,
+      maxTokens: opts.maxTokens,
+      ...(opts.responseSchema && { responseSchema: opts.responseSchema }),
+      ...(opts.responseFormat && { responseFormat: opts.responseFormat }),
     });
     return result.content;
   }

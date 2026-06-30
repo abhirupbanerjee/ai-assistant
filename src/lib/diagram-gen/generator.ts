@@ -49,18 +49,16 @@ export async function getDiagramGenConfig(): Promise<DiagramGenConfig> {
 // ===== LLM Client =====
 
 async function getOpenAIClient(): Promise<OpenAI> {
-  // Read config fresh each call — avoids stale client after API key or base URL changes
-  const apiKey = process.env.OPENAI_BASE_URL
-    ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
-    : await getApiKey('openai');
+  // Use direct OpenAI API (Route 2) — no LiteLLM proxy
+  const apiKey = await getApiKey('openai');
 
-  if (!apiKey && !process.env.OPENAI_BASE_URL) {
-    throw new Error('OpenAI API key or LiteLLM proxy required for diagram generation');
+  if (!apiKey) {
+    throw new Error('OpenAI API key required for diagram generation');
   }
 
   return new OpenAI({
-    apiKey: apiKey || 'dummy-key-for-litellm',
-    baseURL: process.env.OPENAI_BASE_URL || undefined,
+    apiKey,
+    baseURL: 'https://api.openai.com/v1', // Direct, bypasses LiteLLM
   });
 }
 

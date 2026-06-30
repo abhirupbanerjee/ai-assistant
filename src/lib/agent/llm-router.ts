@@ -207,15 +207,12 @@ async function generateOpenAI(
   requestParams: Record<string, unknown> = {}
 ): Promise<LLMResponse> {
   if (!openaiClient) {
-    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
-    // Otherwise use centralized provider helper (DB-first, then env var fallback)
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? process.env.LITELLM_MASTER_KEY || await getApiKey('openai')
-      : await getApiKey('openai');
+    // Use direct OpenAI API (Route 2) — no LiteLLM proxy
+    const apiKey = await getApiKey('openai');
 
     openaiClient = new OpenAI({
       apiKey: apiKey || undefined,
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
+      baseURL: 'https://api.openai.com/v1',
     });
   }
 
