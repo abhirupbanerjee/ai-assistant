@@ -26,6 +26,16 @@ export function isNonOOpenAIGpt5Model(modelId: string): boolean {
   return id.startsWith('gpt-5') && !isOpenAIOFamilyModel(id);
 }
 
+/**
+ * Check if the model is gpt-5.5 or gpt-5.5-pro.
+ * gpt-5.5 rejects reasoning_effort with function tools in /v1/chat/completions
+ * and requires /v1/responses instead. gpt-5.4 accepts both parameters together.
+ */
+function isGpt55Model(modelId: string): boolean {
+  const id = normalizeModelId(modelId);
+  return id === 'gpt-5.5' || id === 'gpt-5.5-pro';
+}
+
 export function isTemperatureLockedModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   return (
@@ -165,7 +175,12 @@ export function buildThinkingRequestProfile(options: {
 
   if (!enabled) {
     if (isNonOOpenAIGpt5Model(options.modelId)) {
-      requestParams.reasoning_effort = 'none';
+      // gpt-5.5+ rejects reasoning_effort with function tools in /v1/chat/completions.
+      // Skipping 'none' is semantically safe — it means "don't think" and omitting
+      // the param achieves the same outcome without triggering a 400 error.
+      if (!(options.toolsEnabled && isGpt55Model(options.modelId))) {
+        requestParams.reasoning_effort = 'none';
+      }
     }
     return { capable, enabled: false, defaultEnabled, requestParams, streamFields: Array.from(streamFields), requiresThinkingStatePreservation };
   }
@@ -191,7 +206,12 @@ export function buildThinkingRequestProfile(options: {
     streamFields.add('thinking');
     streamFields.add('reasoning_content');
   } else if (isReasoningEffortModel(options.modelId)) {
-    requestParams.reasoning_effort = 'high';
+    // gpt-5.5+ rejects reasoning_effort with function tools in /v1/chat/completions
+    // and requires /v1/responses instead. Preserve the param so the fallback system
+    // can switch to a model that supports thinking+tools rather than silently degrading.
+    if (!(options.toolsEnabled && isGpt55Model(options.modelId))) {
+      requestParams.reasoning_effort = 'high';
+    }
     streamFields.add('reasoning_content');
   }
 

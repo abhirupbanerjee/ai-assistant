@@ -10,6 +10,7 @@
 
 import OpenAI from 'openai';
 import { getApiKey } from '@/lib/provider-helpers';
+import { isUnsupportedThinkingParamError } from '@/lib/llm-thinking';
 
 // ============ Client Singleton ============
 
@@ -195,26 +196,6 @@ export async function streamOpenAICompletion(
   const interChunkTimeoutMs = options?.interChunkTimeoutMsOverride ?? streamingConfig.TOOL_TIMEOUT_MS;
   const firstChunkTimeoutMs = options?.firstChunkTimeoutMsOverride ?? FIRST_CHUNK_TIMEOUT_MS;
 
-  let wasAborted = false;
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-    console.warn(`[OpenAI Direct] Streaming timed out waiting for first chunk`, { model: cleanModel });
-    wasAborted = true;
-  }, firstChunkTimeoutMs);
-
-  const resetTimeout = () => {
-    if (timeoutId) clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      console.warn(`[OpenAI Direct] Streaming timed out between chunks`, { model: cleanModel });
-      wasAborted = true;
-    }, interChunkTimeoutMs);
-  };
-
-  let content = '';
-  let thinkingContent = '';
-  let streamTotalTokens = 0;
-  const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
-
   // Build request params. Use `as any` on the create call — the OpenAI SDK v6
   // overload resolution is strict about ReasoningEffort being a union literal,
   // and conditional spreads widen `string` types. Matching the pattern used
@@ -233,89 +214,130 @@ export async function streamOpenAICompletion(
     ...(options?.reasoningEffort && { reasoning_effort: options.reasoningEffort }),
   };
 
-  try {
-    // OpenAI SDK v6 overloads: stream:true returns Stream<ChatCompletionChunk>.
-    // The spread of Omit<..., 'stream'> with {stream:true} should produce
-    // ChatCompletionCreateParamsStreaming, but TS strict mode sometimes
-    // widens conditional spreads. The `as any` matches the pattern used
-    // in streamOneCompletion() calls throughout openai.ts.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream = await (client.chat.completions as any).create({
-      ...requestParams,
-      stream: true,
-      stream_options: { include_usage: true },
-    });
+  /**
+   * Inner helper: execute the streaming request with the given params.
+   * Extracted so the outer function can retry with modified params
+   * (e.g., stripping reasoning_effort on API rejection).
+   */
+  const doStream = async (params: Record<string, unknown>): Promise<OpenAIStreamResult> => {
+    let wasAborted = false;
 
-    for await (const chunk of stream) {
-      resetTimeout();
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      console.warn(`[OpenAI Direct] Streaming timed out waiting for first chunk`, { model: cleanModel });
+      wasAborted = true;
+    }, firstChunkTimeoutMs);
 
-      // Usage may appear in final chunk with stream_options: { include_usage: true }
-      if (chunk.usage) {
-        streamTotalTokens = chunk.usage.total_tokens ?? 0;
-      }
+    const resetTimeout = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        console.warn(`[OpenAI Direct] Streaming timed out between chunks`, { model: cleanModel });
+        wasAborted = true;
+      }, interChunkTimeoutMs);
+    };
 
-      const delta = chunk.choices?.[0]?.delta;
-      if (!delta) continue;
+    let content = '';
+    let thinkingContent = '';
+    let streamTotalTokens = 0;
+    const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 
-      // Content delta
-      if (delta.content) {
-        content += delta.content;
-        options?.onChunk?.(delta.content);
-      }
+    try {
+      // OpenAI SDK v6 overloads: stream:true returns Stream<ChatCompletionChunk>.
+      // The spread of Omit<..., 'stream'> with {stream:true} should produce
+      // ChatCompletionCreateParamsStreaming, but TS strict mode sometimes
+      // widens conditional spreads. The `as any` matches the pattern used
+      // in streamOneCompletion() calls throughout openai.ts.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream = await (client.chat.completions as any).create({
+        ...params,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
 
-      // Reasoning / thinking content (o1, o3, o4, gpt-5 series)
-      if ((delta as any).reasoning_content) {
-        thinkingContent += (delta as any).reasoning_content;
-        options?.onThinkingChunk?.((delta as any).reasoning_content);
-      }
+      for await (const chunk of stream) {
+        resetTimeout();
 
-      // Tool call deltas
-      if (delta.tool_calls) {
-        for (const tc of delta.tool_calls) {
-          const idx = tc.index ?? 0;
-          if (!toolCallMap.has(idx)) {
-            toolCallMap.set(idx, { id: '', name: '', arguments: '' });
-          }
-          const acc = toolCallMap.get(idx)!;
-          if (tc.id) acc.id = tc.id;
-          if (tc.function?.name) acc.name = tc.function.name;
-          if (tc.function?.arguments) {
-            acc.arguments += tc.function.arguments;
+        // Usage may appear in final chunk with stream_options: { include_usage: true }
+        if (chunk.usage) {
+          streamTotalTokens = chunk.usage.total_tokens ?? 0;
+        }
+
+        const delta = chunk.choices?.[0]?.delta;
+        if (!delta) continue;
+
+        // Content delta
+        if (delta.content) {
+          content += delta.content;
+          options?.onChunk?.(delta.content);
+        }
+
+        // Reasoning / thinking content (o1, o3, o4, gpt-5 series)
+        if ((delta as any).reasoning_content) {
+          thinkingContent += (delta as any).reasoning_content;
+          options?.onThinkingChunk?.((delta as any).reasoning_content);
+        }
+
+        // Tool call deltas
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            if (!toolCallMap.has(idx)) {
+              toolCallMap.set(idx, { id: '', name: '', arguments: '' });
+            }
+            const acc = toolCallMap.get(idx)!;
+            if (tc.id) acc.id = tc.id;
+            if (tc.function?.name) acc.name = tc.function.name;
+            if (tc.function?.arguments) {
+              acc.arguments += tc.function.arguments;
+            }
           }
         }
       }
+
+      if (wasAborted) {
+        throw new Error(
+          `OpenAI streaming timeout (model: ${cleanModel}). The model may be unresponsive.`
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
+        throw new Error(
+          `OpenAI streaming timeout (model: ${cleanModel}). The model may be unresponsive.`
+        );
+      }
+      throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
 
-    if (wasAborted) {
-      throw new Error(
-        `OpenAI streaming timeout (model: ${cleanModel}). The model may be unresponsive.`
-      );
-    }
+    const tool_calls = toolCallMap.size > 0
+      ? [...toolCallMap.values()].map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.arguments },
+        }))
+      : undefined;
+
+    return {
+      content: content || null,
+      tool_calls,
+      thinkingContent: thinkingContent || null,
+      totalTokens: streamTotalTokens,
+    };
+  };
+
+  // First attempt with full params (may include reasoning_effort)
+  try {
+    return await doStream(requestParams);
   } catch (error) {
-    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
-      throw new Error(
-        `OpenAI streaming timeout (model: ${cleanModel}). The model may be unresponsive.`
-      );
+    // Retry without reasoning_effort if the model rejects it with function tools.
+    // This handles models like gpt-5.5 that require /v1/responses for tools+reasoning.
+    if (requestParams.reasoning_effort && isUnsupportedThinkingParamError(error)) {
+      console.warn('[OpenAI Direct] Retrying without reasoning_effort', { model: cleanModel });
+      const { reasoning_effort, ...retryParams } = requestParams;
+      return await doStream(retryParams);
     }
     throw error;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
   }
-
-  const tool_calls = toolCallMap.size > 0
-    ? [...toolCallMap.values()].map(tc => ({
-        id: tc.id,
-        type: 'function' as const,
-        function: { name: tc.name, arguments: tc.arguments },
-      }))
-    : undefined;
-
-  return {
-    content: content || null,
-    tool_calls,
-    thinkingContent: thinkingContent || null,
-    totalTokens: streamTotalTokens,
-  };
 }
 
 // ============ Embeddings ============
