@@ -953,19 +953,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       /* ignore — table may not exist on very first boot */
     });
 
-  // Fire-and-forget: sync enabled models to LiteLLM proxy
-  import('../services/litellm-sync')
-    .then(({ syncAllModelsToLiteLLM }) =>
-      syncAllModelsToLiteLLM()
-        .then(r => {
-          if (r.synced > 0 || r.failed > 0) {
-            console.log(`[LiteLLM Sync] Startup: synced ${r.synced} models (${r.failed} failed)`);
-          }
-        })
-        .catch(err => console.warn('[LiteLLM Sync] Startup sync failed:', err))
-    )
-    .catch(err => console.warn('[LiteLLM Sync] Module load failed:', err));
-
   // Fire-and-forget: initialize automated backup scheduler
   import('../services/backup-scheduler')
     .then(({ initBackupScheduler }) =>

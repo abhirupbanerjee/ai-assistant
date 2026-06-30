@@ -4,10 +4,8 @@
  * Shared utility for internal services (memory extraction, summarization,
  * prompt optimization, translation) with multi-route fallback.
  *
- * Route 1: LiteLLM proxy (OpenAI, Gemini, Mistral)
- * Route 2: DeepSeek direct + Moonshot AI direct + Claude (Anthropic) direct
+ * Route 2: Direct providers (DeepSeek, Moonshot, Claude/Anthropic, OpenAI, Mistral, Gemini)
  * Route 3: Ollama direct (local / air-gapped)
- * Route 4: Ollama Cloud direct (hosted models)
  * Route 5: Aggregator gateways (Azure AI Foundry, Fireworks AI, Ollama Cloud)
  */
 
@@ -70,28 +68,11 @@ function emitUsage(
 
 // ============ Clients (lazy singletons) ============
 
-let litellmClient: OpenAI | null = null;
 let fireworksClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
 let ollamaClient: OpenAI | null = null;
 let moonshotClient: OpenAI | null = null;
 let deepseekClient: OpenAI | null = null;
-
-/**
- * @deprecated This legacy client routes through LiteLLM proxy. All OpenAI/Gemini/Mistral
- * models now use direct Route 2 providers. This function remains as a safety-net fallback
- * for unrecognized models and will be removed when LiteLLM is fully retired.
- */
-async function getLiteLLMClient(): Promise<OpenAI> {
-  if (!litellmClient) {
-    const baseURL = process.env.OPENAI_BASE_URL || undefined;
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
-    litellmClient = new OpenAI({ baseURL, apiKey: apiKey || '' });
-  }
-  return litellmClient;
-}
 
 async function getFireworksClient(): Promise<OpenAI> {
   if (!fireworksClient) {
@@ -151,7 +132,6 @@ async function getDeepSeekClient(): Promise<OpenAI> {
 
 /** Reset all cached LLM clients so they re-read API keys on next use */
 export function resetLlmClients(): void {
-  litellmClient = null;
   fireworksClient = null;
   anthropicClient = null;
   ollamaClient = null;
@@ -161,22 +141,6 @@ export function resetLlmClients(): void {
 }
 
 // ============ Provider Callers ============
-
-async function callLiteLLM(model: string, opts: InternalCompletionOptions): Promise<string> {
-  const client = await getLiteLLMClient();
-  // Non-streaming OpenAI API requires stream=true for max_tokens > 4096.
-  // Cap at 4096 to avoid the error: "Requests with max_tokens > 4096 must have stream=true"
-  const maxTokens = Math.min(opts.maxTokens ?? 2000, 4096);
-  const baseTemp = opts.temperature ?? 0.3;
-  const response = await client.chat.completions.create({
-    model,
-    messages: opts.messages,
-    temperature: getTemperatureForModel(model, baseTemp),
-    max_tokens: maxTokens,
-  });
-  emitUsage(opts, response.usage, model);
-  return stripThinkTags(response.choices[0]?.message?.content?.trim() || '');
-}
 
 async function callFireworks(model: string, opts: InternalCompletionOptions): Promise<string> {
   const client = await getFireworksClient();
@@ -388,7 +352,7 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return callOllama(model, opts);
   }
 
-  // Route 4 models → always direct to Ollama Cloud
+  // Route 5 models → always direct to Ollama Cloud
   if (isOllamaCloudModelFn(model)) {
     return callOllamaCloudDirect(model, opts);
   }
@@ -398,53 +362,5 @@ export async function createInternalCompletion(opts: InternalCompletionOptions):
     return callAzureFoundry(model, opts);
   }
 
-  // Route 1 → try LiteLLM, fall back to Route 2/3/4/5 if enabled
-  try {
-    return await callLiteLLM(model, opts);
-  } catch (err) {
-    const hasRoute2 = routes.route2Enabled;
-    const hasRoute3 = routes.route3Enabled;
-    const hasRoute5 = routes.route5Enabled;
-    if (!hasRoute2 && !hasRoute3 && !hasRoute5) throw err;
-
-    console.warn('[llm-client] Route 1 failed, trying fallback routes:', err instanceof Error ? err.message : err);
-
-    // Try Route 2 first (DeepSeek → Moonshot → Claude), then Route 3 (Ollama), then Route 5 (Fireworks)
-    if (hasRoute2) {
-      try {
-        return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
-      } catch (fwErr) {
-        console.warn('[llm-client] Fireworks fallback failed:', fwErr instanceof Error ? fwErr.message : fwErr);
-        try {
-          return await callDeepSeek(DEEPSEEK_FALLBACK_MODEL, opts);
-        } catch (deepseekErr) {
-          console.warn('[llm-client] DeepSeek fallback failed:', deepseekErr instanceof Error ? deepseekErr.message : deepseekErr);
-          try {
-            return await callMoonshot(MOONSHOT_FALLBACK_MODEL, opts);
-          } catch (moonshotErr) {
-            console.warn('[llm-client] Moonshot fallback failed:', moonshotErr instanceof Error ? moonshotErr.message : moonshotErr);
-            try {
-              return await callAnthropic(CLAUDE_FALLBACK_MODEL, opts);
-            } catch (claudeErr) {
-              console.warn('[llm-client] Claude fallback failed:', claudeErr instanceof Error ? claudeErr.message : claudeErr);
-            }
-          }
-        }
-      }
-    }
-
-    // Route 3 fallback (Ollama) — use default Ollama model
-    if (hasRoute3) {
-      console.warn('[llm-client] Trying Route 3 (Ollama) fallback');
-      return await callOllama('ollama-llama3.2', opts);
-    }
-
-    // Route 5 fallback (aggregator gateways) — use Fireworks model
-    if (hasRoute5) {
-      console.warn('[llm-client] Trying Route 5 (Aggregator) fallback');
-      return await callFireworks(FIREWORKS_FALLBACK_MODEL, opts);
-    }
-
-    throw err;
-  }
+  throw new Error(`Unsupported model for internal completion: ${model}. No provider route matched.`);
 }

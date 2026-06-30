@@ -203,30 +203,6 @@ function getTerminalToolSummaryPrompt(toolName: string): string {
   return `The ${toolLabel} tool has completed successfully. Based on the tool result above, provide a brief, helpful summary (1-2 sentences) explaining what was created. Mention key details like the output type/format and how the user can access or download it. Do not use markdown formatting.`;
 }
 
-let openaiClient: OpenAI | null = null;
-
-/**
- * @deprecated This legacy client routes through LiteLLM proxy when OPENAI_BASE_URL is set.
- * All OpenAI models now use the direct Route 2 provider (getOpenAIDirectClient).
- * This function remains as a safety-net fallback for unrecognized models and will be
- * removed when LiteLLM is fully retired.
- */
-async function getOpenAI(): Promise<OpenAI> {
-  if (!openaiClient) {
-    // Legacy LiteLLM proxy fallback — not used by OpenAI/Gemini/Mistral models
-    const apiKey = process.env.OPENAI_BASE_URL
-      ? (process.env.LITELLM_MASTER_KEY || await getApiKey('openai'))
-      : await getApiKey('openai');
-
-    openaiClient = new OpenAI({
-      apiKey: apiKey || undefined,
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-      timeout: 300 * 1000, // 5 minutes — matches maxDuration in route.ts and LiteLLM request_timeout
-    });
-  }
-  return openaiClient;
-}
-
 // ============ Anthropic Direct Client ============
 
 /**
@@ -411,7 +387,6 @@ async function getDeepSeekClient(): Promise<OpenAI> {
 
 /** Reset all cached LLM clients so they re-read API keys on next use */
 export function resetLlmClients(): void {
-  openaiClient = null;
   anthropicClient = null;
   fireworksClient = null;
   ollamaClient = null;
@@ -421,20 +396,6 @@ export function resetLlmClients(): void {
   import('@/lib/llm/providers/azure-foundry').then(m => m.resetAzureFoundryClient()).catch(() => {});
   // Reset OpenAI direct singleton
   import('@/lib/llm/providers/openai').then(m => m.resetOpenAIClient()).catch(() => {});
-}
-
-/**
- * Add LiteLLM provider prefix to non-OpenAI embedding model names.
- * LiteLLM requires prefixes like `gemini/` or `mistral/` to route correctly.
- * Only applies when using LiteLLM proxy (OPENAI_BASE_URL is set).
- */
-function getLiteLLMEmbeddingModelId(model: string): string {
-  if (!process.env.OPENAI_BASE_URL) return model;
-  const modelDef = getEmbeddingModelById(model);
-  if (modelDef && modelDef.provider !== 'openai') {
-    return `${modelDef.provider}/${model}`;
-  }
-  return model;
 }
 
 export async function createEmbedding(text: string): Promise<number[]> {
@@ -503,21 +464,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
       return vector;
     }
 
-    // Cloud provider path (unrecognized models — should rarely be reached after migration)
-    const openai = await getOpenAI();
-    const litellmModel = getLiteLLMEmbeddingModelId(model);
-    const response = await openai.embeddings.create({
-      model: litellmModel,
-      input: text,
-    });
-    recordTokenUsage({
-      category: 'embeddings',
-      model,
-      totalTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
-      inputTokens: response.usage?.total_tokens ?? Math.ceil(text.length / 4),
-      outputTokens: 0,
-    });
-    return response.data[0].embedding;
+    throw new Error(`Unsupported embedding model: ${model}. No direct provider route matched.`);
   } catch (error) {
     // If primary model fails and fallback is different, try fallback
     if (fallbackModel && fallbackModel !== model) {
@@ -559,13 +506,7 @@ export async function createEmbedding(text: string): Promise<number[]> {
         return await createOpenAIEmbedding(text, fallbackModel);
       }
 
-      const openai = await getOpenAI();
-      const litellmModel = getLiteLLMEmbeddingModelId(fallbackModel);
-      const response = await openai.embeddings.create({
-        model: litellmModel,
-        input: text,
-      });
-      return response.data[0].embedding;
+      throw new Error(`Unsupported embedding fallback model: ${fallbackModel}. No direct provider route matched.`);
     }
 
     // No fallback or fallback is same as primary - rethrow
@@ -659,26 +600,7 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       return vectors;
     }
 
-    // Cloud provider path (unrecognized models — should rarely be reached after migration)
-    const openai = await getOpenAI();
-    const litellmModel = getLiteLLMEmbeddingModelId(model);
-    const response = await openai.embeddings.create({
-      model: litellmModel,
-      input: texts,
-    });
-    const embeddings = response.data.map(d => d.embedding);
-    recordTokenUsage({
-      category: 'embeddings',
-      model,
-      totalTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
-      inputTokens: response.usage?.total_tokens ?? texts.reduce((s, t) => s + Math.ceil(t.length / 4), 0),
-      outputTokens: 0,
-    });
-    // Debug: Log embedding dimensions
-    if (embeddings.length > 0) {
-      console.log(`[Embedding] Model: ${model}, Dimensions: ${embeddings[0].length}, Count: ${embeddings.length}`);
-    }
-    return embeddings;
+    throw new Error(`Unsupported embedding model: ${model}. No direct provider route matched.`);
   } catch (error) {
     // If primary model fails and fallback is different, try fallback
     if (fallbackModel && fallbackModel !== model) {
@@ -720,13 +642,7 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
         return await createOpenAIEmbeddings(texts, fallbackModel);
       }
 
-      const openai = await getOpenAI();
-      const litellmModel = getLiteLLMEmbeddingModelId(fallbackModel);
-      const response = await openai.embeddings.create({
-        model: litellmModel,
-        input: texts,
-      });
-      return response.data.map(d => d.embedding);
+      throw new Error(`Unsupported embedding fallback model: ${fallbackModel}. No direct provider route matched.`);
     }
 
     // No fallback or fallback is same as primary - rethrow
@@ -1484,7 +1400,7 @@ export async function generateToolCompletion(
     };
   }
 
-  // OpenAI-compatible routes: LiteLLM, Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
+  // OpenAI-compatible routes: Fireworks (Route 5), Ollama local, Moonshot, DeepSeek, Azure Foundry (Route 5)
   // (OpenAI direct already handled above — returns early)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openai: any = useFireworksDirect ? await getFireworksClient()
@@ -1492,7 +1408,7 @@ export async function generateToolCompletion(
     : useMoonshotDirect ? await getMoonshotClient()
     : useDeepSeekDirect ? await getDeepSeekClient()
     : useAzureFoundryDirect ? await getAzureFoundryClient()
-    : await getOpenAI(); // Legacy LiteLLM fallback
+    : (() => { throw new Error(`Unsupported model for chat: ${effectiveModel}. No direct provider route matched.`); })();
 
   const completionModel = useFireworksDirect ? getFireworksModelId(effectiveModel)
     : useOllamaDirect ? getOllamaModelId(effectiveModel)
@@ -1781,8 +1697,7 @@ export async function generateResponseWithTools(
     : useAzureFoundryDirect ? 'Azure AI Foundry (Route 5)'
     : useMistralDirect ? 'Mistral AI directly (Route 2)'
     : useGeminiDirect ? 'Gemini directly (Route 2)'
-    : useOpenAIDirect ? 'OpenAI directly (Route 2)'
-    : 'LiteLLM/OpenAI path';
+    : 'OpenAI directly (Route 2)';
   console.log(`[Chat] Using ${routeLabel} for model: ${effectiveModel}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openai: any = useAnthropicDirect ? null
@@ -1795,7 +1710,7 @@ export async function generateResponseWithTools(
     : useMistralDirect ? null // Mistral uses native SDK, not OpenAI SDK
     : useGeminiDirect ? null // Gemini uses native @google/genai SDK, not OpenAI SDK
     : useOpenAIDirect ? await getOpenAIDirectClient() // OpenAI direct (Route 2)
-    : await getOpenAI(); // Legacy LiteLLM fallback
+    : (() => { throw new Error(`Unsupported model for chat: ${effectiveModel}. No direct provider route matched.`); })();
   const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null;
 
   // Check if model supports tools, disable gracefully if not
@@ -2962,4 +2877,3 @@ export async function generateResponseWithTools(
   };
 }
 
-export default getOpenAI;

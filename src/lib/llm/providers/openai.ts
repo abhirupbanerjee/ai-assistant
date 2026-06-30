@@ -50,6 +50,16 @@ export function isOpenAIModel(model: string): boolean {
 }
 
 /**
+ * Detect OpenAI models that do NOT support the Chat Completions API.
+ * These models (e.g., gpt-5.5-pro) only work with legacy /v1/completions
+ * or /v1/responses and cannot be used for chat with tools.
+ */
+export function isNonChatOpenAIModel(model: string): boolean {
+  const clean = stripOpenAIPrefix(model);
+  return clean === 'gpt-5.5-pro';
+}
+
+/**
  * Strip provider prefix for SDK calls.
  * "openai/gpt-4o" → "gpt-4o"
  * "gpt-4o" → "gpt-4o" (already clean)
@@ -179,6 +189,15 @@ export async function streamOpenAICompletion(
 ): Promise<OpenAIStreamResult> {
   const client = await getOpenAIDirectClient();
   const cleanModel = stripOpenAIPrefix(model);
+
+  // Guard: models that don't support the Chat Completions API at all.
+  // gpt-5.5-pro only works with legacy /v1/completions — not compatible with chat.
+  if (isNonChatOpenAIModel(model)) {
+    throw new Error(
+      `${cleanModel} is not a chat model and cannot be used with the Chat Completions API. ` +
+      `Please select a different model (e.g., gpt-5.5 for the latest, or gpt-5.4).`
+    );
+  }
 
   // Build messages array with optional system prompt override
   const requestMessages: any[] = [];

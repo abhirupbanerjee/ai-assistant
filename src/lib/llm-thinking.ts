@@ -27,13 +27,16 @@ export function isNonOOpenAIGpt5Model(modelId: string): boolean {
 }
 
 /**
- * Check if the model is gpt-5.5 or gpt-5.5-pro.
+ * Check if the model is gpt-5.5 (standard chat model, NOT gpt-5.5-pro).
  * gpt-5.5 rejects reasoning_effort with function tools in /v1/chat/completions
  * and requires /v1/responses instead. gpt-5.4 accepts both parameters together.
+ *
+ * Note: gpt-5.5-pro is excluded — it is NOT a chat model at all (only supports
+ * legacy /v1/completions) and is handled separately by isNonChatOpenAIModel().
  */
 function isGpt55Model(modelId: string): boolean {
   const id = normalizeModelId(modelId);
-  return id === 'gpt-5.5' || id === 'gpt-5.5-pro';
+  return id === 'gpt-5.5';
 }
 
 export function isTemperatureLockedModel(modelId: string): boolean {

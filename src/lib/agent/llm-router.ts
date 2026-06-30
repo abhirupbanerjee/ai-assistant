@@ -18,6 +18,7 @@ import {
   isTemperatureParamError,
   getTemperatureForModel,
 } from '@/lib/llm-thinking';
+import { requiresMaxCompletionTokens } from '@/lib/llm/providers/openai';
 import { isModelThinkingCapable } from '@/lib/db/compat/enabled-models';
 
 const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
@@ -226,12 +227,17 @@ async function generateOpenAI(
   const isFireworks = model.startsWith('fireworks/');
   const needsStreaming = isFireworks && maxTokens > 4096;
 
+  // GPT-5.x and o-series reasoning models reject max_tokens; use max_completion_tokens instead
+  const maxTokensParam = requiresMaxCompletionTokens(model)
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens };
+
   if (needsStreaming) {
     const stream = await openaiClient.chat.completions.create({
       model,
       messages,
       ...(temperature !== undefined && { temperature }),
-      max_tokens: maxTokens,
+      ...maxTokensParam,
       ...requestParams,
       stream: true,
       stream_options: { include_usage: true },
@@ -252,7 +258,7 @@ async function generateOpenAI(
     model,
     messages,
     ...(temperature !== undefined && { temperature }),
-    max_tokens: maxTokens,
+    ...maxTokensParam,
     ...requestParams,
   } as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 

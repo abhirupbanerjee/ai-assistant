@@ -4,14 +4,14 @@
  * Provides model discovery, API calls, and database sync for Ollama Cloud
  * (https://ollama.com) hosted models via the native Ollama API.
  *
- * Route 4: Direct connection to Ollama Cloud (bypasses LiteLLM).
+ * Route 5: Direct connection to Ollama Cloud (bypasses LiteLLM).
  * Uses native /api/chat format (not OpenAI-compatible).
  */
 
 import { getDb } from '@/lib/db/kysely';
 import { getProviderApiKey } from '@/lib/db/compat/llm-providers';
 import { getEnabledModel } from '@/lib/db/compat/enabled-models';
-import { generateDisplayName } from '@/lib/litellm-validator';
+import { generateDisplayName } from '@/lib/llm-utils';
 import type { DiscoveredModel } from './model-discovery';
 
 // ============ Constants ============

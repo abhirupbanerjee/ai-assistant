@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 import { loadConfig } from './config-loader';
+import { generateDisplayName, getProviderFromModelPath } from './llm-utils';
 
 interface ValidationResult {
   valid: boolean;
@@ -272,59 +273,6 @@ export interface ParsedLiteLLMModel {
 }
 
 /**
- * Extract provider from LiteLLM model path
- * Examples:
- *   gemini/gemini-2.5-flash → gemini
- *   mistral/mistral-large   → mistral
- *   ollama/llama3.2         → ollama
- *   gpt-4.1-mini            → openai (default)
- */
-export function getProviderFromModelPath(modelPath: string): string {
-  const lowerPath = modelPath.toLowerCase();
-
-  if (lowerPath.startsWith('gemini/')) return 'gemini';
-  if (lowerPath.startsWith('mistral/')) return 'mistral';
-  if (lowerPath.startsWith('ollama/')) return 'ollama';
-  if (lowerPath.startsWith('azure/')) return 'azure';
-  if (lowerPath.startsWith('anthropic/')) return 'anthropic';
-  if (lowerPath.startsWith('fireworks/') || lowerPath.startsWith('fireworks_ai/')) return 'fireworks';
-  if (lowerPath.startsWith('moonshot/')) return 'moonshot';
-
-  // Default to openai for models without prefix
-  return 'openai';
-}
-
-/**
- * Generate human-friendly display name from model ID
- * Examples:
- *   gpt-4.1-mini        → GPT-4.1 Mini
- *   gemini-2.5-flash    → Gemini 2.5 Flash
- *   ollama-llama3.2     → Ollama Llama 3.2
- *   mistral-small-3.2   → Mistral Small 3.2
- */
-export function generateDisplayName(modelId: string): string {
-  // Split by hyphens and dots, keeping version numbers together
-  const parts = modelId.split(/[-.]/).filter(Boolean);
-
-  return parts.map((part, index) => {
-    // Uppercase known acronyms
-    if (['gpt', 'llm', 'ai'].includes(part.toLowerCase())) {
-      return part.toUpperCase();
-    }
-    // Keep version numbers as-is (e.g., "4.1", "2.5", "3.2")
-    if (/^\d+$/.test(part)) {
-      // If previous part was also a number, join with dot
-      if (index > 0 && /^\d+$/.test(parts[index - 1])) {
-        return '.' + part;
-      }
-      return part;
-    }
-    // Capitalize first letter of words
-    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
-  }).join(' ').replace(/ \./g, '.'); // Fix spacing around dots
-}
-
-/**
  * Generate description based on model characteristics
  */
 function generateDescription(modelId: string, provider: string, toolCapable: boolean): string {
@@ -451,9 +399,3 @@ export function getLiteLLMToolCapableModels(): Set<string> {
   );
 }
 
-/**
- * Clear the parsed models cache (useful for testing)
- */
-export function clearLiteLLMCache(): void {
-  _parsedModelsCache = null;
-}

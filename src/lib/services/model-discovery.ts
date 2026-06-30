@@ -7,7 +7,7 @@
 import { getProviderApiKey, getProviderApiBase } from '../db/compat/llm-providers';
 import { getEnabledModel } from '../db/compat/enabled-models';
 import { isLikelyThinkingCapableModel, isClaudeAdaptiveThinkingModel } from '@/lib/llm-thinking';
-import { generateDisplayName, getProviderFromModelPath } from '../litellm-validator';
+import { generateDisplayName, getProviderFromModelPath } from '../llm-utils';
 import { getMoonshotBaseUrl } from '../moonshot-config';
 
 // ============ Types ============

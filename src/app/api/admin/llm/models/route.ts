@@ -13,7 +13,6 @@ import {
   createEnabledModelsBatch,
   type CreateEnabledModelInput,
 } from '@/lib/db/compat/enabled-models';
-import { syncModelToLiteLLM } from '@/lib/services/litellm-sync';
 import type { ApiError } from '@/types';
 
 // GET /api/admin/llm/models
@@ -78,13 +77,6 @@ export async function POST(request: NextRequest) {
     }
 
     const created = await createEnabledModelsBatch(body.models);
-
-    // Fire-and-forget: register new models with LiteLLM proxy
-    for (const model of created) {
-      syncModelToLiteLLM(model).catch(err =>
-        console.warn(`[LiteLLM Sync] Failed to sync ${model.id}:`, err)
-      );
-    }
 
     return NextResponse.json({
       message: `Added ${created.length} models`,
