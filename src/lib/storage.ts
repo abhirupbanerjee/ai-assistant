@@ -342,8 +342,8 @@ export interface RAGSettings {
 
 export const DEFAULT_RAG_SETTINGS: Omit<RAGSettings, 'updatedAt' | 'updatedBy'> = {
   topKChunks: 20,              // Increased from 15 - retrieve more candidates
-  maxContextChunks: 15,        // Increased from 12 - send more context to LLM
-  similarityThreshold: 0.5,    // Increased from 0.3 - higher quality matches
+  maxContextChunks: 25,        // Increased from 15 - broader document coverage
+  similarityThreshold: 0.35,   // Lowered from 0.5 - fewer relevant chunks dropped
   chunkSize: 800,              // Increased from 500 - preserve more context
   chunkOverlap: 150,           // Increased from 50 - better continuity
   queryExpansionEnabled: true,

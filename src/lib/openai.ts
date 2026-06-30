@@ -66,8 +66,9 @@ function mapToTiktokenModel(model: string): TiktokenModel {
 }
 
 /**
- * Truncate context to fit within token budget
- * Removes lowest-scored chunks first
+ * Truncate context to fit within token budget.
+ * Returns the (possibly truncated) context and whether truncation occurred so
+ * the caller can surface a user-visible notice when document context is incomplete.
  */
 function truncateContextToBudget(
   context: string,
@@ -76,7 +77,7 @@ function truncateContextToBudget(
   userMessage: string,
   maxTokens: number,
   model: string
-): string {
+): { context: string; wasTruncated: boolean } {
   // Calculate tokens for non-context parts
   const systemTokens = countTokens(systemPrompt, model);
   const historyTokens = history.reduce((sum, m) => sum + countTokens(m.content, model), 0);
@@ -88,19 +89,20 @@ function truncateContextToBudget(
 
   if (availableTokens <= 0) {
     console.warn('[TokenBudget] No tokens available for context after accounting for system/history');
-    return '';
+    return { context: '', wasTruncated: true };
   }
 
   const contextTokens = countTokens(context, model);
 
   if (contextTokens <= availableTokens) {
-    return context; // Context fits within budget
+    return { context, wasTruncated: false }; // Context fits within budget
   }
 
   // Need to truncate - split by document sections and remove lowest scored
   const sections = context.split('---\n\n');
   let truncatedContext = '';
   let currentTokens = 0;
+  let droppedSections = 0;
 
   // Keep adding sections until we hit the budget
   for (const section of sections) {
@@ -109,16 +111,16 @@ function truncateContextToBudget(
       truncatedContext += section + '---\n\n';
       currentTokens += sectionTokens;
     } else {
-      break;
+      droppedSections++;
     }
   }
 
   console.warn(
     `[TokenBudget] Context truncated from ${contextTokens} to ${currentTokens} tokens ` +
-    `(budget: ${availableTokens}, used: ${usedTokens})`
+    `(${droppedSections} sections dropped, budget: ${availableTokens}, used: ${usedTokens})`
   );
 
-  return truncatedContext.trim();
+  return { context: truncatedContext.trim(), wasTruncated: true };
 }
 
 // ============ Fallback Tracking ============
@@ -1783,7 +1785,7 @@ export async function generateResponseWithTools(
 
   // DESIGN FIX: Apply token budget management to prevent silent truncation by API
   // Calculate effective max tokens and truncate context if needed
-  const truncatedContext = truncateContextToBudget(
+  const truncationResult = truncateContextToBudget(
     context,
     systemPrompt,
     historyForAPI,
@@ -1791,6 +1793,13 @@ export async function generateResponseWithTools(
     effectiveMaxTokens,
     effectiveModel
   );
+
+  // Surface truncation to user so they know document context may be incomplete
+  let truncatedContext = truncationResult.context;
+  if (truncationResult.wasTruncated) {
+    const truncationNote = '[System Note: The retrieved document context exceeded the model\'s token limit and was truncated. Some document sections may not be included in this response. Consider asking a more specific question or reducing conversation history.]\n\n';
+    truncatedContext = truncationNote + truncatedContext;
+  }
 
   // Format user message with proper context ordering (follow-up hint, summary, RAG)
   const textContent = formatUserMessage(ctx, truncatedContext, userMessage);

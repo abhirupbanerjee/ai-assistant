@@ -258,8 +258,8 @@ async function rerankWithLocal(
     for (const chunk of chunks) {
       try {
         // Get chunk embedding
-        // Truncate long chunks to avoid model issues
-        const truncatedText = chunk.text.slice(0, 512);
+        // Use up to 1024 characters for better context coverage (was 512)
+        const truncatedText = chunk.text.slice(0, 1024);
         const chunkOutput = await extractor(truncatedText, { pooling: 'mean', normalize: true });
         const chunkEmbedding = Array.from(chunkOutput.data);
 
@@ -363,7 +363,8 @@ async function rerankWithBGE(
   for (const chunk of chunks) {
     try {
       // BGE reranker expects query and passage combined
-      const truncatedText = chunk.text.slice(0, 512);
+      // Use up to 1024 characters for better context coverage (was 512)
+      const truncatedText = chunk.text.slice(0, 1024);
       const input = `${query} [SEP] ${truncatedText}`;
 
       // BGE rerankers are single-output regression models (sigmoid head, one label).

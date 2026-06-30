@@ -520,20 +520,30 @@ function cosineSimilarity(a: number[], b: number[]): number {
 function formatContext(globalChunks: RetrievedChunk[], userChunks: RetrievedChunk[]): string {
   let context = '';
 
-  if (globalChunks.length > 0) {
-    context += '=== KNOWLEDGE BASE DOCUMENTS ===\n\n';
-    for (const chunk of globalChunks) {
-      context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
-      context += `${chunk.text}\n\n---\n\n`;
-    }
-  }
+  // Interleave KB and user chunks by score so user-uploaded documents are not
+  // always positioned at the end (where token-budget truncation drops them first).
+  const allChunks = [...globalChunks.map(c => ({ ...c, source: 'global' as const })),
+                     ...userChunks.map(c => ({ ...c, source: 'user' as const }))]
+    .sort((a, b) => b.score - a.score);
 
-  if (userChunks.length > 0) {
-    context += '=== USER UPLOADED DOCUMENT ===\n\n';
-    for (const chunk of userChunks) {
-      context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
-      context += `${chunk.text}\n\n---\n\n`;
+  let hasGlobal = false;
+  let hasUser = false;
+
+  for (const chunk of allChunks) {
+    if (chunk.source === 'global') {
+      if (!hasGlobal) {
+        context += '=== KNOWLEDGE BASE DOCUMENTS ===\n\n';
+        hasGlobal = true;
+      }
+    } else {
+      if (!hasUser) {
+        if (hasGlobal) context += '\n';
+        context += '=== USER UPLOADED DOCUMENT ===\n\n';
+        hasUser = true;
+      }
     }
+    context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
+    context += `${chunk.text}\n\n---\n\n`;
   }
 
   if (!context) {

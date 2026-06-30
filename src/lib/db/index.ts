@@ -1991,8 +1991,8 @@ function initializeDefaultSettings(database: Database.Database): void {
   const defaults: Record<string, object> = {
     'rag-settings': {
       topKChunks: 20,
-      maxContextChunks: 15,
-      similarityThreshold: 0.5,
+      maxContextChunks: 25,
+      similarityThreshold: 0.35,
       chunkSize: 800,
       chunkOverlap: 150,
       queryExpansionEnabled: true,
