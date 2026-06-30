@@ -605,6 +605,54 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   }
   console.log('[Kysely] Synced Fireworks serverless model specs and pricing');
 
+  // Migration: Seed pricing and specs for native provider models (not covered by Fireworks sync above)
+  const nativeProviderSpecs: Array<{
+    id: string;
+    max_input_tokens: number;
+    max_output_tokens: number;
+    vision_capable: number;
+    input_cost_per_1m: number;
+    output_cost_per_1m: number;
+    forced_tool_capable: number;
+  }> = [
+    // Gemini 2.5
+    { id: 'gemini-2.5-pro', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 1.25, output_cost_per_1m: 10.00, forced_tool_capable: 1 },
+    { id: 'gemini-2.5-flash', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 2.50, forced_tool_capable: 1 },
+    { id: 'gemini-2.5-flash-lite', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.10, output_cost_per_1m: 0.40, forced_tool_capable: 1 },
+    // Gemini 3.x
+    { id: 'gemini-3-flash-preview', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.50, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
+    { id: 'gemini-3.1-pro-preview', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 2.00, output_cost_per_1m: 12.00, forced_tool_capable: 1 },
+    { id: 'gemini-3.5-flash', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 9.00, forced_tool_capable: 1 },
+    { id: 'gemini-3.1-flash-lite', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.25, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
+    // Mistral
+    { id: 'mistral-large-3', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 0.50, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
+    { id: 'mistral-medium-3', max_input_tokens: 131072, max_output_tokens: 8000, vision_capable: 0, input_cost_per_1m: 0.40, output_cost_per_1m: 2.00, forced_tool_capable: 1 },
+    { id: 'mistral-medium-3.5', max_input_tokens: 256000, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 1.50, output_cost_per_1m: 7.50, forced_tool_capable: 1 },
+    { id: 'mistral-small-3.2', max_input_tokens: 128000, max_output_tokens: 3000, vision_capable: 0, input_cost_per_1m: 0.08, output_cost_per_1m: 0.20, forced_tool_capable: 1 },
+    // DeepSeek V4 (native API)
+    { id: 'deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28, forced_tool_capable: 1 },
+    { id: 'deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.435, output_cost_per_1m: 0.87, forced_tool_capable: 0 },
+    // Moonshot/Kimi K2 (native API)
+    { id: 'moonshot/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
+    { id: 'moonshot/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 3.50, forced_tool_capable: 1 },
+  ];
+  for (const m of nativeProviderSpecs) {
+    await sql`
+      UPDATE enabled_models
+      SET
+        max_input_tokens = ${m.max_input_tokens},
+        max_output_tokens = ${m.max_output_tokens},
+        vision_capable = ${m.vision_capable},
+        tool_capable = 1,
+        input_cost_per_1m = ${m.input_cost_per_1m},
+        output_cost_per_1m = ${m.output_cost_per_1m},
+        forced_tool_capable = ${m.forced_tool_capable}
+      WHERE id = ${m.id}
+        AND (input_cost_per_1m IS NULL OR output_cost_per_1m IS NULL)
+    `.execute(database);
+  }
+  console.log('[Kysely] Synced native provider model specs and pricing (Gemini, Mistral, DeepSeek, Moonshot)');
+
   // Migration: Add input_tokens and output_tokens to token_usage_log
   await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS input_tokens INTEGER DEFAULT 0`.execute(database);
   await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS output_tokens INTEGER DEFAULT 0`.execute(database);
