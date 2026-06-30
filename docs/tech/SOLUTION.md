@@ -1,5 +1,7 @@
 # Policy Bot - Solution Architecture
 
+> **Last updated:** June 2026 — Post-migration: LiteLLM removed, all providers direct via native SDKs/APIs. Routes 2, 3, and 5 active. See [`docs/features/LLM.md`](../features/LLM.md) for the authoritative LLM architecture reference.
+
 Comprehensive architecture documentation for Policy Bot - an enterprise RAG platform for policy document management.
 
 ---
@@ -46,65 +48,68 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    FOUR-TIER LLM ARCHITECTURE                           │
-├──────────────────┬──────────────────┬──────────────────┬────────────────┤
-│  TIER 1: LiteLLM  │ TIER 1b: Claude  │ TIER 2: Direct   │ TIER 3: Direct │
-│  Proxy (Port 4000) │ Direct SDK      │ Provider APIs    │ Google GenAI   │
-│  Chat, Embeddings, │ (@anthropic-    │ (Non-Chat)       │ SDK            │
-│  Transcription     │  ai/sdk)        │                  │ (Image/TTS)    │
-├──────────────────┼──────────────────┼──────────────────┼────────────────┤
-│ ┌──────────────┐ │ Claude chat +    │ Fireworks        │ Gemini Nano    │
-│ │ OpenAI       │ │ tool calling     │  Reranking       │  Banana        │
-│ │ Gemini       │ │ via native       │  (api.fireworks  │  (image_gen)   │
-│ │ Mistral      │ │ streaming        │   .ai)           │                │
-│ │ DeepSeek     │ │                  │                  │ Gemini TTS     │
-│ │ Fireworks*   │ │ Why: LiteLLM     │ Fireworks        │  (podcast_gen) │
-│ └──────────────┘ │ breaks tool call │  Reranking       │                │
-│                  │ JSON assembly    │  (api.fireworks  │ Imagen 4       │
-│                  │ for Anthropic    │   .ai)           │  (image_gen)   │
-│ * YAML-only,     │ for Anthropic    │   .ai)           │                │
-│   not dynamic    │ streaming        │                  │                │
-│   sync           │                  │ Tavily Search    │                │
-│                  │ Models:          │  (tavily.com)    │                │
-│                  │  claude-opus-*   │                  │                │
-│ Dynamic sync:    │  claude-sonnet-* │ OpenAI TTS       │                │
-│  OpenAI,         │  claude-haiku-*  │  (podcast_gen)   │                │
-│  Anthropic,      │                  │                  │                │
-│  Gemini,         │                  │ Gemini/Mistral   │                │
-│  Mistral,        │                  │  (translation)   │                │
-│  DeepSeek        │                  │                  │                │
-└──────────────────┴──────────────────┴──────────────────┴────────────────┘
-
-           │
-           ├──────────────┬──────────────┬──────────────┬──────────────┬────────────┐
-           ▼              ▼              ▼              ▼              ▼            ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────────┐
-│  OPENAI API  │ │  ANTHROPIC   │ │  MISTRAL AI  │ │GOOGLE GEMINI │ │ DEEPSEEK │ │FIREWORKS AI  │
-│ gpt-4.1 (V)  │ │ Claude (V)   │ │ large-3 (V)  │ │gemini-2.5(V) │ │ R1 (🧠)  │ │ MiniMax M2.5 │
-│ gpt-4.1-mini │ │ Sonnet 4.5   │ │ small-3.2(V) │ │ 2.5-flash(V) │ │ chat     │ │ Kimi K2.5    │
-│ gpt-4.1-nano │ │ Haiku 4.5    │ │ Mistral OCR  │ │ gemini embed │ │          │ │ Qwen3        │
-└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────┘ └──────────────┘
-
-┌─────────────────┐
-│  OLLAMA (Local) │  ← Route 3: Direct to ollama:11434/v1 (bypasses LiteLLM)
-│   llama3.2      │
-│   qwen3         │
-│   gpt-oss       │
-└─────────────────┘
+│                    THREE-ROUTE LLM ARCHITECTURE                          │
+│                    (All providers use direct native SDKs/APIs)           │
+├──────────────────┬──────────────────┬────────────────────────────────────┤
+│    ROUTE 2       │     ROUTE 3      │            ROUTE 5                │
+│  Direct Providers│  Local / Ollama  │     Aggregator Gateways           │
+├──────────────────┼──────────────────┼────────────────────────────────────┤
+│ ┌──────────────┐ │ ┌──────────────┐ │ ┌──────────────┐ ┌──────────────┐ │
+│ │ OpenAI       │ │ │ Ollama       │ │ │Azure Foundry │ │ Ollama Cloud │ │
+│ │ (openai SDK) │ │ │ (llama3.2,   │ │ │(@azure/ai-   │ │ (native API) │ │
+│ │ gpt-4.1 (V)  │ │ │  qwen3,      │ │ │ projects)    │ │              │ │
+│ │ gpt-4.1-mini │ │ │  gpt-oss)    │ │ │              │ │              │ │
+│ │ gpt-4.1-nano │ │ └──────────────┘ │ └──────────────┘ └──────────────┘ │
+│ └──────────────┘ │                  │                                    │
+│ ┌──────────────┐ │ ← OpenAI SDK →   │ ┌──────────────┐                   │
+│ │ Anthropic    │ │  ollama:11434/v1 │ │ Fireworks AI │                   │
+│ │ (@anthropic- │ │                  │ │ (OpenAI-     │                   │
+│ │  ai/sdk)     │ │                  │ │  compat)     │                   │
+│ │ Claude (V)   │ │                  │ │ MiniMax M2.5 │                   │
+│ │ Sonnet 4.5   │ │                  │ │ Kimi K2.5    │                   │
+│ └──────────────┘ │                  │ │ Qwen3        │                   │
+│ ┌──────────────┐ │                  │ └──────────────┘                   │
+│ │ Gemini       │ │                  │                                    │
+│ │ (@google/    │ │                  │                                    │
+│ │  genai)      │ │                  │                                    │
+│ │ 2.5-pro (V)  │ │                  │                                    │
+│ │ 2.5-flash(V) │ │                  │                                    │
+│ └──────────────┘ │                  │                                    │
+│ ┌──────────────┐ │                  │                                    │
+│ │ Mistral AI   │ │                  │                                    │
+│ │ (@mistralai/ │ │                  │                                    │
+│ │  mistralai)  │ │                  │                                    │
+│ │ large-3 (V)  │ │                  │                                    │
+│ └──────────────┘ │                  │                                    │
+│ ┌──────────────┐ │                  │                                    │
+│ │ DeepSeek     │ │                  │                                    │
+│ │ (OpenAI-     │ │                  │                                    │
+│ │  compat)     │ │                  │                                    │
+│ │ R1 (🧠)      │ │                  │                                    │
+│ └──────────────┘ │                  │                                    │
+│ ┌──────────────┐ │                  │                                    │
+│ │ Moonshot     │ │                  │                                    │
+│ │ (OpenAI-     │ │                  │                                    │
+│ │  compat)     │ │                  │                                    │
+│ │ Kimi K2.5    │ │                  │                                    │
+│ └──────────────┘ │                  │                                    │
+└──────────────────┴──────────────────┴────────────────────────────────────┘
 (V) = Vision/Multimodal  (🧠) = Thinking/Extended reasoning
 ```
 
 ### Three-Route Architecture
 
-The four tiers above are grouped into three independently-togglable routes for operational resilience:
+All providers use direct native SDKs/APIs — no LLM proxy intermediary. Routes are independently togglable for resilience, cost control, and compliance:
 
-| Route | Tiers | Providers | Connection |
-|-------|-------|-----------|------------|
-| **Route 1** | Tier 1 (LiteLLM) | OpenAI, Gemini, Mistral | Via LiteLLM proxy |
-| **Route 2** | Tier 1b (Direct SDKs) | Anthropic, Fireworks AI, DeepSeek, Moonshot | Native SDK / direct API |
-| **Route 3** | Local / Ollama | Ollama | OpenAI SDK → ollama:11434/v1 direct |
+| Route | Purpose | Providers | Connection |
+|-------|---------|-----------|------------|
+| **Route 2** | Direct Providers | OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot | Native SDK / direct API |
+| **Route 3** | Local / Ollama | Ollama (local inference) | OpenAI SDK → ollama:11434/v1 |
+| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compat |
 
-Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). All three routes can be active simultaneously for cross-route failover. For air-gapped deployments, enable only Route 3. See [features/routes.md](../features/routes.md) and [features/air-gapped-deployment.md](../features/air-gapped-deployment.md) for full details.
+Admins toggle routes via **Settings > Routes**. Disabling a route removes its models from the chat model selector and greys out its providers/models in LLM Settings (view-only). All three routes can be active simultaneously for cross-route failover. For air-gapped deployments, enable only Route 3. See [features/LLM.md](../features/LLM.md) for the authoritative LLM architecture reference and [features/air-gapped-deployment.md](../features/air-gapped-deployment.md) for air-gapped deployment details.
+
+> **Historical note:** Route 1 (LiteLLM proxy) was removed in June 2026. OpenAI, Gemini, and Mistral previously routed through LiteLLM; they now use direct native SDKs. Route 4 (Ollama Cloud) was folded into Route 5 as an aggregator gateway.
 
 ---
 
@@ -115,17 +120,17 @@ Admins toggle routes via **Settings > Routes**. Disabling a route removes its mo
 | Frontend | Next.js 16, React 19, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
 | Database | PostgreSQL (Kysely ORM) | Metadata storage — SQLite removed March 2026 |
-| LLM Gateway | LiteLLM Proxy + Anthropic Direct SDK + Ollama Direct | Three-route architecture; Claude and Ollama bypass LiteLLM |
-| LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision (via LiteLLM) |
-| LLM - Anthropic | Claude Sonnet 4.6, Haiku 4.5, Opus 4.6 | 1M context, vision, tool calling — **direct SDK** (not LiteLLM) |
-| LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision + thinking support |
-| LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision + OCR |
-| LLM - DeepSeek | deepseek-reasoner, deepseek-chat | Reasoning models with `<think>` token support |
-| LLM - Fireworks | MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 | Open-source models (dev/test environments) |
-| LLM - Local | Ollama (llama3.2, qwen3, gpt-oss) | Self-hosted models via Route 3 (direct), no API cost, air-gapped deployments |
+| LLM Gateway | Direct native SDKs/APIs — no proxy | Three-route architecture (Routes 2/3/5); all providers use direct connections |
+| LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision (direct SDK) |
+| LLM - Anthropic | Claude Sonnet 4.6, Haiku 4.5, Opus 4.6 | 1M context, vision, tool calling — `@anthropic-ai/sdk` |
+| LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision + thinking — `@google/genai` |
+| LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision + OCR — `@mistralai/mistralai` |
+| LLM - DeepSeek | deepseek-reasoner, deepseek-chat | Reasoning models with `<think>` token support — OpenAI-compat |
+| LLM - Fireworks | MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 | Open-source models via Route 5 aggregator (dev/test environments) |
+| LLM - Local | Ollama (llama3.2, qwen3, gpt-oss) | Self-hosted models via Route 3, no API cost, air-gapped deployments |
 | Thinking Models | DeepSeek R1, Claude 3.7+, Gemini Thinking | Native `<think>` token processing for extended reasoning |
-| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), Gemini text-embedding-004, Fireworks Nomic/Qwen3 — via LiteLLM; Local: mxbai-embed-large, bge-m3 (transformers.js) | Vector embeddings |
-| Transcription | OpenAI Whisper, Mistral Voxtral — via LiteLLM | Voice-to-text |
+| Embeddings | OpenAI text-embedding-3-large (3072d), Mistral Embed (1024d), Gemini text-embedding-004, Fireworks Nomic/Qwen3 — direct dispatch; Local: mxbai-embed-large, bge-m3 (transformers.js) | Vector embeddings |
+| Transcription | OpenAI Whisper, Mistral Voxtral, Gemini — direct provider APIs | Voice-to-text |
 | Document Processing | mammoth, exceljs, officeparser (local); Azure DI, Mistral OCR (API); pdf-parse (local) | Text extraction from documents and images |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
 | Data Sources | API + CSV integration | External data querying with visualization |
@@ -281,8 +286,9 @@ User uploads image + question
 | Provider | Models | Image Format |
 |----------|--------|--------------|
 | OpenAI | gpt-4.1, gpt-4.1-mini, gpt-4.1-nano | Base64 data URL |
-| Google | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Base64 (auto-converted by LiteLLM) |
+| Google | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Inline data (via `@google/genai`) |
 | Mistral | mistral-large-3, mistral-small-3.2 | Base64 data URL |
+| Anthropic | claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5 | Base64 data URL |
 
 **Implementation**: Images are passed as `ImageContent` objects with base64 encoding, MIME type, and filename. The `generateResponseWithTools()` function builds multimodal content parts when images are present.
 
@@ -1715,8 +1721,9 @@ Admin/Super User manages subscriptions:
 - Global documents indexed into all category collections
 - Enables fine-grained access control
 
-### 3. Three-Tier Role System
-- **Admin**: Full system access
+### 3. Four-Tier Role System
+- **Super Admin**: Full system access plus exclusive financial data (cost views, provider balances)
+- **Admin**: Full system access (excludes financial data)
 - **Super User**: Delegated user management for specific categories
 - **User**: Access to subscribed categories only
 - Enables organizational hierarchy for large deployments
@@ -1882,7 +1889,7 @@ Admin/Super User manages subscriptions:
 
 Recommended additions for production:
 - Request logging with correlation IDs
-- LLM API usage tracking (via LiteLLM metrics)
+- LLM API usage tracking (via `enabled_models` cost columns and per-request token counting)
 - Qdrant query latency metrics
 - Error rate dashboards
 - PostgreSQL query performance monitoring

@@ -217,8 +217,8 @@ The application is suitable for production deployment with documented mitigation
 - **File:** `src/lib/llm-client.ts` (lines 39–65)
 - **Description:** LLM client objects cached as module-level singletons. API keys read from database only on first initialization.
 - **Impact:** Rotating a key in the database requires full process restart to take effect. Compromised keys cannot be revoked without downtime.
-- **Remediation:** 
-  - Modified `getLiteLLMClient()` to recreate client on API key mismatch
+- **Remediation:**
+  - Modified LLM client singleton to recreate client on API key mismatch
   - Exported `resetClients()` function for admin cache busting
 - **Verification:** Client recreation logic tested; admin endpoint available.
 

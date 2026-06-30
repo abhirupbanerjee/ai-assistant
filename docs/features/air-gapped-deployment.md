@@ -6,17 +6,17 @@ Policy Bot supports fully air-gapped deployments where no external API calls lea
 
 ## Route 3 — Local / Ollama
 
-Route 3 is the dedicated offline route. It connects directly to a local Ollama server (`ollama:11434/v1`) using the OpenAI SDK, bypassing both LiteLLM and all cloud APIs.
+Route 3 is the dedicated offline route. It connects directly to a local Ollama server (`ollama:11434/v1`) using the OpenAI SDK. All cloud routes use direct native SDKs/APIs — no proxy involved.
 
 ```
-Route 1: LiteLLM Proxy (:4000)  →  OpenAI, Gemini, Mistral                (cloud)
-Route 2: Direct SDKs             →  Anthropic, Fireworks AI, DeepSeek, Moonshot (cloud)
-Route 3: Local / Ollama          →  Ollama (:11434/v1 direct)             (offline)
+Route 2: Direct Providers           →  OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot (cloud)
+Route 3: Local / Ollama             →  Ollama (:11434/v1 direct)                           (offline)
+Route 5: Aggregator Gateways        →  Azure AI Foundry, Fireworks AI, Ollama Cloud         (cloud)
 ```
 
-For a pure air-gapped deployment, enable only Route 3 and disable Routes 1 and 2.
+For a pure air-gapped deployment, enable only Route 3 and disable Routes 2 and 5.
 
-See [routes.md](routes.md) for full routing architecture and admin configuration.
+See [LLM.md](LLM.md) for the authoritative LLM architecture reference and [routes.md](routes.md) for admin configuration.
 
 ---
 
@@ -97,7 +97,7 @@ These tools work without any external API:
 | Redis | redis:7-alpine | 6379 | Caching layer |
 | Ollama | ollama/ollama:0.18.2 | 11434 | LLM inference |
 
-LiteLLM is **not required** in a pure Route 3 deployment.
+No cloud services or proxies are required in a pure Route 3 deployment.
 
 ---
 
@@ -124,7 +124,7 @@ LiteLLM is **not required** in a pure Route 3 deployment.
 For a pure offline deployment:
 
 ```bash
-# Start only local services (no LiteLLM needed)
+# Start only local services
 docker compose --profile postgres --profile qdrant --profile ollama up -d
 ```
 

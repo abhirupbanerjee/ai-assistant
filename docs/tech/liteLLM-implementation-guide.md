@@ -1,5 +1,7 @@
 # LiteLLM Implementation Guide
 
+> **⚠️ STALE DOCUMENT — June 2026:** LiteLLM proxy has been **removed** from Policy Bot. All providers (OpenAI, Gemini, Mistral, Anthropic, DeepSeek, Moonshot, Ollama, Azure Foundry, Fireworks, Ollama Cloud) now use direct native SDKs/APIs. Routes 1 and 4 no longer exist. See [`docs/features/LLM.md`](../features/LLM.md) for the authoritative current architecture. This document is retained for historical reference and LiteLLM setup instructions that may apply to external consumers.
+
 > Customized for multi-provider LLM abstraction with proxy approach, embeddings routing, function calling support, and audio transcription.
 
 ---

@@ -963,21 +963,21 @@ The LLM may then rely entirely on web search (if enabled) or general knowledge.
 
 ### Model-Specific Tool Call Reliability
 
-**Status:** Documented architecture decision  
-**Affected:** Claude models via LiteLLM proxy
+**Status:** Resolved (June 2026)
+**Affected:** All providers — no longer relevant
 
-#### Problem
+#### Historical Context
 
-When Claude models were routed through LiteLLM, streaming tool-call JSON assembly was unreliable, causing intermittent failures for document generation tools.
+In the pre-June-2026 LiteLLM-based architecture, streaming tool-call JSON assembly was unreliable for Claude models routed through LiteLLM, causing intermittent failures for document generation tools.
 
-#### Fix
+#### Resolution
 
-Claude models bypass LiteLLM entirely and use the `@anthropic-ai/sdk` directly for chat completions with tool calling. This is handled automatically by the route detection logic in `src/lib/openai.ts`.
+All providers now use direct native SDKs/APIs (Routes 2/3/5). Every provider — OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Azure Foundry, Fireworks, Ollama Cloud — connects via its own native SDK or API. Tool calling works reliably across all models without exception.
 
 #### For Agent Bot Integrators
 
-- If you select a Claude model for your Agent Bot, tool calling works reliably
-- No action required — the routing is automatic
+- All models support reliable tool calling via direct native SDKs
+- No action required — routing is automatic per model prefix
 
 ---
 

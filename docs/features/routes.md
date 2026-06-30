@@ -1,6 +1,8 @@
 # Three-Route LLM Architecture
 
-Policy Bot routes LLM requests through three independent paths, giving admins fine-grained control over which provider infrastructure is active.
+Policy Bot routes all LLM requests through **three independent paths**, giving admins fine-grained control over which providers are active. Every provider connects directly via its native SDK or API — there is no LLM proxy intermediary.
+
+> **Authoritative reference:** See [`docs/features/LLM.md`](LLM.md) for the complete provider table, SDK details, embeddings architecture, STT/TTS routing, and fallback chain order.
 
 ---
 
@@ -8,52 +10,63 @@ Policy Bot routes LLM requests through three independent paths, giving admins fi
 
 | Route | Path | Providers | Connection |
 |-------|------|-----------|------------|
-| **Route 1** | LiteLLM Proxy (port 4000) | OpenAI, Gemini, Mistral | Via LiteLLM gateway |
-| **Route 2** | Direct SDKs | Anthropic (Claude), Fireworks AI, DeepSeek, Moonshot | Native SDK / direct API |
-| **Route 3** | Local / Ollama | Ollama | OpenAI SDK → ollama:11434/v1 direct |
+| **Route 2** | Direct Providers | OpenAI, Anthropic Claude, Google Gemini, Mistral AI, DeepSeek, Moonshot | Native SDK / direct API |
+| **Route 3** | Local / Ollama | Ollama (local inference) | OpenAI SDK → `ollama:11434/v1` |
+| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compatible API |
 
-All three routes can run simultaneously for maximum availability, or any can be disabled independently. For air-gapped deployments, enable only Route 3. See [air-gapped-deployment.md](air-gapped-deployment.md) for the full offline capabilities reference.
+All three routes can run simultaneously for maximum availability, or any can be disabled independently. For air-gapped deployments, enable only Route 3. See [`air-gapped-deployment.md`](air-gapped-deployment.md) for the full offline capabilities reference.
 
 ### Why Three Routes?
 
-- **Resilience** — if one route's infrastructure goes down, the others continue serving requests
-- **Provider isolation** — Claude uses the Anthropic SDK directly (bypasses LiteLLM) because LiteLLM breaks tool-call JSON assembly for Anthropic streaming
+- **Resilience** — cross-route fallback if one provider or gateway goes down
+- **Provider isolation** — each provider uses its native SDK for reliable tool calling, thinking, and streaming. Anthropic via `@anthropic-ai/sdk`, Gemini via `@google/genai`, Mistral via `@mistralai/mistralai`
 - **Air-gap support** — Route 3 enables fully offline deployments with local LLM inference via Ollama
-- **Cost control** — disable expensive cloud routes when not needed
+- **Gateway aggregation** — Route 5 groups multi-model gateways (Azure Foundry, Fireworks, Ollama Cloud) for serverless catalog model access
 - **Compliance** — restrict which provider APIs are reachable from your deployment
+
+### Historical Note
+
+- **Route 1 (LiteLLM proxy)** was removed in June 2026. OpenAI, Gemini, and Mistral previously routed through LiteLLM; they now use direct native SDKs.
+- **Route 4 (Ollama Cloud)** was folded into Route 5 as an aggregator gateway alongside Fireworks AI and Azure AI Foundry.
+- The system retains backward compatibility with older `RoutesSettings` DB rows; legacy `route1Enabled` fields are stripped on read.
 
 ---
 
 ## Route Classification
 
-Models and providers are classified by ID pattern matching:
+Models and providers are classified by ID pattern matching in [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallback.ts):
 
 ### Provider Classification
 
 | Provider ID | Route |
 |-------------|-------|
-| `openai` | Route 1 |
-| `gemini` | Route 1 |
-| `mistral` | Route 1 |
+| `openai` | Route 2 |
 | `anthropic` | Route 2 |
+| `gemini` | Route 2 |
+| `mistral` | Route 2 |
 | `deepseek` | Route 2 |
-| `fireworks` | Route 2 |
 | `moonshot` | Route 2 |
 | `ollama` | Route 3 |
+| `azure-foundry` | Route 5 |
+| `fireworks` | Route 5 |
+| `ollama-cloud` | Route 5 |
 
 ### Model Classification
 
 | Prefix | Route | Example |
 |--------|-------|---------|
-| `anthropic/` | Route 2 | `anthropic/claude-sonnet-4-5-20250514` |
-| `claude-` | Route 2 | `claude-haiku-4-5-20251001` |
-| `fireworks/` | Route 2 | `fireworks/minimax-m2p5` |
+| `openai/`, `gpt-`, `o1`, `o3`, `o4` | Route 2 | `gpt-4.1-mini`, `o3-mini` |
+| `anthropic/`, `claude-` | Route 2 | `anthropic/claude-sonnet-4-5-20250514` |
+| `gemini/`, `gemini-` | Route 2 | `gemini-2.5-flash` |
+| `mistral/`, `codestral/`, `pixtral/` | Route 2 | `mistral/mistral-large-latest` |
+| `deepseek-`, `deepseek/` | Route 2 | `deepseek-v4-flash` |
 | `moonshot/` | Route 2 | `moonshot/kimi-k2p5` |
-| `deepseek-` | Route 2 | `deepseek-v4-flash` |
-| `deepseek/` | Route 2 | `deepseek/deepseek-v4-pro` |
-| `ollama-` | Route 3 | `ollama-llama3.2` |
-| `ollama/` | Route 3 | `ollama/qwen3:4b` |
-| All other | Route 1 | `gpt-4o`, `gemini-2.0-flash` |
+| `ollama-`, `ollama/` | Route 3 | `ollama-llama3.2`, `ollama/qwen3:4b` |
+| `azure-foundry/` | Route 5 | `azure-foundry/gpt-4.1` |
+| `fireworks/` | Route 5 | `fireworks/minimax-m2p5` |
+| `ollama-cloud/`, `*-cloud`, `*:cloud` | Route 5 | `ollama-cloud/llama4` |
+
+> **Important:** Route 5 is checked **first** in model filtering because some models may match multiple route prefixes.
 
 ---
 
@@ -61,18 +74,18 @@ Models and providers are classified by ID pattern matching:
 
 ### Settings Storage
 
-Routes are configured via the admin UI and stored in the database as a JSON settings object:
+Routes are configured via the admin UI and stored in the database:
 
 ```typescript
 interface RoutesSettings {
-  route1Enabled: boolean;                          // Route 1: LiteLLM proxy
-  route2Enabled: boolean;                          // Route 2: Direct cloud providers
-  route3Enabled: boolean;                          // Route 3: Local / Ollama direct
-  primaryRoute: 'route1' | 'route2' | 'route3';   // Primary route (others are fallback)
+  route2Enabled: boolean;   // Route 2: Direct providers (OpenAI, Claude, Gemini, Mistral, DeepSeek, Moonshot)
+  route3Enabled: boolean;   // Route 3: Local / Ollama direct (air-gapped capable)
+  route5Enabled: boolean;   // Route 5: Aggregator gateways (Azure AI Foundry, Fireworks AI, Ollama Cloud)
+  primaryRoute: 'route2' | 'route3' | 'route5';  // Which route is primary (others become fallback)
 }
 ```
 
-**Defaults:** Route 1 enabled, Route 2 disabled, Route 3 disabled, primary = Route 1.
+**Defaults:** Route 2 enabled, Route 3 disabled, Route 5 disabled, primary = Route 2.
 
 ### Safety Constraints
 
@@ -110,7 +123,7 @@ interface RoutesSettings {
            └──────────────┘   └──────────────────┘   └──────┬───────┘
                                                             │
                               GET /api/models filters by     │
-                              active routes (isRoute2/3Model)│
+                              active routes (isRoute2/3/5)   │
                                                             ▼
                          ┌─────────────────────────────────┐
                          │   generateResponseWithTools()    │
@@ -123,40 +136,49 @@ interface RoutesSettings {
                               ┌──────────┴──────────┐
                               │  Route Decision      │
                               │                      │
-                              │  isClaudeModel()?    │
-                              │  isFireworksModel()? │
-                              │  isOllamaModel()?    │
+                              │  isOpenAIModel?      │
+                              │  isClaudeModel?      │
+                              │  isGeminiModel?      │
+                              │  isMistralModel?     │
+                              │  isDeepSeekModel?    │
+                              │  isOllamaModel?      │
+                              │  isAzureFoundry?     │
+                              │  isFireworksModel?   │
+                              │  isOllamaCloud?      │
                               └───┬──────┬──────┬────┘
                                   │      │      │
               ┌───────────────────┘      │      └───────────────────┐
               │                          │                          │
-   ┌──────── ▼ ─────────┐    ┌──────── ▼ ──────────┐   ┌──────── ▼ ─────────┐
-   │     ROUTE 1        │    │      ROUTE 2         │   │     ROUTE 3        │
-   │  LiteLLM Proxy     │    │  Direct Cloud        │   │  Local / Ollama    │
-   └────────┬───────────┘    └──────┬───────┬───────┘   └────────┬───────────┘
-            │                       │       │                     │
-            ▼                       │       │                     ▼
-  ┌──────────────────┐    ┌──────── ▼ ─┐ ┌ ▼ ────────┐ ┌──────────────────┐
-  │ streamOneComple- │    │ streamAnth- │ │ streamOne- │ │ streamOneComple- │
-  │ tion()           │    │ ropicCompl- │ │ Completion │ │ tion()           │
-  │                  │    │ etion()     │ │ ()         │ │                  │
-  │ OpenAI SDK →     │    │ Anthropic   │ │ OpenAI SDK │ │ OpenAI SDK →     │
-  │ LiteLLM :4000    │    │ SDK →       │ │ → firework │ │ Ollama :11434    │
-  └────────┬─────────┘    │ anthropic   │ │ s.ai       │ └────────┬─────────┘
-           │              │ .com        │ └──────┬─────┘          │
-           ▼              └──────┬──────┘        │                ▼
-  ┌─────────────────┐           │                │       ┌─────────────────┐
-  │  LiteLLM Proxy  │           ▼                ▼       │  Ollama Server  │
-  │  (port 4000)    │    ┌───────────┐   ┌───────────┐   │  (port 11434)   │
-  └──┬──┬──┬──┬─────┘    │  Claude   │   │ Fireworks │   └────────┬───────��┘
-     │  │  │  │           │  Models   │   │  Models   │            │
-     ▼  ▼  ▼  ▼           └───────────┘   └───────────┘            ▼
-  ┌───┐┌───┐┌───┐┌────┐                                   ┌─────────────┐
-  │O- ││Gem││Mis││Deep│                                   │ llama3.2    │
-  │pen││ini││tra││Seek│                                   │ qwen3       │
-  │AI ││   ││ l ││    │                                   │ gpt-oss ... │
-  └───┘└───┘└───┘└────┘                                   └─────────────┘
-
+   ┌──────── ▼ ─────────┐   ┌──────── ▼ ──────────┐  ┌──────── ▼ ─────────┐
+   │     ROUTE 2        │   │      ROUTE 3         │  │     ROUTE 5        │
+   │  Direct Providers  │   │  Local / Ollama      │  │  Aggregator        │
+   └────────┬───────────┘   └────────┬─────────────┘  │  Gateways          │
+            │                        │                 └────────┬───────────┘
+            │                        │                          │
+            ▼                        ▼                          ▼
+   ┌──────────────────┐   ┌──────────────────┐   ┌─────────────────────────┐
+   │ OpenAI           │   │ Ollama           │   │ Azure AI Foundry        │
+   │ → api.openai.com │   │ → ollama:11434   │   │ → @azure/ai-projects    │
+   │                   │   │                  │   │ Fireworks AI            │
+   │ Anthropic         │   │                  │   │ → api.fireworks.ai      │
+   │ → @anthropic-ai   │   │                  │   │ Ollama Cloud            │
+   │                   │   │                  │   │ → ollama.com/api        │
+   │ Gemini            │   │                  │   │                         │
+   │ → @google/genai   │   │                  │   │                         │
+   │                   │   │                  │   │                         │
+   │ Mistral           │   │                  │   │                         │
+   │ → @mistralai      │   │                  │   │                         │
+   │                   │   │                  │   │                         │
+   │ DeepSeek          │   │                  │   │                         │
+   │ → api.deepseek.com│   │                  │   │                         │
+   │                   │   │                  │   │                         │
+   │ Moonshot          │   │                  │   │                         │
+   │ → api.moonshot.cn │   │                  │   │                         │
+   └────────┬──────────┘   └────────┬─────────┘   └────────┬────────────────┘
+            │                        │                       │
+            └────────────────────────┼───────────────────────┘
+                                     │
+                                     ▼
   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 
   After streaming completes, all routes return the same shape:
@@ -184,31 +206,43 @@ interface RoutesSettings {
                          └─────────────────────────────────┘
 ```
 
-### Key Routing Logic (`src/lib/openai.ts`)
+### Key Routing Logic ([`src/lib/openai.ts`](../../src/lib/openai.ts))
 
 ```typescript
-// Detect direct-route models — bypass LiteLLM
-const useAnthropicDirect = isClaudeModel(effectiveModel);   // anthropic/* or claude-*
-const useFireworksDirect = isFireworksModel(effectiveModel); // fireworks/*
-const useOllamaDirect   = isOllamaModel(effectiveModel);    // ollama-* or ollama/*
+// Detect direct-route models — all use native SDKs/APIs
+const useOpenAIDirect     = isOpenAIModel(effectiveModel);       // openai/, gpt-, o1, o3, o4
+const useAnthropicDirect  = isClaudeModel(effectiveModel);       // anthropic/, claude-
+const useGeminiDirect     = isGeminiModel(effectiveModel);       // gemini/, gemini-
+const useMistralDirect    = isMistralModel(effectiveModel);      // mistral/, codestral/, pixtral/
+const useDeepSeekDirect   = isDeepSeekModel(effectiveModel);     // deepseek-, deepseek/
+const useOllamaDirect     = isOllamaModel(effectiveModel);       // ollama-, ollama/
+const useAzureFoundry     = isAzureFoundryModel(effectiveModel); // azure-foundry/
+const useOllamaCloud      = isOllamaCloudModel(effectiveModel);  // ollama-cloud/
 
-const openai = useAnthropicDirect ? null
-  : useFireworksDirect ? await getFireworksClient()          // → api.fireworks.ai
-  : useOllamaDirect    ? await getOllamaClient()             // → ollama:11434/v1
-  : await getOpenAI();                                       // → LiteLLM :4000
-
-const anthropicClient = useAnthropicDirect
-  ? await getAnthropicClient()                               // → api.anthropic.com
-  : null;
+// Each branch dispatches to the appropriate native client:
+// OpenAI   → getOpenAIDirectClient()          → api.openai.com/v1
+// Claude   → getAnthropicClient()            → api.anthropic.com
+// Gemini   → streamGeminiCompletion()        → @google/genai SDK
+// Mistral  → streamMistralCompletion()       → @mistralai/mistralai SDK
+// DeepSeek → getDeepSeekClient()             → api.deepseek.com/v1
+// Moonshot → getMoonshotClient()             → api.moonshot.cn/v1
+// Ollama   → getOllamaClient()               → ollama:11434/v1
+// Azure    → getAzureFoundryClient()         → @azure/ai-projects SDK
+// Fireworks→ getFireworksClient()            → api.fireworks.ai/inference/v1
+// OllamaC  → callOllamaCloud()               → ollama.com/api (native)
 ```
 
-### Why Claude Bypasses LiteLLM
+### Why Direct SDKs (No LiteLLM)
 
-Route 2 exists primarily because **LiteLLM corrupts Anthropic tool-call JSON during streaming**. LiteLLM translates Anthropic's native `tool_use` content blocks into OpenAI-compatible `delta.tool_calls` format, but the chunked JSON reassembly is unreliable — producing malformed arguments that break `executeTool()`. The Anthropic SDK's `stream.finalMessage()` returns **pre-parsed `block.input` objects**, eliminating this class of error entirely. See [Issue #3 in known issues](../developer/issues-known-fix.md#3-litellm-breaks-anthropic-streaming-tool-call-json-assembly) for the full root-cause analysis.
+All providers use direct native SDKs/APIs for three reasons:
 
-### Why Ollama Bypasses LiteLLM
+1. **Tool calling reliability** — LiteLLM's streaming format translation corrupted tool-call JSON for Anthropic Claude (and later Gemini, Mistral). Direct SDKs return pre-parsed tool inputs, eliminating JSON assembly errors.
+2. **Native features** — Gemini's `@google/genai` SDK provides `thinkingConfig`, `systemInstruction`, `responseSchema`, and proper function call ID round-tripping that LiteLLM's OpenAI-compat layer cannot express.
+3. **Operational simplicity** — Eliminates an entire infrastructure service (LiteLLM proxy on port 4000), its configuration, sync logic, and failure mode. One fewer moving part in production.
 
-Route 3 exists to enable **air-gapped deployments** without LiteLLM as a dependency. Ollama exposes an OpenAI-compatible API at `/v1/chat/completions`, so the same OpenAI SDK client can be used with a custom `baseURL` — identical to the Fireworks pattern. See [air-gapped-deployment.md](air-gapped-deployment.md) for the full offline capabilities reference.
+### Why Ollama Bypasses LiteLLM (Route 3)
+
+Route 3 enables **air-gapped deployments** without any external dependencies. Ollama exposes an OpenAI-compatible API at `/v1/chat/completions`, so the same OpenAI SDK client can be used with a custom `baseURL`. See [`air-gapped-deployment.md`](air-gapped-deployment.md) for the full offline capabilities reference.
 
 ---
 
@@ -221,9 +255,9 @@ When a user opens the model selector or sends a message, the API filters the ava
 ```
 All enabled models
     │
+    ├─ Route 5 model? → Include only if Route 5 is enabled  (checked first)
     ├─ Route 3 model? → Include only if Route 3 is enabled
-    ├─ Route 2 model? → Include only if Route 2 is enabled
-    └─ Route 1 model? → Include only if Route 1 is enabled
+    └─ Route 2 model? → Include only if Route 2 is enabled
 ```
 
 This filtering applies to:
@@ -235,9 +269,11 @@ This filtering applies to:
 When multiple routes are enabled, the fallback chain can cross routes for resilience:
 
 1. **Selected model** (primary route)
-2. **Same-route fallbacks** (other models on the same route)
-3. **Cross-route fallbacks** (models on other enabled routes)
-4. **Universal fallback** (admin-configured fallback model)
+2. **Universal fallback** — admin-configured fallback model
+3. **Cross-route fallbacks** — models from other enabled routes:
+   - Route 2 fallbacks: `fireworks/minimax-m2p5`, `deepseek-v4-flash`, `moonshot/kimi-k2p5`, `claude-haiku-4-5-20251001`
+   - Route 3 fallbacks: first available enabled Ollama model
+4. **All models exhausted** → `LlmFallbackError`
 
 If a model's route is disabled, it is excluded from the fallback chain entirely.
 
@@ -260,9 +296,9 @@ This prevents users from sending messages when no models are available (e.g., al
 
 | Control | Description |
 |---------|-------------|
-| **Route 1 toggle** | Enable/disable LiteLLM proxy route |
-| **Route 2 toggle** | Enable/disable direct cloud provider route |
+| **Route 2 toggle** | Enable/disable direct provider route |
 | **Route 3 toggle** | Enable/disable local / Ollama route |
+| **Route 5 toggle** | Enable/disable aggregator gateway route |
 | **Primary route selector** | Which route is preferred (affects fallback ordering) |
 
 #### Conflict Warnings
@@ -275,7 +311,7 @@ The Routes page shows real-time warnings when route toggles would create issues:
 | **Default model conflict** | Default model belongs to a disabled route | "Default model (X) belongs to Route N, which is disabled" |
 | **Fallback model conflict** | Fallback model belongs to a disabled route | "Fallback model (X) belongs to Route N, which is disabled" |
 
-Warnings update in real-time as the admin toggles routes (uses edited state, not saved state). At least one route must remain enabled — the UI prevents disabling all three.
+Warnings update in real-time as the admin toggles routes. At least one route must remain enabled — the UI prevents disabling all three.
 
 ### LLM Settings Page (Route-Aware Gating)
 
@@ -304,11 +340,11 @@ No new environment variables are required. Routes use existing provider API keys
 
 | Route | Required Keys |
 |-------|--------------|
-| Route 1 | `OPENAI_API_KEY` or `LITELLM_MASTER_KEY` + `OPENAI_BASE_URL` (LiteLLM proxy) |
-| Route 2 | `ANTHROPIC_API_KEY` and/or `FIREWORKS_AI_API_KEY` |
+| Route 2 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY` |
 | Route 3 | None (Ollama runs locally). Optional: `OLLAMA_BASE_URL` to override default `http://localhost:11434` |
+| Route 5 | `FIREWORKS_AI_API_KEY`, `AZURE_FOUNDRY_ENDPOINT` + (`AZURE_FOUNDRY_API_KEY` or Entra ID env vars), `OLLAMA_CLOUD_API_KEY` |
 
-If a route is enabled but its provider API keys are not configured, models from that provider will show as unconfigured in the admin UI.
+All API keys can also be configured via Admin UI (Settings > LLM > Providers), which takes precedence over environment variables.
 
 ---
 
@@ -316,15 +352,14 @@ If a route is enabled but its provider API keys are not configured, models from 
 
 | File | Purpose |
 |------|---------|
-| `src/lib/db/config.ts` | `RoutesSettings` interface, defaults |
-| `src/lib/db/compat/config.ts` | `getRoutesSettings()`, `setRoutesSettings()` |
-| `src/app/api/admin/settings/routes/route.ts` | Routes settings API endpoint |
-| `src/app/api/models/route.ts` | Route-aware model filtering (chat) |
-| `src/app/api/threads/[threadId]/model/route.ts` | Route-aware thread model validation |
-| `src/components/admin/settings/RoutesSettings.tsx` | Routes admin UI with conflict warnings |
-| `src/components/admin/settings/UnifiedLLMSettings.tsx` | LLM settings with route-aware gating |
-| `src/components/admin/settings/ApiKeysSettings.tsx` | API key management with route grouping |
-| `src/components/chat/ChatWindow.tsx` | Model readiness gating for submit button |
-| `src/lib/llm-fallback.ts` | Cross-route fallback chain |
-| `src/lib/llm-client.ts` | Internal LLM client with multi-route fallback |
-| `docs/features/air-gapped-deployment.md` | Comprehensive offline capabilities reference |
+| [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallback.ts) | Route classification (`isRoute2/3/5Model`), health cache, fallback chain, `withModelFallback()` |
+| [`src/lib/db/config.ts`](../../src/lib/db/config.ts) | `RoutesSettings` interface, defaults |
+| [`src/lib/db/compat/config.ts`](../../src/lib/db/compat/config.ts) | `getRoutesSettings()`, `setRoutesSettings()` with back-compat |
+| [`src/app/api/admin/settings/routes/route.ts`](../../src/app/api/admin/settings/routes/route.ts) | Routes settings API endpoint |
+| [`src/app/api/models/route.ts`](../../src/app/api/models/route.ts) | Route-aware model filtering (chat) |
+| [`src/app/api/threads/[threadId]/model/route.ts`](../../src/app/api/threads/[threadId]/model/route.ts) | Route-aware thread model validation |
+| [`src/lib/openai.ts`](../../src/lib/openai.ts) | Main chat dispatch with per-provider routing |
+| [`src/lib/llm-client.ts`](../../src/lib/llm-client.ts) | Internal services dispatch with per-provider routing |
+| [`src/lib/auto-model-selector.ts`](../../src/lib/auto-model-selector.ts) | Auto model selection with route-aware filtering |
+| [`docs/features/LLM.md`](LLM.md) | **Authoritative reference** — full provider table, SDKs, embeddings, STT/TTS, fallback |
+| [`docs/features/air-gapped-deployment.md`](air-gapped-deployment.md) | Comprehensive offline capabilities reference |

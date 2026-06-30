@@ -271,16 +271,6 @@ CREDENTIALS_ADMIN_PASSWORD=your-secure-initial-password
 ACCESS_MODE=allowlist
 
 # =============================================================================
-# LITELLM PROXY
-# =============================================================================
-
-# Route API calls through LiteLLM for multi-provider support
-OPENAI_BASE_URL=http://litellm:4000/v1
-
-# LiteLLM authentication key (generate with: openssl rand -hex 16)
-LITELLM_MASTER_KEY=sk-litellm-your-key-here
-
-# =============================================================================
 # REDIS
 # =============================================================================
 
@@ -290,8 +280,8 @@ REDIS_URL=redis://redis:6379
 # OPTIONAL API KEYS
 # =============================================================================
 
-# Additional LLM providers
-# ANTHROPIC_API_KEY=          # Required for Claude models (uses direct SDK, not LiteLLM)
+# Additional LLM providers (all use direct native SDKs/APIs — no proxy)
+# ANTHROPIC_API_KEY=
 # DEEPSEEK_API_KEY=
 # MISTRAL_API_KEY=
 # GEMINI_API_KEY=
@@ -316,9 +306,6 @@ REDIS_URL=redis://redis:6379
 ```bash
 # Generate NEXTAUTH_SECRET
 echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)"
-
-# Generate LITELLM_MASTER_KEY
-echo "LITELLM_MASTER_KEY=sk-litellm-$(openssl rand -hex 16)"
 
 # Generate DATA_SOURCE_ENCRYPTION_KEY (optional)
 echo "DATA_SOURCE_ENCRYPTION_KEY=$(openssl rand -hex 32)"
@@ -402,7 +389,6 @@ Expected output:
 NAME                    STATUS                   PORTS
 policy-bot-app          Up (healthy)             0.0.0.0:3000->3000/tcp
 policy-bot-qdrant       Up (healthy)             6333/tcp
-policy-bot-litellm      Up (healthy)             4000/tcp
 policy-bot-redis        Up (healthy)             6379/tcp
 policy-bot-traefik      Up                       0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
 ```
@@ -534,9 +520,6 @@ Once OAuth is working, you can disable email/password login:
 # Application
 curl -s https://policybot.example.com/api/health | jq
 
-# LiteLLM
-docker compose exec litellm curl -s http://localhost:4000/health
-
 # Redis
 docker compose exec redis redis-cli ping
 # Expected: PONG
@@ -551,8 +534,8 @@ docker compose exec postgres pg_isready -U policybot
 ### 2. Test LLM Connection
 
 ```bash
-# Test via LiteLLM
-docker compose exec litellm curl -s http://localhost:4000/v1/models | jq '.data[].id' | head -5
+# Test models directly via the app (uses native SDKs/APIs)
+# Check Admin > Settings > LLM for registered models
 ```
 
 ### 3. Test Chat Functionality
@@ -611,16 +594,16 @@ npm run db:setup
 ### LLM API Errors
 
 ```bash
-# Check LiteLLM logs
-docker compose logs litellm | tail -50
+# Check app logs for LLM errors
+docker compose logs app | grep -i "error\|fail" | tail -50
 
 # Test OpenAI directly
 curl -H "Authorization: Bearer $OPENAI_API_KEY" \
   https://api.openai.com/v1/models | jq '.data[0].id'
 
-# Test via LiteLLM
-docker compose exec app curl -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  http://litellm:4000/v1/models | jq '.data[0].id'
+# Test other providers via their APIs
+# Anthropic: curl https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY"
+# Gemini: curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"
 ```
 
 ### Out of Memory
@@ -818,7 +801,6 @@ docker compose ps
 | `./data/qdrant/` | Qdrant vectors |
 | `./data/postgres/` | PostgreSQL data |
 | `./data/redis/` | Redis persistence |
-| `./litellm-proxy/litellm_config.yaml` | LLM model configuration |
 | `./.env` | Environment variables |
 
 ### Support

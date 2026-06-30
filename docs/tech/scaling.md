@@ -285,7 +285,7 @@ Result: Comfortable headroom
 | Redis | Cluster mode | **Redis Cluster or Managed** |
 | Vector Store | Qdrant (clustered) | **Qdrant (distributed)** |
 | Infrastructure | Kubernetes | **Kubernetes** |
-| LLM Proxy | Optional | **LiteLLM** |
+| LLM Provider | Direct SDKs | **Native SDKs/APIs (Routes 2/3/5)** |
 
 **Configuration:**
 
@@ -301,9 +301,6 @@ VECTOR_STORE_PROVIDER=qdrant
 QDRANT_HOST=qdrant-lb
 QDRANT_PORT=6333
 
-# LiteLLM for provider load balancing
-OPENAI_BASE_URL=http://litellm:4000/v1
-LITELLM_MASTER_KEY=sk-your-litellm-key
 ```
 
 **Infrastructure Requirements:**
@@ -314,14 +311,12 @@ LITELLM_MASTER_KEY=sk-your-litellm-key
 | PostgreSQL | 4 vCPU, 16GB RAM, SSD |
 | Redis | 2 vCPU, 8GB RAM |
 | Qdrant | 4 vCPU, 16GB RAM |
-| LiteLLM | 2 × 1 vCPU, 2GB RAM |
 
-**Why LiteLLM at this tier:**
-- Load balance across multiple API keys
-- Distribute requests across providers (OpenAI, Azure, Gemini, Mistral, DeepSeek)
-  - Note: Anthropic Claude chat bypasses LiteLLM via direct SDK (`@anthropic-ai/sdk`)
-- Rate limit management per provider
-- Spend tracking and virtual keys
+**Why direct SDKs at this tier:**
+- All providers use native SDKs/APIs (Routes 2/3/5) — no proxy overhead
+- Cross-route fallback for resilience (Route 2 → Route 5 → Route 3)
+- Per-model cost tracking via `enabled_models` DB table
+- Admin-configurable rate limits per model
 
 **Architecture:**
 
@@ -347,11 +342,6 @@ LITELLM_MASTER_KEY=sk-your-litellm-key
 │   HA     │       │  Cluster  │        │ Cluster   │
 │Pool:50×5 │       │  (3 node) │        │ (3 node)  │
 └──────────┘       └───────────┘        └───────────┘
-                         │
-                   ┌─────┴─────┐
-                   │  LiteLLM  │
-                   │  (2 pod)  │
-                   └───────────┘
 ```
 
 **Estimated Infrastructure:** $800-1500/month
@@ -370,7 +360,7 @@ LITELLM_MASTER_KEY=sk-your-litellm-key
 | Redis | Redis Cluster | **Redis Cluster (3+ nodes)** |
 | Vector Store | Qdrant distributed | **Qdrant Cluster (3+ nodes)** |
 | Infrastructure | K8s with HPA | **Kubernetes + HPA** |
-| LLM Proxy | Required | **LiteLLM (multiple instances)** |
+| LLM Provider | Direct SDKs | **Native SDKs/APIs (Routes 2/3/5)** |
 | CDN | Recommended | **CloudFront/Cloudflare** |
 
 **Configuration:**
@@ -387,8 +377,6 @@ VECTOR_STORE_PROVIDER=qdrant
 QDRANT_HOST=qdrant-lb
 QDRANT_PORT=6333
 
-OPENAI_BASE_URL=http://litellm-lb:4000/v1
-LITELLM_MASTER_KEY=sk-your-litellm-key
 ```
 
 **PgBouncer Configuration:**
@@ -418,7 +406,6 @@ reserve_pool_size = 25
 | PgBouncer | 1 vCPU, 1GB RAM | 2 (HA) |
 | Redis | 2 vCPU, 8GB RAM | 3 (cluster) |
 | Qdrant | 4 vCPU, 16GB RAM | 3 (cluster) |
-| LiteLLM | 1 vCPU, 2GB RAM | 2+ |
 
 **Kubernetes HPA Example:**
 
@@ -477,11 +464,11 @@ spec:
    │   (HA)    │              │  Cluster  │              │  Cluster  │
    └─────┬─────┘              │  (3 node) │              │  (3 node) │
          │                    └───────────┘              └───────────┘
-   ┌─────┴─────┐                    │
-   │PostgreSQL │              ┌─────┴─────┐
-   │    HA     │              │  LiteLLM  │
-   │ (1P + 2R) │              │  Cluster  │
-   └───────────┘              └───────────┘
+   ┌─────┴─────┐
+   │PostgreSQL │
+   │    HA     │
+   │ (1P + 2R) │
+   └───────────┘
 ```
 
 **Estimated Infrastructure:** $2000+/month (varies by cloud provider)
@@ -573,7 +560,6 @@ With 3 instances: 88 / 3 = ~30 per instance
 | `REDIS_URL` | - | Redis connection string | 2+ |
 | `VECTOR_STORE_PROVIDER` | `qdrant` | Vector store backend | All |
 | `QDRANT_HOST` | `localhost` | Qdrant server host | 3+ |
-| `LITELLM_MASTER_KEY` | - | LiteLLM authentication | 4+ |
 
 ---
 

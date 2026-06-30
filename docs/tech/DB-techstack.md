@@ -2,9 +2,9 @@
 
 ## Overview
 
-The application uses **PostgreSQL** as its sole database backend, accessed via the **Kysely ORM** for type-safe async queries.
+The application uses **PostgreSQL** as its primary database backend, accessed via the **Kysely ORM** for type-safe async queries.
 
-> **Note:** SQLite support was removed in March 2026. All database access is now async via Kysely.
+> **Note:** PostgreSQL is required for production. SQLite is still available for development (`DATABASE_PROVIDER=sqlite` in `.env.example`). All new code uses the async Kysely compat layer.
 
 ---
 
@@ -13,7 +13,7 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Layer | File | Purpose | Used By |
 |-------|------|---------|---------|
 | **Kysely ORM** | `src/lib/db/kysely.ts` | PostgreSQL connection pool + migrations | All database code |
-| **Compat Layer** | `src/lib/db/compat/*.ts` | Unified async API (31 modules) | All API routes |
+| **Compat Layer** | `src/lib/db/compat/*.ts` | Unified async API (36 modules) | All API routes |
 | **Pure Utilities** | `src/lib/db/utils.ts` | Constants, validators, slug generators (no DB access) | Compat modules |
 | **Type Definitions** | `src/lib/db/db-types.ts` | Kysely TypeScript types for all tables | Compat modules |
 
@@ -85,6 +85,7 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Upload limits | `settings` | `compat/config.ts` |
 | Memory/summarization settings | `settings` | `compat/config.ts` |
 | Agent budget settings | `settings` | `compat/config.ts` |
+| Autonomous agent config | `settings` | `compat/agent-config.ts` |
 
 ### LLM Provider Management
 
@@ -98,6 +99,7 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Check parallel tool capability | `enabled_models` | `compat/enabled-models.ts` (`isModelParallelToolCapable`) |
 | Check thinking capability | `enabled_models` | `compat/enabled-models.ts` (`isModelThinkingCapable`) |
 | Refresh model capabilities | `enabled_models` | `compat/enabled-models.ts` (`refreshModelCapabilities`) |
+| Log model latency | `model_latency_log` | `compat/model-latency.ts` |
 
 ### Tool System
 
@@ -107,6 +109,7 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Update tool config | `tool_configs`, `tool_config_audit` | `compat/tool-config.ts` |
 | Category tool overrides | `category_tool_configs` | `compat/category-tool-config.ts` |
 | Tool routing rules | `tool_routing_rules` | `compat/tool-routing.ts` |
+| Slash command configs | `slash_command_configs` | `compat/slash-commands.ts` |
 
 ### Skills System
 
@@ -137,6 +140,7 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Update task progress | `task_plans` | `compat/task-plans.ts` |
 | Get active plan | `task_plans` | `compat/task-plans.ts` |
 | Track budget usage | `task_plans` | `compat/task-plans.ts` |
+| Store working memory | `plan_memories` | `compat/task-plans.ts` |
 
 ### Thread Sharing
 
@@ -154,6 +158,20 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | Store compliance result | `compliance_results` | `compat/compliance.ts` |
 | Get compliance history | `compliance_results` | `compat/compliance.ts` |
 | HITL response | `compliance_results` | `compat/compliance.ts` |
+
+### Monitoring & Observability
+
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Log query | `query_logs` | `compat/query-logs.ts` |
+| Log token usage | `token_usage_log` | `compat/token-usage.ts` |
+
+### Evolved Knowledge Base
+
+| Operation | Table(s) | Access Module |
+|-----------|----------|---------------|
+| Get/update global settings | `evolved_kb_settings` | `compat/evolved-kb.ts` |
+| Get/update user settings | `user_evolved_kb_settings` | `compat/evolved-kb.ts` |
 
 ### RAG Testing & Tuning
 
@@ -193,12 +211,12 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 
 | Operation | Table(s) | Access Module |
 |-----------|----------|---------------|
-| Export all data | All 60 tables | `compat/backup-async.ts` |
-| Import all data | All 60 tables | `compat/backup-async.ts` |
+| Export all data | All 67 tables | `compat/backup-async.ts` |
+| Import all data | All 67 tables | `compat/backup-async.ts` |
 
 ---
 
-## Complete Table Inventory (60 Tables)
+## Complete Table Inventory (67 Tables)
 
 | Table | Category | Purpose |
 |-------|----------|---------|
@@ -237,11 +255,18 @@ The application uses **PostgreSQL** as its sole database backend, accessed via t
 | `function_api_configs` | Data | Function calling APIs |
 | `function_api_categories` | Data | Function API-category mapping |
 | `task_plans` | Agent | Autonomous task plans |
+| `plan_memories` | Agent | Working memory for autonomous agent |
 | `thread_shares` | Sharing | Share tokens |
 | `share_access_log` | Sharing | Share access audit |
 | `compliance_results` | Compliance | Check results & HITL |
 | `rag_test_queries` | Testing | RAG test queries |
 | `rag_test_results` | Testing | RAG test results |
+| `query_logs` | Monitoring | Query logging |
+| `token_usage_log` | Monitoring | Per-request token usage |
+| `model_latency_log` | Monitoring | Model latency tracking (P50 for auto model selection) |
+| `evolved_kb_settings` | KB | Evolved knowledge base settings |
+| `user_evolved_kb_settings` | KB | Per-user evolved KB settings |
+| `slash_command_configs` | Chat | Slash command registry (16 commands) |
 | `workspaces` | Workspace | Workspace configs |
 | `workspace_categories` | Workspace | Workspace-category mapping |
 | `workspace_users` | Workspace | User access |
@@ -386,7 +411,7 @@ POSTGRES_DB=policybot
 | File | Purpose |
 |------|---------|
 | `src/lib/db/kysely.ts` | Kysely ORM factory, PostgreSQL connection pool, migrations |
-| `src/lib/db/compat/*.ts` | Unified async API layer (31 modules) |
+| `src/lib/db/compat/*.ts` | Unified async API layer (36 modules) |
 | `src/lib/db/utils.ts` | Pure utility functions (validators, constants, slug generators) |
 | `src/lib/db/db-types.ts` | TypeScript type definitions for all tables |
 | `src/lib/db/schema/postgres.sql` | PostgreSQL schema |

@@ -1035,7 +1035,7 @@ export interface RagSettings {
 }
 
 export interface LlmSettings {
-  model: string;               // Model name routed via LiteLLM (default: 'gpt-4.1-mini')
+  model: string;               // Model name for direct dispatcher (default: 'gpt-4.1-mini')
   temperature: number;         // Response randomness (default: 0.2)
   maxTokens: number;           // Max response tokens (default: 2000)
   streaming: boolean;          // Enable streaming responses (default: true)
@@ -2438,7 +2438,7 @@ User Query
     ▼
 ┌─────────────────┐
 │ Generate answer │
-│ via LiteLLM     │
+│ via LLM         │
 └─────────────────┘
 ```
 

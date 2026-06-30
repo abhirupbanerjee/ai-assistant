@@ -40,28 +40,32 @@ Deploy across ministries, departments, and public-facing services:
 
 Built with enterprise-grade, open-source technologies:
 
-- **Next.js 16** - Modern React 19 framework with server-side rendering and App Router
-- **PostgreSQL** - Battle-tested relational database via Kysely ORM (SQLite fully removed)
-- **Qdrant** - Open-source vector database for semantic search
-- **LiteLLM** - Unified gateway to 100+ LLM providers (Claude uses direct Anthropic SDK; Fireworks, DeepSeek, Moonshot, and Ollama routes are handled directly where needed)
-- **Redis** - High-performance caching and session management
-- **Traefik** - Production-ready reverse proxy with automatic TLS
-- **Ollama** - Local LLM inference for air-gapped / sensitive deployments
-- **Playwright** - Server-side Chromium for chart/diagram rendering in generated HTML
-- **ONNX Runtime + Transformers.js** - Local BGE cross-encoder rerankers
+- **Next.js 16** — Modern React 19 framework with server-side rendering and App Router
+- **TypeScript 5.9** — Strict mode throughout the entire codebase
+- **Tailwind CSS** — Utility-first styling with custom `primary` color scale
+- **PostgreSQL** — Primary relational database via Kysely ORM (SQLite available for development, PostgreSQL required for production)
+- **Qdrant** — Open-source vector database for semantic search
+- **Direct LLM SDKs** — All providers use native SDKs/APIs (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Azure AI Foundry, Fireworks, Ollama Cloud) — zero proxy dependencies
+- **Redis** — High-performance caching and session management
+- **FalkorDB** (optional) — Graph database for graph-augmented RAG (multi-hop entity queries)
+- **Traefik** — Production-ready reverse proxy with automatic TLS
+- **Ollama** — Local LLM inference for air-gapped / sensitive deployments
+
 
 ## Capabilities
 
 ### Core Features
-- **RAG-Powered Q&A** - Natural language queries with source citations
-- **Multi-Provider LLM** - OpenAI, Anthropic Claude (direct SDK), DeepSeek, Mistral, Gemini, Fireworks AI, Moonshot AI, Ollama, and Ollama Cloud
-- **Multi-Route Architecture** - Route 1 (LiteLLM), Route 2 (Direct: Anthropic, Fireworks, DeepSeek, Moonshot), Route 3 (Local Ollama), and Route 4 (Ollama Cloud) independently toggled for resilience, cost control, and compliance
-- **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral)
-- **Thinking Models** - Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking, Kimi K2-family models)
-- **Voice Input** - Configurable STT with 4 providers (OpenAI Whisper, Fireworks, Mistral Voxtral, Gemini), route-based fallback, admin-configurable recording limits
-- **Speech Settings** - Unified admin panel for STT/TTS provider management with primary/fallback per route
-- **Streaming Responses** - Real-time chat with typing indicators
-- **Artifacts Panel** - Right sidebar showing uploads, generated content, web/YouTube sources
+- **RAG-Powered Q&A** — Natural language queries with source citations over organizational documents
+- **Multi-Provider LLM** — 10 providers: OpenAI, Anthropic Claude, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Azure AI Foundry, Fireworks AI, Ollama Cloud — all via direct native SDKs
+- **Three-Route Architecture** — Route 2 (Direct Providers), Route 3 (Local Ollama), Route 5 (Aggregator Gateways) independently toggled for resilience, cost control, and compliance
+- **Graph-Augmented RAG** (optional) — FalkorDB integration for multi-hop entity queries across documents
+- **Vision/Multimodal** — Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral, Anthropic)
+- **Thinking Models** — Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking, Kimi K2-family)
+- **Slash Commands** — 16 predefined `/` commands for fast terminal tool invocation (`/image`, `/chart`, `/pdf`, `/slide`, etc.) with inline autocomplete
+- **Voice Input** — Configurable STT with 4 providers (OpenAI Whisper, Gemini, Mistral Voxtral, Fireworks), route-based fallback
+- **Speech Settings** — Unified admin panel for STT/TTS provider management with primary/fallback per route
+- **Streaming Responses** — Real-time SSE chat with typing indicators and tool call progress
+- **Artifacts Panel** — Right sidebar showing uploads, generated content, web/YouTube sources
 
 ### Document Management
 - **Category Organization** - Documents grouped by department (HR, Finance, IT, etc.)
@@ -85,13 +89,14 @@ Built with enterprise-grade, open-source technologies:
 - **Skills System** - Modular behaviors triggered by category/keyword/always-on
 - **Tool Routing** - Pattern-based forced tool invocation for reliable behavior
 - **Configurable Limits** - Per-category tool call and maximum token limits
-- **User Memory** - Recall user-specific facts across conversations
-- **Thread Summarization** - Compress long conversations
-- **Reranking** - BGE cross-encoder (large/base), Fireworks AI Qwen3 Reranker, Cohere API, or local bi-encoder via Transformers.js
-- **Preflight Clarification (HITL)** - Main LLM pauses before responding to ask a focused question when the query is ambiguous; sees full RAG context + conversation history before deciding, so it only asks when genuinely needed
-- **Autonomous Agent** - Multi-step task planning with budget controls, quality checks, and configurable planner/executor/checker/summarizer prompts
+- **User Memory** — Recall user-specific facts across conversations
+- **Thread Summarization** — Compress long conversations automatically
+- **Reranking** — Priority fallback: BGE Large → Fireworks Qwen3 → Cohere → BGE Base → Local bi-encoder
+- **Preflight Clarification (HITL)** — Main LLM pauses to ask a focused question when the query is ambiguous; sees full RAG context first
+- **Autonomous Agent (Beta)** — Multi-step task planning with budget controls, quality checks, subagent ReAct loops, HITL tool safety gating, and configurable planner/executor/checker/summarizer prompts
+- **Working Memory** (beta) — Cross-wave context persistence in autonomous agent via `plan_memories` table
 
-### Collaboration
+### Collaboration (Beta)
 - **Thread Sharing** - Share conversations via secure links with expiration
 - **Email Notifications** - Optional SendGrid integration for share alerts
 - **Access Control** - Authentication required to view shared content
@@ -109,28 +114,22 @@ Built with enterprise-grade, open-source technologies:
 ### Tools
 - **Web Search** - Tavily integration for current information
 - **Data Sources** - Query external APIs and CSV files
+- **Aggregate Data** - Server-side aggregation (group, count, sum, avg) across data sources
 - **Function APIs** - OpenAI-style function calling with custom schemas
 - **Chart Generation** - Visualize data in responses
-- **Task Planning** - Multi-step workflow execution with templates
 - **YouTube** - Extract and query video transcripts
 - **Document Generation** - Create PDF, DOCX, Markdown files
 - **Presentation Generation** - Create PPTX slides with layouts and styling
 - **Spreadsheet Generation** - Create XLSX files with formulas and formatting
 - **Podcast Generation** - Generate multi-voice audio content (OpenAI TTS, Gemini)
-- **Image Generation** - DALL-E 3 and Gemini Imagen integration
-- **Diagram Generation** - Mermaid flowcharts, sequences, mindmaps
+- **Image Generation** - Gemini Imagen and Nano Banana integration
+- **Diagram Generation** - Mermaid diagrams (18 types: flowcharts, sequences, C4, mindmaps, Gantt, etc.)
 - **Translation** - Multi-provider translation (OpenAI, Gemini, Mistral)
 - **Email** - Send emails via SendGrid
-- **Compliance Checker** - Post-response validation with weighted scoring and HITL clarification when response quality falls below threshold
+- **Compliance Checker** - Post-response validation with weighted scoring and HITL clarification
+- **Website Analysis** - Google PageSpeed Insights, SSL/TLS cert checks, DNS inspection, cookie audits, redirect chain analysis
 - **Code Quality** - SonarCloud integration for static code analysis
-- **PageSpeed** - Google PageSpeed Insights website performance analysis
-- **SSL Scan** - SSL/TLS certificate validation and expiry checks
-- **DNS Scan** - DNS record inspection and diagnostics
-- **Cookie Audit** - Cookie compliance and privacy scanning
-- **Redirect Audit** - URL redirect chain analysis
 - **Load Testing** - k6 Cloud load test execution and reporting
-- **Security Scan** - Automated security vulnerability scanning
-- **Dependency Analysis** - Project dependency inspection and vulnerability checks
 - **HTML Generator** - Generate interactive HTML pages (dashboards, documentation, books, playbooks)
 - **File to HTML** - Convert DOCX/PDF documents to searchable HTML pages
 
@@ -166,10 +165,12 @@ Expose your AI capabilities as a programmatic API for external systems, apps, an
 - **Offline Page** - Friendly offline message (online connection required for functionality)
 
 ### Operations
-- **Backup & Restore** - Full database backup and restore via Admin and SuperUser dashboards
-- **RAG Testing** - Built-in retrieval test suite with result scoring (Admin > RAG Testing)
-- **LLM Discovery** - Auto-discover available models from LiteLLM proxy
-- **Reranker Status** - Monitor local reranker model download and readiness
+- **Backup & Restore** — Full database backup and restore via Admin and SuperUser dashboards
+- **RAG Testing** — Built-in retrieval test suite with result scoring and trend tracking (Admin > RAG Testing)
+- **LLM Discovery** — Auto-discover available models from 8 provider APIs
+- **Model Latency Tracking** — P50 latency metrics for data-driven auto model selection
+- **Token Usage Analytics** — Per-model, per-user token consumption tracking
+- **Reranker Status** — Monitor local reranker model download and readiness
 
 ## Directory Structure
 
@@ -204,7 +205,7 @@ policy-bot/
 │   ├── lib/                    # Core libraries
 │   │   ├── db/                 # Database layer — PostgreSQL via Kysely
 │   │   │   ├── compat/         # 33 async modules (all DB access goes here)
-│   │   │   ├── schema/         # PostgreSQL schema + LiteLLM DB init SQL
+│   │   │   ├── schema/         # PostgreSQL schema SQL
 │   │   │   ├── kysely.ts       # Kysely instance factory (Postgres-only)
 │   │   │   └── db-types.ts     # TypeScript types for all tables
 │   │   ├── tools/              # 22 tool implementations
@@ -240,7 +241,8 @@ policy-bot/
 │   │   ├── PROMPTS.md                  # Prompts system guide
 │   │   ├── SKILLS.md                   # Skills system guide (includes tool routing)
 │   │   ├── PWA.md                      # Progressive Web App guide
-│   │   ├── routes.md                   # Four-Route LLM Architecture
+│   │   ├── LLM.md                      # Authoritative LLM Architecture (routes, providers, SDKs, fallback)
+│   │   ├── routes.md                   # Three-Route LLM Architecture
 │   │   └── AUTONOMOUS_MODE_INTEGRATION.md
 │   ├── tech/
 │   │   ├── SOLUTION.md                 # Architecture and design decisions
@@ -258,9 +260,9 @@ policy-bot/
 │       ├── USER_GUIDE.md
 │       ├── ADMIN_GUIDE.md
 │       └── SUPERUSER_GUIDE.md
-├── litellm-proxy/              # LiteLLM configuration
+├── litellm-proxy/              # LiteLLM configuration (legacy — no longer used by Policy Bot)
 ├── docker-compose.yml          # Production stack
-├── docker-compose.local.yml    # Local development stack (Postgres + Qdrant + Redis + LiteLLM)
+├── docker-compose.local.yml    # Local development stack (Postgres + Qdrant + Redis)
 └── Dockerfile                  # Multi-stage build
 ```
 
@@ -271,7 +273,7 @@ policy-bot/
 cp .env.example .env.local
 # Configure OPENAI_API_KEY, ADMIN_EMAILS, DATABASE_URL, VECTOR_STORE_PROVIDER
 
-# PostgreSQL + Qdrant + Redis + LiteLLM
+# PostgreSQL + Qdrant + Redis
 docker compose -f docker-compose.local.yml up -d
 npm install && npm run dev
 
@@ -320,7 +322,6 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 | **Redis** | Cache + sessions (port 6379) | Default |
 | **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
 | **Qdrant** | Vector database (ports 6333/6334) | `--profile qdrant` |
-| **LiteLLM** | Multi-provider LLM gateway (port 4000) | `--profile litellm` |
 | **Ollama** | Local LLM inference | `--profile ollama` |
 
 ## External API Keys & Licenses
@@ -339,7 +340,8 @@ Policy Bot integrates with several external services. All are optional except LL
 | **Ollama** | [ollama.ai](https://ollama.ai) | Local models (Llama, Qwen, Mistral, Phi) | N/A (is the local option) |
 | **Fireworks AI** | [fireworks.ai](https://fireworks.ai/account/api-keys) | Open-source models: MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3 (dev/test) | Ollama (local models) |
 | **Moonshot AI** | [platform.moonshot.cn](https://platform.moonshot.cn/) | Kimi models via direct Route 2 access | Ollama (local models) |
-| **Ollama Cloud** | [ollama.com](https://ollama.com/settings/keys) | Hosted Ollama models via direct Route 4 access | N/A (hosted Ollama route) |
+| **Azure AI Foundry** | [azure.microsoft.com](https://azure.microsoft.com/en-us/products/ai-services/ai-foundry) | Serverless catalog models via Route 5 | N/A |
+| **Ollama Cloud** | [ollama.com](https://ollama.com/settings/keys) | Hosted Ollama models via Route 5 aggregator | N/A |
 
 ### Provider Selection Guidelines
 
@@ -354,7 +356,7 @@ Choose provider tier based on data sensitivity and task complexity:
 
 > **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.
 >
-> **Tip:** Use [LiteLLM](https://docs.litellm.ai/) proxy (included) to switch providers without code changes.
+> **Tip:** All providers use direct native SDKs — switch models via the chat model selector or Admin > Settings > LLM without any proxy configuration changes.
 
 ### Authentication (Production required)
 
@@ -393,7 +395,7 @@ Choose provider tier based on data sensitivity and task complexity:
 
 > **Local Reranker:** Policy Bot includes BGE cross-encoder rerankers using `onnxruntime-node` and Transformers.js. Models download automatically on first use (~670MB for large, ~220MB for base). Configure priority order via Admin > Settings > Reranker.
 
-### Tools (Optional)
+### External Tools and Integrations (Optional)
 
 | Service | Get Key | Purpose | Local Alternative |
 |---------|---------|---------|-------------------|
@@ -423,7 +425,9 @@ FIREWORKS_AI_API_KEY=...           # Fireworks open-source models (dev/test)
 MOONSHOT_API_KEY=...               # Moonshot Kimi models (direct Route 2)
 MOONSHOT_API_BASE=...              # Optional custom Moonshot endpoint
 OLLAMA_API_BASE=http://localhost:11434  # Local Ollama (or host.docker.internal)
-OLLAMA_API_KEY=...                 # Ollama Cloud hosted models (Route 4)
+AZURE_FOUNDRY_ENDPOINT=...         # Azure AI Foundry endpoint (Route 5)
+AZURE_FOUNDRY_API_KEY=...          # Azure AI Foundry API key (Route 5)
+OLLAMA_CLOUD_API_KEY=...           # Ollama Cloud hosted models (Route 5)
 
 # Production Auth (at least one)
 AZURE_AD_CLIENT_ID=...

@@ -24,8 +24,9 @@ In addition to database and vector store, choose the LLM provider tier based on 
 | Provider Tier | Use Case | Data Classification |
 |---|---|---|
 | **Ollama** (Local) | Simple RAG, document lookup, basic Q&A, non-complex queries | ✅ Government-sensitive / classified — data never leaves your network |
-| **Cloud LLMs** — OpenAI, Claude (direct SDK), Gemini, Mistral, DeepSeek | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs (Claude via direct Anthropic SDK, others via LiteLLM) |
+| **Cloud LLMs** — OpenAI, Claude, Gemini, Mistral, DeepSeek, Moonshot | Complex reasoning, tool calls, multi-step workflows, coding | Public / non-sensitive data only — requests route through external APIs via direct native SDKs |
 | **Fireworks AI** | Developer testing of open-source models (MiniMax M2.5, Kimi K2.5, GPT-OSS, Qwen3) | Development / test environments only — not for production sensitive data |
+| **Aggregator Gateways** — Azure AI Foundry, Ollama Cloud | Serverless catalog models, hosted Ollama | Public / non-sensitive data only |
 
 > **Rule:** Never route government-sensitive or classified data through Cloud LLM or Fireworks AI providers. Use Ollama for all sensitive workloads.
 
@@ -52,32 +53,38 @@ In addition to database and vector store, choose the LLM provider tier based on 
 │  │   └──────────────┘  └──────────────┘  └──────────────┘          │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │         │              │              │              │                   │
-│         ▼              ▼              ▼              ▼                   │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
-│  │  DATABASE   │ │VECTOR STORE │ │    REDIS    │ │   LITELLM   │        │
-│  │ PostgreSQL  │ │   Qdrant    │ │  Port 6379  │ │  Port 4000  │        │
-│  │  Port 5432  │ │  Port 6333  │ │  (internal) │ │  (internal) │        │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘        │
+│         ▼              ▼              ▼                                 │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                        │
+│  │  DATABASE   │ │VECTOR STORE │ │    REDIS    │                        │
+│  │ PostgreSQL  │ │   Qdrant    │ │  Port 6379  │                        │
+│  │  Port 5432  │ │  Port 6333  │ │  (internal) │                        │
+│  └─────────────┘ └─────────────┘ └─────────────┘                        │
 │  * optional containers, via Docker profiles                              │
-│         │              │              │              │                   │
-│         ▼              ▼              ▼              │                   │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │                   │
-│  │data/postgres│ │ data/qdrant │ │ data/redis  │    │                   │
-│  │  (volume)   │ │  (volume)   │ │  (volume)   │    │                   │
-│  │             │ │             │ └─────────────┘    │                   │
-│  └─────────────┘ └─────────────┘                    │                   │
-│         │                                           │                   │
-│         ▼                                           ▼                   │
-│  ┌─────────────┐                     ┌────────────────────────────┐     │
-│  │  app_data   │ ◄── DB files +      │      EXTERNAL SERVICES     │     │
-│  │  (volume)   │     global-docs +   │  ┌────────┐ ┌────────┐     │     │
-│  └─────────────┘     threads         │  │ OpenAI │ │Mistral │     │     │
-│                                      │  ├────────┤ ├────────┤     │     │
-│                                      │  │ Tavily │ │ Cohere │     │     │
-│                                      │  ├────────┤ ├────────┤     │     │
-│                                      │  │ Ollama │ │Azure DI│     │     │
-│                                      │  └────────┘ └────────┘     │     │
-│                                      └────────────────────────────┘     │
+│         │              │              │                                   │
+│         ▼              ▼              ▼                                   │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                        │
+│  │data/postgres│ │ data/qdrant │ │ data/redis  │                        │
+│  │  (volume)   │ │  (volume)   │ │  (volume)   │                        │
+│  │             │ │             │ └─────────────┘                        │
+│  └─────────────┘ └─────────────┘                                         │
+│         │                                                                 │
+│         ▼                                                                 │
+│  ┌─────────────┐                     ┌────────────────────────────────┐  │
+│  │  app_data   │ ◄── DB files +      │       EXTERNAL SERVICES        │  │
+│  │  (volume)   │     global-docs +   │  ┌────────┐ ┌────────┐         │  │
+│  └─────────────┘     threads         │  │ OpenAI │ │Mistral │         │  │
+│                                      │  ├────────┤ ├────────┤         │  │
+│                                      │  │Anthropic│ │ Gemini │         │  │
+│                                      │  ├────────┤ ├────────┤         │  │
+│                                      │  │DeepSeek│ │Moonshot│         │  │
+│                                      │  ├────────┤ ├────────┤         │  │
+│                                      │  │ Tavily │ │ Cohere │         │  │
+│                                      │  ├────────┤ ├────────┤         │  │
+│                                      │  │Fireworks│ │Ollama  │         │  │
+│                                      │  ├────────┤ ├────────┤         │  │
+│                                      │  │Azure DI│ │OllamaC │         │  │
+│                                      │  └────────┘ └────────┘         │  │
+│                                      └────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -153,9 +160,6 @@ TAVILY_API_KEY=your-tavily-api-key
 # Cohere (Optional - for reranking)
 COHERE_API_KEY=your-cohere-api-key
 
-# LiteLLM Proxy (Optional - for multi-provider support)
-LITELLM_MASTER_KEY=sk-litellm-master-change-this
-
 # Embeddings (defaults shown)
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
@@ -197,9 +201,6 @@ TAVILY_API_KEY=your-tavily-api-key
 
 # Cohere (Optional - for reranking)
 COHERE_API_KEY=your-cohere-api-key
-
-# LiteLLM Proxy
-LITELLM_MASTER_KEY=sk-litellm-master-change-this
 
 # Embeddings
 EMBEDDING_MODEL=text-embedding-3-large
@@ -269,7 +270,7 @@ Local LLM Inference (optional):
   --profile ollama      → Ollama     (set OLLAMA_API_BASE=http://ollama:11434)
 
 Always-on services (no profile needed):
-  traefik, app, redis, litellm
+  traefik, app, redis
 ```
 
 ### Startup Command Examples
@@ -848,7 +849,6 @@ Policy Bot's PWA implementation has intentional limitations:
 |---------|--------------|----------|-------------|
 | App | `/api/auth/session` | 200 OK | Always |
 | Redis | `redis-cli ping` | PONG | Always |
-| LiteLLM | `http://litellm:4000/health/liveliness` | 200 OK | Always |
 | Qdrant | `http://qdrant:6333/readyz` | 200 OK | `--profile qdrant` |
 | PostgreSQL | `pg_isready -U policybot` | accepting | `--profile postgres` (always) |
 
@@ -873,12 +873,6 @@ if docker exec policy-bot-redis redis-cli ping | grep -q PONG; then
   echo "✓ Redis: healthy"
 else
   echo "✗ Redis: unhealthy"
-fi
-
-if docker exec policy-bot-litellm curl -sf http://localhost:4000/health/liveliness > /dev/null; then
-  echo "✓ LiteLLM: healthy"
-else
-  echo "✗ LiteLLM: unhealthy"
 fi
 
 # Qdrant

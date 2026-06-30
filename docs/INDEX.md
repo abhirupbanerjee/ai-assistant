@@ -66,7 +66,8 @@ Detailed guides for specific features and capabilities.
 
 | Document | Description | Key Topics |
 |----------|-------------|------------|
-| [features/routes.md](features/routes.md) | Two-Route LLM Architecture | Route 1 (LiteLLM) vs Route 2 (Direct), route classification, admin gating, conflict warnings, fallback chain |
+[features/LLM.md](features/LLM.md) | **Authoritative LLM Architecture** | All routes (2/3/5), providers, SDKs, where LLMs are used, fallback order, embeddings, STT/TTS |
+[features/routes.md](features/routes.md) | Three-Route LLM Architecture | Route 2 (Direct Providers), Route 3 (Local Ollama), Route 5 (Aggregator Gateways), admin gating, conflict warnings, fallback chain |
 
 ### Advanced Features
 
@@ -172,7 +173,8 @@ Guides for different user roles and workflows.
 
 ### AI Configuration
 
-- [features/routes.md](features/routes.md) - **Two-Route LLM Architecture** (Route 1: LiteLLM, Route 2: Direct SDKs, admin gating, conflict warnings)
+- [features/LLM.md](features/LLM.md) - **Authoritative LLM Architecture** (Routes 2/3/5, all providers, SDKs, fallback)
+- [features/routes.md](features/routes.md) - **Three-Route LLM Architecture** (Route 2: Direct, Route 3: Ollama, Route 5: Aggregator Gateways, admin gating)
 - [features/PROMPTS.md](features/PROMPTS.md) - System and category prompts
 - [features/SKILLS.md](features/SKILLS.md) - Contextual AI behaviors
 - [user_manuals/ADMIN_GUIDE.md § Prompts](user_manuals/ADMIN_GUIDE.md#6-prompts) - Prompt management UI
@@ -262,7 +264,6 @@ Quick reference for feature availability by user role.
 | **Qdrant** (vector store) | [tech/DATABASE.md](tech/DATABASE.md), [tech/INFRASTRUCTURE.md § Selection Guide](tech/INFRASTRUCTURE.md#infrastructure-selection-guide) |
 | **Redis** | [tech/DATABASE.md](tech/DATABASE.md) |
 | **Kysely** (DB abstraction) | [tech/DATABASE.md § Abstraction Layer](tech/DATABASE.md#database-abstraction-layer-kysely) |
-| **LiteLLM** | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
 | **Docker** | [tech/INFRASTRUCTURE.md § Docker Compose](tech/INFRASTRUCTURE.md#docker-compose--profile-based-services) |
 | **Traefik** | [tech/INFRASTRUCTURE.md](tech/INFRASTRUCTURE.md) |
 
@@ -274,13 +275,15 @@ Documentation for third-party API integrations.
 
 | Service | Purpose | Documentation |
 |---------|---------|---------------|
-| **OpenAI** | GPT-4.1/5.x, embeddings, Whisper | [tech/SOLUTION.md](tech/SOLUTION.md), [user_manuals/ADMIN_GUIDE.md § Settings](user_manuals/ADMIN_GUIDE.md#13-settings) |
-| **Anthropic** | Claude Sonnet/Haiku/Opus 4.5+, 1M context — **direct SDK** (bypasses LiteLLM) | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Mistral** | Mistral Large 3, Small 3.2, OCR | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Google Gemini** | Gemini 2.5 Pro/Flash, Thinking | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **DeepSeek** | DeepSeek Reasoner (R1), Chat | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Fireworks AI** | Open-source models (dev/test) | [tech/SOLUTION.md](tech/SOLUTION.md) |
-| **Ollama** | Local LLM inference (air-gapped) | [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **OpenAI** | GPT-4.1/5.x, embeddings, Whisper — **direct SDK (Route 2)** | [features/LLM.md](features/LLM.md), [tech/SOLUTION.md](tech/SOLUTION.md) |
+| **Anthropic** | Claude Sonnet/Haiku/Opus 4.5+, 1M context — **direct SDK (Route 2)** | [features/LLM.md](features/LLM.md) |
+| **Google Gemini** | Gemini 2.5 Pro/Flash, Thinking — **native @google/genai SDK (Route 2)** | [features/LLM.md](features/LLM.md) |
+| **Mistral** | Mistral Large 3, Small 3.2, OCR — **native SDK (Route 2)** | [features/LLM.md](features/LLM.md) |
+| **DeepSeek** | DeepSeek Reasoner (R1), Chat — **OpenAI-compat API (Route 2)** | [features/LLM.md](features/LLM.md) |
+| **Fireworks AI** | Open-source models, reranking — **Route 5 aggregator** | [features/LLM.md](features/LLM.md) |
+| **Azure AI Foundry** | Serverless catalog models — **Route 5 aggregator** | [features/LLM.md](features/LLM.md) |
+| **Ollama** | Local LLM inference (air-gapped) — **Route 3** | [features/LLM.md](features/LLM.md) |
+| **Ollama Cloud** | Hosted Ollama models — **Route 5 aggregator** | [features/LLM.md](features/LLM.md) |
 | **Azure AD** | Enterprise SSO | [tech/auth.md § Microsoft Azure AD](tech/auth.md#microsoft-azure-ad) |
 | **Google OAuth** | Google sign-in | [tech/auth.md § Google OAuth](tech/auth.md#google-oauth) |
 | **Tavily** | Web search, URL extraction | [features/Tools.md § Web Search](features/Tools.md#web-search-tool) |
@@ -317,7 +320,9 @@ This documentation index tracks major documentation updates.
 | **3.6** | May 2026 | **Autonomous Mode Hardening** — Context trimming (drops oldest assistant+tool pairs), tool result truncation (4000 chars), CoT preservation with 2000-char reasoning truncation, retryable error classification with exponential backoff (`retry_after`, `retry_count`), per-task-type timeouts (deep_analysis: 20min, image/doc: 15min), provider-aware context limits via `enabled_models.max_input_tokens`, wave budget reservations (`reserveBudget`/`commitReservation`/`releaseReservation`) to fix race conditions, subagent tool call deduplication via hash cache, empty-wave backoff without burning `maxWaves`, max subagent iterations increased from 5 to 15. **Working Memory (beta)** — new `plan_memories` table with GIN keyword index, heuristic keyword extraction (no LLM, no embeddings), deterministic wave summary injection into executor prompts, feature flag `agent_working_memory_enabled` (default false). |
 | **3.5** | May 2026 | **Gantt & Project Plan page types** — `gantt` and `project_plan` added to `html_gen` tool. JSON fenced ` ```gantt ` blocks define categories, tasks, and a hybrid time axis (ISO dates / week tokens / month tokens). `project_plan` adds a KPI strip and roll-up summary table. Branding-driven color palette with per-category overrides. Interactive filter tabs and hover tooltips. New files: `templates/gantt.ts`, `templates/project-plan.ts`; updated `types.ts`, `content-parser.ts`, `page-type.ts`, `generate.ts`, `html-gen.ts`. |
 | **3.4** | May 2026 | **Server-side HTML rendering** — Playwright/Chromium renders Chart.js charts to PNG and Mermaid diagrams to inline SVG at generation time. `chartjs-plugin-datalabels` added for value annotations. Generated HTML is fully self-contained with graceful client-side fallback. `html-builder.ts` refactored from 3,386-line monolith into 33-module `src/lib/docgen/html/` directory. |
-| **3.3** | April 2026 | **Two-Route LLM Architecture** — Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled. Route-aware model filtering, admin UI gating (view-only for disabled routes), model conflict warnings, cross-route fallback chain, model readiness gating on chat submit. |
+| **3.9** | June 2026 | **LiteLLM Removed — All Direct Architecture** — Route 1 (LiteLLM) eliminated. OpenAI, Gemini, Mistral moved to Route 2 direct SDKs. Gemini native `@google/genai` SDK for chat, tools, embeddings, STT, TTS. Azure AI Foundry added as Route 5 aggregator. Route 4 (Ollama Cloud) folded into Route 5 (Aggregator Gateways) alongside Fireworks AI. All embeddings, STT, TTS, and internal services now direct — zero LiteLLM dependency. See [`docs/features/LLM.md`](features/LLM.md) for authoritative reference. |
+| **3.8** | June 2026 | **Auto Model Selection** — Per-message intelligent model picker across all chat surfaces. Main chat: "⚡ Auto" option in model selector evaluates query context, tool routing, image presence, and token budget to pick the best enabled model. Workspace Auto: same intelligence scoped to workspace categories. Agent/Autonomous per-role Auto: planner, executor, checker, and summarizer can each be set to Auto with role-specific dimension scoring (reasoning, function_calling, etc.). Agent Bot Auto: per-version model override supports Auto. All paths fall back to global default on failure. Deterministic core with data-driven scoring (latency P50, capability scores, weighted ranking). |
+| **3.3** | April 2026 | **Two-Route LLM Architecture** — Route 1 (LiteLLM) and Route 2 (Direct: Anthropic, Fireworks) independently toggled. Route-aware model filtering, admin UI gating (view-only for disabled routes), model conflict warnings, cross-route fallback chain, model readiness gating on chat submit. (Superseded by v3.9 — Route 1 removed.) |
 | **3.2** | March 2026 | **Anthropic Direct SDK** — Claude chat + tool calling bypasses LiteLLM via `@anthropic-ai/sdk` for reliable tool call JSON. LiteLLM cache fix (`clearLiteLLMCache()` after model sync). Stream reset SSE event for clean model fallback. |
 | **3.1** | March 2026 | Agent Bots (programmatic API), Fireworks AI + DeepSeek + Anthropic providers, Thinking Models (`<think>` processing), 8+ new tools (SonarCloud, PageSpeed, SSL/DNS/Cookie/Redirect scan, k6 load test, security scan, dependency analysis), Next.js 16, configurable tool call limits |
 | **3.0** | March 2026 | PostgreSQL-only (SQLite removed), Kysely ORM, async database access, `src/lib/db/utils.ts` for pure utilities |
@@ -366,4 +371,4 @@ When updating documentation:
 
 ---
 
-*Last updated: June 2026 (v3.8)*
+*Last updated: June 2026 (v3.9)*

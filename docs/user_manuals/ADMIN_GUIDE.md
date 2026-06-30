@@ -87,7 +87,7 @@ The dashboard displays system component status:
 |-----------|-------------|
 | **Database** | PostgreSQL connection status and pool stats |
 | **Vector Store** | Qdrant vector store connection status |
-| **LLM Proxy** | LiteLLM proxy connection |
+| **LLM Routes** | Active LLM routes and provider status (Routes 2/3/5) |
 | **OCR Service** | Document processing pipeline |
 
 ### Recent Activity
@@ -109,6 +109,7 @@ Widgets showing recent system activity:
 | **Prompts** | System prompt, category prompts, acronyms, skills |
 | **Tools** | Tool management, dependencies, and routing |
 | **Workspaces** | Embed and standalone chatbot instances |
+| **Autonomous Mode** | Multi-agent task orchestration (beta) |
 | **Agent Bots** | Programmatic API bots (API keys, jobs, analytics, versions) |
 | **Settings** | LLM, RAG, reranker, memory, agent, and system configuration |
 
@@ -166,8 +167,14 @@ Widgets showing recent system activity:
 | **Superuser** | Superuser quota and permissions |
 | **Backup** | Database backup and restore |
 | **Branding** | Bot name, icon, accent color, PWA settings |
+| **Tokens** | Per-category max tokens, per-tool call limits |
+| **Routes** | Enable/disable LLM routes (2/3/5), primary route selection |
+| **File Uploads** | Max upload size, allowed file types |
+| **Document Processing** | OCR provider selection (Mistral OCR, Azure DI) |
 | **Speech** | STT/TTS provider selection, route defaults, recording limits, fallback configuration |
 | **Cache** | Cache TTL and management |
+| **Display** | UI appearance, dark mode, font size |
+| **Graph RAG** | FalkorDB graph-augmented RAG toggle and configuration |
 
 ---
 
@@ -1534,8 +1541,9 @@ The **API Keys** section is the default landing page under Settings. It consolid
 Keys are organized into four groups:
 
 **LLM Providers** — grouped by routing:
-- **Route 1 (LiteLLM Proxy):** OpenAI, Gemini, Mistral, Ollama
-- **Route 2 (Direct):** Anthropic, Fireworks AI, DeepSeek, Moonshot
+- **Route 2 (Direct Providers):** OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot
+- **Route 3 (Local / Ollama):** Ollama
+- **Route 5 (Aggregator Gateways):** Azure AI Foundry, Fireworks AI, Ollama Cloud
 
 Each provider shows capability tags indicating what it supports:
 
@@ -1589,10 +1597,10 @@ Configures which provider handles voice input transcription. Providers are route
 
 | Provider | Route | Models | Cost |
 |----------|-------|--------|------|
-| **OpenAI Whisper** | Route 1 (LiteLLM) | `whisper-1` | $0.006/min |
-| **Google Gemini** | Route 1 (LiteLLM) | `gemini-2.5-flash`, `gemini-2.5-pro` | ~$0.06/min |
-| **Mistral Voxtral** | Route 1 (LiteLLM) | `voxtral-mini-transcribe-v2` | $0.003/min |
-| **Fireworks AI** | Route 2 (Direct) | `whisper-v3-turbo`, `whisper-v3-large` | $0.001/min |
+| **OpenAI Whisper** | Route 2 (Direct) | `whisper-1` | $0.006/min |
+| **Google Gemini** | Route 2 (Direct) | `gemini-2.5-flash`, `gemini-2.5-pro` | ~$0.06/min |
+| **Mistral Voxtral** | Route 2 (Direct) | `voxtral-mini-transcribe-v2` | $0.003/min |
+| **Fireworks AI** | Route 5 (Aggregator) | `whisper-v3-turbo`, `whisper-v3-large` | $0.001/min |
 
 **Route Defaults**: Each route has a default and fallback STT provider. When the global default route is disabled, the system automatically falls back to the other active route's providers.
 
@@ -1628,17 +1636,19 @@ Set a primary and fallback TTS provider. Voice selection, style, and podcast-spe
 
 ### Routes
 
-The **Routes** section controls which LLM provider paths are active. Policy Bot uses a two-route architecture:
+The **Routes** section controls which LLM provider paths are active. Policy Bot uses a three-route architecture with all providers using direct native SDKs/APIs:
 
 | Route | Providers | Connection |
 |-------|-----------|------------|
-| **Route 1** | OpenAI, Gemini, Mistral, Ollama | Via LiteLLM proxy |
-| **Route 2** | Anthropic (Claude), Fireworks AI, DeepSeek, Moonshot | Direct SDK / API |
+| **Route 2** | OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot | Native SDK / direct API |
+| **Route 3** | Ollama (local) | OpenAI SDK → ollama:11434/v1 |
+| **Route 5** | Azure AI Foundry, Fireworks AI, Ollama Cloud | Native SDK / OpenAI-compat |
 
 | Setting | Description |
 |---------|-------------|
-| **Route 1 toggle** | Enable/disable the LiteLLM proxy route |
-| **Route 2 toggle** | Enable/disable the direct provider route |
+| **Route 2 toggle** | Enable/disable direct provider route |
+| **Route 3 toggle** | Enable/disable local Ollama route |
+| **Route 5 toggle** | Enable/disable aggregator gateway route |
 | **Primary route** | Preferred route for fallback ordering |
 
 **Key behaviors:**
@@ -1646,6 +1656,7 @@ The **Routes** section controls which LLM provider paths are active. Policy Bot 
 - Disabling a route removes its models from the chat model selector
 - In **LLM Settings**, disabled-route providers and models appear greyed out (view-only)
 - Red warnings appear if the default or fallback model belongs to a disabled route
+- See [`docs/features/LLM.md`](../features/LLM.md) for the authoritative architecture reference
 
 See [features/routes.md](../features/routes.md) for technical details.
 
@@ -1883,7 +1894,6 @@ The **Memory** section under Settings controls how Policy Bot extracts, stores, 
 
 | Setting | Description |
 |---------|-------------|
-| **LiteLLM Endpoint** | LLM proxy URL |
 | **YouTube API Key** | YouTube data API key |
 
 > **Note:** LLM provider keys, Tavily API key, OCR keys, and reranker keys are now managed in **Settings → API Keys**.
@@ -2187,7 +2197,7 @@ View system activity:
 | Error | Meaning | Solution |
 |-------|---------|----------|
 | "Rate limit exceeded" | Too many requests | Wait and retry |
-| "Model not available" | LLM service issue | Check LiteLLM proxy |
+| "Model not available" | LLM service issue | Check provider API keys and Admin > Settings > LLM |
 | "Embedding failed" | Vector store issue | Check embedding service |
 | "Authentication failed" | Invalid credentials | Verify API keys |
 

@@ -576,13 +576,18 @@ To remove category overrides and use global settings:
 
 ## 8. Settings Tab
 
-The Settings tab provides access to configuration options for superusers. It has two subsections.
+The Settings tab provides access to configuration options for superusers.
 
 ### Settings Submenu
 
 | Section | Purpose |
 |---------|---------|
+| **LLM** | View model configurations and provider settings (read-only) |
 | **RAG Tuning** | Interactive testing and tuning of RAG parameters |
+| **Reranker** | View reranker configuration (read-only) |
+| **Document Processing** | View OCR provider settings (read-only) |
+| **Speech** | View STT/TTS provider settings (read-only) |
+| **Cache** | View cache configuration (read-only) |
 | **Backup** | View and download category-specific backups |
 
 ### RAG Tuning

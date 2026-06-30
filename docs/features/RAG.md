@@ -78,7 +78,7 @@ Two strategies, configurable per-category via Admin > Settings > RAG:
 
 ### 1.3 Embedding
 
-- **Model:** `text-embedding-3-large` (3072 dimensions) via LiteLLM, configurable in Admin > Settings > Embedding
+- **Model:** `text-embedding-3-large` (3072 dimensions) via direct native SDKs, configurable in Admin > Settings > Embedding
 - **Quantization:** `int8` scalar quantization enabled by default in Qdrant (reduces storage ~4x, minimal accuracy loss)
 - **Batch size:** Up to 2048 chunks per embedding API call
 - **Key function:** `createEmbeddings()` in `src/lib/openai.ts`
@@ -207,7 +207,7 @@ Runs during background ingestion (`processDocumentAsync`), never on the query pa
 
 **Flow:**
 
-1. **Per-chunk LLM call** — `createInternalCompletion()` routes through the four-route LLM architecture to a configurable extraction model (default: the system's primary model; recommended: cheap local model like `llama3.1:8b`)
+1. **Per-chunk LLM call** — `createInternalCompletion()` routes through the three-route LLM architecture to a configurable extraction model (default: the system's primary model; recommended: cheap local model like `llama3.1:8b`)
 2. **Extraction prompt** returns JSON: `{ entities: [{name, type}], relations: [{head, relation, tail}] }`
 3. **Robust JSON extraction** — greedy `{` → `}` matching (same pattern as `rag.ts`)
 4. **Entity resolution** — canonical ID from `entity:{name_lowercase_underscore}`; FalkorDB `MERGE` handles exact duplicates; future: embedding-based `SAME_AS` for near-duplicates
@@ -364,16 +364,17 @@ The system automatically selects the highest-priority provider that's available 
 5. **Data source descriptions** — Available external API descriptions
 6. **Skills** — Resolved skill instructions
 
-### 5.2 LLM Routing (Four-Route Architecture)
+### 5.2 LLM Routing (Three-Route Architecture)
+
+All providers use direct native SDKs/APIs — no proxy intermediary.
 
 | Route | Provider | Use Case |
 |-------|----------|----------|
-| **Route 1** | LiteLLM proxy | General chat, embeddings, transcription |
-| **Route 2** | Direct SDKs | Anthropic Claude, Fireworks, DeepSeek, Moonshot |
+| **Route 2** | Direct Providers | OpenAI, Anthropic Claude, Gemini, Mistral, DeepSeek, Moonshot |
 | **Route 3** | Local Ollama | Air-gapped deployments |
-| **Route 4** | Ollama Cloud | Hosted Ollama models |
+| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud |
 
-Model detection is prefix-based: `anthropic/`, `claude-`, `fireworks/`, `ollama-`, `deepseek-`, etc.
+Model detection is prefix-based: `openai/`, `gpt-`, `anthropic/`, `claude-`, `gemini/`, `mistral/`, `deepseek-`, `ollama-`, `azure-foundry/`, `fireworks/`, `ollama-cloud/`. See [`docs/features/LLM.md`](LLM.md) for the authoritative reference.
 
 ### 5.3 Tool Calling
 
