@@ -624,6 +624,28 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     { id: 'gemini-3.1-pro-preview', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 2.00, output_cost_per_1m: 12.00, forced_tool_capable: 1 },
     { id: 'gemini-3.5-flash', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 9.00, forced_tool_capable: 1 },
     { id: 'gemini-3.1-flash-lite', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.25, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
+    // OpenAI - GPT-4 series
+    { id: 'gpt-4o', max_input_tokens: 128000, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 10.00, forced_tool_capable: 1 },
+    { id: 'gpt-4o-mini', max_input_tokens: 128000, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 0.15, output_cost_per_1m: 0.60, forced_tool_capable: 1 },
+    { id: 'gpt-4.1', max_input_tokens: 1000000, max_output_tokens: 32768, vision_capable: 1, input_cost_per_1m: 2.00, output_cost_per_1m: 8.00, forced_tool_capable: 1 },
+    { id: 'gpt-4.1-mini', max_input_tokens: 1000000, max_output_tokens: 32768, vision_capable: 1, input_cost_per_1m: 0.40, output_cost_per_1m: 1.60, forced_tool_capable: 1 },
+    { id: 'gpt-4.1-nano', max_input_tokens: 1000000, max_output_tokens: 32768, vision_capable: 1, input_cost_per_1m: 0.10, output_cost_per_1m: 0.40, forced_tool_capable: 1 },
+    // OpenAI - GPT-5 base series
+    { id: 'gpt-5', max_input_tokens: 272000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 1.25, output_cost_per_1m: 10.00, forced_tool_capable: 1 },
+    { id: 'gpt-5-mini', max_input_tokens: 272000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.25, output_cost_per_1m: 2.00, forced_tool_capable: 1 },
+    { id: 'gpt-5-nano', max_input_tokens: 272000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.05, output_cost_per_1m: 0.40, forced_tool_capable: 1 },
+    // OpenAI - GPT-5.5/5.4 series (latest)
+    { id: 'gpt-5.5', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 5.00, output_cost_per_1m: 30.00, forced_tool_capable: 1 },
+    { id: 'gpt-5.5-pro', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 30.00, output_cost_per_1m: 180.00, forced_tool_capable: 1 },
+    { id: 'gpt-5.4', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 15.00, forced_tool_capable: 1 },
+    { id: 'gpt-5.4-mini', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 4.50, forced_tool_capable: 1 },
+    { id: 'gpt-5.4-nano', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.20, output_cost_per_1m: 1.25, forced_tool_capable: 1 },
+    { id: 'gpt-5.4-pro', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 30.00, output_cost_per_1m: 180.00, forced_tool_capable: 1 },
+    // OpenAI - o-series
+    { id: 'o1', max_input_tokens: 200000, max_output_tokens: 100000, vision_capable: 1, input_cost_per_1m: 15.00, output_cost_per_1m: 60.00, forced_tool_capable: 0 },
+    { id: 'o3', max_input_tokens: 200000, max_output_tokens: 100000, vision_capable: 1, input_cost_per_1m: 10.00, output_cost_per_1m: 40.00, forced_tool_capable: 0 },
+    { id: 'o3-mini', max_input_tokens: 200000, max_output_tokens: 100000, vision_capable: 0, input_cost_per_1m: 1.10, output_cost_per_1m: 4.40, forced_tool_capable: 0 },
+    { id: 'o4-mini', max_input_tokens: 200000, max_output_tokens: 100000, vision_capable: 0, input_cost_per_1m: 1.10, output_cost_per_1m: 4.40, forced_tool_capable: 0 },
     // Mistral
     { id: 'mistral-large-3', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 0.50, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
     { id: 'mistral-medium-3', max_input_tokens: 131072, max_output_tokens: 8000, vision_capable: 0, input_cost_per_1m: 0.40, output_cost_per_1m: 2.00, forced_tool_capable: 1 },
@@ -651,7 +673,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
         AND (input_cost_per_1m IS NULL OR output_cost_per_1m IS NULL)
     `.execute(database);
   }
-  console.log('[Kysely] Synced native provider model specs and pricing (Gemini, Mistral, DeepSeek, Moonshot)');
+  console.log('[Kysely] Synced native provider model specs and pricing (OpenAI, Gemini, Mistral, DeepSeek, Moonshot)');
 
   // Migration: Add input_tokens and output_tokens to token_usage_log
   await sql`ALTER TABLE token_usage_log ADD COLUMN IF NOT EXISTS input_tokens INTEGER DEFAULT 0`.execute(database);

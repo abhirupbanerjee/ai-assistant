@@ -204,25 +204,39 @@ const DEPRECATED_MODELS = new Set([
   'gpt-4.1-nano',
 ]);
 
-// Known context window sizes
+// Known context window sizes (based on official OpenAI API docs, June 2026)
 const CONTEXT_WINDOWS: Record<string, number> = {
-  // OpenAI - GPT-5 family (assuming similar to GPT-4.1)
-  'gpt-5': 1000000,
-  'gpt-5.1': 1000000,
-  'gpt-5.2': 1000000,
+  // OpenAI - GPT-5.5/5.4 family (1,050,000 tokens)
+  'gpt-5.5': 1050000,
+  'gpt-5.5-pro': 1050000,
+  'gpt-5.4': 1050000,
+  'gpt-5.4-mini': 1050000,
+  'gpt-5.4-nano': 1050000,
+  'gpt-5.4-pro': 1050000,
+  // OpenAI - GPT-5 base family (272K input + 128K output)
+  'gpt-5': 272000,
+  'gpt-5.1': 272000,
+  'gpt-5.2': 272000,
+  'gpt-5.3': 272000,
+  'gpt-5-mini': 272000,
+  'gpt-5-nano': 272000,
+  'gpt-5-pro': 272000,
+  'gpt-5-codex': 272000,
   // OpenAI - GPT-4 family
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
   'gpt-4.1': 1000000,
   'gpt-4.1-mini': 1000000,
   'gpt-4.1-nano': 1000000,
-  'gpt-5.4': 1000000,
-  'gpt-5-mini': 1000000,
-  'gpt-5-nano': 1000000,
+  'gpt-4-turbo': 128000,
+  'gpt-4': 8192,
   // OpenAI - o-series
   'o1': 200000,
   'o1-preview': 128000,
   'o1-mini': 128000,
   'o3': 200000,
   'o3-mini': 200000,
+  'o4-mini': 200000,
   // Gemini 2.5
   'gemini-2.5-pro': 1000000,
   'gemini-2.5-flash': 1000000,
@@ -297,7 +311,7 @@ const CONTEXT_WINDOWS: Record<string, number> = {
 const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
   deepseek: 16000,
   ollama: 2000,
-  openai: 16000,
+  openai: 128000,    // GPT-5 series supports up to 128K output
   anthropic: 32000,
   gemini: 64000,
   mistral: 8000,

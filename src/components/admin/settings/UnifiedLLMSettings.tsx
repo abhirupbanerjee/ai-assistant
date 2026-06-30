@@ -70,8 +70,17 @@ type SectionId = 'providers' | 'models' | 'auto-model-map' | 'overview';
 
 const ROUTE_2_PROVIDERS = new Set(['openai', 'anthropic', 'moonshot', 'deepseek', 'mistral', 'gemini']);
 const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
+// Must stay in sync with src/lib/llm-fallback.ts isRoute2Model()
 const isRoute2Model = (id: string) =>
-  id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
+  id.startsWith('anthropic/') || id.startsWith('claude-')
+  || id.startsWith('moonshot/')
+  || id.startsWith('deepseek-') || id.startsWith('deepseek/')
+  || id.startsWith('mistral/') || id.startsWith('mistral-')
+  || id.startsWith('codestral/') || id.startsWith('codestral-')
+  || id.startsWith('pixtral/') || id.startsWith('pixtral-')
+  || id.startsWith('gemini/') || id.startsWith('gemini-')
+  || id.startsWith('openai/') || id.startsWith('gpt-')
+  || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
 
 const ROUTE_3_PROVIDERS = new Set(['ollama']);
 const isRoute3Provider = (id: string) => ROUTE_3_PROVIDERS.has(id);
