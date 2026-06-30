@@ -308,7 +308,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
 
               {/* Route 1 */}
               <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                <div className="text-sm font-medium">Route 1 — LiteLLM (OpenAI, Gemini, Mistral)</div>
+                <div className="text-sm font-medium">Route 1 — LiteLLM (Legacy)</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Default</label>

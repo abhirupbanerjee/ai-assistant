@@ -61,8 +61,8 @@ const PROVIDER_CAPABILITIES: Record<string, string[]> = {
   'azure-foundry': ['LLM', 'Embeddings'],
 };
 
-const ROUTE_1_PROVIDERS = ['openai'];
-const ROUTE_2_PROVIDERS = ['deepseek', 'anthropic', 'moonshot', 'mistral', 'gemini'];
+const ROUTE_1_PROVIDERS: string[] = []; // All providers migrated to Route 2/5
+const ROUTE_2_PROVIDERS = ['openai', 'deepseek', 'anthropic', 'moonshot', 'mistral', 'gemini'];
 const ROUTE_3_PROVIDERS = ['ollama'];
 const ROUTE_4_PROVIDERS: string[] = [];
 const ROUTE_5_PROVIDERS = ['azure-foundry', 'fireworks', 'ollama-cloud'];
@@ -702,28 +702,30 @@ export default function ApiKeysSettings() {
       <div className="bg-white border rounded-xl p-5">
         <SectionHeader
           title="LLM Providers"
-          subtitle="Route 1 via LiteLLM proxy · Route 2 direct"
+          subtitle="All providers now direct · LiteLLM retained as legacy fallback"
         />
 
         <div className="flex items-center gap-1.5 mb-4 text-xs text-gray-500">
           <Info size={12} />
           <span>
-            Route 1 providers go via LiteLLM proxy. Route 2 providers connect directly.{' '}
+            All providers now connect directly via native SDKs. LiteLLM is retained as a legacy fallback.{' '}
             <a href="/admin?tab=settings&section=routes" className="text-blue-600 hover:underline inline-flex items-center gap-0.5">
               See Routes <ExternalLink size={10} />
             </a>
           </span>
         </div>
 
-        {/* Route 1 */}
-        <div className="mb-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
-            Route 1 — LiteLLM Proxy
+        {/* Route 1 — hidden when empty (all providers migrated to Route 2/5) */}
+        {route1Providers.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3">
+              Route 1 — LiteLLM Proxy
+            </div>
+            <div className="divide-y divide-gray-100">
+              {route1Providers.map(renderProviderRow)}
+            </div>
           </div>
-          <div className="divide-y divide-gray-100">
-            {route1Providers.map(renderProviderRow)}
-          </div>
-        </div>
+        )}
 
         {/* Route 2 */}
         <div className="mb-4">

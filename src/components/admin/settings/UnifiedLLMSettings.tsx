@@ -68,7 +68,7 @@ type SectionId = 'providers' | 'models' | 'auto-model-map' | 'overview';
 
 // ============ Route Classification (mirrors server-side isRoute2Model) ============
 
-const ROUTE_2_PROVIDERS = new Set(['anthropic', 'moonshot', 'deepseek']);
+const ROUTE_2_PROVIDERS = new Set(['openai', 'anthropic', 'moonshot', 'deepseek', 'mistral', 'gemini']);
 const isRoute2Provider = (id: string) => ROUTE_2_PROVIDERS.has(id);
 const isRoute2Model = (id: string) =>
   id.startsWith('anthropic/') || id.startsWith('claude-') || id.startsWith('moonshot/') || id.startsWith('deepseek-') || id.startsWith('deepseek/');
