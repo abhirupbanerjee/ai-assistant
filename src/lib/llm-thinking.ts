@@ -63,7 +63,8 @@ export function isClaudeAdaptiveThinkingModel(modelId: string): boolean {
     id.startsWith('claude-opus-4-8') ||
     id.startsWith('claude-fable-5') ||
     id.startsWith('claude-sonnet-4-6') ||
-    id.startsWith('claude-opus-4-6')
+    id.startsWith('claude-opus-4-6') ||
+    id.startsWith('claude-sonnet-5')
   );
 }
 
@@ -113,7 +114,7 @@ export function getTemperatureForModel(modelId: string, requestedTemperature: nu
 
 export function isDefaultThinkingEnabledModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
-  return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6');
+  return id.startsWith('deepseek-v4-pro') || id.startsWith('kimi-k2p6') || id.startsWith('kimi-k2.6') || id.startsWith('claude-sonnet-5');
 }
 
 export function isLikelyThinkingCapableModel(modelId: string): boolean {

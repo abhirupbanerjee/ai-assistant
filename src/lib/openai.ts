@@ -1271,7 +1271,7 @@ export async function generateToolCompletion(
   firstChunkTimeoutMsOverride?: number,
 ): Promise<{ content: string | null; tool_calls: OpenAI.Chat.ChatCompletionMessageFunctionToolCall[] | undefined; tokens_used: number; thinkingContent?: string }> {
   const effectiveModel = modelSpec.model;
-  const effectiveTemperature = temperature ?? modelSpec.temperature;
+  const effectiveTemperature = getTemperatureForModel(effectiveModel, temperature ?? modelSpec.temperature);
   const effectiveMaxTokens = maxTokens ?? modelSpec.max_tokens ?? 4096;
 
   const useAnthropicDirect = isClaudeModel(effectiveModel);
