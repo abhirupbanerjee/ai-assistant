@@ -68,6 +68,7 @@ export async function GET() {
         displayName: tool.displayName,
         description: tool.description,
         category: tool.category,
+        group: tool.group ?? null,
         enabled: config?.isEnabled ?? defaults?.enabled ?? false,
         config: safeConfig,
         configSchema: tool.configSchema,

@@ -49,14 +49,22 @@ export async function isTavilyConfigured(): Promise<boolean> {
   return !!(settings.apiKey || process.env.TAVILY_API_KEY);
 }
 
+export interface ExtractOptions {
+  extractDepth?: 'basic' | 'advanced';
+  format?: 'markdown' | 'text';
+  query?: string;  // rerank chunks by relevance to this query
+  chunksPerSource?: number;  // 1-5, only when query is provided
+}
+
 /**
  * Extract content from web URLs using Tavily Extract API
  * Supports batch extraction (up to 5 URLs per request for 1 credit)
  *
  * @param urls - Array of URLs to extract (max 5)
+ * @param options - Optional extraction parameters
  * @returns Array of extraction results
  */
-export async function extractWebContent(urls: string[]): Promise<ExtractResult[]> {
+export async function extractWebContent(urls: string[], options?: ExtractOptions): Promise<ExtractResult[]> {
   // Validate input
   if (!urls || urls.length === 0) {
     return [];
@@ -100,18 +108,29 @@ export async function extractWebContent(urls: string[]): Promise<ExtractResult[]
   }
 
   try {
+    const extractDepth = options?.extractDepth ?? (settings.extractDepth as 'basic' | 'advanced') ?? 'advanced';
+    const format = options?.format ?? (settings.extractFormat as 'markdown' | 'text') ?? 'markdown';
+
+    const body: Record<string, unknown> = {
+      urls: validUrls,
+      extract_depth: extractDepth,
+      format,
+      include_usage: true,
+    };
+    if (options?.query) {
+      body.query = options.query;
+      if (options?.chunksPerSource) {
+        body.chunks_per_source = options.chunksPerSource;
+      }
+    }
+
     const response = await fetch('https://api.tavily.com/extract', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        urls: validUrls,
-        extract_depth: 'advanced',
-        format: 'markdown',
-        include_usage: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -605,6 +624,26 @@ const webSearchConfigSchema = {
       description: 'Tavily API key (get from https://tavily.com)',
       format: 'password',
     },
+    // ── Endpoint enable toggles ──
+    extractEnabled: {
+      type: 'boolean',
+      title: 'Enable Extract',
+      description: 'Allow the LLM to extract content from specific URLs',
+      default: true,
+    },
+    crawlEnabled: {
+      type: 'boolean',
+      title: 'Enable Crawl',
+      description: 'Allow the LLM to crawl and explore websites',
+      default: true,
+    },
+    mapEnabled: {
+      type: 'boolean',
+      title: 'Enable Map',
+      description: 'Allow the LLM to discover URLs on websites',
+      default: true,
+    },
+    // ── Search defaults ──
     defaultTopic: {
       type: 'string',
       title: 'Default Topic',
@@ -615,8 +654,8 @@ const webSearchConfigSchema = {
     defaultSearchDepth: {
       type: 'string',
       title: 'Search Depth',
-      description: 'Basic = quick (3-5 results), Advanced = comprehensive (10+ results)',
-      enum: ['basic', 'advanced'],
+      description: 'Ultra-fast = lowest latency, Fast = low latency with chunks, Basic = balanced, Advanced = highest relevance (2 credits)',
+      enum: ['basic', 'advanced', 'fast', 'ultra-fast'],
       default: 'advanced',
     },
     maxResults: {
@@ -663,6 +702,30 @@ const webSearchConfigSchema = {
       enum: ['none', 'markdown', 'text'],
       default: 'none',
     },
+    includeImages: {
+      type: 'boolean',
+      title: 'Include Images',
+      description: 'Include images in search results',
+      default: false,
+    },
+    includeImageDescriptions: {
+      type: 'boolean',
+      title: 'Include Image Descriptions',
+      description: 'Include descriptions for images (only when includeImages is true)',
+      default: false,
+    },
+    includeFavicon: {
+      type: 'boolean',
+      title: 'Include Favicon',
+      description: 'Include favicon URL for each result',
+      default: false,
+    },
+    exactMatch: {
+      type: 'boolean',
+      title: 'Exact Match',
+      description: 'Only return results containing exact quoted phrases in the query',
+      default: false,
+    },
     autoParameters: {
       type: 'boolean',
       title: 'Auto Parameters',
@@ -679,8 +742,97 @@ const webSearchConfigSchema = {
     country: {
       type: 'string',
       title: 'Country Boost',
-      description: 'ISO country code to boost results from (e.g., US, GB, CA)',
+      description: 'Full country name to boost results from (e.g., United States, Japan, Germany)',
       default: '',
+    },
+    // ── Extract defaults ──
+    extractDepth: {
+      type: 'string',
+      title: 'Extract Depth',
+      description: 'Basic = faster (1 credit/5 URLs), Advanced = includes tables and embedded content (2 credits/5 URLs)',
+      enum: ['basic', 'advanced'],
+      default: 'advanced',
+    },
+    extractFormat: {
+      type: 'string',
+      title: 'Extract Format',
+      description: 'Output format for extracted content',
+      enum: ['markdown', 'text'],
+      default: 'markdown',
+    },
+    // ── Crawl defaults ──
+    crawlLimit: {
+      type: 'number',
+      title: 'Crawl Page Limit',
+      description: 'Total pages to process per crawl (1+)',
+      minimum: 1,
+      default: 50,
+    },
+    crawlMaxDepth: {
+      type: 'number',
+      title: 'Crawl Max Depth',
+      description: 'How deep to crawl from base URL (1-5)',
+      minimum: 1,
+      maximum: 5,
+      default: 2,
+    },
+    crawlMaxBreadth: {
+      type: 'number',
+      title: 'Crawl Max Breadth',
+      description: 'Max links to follow per page level (1-500)',
+      minimum: 1,
+      maximum: 500,
+      default: 20,
+    },
+    crawlExtractDepth: {
+      type: 'string',
+      title: 'Crawl Extract Depth',
+      description: 'Content extraction depth for crawled pages',
+      enum: ['basic', 'advanced'],
+      default: 'advanced',
+    },
+    crawlFormat: {
+      type: 'string',
+      title: 'Crawl Format',
+      description: 'Output format for crawled content',
+      enum: ['markdown', 'text'],
+      default: 'markdown',
+    },
+    crawlAllowExternal: {
+      type: 'boolean',
+      title: 'Crawl External Links',
+      description: 'Whether to include external domain links in crawl results',
+      default: false,
+    },
+    // ── Map defaults ──
+    mapLimit: {
+      type: 'number',
+      title: 'Map URL Limit',
+      description: 'Total URLs to discover per map (1+)',
+      minimum: 1,
+      default: 100,
+    },
+    mapMaxDepth: {
+      type: 'number',
+      title: 'Map Max Depth',
+      description: 'How deep to explore from base URL (1-5)',
+      minimum: 1,
+      maximum: 5,
+      default: 3,
+    },
+    mapMaxBreadth: {
+      type: 'number',
+      title: 'Map Max Breadth',
+      description: 'Max links to follow per page level (1-500)',
+      minimum: 1,
+      maximum: 500,
+      default: 50,
+    },
+    mapAllowExternal: {
+      type: 'boolean',
+      title: 'Map External Links',
+      description: 'Whether to include external domain links in map results',
+      default: false,
     },
   },
   required: ['defaultTopic', 'defaultSearchDepth', 'maxResults', 'cacheTTLSeconds'],
@@ -697,9 +849,9 @@ function validateWebSearchConfig(config: Record<string, unknown>): ValidationRes
     errors.push('defaultTopic must be one of: general, news, finance');
   }
 
-  // Validate defaultSearchDepth
-  if (config.defaultSearchDepth && !['basic', 'advanced'].includes(config.defaultSearchDepth as string)) {
-    errors.push('defaultSearchDepth must be one of: basic, advanced');
+  // Validate defaultSearchDepth (now includes fast and ultra-fast)
+  if (config.defaultSearchDepth && !['basic', 'advanced', 'fast', 'ultra-fast'].includes(config.defaultSearchDepth as string)) {
+    errors.push('defaultSearchDepth must be one of: basic, advanced, fast, ultra-fast');
   }
 
   // Validate maxResults
@@ -765,13 +917,74 @@ export const tavilyWebSearch: ToolDefinition = {
           },
           search_depth: {
             type: 'string',
-            enum: ['basic', 'advanced'],
-            description: 'Search depth: "basic" for quick searches (3-5 results), "advanced" for thorough research (10+ results). Defaults to admin setting.',
+            enum: ['basic', 'advanced', 'fast', 'ultra-fast'],
+            description: 'Search depth: "ultra-fast" = lowest latency (1 credit), "fast" = low latency with chunks (1 credit), "basic" = balanced (1 credit), "advanced" = highest relevance (2 credits). Defaults to admin setting.',
           },
           include_answer: {
             type: 'string',
             enum: ['none', 'basic', 'advanced'],
             description: 'Include AI-generated answer: "none" = disabled, "basic" = quick summary, "advanced" = comprehensive analysis. Defaults to admin setting.',
+          },
+          topic: {
+            type: 'string',
+            enum: ['general', 'news', 'finance'],
+            description: 'Search category: "general" for broad searches, "news" for current events, "finance" for financial data. Defaults to admin setting.',
+          },
+          time_range: {
+            type: 'string',
+            enum: ['day', 'week', 'month', 'year'],
+            description: 'Filter results by recency. Defaults to admin setting.',
+          },
+          start_date: {
+            type: 'string',
+            description: 'Return results published after this date (YYYY-MM-DD format).',
+          },
+          end_date: {
+            type: 'string',
+            description: 'Return results published before this date (YYYY-MM-DD format).',
+          },
+          include_raw_content: {
+            type: 'string',
+            enum: ['none', 'markdown', 'text'],
+            description: 'Include full page content: "none" = disabled, "markdown" = formatted, "text" = plain text. Defaults to admin setting.',
+          },
+          include_images: {
+            type: 'boolean',
+            description: 'Include image results in the response. Defaults to admin setting.',
+          },
+          include_image_descriptions: {
+            type: 'boolean',
+            description: 'Include descriptions for images (only when include_images is true).',
+          },
+          include_favicon: {
+            type: 'boolean',
+            description: 'Include favicon URL for each result. Defaults to admin setting.',
+          },
+          include_domains: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Only include results from these domains (e.g., ["example.com", "gov.uk"]). Overrides admin defaults.',
+          },
+          exclude_domains: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Exclude results from these domains. Overrides admin defaults.',
+          },
+          country: {
+            type: 'string',
+            description: 'Boost results from a specific country (full name, e.g., "United States", "Japan"). Defaults to admin setting.',
+          },
+          auto_parameters: {
+            type: 'boolean',
+            description: 'Let Tavily auto-configure search parameters based on query intent. May increase cost/latency.',
+          },
+          exact_match: {
+            type: 'boolean',
+            description: 'Only return results containing exact quoted phrases from the query.',
+          },
+          chunks_per_source: {
+            type: 'number',
+            description: 'Number of content chunks per source (1-3). Only effective with search_depth="advanced".',
           },
         },
         required: ['query'],
@@ -791,9 +1004,28 @@ export const tavilyWebSearch: ToolDefinition = {
     cacheTTLSeconds: 3600,
     includeAnswer: 'basic',
     includeRawContent: 'none',
+    includeImages: false,
+    includeImageDescriptions: false,
+    includeFavicon: false,
+    exactMatch: false,
     autoParameters: false,
     timeRange: 'none',
     country: '',
+    extractEnabled: true,
+    crawlEnabled: true,
+    mapEnabled: true,
+    extractDepth: 'advanced',
+    extractFormat: 'markdown',
+    crawlLimit: 50,
+    crawlMaxDepth: 2,
+    crawlMaxBreadth: 20,
+    crawlExtractDepth: 'advanced',
+    crawlFormat: 'markdown',
+    crawlAllowExternal: false,
+    mapLimit: 100,
+    mapMaxDepth: 3,
+    mapMaxBreadth: 50,
+    mapAllowExternal: false,
   },
 
   configSchema: webSearchConfigSchema,
@@ -802,8 +1034,22 @@ export const tavilyWebSearch: ToolDefinition = {
     args: {
       query: string;
       max_results?: number;
-      search_depth?: 'basic' | 'advanced';
+      search_depth?: 'basic' | 'advanced' | 'fast' | 'ultra-fast';
       include_answer?: 'none' | 'basic' | 'advanced';
+      topic?: 'general' | 'news' | 'finance';
+      time_range?: 'day' | 'week' | 'month' | 'year';
+      start_date?: string;
+      end_date?: string;
+      include_raw_content?: 'none' | 'markdown' | 'text';
+      include_images?: boolean;
+      include_image_descriptions?: boolean;
+      include_favicon?: boolean;
+      include_domains?: string[];
+      exclude_domains?: string[];
+      country?: string;
+      auto_parameters?: boolean;
+      exact_match?: boolean;
+      chunks_per_source?: number;
     },
     options?: ToolExecutionOptions
   ) => {
@@ -834,38 +1080,44 @@ export const tavilyWebSearch: ToolDefinition = {
       });
     }
 
-    // Resolve parameters: LLM override > admin default
+    // Resolve parameters: LLM args > admin default > hardcoded fallback
     const maxResults = Math.min(
       args.max_results ?? settings.maxResults ?? 10,
-      20  // Hard cap
+      20  // Tavily API hard cap
     );
     const searchDepth = args.search_depth ?? settings.defaultSearchDepth ?? 'basic';
 
     // Handle include_answer: 'none' maps to false for API, 'basic'/'advanced' pass through
     let includeAnswer: false | 'basic' | 'advanced' = false;
     if (args.include_answer !== undefined) {
-      // LLM sends 'none' string, convert to boolean false for Tavily API
       includeAnswer = args.include_answer === 'none' ? false : args.include_answer;
     } else if (settings.includeAnswer !== undefined) {
-      // Settings uses 'none' | 'basic' | 'advanced', convert 'none' to false for API
       includeAnswer = settings.includeAnswer === 'none' ? false : (settings.includeAnswer as 'basic' | 'advanced');
     }
 
-    // Resolve domain filters (skill override > global config)
-    const includeDomains = (settings.includeDomains as string[]) || [];
-    const excludeDomains = (settings.excludeDomains as string[]) || [];
+    // Resolve topic: LLM arg > admin setting > 'general'
+    const topic = args.topic ?? (settings.defaultTopic as string) ?? 'general';
 
-    // Resolve new Tavily parameters
-    const includeRawContent = (settings.includeRawContent as string) || 'none';
-    const autoParameters = (settings.autoParameters as boolean) || false;
-    const timeRange = (settings.timeRange as string) || 'none';
-    const country = (settings.country as string) || '';
+    // Resolve domain filters: LLM args override admin settings
+    const includeDomains = args.include_domains ?? (settings.includeDomains as string[]) ?? [];
+    const excludeDomains = args.exclude_domains ?? (settings.excludeDomains as string[]) ?? [];
 
-    // Check Redis cache first (include params + domains in cache key for varied searches)
+    // Resolve other parameters: LLM arg > admin setting
+    const includeRawContent = args.include_raw_content ?? (settings.includeRawContent as string) ?? 'none';
+    const autoParameters = args.auto_parameters ?? (settings.autoParameters as boolean) ?? false;
+    const timeRange = args.time_range ?? (settings.timeRange as string) ?? 'none';
+    const country = args.country ?? (settings.country as string) ?? '';
+    const includeImages = args.include_images ?? (settings.includeImages as boolean) ?? false;
+    const includeImageDescriptions = args.include_image_descriptions ?? (settings.includeImageDescriptions as boolean) ?? false;
+    const includeFavicon = args.include_favicon ?? (settings.includeFavicon as boolean) ?? false;
+    const exactMatch = args.exact_match ?? (settings.exactMatch as boolean) ?? false;
+    const chunksPerSource = args.chunks_per_source;
+
+    // Check Redis cache first
     const domainKey = includeDomains.length > 0 || excludeDomains.length > 0
       ? `:inc=${includeDomains.join(',')}:exc=${excludeDomains.join(',')}`
       : '';
-    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}${domainKey}:${includeRawContent}:${timeRange}:${country}`);
+    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}${domainKey}:${includeRawContent}:${timeRange}:${country}:${includeImages}:${exactMatch}`);
     const cached = await getCachedQuery(`tavily:${cacheKey}`);
 
     if (cached) {
@@ -878,10 +1130,14 @@ export const tavilyWebSearch: ToolDefinition = {
       maxResults,
       searchDepth,
       includeAnswer,
+      topic,
       includeRawContent,
       autoParameters,
       timeRange,
       country,
+      includeImages,
+      includeFavicon,
+      exactMatch,
       includeDomains: includeDomains.length > 0 ? includeDomains : undefined,
       excludeDomains: excludeDomains.length > 0 ? excludeDomains : undefined,
     });
@@ -899,25 +1155,24 @@ export const tavilyWebSearch: ToolDefinition = {
       query,
       max_results: maxResults,
       search_depth: searchDepth,
-      topic: settings.defaultTopic,
+      topic,
       include_answer: includeAnswer,
       include_domains: includeDomains.length > 0 ? includeDomains : undefined,
       exclude_domains: excludeDomains.length > 0 ? excludeDomains : undefined,
     };
 
     // Add optional parameters if not default
-    if (includeRawContent !== 'none') {
-      payload.include_raw_content = includeRawContent;
-    }
-    if (autoParameters) {
-      payload.auto_parameters = true;
-    }
-    if (timeRange !== 'none') {
-      payload.time_range = timeRange;
-    }
-    if (country) {
-      payload.country = country;
-    }
+    if (includeRawContent !== 'none') payload.include_raw_content = includeRawContent;
+    if (autoParameters) payload.auto_parameters = true;
+    if (timeRange !== 'none') payload.time_range = timeRange;
+    if (country) payload.country = country;
+    if (includeImages) payload.include_images = true;
+    if (includeImageDescriptions) payload.include_image_descriptions = true;
+    if (includeFavicon) payload.include_favicon = true;
+    if (exactMatch) payload.exact_match = true;
+    if (args.start_date) payload.start_date = args.start_date;
+    if (args.end_date) payload.end_date = args.end_date;
+    if (chunksPerSource && searchDepth === 'advanced') payload.chunks_per_source = chunksPerSource;
 
     try {
       const response = await fetch('https://api.tavily.com/search', {
@@ -945,5 +1200,244 @@ export const tavilyWebSearch: ToolDefinition = {
         results: [],
       });
     }
+  },
+};
+
+// ============ Web Extract Tool ============
+
+/**
+ * Web Extract tool — extracts full content from specific URLs
+ * Wraps the existing extractWebContent() function
+ */
+export const tavilyWebExtract: ToolDefinition = {
+  name: 'web_extract',
+  displayName: 'Web Extract',
+  description: 'Extract and read the full content from specific web pages.',
+  category: 'autonomous',
+
+  definition: {
+    type: 'function',
+    function: {
+      name: 'web_extract',
+      description: 'Extract the full content of one or more web pages. Use when you need to read a specific article, page, or document at a known URL. Supports up to 5 URLs per call. Best for: reading known articles, fetching specific documents, extracting content from URLs found in search results.',
+      parameters: {
+        type: 'object',
+        properties: {
+          urls: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of URLs to extract content from (max 5)',
+          },
+          extract_depth: {
+            type: 'string',
+            enum: ['basic', 'advanced'],
+            description: 'basic = faster (1 credit per 5 URLs), advanced = more data including tables and embedded content (2 credits per 5 URLs). Defaults to admin setting.',
+          },
+          query: {
+            type: 'string',
+            description: 'Optional: rerank extracted content chunks by relevance to this query for more focused results.',
+          },
+          format: {
+            type: 'string',
+            enum: ['markdown', 'text'],
+            description: 'Output format for extracted content. markdown preferred for readability. Defaults to admin setting.',
+          },
+        },
+        required: ['urls'],
+      },
+    },
+  },
+
+  defaultConfig: {},
+
+  validateConfig: () => ({ valid: true, errors: [] }),
+
+  configSchema: { type: 'object', properties: {} },
+
+  execute: async (args: {
+    urls: string[];
+    extract_depth?: 'basic' | 'advanced';
+    query?: string;
+    format?: 'markdown' | 'text';
+  }) => {
+    // Reuses existing extractWebContent() function, passing LLM args through
+    const results = await extractWebContent(args.urls, {
+      extractDepth: args.extract_depth,
+      format: args.format,
+      query: args.query,
+    });
+    return JSON.stringify(results);
+  },
+};
+
+// ============ Web Crawl Tool ============
+
+/**
+ * Web Crawl tool — discovers and extracts content from multiple pages starting from a base URL
+ * Wraps the existing crawlWebsite() function
+ */
+export const tavilyWebCrawl: ToolDefinition = {
+  name: 'web_crawl',
+  displayName: 'Web Crawl',
+  description: 'Crawl a website to discover and extract content from multiple pages.',
+  category: 'autonomous',
+
+  definition: {
+    type: 'function',
+    function: {
+      name: 'web_crawl',
+      description: 'Crawl a website starting from a URL. Automatically discovers and extracts content from multiple pages. Use for: exploring documentation sites, researching company websites, gathering content from blogs or knowledge bases, discovering all relevant pages on a domain.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'Base URL to start crawling (e.g., https://docs.example.com)',
+          },
+          instructions: {
+            type: 'string',
+            description: 'Natural language instructions for what content to find (e.g., "Find all pages about API authentication")',
+          },
+          max_depth: {
+            type: 'number',
+            description: 'How deep to crawl from base URL (1-5). Higher = more pages but slower. Defaults to admin setting.',
+            minimum: 1,
+            maximum: 5,
+          },
+          max_breadth: {
+            type: 'number',
+            description: 'Max links to follow per page level (1-500). Defaults to admin setting.',
+            minimum: 1,
+            maximum: 500,
+          },
+          limit: {
+            type: 'number',
+            description: 'Total number of pages to process before stopping. Defaults to admin setting.',
+          },
+          select_paths: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Regex patterns to include only specific URL paths (e.g., ["/docs/.*", "/api/.*"])',
+          },
+          select_domains: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Regex patterns to restrict crawling to specific domains (e.g., ["^docs\\\\.example\\\\.com$"])',
+          },
+          extract_depth: {
+            type: 'string',
+            enum: ['basic', 'advanced'],
+            description: 'basic = faster extraction, advanced = includes tables and embedded content. Defaults to admin setting.',
+          },
+          format: {
+            type: 'string',
+            enum: ['markdown', 'text'],
+            description: 'Output format for extracted content. Defaults to admin setting.',
+          },
+        },
+        required: ['url'],
+      },
+    },
+  },
+
+  defaultConfig: {},
+
+  validateConfig: () => ({ valid: true, errors: [] }),
+
+  configSchema: { type: 'object', properties: {} },
+
+  execute: async (args: {
+    url: string;
+    instructions?: string;
+    max_depth?: number;
+    max_breadth?: number;
+    limit?: number;
+    select_paths?: string[];
+    select_domains?: string[];
+    extract_depth?: 'basic' | 'advanced';
+    format?: 'markdown' | 'text';
+  }) => {
+    const { config: settings } = await getWebSearchConfig();
+    const result = await crawlWebsite(args.url, {
+      limit: args.limit ?? (settings.crawlLimit as number),
+      maxDepth: args.max_depth ?? (settings.crawlMaxDepth as number),
+      maxBreadth: args.max_breadth ?? (settings.crawlMaxBreadth as number),
+      selectPaths: args.select_paths,
+      extractDepth: args.extract_depth ?? (settings.crawlExtractDepth as 'basic' | 'advanced'),
+      format: args.format ?? (settings.crawlFormat as 'markdown' | 'text'),
+    });
+    return JSON.stringify(result);
+  },
+};
+
+// ============ Web Map Tool ============
+
+/**
+ * Web Map tool — discovers all URLs on a website without extracting content
+ * Wraps the existing mapWebsite() function
+ */
+export const tavilyWebMap: ToolDefinition = {
+  name: 'web_map',
+  displayName: 'Web Map',
+  description: 'Discover all URLs on a website without extracting their content.',
+  category: 'autonomous',
+
+  definition: {
+    type: 'function',
+    function: {
+      name: 'web_map',
+      description: 'Map a website to discover all URLs without extracting content. Returns a list of all discovered URLs, separated into web pages and PDF documents. Use for: getting a site overview before crawling, finding PDF documents on a site, understanding site structure, discovering all pages under a specific path.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'Base URL to start mapping (e.g., https://example.com)',
+          },
+          instructions: {
+            type: 'string',
+            description: 'Natural language instructions for what URLs to find (e.g., "Find all documentation pages")',
+          },
+          max_depth: {
+            type: 'number',
+            description: 'How deep to explore from base URL (1-5). Defaults to admin setting.',
+            minimum: 1,
+            maximum: 5,
+          },
+          limit: {
+            type: 'number',
+            description: 'Total number of URLs to discover before stopping. Defaults to admin setting.',
+          },
+          select_paths: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Regex patterns to include only specific URL paths (e.g., ["/docs/.*"])',
+          },
+        },
+        required: ['url'],
+      },
+    },
+  },
+
+  defaultConfig: {},
+
+  validateConfig: () => ({ valid: true, errors: [] }),
+
+  configSchema: { type: 'object', properties: {} },
+
+  execute: async (args: {
+    url: string;
+    instructions?: string;
+    max_depth?: number;
+    limit?: number;
+    select_paths?: string[];
+  }) => {
+    const { config: settings } = await getWebSearchConfig();
+    const result = await mapWebsite(args.url, {
+      limit: args.limit ?? (settings.mapLimit as number),
+      maxDepth: args.max_depth ?? (settings.mapMaxDepth as number),
+      selectPaths: args.select_paths,
+    });
+    return JSON.stringify(result);
   },
 };

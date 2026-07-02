@@ -57,6 +57,7 @@ interface Tool {
   displayName: string;
   description: string;
   category: 'autonomous' | 'processor';
+  group: string | null;
   enabled: boolean;
   config: Record<string, unknown>;
   configSchema: Record<string, unknown>;
@@ -166,6 +167,12 @@ function getToolIcon(toolName: string) {
   switch (toolName) {
     case 'web_search':
       return Globe;
+    case 'web_extract':
+      return FileText;
+    case 'web_crawl':
+      return Globe;
+    case 'web_map':
+      return Route;
     case 'doc_gen':
       return FileText;
     case 'data_source':

@@ -53,7 +53,7 @@ export interface TavilySettings {
   apiKey?: string;  // Stored encrypted, falls back to TAVILY_API_KEY env var
   enabled: boolean;
   defaultTopic: 'general' | 'news' | 'finance';
-  defaultSearchDepth: 'basic' | 'advanced';
+  defaultSearchDepth: 'basic' | 'advanced' | 'fast' | 'ultra-fast';
   maxResults: number;  // Admin default (1-20)
   includeDomains: string[];
   excludeDomains: string[];
@@ -63,6 +63,29 @@ export interface TavilySettings {
   autoParameters?: boolean;  // default off for deterministic cost/latency
   timeRange?: 'none' | 'day' | 'week' | 'month' | 'year';  // recency filter, 'none' = no filter
   country?: string;  // ISO country code for result boosting, empty = no boost
+  includeImages?: boolean;  // include images in search results
+  includeImageDescriptions?: boolean;  // include image descriptions when includeImages is true
+  includeFavicon?: boolean;  // include favicon URL for each result
+  exactMatch?: boolean;  // only return results containing exact quoted phrases
+  // ── Endpoint enable flags ──
+  extractEnabled?: boolean;
+  crawlEnabled?: boolean;
+  mapEnabled?: boolean;
+  // ── Extract defaults ──
+  extractDepth?: 'basic' | 'advanced';
+  extractFormat?: 'markdown' | 'text';
+  // ── Crawl defaults ──
+  crawlLimit?: number;
+  crawlMaxDepth?: number;
+  crawlMaxBreadth?: number;
+  crawlExtractDepth?: 'basic' | 'advanced';
+  crawlFormat?: 'markdown' | 'text';
+  crawlAllowExternal?: boolean;
+  // ── Map defaults ──
+  mapLimit?: number;
+  mapMaxDepth?: number;
+  mapMaxBreadth?: number;
+  mapAllowExternal?: boolean;
 }
 
 export interface UploadLimits {

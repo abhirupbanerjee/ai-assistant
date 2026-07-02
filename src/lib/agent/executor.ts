@@ -152,7 +152,7 @@ async function resolveCategorySkills(plan: AgentPlan, taskDescription: string, c
 
 // ============ Tool Detection ============
 
-type ExecutorToolType = 'doc_gen' | 'image_gen' | 'web_search' | 'chart_gen' | 'xlsx_gen' | 'pptx_gen' | 'podcast_gen' | 'diagram_gen';
+type ExecutorToolType = 'doc_gen' | 'image_gen' | 'web_search' | 'web_extract' | 'web_crawl' | 'web_map' | 'chart_gen' | 'xlsx_gen' | 'pptx_gen' | 'podcast_gen' | 'diagram_gen';
 type ExecutorProfileUsed = NonNullable<AgentTask['executor_profile']>;
 type ExecutorRouting = { model: ModelSpec; profileUsed: ExecutorProfileUsed };
 type TaskExecutionPayload = {
@@ -174,6 +174,9 @@ const TOOL_REGISTRY: Record<ExecutorToolType, { explicitTypes: string[]; keyword
   podcast_gen: { explicitTypes: ['podcast', 'podcast_gen'], keywords: ['podcast', 'audio', 'narrate', 'voice', 'listen'] },
   diagram_gen: { explicitTypes: ['diagram', 'diagram_gen'], keywords: ['diagram', 'flowchart', 'architecture', 'process flow', 'mindmap', 'mermaid'] },
   web_search:  { explicitTypes: ['search', 'web_search'], keywords: ['search', 'web', 'internet', 'online', 'lookup', 'research'] },
+  web_extract: { explicitTypes: ['extract', 'web_extract', 'read_url'], keywords: ['extract', 'read', 'fetch', 'scrape', 'url', 'page content'] },
+  web_crawl:   { explicitTypes: ['crawl', 'web_crawl', 'explore_site'], keywords: ['crawl', 'explore', 'site', 'website', 'browse', 'traverse'] },
+  web_map:     { explicitTypes: ['map', 'web_map', 'discover_urls'], keywords: ['map', 'discover', 'urls', 'sitemap', 'list pages', 'find links'] },
 };
 
 /**
@@ -182,6 +185,9 @@ const TOOL_REGISTRY: Record<ExecutorToolType, { explicitTypes: string[]; keyword
 function mapSkillToolToExecutorTool(toolName: string): ExecutorToolType | null {
   const mapping: Record<string, ExecutorToolType> = {
     'web_search': 'web_search',
+    'web_extract': 'web_extract',
+    'web_crawl': 'web_crawl',
+    'web_map': 'web_map',
     'document': 'doc_gen', 'document_gen': 'doc_gen', 'doc_gen': 'doc_gen',
     'image': 'image_gen', 'image_gen': 'image_gen',
     'chart': 'chart_gen', 'chart_gen': 'chart_gen',
@@ -233,7 +239,7 @@ function detectToolForTask(task: AgentTask, planId?: string): string | null {
   if (typeLC === 'generate') {
     const scores: Partial<Record<ExecutorToolType, number>> = {};
     for (const [tool, config] of Object.entries(TOOL_REGISTRY)) {
-      if (tool === 'web_search') continue; // search is not a generation tool
+      if (tool.startsWith('web_')) continue; // search/extract/crawl/map are not generation tools
       const score = config.keywords.filter(kw => combinedText.includes(kw)).length;
       if (score > 0) scores[tool as ExecutorToolType] = score;
     }
@@ -721,6 +727,9 @@ async function executeToolForTask(
     doc_gen: 'Document Generation',
     image_gen: 'Image Generation',
     web_search: 'Web Search',
+    web_extract: 'Web Extract',
+    web_crawl: 'Web Crawl',
+    web_map: 'Web Map',
     chart_gen: 'Chart Generation',
     xlsx_gen: 'Spreadsheet Generation',
     pptx_gen: 'Presentation Generation',
@@ -982,11 +991,10 @@ async function executeWebSearchTool(
     console.log(`[Executor] Detected quantity ${maxResults} in search task, overriding default max_results`);
   }
 
-  // Execute web search
+  // Execute web search — search_depth, topic, time_range etc. default to admin settings
   const result = await tavilyWebSearch.execute({
     query,
     max_results: maxResults,
-    search_depth: 'basic',
   });
 
   // Parse and format results

@@ -1,5 +1,5 @@
 import type { OpenAI } from 'openai';
-import { tavilyWebSearch } from './tools/tavily';
+import { tavilyWebSearch, tavilyWebExtract, tavilyWebCrawl, tavilyWebMap } from './tools/tavily';
 import { documentGenerationTool } from './tools/docgen';
 import { dataSourceTool } from './tools/data-source';
 import { aggregateDataTool } from './tools/aggregate-data';
@@ -79,6 +79,8 @@ export interface ToolDefinition {
   subagentSafe?: boolean;
   /** Model capability requirements for auto-selection when this tool is matched */
   modelRequirements?: ModelRequirements;
+  /** Optional group name for admin UI grouping (e.g., 'tavily' groups web_search, web_extract, web_crawl, web_map) */
+  group?: string;
 }
 
 /**
@@ -126,8 +128,14 @@ export const HYBRID_TOOLS = new Set(['translation']);
  */
 export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   // ── Search & Research ──
-  web_search: { ...tavilyWebSearch, subagentSafe: true,
+  web_search: { ...tavilyWebSearch, group: 'tavily', subagentSafe: true,
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+  web_extract: { ...tavilyWebExtract, group: 'tavily', subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+  web_crawl: { ...tavilyWebCrawl, group: 'tavily', subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+  web_map: { ...tavilyWebMap, group: 'tavily', subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true } },
   website_analysis: { ...websiteAnalysisTool, subagentSafe: true,
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
   load_testing: { ...loadTestingTool, subagentSafe: true,
