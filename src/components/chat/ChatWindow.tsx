@@ -310,6 +310,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     toggleProcessingDetails,
     reset: resetStreaming,
     abort: abortStreaming,
+    flushNow,
+    isStreamAlive,
     pausePlan,
     resumePlan,
     stopPlan,
@@ -324,6 +326,14 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Always-current streaming flag for scroll handler (avoids recreating callback)
   const isStreamingRef = useRef(streamingState.isStreaming);
   isStreamingRef.current = streamingState.isStreaming;
+
+  // Refs for visibility-change recovery — RAF is throttled while hidden,
+  // so buffered content may not have been flushed. When the tab returns,
+  // we flush immediately if the stream is still alive.
+  const flushNowRef = useRef(flushNow);
+  flushNowRef.current = flushNow;
+  const streamAliveRef = useRef(isStreamAlive);
+  streamAliveRef.current = isStreamAlive;
 
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
@@ -473,6 +483,21 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       if (!currentThreadId) return;
 
       const state = streamingStateRef.current;
+      const stillAlive = streamAliveRef.current();
+
+      // Case 1: Stream connection is still alive and streaming.
+      // RAF was throttled while the tab was hidden, so buffered content
+      // accumulated in contentBufferRef but never reached React state.
+      // Flush it now — the backend is still sending, no reload needed.
+      if (stillAlive && state.isStreaming) {
+        flushNowRef.current();
+        return;
+      }
+
+      // Case 2: Stream was active but the fetch connection died while hidden
+      // (browsers may deprioritize or disconnect long-lived fetch streams in
+      // background tabs). Reload from DB — if the backend completed the stream
+      // while we were away, the message will be there.
       const hadError = errorRef.current || state.error;
       const wasStreaming = state.isStreaming;
       const seemsStuck = loadingRef.current && !state.isStreaming && !errorRef.current && !state.error;

@@ -144,6 +144,10 @@ export interface UseStreamingChatReturn {
   toggleProcessingDetails: () => void;
   /** Reset state for new conversation */
   reset: () => void;
+  /** Flush buffered chunks immediately (bypasses RAF — useful when tab regains visibility) */
+  flushNow: () => void;
+  /** Whether the underlying fetch ReadableStream is still connected */
+  isStreamAlive: () => boolean;
   // Execution control methods
   /** Pause the current autonomous plan */
   pausePlan: (reason?: string) => Promise<boolean>;
@@ -241,6 +245,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const abortControllerRef = useRef<AbortController | null>(null);
   const messageVersionRef = useRef(0); // Prevents stale updates from aborted streams
   const completedRef = useRef(false); // Prevents double onComplete when done event fires
+  const streamAliveRef = useRef(false); // Tracks whether fetch ReadableStream is still connected
 
   // Parallel refs for accumulated artifacts — read in the 'done' event so we
   // don't rely on stateRef which lags behind batched setState updates.
@@ -277,6 +282,19 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         rafRef.current = undefined;
       });
     }
+  }, [flushBuffers]);
+
+  /**
+   * Flush buffered chunks immediately, bypassing RAF.
+   * Used when the tab regains visibility — RAF is throttled while hidden
+   * so content accumulates in buffers but never reaches React state.
+   */
+  const flushNow = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = undefined;
+    }
+    flushBuffers();
   }, [flushBuffers]);
 
   // Cleanup on unmount
@@ -1006,6 +1024,9 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         throw new Error('No response body');
       }
 
+      // Mark stream as alive — the fetch succeeded and we have a reader
+      streamAliveRef.current = true;
+
       // Read SSE stream
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -1044,6 +1065,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
       // Safety: if stream closed without explicit 'done' event, finalize with
       // buffered content so ChatWindow can reset loading instead of being stuck.
+      streamAliveRef.current = false;
       if (completedRef.current) return;
       const wasStreaming = stateRef.current.isStreaming;
       setState(prev => prev.isStreaming ? {
@@ -1067,6 +1089,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         );
       }
     } catch (error) {
+      streamAliveRef.current = false;
       if (error instanceof Error && error.name === 'AbortError') {
         // User aborted, reset state
         setState(prev => ({
@@ -1092,6 +1115,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
    * Abort current streaming
    */
   const abort = useCallback(() => {
+    streamAliveRef.current = false;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -1314,12 +1338,16 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     }
   }, []);
 
+  const isStreamAlive = useCallback(() => streamAliveRef.current, []);
+
   return {
     state,
     sendMessage,
     abort,
     toggleProcessingDetails,
     reset,
+    flushNow,
+    isStreamAlive,
     pausePlan,
     resumePlan,
     stopPlan,
