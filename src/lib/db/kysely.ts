@@ -615,14 +615,14 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     forced_tool_capable: number;
   }> = [
     // Gemini 2.5
-    { id: 'gemini-2.5-pro', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 1.25, output_cost_per_1m: 10.00, forced_tool_capable: 1 },
-    { id: 'gemini-2.5-flash', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 2.50, forced_tool_capable: 1 },
-    { id: 'gemini-2.5-flash-lite', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.10, output_cost_per_1m: 0.40, forced_tool_capable: 1 },
+    { id: 'gemini-2.5-pro', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 1.25, output_cost_per_1m: 10.00, forced_tool_capable: 1 },
+    { id: 'gemini-2.5-flash', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 2.50, forced_tool_capable: 1 },
+    { id: 'gemini-2.5-flash-lite', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 0.10, output_cost_per_1m: 0.40, forced_tool_capable: 1 },
     // Gemini 3.x
-    { id: 'gemini-3-flash-preview', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.50, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
-    { id: 'gemini-3.1-pro-preview', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 2.00, output_cost_per_1m: 12.00, forced_tool_capable: 1 },
-    { id: 'gemini-3.5-flash', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 9.00, forced_tool_capable: 1 },
-    { id: 'gemini-3.1-flash-lite', max_input_tokens: 1048576, max_output_tokens: 64000, vision_capable: 1, input_cost_per_1m: 0.25, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
+    { id: 'gemini-3-flash-preview', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 0.50, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
+    { id: 'gemini-3.1-pro-preview', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 2.00, output_cost_per_1m: 12.00, forced_tool_capable: 1 },
+    { id: 'gemini-3.5-flash', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 9.00, forced_tool_capable: 1 },
+    { id: 'gemini-3.1-flash-lite', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, input_cost_per_1m: 0.25, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
     // OpenAI - GPT-4 series
     { id: 'gpt-4o', max_input_tokens: 128000, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 10.00, forced_tool_capable: 1 },
     { id: 'gpt-4o-mini', max_input_tokens: 128000, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 0.15, output_cost_per_1m: 0.60, forced_tool_capable: 1 },
@@ -656,6 +656,14 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     // Moonshot/Kimi K2 (native API)
     { id: 'moonshot/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
     { id: 'moonshot/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 3.50, forced_tool_capable: 1 },
+    // Moonshot/Kimi K2 (dot-notation aliases)
+    { id: 'moonshot/kimi-k2.5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 0 },
+    { id: 'moonshot/kimi-k2.6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 2.50, forced_tool_capable: 0 },
+    // Mistral legacy aliases
+    { id: 'mistral-large-latest', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.50, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
+    { id: 'mistral-medium', max_input_tokens: 256000, max_output_tokens: 8000, vision_capable: 0, input_cost_per_1m: 0.40, output_cost_per_1m: 2.00, forced_tool_capable: 1 },
+    // Claude Sonnet 4.6
+    { id: 'claude-sonnet-4-6', max_input_tokens: 1000000, max_output_tokens: 32000, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
   ];
   for (const m of nativeProviderSpecs) {
     await sql`
@@ -690,6 +698,72 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       AND thinking_capable = 0
   `.execute(database);
   console.log('[Kysely] Ensured default thinking models are marked capable');
+
+  // Migration: Backfill thinking_capable for Claude Sonnet 4.6 and Gemini 3.x
+  // These models support thinking but were missed by the original backfill above
+  await sql`
+    UPDATE enabled_models
+    SET thinking_capable = 1
+    WHERE (
+        id LIKE 'claude-sonnet-4-6%'
+        OR id LIKE '%/claude-sonnet-4-6%'
+        OR id LIKE 'gemini-3%'
+      )
+      AND thinking_capable = 0
+  `.execute(database);
+  console.log('[Kysely] Ensured Claude Sonnet 4.6 and Gemini 3.x thinking models are marked capable');
+
+  // Migration: Backfill parallel_tool_capable for models whose detection patterns
+  // indicate support but DB rows may be stale (parallel_tool_capable was not synced
+  // by earlier nativeProviderSpecs migration which only syncs tool/vision/forced/pricing)
+  await sql`
+    UPDATE enabled_models
+    SET parallel_tool_capable = 1
+    WHERE (
+        -- GPT-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro)
+        id LIKE 'gpt-5.4%'
+        -- Mistral Large
+        OR id LIKE 'mistral-large%'
+        -- Gemini (all models — full parallel + compositional support)
+        OR id LIKE 'gemini-%'
+        -- Claude (all models — excellent multi-tool support)
+        OR id LIKE 'claude-%'
+        -- Moonshot/Kimi K2 (native API — full tool calling with parallel support)
+        OR id LIKE 'moonshot/kimi%'
+      )
+      AND parallel_tool_capable = 0
+  `.execute(database);
+  console.log('[Kysely] Ensured parallel_tool_capable is set for GPT-5.4, Mistral Large, Gemini, and Claude models');
+
+  // Migration: Fix context windows for Gemini 3.x models (1,000,000 → 1,048,576)
+  await sql`
+    UPDATE enabled_models
+    SET max_input_tokens = 1048576
+    WHERE id IN ('gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3.1-flash-lite')
+      AND max_input_tokens = 1000000
+  `.execute(database);
+  console.log('[Kysely] Fixed Gemini 3.x context windows to 1,048,576');
+
+  // Migration: Fix context windows for Kimi K2.x and Mistral Medium models
+  await sql`
+    UPDATE enabled_models SET max_input_tokens = 262144 WHERE id = 'moonshot/kimi-k2.6' AND (max_input_tokens IS NULL OR max_input_tokens != 262144)
+  `.execute(database);
+  await sql`
+    UPDATE enabled_models SET max_input_tokens = 262144 WHERE id = 'moonshot/kimi-k2.5' AND (max_input_tokens IS NULL OR max_input_tokens != 262144)
+  `.execute(database);
+  await sql`
+    UPDATE enabled_models SET max_input_tokens = 256000 WHERE id = 'mistral-medium' AND (max_input_tokens IS NULL OR max_input_tokens != 256000)
+  `.execute(database);
+  console.log('[Kysely] Fixed context windows for Kimi K2.x and Mistral Medium models');
+
+  // Migration: Fix Gemini max output tokens (64,000 → 65,536 per official API)
+  await sql`
+    UPDATE enabled_models
+    SET max_output_tokens = 65536
+    WHERE (id LIKE 'gemini-%')
+      AND max_output_tokens = 64000
+  `.execute(database);
+  console.log('[Kysely] Fixed Gemini max output tokens to 65,536');
 
   // Migration: Update thread_outputs and workspace_outputs file_type CHECK constraints to include 'html'
   // First, update any rows with file_types that would violate the new constraint to a valid type

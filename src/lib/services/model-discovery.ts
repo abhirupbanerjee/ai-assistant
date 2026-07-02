@@ -159,6 +159,8 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
   /^accounts\/fireworks/,
   // Azure AI Foundry (Route 5) — same parallel capabilities as OpenAI
   /^azure-foundry\//,
+  // Moonshot / Kimi K2 — full tool calling with parallel support
+  /^moonshot\/kimi/,
   // DeepSeek V4 — full tool calling with parallel support
   /^deepseek-v4-(flash|pro)/,
   /^fireworks\/deepseek-v4-(flash|pro)/,
@@ -191,6 +193,7 @@ const THINKING_CAPABLE_PATTERNS = [
   // Other exposed-reasoning families
   /^gpt-oss/,
   /^gemini-2\.5/,
+  /^gemini-3/,
   /^magistral/,
   // MiniMax M3 exposes reasoning via the thinking parameter
   /^minimax-m3/,
@@ -242,10 +245,10 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gemini-2.5-flash': 1000000,
   'gemini-2.5-flash-lite': 1000000,
   // Gemini 3.x
-  'gemini-3-flash-preview': 1000000,
-  'gemini-3.1-pro-preview': 1000000,
-  'gemini-3.5-flash': 1000000,
-  'gemini-3.1-flash-lite': 1000000,
+  'gemini-3-flash-preview': 1048576,
+  'gemini-3.1-pro-preview': 1048576,
+  'gemini-3.5-flash': 1048576,
+  'gemini-3.1-flash-lite': 1048576,
   // Gemini latest aliases
   'gemini-pro-latest': 1049000,
   'gemini-flash-latest': 1049000,
@@ -271,6 +274,14 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'claude-sonnet-4-5': 1000000,
   'claude-haiku-4-5': 1000000,
   'claude-opus-4-5': 1000000,
+  // Moonshot / Kimi K2 (native API)
+  'moonshot/kimi-k2.6': 262144,
+  'moonshot/kimi-k2.5': 262144,
+  'kimi-k2.6': 262144,
+  'kimi-k2.5': 262144,
+  // Mistral legacy aliases
+  'mistral-medium': 256000,
+  'mistral-large': 262144,
   // DeepSeek V4 (native API)
   'deepseek-v4-flash': 1048576,
   'deepseek-v4-pro': 1048576,
@@ -313,7 +324,7 @@ const DEFAULT_OUTPUT_TOKENS: Record<string, number> = {
   ollama: 2000,
   openai: 128000,    // GPT-5 series supports up to 128K output
   anthropic: 32000,
-  gemini: 64000,
+  gemini: 65536,
   mistral: 8000,
   fireworks: 16384,
   'azure-foundry': 16000,
