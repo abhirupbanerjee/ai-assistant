@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -37,9 +37,11 @@ import {
   Server,
   Zap,
   Users,
-  Eye,
   Check,
-  ArrowUpRight
+  ArrowUpRight,
+  Star,
+  Clock,
+  Mic
 } from 'lucide-react';
 
 const SIGN_IN_URL = '/auth/signin?callbackUrl=/chat';
@@ -239,51 +241,71 @@ export default function LandingPage() {
       <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 mb-24 relative z-20">
         <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 shadow-2xl overflow-hidden backdrop-blur-md">
           
-          {/* Mock Browser Header */}
+          {/* Mock Browser Header - URL pointing to ai.abhirup.app */}
           <div className="bg-slate-900/80 px-4 py-3 flex items-center justify-between border-b border-slate-800/80">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-red-500/40" />
               <span className="w-3 h-3 rounded-full bg-yellow-500/40" />
               <span className="w-3 h-3 rounded-full bg-green-500/40" />
-              <span className="text-xs text-slate-500 font-mono ml-4">policy-bot://localhost:3000/chat</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-950/50 px-2.5 py-1 rounded border border-slate-800">
-              <Activity size={12} className="text-green-400 animate-pulse" />
-              <span>Ollama + Qdrant: Active</span>
+              <span className="text-xs text-slate-400 font-mono ml-4 select-all">https://ai.abhirup.app</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 min-h-[460px]">
-            {/* Mock Sidebar */}
+            {/* Mock Sidebar - Threads ordered by Favorites and Dates */}
             <div className="hidden md:flex flex-col bg-slate-950/90 border-r border-slate-800/60 p-3 justify-between">
               <div className="space-y-4">
-                <div className="text-xs font-bold text-slate-500 px-2 tracking-wider uppercase">Workspaces</div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/10 cursor-pointer">
-                    <Database size={13} />
-                    <span>Governance & Risk</span>
+                
+                {/* Favorites Threads */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-500 px-2 tracking-wider uppercase flex items-center gap-1.5 mb-1.5">
+                    <Star size={11} className="text-amber-400 fill-amber-400" />
+                    <span>Favorites</span>
                   </div>
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
-                    <FileText size={13} />
-                    <span>HR Policy Guide</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
-                    <Network size={13} />
-                    <span>IT Security Wiki</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/10 cursor-pointer">
+                      <FileText size={13} />
+                      <span className="truncate">Cloud Policy Check</span>
+                    </div>
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
+                      <FileCode size={13} />
+                      <span className="truncate">HTML Generator Spec</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="text-xs font-bold text-slate-500 px-2 pt-2 tracking-wider uppercase">Agent Bots</div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
-                    <Activity size={13} />
-                    <span>Compliance Scanner v2</span>
+                {/* Date-sorted Threads */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-500 px-2 tracking-wider uppercase flex items-center gap-1.5 mb-1.5">
+                    <Clock size={11} className="text-slate-400" />
+                    <span>Today</span>
                   </div>
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
-                    <Settings size={13} />
-                    <span>PDF Generator Engine</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
+                      <FileCheck size={13} />
+                      <span className="truncate">Compliance Migration</span>
+                    </div>
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-200 cursor-pointer transition-colors">
+                      <Layers size={13} />
+                      <span className="truncate">Security Audit Directives</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Older dates */}
+                <div>
+                  <div className="text-[10px] font-bold text-slate-500 px-2 tracking-wider uppercase flex items-center gap-1.5 mb-1.5">
+                    <Clock size={11} className="text-slate-500" />
+                    <span>Yesterday</span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:bg-slate-900/40 hover:text-slate-300 cursor-pointer transition-colors">
+                      <FileText size={13} />
+                      <span className="truncate">Custom Chatbot Seeding</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               <div className="p-2 border-t border-slate-900">
@@ -435,18 +457,56 @@ export default function LandingPage() {
 
               </div>
 
-              {/* Chat Input Bar */}
-              <div className="p-4 border-t border-slate-800/80 bg-slate-950/40 flex gap-2.5">
-                <input
-                  type="text"
-                  readOnly
-                  placeholder="Ask Policy Bot or type '/' command..."
-                  className="flex-1 bg-slate-900/60 border border-slate-800/80 rounded-lg px-3.5 py-2 text-sm text-slate-300 focus:outline-none placeholder-slate-600"
-                  value={typedPrompt}
-                />
-                <button className="bg-blue-600 text-white rounded-lg px-4 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/10">
-                  <Play size={14} className="fill-current" />
-                </button>
+              {/* Chat Input Bar - With + uploader, Model selector pill, Ollama + Qdrant: Connected pill, audio mic, and play button */}
+              <div className="p-4 border-t border-slate-800/80 bg-slate-950/40 space-y-2.5">
+                
+                {/* Control elements on top of text box */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  
+                  {/* Left Controls: File Uploader & Model Selector Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <button className="w-7 h-7 bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white rounded flex items-center justify-center border border-slate-800 transition-colors">
+                      <Plus size={14} />
+                    </button>
+                    
+                    {/* Model selector mockup */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/80 text-[11px] text-slate-300 rounded border border-slate-800 cursor-pointer hover:bg-slate-800 transition-colors">
+                      <Cpu size={11} className="text-blue-400" />
+                      <span className="font-semibold">Ollama: Qwen-2.5-14B (Local)</span>
+                      <ChevronDown size={11} className="text-slate-500" />
+                    </div>
+                  </div>
+
+                  {/* Right Status Indicator: Connected node info */}
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-950 rounded text-[10px] text-slate-400 border border-slate-800/60 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    <span>Ollama + Qdrant: Connected</span>
+                  </div>
+
+                </div>
+
+                {/* Input Text box with mic and send button */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="Ask Policy Bot or type '/' command..."
+                      className="w-full bg-slate-900/60 border border-slate-800/80 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-slate-300 focus:outline-none placeholder-slate-600"
+                      value={typedPrompt}
+                    />
+                    
+                    {/* Audio mic STT icon inside input box */}
+                    <button className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                      <Mic size={14} />
+                    </button>
+                  </div>
+                  
+                  <button className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/10 transition-colors">
+                    <Play size={14} className="fill-current" />
+                  </button>
+                </div>
+
               </div>
 
             </div>
@@ -472,9 +532,9 @@ export default function LandingPage() {
             <div className="w-12 h-12 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-center mb-6 text-indigo-400 group-hover:scale-105 transition-transform duration-300">
               <Server size={24} />
             </div>
-            <h3 className="text-lg font-bold text-white mb-3">Four-Route LLM Failover</h3>
+            <h3 className="text-lg font-bold text-white mb-3">Multi-Route LLM Connections</h3>
             <p className="text-slate-400 text-sm leading-relaxed">
-              Maximize model reliability by routing queries across LiteLLM Proxies, direct model SDKs (Claude), local Ollama networks, or Ollama Cloud instantly.
+              Ensure model survivability by routing requests over direct SDK connections, LiteLLM gateway proxies, local Ollama hosts, or Ollama Cloud instantly.
             </p>
           </div>
 
@@ -806,17 +866,17 @@ export default function LandingPage() {
                     <p className="text-slate-300 font-bold">Planner: Formulation of subtasks & allocated budgets</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold">2</span>
+                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold">1</span>
                     <p className="text-slate-300 font-bold">Executor: Sequential tool triggering & RAG searches</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold">3</span>
+                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold">2</span>
                     <p className="text-red-400/90 font-bold flex items-center gap-1">
                       <span>⚠ Tool Safety Gate: Doc_gen requested (Pause & Approve)</span>
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold">4</span>
+                    <span className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold">3</span>
                     <p className="text-slate-300 font-bold">Checker & Summarizer: Error check, compliance pass, and stream output</p>
                   </div>
                 </div>
@@ -898,7 +958,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Structured Provider Section (Three routes) */}
+      {/* Structured Provider Section - Refined Routes Classification */}
       <section className="py-24 border-t border-slate-900 bg-slate-950 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
@@ -907,63 +967,63 @@ export default function LandingPage() {
               Flexible Multi-Route Model Connections
             </h2>
             <p className="mt-4 text-slate-400 leading-relaxed">
-              Policy Bot leverages 4 unique internal communication pathways to connect with any local or cloud LLM, guaranteeing zero-downtime performance.
+              Policy Bot leverages unique internal communication pathways to connect with any local or cloud LLM, guaranteeing zero-downtime performance.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             
-            {/* Direct SDKs */}
+            {/* Route 1: Direct SDK Integration */}
             <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-6 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow shadow-orange-500/30" />
                 <h3 className="font-bold text-white text-base">Route 1: Direct SDK Integration</h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Calls APIs directly via specialized provider SDKs. Perfect for Anthropic Claude (3.5 Sonnet / Haiku / Opus) to prevent multi-turn tool calling JSON parsing problems during streaming, Moonshot, or DeepSeek R1.
+                Connects directly to models using native software development kits. Bypasses aggregation errors to deliver reliable tool call streaming and rapid JSON assembly.
               </p>
-              <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-1.5">
-                <span className="text-[10px] text-slate-400">Claude 3.5</span>
+              <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-1.5 font-semibold text-[11px] text-orange-400">
+                <span>Anthropic</span>
                 <span className="text-slate-700">·</span>
-                <span className="text-[10px] text-slate-400">DeepSeek R1</span>
+                <span>OpenAI</span>
                 <span className="text-slate-700">·</span>
-                <span className="text-[10px] text-slate-400">Fireworks AI</span>
+                <span>Mistral</span>
+                <span className="text-slate-700">·</span>
+                <span>DeepSeek</span>
+                <span className="text-slate-700">·</span>
+                <span>Moonshot</span>
               </div>
             </div>
 
-            {/* Aggregators */}
+            {/* Route 2: Unified Aggregators */}
             <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-6 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow shadow-blue-500/30" />
                 <h3 className="font-bold text-white text-base">Route 2: Unified Aggregators</h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Integrates with centralized proxies. LiteLLM Gateway processes, loads, and fallbacks over 100+ public cloud API endpoints. Tracks real-time cost analytics and distributes user-group quotas effortlessly.
+                Integrates with centralized proxies, cloud model registries, and API brokers to simplify management and facilitate immediate failovers.
               </p>
-              <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-1.5">
-                <span className="text-[10px] text-slate-400">LiteLLM Proxy</span>
+              <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-1.5 font-semibold text-[11px] text-blue-400">
+                <span>Azure AI Foundry</span>
                 <span className="text-slate-700">·</span>
-                <span className="text-[10px] text-slate-400">OpenAI GPT-4o</span>
+                <span>Fireworks AI</span>
                 <span className="text-slate-700">·</span>
-                <span className="text-[10px] text-slate-400">Ollama Cloud</span>
+                <span>Ollama Cloud</span>
               </div>
             </div>
 
-            {/* Air-Gapped Local */}
+            {/* Route 3: Air-Gapped Local */}
             <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-6 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow shadow-emerald-500/30" />
                 <h3 className="font-bold text-white text-base">Route 3: Air-Gapped Local</h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Connects directly to local Ollama nodes (`ollama:11434/v1`). Perfect for restricted networks or fully secure, offline operations. Zero data leakage, zero subscription costs.
+                Operates completely local within sovereign networks. Integrates with on-premise inference engines to guarantee zero subscription overheads and zero data leakage.
               </p>
-              <div className="pt-2 border-t border-slate-900 flex flex-wrap gap-1.5">
-                <span className="text-[10px] text-slate-400">Local Llama 3</span>
-                <span className="text-slate-700">·</span>
-                <span className="text-[10px] text-slate-400">Qwen 2.5</span>
-                <span className="text-slate-700">·</span>
-                <span className="text-[10px] text-slate-400">Phi 4</span>
+              <div className="pt-2 border-t border-slate-900 text-emerald-400 font-semibold text-[11px]">
+                <span>All models available under Ollama local</span>
               </div>
             </div>
 
