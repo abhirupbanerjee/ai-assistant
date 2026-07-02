@@ -83,11 +83,19 @@ export function useScrollMemory(containerRef: RefObject<HTMLDivElement | null>) 
   );
 
   /**
+   * Cancel any pending scroll restore — call when the user manually scrolls
+   * so that confirmRestore doesn't fight the user's scroll position.
+   */
+  const cancelRestore = useCallback(() => {
+    pendingRestore.current = null;
+  }, []);
+
+  /**
    * Clear saved scroll position for a thread (e.g. on new message sent).
    */
   const clearScroll = useCallback((threadId: string) => {
     scrollPositions.delete(threadId);
   }, []);
 
-  return { saveScroll, restoreScroll, confirmRestore, clearScroll };
+  return { saveScroll, restoreScroll, confirmRestore, cancelRestore, clearScroll };
 }

@@ -212,6 +212,8 @@ export interface PodcastHint {
   downloadUrl: string;
   /** Stream URL */
   streamUrl: string;
+  /** Expiration timestamp (null = never) */
+  expiresAt: string | null;
 }
 
 // ===== Tool Response Types =====

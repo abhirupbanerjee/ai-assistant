@@ -941,6 +941,7 @@ async function executeImageGenTool(
         model: parsed.metadata?.model || 'unknown',
         width: parsed.imageHint.width || 1024,
         height: parsed.imageHint.height || 1024,
+        expiresAt: null,
       };
 
       callbacks?.onArtifact?.({

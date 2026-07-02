@@ -2319,6 +2319,7 @@ export async function generateResponseWithTools(
                   alt: parsed.imageHint.alt || 'Generated image',
                   provider: parsed.metadata?.provider,
                   model: parsed.metadata?.model,
+                  expiresAt: null,
                 };
                 callbacks.onArtifact('image', img);
               }

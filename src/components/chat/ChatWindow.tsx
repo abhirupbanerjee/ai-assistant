@@ -18,6 +18,7 @@ import { useStreamingChat } from '@/hooks/useStreamingChat';
 import { useScrollHide } from '@/hooks/useScrollHide';
 import { useScrollMemory } from '@/hooks/useScrollMemory';
 import { useChatArtifacts } from '@/hooks/useChatArtifacts';
+import { useThreadOutputs } from '@/hooks/useThreadOutputs';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ChatSummaryBanner from './ChatSummaryBanner';
@@ -236,13 +237,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Latch: once the user scrolls up during streaming, pause auto-scroll for the
   // rest of that turn. Reset on every new send.
   const streamScrollPausedRef = useRef(false);
+  // Guard: true while we are programmatically setting scrollTop. Prevents the
+  // scroll handler from treating our own scroll as a "user scrolled up" event
+  // and fighting it (infinite-scroll / jump-to-top bug).
+  const programmaticScrollRef = useRef(false);
 
   // Mobile scroll-based hiding
   const { isHidden: isScrollingDown, onScroll: onScrollHide } = useScrollHide();
   const mobileMenu = useMobileMenuOptional();
 
   // Per-thread scroll position memory
-  const { saveScroll, restoreScroll, confirmRestore } = useScrollMemory(messagesContainerRef);
+  const { saveScroll, restoreScroll, confirmRestore, cancelRestore } = useScrollMemory(messagesContainerRef);
 
   // Sync scroll state to mobile menu context
   useEffect(() => {
@@ -323,13 +328,17 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Determine if we're in autonomous mode
   const isAutonomousMode = Boolean(streamingState.autonomousPlan);
 
-  // Compute aggregated artifacts (docs, images, podcasts) from messages + streaming state
+  // Fetch thread outputs from durable storage (survives summarization)
+  const { outputs: threadOutputs } = useThreadOutputs(threadId);
+
+  // Compute aggregated artifacts (docs, images, podcasts) from messages + streaming state + thread outputs
   const { generatedDocs, generatedImages, generatedPodcasts } = useChatArtifacts({
     threadId,
     messages,
     uploads,
     urlSources,
     streamingState,
+    threadOutputs,
     onArtifactsChange,
   });
 
@@ -391,12 +400,20 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     // onThreadCreated() during sendMessage(), and resetting would kill the stream.
     if (isSendingRef.current) return;
 
-    // Save scroll position of current thread before switching
-    if (threadId) {
+    // Guard: skip the re-run triggered by setThreadId() below. When threadId
+    // already matches activeThread.id, the effect has already done its work.
+    // Without this, the second run calls saveScroll() with the NEW threadId
+    // but the OLD messages still in the DOM, corrupting the saved position.
+    if (activeThread && threadId === activeThread.id) return;
+
+    // Save scroll position of current thread before switching (only if different)
+    if (threadId && threadId !== activeThread?.id) {
       saveScroll(threadId);
     }
 
     resetStreaming();
+    // Reset scroll-up flag so auto-scroll isn't skipped on the new thread
+    setIsScrolledUp(false);
 
     // Reset pending uploads/sources and auto-pick when switching threads
     setPendingUploads([]);
@@ -406,9 +423,23 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (activeThread) {
       setPendingModelId(null);
       setThreadId(activeThread.id);
-      loadThread(activeThread.id);
-      // Restore scroll position for this thread (if saved)
-      restoreScroll(activeThread.id);
+      loadThread(activeThread.id).then(() => {
+        // After messages load, scroll to the END (bottom) of the thread by default.
+        // restoreScroll() will override with a saved position if one exists.
+        const container = messagesContainerRef.current;
+        if (container) {
+          programmaticScrollRef.current = true;
+          container.scrollTop = container.scrollHeight;
+        }
+        // Restore saved scroll position (overrides scroll-to-bottom if saved)
+        restoreScroll(activeThread.id);
+        // Reset guard after scroll events from both scrolls have settled
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            programmaticScrollRef.current = false;
+          });
+        });
+      });
       if (activeThread.isSummarized) {
         loadSummaryData(activeThread.id);
       } else {
@@ -600,11 +631,13 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           const distanceFromBottom =
             container.scrollHeight - container.scrollTop - container.clientHeight;
           if (distanceFromBottom > 8) {
+            programmaticScrollRef.current = true;
             container.scrollTop = container.scrollHeight;
           }
         }
       } else {
         // Smooth scroll for new messages (non-streaming)
+        programmaticScrollRef.current = true;
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
     }
@@ -613,9 +646,16 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (threadId && !streamingState.isStreaming) {
       confirmRestore(threadId);
     }
+    // Reset guard after the scroll events from this effect have fired
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
   }, [messages.length, isScrolledUp, streamingState.isStreaming, streamingState.currentContent, streamingState.currentThinkingContent, threadId, confirmRestore, bottomSpacerHeight]);
 
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    // Ignore scroll events triggered by our own programmatic scrolling
+    if (programmaticScrollRef.current) return;
+
     const container = messagesContainerRef.current;
     if (!container) return;
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
@@ -625,14 +665,30 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (isStreamingRef.current && !atBottom) {
       streamScrollPausedRef.current = true;
     }
+    // Cancel any pending scroll-position restore — the user is manually scrolling
+    cancelRestore();
     // Also update mobile scroll-hide state
     onScrollHide(e);
-  }, [onScrollHide]);
+  }, [onScrollHide, cancelRestore]);
 
   const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
+    if (!container) return;
+    // Set guard so the scroll handler doesn't treat this as a user scroll
+    programmaticScrollRef.current = true;
+    container.scrollTop = container.scrollHeight;
     setIsScrolledUp(false);
+    // Retry after a frame: lazy-rendered content near the bottom may change
+    // scrollHeight after the first scroll, requiring a second scroll to reach
+    // the true end (fixes the "stops midway" bug).
+    requestAnimationFrame(() => {
+      const c = messagesContainerRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
+      // Reset guard after the second scroll event has fired
+      requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
+    });
   }, []);
 
   const createThread = useCallback(async (): Promise<string | null> => {

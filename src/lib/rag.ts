@@ -1043,6 +1043,7 @@ function extractGeneratedImagesFromHistory(
             alt: hint.alt || 'Generated image',
             provider: metadata?.provider,
             model: metadata?.model,
+            expiresAt: null,
           });
         }
       } catch {

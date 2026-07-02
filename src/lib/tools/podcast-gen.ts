@@ -929,6 +929,10 @@ export async function generatePodcast(
     const processingTimeMs = Date.now() - startTime;
     console.log(`[PodcastGen] Completed in ${processingTimeMs}ms: ${saved.downloadUrl}`);
 
+    const podcastExpiresAt = config.expirationDays > 0
+      ? new Date(Date.now() + config.expirationDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
     const podcastHint: PodcastHint = {
       id: saved.id,
       filename: `${args.topic.substring(0, 50)}_podcast.${rawResult.format}`,
@@ -936,6 +940,7 @@ export async function generatePodcast(
       format: rawResult.format,
       downloadUrl: saved.downloadUrl,
       streamUrl: saved.downloadUrl,
+      expiresAt: podcastExpiresAt,
     };
 
     return {

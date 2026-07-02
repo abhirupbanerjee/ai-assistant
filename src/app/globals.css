@@ -40,25 +40,9 @@ html, body {
 /* Scrollable container that prevents mobile pull-to-refresh */
 .scroll-container {
   overscroll-behavior-y: contain;
-  /* content-visibility reduces layout cost of off-screen messages */
-  content-visibility: auto;
   /* Disable native scroll anchoring — the manual auto-scroll in ChatWindow.tsx
      handles pinning; native anchoring fights it and causes micro-jitter */
   overflow-anchor: none;
-}
-
-/* Message list items get intrinsic size containment for stable scroll anchoring.
-   Applied to SETTLED messages only — .streaming-live overrides this below. */
-.scroll-container > * {
-  contain-intrinsic-size: auto 200px;
-}
-
-/* The actively-growing streaming bubble must not have a fixed intrinsic-size
-   placeholder because its height changes every frame. Mismatching the reserved
-   200px placeholder vs. actual height causes scroll-anchor micro-corrections. */
-.scroll-container > .streaming-live {
-  contain-intrinsic-size: auto;
-  content-visibility: visible;
 }
 
 /* Promote the scroll layer to a GPU compositor layer ONLY while streaming.

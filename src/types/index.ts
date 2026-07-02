@@ -128,11 +128,27 @@ export interface Message {
 export interface GeneratedDocumentInfo {
   id: string;
   filename: string;
-  fileType: 'pdf' | 'docx' | 'md' | 'html';
+  fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'html';
   fileSize: number;
   fileSizeFormatted: string;
   downloadUrl: string;
   expiresAt: string | null;
+}
+
+/**
+ * Thread output item returned by GET /api/threads/[threadId]/outputs.
+ * Represents a durable artifact from thread_outputs table.
+ */
+export interface ThreadOutputItem {
+  id: number;
+  threadId: string;
+  messageId: string | null;
+  filename: string;
+  fileType: string;
+  fileSize: number;
+  downloadUrl: string;
+  expiresAt: string | null;
+  createdAt: string;
 }
 
 // Generated image info returned by image_gen tool
@@ -145,6 +161,7 @@ export interface GeneratedImageInfo {
   alt: string;
   provider?: string;
   model?: string;
+  expiresAt: string | null;
 }
 
 // URL source info for web/youtube content extracted to thread

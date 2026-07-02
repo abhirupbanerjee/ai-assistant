@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, FileSpreadsheet, FileCode, Globe, Download, ExternalLink, Clock } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, Globe, Download, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
 import type { GeneratedDocumentInfo } from '@/types';
 
 interface DocumentResultCardProps {
@@ -44,38 +44,41 @@ function getFileTypeLabel(fileType: string): string {
 }
 
 /**
- * Format expiration date for display
+ * Format expiration date for display.
+ * Returns text and variant: 'none' (normal), 'warning' (≤10 days), or 'expired'.
  */
-function formatExpiration(expiresAt: string | null): string | null {
-  if (!expiresAt) return null;
+function formatExpiration(expiresAt: string | null): { text: string | null; variant: 'none' | 'warning' | 'expired' } {
+  if (!expiresAt) return { text: null, variant: 'none' };
 
   const expDate = new Date(expiresAt);
   const now = new Date();
   const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diffDays <= 0) return 'Expired';
-  if (diffDays === 1) return 'Expires tomorrow';
-  if (diffDays <= 7) return `Expires in ${diffDays} days`;
+  if (diffDays <= 0) return { text: 'This artifact has been deleted', variant: 'expired' };
+  if (diffDays === 1) return { text: 'Expires tomorrow', variant: 'warning' };
+  if (diffDays <= 10) return { text: `Expires in ${diffDays} days`, variant: 'warning' };
 
-  return `Expires ${expDate.toLocaleDateString()}`;
+  return { text: `Expires ${expDate.toLocaleDateString()}`, variant: 'none' };
 }
 
 export default function DocumentResultCard({ document }: DocumentResultCardProps) {
-  const expiration = formatExpiration(document.expiresAt);
+  const { text: expirationText, variant: expirationVariant } = formatExpiration(document.expiresAt);
+  const isExpired = expirationVariant === 'expired';
+  const isWarning = expirationVariant === 'warning';
   const isHtml = document.fileType === 'html';
 
   const handleDownload = () => {
-    // Open download URL in new tab
+    if (isExpired) return;
     window.open(document.downloadUrl, '_blank');
   };
 
   const handleOpen = () => {
-    // Open HTML page inline in new tab
+    if (isExpired) return;
     window.open(document.downloadUrl, '_blank');
   };
 
   return (
-    <div className="bg-green-50 rounded-lg border border-green-200 p-4 mt-3">
+    <div className={`rounded-lg border p-4 mt-3 ${isExpired ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
       <div className="flex items-start gap-3">
         {/* File icon */}
         <div className="flex-shrink-0 p-2 bg-white rounded-lg shadow-sm">
@@ -84,25 +87,29 @@ export default function DocumentResultCard({ document }: DocumentResultCardProps
 
         {/* Document info */}
         <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-green-900 truncate">
+          <h4 className={`font-medium truncate ${isExpired ? 'text-gray-400 line-through' : 'text-green-900'}`}>
             {document.filename}
           </h4>
-          <div className="flex items-center gap-2 text-sm text-green-700 mt-0.5">
+          <div className={`flex items-center gap-2 text-sm mt-0.5 ${isExpired ? 'text-gray-400' : 'text-green-700'}`}>
             <span>{getFileTypeLabel(document.fileType)}</span>
-            <span className="text-green-400">•</span>
+            <span className={isExpired ? 'text-gray-300' : 'text-green-400'}>•</span>
             <span>{document.fileSizeFormatted}</span>
           </div>
-          {expiration && (
-            <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-              <Clock size={12} />
-              <span>{expiration}</span>
+          {expirationText && (
+            <div className={`flex items-center gap-1 text-xs mt-1 ${
+              isExpired ? 'text-red-500' : isWarning ? 'text-amber-600' : 'text-green-600'
+            }`}>
+              {isExpired ? <AlertTriangle size={12} /> : isWarning ? <AlertTriangle size={12} /> : <Clock size={12} />}
+              <span>{expirationText}</span>
             </div>
           )}
         </div>
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          {isHtml ? (
+          {isExpired ? (
+            <span className="text-xs text-gray-400 italic px-3 py-2">Deleted</span>
+          ) : isHtml ? (
             <button
               onClick={handleOpen}
               className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"

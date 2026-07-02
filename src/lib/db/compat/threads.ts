@@ -525,7 +525,7 @@ export async function getThreadOutputById(outputId: number): Promise<DbThreadOut
   const db = await getDb();
   return db
     .selectFrom('thread_outputs')
-    .select(['id', 'thread_id', 'message_id', 'filename', 'filepath', 'file_type', 'file_size', 'created_at'])
+    .select(['id', 'thread_id', 'message_id', 'filename', 'filepath', 'file_type', 'file_size', 'created_at', 'expires_at', 'generation_config', 'download_count'])
     .where('id', '=', outputId)
     .executeTakeFirst() as Promise<DbThreadOutput | undefined>;
 }
@@ -534,7 +534,7 @@ export async function getThreadOutputs(threadId: string): Promise<DbThreadOutput
   const db = await getDb();
   return db
     .selectFrom('thread_outputs')
-    .select(['id', 'thread_id', 'message_id', 'filename', 'filepath', 'file_type', 'file_size', 'created_at'])
+    .select(['id', 'thread_id', 'message_id', 'filename', 'filepath', 'file_type', 'file_size', 'created_at', 'expires_at', 'generation_config', 'download_count'])
     .where('thread_id', '=', threadId)
     .orderBy('created_at', 'asc')
     .execute() as Promise<DbThreadOutput[]>;

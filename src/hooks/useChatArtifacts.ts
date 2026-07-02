@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useEffect } from 'react';
-import type { Message, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint } from '@/types';
+import type { Message, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, PodcastHint, ThreadOutputItem } from '@/types';
 import type { StreamingState } from './useStreamingChat';
 
 interface UseChatArtifactsOptions {
@@ -10,6 +10,8 @@ interface UseChatArtifactsOptions {
   uploads: string[];
   urlSources: UrlSource[];
   streamingState: StreamingState;
+  /** Thread outputs from durable storage (survives summarization) */
+  threadOutputs?: ThreadOutputItem[];
   onArtifactsChange?: (data: {
     threadId: string | null;
     uploads: string[];
@@ -18,6 +20,57 @@ interface UseChatArtifactsOptions {
     generatedPodcasts: PodcastHint[];
     urlSources: UrlSource[];
   }) => void;
+}
+
+/**
+ * Convert thread outputs to GeneratedDocumentInfo based on file type.
+ * Document types: pdf, docx, xlsx, pptx, md, html
+ */
+function outputToDocument(output: ThreadOutputItem): GeneratedDocumentInfo {
+  return {
+    id: String(output.id),
+    filename: output.filename,
+    fileType: (output.fileType as 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'html') || 'md',
+    fileSize: output.fileSize,
+    fileSizeFormatted: formatFileSize(output.fileSize),
+    downloadUrl: output.downloadUrl,
+    expiresAt: output.expiresAt,
+  };
+}
+
+/**
+ * Convert thread outputs to GeneratedImageInfo.
+ */
+function outputToImage(output: ThreadOutputItem): GeneratedImageInfo {
+  return {
+    id: String(output.id),
+    url: output.downloadUrl,
+    width: 0,
+    height: 0,
+    alt: output.filename,
+    expiresAt: output.expiresAt,
+  };
+}
+
+/**
+ * Convert thread outputs to PodcastHint.
+ */
+function outputToPodcast(output: ThreadOutputItem): PodcastHint {
+  return {
+    id: String(output.id),
+    filename: output.filename,
+    duration: 0,
+    format: (output.fileType === 'wav' ? 'wav' : 'mp3') as 'mp3' | 'wav',
+    downloadUrl: output.downloadUrl,
+    streamUrl: output.downloadUrl,
+    expiresAt: output.expiresAt,
+  };
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 interface ArtifactsData {
@@ -39,6 +92,7 @@ export function useChatArtifacts({
   uploads,
   urlSources,
   streamingState,
+  threadOutputs,
   onArtifactsChange,
 }: UseChatArtifactsOptions): ArtifactsData {
   const { generatedDocs, generatedImages, generatedPodcasts } = useMemo(() => {
@@ -46,38 +100,91 @@ export function useChatArtifacts({
     const images: GeneratedImageInfo[] = [];
     const podcasts: PodcastHint[] = [];
 
-    // Include artifacts from saved messages
-    for (const msg of messages) {
-      if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
-      if (msg.generatedImages) images.push(...msg.generatedImages);
-      if (msg.generatedPodcasts) podcasts.push(...msg.generatedPodcasts);
+    // Track IDs to avoid duplicates
+    const docIds = new Set<string>();
+    const imageIds = new Set<string>();
+    const podcastIds = new Set<string>();
+
+    // 1. Include artifacts from thread_outputs (durable, survives summarization)
+    // These take priority as the authoritative source with expiration data.
+    if (threadOutputs) {
+      for (const output of threadOutputs) {
+        const docTypes = ['pdf', 'docx', 'xlsx', 'pptx', 'md', 'html'];
+        const imageTypes = ['image'];
+        const podcastTypes = ['mp3', 'wav'];
+
+        if (docTypes.includes(output.fileType)) {
+          const doc = outputToDocument(output);
+          docs.push(doc);
+          docIds.add(doc.id);
+        } else if (imageTypes.includes(output.fileType)) {
+          const img = outputToImage(output);
+          images.push(img);
+          imageIds.add(img.id);
+        } else if (podcastTypes.includes(output.fileType)) {
+          const podcast = outputToPodcast(output);
+          podcasts.push(podcast);
+          podcastIds.add(podcast.id);
+        }
+      }
     }
 
-    // Include real-time streaming artifacts (for sidebar updates during generation)
+    // 2. Include artifacts from saved messages (supplements with richer metadata)
+    for (const msg of messages) {
+      if (msg.generatedDocuments) {
+        for (const doc of msg.generatedDocuments) {
+          if (!docIds.has(doc.id)) {
+            docs.push(doc);
+            docIds.add(doc.id);
+          }
+        }
+      }
+      if (msg.generatedImages) {
+        for (const img of msg.generatedImages) {
+          if (!imageIds.has(img.id)) {
+            images.push(img);
+            imageIds.add(img.id);
+          }
+        }
+      }
+      if (msg.generatedPodcasts) {
+        for (const podcast of msg.generatedPodcasts) {
+          if (!podcastIds.has(podcast.id)) {
+            podcasts.push(podcast);
+            podcastIds.add(podcast.id);
+          }
+        }
+      }
+    }
+
+    // 3. Include real-time streaming artifacts (for sidebar updates during generation)
     if (streamingState.documents) {
       for (const doc of streamingState.documents) {
-        if (!docs.some(d => d.id === doc.id)) {
+        if (!docIds.has(doc.id)) {
           docs.push(doc);
+          docIds.add(doc.id);
         }
       }
     }
     if (streamingState.images) {
       for (const img of streamingState.images) {
-        if (!images.some(i => i.id === img.id)) {
+        if (!imageIds.has(img.id)) {
           images.push(img);
+          imageIds.add(img.id);
         }
       }
     }
     if (streamingState.podcasts) {
       for (const podcast of streamingState.podcasts) {
-        if (!podcasts.some(p => p.id === podcast.id)) {
+        if (!podcastIds.has(podcast.id)) {
           podcasts.push(podcast);
+          podcastIds.add(podcast.id);
         }
       }
     }
 
     return { generatedDocs: docs, generatedImages: images, generatedPodcasts: podcasts };
-  }, [messages, streamingState.documents, streamingState.images, streamingState.podcasts]);
+  }, [messages, threadOutputs, streamingState.documents, streamingState.images, streamingState.podcasts]);
 
   // Notify parent of artifacts changes
   useEffect(() => {

@@ -19,6 +19,28 @@ import { useResizableSidebar } from '@/hooks/useResizableSidebar';
 import ResizeHandle from '@/components/ui/ResizeHandle';
 import PodcastPlayer from './PodcastPlayer';
 
+/**
+ * Calculate days remaining until expiration.
+ * Returns null if no expiration, negative if expired.
+ */
+function getDaysUntilExpiry(expiresAt: string | null): number | null {
+  if (!expiresAt) return null;
+  const now = new Date();
+  const exp = new Date(expiresAt);
+  return Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Get expiration badge props for an artifact.
+ */
+function getExpirationBadge(expiresAt: string | null): { show: boolean; text: string; variant: 'expired' | 'warning' | 'none' } {
+  const daysLeft = getDaysUntilExpiry(expiresAt);
+  if (daysLeft === null) return { show: false, text: '', variant: 'none' };
+  if (daysLeft <= 0) return { show: true, text: 'Deleted', variant: 'expired' };
+  if (daysLeft <= 10) return { show: true, text: `${daysLeft}d left`, variant: 'warning' };
+  return { show: false, text: '', variant: 'none' };
+}
+
 interface ArtifactsPanelProps {
   threadId: string | null;
   uploads: string[];
@@ -192,37 +214,75 @@ export default function ArtifactsPanel({
                 </button>
                 {expandedSections.aiGenerated && (
                   <div className="px-3 py-2 space-y-1.5 bg-white">
-                    {generatedDocs.map((doc) => (
-                      <a
-                        key={doc.id}
-                        href={doc.downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group"
-                      >
-                        <FileText size={14} className="text-purple-500 flex-shrink-0" />
-                        <span className="text-xs text-gray-700 truncate flex-1" title={doc.filename}>
-                          {doc.filename}
-                        </span>
-                      </a>
-                    ))}
-                    {generatedImages.map((img) => (
-                      <a
-                        key={img.id}
-                        href={img.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 group"
-                      >
-                        <ImageIcon size={14} className="text-purple-500 flex-shrink-0" />
-                        <span className="text-xs text-gray-700 truncate flex-1" title={img.alt}>
-                          {img.alt || 'Generated image'}
-                        </span>
-                      </a>
-                    ))}
-                    {generatedPodcasts.map((podcast) => (
-                      <PodcastPlayer key={podcast.id} podcast={podcast} compact />
-                    ))}
+                    {generatedDocs.map((doc) => {
+                      const badge = getExpirationBadge(doc.expiresAt);
+                      const isExpired = badge.variant === 'expired';
+                      return (
+                        <a
+                          key={doc.id}
+                          href={isExpired ? undefined : doc.downloadUrl}
+                          target={isExpired ? undefined : '_blank'}
+                          rel={isExpired ? undefined : 'noopener noreferrer'}
+                          className={`flex items-center gap-2 p-1.5 rounded group ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                          onClick={isExpired ? (e) => e.preventDefault() : undefined}
+                        >
+                          <FileText size={14} className="text-purple-500 flex-shrink-0" />
+                          <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`} title={doc.filename}>
+                            {doc.filename}
+                          </span>
+                          {badge.show && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                              badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {badge.text}
+                            </span>
+                          )}
+                        </a>
+                      );
+                    })}
+                    {generatedImages.map((img) => {
+                      const badge = getExpirationBadge(img.expiresAt);
+                      const isExpired = badge.variant === 'expired';
+                      return (
+                        <a
+                          key={img.id}
+                          href={isExpired ? undefined : img.url}
+                          target={isExpired ? undefined : '_blank'}
+                          rel={isExpired ? undefined : 'noopener noreferrer'}
+                          className={`flex items-center gap-2 p-1.5 rounded group ${isExpired ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                          onClick={isExpired ? (e) => e.preventDefault() : undefined}
+                        >
+                          <ImageIcon size={14} className="text-purple-500 flex-shrink-0" />
+                          <span className={`text-xs truncate flex-1 ${isExpired ? 'line-through text-gray-400' : 'text-gray-700'}`} title={img.alt}>
+                            {img.alt || 'Generated image'}
+                          </span>
+                          {badge.show && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                              badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {badge.text}
+                            </span>
+                          )}
+                        </a>
+                      );
+                    })}
+                    {generatedPodcasts.map((podcast) => {
+                      const badge = getExpirationBadge(podcast.expiresAt);
+                      return (
+                        <div key={podcast.id} className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <PodcastPlayer podcast={podcast} compact />
+                          </div>
+                          {badge.show && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                              badge.variant === 'expired' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {badge.text}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
