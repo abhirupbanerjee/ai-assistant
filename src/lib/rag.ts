@@ -44,6 +44,57 @@ import {
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from '@/types';
 
 /**
+ * Helper to repair a truncated JSON array.
+ * Truncates back to the last complete item, strips trailing commas, and closes with ']'.
+ */
+function repairJsonArray(jsonStr: string): string {
+  jsonStr = jsonStr.trim();
+  if (!jsonStr.startsWith('[')) {
+    jsonStr = '[' + jsonStr;
+  }
+  
+  let inString = false;
+  let escaped = false;
+  let cleanIndex = 0; // index of last safe char after closed token
+  
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      if (!inString) {
+        cleanIndex = i + 1;
+      }
+      continue;
+    }
+    if (!inString) {
+      if (char === ',' || char === ']' || char === '[') {
+        cleanIndex = i + 1;
+      }
+    }
+  }
+  
+  if (inString) {
+    jsonStr = jsonStr.slice(0, cleanIndex).trim();
+  }
+  
+  jsonStr = jsonStr.replace(/,\s*$/, '').trim();
+  
+  if (!jsonStr.endsWith(']')) {
+    jsonStr += ']';
+  }
+  
+  return jsonStr;
+}
+
+/**
  * Rewrite a query using an LLM to generate semantic variations.
  * Results are cached in Redis for 1 hour.
  * Gracefully returns empty array on any failure.
@@ -81,7 +132,7 @@ Rules:
         { role: 'user', content: prompt },
         { role: 'assistant', content: '[' },
       ],
-      maxTokens: 512,
+      maxTokens: 1024,
       temperature: 0.3,
     });
 
@@ -98,27 +149,44 @@ Rules:
     } else if (first !== -1) {
       // Has opening bracket but no closing bracket — truncated JSON
       jsonStr = jsonStr.slice(first);
+    } else {
+      // No opening bracket — prefill '[' consumed by non-Anthropic model response
+      jsonStr = '[' + jsonStr;
     }
 
-    // Repair truncated JSON
-    if (jsonStr.startsWith('[') && !jsonStr.endsWith(']')) {
-      // Find the last complete JSON string entry by backtracking
-      const lastComma = jsonStr.lastIndexOf(',');
-      const lastQuote = jsonStr.lastIndexOf('"');
-      if (lastQuote > lastComma && lastQuote > 1) {
-        // Close the last string and the array
-        jsonStr = jsonStr.slice(0, lastQuote + 1) + ']';
-      } else if (lastComma > 0) {
-        // Remove trailing incomplete entry after last comma and close
-        jsonStr = jsonStr.slice(0, lastComma) + ']';
-      } else {
-        jsonStr = jsonStr + ']';
+    // Repair truncated or malformed JSON (safe no-op on valid input)
+    if (jsonStr.startsWith('[')) {
+      jsonStr = repairJsonArray(jsonStr);
+    }
+
+    let variations: string[] = [];
+    try {
+      variations = JSON.parse(jsonStr) as string[];
+    } catch (parseErr) {
+      logger.warn('Failed to parse query-rewrite JSON, attempting line/quote extraction fallback', { 
+        error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        rawResponse: response 
+      });
+      
+      // Fallback 1: Extract all double-quoted strings
+      const quoteMatches = [...response.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)];
+      if (quoteMatches.length > 0) {
+        variations = quoteMatches.map(m => m[1].replace(/\\"/g, '"').trim()).filter(Boolean);
+      }
+      
+      // Fallback 2: Extract list items line-by-line
+      if (variations.length === 0) {
+        const lines = response.split('\n');
+        for (const line of lines) {
+          const cleanedLine = line.replace(/^\s*[-*•\d+.]+\s*/, '').trim();
+          if (cleanedLine && cleanedLine !== '[' && cleanedLine !== ']') {
+            variations.push(cleanedLine);
+          }
+        }
       }
     }
 
-    const variations = JSON.parse(jsonStr) as string[];
-
-    if (!Array.isArray(variations) || !variations.every(q => typeof q === 'string')) {
+    if (!Array.isArray(variations) || !variations.every(q => typeof q === 'string') || variations.length === 0) {
       return [];
     }
 

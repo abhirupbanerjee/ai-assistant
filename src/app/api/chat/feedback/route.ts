@@ -15,6 +15,7 @@ import {
   getFeedbackByUserAndMessage,
   getEvolvedKbSettings,
   getUserEvolvedKbSettings,
+  getUserByEmail,
 } from '@/lib/db/compat';
 import type { ApiError } from '@/types';
 
@@ -22,13 +23,21 @@ export async function POST(request: NextRequest) {
   try {
     // Authenticate
       const user = await getCurrentUser();
-      if (!user?.id) {
+      if (!user?.email) {
         return NextResponse.json<ApiError>(
           { error: 'Authentication required', code: 'AUTH_REQUIRED' },
           { status: 401 }
         );
       }
-      const userId = Number(user.id);
+      
+      const dbUser = await getUserByEmail(user.email);
+      if (!dbUser) {
+        return NextResponse.json<ApiError>(
+          { error: 'User not found', code: 'NOT_FOUND' },
+          { status: 404 }
+        );
+      }
+      const userId = dbUser.id;
 
     // Parse body
     const body = await request.json();
