@@ -58,7 +58,7 @@ export default function MobileHeader({
 
         {/* Thread title - truncated */}
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <h1 className="text-sm font-medium text-gray-900 truncate">
+          <h1 className="text-base font-semibold text-gray-900 truncate">
             {threadTitle || 'New Chat'}
           </h1>
 

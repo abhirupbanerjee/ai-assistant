@@ -439,8 +439,8 @@ function ThreadItem({
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className="text-xs text-gray-500">{formatDate(thread.updatedAt)}</span>
           {thread.isSummarized && (
-            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium">
-              <BookOpen size={10} />
+            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium">
+              <BookOpen size={12} />
               <span>Summarized</span>
             </span>
           )}
@@ -450,7 +450,7 @@ function ThreadItem({
             {thread.categories.map((cat) => {
               const colors = getCategoryColor(cat.id);
               return (
-                <span key={cat.id} className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}>
+                <span key={cat.id} className={`px-1.5 py-0.5 rounded text-xs font-medium border ${colors.bg} ${colors.text} ${colors.border}`}>
                   {cat.name}
                 </span>
               );
