@@ -251,6 +251,9 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
     })
     .execute();
 
+  // Invalidate quality score cache so next auto-selection uses fresh data
+  import('@/lib/model-quality').then(m => m.invalidateQualityCache()).catch(() => {});
+
   return (await getEnabledModel(input.id))!;
 }
 
@@ -341,6 +344,11 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
     .where('id', '=', id)
     .execute();
 
+  // Invalidate quality score cache when model enabled/disabled status changes
+  if (input.enabled !== undefined) {
+    import('@/lib/model-quality').then(m => m.invalidateQualityCache()).catch(() => {});
+  }
+
   return getEnabledModel(id);
 }
 
@@ -356,6 +364,9 @@ export async function deleteEnabledModel(id: string): Promise<boolean> {
     .deleteFrom('enabled_models')
     .where('id', '=', id)
     .execute();
+
+  // Invalidate quality score cache so removed model is excluded
+  import('@/lib/model-quality').then(m => m.invalidateQualityCache()).catch(() => {});
 
   return true;
 }

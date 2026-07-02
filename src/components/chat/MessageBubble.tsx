@@ -528,6 +528,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
             query={query || ''}
             answer={message.content}
             messageId={message.id}
+            model={message.metadata?.model}
             threadId={threadId || undefined}
             workspaceId={workspaceId || undefined}
           />

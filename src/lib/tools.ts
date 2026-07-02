@@ -77,6 +77,28 @@ export interface ToolDefinition {
   configSchema: Record<string, unknown>;
   /** Whether this tool is safe to invoke automatically in subagent mode without HITL approval */
   subagentSafe?: boolean;
+  /** Model capability requirements for auto-selection when this tool is matched */
+  modelRequirements?: ModelRequirements;
+}
+
+/**
+ * Model capability requirements that tools declare for auto-selection.
+ * When tool routing matches a prompt to a tool, these requirements
+ * are applied as hard filters and weight boosts in selectBestModel().
+ */
+export interface ModelRequirements {
+  /** Hard filter: model MUST support tool/function calling */
+  requiresToolCalling?: boolean;
+  /** Hard filter: model MUST support vision (for tools that process images) */
+  requiresVision?: boolean;
+  /** Hard filter: minimum context window in tokens */
+  minimumContextTokens?: number;
+  /** Weight boost: increase contextFit weight (for tools with large outputs) */
+  prefersLargeContext?: boolean;
+  /** Weight boost: increase reasoning weight (for tools needing instruction following) */
+  prefersInstructionFollowing?: boolean;
+  /** Weight boost: increase code_quality weight (for code-generation tools) */
+  prefersCodeQuality?: boolean;
 }
 
 /**
@@ -103,28 +125,51 @@ export const HYBRID_TOOLS = new Set(['translation']);
  * Import tool implementations from separate files for modularity
  */
 export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
-  web_search: { ...tavilyWebSearch, subagentSafe: true },
-  doc_gen: { ...documentGenerationTool, subagentSafe: false },
-  data_source: { ...dataSourceTool, subagentSafe: false },
-  aggregate_data: { ...aggregateDataTool, subagentSafe: false },
-  function_api: { ...functionApiTool, subagentSafe: false },
-  youtube: youtubeToolDefinition, // processor — not subagent-relevant
-  chart_gen: { ...chartGenTool, subagentSafe: true },
+  // ── Search & Research ──
+  web_search: { ...tavilyWebSearch, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+  website_analysis: { ...websiteAnalysisTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+  load_testing: { ...loadTestingTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true } },
+  youtube: { ...youtubeToolDefinition,
+    modelRequirements: { requiresToolCalling: true } },
 
-  image_gen: { ...imageGenTool, subagentSafe: false },
+  // ── Generative (documents, images, media) ──
+  doc_gen: { ...documentGenerationTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true } },
+  pptx_gen: { ...pptxGenTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true } },
+  html_gen: { ...htmlGenTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true } },
+  file_to_html: { ...fileToHtmlTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+  image_gen: { ...imageGenTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true } },
+  podcast_gen: { ...podcastGenTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true } },
+  diagram_gen: { ...diagramGenTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true } },
+
+  // ── Data & Code ──
+  chart_gen: { ...chartGenTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true } },
+  xlsx_gen: { ...xlsxGenTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true } },
+  data_source: { ...dataSourceTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true } },
+  aggregate_data: { ...aggregateDataTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true } },
+  code_analysis: { ...codeAnalysisTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true, minimumContextTokens: 32000 } },
+  function_api: { ...functionApiTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true } },
+
+  // ── Utility (lightweight or processor tools — no special model requirements) ──
   translation: { ...translationTool, subagentSafe: true },
-  share_thread: shareThreadTool, // processor
-  send_email: sendEmailTool, // processor
-  diagram_gen: { ...diagramGenTool, subagentSafe: true },
-  compliance_checker: complianceCheckerTool, // processor
-  xlsx_gen: { ...xlsxGenTool, subagentSafe: false },
-  pptx_gen: { ...pptxGenTool, subagentSafe: false },
-  podcast_gen: { ...podcastGenTool, subagentSafe: false },
-  website_analysis: { ...websiteAnalysisTool, subagentSafe: true },
-  code_analysis: { ...codeAnalysisTool, subagentSafe: true },
-  load_testing: { ...loadTestingTool, subagentSafe: true },
-  file_to_html: { ...fileToHtmlTool, subagentSafe: false },
-  html_gen: { ...htmlGenTool, subagentSafe: false },
+  share_thread: shareThreadTool,
+  send_email: sendEmailTool,
+  compliance_checker: complianceCheckerTool,
 };
 
 /**

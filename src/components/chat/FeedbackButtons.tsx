@@ -18,6 +18,8 @@ interface FeedbackButtonsProps {
   answer: string;
   /** The server-generated assistant message ID (from 'done' SSE event) */
   messageId: string;
+  /** The model that generated this answer */
+  model?: string;
   /** Thread ID for context */
   threadId?: string;
   /** Workspace ID for scoping */
@@ -34,6 +36,7 @@ export default function FeedbackButtons({
   query,
   answer,
   messageId,
+  model,
   threadId,
   workspaceId,
   categorySlugs,
@@ -54,6 +57,7 @@ export default function FeedbackButtons({
           answer,
           rating,
           correction: correctionText || undefined,
+          model: model || undefined,
           threadId,
           messageId,
           workspaceId,
@@ -69,7 +73,7 @@ export default function FeedbackButtons({
     } catch {
       setState('idle');
     }
-  }, [query, answer, messageId, threadId, workspaceId, categorySlugs]);
+  }, [query, answer, messageId, model, threadId, workspaceId, categorySlugs]);
 
   const handleThumbsUp = useCallback(() => {
     if (state !== 'idle') return;

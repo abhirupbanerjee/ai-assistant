@@ -901,6 +901,8 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_feedback_unique ON user_feedback(user_id, message_id)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_user_feedback_thread ON user_feedback(thread_id)`.execute(database);
   await sql`CREATE INDEX IF NOT EXISTS idx_user_feedback_processed ON user_feedback(processed, created_at)`.execute(database);
+  await sql`ALTER TABLE user_feedback ADD COLUMN IF NOT EXISTS model_id TEXT`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_user_feedback_model ON user_feedback(model_id)`.execute(database);
   console.log('[Kysely] Ensured user_feedback table exists');
 
   // Per-user opt-in/out preferences

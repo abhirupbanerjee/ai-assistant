@@ -24,7 +24,12 @@ import { resolveToolRouting } from './tool-routing';
 import { isRoute2Model, isRoute3Model, isRoute5Model, isModelHealthy } from './llm-fallback';
 import { AUTO_MODEL_SENTINEL } from './constants';
 import { deriveScores } from './auto-model-scores';
+import { DEPRECATED_MODELS } from './services/model-discovery';
+import { classifyPrompt } from './classifier/prompt-category';
+import { getModelQualityScores } from './model-quality';
+import { AVAILABLE_TOOLS } from './tools';
 import type { EnabledModel, CapabilityScores } from './db/enabled-models';
+import type { ModelRequirements } from './tools';
 
 // ============ Types ============
 
@@ -100,6 +105,9 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     return routesSettings.route2Enabled;
   }).filter(m => isModelHealthy(m.id));
 
+  // Filter deprecated models — still in DB but shouldn't win Auto selection
+  candidates = candidates.filter(m => !DEPRECATED_MODELS.has(m.id));
+
   if (candidates.length === 0) {
     throw new Error('No models available for Auto selection. Enable at least one model on an active route.');
   }
@@ -145,33 +153,93 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     }
   }
 
+  // ── Step 4.5: Tool-aware filtering ──
+  // Collect model requirements from matched tools and apply hard filters +
+  // weight boosts. This makes auto-selection tool-specific instead of
+  // using a generic "function_calling" dimension for all tool requests.
+
+  const toolReqs: ModelRequirements[] = routing.matches
+    .map(m => AVAILABLE_TOOLS[m.toolName]?.modelRequirements)
+    .filter((r): r is ModelRequirements => r != null);
+
+  if (toolReqs.length > 0) {
+    // Hard filter: tool calling required
+    if (toolReqs.some(r => r.requiresToolCalling)) {
+      const toolModels = candidates.filter(m => m.toolCapable);
+      if (toolModels.length > 0) candidates = toolModels;
+    }
+
+    // Hard filter: vision required
+    if (toolReqs.some(r => r.requiresVision)) {
+      const visionModels = candidates.filter(m => m.visionCapable);
+      if (visionModels.length > 0) candidates = visionModels;
+    }
+
+    // Hard filter: minimum context window
+    const minCtx = Math.max(...toolReqs.map(r => r.minimumContextTokens ?? 0));
+    if (minCtx > 0) {
+      const fits = candidates.filter(m => (m.maxInputTokens ?? 0) >= minCtx);
+      if (fits.length > 0) candidates = fits;
+    }
+  }
+
+  // Weight boosts from tool requirements (applied in scoreOf closure)
+  const contextBoost = toolReqs.some(r => r.prefersLargeContext) ? 1.5 : 1;
+  const reasoningBoost = toolReqs.some(r => r.prefersInstructionFollowing) ? 1.3 : 1;
+  const codeQualityBoost = toolReqs.some(r => r.prefersCodeQuality) ? 1.3 : 1;
+
   // ── Step 5: Weighted scoring ranking ──
-  // Replaces the old default-best sort with a data-driven weighted score.
-  // Steps 1–4 and the function signature are unchanged.
+  // Uses per-model quality scores from user feedback + prompt category
+  // classification to dynamically weight capability dimensions.
 
-  const latencies = await getAllModelP50Latencies();  // {} when no data
-  const weights = await getModelScoringWeights();      // settings with defaults
+  const [latencies, weights, qualityScores, classification] = await Promise.all([
+    getAllModelP50Latencies(),
+    getModelScoringWeights(),
+    getModelQualityScores(),
+    // Pass tool match signal: any routing match (forced or not) means tools are likely
+    classifyPrompt(input.userMessage, input.hasImages, !!forced || routing.matches.length > 0),
+  ]);
 
-  // Pick the task dimension: explicit override > signal-derived default
+  // Pick the task dimension: explicit override > classifier > signal-derived default
   const dimension: keyof CapabilityScores =
     input.dimensionOverride
+    || classification.dimension
     || (input.hasImages ? 'visual_reasoning'
-      : forced          ? 'function_calling'   // `forced` already computed in Step 4
+      : forced          ? 'function_calling'
       : 'reasoning');
+
+  // Pre-compute quality SatisfactionTerm lookup for scoreOf closure
+  const qualityMap = new Map<string, number>();
+  for (const [id, q] of qualityScores) {
+    qualityMap.set(id, q.satisfaction);
+  }
 
   function scoreOf(m: EnabledModel): number {
     const caps = (m.capabilityScores ?? deriveScores(m)) as CapabilityScores;
-    const capability = caps[dimension] ?? (m.toolCapable ? 0.7 : 0.3);
+    let capability = caps[dimension] ?? (m.toolCapable ? 0.7 : 0.3);
+
+    // Apply tool-specific capability boosts
+    if (reasoningBoost > 1 && dimension === 'reasoning') {
+      capability = Math.min(1, capability * reasoningBoost);
+    }
+    if (codeQualityBoost > 1 && dimension === 'code_quality') {
+      capability = Math.min(1, capability * codeQualityBoost);
+    }
+
     const contextFit = input.estimatedTokens
       ? Math.min(1, (m.maxInputTokens ?? 0) / input.estimatedTokens)
       : 1;
     const cost = m.inputCostPer1M ? 1 / (1 + m.inputCostPer1M) : 0.5;   // cheaper → higher
     const p50 = latencies[m.id];
     const latency = p50 ? 1 / (1 + p50 / 1000) : 0.5;                   // faster → higher
-    return capability * weights.capability
-         + contextFit * weights.contextFit
+    const satisfaction = qualityMap.get(m.id) ?? 0.5;                     // neutral default
+    // Revised scoring: satisfaction gets 20% weight. ContextFit is boosted for tools
+    // that need large context (e.g. doc_gen, web_search).
+    return capability * 0.40
+         + contextFit * weights.contextFit * contextBoost
          + cost       * weights.cost
-         + latency    * weights.latency;
+         + latency    * weights.latency
+         + satisfaction * 0.20;
   }
 
   candidates.sort((a, b) => {
@@ -201,22 +269,25 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
   const bestCost = best.inputCostPer1M ? 1 / (1 + best.inputCostPer1M) : 0.5;
   const bestP50 = latencies[best.id];
   const bestLatency = bestP50 ? 1 / (1 + bestP50 / 1000) : 0.5;
+  const bestSatisfaction = qualityMap.get(best.id) ?? 0.5;
 
   const contributions = {
-    capability: bestCapability * weights.capability,
-    contextFit: bestContextFit * weights.contextFit,
-    cost:       bestCost * weights.cost,
-    latency:    bestLatency * weights.latency,
+    capability:   bestCapability * 0.40,
+    contextFit:   bestContextFit * weights.contextFit * contextBoost,
+    cost:         bestCost * weights.cost,
+    latency:      bestLatency * weights.latency,
+    satisfaction: bestSatisfaction * 0.20,
   };
 
   const dominantFactor = Object.entries(contributions)
     .sort(([, a], [, b]) => b - a)[0][0];
 
   const factorLabels: Record<string, string> = {
-    capability: 'quality',
-    contextFit: 'context fit',
-    cost:       'cost efficiency',
-    latency:    'speed',
+    capability:   'quality',
+    contextFit:   'context fit',
+    cost:         'cost efficiency',
+    latency:      'speed',
+    satisfaction: 'user satisfaction',
   };
 
   return {

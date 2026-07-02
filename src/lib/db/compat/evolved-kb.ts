@@ -7,6 +7,7 @@
  */
 
 import { getDb } from '../kysely';
+import { sql } from 'kysely';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============ Types ============
@@ -17,6 +18,7 @@ export interface FeedbackRecord {
   answer: string;
   rating: 'positive' | 'negative';
   correction?: string | null;
+  modelId?: string | null;
   categorySlugs?: string[] | null;
   workspaceId?: string | null;
   userId: number;
@@ -64,6 +66,7 @@ export async function insertUserFeedback(feedback: Omit<FeedbackRecord, 'id' | '
       answer: feedback.answer,
       rating: feedback.rating,
       correction: feedback.correction ?? null,
+      model_id: feedback.modelId ?? null,
       category_slugs: feedback.categorySlugs ? JSON.stringify(feedback.categorySlugs) : null,
       workspace_id: feedback.workspaceId ?? null,
       user_id: feedback.userId,
@@ -223,6 +226,47 @@ export async function updateEvolvedKbSettings(
     .execute();
 
   return getEvolvedKbSettings();
+}
+
+// ============ Model Feedback Stats ============
+
+export interface ModelFeedbackStats {
+  modelId: string;
+  totalRatings: number;
+  positiveRatings: number;
+  satisfactionRate: number | null;  // null = no data yet
+}
+
+/**
+ * Get satisfaction statistics per model from user feedback.
+ * Default window: last 30 days. Set windowDays=0 for all-time.
+ */
+export async function getModelFeedbackStats(windowDays = 30): Promise<ModelFeedbackStats[]> {
+  const db = await getDb();
+
+  let query = (db
+    .selectFrom('user_feedback' as any)
+    .select([
+      'model_id',
+      (db.fn.count('id') as any).as('total'),
+      sql<number>`SUM(CASE WHEN rating = 'positive' THEN 1 ELSE 0 END)`.as('positive'),
+    ])
+    .where('model_id', 'is not', null)) as any;
+
+  // Only apply time window when windowDays > 0
+  if (windowDays > 0) {
+    const cutoff = new Date(Date.now() - windowDays * 86400000).toISOString();
+    query = query.where('created_at', '>', cutoff);
+  }
+
+  const rows = await query.groupBy('model_id').execute() as Array<{ model_id: string; total: number; positive: number }>;
+
+  return rows.map(r => ({
+    modelId: r.model_id,
+    totalRatings: Number(r.total),
+    positiveRatings: Number(r.positive),
+    satisfactionRate: Number(r.total) > 0 ? Number(r.positive) / Number(r.total) : null,
+  }));
 }
 
 // ============ Helpers ============

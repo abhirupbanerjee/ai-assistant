@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Parse body
     const body = await request.json();
-    const { query, answer, rating, correction, threadId, messageId, workspaceId, categorySlugs } = body;
+    const { query, answer, rating, correction, model, threadId, messageId, workspaceId, categorySlugs } = body;
 
     // Validate required fields
     if (!query || typeof query !== 'string') {
@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
       answer,
       rating: rating as 'positive' | 'negative',
       correction: correction || null,
+      modelId: model || null,
       categorySlugs: categorySlugs || null,
       workspaceId: workspaceId || null,
       userId,

@@ -199,7 +199,7 @@ const THINKING_CAPABLE_PATTERNS = [
 ];
 
 // Models known to be deprecated or unavailable — warns on discovery
-const DEPRECATED_MODELS = new Set([
+export const DEPRECATED_MODELS = new Set([
   'gpt-4.1-mini',
   'gpt-4.1-nano',
 ]);
