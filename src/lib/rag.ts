@@ -577,6 +577,12 @@ function getUploadExtractionErrorMessage(filename: string, error?: unknown): str
   if (lower.endsWith('.pdf')) {
     return 'PDF text could not be extracted. The file may be scanned, image-only, protected, or require OCR.';
   }
+  if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
+    return 'Word document text could not be extracted. The file may be corrupted or protected.';
+  }
+  if (lower.endsWith('.ppt') || lower.endsWith('.pptx')) {
+    return 'PowerPoint text could not be extracted. The file may be corrupted or contain only images.';
+  }
   if (error instanceof Error && error.message) {
     return error.message;
   }

@@ -44,9 +44,10 @@ function isImageMimeType(mimeType: string): boolean {
 /**
  * Extract text using Mistral OCR
  *
- * Supports:
- * - PDF documents (type: document_url)
+ * Supports OCR 4 with:
+ * - PDF, DOC, PPT, ODF documents (type: document_url)
  * - Images: PNG, JPG, WEBP, GIF (type: image_url)
+ * - Block extraction, table formatting, header/footer extraction
  */
 export async function extractTextWithMistral(
   buffer: Buffer,
@@ -74,8 +75,12 @@ export async function extractTextWithMistral(
           type: 'document_url',
           documentUrl: dataUrl,
         },
-    ...(isImage && { includeImageBase64: true }),
-  });
+    includeImageBase64: isImage || undefined,
+    tableFormat: 'html',
+    extractHeader: true,
+    extractFooter: true,
+    includeBlocks: true,
+  } as any);
 
   // Extract text from each page
   const pages: MistralPageText[] = response.pages.map((page, index) => ({

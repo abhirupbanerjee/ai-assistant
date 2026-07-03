@@ -765,7 +765,7 @@ export default function ApiKeysSettings() {
         />
         <div className="divide-y divide-gray-100">
           <KeyInputRow
-            label="Mistral OCR"
+            label="Mistral OCR 4"
             value={editedOcr.mistralApiKey ?? ''}
             source={getOcrMistralSource()}
             onChange={(val) => setEditedOcr((prev) => ({ ...prev, mistralApiKey: val }))}

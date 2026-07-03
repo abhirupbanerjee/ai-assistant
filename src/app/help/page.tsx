@@ -1134,7 +1134,7 @@ export default function HelpPage() {
                     </tr>
                     <tr>
                       <td className="px-4 py-2.5 font-medium text-gray-700">Doc Extraction</td>
-                      <td className="px-4 py-2.5 text-gray-600">Mistral OCR (online)</td>
+                      <td className="px-4 py-2.5 text-gray-600">Mistral OCR 4 (online)</td>
                       <td className="px-4 py-2.5 text-gray-600">Azure Document Intelligence (online)</td>
                       <td className="px-4 py-2.5 text-gray-600">PDF-Parse (local, built-in)</td>
                     </tr>

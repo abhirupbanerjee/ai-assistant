@@ -26,9 +26,9 @@ interface OcrSettings {
 
 const PROVIDER_INFO: Record<string, { label: string; description: string; formats: string; envVars: string }> = {
   'mistral': {
-    label: 'Mistral OCR',
-    description: 'AI-powered vision OCR for PDFs and images (API-based)',
-    formats: 'PDF, PNG, JPG, WEBP, GIF',
+    label: 'Mistral OCR 4',
+    description: 'AI-powered document OCR for PDFs, Office docs, and images (API-based)',
+    formats: 'PDF, DOC, PPT, ODF, PNG, JPG, WEBP, GIF',
     envVars: 'MISTRAL_API_KEY',
   },
   'azure-di': {
@@ -352,6 +352,7 @@ export default function DocumentProcessingTab({ readOnly = false }: { readOnly?:
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> API-based providers are tried in priority order. Configure API keys above or via environment variables.
               Mistral OCR will also use the key from LLM Settings &gt; Providers if available.
+              Mistral OCR 4 serves as a premium fallback for DOC/PPT/ODF files when local parsers fail.
               Plain text files (.txt, .md, .json) are handled directly without any processing.
             </p>
           </div>

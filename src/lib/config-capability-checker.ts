@@ -94,7 +94,7 @@ export async function getImageCapabilities(modelId: string): Promise<ImageCapabi
       strategy: 'none',
       modelId,
       message:
-        'Image uploads are not available. Enable Mistral OCR or Azure Document Intelligence in Settings, or switch to a vision-capable model (GPT-4o, Gemini 2.5, Pixtral).',
+        'Image uploads are not available. Enable Mistral OCR 4 or Azure Document Intelligence in Settings, or switch to a vision-capable model (GPT-4o, Gemini 2.5, Pixtral).',
     };
   }
 

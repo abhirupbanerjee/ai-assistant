@@ -8,7 +8,7 @@
  *             - XLSX → exceljs
  *             - PPTX → officeparser
  *   Tier 1+:  API-based providers (configurable order in admin settings):
- *             - Mistral OCR (PDF + images)
+ *             - Mistral OCR 4 (PDF, DOC, PPT, ODF, images)
  *             - Azure Document Intelligence (all formats)
  *             - pdf-parse (PDF only, local fallback)
  */
@@ -122,8 +122,12 @@ export function isOfficeDocument(mimeType: string): boolean {
 }
 
 export function isMistralSupported(mimeType: string): boolean {
-  // Mistral OCR supports PDF and images
-  return isPDF(mimeType) || isImage(mimeType);
+  // Mistral OCR 4 supports PDF, Office docs, images, and ODF
+  return isPDF(mimeType) || isImage(mimeType)
+    || isDoc(mimeType)   // application/msword
+    || isPpt(mimeType)   // application/vnd.ms-powerpoint
+    || mimeType === 'application/vnd.oasis.opendocument.text'
+    || mimeType === 'application/vnd.oasis.opendocument.presentation';
 }
 
 export function isPlainText(mimeType: string): boolean {
@@ -214,7 +218,7 @@ export function getMimeTypeFromFilename(filename: string): string {
  * Tier 0:   Plain text files — direct read (no processing)
  * Tier 0.5: Office docs — local parsers: mammoth (DOCX), exceljs (XLSX), officeparser (PPTX)
  * Tier 1+:  API-based providers (configurable order in admin settings):
- *           - Mistral OCR: PDF and images only
+ *           - Mistral OCR 4: PDF, Office, ODF, and images
  *           - Azure DI: All formats (PDF, Office, images)
  *           - pdf-parse: PDF only (local fallback)
  */
