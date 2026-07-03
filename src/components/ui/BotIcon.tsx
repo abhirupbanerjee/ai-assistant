@@ -13,7 +13,6 @@ import {
   Globe,
   Server,
   ScrollText,
-  type LucideIcon,
 } from 'lucide-react';
 import AiIcon from '@/components/ui/icons/AiIcon';
 
