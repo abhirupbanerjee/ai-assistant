@@ -42,11 +42,18 @@ export function needsResync(
  */
 const SUPPORTED_MIME_TYPES = [
   'application/pdf',
+  'application/msword', // .doc
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/vnd.ms-excel', // .xls
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-powerpoint', // .ppt
   'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+  'application/vnd.oasis.opendocument.text', // .odt
+  'application/vnd.oasis.opendocument.presentation', // .odp
   'text/plain',
   'text/markdown',
+  'text/html',
+  'text/csv',
   'application/json',
   'image/png',
   'image/jpeg',
@@ -56,11 +63,18 @@ const SUPPORTED_MIME_TYPES = [
 
 const SUPPORTED_EXTENSIONS = [
   '.pdf',
+  '.doc',
   '.docx',
+  '.xls',
   '.xlsx',
+  '.ppt',
   '.pptx',
+  '.odt',
+  '.odp',
   '.txt',
   '.md',
+  '.html',
+  '.csv',
   '.json',
   '.png',
   '.jpg',

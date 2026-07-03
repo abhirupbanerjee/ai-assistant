@@ -589,7 +589,7 @@ export default function DocumentsManagement({
 
     // Build file list with relative paths
     const fileList: FolderUploadFile[] = [];
-    const supportedExtensions = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
+    const supportedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.odp', '.txt', '.md', '.html', '.csv', '.json', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1020,10 +1020,10 @@ export default function DocumentsManagement({
                     <label className="flex flex-col items-center cursor-pointer">
                       <Upload size={24} className="text-gray-400 mb-2" />
                       <span className="text-sm text-gray-600">Click to select a file</span>
-                      <span className="text-xs text-gray-400 mt-1">PDF, DOCX, XLSX, PPTX, Images (max 50MB)</span>
+                      <span className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, ODT, ODP, Text, Images (max 50MB)</span>
                       <input
                         type="file"
-                        accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/png,image/jpeg,image/webp,image/gif"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.odp,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.presentation,text/plain,text/markdown,text/html,text/csv,application/json,image/png,image/jpeg,image/webp,image/gif"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) setUploadFile(file);

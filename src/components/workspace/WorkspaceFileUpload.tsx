@@ -21,10 +21,17 @@ const ALLOWED_TYPES = new Set([
   'image/jpg',
   'image/gif',
   'image/webp',
+  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.presentation',
 ]);
 
-const ALLOWED_EXTENSIONS = '.pdf,.txt,.md,.json,.png,.jpg,.jpeg,.gif,.webp,.docx';
+const ALLOWED_EXTENSIONS = '.pdf,.txt,.md,.json,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.odp';
 
 interface UploadedFile {
   filename: string;

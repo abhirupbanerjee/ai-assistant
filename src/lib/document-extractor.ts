@@ -52,6 +52,8 @@ export const SUPPORTED_MIME_TYPES = {
   XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   PPT: 'application/vnd.ms-powerpoint',
   PPTX: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ODT: 'application/vnd.oasis.opendocument.text',
+  ODP: 'application/vnd.oasis.opendocument.presentation',
   // Text
   TXT: 'text/plain',
   MD: 'text/markdown',
@@ -75,6 +77,8 @@ export const SUPPORTED_EXTENSIONS = [
   '.xlsx',
   '.ppt', // legacy PowerPoint
   '.pptx',
+  '.odt',
+  '.odp',
   '.txt',
   '.md',
   '.html',
@@ -87,7 +91,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.gif',
 ] as const;
 
-export const ALLOWED_EXTENSIONS_STRING = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp,.gif';
+export const ALLOWED_EXTENSIONS_STRING = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.odp,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp,.gif';
 
 // ============================================
 // MIME Type Helpers
@@ -122,12 +126,14 @@ export function isOfficeDocument(mimeType: string): boolean {
 }
 
 export function isMistralSupported(mimeType: string): boolean {
-  // Mistral OCR 4 supports PDF, Office docs, images, and ODF
+  // Mistral OCR 4 supports PDF, Office docs (including DOCX/PPTX), images, and ODF
   return isPDF(mimeType) || isImage(mimeType)
     || isDoc(mimeType)   // application/msword
+    || isDocx(mimeType)  // application/vnd.openxmlformats-officedocument.wordprocessingml.document
     || isPpt(mimeType)   // application/vnd.ms-powerpoint
-    || mimeType === 'application/vnd.oasis.opendocument.text'
-    || mimeType === 'application/vnd.oasis.opendocument.presentation';
+    || isPptx(mimeType)  // application/vnd.openxmlformats-officedocument.presentationml.presentation
+    || mimeType === SUPPORTED_MIME_TYPES.ODT
+    || mimeType === SUPPORTED_MIME_TYPES.ODP;
 }
 
 export function isPlainText(mimeType: string): boolean {
@@ -193,9 +199,14 @@ export function getMimeTypeFromFilename(filename: string): string {
   const ext = filename.toLowerCase().split('.').pop();
   const mimeMap: Record<string, string> = {
     'pdf': SUPPORTED_MIME_TYPES.PDF,
+    'doc': SUPPORTED_MIME_TYPES.DOC,
     'docx': SUPPORTED_MIME_TYPES.DOCX,
+    'xls': SUPPORTED_MIME_TYPES.XLS,
     'xlsx': SUPPORTED_MIME_TYPES.XLSX,
+    'ppt': SUPPORTED_MIME_TYPES.PPT,
     'pptx': SUPPORTED_MIME_TYPES.PPTX,
+    'odt': SUPPORTED_MIME_TYPES.ODT,
+    'odp': SUPPORTED_MIME_TYPES.ODP,
     'txt': SUPPORTED_MIME_TYPES.TXT,
     'md': SUPPORTED_MIME_TYPES.MD,
     'json': SUPPORTED_MIME_TYPES.JSON,

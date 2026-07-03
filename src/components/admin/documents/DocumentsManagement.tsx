@@ -708,7 +708,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
 
     // Build file list with relative paths
     const fileList: FolderUploadFile[] = [];
-    const supportedExtensions = ['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
+    const supportedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.odp', '.txt', '.md', '.html', '.csv', '.json', '.png', '.jpg', '.jpeg', '.webp', '.gif'];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1805,7 +1805,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   <span className="text-sm text-gray-500">Click to select a file</span>
                   <input
                     type="file"
-                    accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.odp,.txt,.md,.html,.csv,.json,.png,.jpg,.jpeg,.webp,.gif"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) setUploadFile(file);

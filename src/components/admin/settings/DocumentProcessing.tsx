@@ -28,7 +28,7 @@ const PROVIDER_INFO: Record<string, { label: string; description: string; format
   'mistral': {
     label: 'Mistral OCR 4',
     description: 'AI-powered document OCR for PDFs, Office docs, and images (API-based)',
-    formats: 'PDF, DOC, PPT, ODF, PNG, JPG, WEBP, GIF',
+    formats: 'PDF, DOC, DOCX, PPT, PPTX, ODF, PNG, JPG, WEBP, GIF',
     envVars: 'MISTRAL_API_KEY',
   },
   'azure-di': {
