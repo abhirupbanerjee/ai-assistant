@@ -169,7 +169,7 @@ export default function LandingPage() {
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b12_1px,transparent_1px),linear-gradient(to_bottom,#1e293b12_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none -z-20 opacity-40" />
 
       {/* Premium Translucent Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-slate-800/60 bg-slate-950/70 backdrop-blur-md">
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/60 bg-slate-950/70 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-300">
@@ -224,7 +224,7 @@ export default function LandingPage() {
               href={SIGN_IN_URL}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-500/15 hover:shadow-blue-500/25 active:scale-98 text-base group"
             >
-              Get Started Free 
+              Get Started 
               <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <a
