@@ -231,7 +231,14 @@ function SignInContent() {
           {/* Footer */}
           <div className="mt-8 pt-6 border-t border-gray-200">
             <p className="text-xs text-center text-gray-400">
-              By signing in, you agree to the terms of use and privacy policy.
+              By signing in, you agree to our{' '}
+              <a href="/service-terms" className="text-gray-500 hover:text-gray-700 underline underline-offset-2">
+                Terms of Service
+              </a>{' '}
+              and{' '}
+              <a href="/privacy-policy" className="text-gray-500 hover:text-gray-700 underline underline-offset-2">
+                Privacy Policy
+              </a>.
             </p>
           </div>
         </div>
