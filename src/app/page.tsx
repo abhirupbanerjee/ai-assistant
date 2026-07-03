@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import BotIcon from '@/components/ui/BotIcon';
 import {
   Bot,
   ArrowRight,
@@ -50,6 +51,7 @@ export default function LandingPage() {
   const { status } = useSession();
   const router = useRouter();
   const [brandingName, setBrandingName] = useState('Policy Bot');
+  const [brandingBotIcon, setBrandingBotIcon] = useState('policy');
 
   // Interactive UI States
   const [activeTab, setActiveTab] = useState<'rag' | 'agents' | 'api' | 'commands'>('rag');
@@ -75,6 +77,7 @@ export default function LandingPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.botName) setBrandingName(data.botName);
+        if (data?.botIcon) setBrandingBotIcon(data.botIcon);
       })
       .catch(() => {});
   }, []);
@@ -172,9 +175,9 @@ export default function LandingPage() {
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-800/60 bg-slate-950/70 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-300">
-              <Bot size={20} className="text-white" />
-            </div>
+            <Link href="/" className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-300">
+              <BotIcon iconKey={brandingBotIcon} size={20} className="text-white" />
+            </Link>
             <span className="text-lg font-semibold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-slate-300 tracking-tight">
               {brandingName}
             </span>
@@ -1060,7 +1063,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <div className="w-7 h-7 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-                <Bot size={15} />
+                <BotIcon iconKey={brandingBotIcon} size={15} />
               </div>
               <span>&copy; {new Date().getFullYear()} {brandingName} · Self-hosted & Sovereign</span>
             </div>

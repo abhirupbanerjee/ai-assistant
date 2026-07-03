@@ -1,12 +1,15 @@
 'use client';
 
-import { Bot, HelpCircle } from 'lucide-react';
+import { HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import MobileHeader from '@/components/mobile/MobileHeader';
+import BotIcon from '@/components/ui/BotIcon';
 import type { Thread } from '@/types';
 
 interface AppHeaderProps {
   title: string;
+  /** Bot icon key from branding settings (e.g., 'policy', 'ai-icon') */
+  botIcon?: string;
   // Mobile-specific props
   isMobile?: boolean;
   activeThread?: Thread | null;
@@ -17,6 +20,7 @@ interface AppHeaderProps {
 
 export default function AppHeader({
   title,
+  botIcon,
   isMobile,
   activeThread,
   onOpenThreadsMenu,
@@ -48,7 +52,7 @@ export default function AppHeader({
           }}
           className="inline-flex items-center gap-2 text-base md:text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer"
         >
-          <Bot size={20} className="md:w-6 md:h-6 text-blue-600" />
+          <BotIcon iconKey={botIcon} size={20} className="md:w-6 md:h-6 text-blue-600" />
           <span className="hidden sm:inline">{title}</span>
         </Link>
       </div>

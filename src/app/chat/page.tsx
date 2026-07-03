@@ -30,6 +30,7 @@ function HomeContent() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
+  const [brandingBotIcon, setBrandingBotIcon] = useState<string>('policy');
   const [brandingSubtitle, setBrandingSubtitle] = useState<string>('Ask questions about policy documents');
   const [globalWelcome, setGlobalWelcome] = useState<WelcomeConfig>({});
   const [globalStarterPrompts, setGlobalStarterPrompts] = useState<StarterPrompt[]>([]);
@@ -84,6 +85,7 @@ function HomeContent() {
         if (brandingResponse.ok) {
           const brandingData = await brandingResponse.json();
           setBrandingName(brandingData.botName || 'Policy Bot');
+          setBrandingBotIcon(brandingData.botIcon || 'policy');
           setBrandingSubtitle(brandingData.subtitle || 'Ask questions about policy documents');
           setGlobalWelcome({
             title: brandingData.welcomeTitle || undefined,
@@ -202,6 +204,7 @@ function HomeContent() {
       {/* Header - shows help link */}
       <AppHeader
         title={getHeaderTitle()}
+        botIcon={brandingBotIcon}
         isMobile={isMobile}
         activeThread={activeThread}
         onOpenThreadsMenu={mobileMenu?.openThreadsMenu}

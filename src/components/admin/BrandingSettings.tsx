@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Save, Globe, Landmark, DollarSign, Activity, Layers, Server, ScrollText, Settings, BarChart3, FileText, Database } from 'lucide-react';
+import AiIcon from '@/components/ui/icons/AiIcon';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -35,6 +36,7 @@ const BRANDING_ICONS = [
   { key: 'internet', label: 'Internet', Icon: Globe },
   { key: 'systems', label: 'Systems', Icon: Server },
   { key: 'policy', label: 'Policy', Icon: ScrollText },
+  { key: 'ai-icon', label: 'AI Bot', Icon: AiIcon },
 ] as const;
 
 export default function BrandingSettingsTab() {

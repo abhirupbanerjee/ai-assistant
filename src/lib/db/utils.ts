@@ -591,6 +591,7 @@ export const BRANDING_ICONS = [
   { key: 'internet', label: 'Internet', lucideIcon: 'Globe', png192: '/icons/bot/internet-192.png', png512: '/icons/bot/internet-512.png' },
   { key: 'systems', label: 'Systems', lucideIcon: 'Server', png192: '/icons/bot/systems-192.png', png512: '/icons/bot/systems-512.png' },
   { key: 'policy', label: 'Policy', lucideIcon: 'ScrollText', png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
+  { key: 'ai-icon', label: 'AI Bot', lucideIcon: '__custom__', png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
 ] as const;
 
 export const DEFAULT_MODEL_ID = getDefaultPresetId();
