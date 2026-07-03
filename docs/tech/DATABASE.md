@@ -1044,13 +1044,41 @@ export interface LlmSettings {
 }
 
 export interface TavilySettings {
+  apiKey?: string;                               // Tavily API key (falls back to TAVILY_API_KEY env var)
   enabled: boolean;                              // Enable web search (default: false)
   defaultTopic: 'general' | 'news' | 'finance'; // Search category
-  defaultSearchDepth: 'basic' | 'advanced';     // Search depth
-  maxResults: number;                            // Max results (default: 5)
+  defaultSearchDepth: 'basic' | 'advanced' | 'fast' | 'ultra-fast'; // Search depth
+  maxResults: number;                            // Max results (default: 10)
   includeDomains: string[];                      // Whitelist domains
   excludeDomains: string[];                      // Blacklist domains
   cacheTTLSeconds: number;                       // Web cache TTL (default: 3600)
+  includeAnswer?: 'none' | 'basic' | 'advanced'; // AI answer summary
+  includeRawContent?: 'none' | 'markdown' | 'text'; // Raw page content
+  includeImages?: boolean;                       // Image search results
+  includeFavicon?: boolean;                      // Favicon per result
+  exactMatch?: boolean;                          // Exact phrase match
+  autoParameters?: boolean;                      // Tavily auto-configure
+  timeRange?: 'none' | 'day' | 'week' | 'month' | 'year'; // Recency filter
+  country?: string;                              // Country boost
+  // Endpoint toggles
+  extractEnabled?: boolean;                      // Enable web_extract tool
+  crawlEnabled?: boolean;                        // Enable web_crawl tool
+  mapEnabled?: boolean;                          // Enable web_map tool
+  // Extract defaults
+  extractDepth?: 'basic' | 'advanced';
+  extractFormat?: 'markdown' | 'text';
+  // Crawl defaults
+  crawlLimit?: number;
+  crawlMaxDepth?: number;
+  crawlMaxBreadth?: number;
+  crawlExtractDepth?: 'basic' | 'advanced';
+  crawlFormat?: 'markdown' | 'text';
+  crawlAllowExternal?: boolean;
+  // Map defaults
+  mapLimit?: number;
+  mapMaxDepth?: number;
+  mapMaxBreadth?: number;
+  mapAllowExternal?: boolean;
 }
 
 export interface UploadLimits {

@@ -92,8 +92,11 @@ When the LLM returns multiple tool calls in a single response, execution depends
 
 Autonomous tools are sent to OpenAI as function definitions. The LLM decides when to invoke them based on user queries.
 
-**Current autonomous tools (21 registered in `src/lib/tools.ts`):**
+**Current autonomous tools (24 registered in `src/lib/tools.ts`):**
 - `web_search` - Search the web for current information (Tavily)
+- `web_extract` - Extract content from specific URLs (Tavily)
+- `web_crawl` - Crawl and explore websites (Tavily)
+- `web_map` - Discover URLs on websites (Tavily)
 - `doc_gen` - Generate formatted documents (PDF, DOCX, Markdown)
 - `pptx_gen` - Generate PowerPoint presentations with multiple slide types
 - `xlsx_gen` - Generate Excel spreadsheets with formulas and styling
@@ -213,114 +216,135 @@ This generates natural, context-aware summaries without tool-specific hardcoding
 
 ---
 
-## Web Search Tool
+## Tavily Web Services (Web Search, Extract, Crawl, Map)
 
-### Purpose
+The Tavily integration provides four LLM-callable tools, all sharing a single API key and admin configuration:
 
-Enables the AI to search the web for current information when local documents are insufficient or when users need up-to-date data.
+| Tool | Endpoint | Purpose |
+|------|----------|---------|
+| `web_search` | `POST /search` | Search the web for current information |
+| `web_extract` | `POST /extract` | Extract full content from specific URLs (max 5) |
+| `web_crawl` | `POST /crawl` | Discover and extract content from entire websites |
+| `web_map` | `POST /map` | Discover all URLs on a website without extracting content |
+
+All four tools are `subagentSafe: true` (read-only, no destructive side effects) and grouped under `group: 'tavily'` in the admin UI.
 
 ### Provider
 
-**Tavily API** - A search API optimized for AI applications with support for:
-- Topic-specific searches (general, news, finance)
+**Tavily API** — optimized for AI applications with support for:
+- Search depth: `ultra-fast`, `fast`, `basic`, `advanced`
+- Topic filtering: `general`, `news`, `finance`
 - Domain filtering (include/exclude)
-- Configurable search depth
+- Recency filtering: `day`, `week`, `month`, `year`
+- Date range: `start_date` / `end_date` (YYYY-MM-DD)
+- Country boosting
+- Image search with descriptions
+- AI-generated answer summaries (`basic`/`advanced`)
+- Raw content inclusion (`markdown`/`text`)
+- Exact phrase matching
+- Auto-parameter configuration
 
 ### Configuration
 
 ```typescript
-interface WebSearchConfig {
-  apiKey: string;              // Tavily API key (required)
+interface TavilySettings {
+  apiKey?: string;
+  enabled: boolean;
+  // Search defaults
   defaultTopic: 'general' | 'news' | 'finance';
-  defaultSearchDepth: 'basic' | 'advanced';
+  defaultSearchDepth: 'basic' | 'advanced' | 'fast' | 'ultra-fast';
   maxResults: number;          // 1-20, default: 10
-  includeDomains: string[];    // Only search these domains
-  excludeDomains: string[];    // Never search these domains
-  cacheTTLSeconds: number;     // 60-2592000, default: 3600
-  includeAnswer: 'none' | 'basic' | 'advanced';  // AI-generated answer summary
-}
-```
-
-### Default Configuration
-
-```json
-{
-  "enabled": false,
-  "config": {
-    "apiKey": "",
-    "defaultTopic": "general",
-    "defaultSearchDepth": "advanced",
-    "maxResults": 10,
-    "includeDomains": [],
-    "excludeDomains": [],
-    "cacheTTLSeconds": 3600,
-    "includeAnswer": "basic"
-  }
-}
-```
-
-### OpenAI Function Schema
-
-The LLM can optionally override search parameters per query, with admin config as defaults:
-
-```json
-{
-  "name": "web_search",
-  "description": "Search the web for current information, news, or data not available in the organizational knowledge base.",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "query": {
-        "type": "string",
-        "description": "Search query to find relevant web information"
-      },
-      "max_results": {
-        "type": "number",
-        "description": "Number of results (1-20). Use higher values for comprehensive research, lower for quick facts. Defaults to admin setting if not specified."
-      },
-      "search_depth": {
-        "type": "string",
-        "enum": ["basic", "advanced"],
-        "description": "Search depth: 'basic' for quick searches (3-5 results), 'advanced' for thorough research (10+ results). Defaults to admin setting."
-      },
-      "include_answer": {
-        "type": "string",
-        "enum": ["none", "basic", "advanced"],
-        "description": "Include AI-generated answer: 'none' = disabled, 'basic' = quick summary, 'advanced' = comprehensive analysis. Defaults to admin setting."
-      }
-    },
-    "required": ["query"]
-  }
+  includeDomains: string[];
+  excludeDomains: string[];
+  cacheTTLSeconds: number;
+  includeAnswer?: 'none' | 'basic' | 'advanced';
+  includeRawContent?: 'none' | 'markdown' | 'text';
+  includeImages?: boolean;
+  includeImageDescriptions?: boolean;
+  includeFavicon?: boolean;
+  exactMatch?: boolean;
+  autoParameters?: boolean;
+  timeRange?: 'none' | 'day' | 'week' | 'month' | 'year';
+  country?: string;
+  // Endpoint toggles
+  extractEnabled?: boolean;
+  crawlEnabled?: boolean;
+  mapEnabled?: boolean;
+  // Extract defaults
+  extractDepth?: 'basic' | 'advanced';
+  extractFormat?: 'markdown' | 'text';
+  // Crawl defaults
+  crawlLimit?: number;
+  crawlMaxDepth?: number;
+  crawlMaxBreadth?: number;
+  crawlExtractDepth?: 'basic' | 'advanced';
+  crawlFormat?: 'markdown' | 'text';
+  crawlAllowExternal?: boolean;
+  // Map defaults
+  mapLimit?: number;
+  mapMaxDepth?: number;
+  mapMaxBreadth?: number;
+  mapAllowExternal?: boolean;
 }
 ```
 
 ### LLM Parameter Override
 
-The LLM can override these parameters per query while admin config serves as defaults:
+All search parameters follow the resolution chain: **LLM args > admin defaults > hardcoded fallback**. The LLM can override per-request:
 
-| Parameter | Admin Config | LLM Override | Resolution |
-|-----------|--------------|--------------|------------|
-| `max_results` | Default limit | Per-query limit | LLM override if provided, else admin default |
-| `search_depth` | Default depth | Per-query depth | LLM override if provided, else admin default |
-| `include_answer` | Default mode | Per-query mode | LLM override if provided, else admin default |
+| Parameter | Type | Values |
+|-----------|------|--------|
+| `query` | string | Search query (required) |
+| `max_results` | number | 1-20 |
+| `search_depth` | string | `basic`, `advanced`, `fast`, `ultra-fast` |
+| `include_answer` | string | `none`, `basic`, `advanced` |
+| `topic` | string | `general`, `news`, `finance` |
+| `time_range` | string | `day`, `week`, `month`, `year` |
+| `start_date` / `end_date` | string | `YYYY-MM-DD` |
+| `include_raw_content` | string | `none`, `markdown`, `text` |
+| `include_images` | boolean | |
+| `include_favicon` | boolean | |
+| `include_domains` | string[] | |
+| `exclude_domains` | string[] | |
+| `country` | string | Full country name |
+| `auto_parameters` | boolean | |
+| `exact_match` | boolean | |
+| `chunks_per_source` | number | 1-3 (advanced depth only) |
+
+### Per-Endpoint Tool Schemas
+
+**web_search** — General web search:
+```json
+{ "name": "web_search", "parameters": { "query": "string (required)", "max_results": "number", "search_depth": "enum", "topic": "enum", ... } }
+```
+
+**web_extract** — Extract content from URLs:
+```json
+{ "name": "web_extract", "parameters": { "urls": "string[] (required, max 5)", "extract_depth": "enum", "query": "string (rerank)", "format": "enum" } }
+```
+
+**web_crawl** — Crawl websites:
+```json
+{ "name": "web_crawl", "parameters": { "url": "string (required)", "instructions": "string", "max_depth": "number (1-5)", "max_breadth": "number (1-500)", "limit": "number", "select_paths": "string[]", "extract_depth": "enum", "format": "enum" } }
+```
+
+**web_map** — Discover site URLs:
+```json
+{ "name": "web_map", "parameters": { "url": "string (required)", "instructions": "string", "max_depth": "number (1-5)", "limit": "number", "select_paths": "string[]" } }
+```
 
 ### Caching
 
-- Results are cached in Redis using query as key
-- Cache TTL is configurable (default: 1 hour)
-- Cache is invalidated when configuration changes
+- Search results cached in Redis with configurable TTL (default: 1 hour)
+- Extract/crawl/map results are not cached (content may change)
+- Cache invalidated when Tavily configuration changes
 
 ### Example Usage
 
-**User:** "What are the latest government guidelines on remote work?"
-
-**AI Response:**
-> Based on my web search, here are the latest remote work guidelines:
->
-> According to a recent announcement from gov.sg...
->
-> Sources:
-> - 🌐 [WEB] gov.sg - Remote Work Guidelines (searched: Dec 2024)
+**web_search:** "What are the latest government guidelines on remote work?"
+**web_extract:** "Read the full content of https://example.com/policy-doc"
+**web_crawl:** "Explore all documentation pages on https://docs.example.com"
+**web_map:** "List all pages on https://example.com, especially PDFs"
 
 ---
 

@@ -22,9 +22,9 @@ If the message includes images, narrows candidates to vision-capable models only
 
 If an estimated token count is available, filters to models that can fit the context.
 
-### Step 4 — Tool Preference Override
+### Step 4 — Tool Preference Override (Legacy)
 
-If admin-configured tool routing forces a specific tool and that tool has a preferred model in the `auto-tool-model-map`, returns that model directly (short-circuit).
+If a tool preference exists in the legacy `auto-tool-model-map` (no longer admin-configurable via UI), returns that model directly (short-circuit). In practice, this map is empty and the step passes through.
 
 ### Step 4.5 — Tool-Aware Filtering
 
@@ -115,7 +115,7 @@ Each tool in the registry declares what model capabilities it requires. When too
 |-------|-------|-------------|
 | **Generative** | doc_gen, pptx_gen, html_gen, file_to_html, image_gen, podcast_gen, diagram_gen | toolCapable + context/reasoning/code boosts |
 | **Data & Code** | chart_gen, xlsx_gen, data_source, aggregate_data, code_analysis, function_api | toolCapable + code boost (32K min context for code_analysis) |
-| **Search & Research** | web_search, website_analysis, load_testing, youtube | toolCapable + context boost |
+| **Search & Research** | web_search, web_extract, web_crawl, web_map, website_analysis, load_testing, youtube | toolCapable + context boost |
 | **Utility** | translation, share_thread, send_email, compliance_checker | None |
 
 ---
@@ -144,7 +144,7 @@ The auto-selector learns from user ratings. When a user clicks 👍 or 👎 on a
 | [`src/lib/db/compat/evolved-kb.ts`](src/lib/db/compat/evolved-kb.ts) | `getModelFeedbackStats()` aggregation query |
 | [`src/lib/db/compat/enabled-models.ts`](src/lib/db/compat/enabled-models.ts) | Model CRUD + quality cache invalidation |
 | [`src/lib/db/compat/model-latency.ts`](src/lib/db/compat/model-latency.ts) | P50 latency tracking |
-| [`src/lib/db/compat/config.ts`](src/lib/db/compat/config.ts) | Scoring weights + tool preference map settings |
+| [`src/lib/db/compat/config.ts`](src/lib/db/compat/config.ts) | Scoring weights settings |
 | [`src/lib/services/model-discovery.ts`](src/lib/services/model-discovery.ts) | `DEPRECATED_MODELS` set |
 | [`src/lib/agent/auto-role.ts`](src/lib/agent/auto-role.ts) | Per-agent-role Auto resolution |
 
@@ -152,6 +152,8 @@ The auto-selector learns from user ratings. When a user clicks 👍 or 👎 on a
 
 Admins can influence auto-selection through:
 
-- **Tool → Model Map** (`auto-tool-model-map`): Maps specific tools to preferred models (Step 4 short-circuit)
+- **Model Leaderboard** (Admin → LLM Settings → Auto Model Leaderboard): Diagnostic view showing which model the auto-selector picks for each task type. Admins see the leading model per category and can adjust model attributes (capabilities, costs, enable/disable) based on what the leaderboard shows.
 - **Scoring Weights** (`model-scoring-weights`): Customize capability/contextFit/cost/latency weight balance
 - **Model Enable/Disable**: Only enabled models participate; deprecated models are auto-excluded
+- **Capability Toggles**: Tool calling, vision, parallel tools, thinking, and forced tool flags per model affect capability scores
+- **Cost Configuration**: Input/output costs per model affect the cost scoring component

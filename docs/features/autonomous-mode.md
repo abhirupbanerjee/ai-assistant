@@ -228,7 +228,7 @@ When subagent mode is enabled, unsafe tools trigger an approval pause within the
 
 | Safe Tools (auto-approved) | Unsafe Tools (HITL pause) |
 |---------------------------|--------------------------|
-| `web_search`, `code_analysis`, `data_source` | `doc_gen`, `image_gen`, `chart_gen`, `xlsx_gen`, `pptx_gen`, `podcast_gen`, `diagram_gen` |
+| `web_search`, `web_extract`, `web_crawl`, `web_map`, `code_analysis`, `data_source` | `doc_gen`, `image_gen`, `chart_gen`, `xlsx_gen`, `pptx_gen`, `podcast_gen`, `diagram_gen` |
 
 Users can **Approve**, **Deny**, or **Modify Arguments** before the tool executes.
 

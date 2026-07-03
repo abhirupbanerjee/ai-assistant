@@ -208,7 +208,7 @@ User Request
 - Run subagent ReAct loops for tasks marked `subagent_enabled`
 
 **Key Features:**
-- 8 tool types: `doc_gen`, `image_gen`, `chart_gen`, `xlsx_gen`, `pptx_gen`, `podcast_gen`, `diagram_gen`, `web_search`
+- 11 tool types: `doc_gen`, `image_gen`, `chart_gen`, `xlsx_gen`, `pptx_gen`, `podcast_gen`, `diagram_gen`, `web_search`, `web_extract`, `web_crawl`, `web_map`
 - **Subagent ReAct loop** (optional, per-task): multi-turn LLM reasoning with tool calling, up to admin-configured max iterations (default **15**)
 - **Context trimming**: automatically drops oldest assistant+tool pairs when approaching model context limits; preserves system and initial task messages
 - **Tool result truncation**: structured JSON-aware truncation at **4000 characters** to prevent context bloat
