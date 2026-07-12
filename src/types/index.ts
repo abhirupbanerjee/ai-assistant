@@ -268,6 +268,10 @@ export interface ChatResponse {
   message: Message;
   threadId: string;
   model?: string;  // Actual model used (may differ from selected if fallback occurred)
+  /** Filenames of documents still being processed (not yet in vector store) */
+  processingDocuments?: string[];
+  /** Errors encountered while extracting text from user-uploaded documents */
+  userDocErrors?: Array<{ filename: string; message: string }>;
 }
 
 export interface TranscribeResponse {
@@ -433,6 +437,8 @@ export interface RAGResponse {
   generatedDiagrams?: DiagramHint[];
   generatedPodcasts?: PodcastHint[];
   visualizations?: MessageVisualization[];
+  /** Errors encountered while extracting text from user-uploaded documents */
+  userDocErrors?: Array<{ filename: string; message: string }>;
 }
 
 // ============ Session Types ============

@@ -38,9 +38,16 @@ import {
   MAX_QUERY_EXPANSIONS,
   MAX_USER_DOC_CHUNKS,
   MAX_USER_CHUNKS_RETURNED,
+  MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
+  MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
   CHUNK_PREVIEW_LENGTH,
   USER_UPLOAD_MIN_RERANK_SCORE,
+  FULL_DOC_CHAR_BUDGET,
+  SUMMARY_DOC_CHAR_THRESHOLD,
+  CHAPTER_DOC_CHAR_THRESHOLD,
+  CHAPTER_SECTION_CHAR_SIZE,
 } from './constants';
+import { getLlmSettings } from './db/compat/config';
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from '@/types';
 
 /**
@@ -303,6 +310,183 @@ export interface BuildContextOptions {
   userDocMaxChunks?: number;
   userDocReturnChunks?: number;
   sampleUserDocChunks?: boolean;
+  /** When true, the query is upload-directed (summarise/review/analyse) */
+  uploadDirected?: boolean;
+  /** User's original message — used to steer the LLM summarisation prompt */
+  userMessage?: string;
+}
+
+/**
+ * Full-document context entry for user-uploaded files.
+ * When the user asks to summarise/review an uploaded file, we inject the
+ * full text (or an LLM-generated summary if the document is too long) into
+ * the context in addition to (or instead of) chunk-based retrieval.
+ */
+export interface UserDocFullContext {
+  filename: string;
+  /** Full text if it fit within budget, or an LLM-generated summary */
+  content: string;
+  /** Whether the content is the full text or a summarised version */
+  isSummary: boolean;
+  /** Original character count of the extracted text */
+  originalCharCount: number;
+}
+
+/**
+ * Produce context text for a user-uploaded document.
+ *
+ * - If the extracted text is short enough (≤ FULL_DOC_CHAR_BUDGET), the full
+ *   text is returned as-is so the LLM can read the entire document.
+ * - If the text exceeds the budget, an LLM call is made to produce a
+ *   comprehensive summary. For very long documents (> CHAPTER_DOC_CHAR_THRESHOLD),
+ *   a chapter-wise strategy is used: the text is split into sections, each
+ *   section is summarised individually, and the section summaries are
+ *   concatenated. This avoids losing information that a single whole-document
+ *   summary might omit.
+ *
+ * If the LLM call fails, the function falls back to returning the truncated
+ * full text (first FULL_DOC_CHAR_BUDGET chars) rather than nothing.
+ */
+async function summarizeUserDocument(
+  fullText: string,
+  filename: string,
+  userMessage: string,
+): Promise<UserDocFullContext> {
+  const originalCharCount = fullText.length;
+
+  // Short document — inject full text directly
+  if (originalCharCount <= SUMMARY_DOC_CHAR_THRESHOLD) {
+    return {
+      filename,
+      content: fullText,
+      isSummary: false,
+      originalCharCount,
+    };
+  }
+
+  // Document needs summarisation
+  try {
+    const llmSettings = await getLlmSettings();
+    const model = llmSettings.model;
+
+    if (originalCharCount > CHAPTER_DOC_CHAR_THRESHOLD) {
+      // Chapter-wise summarisation for very long documents.
+      // Each section is summarised independently — a failure on one section
+      // does NOT discard the summaries already computed for other sections.
+      const sections: string[] = [];
+      let failedSections = 0;
+      const totalSections = Math.ceil(fullText.length / CHAPTER_SECTION_CHAR_SIZE);
+      for (let i = 0; i < fullText.length; i += CHAPTER_SECTION_CHAR_SIZE) {
+        const section = fullText.slice(i, i + CHAPTER_SECTION_CHAR_SIZE);
+        const sectionNum = Math.floor(i / CHAPTER_SECTION_CHAR_SIZE) + 1;
+        try {
+          const sectionSummary = await createInternalCompletion({
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a precise document summariser. Produce a detailed, faithful summary of the provided document section. ' +
+                  'Preserve all key facts, data points, names, dates, and conclusions. Do not omit important details. ' +
+                  'Write in clear prose. Do not add commentary or opinions.',
+              },
+              {
+                role: 'user',
+                content:
+                  `Summarise section ${sectionNum} of the document "${filename}". ` +
+                  `The user's request is: "${userMessage}". ` +
+                  `Tailor the summary to be maximally useful for that request, but cover all key content.\n\n` +
+                  `--- DOCUMENT SECTION ${sectionNum} ---\n\n${section}`,
+              },
+            ],
+            model,
+            temperature: 0.2,
+            maxTokens: 4096,
+          });
+          if (sectionSummary && sectionSummary.trim()) {
+            sections.push(`## Section ${sectionNum}\n\n${sectionSummary}`);
+          } else {
+            // Empty response — use a truncated version of the raw section
+            sections.push(`## Section ${sectionNum}\n\n${section.slice(0, 2000)}\n\n[... section ${sectionNum} could not be summarised ...]`);
+            failedSections++;
+          }
+        } catch (sectionErr) {
+          // Individual section failure — log and continue with remaining sections
+          logger.warn('Section summarisation failed, using truncated raw text', {
+            filename,
+            section: sectionNum,
+            error: String(sectionErr),
+          });
+          sections.push(`## Section ${sectionNum}\n\n${section.slice(0, 2000)}\n\n[... section ${sectionNum} could not be summarised ...]`);
+          failedSections++;
+        }
+      }
+
+      // If ALL sections failed, fall through to the truncated-text fallback
+      if (sections.length > 0) {
+        if (failedSections > 0) {
+          logger.warn('Chapter-wise summarisation completed with some failures', {
+            filename,
+            totalSections,
+            failedSections,
+          });
+        }
+        return {
+          filename,
+          content: sections.join('\n\n'),
+          isSummary: true,
+          originalCharCount,
+        };
+      }
+    } else {
+      // Single whole-document summary for moderately long documents
+      const summary = await createInternalCompletion({
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a precise document summariser. Produce a comprehensive, detailed summary of the provided document. ' +
+              'Preserve all key facts, data points, names, dates, structure, and conclusions. ' +
+              'Organise the summary by the document\'s natural sections or themes. ' +
+              'Do not omit important details. Write in clear prose. Do not add commentary or opinions.',
+          },
+          {
+            role: 'user',
+            content:
+              `Summarise the document "${filename}" in detail. ` +
+              `The user's request is: "${userMessage}". ` +
+              `Tailor the summary to be maximally useful for that request, but cover all key content.\n\n` +
+              `--- DOCUMENT CONTENT ---\n\n${fullText}`,
+          },
+        ],
+        model,
+        temperature: 0.2,
+        maxTokens: 4096,
+      });
+
+      if (summary && summary.trim()) {
+        return {
+          filename,
+          content: summary,
+          isSummary: true,
+          originalCharCount,
+        };
+      }
+    }
+  } catch (err) {
+    logger.warn('Full-document summarisation failed, falling back to truncated text', {
+      filename,
+      error: String(err),
+    });
+  }
+
+  // Fallback: truncated full text
+  const truncated = fullText.slice(0, FULL_DOC_CHAR_BUDGET);
+  return {
+    filename,
+    content: truncated + (originalCharCount > FULL_DOC_CHAR_BUDGET ? '\n\n[... document truncated due to length ...]' : ''),
+    isSummary: false,
+    originalCharCount,
+  };
 }
 
 function selectUserDocumentChunks<T>(chunks: T[], limit: number, sampleAcrossDocument: boolean): T[] {
@@ -342,6 +526,7 @@ export async function buildContext(
   userChunks: RetrievedChunk[];
   userDocTruncations: UserDocTruncation[];
   userDocErrors: UserDocExtractionError[];
+  fullDocContexts: UserDocFullContext[];
 }> {
   // Use provided settings or fetch from SQLite config
   const ragSettings = settings || await getRagSettings();
@@ -375,6 +560,13 @@ export async function buildContext(
     // Always include the legacy collection so documents that predate
     // proper categorization (or are intentionally uncategorized) are still found.
     // Filter to only collections that actually exist in Qdrant.
+    //
+    // INTENTIONAL DESIGN: When no categories are selected for a thread, only the
+    // global_documents and organizational_documents (legacy) collections are
+    // queried. This segregation is by design — it prevents users from accessing
+    // category-restricted documents without explicitly selecting that category.
+    // Category-tagged documents are only retrieved when the thread has that
+    // category assigned.
     const collectionsToQuery = (categorySlugs && categorySlugs.length > 0
       ? [...categorySlugs.map(collNames.forCategory), collNames.global, collNames.legacy]
       : [collNames.global, collNames.legacy])
@@ -429,9 +621,12 @@ export async function buildContext(
   const userChunks: RetrievedChunk[] = [];
   const userDocTruncations: UserDocTruncation[] = [];
   const userDocErrors: UserDocExtractionError[] = [];
+  const fullDocContexts: UserDocFullContext[] = [];
   const userDocMaxChunks = options.userDocMaxChunks ?? MAX_USER_DOC_CHUNKS;
   const userDocReturnChunks = options.userDocReturnChunks ?? MAX_USER_CHUNKS_RETURNED;
   const sampleUserDocChunks = options.sampleUserDocChunks ?? false;
+  const uploadDirected = options.uploadDirected ?? false;
+  const userMessageForSummary = options.userMessage ?? '';
 
   for (const docPath of userDocPaths) {
     try {
@@ -473,11 +668,53 @@ export async function buildContext(
         }));
         // Use cached total or fallback to processed count
         totalChunks = cachedData.totalChunks ?? cachedData.chunks.length;
+
+        // When the query is upload-directed and embeddings were cached,
+        // we still need to re-read the file to get the full text for
+        // full-document context (the cache only stores chunked embeddings).
+        if (uploadDirected) {
+          try {
+            const buffer = await readFileBuffer(docPath);
+            const { text: fullText } = await extractTextFromDocument(buffer, filename);
+            if (fullText.trim()) {
+              const fullDoc = await summarizeUserDocument(fullText, filename, userMessageForSummary);
+              fullDocContexts.push(fullDoc);
+              logger.debug('Full-document context prepared (from cache path)', {
+                filename,
+                isSummary: fullDoc.isSummary,
+                originalChars: fullDoc.originalCharCount,
+                contextChars: fullDoc.content.length,
+              });
+            }
+          } catch (err) {
+            logger.warn('Full-document context preparation failed (cache path)', { filename, error: String(err) });
+          }
+        }
       } else {
         // Extract and embed - no cache available
         logger.debug(`Processing user document (no cache): ${filename}`);
         const buffer = await readFileBuffer(docPath);
         const { text, pages } = await extractTextFromDocument(buffer, filename);
+
+        // When the query is upload-directed (summarise/review/analyse),
+        // produce full-document context: inject the entire text if it fits
+        // the character budget, or use an LLM to summarise it if too long.
+        // This ensures the LLM sees the complete document, not just top-K
+        // chunks by similarity — which is critical for summary requests.
+        if (uploadDirected && text.trim()) {
+          try {
+            const fullDoc = await summarizeUserDocument(text, filename, userMessageForSummary);
+            fullDocContexts.push(fullDoc);
+            logger.debug('Full-document context prepared', {
+              filename,
+              isSummary: fullDoc.isSummary,
+              originalChars: fullDoc.originalCharCount,
+              contextChars: fullDoc.content.length,
+            });
+          } catch (err) {
+            logger.warn('Full-document context preparation failed', { filename, error: String(err) });
+          }
+        }
 
         // Create temporary chunks from user document with page info
         const chunks = await chunkText(text, 'user-temp', filename, 'user', threadId, undefined, pages);
@@ -569,7 +806,7 @@ export async function buildContext(
     truncation.includedChunks = finalIncludedByDoc.get(truncation.filename) || 0;
   }
 
-  return { globalChunks, userChunks: finalUserChunks, userDocTruncations, userDocErrors };
+  return { globalChunks, userChunks: finalUserChunks, userDocTruncations, userDocErrors, fullDocContexts };
 }
 
 function getUploadExtractionErrorMessage(filename: string, error?: unknown): string {
@@ -691,6 +928,36 @@ function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChu
  * console.log(response.sources);
  * ```
  */
+
+/**
+ * Detect whether the user's message is explicitly directed at an uploaded document.
+ * When true, the rerank score floor is lowered to 0 and expanded chunk limits are used
+ * so that summary/review/analysis requests don't silently drop all user-document chunks.
+ *
+ * This mirrors the logic in src/lib/streaming/rag-retrieval.ts (isUploadDirectedQuery)
+ * to keep the non-streaming route consistent with the streaming route.
+ *
+ * BUG FIX (#4 — Non-Streaming Rerank Floor Discrepancy): Previously the non-streaming
+ * ragQuery() always used USER_UPLOAD_MIN_RERANK_SCORE (0.30) for user chunks, causing
+ * "summarise this" / "review the attached file" queries to drop all chunks when the
+ * query didn't lexically match the document content. The streaming route already had
+ * this fix; now the non-streaming route does too.
+ */
+function isUploadDirectedQuery(userMessage: string, hasUploads: boolean): boolean {
+  if (!hasUploads) return false;
+
+  const message = userMessage.toLowerCase();
+  const mentionsUpload = /\b(attached|attachment|uploaded|upload|provided|selected)\b/.test(message);
+  const mentionsDocument = /\b(pdf|file|document|doc|upload|attachment)\b/.test(message);
+  const asksForDocumentWork = /\b(summarise|summarize|summary|review|analyse|analyze|explain|read|extract|outline|describe)\b/.test(message);
+
+  if (mentionsUpload && mentionsDocument) return true;
+  if (asksForDocumentWork && mentionsDocument) return true;
+  if (asksForDocumentWork && /\b(this|that|it)\b/.test(message)) return true;
+
+  return false;
+}
+
 export async function ragQuery(
   userMessage: string,
   conversationHistory: Message[] = [],
@@ -749,14 +1016,28 @@ export async function ragQuery(
     ? await createEmbeddings(additionalQueries)
     : [];
 
+  // Detect upload-directed queries (e.g., "summarise this", "review the attached file")
+  // to apply expanded chunk limits and a lowered rerank floor — same logic as the
+  // streaming route's performRAGRetrieval().
+  const uploadDirected = isUploadDirectedQuery(userMessage, userDocPaths.length > 0);
+
   // Build context from documents using multiple query embeddings
-  const { globalChunks, userChunks } = await buildContext(
+  // When the query is upload-directed, use expanded chunk limits so summary/review
+  // requests get more document content into context, and produce full-document
+  // context (full text or LLM summary) so the LLM sees the entire uploaded file.
+  const { globalChunks, userChunks, userDocErrors, fullDocContexts } = await buildContext(
     primaryEmbedding,
     userDocPaths,
     additionalEmbeddings,
     ragSettings,
     categorySlugs,
-    undefined,
+    uploadDirected ? {
+      userDocMaxChunks: MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
+      userDocReturnChunks: MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
+      sampleUserDocChunks: true,
+      uploadDirected,
+      userMessage,
+    } : undefined,
     userMessage
   );
 
@@ -846,13 +1127,62 @@ export async function ragQuery(
   // Apply reranking if enabled (improves relevance ordering)
   // Pass boostDocuments to prioritize chunks from previous conversation context
   // Run global and user rerankers concurrently.
+  //
+  // BUG FIX (#4): When the query is upload-directed (e.g., "summarise this"), lower
+  // the user-chunk rerank floor to 0 so chunks aren't dropped just because the query
+  // doesn't lexically match the document content. Previously the non-streaming route
+  // always used 0.30, silently dropping all chunks for summary/review requests.
   const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
     rerankChunks(userMessage, globalChunks, { boostDocuments }),
-    rerankChunks(userMessage, userChunks, { minScoreOverride: USER_UPLOAD_MIN_RERANK_SCORE, boostDocuments }),
+    rerankChunks(userMessage, userChunks, {
+      minScoreOverride: uploadDirected ? 0 : USER_UPLOAD_MIN_RERANK_SCORE,
+      boostDocuments,
+    }),
   ]);
 
   // Format context for LLM
-  const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
+  let context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
+
+  // Full-document context: when the query is upload-directed and we produced
+  // full-document context (full text or LLM summary), prepend it to the
+  // chunk-based context so the LLM has access to the entire uploaded document.
+  // This is critical for "summarise this" / "review this document" requests
+  // where top-K chunk retrieval alone would miss most of the document.
+  if (fullDocContexts.length > 0) {
+    let fullDocSection = '';
+    for (const doc of fullDocContexts) {
+      const label = doc.isSummary
+        ? `=== FULL DOCUMENT SUMMARY: ${doc.filename} ===\n` +
+          `(Original: ${doc.originalCharCount.toLocaleString()} characters — summarised by LLM)\n\n`
+        : `=== FULL DOCUMENT CONTENT: ${doc.filename} ===\n\n`;
+      fullDocSection += label + doc.content + '\n\n---\n\n';
+    }
+    // Prepend full-document context before chunk-based context
+    context = fullDocSection + context;
+    logger.debug('Injected full-document context', {
+      docCount: fullDocContexts.length,
+      totalChars: fullDocSection.length,
+    });
+  }
+
+  // BUG FIX (#5 — Silent Extraction Failure): When context is empty but user document
+  // extraction errors exist, inject the error messages into the context so the LLM can
+  // explain to the user why their uploaded file couldn't be processed (e.g., scanned PDF
+  // with no OCR, corrupt file, protected document). Previously these errors were silently
+  // swallowed, resulting in "I don't have any context" with no explanation.
+  if (!context.trim() && userDocErrors.length > 0) {
+    context = '=== USER UPLOADED DOCUMENT EXTRACTION STATUS ===\n\n';
+    for (const error of userDocErrors) {
+      context += `[Source: ${error.filename}]\n${error.message}\n\n---\n\n`;
+    }
+    context += 'NOTE: No document content could be extracted from the uploaded file(s). ' +
+      'Please inform the user about the extraction issue above and suggest possible solutions ' +
+      '(e.g., upload a text-based PDF instead of a scanned one, or check if the file is corrupted/protected).';
+    logger.warn('User document extraction failed — injecting error context', {
+      errorCount: userDocErrors.length,
+      filenames: userDocErrors.map(e => e.filename),
+    });
+  }
 
   // Build system prompt and resolve independent DB reads in parallel
   const categoryId = categoryIds[0]; // Use first category for prompt resolution
@@ -925,7 +1255,15 @@ export async function ragQuery(
   // Extract visualizations from data_source tool results
   const visualizations = extractVisualizationsFromHistory(fullHistory);
 
-  const response: RAGResponse = { answer, sources, generatedDocuments, generatedImages, visualizations };
+  const response: RAGResponse = {
+    answer,
+    sources,
+    generatedDocuments,
+    generatedImages,
+    visualizations,
+    // BUG FIX (#5): Surface extraction errors so callers can display them to the user
+    userDocErrors: userDocErrors.length > 0 ? userDocErrors : undefined,
+  };
 
   // Cache response using context-aware cache key
   // Only cache if: caching enabled, no user documents, and response is cacheable

@@ -250,7 +250,10 @@ export async function performRAGRetrieval(
 
   // Build context from documents
   send?.({ type: 'operation_log', category: 'rag', message: 'Searching vector database' });
-  const { globalChunks, userChunks, userDocTruncations, userDocErrors } = await buildContext(
+  if (uploadDirected && userDocPaths.length > 0) {
+    send?.({ type: 'operation_log', category: 'rag', message: 'Reading uploaded document(s) for full context' });
+  }
+  const { globalChunks, userChunks, userDocTruncations, userDocErrors, fullDocContexts } = await buildContext(
     primaryEmbedding,
     userDocPaths,
     additionalEmbeddings,
@@ -260,6 +263,8 @@ export async function performRAGRetrieval(
       userDocMaxChunks: MAX_USER_DOC_CHUNKS_FOR_SUMMARY,
       userDocReturnChunks: MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY,
       sampleUserDocChunks: true,
+      uploadDirected,
+      userMessage,
     } : undefined,
     userMessage
   );
@@ -456,10 +461,29 @@ export async function performRAGRetrieval(
   }
 
   // Format context
-  const context = formatContext(rerankedGlobalChunks, rerankedUserChunks, {
+  let context = formatContext(rerankedGlobalChunks, rerankedUserChunks, {
     prioritizeUploads: uploadDirected,
     uploadErrors: userDocErrors,
   });
+
+  // Full-document context: when the query is upload-directed and we produced
+  // full-document context (full text or LLM summary), prepend it to the
+  // chunk-based context so the LLM has access to the entire uploaded document.
+  if (fullDocContexts.length > 0) {
+    let fullDocSection = '';
+    for (const doc of fullDocContexts) {
+      const label = doc.isSummary
+        ? `=== FULL DOCUMENT SUMMARY: ${doc.filename} ===\n` +
+          `(Original: ${doc.originalCharCount.toLocaleString()} characters — summarised by LLM)\n\n`
+        : `=== FULL DOCUMENT CONTENT: ${doc.filename} ===\n\n`;
+      fullDocSection += label + doc.content + '\n\n---\n\n';
+    }
+    context = fullDocSection + context;
+    logger.debug('Injected full-document context (streaming)', {
+      docCount: fullDocContexts.length,
+      totalChars: fullDocSection.length,
+    });
+  }
 
   // Extract sources
   const sources = extractSources(rerankedGlobalChunks, rerankedUserChunks);

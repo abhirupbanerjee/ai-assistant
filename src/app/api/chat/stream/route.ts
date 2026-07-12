@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread } from '@/lib/db/compat';
+import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory } from '@/lib/db/compat';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
@@ -425,6 +425,23 @@ export async function POST(request: NextRequest) {
           async () => {
             // ============ Phase 2: RAG Retrieval ============
             send({ type: 'status', phase: 'rag', content: getPhaseMessage('rag') });
+
+            // BUG FIX (#2 — Async Processing Race): Warn the user if any documents
+            // in the thread's categories are still being processed (not yet in Qdrant).
+            // This explains why RAG might return empty results right after an upload.
+            try {
+              const processingDocs = await getProcessingDocumentsByCategory(categoryIds);
+              if (processingDocs.length > 0) {
+                send({
+                  type: 'status',
+                  phase: 'rag',
+                  content: `⚠️ ${processingDocs.length} document(s) still processing and not yet searchable: ${processingDocs.join(', ')}`,
+                });
+                console.log('[Chat Stream] Documents still processing:', processingDocs);
+              }
+            } catch (err) {
+              console.error('[Chat Stream] Failed to check processing documents:', err);
+            }
 
             const ragStart = Date.now();
             const ragResult = await performRAGRetrieval(

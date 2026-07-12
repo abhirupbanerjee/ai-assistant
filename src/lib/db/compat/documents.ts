@@ -390,6 +390,59 @@ export async function getDocumentsByStatus(status: DocumentStatus): Promise<DbDo
     .execute() as Promise<DbDocument[]>;
 }
 
+/**
+ * Get filenames of documents that are still being processed (not yet in the vector store)
+ * and are either assigned to one of the given categories or are global.
+ *
+ * BUG FIX (#2 — Async Processing Race): Used by chat routes to warn users when
+ * their uploaded documents haven't finished processing yet, so they understand
+ * why RAG returns empty results immediately after upload.
+ *
+ * @param categoryIds - Category IDs to check (if empty, checks all categories + global)
+ * @returns Array of filenames that are still in 'processing' status
+ */
+export async function getProcessingDocumentsByCategory(categoryIds: number[]): Promise<string[]> {
+  const db = await getDb();
+
+  // If no specific categories, only check processing GLOBAL documents — NOT all
+  // documents. This preserves category segregation: a user with no categories
+  // selected should only see warnings about global documents being processed,
+  // not filenames from categories they don't have access to.
+  if (categoryIds.length === 0) {
+    const docs = await db
+      .selectFrom('documents')
+      .select('filename')
+      .where('status', '=', 'processing')
+      .where('is_global', '=', 1)
+      .execute();
+    return docs.map(d => d.filename);
+  }
+
+  // Get processing documents assigned to the given categories
+  const categoryDocs = await db
+    .selectFrom('documents as d')
+    .innerJoin('document_categories as dc', 'd.id', 'dc.document_id')
+    .select('d.filename')
+    .where('d.status', '=', 'processing')
+    .where('dc.category_id', 'in', categoryIds)
+    .execute();
+
+  // Also get processing global documents (they appear in all category collections)
+  const globalDocs = await db
+    .selectFrom('documents')
+    .select('filename')
+    .where('status', '=', 'processing')
+    .where('is_global', '=', 1)
+    .execute();
+
+  // Deduplicate filenames
+  const filenames = new Set<string>();
+  categoryDocs.forEach(d => filenames.add(d.filename));
+  globalDocs.forEach(d => filenames.add(d.filename));
+
+  return Array.from(filenames);
+}
+
 // ============ Statistics ============
 
 export async function getTotalChunkCount(): Promise<number> {

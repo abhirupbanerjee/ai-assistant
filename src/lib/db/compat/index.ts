@@ -352,6 +352,7 @@ export {
   getGlobalDocuments,
   getUnassignedDocuments,
   getDocumentsByStatus,
+  getProcessingDocumentsByCategory,
   // Statistics
   getTotalChunkCount,
   getDocumentCountByStatus,

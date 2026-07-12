@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, getEffectiveModelForThread } from '@/lib/db/compat';
+import { getUserByEmail, getEffectiveModelForThread, getProcessingDocumentsByCategory } from '@/lib/db/compat';
 import { rateLimitMiddleware } from '@/lib/rate-limiter';
 import { ragQuery } from '@/lib/rag';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
@@ -215,7 +215,21 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    const { answer, sources, generatedDocuments, generatedImages, visualizations } = ragResult;
+    const { answer, sources, generatedDocuments, generatedImages, visualizations, userDocErrors } = ragResult;
+
+    // BUG FIX (#2 — Async Processing Race): Check if any documents in the thread's
+    // categories (or global docs) are still being processed. If so, include their
+    // filenames in the response so the frontend can warn the user that their
+    // document isn't ready yet.
+    let processingDocuments: string[] = [];
+    try {
+      processingDocuments = await getProcessingDocumentsByCategory(categoryIds);
+      if (processingDocuments.length > 0) {
+        console.log('[Chat API] Documents still processing:', processingDocuments);
+      }
+    } catch (err) {
+      console.error('[Chat API] Failed to check processing documents:', err);
+    }
 
     // Create assistant message
     const assistantMessage: Message = {
@@ -260,6 +274,8 @@ export async function POST(request: NextRequest) {
       message: assistantMessage,
       threadId,
       model: usedModel,
+      processingDocuments: processingDocuments.length > 0 ? processingDocuments : undefined,
+      userDocErrors,
     });
   } catch (error) {
     console.error('Chat error:', error);

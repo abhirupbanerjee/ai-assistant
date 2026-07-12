@@ -25,6 +25,30 @@ export const MAX_USER_CHUNKS_RETURNED_FOR_SUMMARY = 20;
 /** Character limit for chunk preview in sources */
 export const CHUNK_PREVIEW_LENGTH = 200;
 
+/**
+ * Character budget for including the full text of a user-uploaded document
+ * directly in the RAG context (without summarization). Roughly ~8K tokens.
+ * Documents shorter than this are injected as-is; longer ones get an LLM summary.
+ */
+export const FULL_DOC_CHAR_BUDGET = 30000;
+
+/**
+ * Character threshold above which an LLM summarization call is made to condense
+ * the document before injecting it as context. Below this, the full text is used.
+ */
+export const SUMMARY_DOC_CHAR_THRESHOLD = 30000;
+
+/**
+ * Character threshold above which a chapter-wise summarization strategy is used
+ * (the document is split into sections, each summarized individually, and the
+ * summaries are concatenated). Below this, a single whole-document summary call
+ * is made.
+ */
+export const CHAPTER_DOC_CHAR_THRESHOLD = 120000;
+
+/** Maximum characters per chapter section for chapter-wise summarization */
+export const CHAPTER_SECTION_CHAR_SIZE = 25000;
+
 /** Default conversation history limit (when not configured in settings) */
 export const DEFAULT_CONVERSATION_HISTORY_LIMIT = 5;
 

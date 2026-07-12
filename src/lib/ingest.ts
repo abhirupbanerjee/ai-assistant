@@ -247,8 +247,23 @@ export async function ingestDocument(
     categoryIds,
   });
 
+  // BUG FIX (#3): Resolve category slugs NOW (at upload time) — before
+  // firing the background processing task. If slug resolution is deferred
+  // into processDocumentAsync, a category could be deleted or renamed
+  // between when the upload completes and when the background task runs,
+  // causing the document to be indexed into the wrong (or non-existent)
+  // Qdrant collection. By capturing slugs at upload time we guarantee
+  // the document lands in the collections the user expected.
+  const categorySlugs: string[] = [];
+  for (const catId of categoryIds) {
+    const category = await getCategoryById(catId);
+    if (category) {
+      categorySlugs.push(category.slug);
+    }
+  }
+
   // Run heavy processing in background (extract → chunk → embed → store)
-  processDocumentAsync(buffer, doc.id, filename, categoryIds, isGlobal, mimeType)
+  processDocumentAsync(buffer, doc.id, filename, categorySlugs, isGlobal, mimeType)
     .catch(err => console.error(`[Ingest] Background processing failed for ${filename}:`, err));
 
   // Return immediately with 'processing' status
@@ -264,7 +279,7 @@ async function processDocumentAsync(
   buffer: Buffer,
   docId: number,
   filename: string,
-  categoryIds: number[],
+  categorySlugs: string[],
   isGlobal: boolean,
   mimeType: string,
 ): Promise<void> {
@@ -277,14 +292,10 @@ async function processDocumentAsync(
       throw new Error('No text content extracted from document');
     }
 
-    // Get category slugs for collection names
-    const categorySlugs: string[] = [];
-    for (const catId of categoryIds) {
-      const category = await getCategoryById(catId);
-      if (category) {
-        categorySlugs.push(category.slug);
-      }
-    }
+    // Category slugs were resolved at upload time in ingestDocument() and
+    // passed in here (Bug #3 fix). This ensures we index into the same
+    // collections the user intended at upload time, even if a category is
+    // renamed or deleted before the background task runs.
 
     // Get vector store and collection names
     const store = await getVectorStore();
