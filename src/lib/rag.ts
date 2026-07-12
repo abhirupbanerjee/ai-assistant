@@ -347,15 +347,25 @@ export interface UserDocFullContext {
  * If the LLM call fails, the function falls back to returning the truncated
  * full text (first FULL_DOC_CHAR_BUDGET chars) rather than nothing.
  */
+/** Thresholds for full-document summarization, passed from buildContext */
+interface SummarizationThresholds {
+  fullDocCharBudget: number;
+  summaryDocCharThreshold: number;
+  chapterDocCharThreshold: number;
+  chapterSectionCharSize: number;
+}
+
 async function summarizeUserDocument(
   fullText: string,
   filename: string,
   userMessage: string,
+  thresholds: SummarizationThresholds,
 ): Promise<UserDocFullContext> {
+  const { fullDocCharBudget, summaryDocCharThreshold, chapterDocCharThreshold, chapterSectionCharSize } = thresholds;
   const originalCharCount = fullText.length;
 
   // Short document — inject full text directly
-  if (originalCharCount <= SUMMARY_DOC_CHAR_THRESHOLD) {
+  if (originalCharCount <= summaryDocCharThreshold) {
     return {
       filename,
       content: fullText,
@@ -369,16 +379,16 @@ async function summarizeUserDocument(
     const llmSettings = await getLlmSettings();
     const model = llmSettings.model;
 
-    if (originalCharCount > CHAPTER_DOC_CHAR_THRESHOLD) {
+    if (originalCharCount > chapterDocCharThreshold) {
       // Chapter-wise summarisation for very long documents.
       // Each section is summarised independently — a failure on one section
       // does NOT discard the summaries already computed for other sections.
       const sections: string[] = [];
       let failedSections = 0;
-      const totalSections = Math.ceil(fullText.length / CHAPTER_SECTION_CHAR_SIZE);
-      for (let i = 0; i < fullText.length; i += CHAPTER_SECTION_CHAR_SIZE) {
-        const section = fullText.slice(i, i + CHAPTER_SECTION_CHAR_SIZE);
-        const sectionNum = Math.floor(i / CHAPTER_SECTION_CHAR_SIZE) + 1;
+      const totalSections = Math.ceil(fullText.length / chapterSectionCharSize);
+      for (let i = 0; i < fullText.length; i += chapterSectionCharSize) {
+        const section = fullText.slice(i, i + chapterSectionCharSize);
+        const sectionNum = Math.floor(i / chapterSectionCharSize) + 1;
         try {
           const sectionSummary = await createInternalCompletion({
             messages: [
@@ -480,10 +490,10 @@ async function summarizeUserDocument(
   }
 
   // Fallback: truncated full text
-  const truncated = fullText.slice(0, FULL_DOC_CHAR_BUDGET);
+  const truncated = fullText.slice(0, fullDocCharBudget);
   return {
     filename,
-    content: truncated + (originalCharCount > FULL_DOC_CHAR_BUDGET ? '\n\n[... document truncated due to length ...]' : ''),
+    content: truncated + (originalCharCount > fullDocCharBudget ? '\n\n[... document truncated due to length ...]' : ''),
     isSummary: false,
     originalCharCount,
   };
@@ -517,7 +527,7 @@ export async function buildContext(
   queryEmbedding: number[],
   userDocPaths: string[] = [],
   additionalEmbeddings: number[][] = [],
-  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number; hybridSearchEnabled?: boolean },
+  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number; hybridSearchEnabled?: boolean; fullDocCharBudget?: number; summaryDocCharThreshold?: number; chapterDocCharThreshold?: number; chapterSectionCharSize?: number },
   categorySlugs?: string[],
   options: BuildContextOptions = {},
   queryText?: string
@@ -531,6 +541,14 @@ export async function buildContext(
   // Use provided settings or fetch from SQLite config
   const ragSettings = settings || await getRagSettings();
   const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
+
+  // Extract full-document summarization thresholds (fall back to compile-time constants)
+  const summaryThresholds: SummarizationThresholds = {
+    fullDocCharBudget: ragSettings.fullDocCharBudget ?? FULL_DOC_CHAR_BUDGET,
+    summaryDocCharThreshold: ragSettings.summaryDocCharThreshold ?? SUMMARY_DOC_CHAR_THRESHOLD,
+    chapterDocCharThreshold: ragSettings.chapterDocCharThreshold ?? CHAPTER_DOC_CHAR_THRESHOLD,
+    chapterSectionCharSize: ragSettings.chapterSectionCharSize ?? CHAPTER_SECTION_CHAR_SIZE,
+  };
 
   logger.debug('buildContext called', {
     categorySlugs,
@@ -677,7 +695,7 @@ export async function buildContext(
             const buffer = await readFileBuffer(docPath);
             const { text: fullText } = await extractTextFromDocument(buffer, filename);
             if (fullText.trim()) {
-              const fullDoc = await summarizeUserDocument(fullText, filename, userMessageForSummary);
+              const fullDoc = await summarizeUserDocument(fullText, filename, userMessageForSummary, summaryThresholds);
               fullDocContexts.push(fullDoc);
               logger.debug('Full-document context prepared (from cache path)', {
                 filename,
@@ -703,7 +721,7 @@ export async function buildContext(
         // chunks by similarity — which is critical for summary requests.
         if (uploadDirected && text.trim()) {
           try {
-            const fullDoc = await summarizeUserDocument(text, filename, userMessageForSummary);
+            const fullDoc = await summarizeUserDocument(text, filename, userMessageForSummary, summaryThresholds);
             fullDocContexts.push(fullDoc);
             logger.debug('Full-document context prepared', {
               filename,

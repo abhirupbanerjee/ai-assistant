@@ -26,6 +26,10 @@ interface RAGSettings {
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
   contextualEnrichmentEnabled: boolean;
+  fullDocCharBudget: number;
+  summaryDocCharThreshold: number;
+  chapterDocCharThreshold: number;
+  chapterSectionCharSize: number;
   updatedAt: string;
   updatedBy: string;
 }
@@ -150,6 +154,10 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         hybridSearchEnabled: false,
         llmQueryRewritingEnabled: false,
         contextualEnrichmentEnabled: false,
+        fullDocCharBudget: 30000,
+        summaryDocCharThreshold: 30000,
+        chapterDocCharThreshold: 120000,
+        chapterSectionCharSize: 25000,
       };
 
       setSettings(ragData);
@@ -167,6 +175,10 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         hybridSearchEnabled: ragData.hybridSearchEnabled ?? false,
         llmQueryRewritingEnabled: ragData.llmQueryRewritingEnabled ?? false,
         contextualEnrichmentEnabled: ragData.contextualEnrichmentEnabled ?? false,
+        fullDocCharBudget: ragData.fullDocCharBudget ?? 30000,
+        summaryDocCharThreshold: ragData.summaryDocCharThreshold ?? 30000,
+        chapterDocCharThreshold: ragData.chapterDocCharThreshold ?? 120000,
+        chapterSectionCharSize: ragData.chapterSectionCharSize ?? 25000,
       });
 
       if (data.embedding) {
@@ -381,6 +393,10 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         hybridSearchEnabled: settings.hybridSearchEnabled ?? false,
         llmQueryRewritingEnabled: settings.llmQueryRewritingEnabled ?? false,
         contextualEnrichmentEnabled: settings.contextualEnrichmentEnabled ?? false,
+        fullDocCharBudget: settings.fullDocCharBudget ?? 30000,
+        summaryDocCharThreshold: settings.summaryDocCharThreshold ?? 30000,
+        chapterDocCharThreshold: settings.chapterDocCharThreshold ?? 120000,
+        chapterSectionCharSize: settings.chapterSectionCharSize ?? 25000,
       });
       setIsModified(false);
     }
@@ -794,6 +810,66 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
                 </div>
               )}
             </div>
+
+            {/* ── Full-Document Summarization ── */}
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-semibold text-gray-900 mb-1">Full-Document Summarization</h4>
+              <p className="text-xs text-gray-500 mb-4">
+                Controls how user-uploaded chat files are handled when a query targets the uploaded document directly.
+                Short files inject full text; medium files get a single LLM summary; very long files get chapter-wise section summaries.
+              </p>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Full Text Budget (chars)</label>
+                  <input
+                    type="number"
+                    min="1000"
+                    max="100000"
+                    value={editedSettings.fullDocCharBudget ?? 30000}
+                    onChange={(e) => handleChange('fullDocCharBudget', parseInt(e.target.value) || 30000)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Max chars injected as full text without summarization (1,000–100,000)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Summary Threshold (chars)</label>
+                  <input
+                    type="number"
+                    min="1000"
+                    max="100000"
+                    value={editedSettings.summaryDocCharThreshold ?? 30000}
+                    onChange={(e) => handleChange('summaryDocCharThreshold', parseInt(e.target.value) || 30000)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Above this size, LLM summarization is used (1,000–100,000)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Chapter Threshold (chars)</label>
+                  <input
+                    type="number"
+                    min="10000"
+                    max="500000"
+                    value={editedSettings.chapterDocCharThreshold ?? 120000}
+                    onChange={(e) => handleChange('chapterDocCharThreshold', parseInt(e.target.value) || 120000)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Above this, chapter-wise (section-by-section) summarization is used (10,000–500,000)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Section Size (chars)</label>
+                  <input
+                    type="number"
+                    min="5000"
+                    max="50000"
+                    value={editedSettings.chapterSectionCharSize ?? 25000}
+                    onChange={(e) => handleChange('chapterSectionCharSize', parseInt(e.target.value) || 25000)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Characters per section in chapter-wise mode (5,000–50,000)</p>
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-6 pt-4 border-t">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

@@ -48,6 +48,11 @@ export interface RagConfig {
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
   contextualEnrichmentEnabled: boolean;
+  // ── Full-document summarization thresholds (optional, for user-uploaded chat files) ──
+  fullDocCharBudget?: number;
+  summaryDocCharThreshold?: number;
+  chapterDocCharThreshold?: number;
+  chapterSectionCharSize?: number;
 }
 
 export interface EmbeddingConfig {
@@ -521,6 +526,10 @@ function getHardcodedDefaults(): AppConfig {
       hybridSearchEnabled: false,
       llmQueryRewritingEnabled: false,
       contextualEnrichmentEnabled: false,
+      fullDocCharBudget: 30000,
+      summaryDocCharThreshold: 30000,
+      chapterDocCharThreshold: 120000,
+      chapterSectionCharSize: 25000,
     },
     embedding: {
       model: 'text-embedding-3-large',

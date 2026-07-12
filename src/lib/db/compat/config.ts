@@ -229,7 +229,19 @@ export async function getRagSettings(): Promise<RagSettings> {
   // Merge with config defaults (same logic as sync module)
   const { loadConfig } = await import('../../config-loader');
   const config = loadConfig();
-  return { ...config.rag, chunkingStrategy: 'recursive', semanticBreakpointThreshold: 0.5, ...pg };
+  return {
+    ...config.rag,
+    chunkingStrategy: 'recursive',
+    semanticBreakpointThreshold: 0.5,
+    hybridSearchEnabled: false,
+    llmQueryRewritingEnabled: false,
+    contextualEnrichmentEnabled: false,
+    fullDocCharBudget: 30000,
+    summaryDocCharThreshold: 30000,
+    chapterDocCharThreshold: 120000,
+    chapterSectionCharSize: 25000,
+    ...pg,
+  };
 }
 
 export async function getLlmSettings(): Promise<LlmSettings> {

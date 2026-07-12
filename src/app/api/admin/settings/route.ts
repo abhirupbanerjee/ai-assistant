@@ -308,6 +308,10 @@ export async function PUT(request: NextRequest) {
           hybridSearchEnabled,
           llmQueryRewritingEnabled,
           contextualEnrichmentEnabled,
+          fullDocCharBudget,
+          summaryDocCharThreshold,
+          chapterDocCharThreshold,
+          chapterSectionCharSize,
         } = settings;
 
         if (typeof topKChunks !== 'number' || !isFinite(topKChunks) || topKChunks < 1 || topKChunks > 50) {
@@ -370,6 +374,43 @@ export async function PUT(request: NextRequest) {
           }
         }
 
+        // Validate full-document summarization thresholds (all optional)
+        if (fullDocCharBudget !== undefined) {
+          if (typeof fullDocCharBudget !== 'number' || !isFinite(fullDocCharBudget) || fullDocCharBudget < 1000 || fullDocCharBudget > 100000) {
+            return NextResponse.json<ApiError>(
+              { error: 'Full document char budget must be between 1000 and 100000', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
+        if (summaryDocCharThreshold !== undefined) {
+          if (typeof summaryDocCharThreshold !== 'number' || !isFinite(summaryDocCharThreshold) || summaryDocCharThreshold < 1000 || summaryDocCharThreshold > 100000) {
+            return NextResponse.json<ApiError>(
+              { error: 'Summary char threshold must be between 1000 and 100000', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
+        if (chapterDocCharThreshold !== undefined) {
+          if (typeof chapterDocCharThreshold !== 'number' || !isFinite(chapterDocCharThreshold) || chapterDocCharThreshold < 10000 || chapterDocCharThreshold > 500000) {
+            return NextResponse.json<ApiError>(
+              { error: 'Chapter char threshold must be between 10000 and 500000', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
+        if (chapterSectionCharSize !== undefined) {
+          if (typeof chapterSectionCharSize !== 'number' || !isFinite(chapterSectionCharSize) || chapterSectionCharSize < 5000 || chapterSectionCharSize > 50000) {
+            return NextResponse.json<ApiError>(
+              { error: 'Chapter section size must be between 5000 and 50000', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
         result = await setRagSettings({
           topKChunks,
           maxContextChunks,
@@ -384,6 +425,10 @@ export async function PUT(request: NextRequest) {
           hybridSearchEnabled: Boolean(hybridSearchEnabled),
           llmQueryRewritingEnabled: Boolean(llmQueryRewritingEnabled),
           contextualEnrichmentEnabled: Boolean(contextualEnrichmentEnabled),
+          fullDocCharBudget: fullDocCharBudget ?? 30000,
+          summaryDocCharThreshold: summaryDocCharThreshold ?? 30000,
+          chapterDocCharThreshold: chapterDocCharThreshold ?? 120000,
+          chapterSectionCharSize: chapterSectionCharSize ?? 25000,
         }, user.email);
         break;
       }

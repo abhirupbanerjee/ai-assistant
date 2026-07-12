@@ -40,6 +40,11 @@ export interface RagSettings {
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
   contextualEnrichmentEnabled: boolean;
+  // ── Full-document summarization thresholds (for user-uploaded chat files) ──
+  fullDocCharBudget?: number;        // Max chars of full text injected directly without summarization (default: 30000)
+  summaryDocCharThreshold?: number;  // Chars above which single-document LLM summarization begins (default: 30000)
+  chapterDocCharThreshold?: number;  // Chars above which chapter-wise (section-by-section) summarization is used (default: 120000)
+  chapterSectionCharSize?: number;   // Section size in chars for chapter-wise summarization (default: 25000)
 }
 
 export interface LlmSettings {
@@ -640,6 +645,11 @@ export function getRagSettings(): RagSettings {
     hybridSearchEnabled: false,
     llmQueryRewritingEnabled: false,
     contextualEnrichmentEnabled: false,
+    // Provide defaults for full-document summarization thresholds
+    fullDocCharBudget: 30000,
+    summaryDocCharThreshold: 30000,
+    chapterDocCharThreshold: 120000,
+    chapterSectionCharSize: 25000,
     // Override with database settings if present
     ...dbSettings,
   };
