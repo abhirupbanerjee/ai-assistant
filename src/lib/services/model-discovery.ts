@@ -154,6 +154,8 @@ const PARALLEL_TOOL_CAPABLE_PATTERNS = [
   /^gpt-5\.2/,
   /^gpt-5\.3/,
   /^gpt-5\.4/,
+  /^gpt-5\.5/,
+  /^gpt-5\.6/,
   // Fireworks-hosted models (MiniMax, Kimi, etc.)
   /^fireworks\//,
   /^accounts\/fireworks/,
@@ -216,6 +218,11 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5.4-mini': 1050000,
   'gpt-5.4-nano': 1050000,
   'gpt-5.4-pro': 1050000,
+  // OpenAI - GPT-5.6 family (1,050,000 tokens)
+  'gpt-5.6': 1050000,
+  'gpt-5.6-sol': 1050000,
+  'gpt-5.6-terra': 1050000,
+  'gpt-5.6-luna': 1050000,
   // OpenAI - GPT-5 base family (272K input + 128K output)
   'gpt-5': 272000,
   'gpt-5.1': 272000,

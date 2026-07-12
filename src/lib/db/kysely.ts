@@ -640,6 +640,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     { id: 'gpt-5.4-mini', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 4.50, forced_tool_capable: 1 },
     { id: 'gpt-5.4-nano', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.20, output_cost_per_1m: 1.25, forced_tool_capable: 1 },
     { id: 'gpt-5.4-pro', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 30.00, output_cost_per_1m: 180.00, forced_tool_capable: 1 },
+    // OpenAI - GPT-5.6 family (Sol, Terra, Luna)
+    { id: 'gpt-5.6-sol', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 5.00, output_cost_per_1m: 30.00, forced_tool_capable: 1 },
+    { id: 'gpt-5.6-terra', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 15.00, forced_tool_capable: 1 },
+    { id: 'gpt-5.6-luna', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 1.00, output_cost_per_1m: 6.00, forced_tool_capable: 1 },
     // OpenAI - o-series
     { id: 'o1', max_input_tokens: 200000, max_output_tokens: 100000, vision_capable: 1, input_cost_per_1m: 15.00, output_cost_per_1m: 60.00, forced_tool_capable: 0 },
     { id: 'o3', max_input_tokens: 200000, max_output_tokens: 100000, vision_capable: 1, input_cost_per_1m: 10.00, output_cost_per_1m: 40.00, forced_tool_capable: 0 },
@@ -722,6 +726,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     WHERE (
         -- GPT-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro)
         id LIKE 'gpt-5.4%'
+        -- GPT-5.5 family
+        OR id LIKE 'gpt-5.5%'
+        -- GPT-5.6 family (Sol, Terra, Luna)
+        OR id LIKE 'gpt-5.6%'
         -- Mistral Large
         OR id LIKE 'mistral-large%'
         -- Gemini (all models — full parallel + compositional support)
@@ -733,7 +741,16 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       )
       AND parallel_tool_capable = 0
   `.execute(database);
-  console.log('[Kysely] Ensured parallel_tool_capable is set for GPT-5.4, Mistral Large, Gemini, and Claude models');
+  console.log('[Kysely] Ensured parallel_tool_capable is set for GPT-5.4/5.5/5.6, Mistral Large, Gemini, and Claude models');
+
+  // Migration: Ensure GPT-5.6 family is marked thinking-capable
+  await sql`
+    UPDATE enabled_models
+    SET thinking_capable = 1
+    WHERE id LIKE 'gpt-5.6%'
+      AND thinking_capable = 0
+  `.execute(database);
+  console.log('[Kysely] Ensured GPT-5.6 family is marked thinking-capable');
 
   // Migration: Fix context windows for Gemini 3.x models (1,000,000 → 1,048,576)
   await sql`

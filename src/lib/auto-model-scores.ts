@@ -26,7 +26,9 @@ export function deriveScores(m: EnabledModel): CapabilityScores {
     visual_reasoning: m.visionCapable ? 0.75 : 0.2,
     reasoning:        m.thinkingCapable ? 0.8 : 0.55,
     // coarse family heuristic for code quality
-    code_quality:     /deepseek|qwen|glm|claude|gpt-5|codestral/.test(id) ? 0.75 : 0.6,
+    code_quality:     /gpt-5\.6-sol/.test(id) ? 0.85
+                    : /deepseek|qwen|glm|claude|gpt-5|codestral/.test(id) ? 0.75
+                    : 0.6,
   };
 }
 

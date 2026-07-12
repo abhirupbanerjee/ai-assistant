@@ -40,7 +40,8 @@ export function isNonOOpenAIGpt5Model(modelId: string): boolean {
  */
 function isGpt5ModelRejectingReasoningWithTools(modelId: string): boolean {
   const id = normalizeModelId(modelId);
-  return id === 'gpt-5.5' || id === 'gpt-5.4' || id === 'gpt-5.4-mini' || id === 'gpt-5.4-nano';
+  return id === 'gpt-5.5' || id === 'gpt-5.4' || id === 'gpt-5.4-mini' || id === 'gpt-5.4-nano'
+      || id.startsWith('gpt-5.6');
 }
 
 export function isTemperatureLockedModel(modelId: string): boolean {
@@ -220,7 +221,9 @@ export function buildThinkingRequestProfile(options: {
     // so the fallback system can switch to a model that supports thinking+tools
     // rather than silently degrading.
     if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
-      requestParams.reasoning_effort = 'high';
+      const id = normalizeModelId(options.modelId);
+      // GPT-5.6 Sol supports the new 'max' reasoning effort; use 'high' for Terra/Luna and other families.
+      requestParams.reasoning_effort = (id === 'gpt-5.6' || id.startsWith('gpt-5.6-sol')) ? 'max' : 'high';
     }
     streamFields.add('reasoning_content');
   }
