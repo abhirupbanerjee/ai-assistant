@@ -43,7 +43,7 @@ export class XlsxBuilder {
   }
 
   private initializeWorkbook(): void {
-    this.workbook.creator = this.options.organizationName || 'Policy Bot';
+    this.workbook.creator = this.options.organizationName || 'AI Assistant';
     this.workbook.created = new Date();
     this.workbook.modified = new Date();
   }

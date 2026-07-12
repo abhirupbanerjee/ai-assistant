@@ -183,7 +183,7 @@ async function testRedis(): Promise<TestResult> {
 
 async function main() {
   console.log('\n========================================');
-  console.log('  Policy Bot - API Connectivity Tests');
+  console.log('  AI Assistant - API Connectivity Tests');
   console.log('========================================\n');
 
   // Configuration Summary

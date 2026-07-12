@@ -24,7 +24,7 @@ if [ -z "$SONAR_TOKEN" ]; then
 fi
 
 echo "=========================================="
-echo "  Policy Bot — SonarCloud Scan"
+echo "  AI Assistant — SonarCloud Scan"
 echo "=========================================="
 echo "  Project:  abhirupbanerjee_policybot"
 echo "  Org:      abhirupbanerjee"

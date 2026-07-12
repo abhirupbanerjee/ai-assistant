@@ -29,7 +29,7 @@ function HomeContent() {
   const sidebarRef = useRef<ThreadSidebarRef>(null);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
-  const [brandingName, setBrandingName] = useState<string>('Policy Bot');
+  const [brandingName, setBrandingName] = useState<string>('AI Assistant');
   const [brandingBotIcon, setBrandingBotIcon] = useState<string>('policy');
   const [brandingSubtitle, setBrandingSubtitle] = useState<string>('Ask questions about policy documents');
   const [globalWelcome, setGlobalWelcome] = useState<WelcomeConfig>({});
@@ -84,7 +84,7 @@ function HomeContent() {
         const brandingResponse = await fetch('/api/branding');
         if (brandingResponse.ok) {
           const brandingData = await brandingResponse.json();
-          setBrandingName(brandingData.botName || 'Policy Bot');
+          setBrandingName(brandingData.botName || 'AI Assistant');
           setBrandingBotIcon(brandingData.botIcon || 'policy');
           setBrandingSubtitle(brandingData.subtitle || 'Ask questions about policy documents');
           setGlobalWelcome({

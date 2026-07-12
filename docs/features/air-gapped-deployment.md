@@ -1,6 +1,6 @@
 # Air-Gapped / Offline Deployment
 
-Policy Bot supports fully air-gapped deployments where no external API calls leave the network. This document covers every offline-capable component and what is unavailable without internet.
+AI Assistant supports fully air-gapped deployments where no external API calls leave the network. This document covers every offline-capable component and what is unavailable without internet.
 
 ---
 

@@ -444,7 +444,7 @@ export default function SharedThreadPage({ params }: PageProps) {
           <p>
             This thread was shared via{' '}
             <Link href="/" className="text-blue-600 hover:underline">
-              Policy Bot
+              AI Assistant
             </Link>
           </p>
         </div>

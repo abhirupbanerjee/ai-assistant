@@ -98,9 +98,9 @@ const TIER_NAMES = {
 const PLATFORM_INTRO = {
   title: 'AI Assistant Platform Guide',
   tagline: 'An open-source, interoperable AI platform for governments, ministries, and enterprises.',
-  whyPolicyBot: `Governments and organizations face a critical challenge: how to adopt AI responsibly while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
+  whyPlatform: `Governments and organizations face a critical challenge: how to adopt AI responsibly while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
 
-Policy Bot solves this by providing:
+AI Assistant solves this by providing:
 - **Data Sovereignty** — All data remains on your infrastructure
 - **Open Source** — Fully auditable code with no proprietary dependencies
 - **Interoperability** — Switch AI providers freely
@@ -192,7 +192,7 @@ export default function WelcomeScreen({
       generatedAt: new Date().toISOString(),
       introduction: {
         tagline: PLATFORM_INTRO.tagline,
-        whyPolicyBot: PLATFORM_INTRO.whyPolicyBot,
+        whyPlatform: PLATFORM_INTRO.whyPlatform,
         supportedLLMs: PLATFORM_INTRO.supportedLLMs,
         aiCapabilities: PLATFORM_INTRO.aiCapabilities,
       },
@@ -230,9 +230,9 @@ export default function WelcomeScreen({
     lines.push(`> ${content.introduction.tagline}`);
     lines.push('');
 
-    lines.push('## Why Policy Bot?');
+    lines.push('## Why AI Assistant?');
     lines.push('');
-    lines.push(content.introduction.whyPolicyBot);
+    lines.push(content.introduction.whyPlatform);
     lines.push('');
 
     lines.push('## Supported LLMs');

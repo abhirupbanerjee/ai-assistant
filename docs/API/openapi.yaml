@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  title: Policy Bot API
+  title: AI Assistant API
   version: 1.0.0
   description: |
     RAG-based policy assistant API for Caribbean government staff.
@@ -13,12 +13,12 @@ info:
     - **superuser**: Manage documents/users in assigned categories
     - **user**: Query documents in subscribed categories
   contact:
-    name: Policy Bot Support
+    name: AI Assistant Support
   license:
     name: Proprietary
 
 servers:
-  - url: https://policybot.abhirup.app/api
+  - url: https://ai.abhirup.app/api
     description: Production
   - url: http://localhost:3000/api
     description: Local Development
@@ -800,7 +800,7 @@ components:
           example: "Answers HR policy questions"
         baseUrl:
           type: string
-          example: "https://policybot.abhirup.app/api/agent-bots/hr-assistant"
+          example: "https://ai.abhirup.app/api/agent-bots/hr-assistant"
         version:
           type: object
           properties:
@@ -1375,7 +1375,7 @@ paths:
                 properties:
                   botName:
                     type: string
-                    example: "Policy Bot"
+                    example: "AI Assistant"
                   botIcon:
                     type: string
                     example: "policy"

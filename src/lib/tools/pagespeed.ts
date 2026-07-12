@@ -491,7 +491,7 @@ interface SslScanResult {
 const SSL_LABS_API = 'https://api.ssllabs.com/api/v4/analyze';
 
 async function pollSslLabs(hostname: string, maxWaitSeconds: number, email: string): Promise<Record<string, unknown>> {
-  const headers: Record<string, string> = { 'User-Agent': 'PolicyBot-SSLScan/1.0' };
+  const headers: Record<string, string> = { 'User-Agent': 'AIAssistant-SSLScan/1.0' };
   if (email) headers['email'] = email;
 
   const triggerRes = await fetch(`${SSL_LABS_API}?host=${encodeURIComponent(hostname)}&all=done`, { headers });
@@ -855,7 +855,7 @@ async function runCookieAudit(url: string, config: { rateLimitPerDay: number; fo
 
   const { response, finalUrl } = await fetchWithSsrfGuard(
     url,
-    { headers: { 'User-Agent': 'PolicyBot-CookieAudit/1.0' } },
+    { headers: { 'User-Agent': 'AIAssistant-CookieAudit/1.0' } },
     { followRedirects: config.followRedirects, maxRedirects: 10 }
   );
   const cookieHeaders: string[] = response.headers.getSetCookie();
@@ -913,7 +913,7 @@ async function followRedirects(startUrl: string, maxHops: number, timeoutMs: num
     try {
       const { response: res } = await fetchWithSsrfGuard(
         currentUrl,
-        { redirect: 'manual', signal: controller.signal, headers: { 'User-Agent': 'PolicyBot-RedirectAudit/1.0' } },
+        { redirect: 'manual', signal: controller.signal, headers: { 'User-Agent': 'AIAssistant-RedirectAudit/1.0' } },
         { followRedirects: false }
       );
       clearTimeout(timer);

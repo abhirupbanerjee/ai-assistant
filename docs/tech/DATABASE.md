@@ -1,8 +1,8 @@
-# Policy Bot - Database Schema Reference
+# AI Assistant - Database Schema Reference
 
 ## Overview
 
-This document provides detailed schema definitions, column descriptions, and data models for the Policy Bot database.
+This document provides detailed schema definitions, column descriptions, and data models for the AI Assistant database.
 
 **For architecture documentation** (connection pooling, operations mapping), see [DB-techstack.md](DB-techstack.md).
 

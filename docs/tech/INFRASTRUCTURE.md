@@ -1,14 +1,14 @@
-# Policy Bot - Infrastructure & Deployment
+# AI Assistant - Infrastructure & Deployment
 
 ## Overview
 
-Policy Bot uses Docker Compose for containerized deployment with a flexible, profile-based service selection system:
+AI Assistant uses Docker Compose for containerized deployment with a flexible, profile-based service selection system:
 - **Local Development**: Local services with hot reload
 - **Production**: Full stack with Traefik TLS, provider selected via Docker profiles
 
 ### Infrastructure Provider Choices
 
-Policy Bot supports pluggable database and vector store backends, selected at deployment time:
+AI Assistant supports pluggable database and vector store backends, selected at deployment time:
 
 | Component | Options | Selection Method |
 |-----------|---------|-----------------|
@@ -94,7 +94,7 @@ In addition to database and vector store, choose the LLM provider tier based on 
 
 ### Primary Database (PostgreSQL)
 
-Policy Bot stores all structured metadata in PostgreSQL via the Kysely ORM:
+AI Assistant stores all structured metadata in PostgreSQL via the Kysely ORM:
 
 | Data | Table | Notes |
 |------|-------|-------|
@@ -467,7 +467,7 @@ docker --version
 
 Point domain to server IP:
 ```
-policybot.abhirup.app → <SERVER_IP>
+ai.abhirup.app → <SERVER_IP>
 ```
 
 ### Deployment Steps
@@ -501,14 +501,14 @@ docker compose ps
 docker compose logs -f app
 
 # 7. Verify TLS certificate
-curl -I https://policybot.abhirup.app
+curl -I https://ai.abhirup.app
 ```
 
 ### Initial Setup
 
 ```bash
 # 1. Access admin panel
-# https://policybot.abhirup.app/admin
+# https://ai.abhirup.app/admin
 
 # 2. Create categories
 # Go to Categories tab, add: HR, Finance, IT, Legal, etc.
@@ -675,7 +675,7 @@ docker compose --profile postgres --profile qdrant up -d --build
 
 ### Progressive Web App (PWA) Deployment
 
-Policy Bot includes Progressive Web App capabilities that allow users to install the application on their devices.
+AI Assistant includes Progressive Web App capabilities that allow users to install the application on their devices.
 
 > **📖 Full Documentation:** [docs/features/PWA.md](../../features/PWA.md)
 
@@ -708,7 +708,7 @@ The PWA implementation consists of the following components that are automatical
 
 #### Deployment Checklist
 
-When deploying Policy Bot with PWA support:
+When deploying AI Assistant with PWA support:
 
 **1. HTTPS is Required**
 - ✅ Traefik configuration includes Let's Encrypt SSL
@@ -730,7 +730,7 @@ When deploying Policy Bot with PWA support:
 ```sql
 -- Default PWA settings in config table
 pwa_enabled = 1
-pwa_app_name = 'Policy Bot'  -- Set via Admin dashboard
+pwa_app_name = 'AI Assistant'  -- Set via Admin dashboard
 pwa_short_name = 'Policy'    -- Max 12 characters
 pwa_app_icon = NULL          -- URL to icon (or NULL for fallback)
 pwa_theme_color = '#6366f1'
@@ -748,7 +748,7 @@ After deployment, verify PWA functionality:
 ```bash
 1. Visit https://yourdomain.com
 2. Look for install icon (⊕) in address bar
-3. Click "Install Policy Bot"
+3. Click "Install AI Assistant"
 4. Verify app opens in standalone window
 5. Check app appears in OS app launcher
 ```
@@ -823,7 +823,7 @@ docker compose up -d --build
 
 #### PWA Limitations
 
-Policy Bot's PWA implementation has intentional limitations:
+AI Assistant's PWA implementation has intentional limitations:
 
 ❌ **No Offline Mode**
 - Document search requires server (vector database)
@@ -980,7 +980,7 @@ Additionally, add a `read_secret` helper in the application bootstrap to load se
 docker compose logs traefik
 
 # Verify DNS propagation
-dig policybot.abhirup.app
+dig ai.abhirup.app
 
 # Check Let's Encrypt rate limits
 # https://letsencrypt.org/docs/rate-limits/

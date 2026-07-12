@@ -1,4 +1,4 @@
--- Policy Bot Database Schema
+-- AI Assistant Database Schema
 -- SQLite database for users, categories, threads, messages, documents, and settings
 
 -- ============ Users & Roles ============
@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS llm_providers (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Models enabled for use in Policy Bot
+-- Models enabled for use in AI Assistant
 CREATE TABLE IF NOT EXISTS enabled_models (
   id TEXT PRIMARY KEY,              -- Model ID e.g., 'gpt-4.1-mini'
   provider_id TEXT NOT NULL,

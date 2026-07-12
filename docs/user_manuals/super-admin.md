@@ -8,7 +8,7 @@
 
 ## Overview
 
-The **Super Admin** role is the highest privilege tier in Policy Bot. It is seeded from the `ADMIN_EMAILS` environment variable and grants all Admin capabilities plus exclusive access to sensitive financial data.
+The **Super Admin** role is the highest privilege tier in AI Assistant. It is seeded from the `ADMIN_EMAILS` environment variable and grants all Admin capabilities plus exclusive access to sensitive financial data.
 
 ### Role Hierarchy
 

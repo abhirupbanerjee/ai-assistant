@@ -1,6 +1,6 @@
-# Fresh VM Setup Guide for Policy Bot
+# Fresh VM Setup Guide for AI Assistant
 
-Complete step-by-step instructions for deploying Policy Bot on a fresh Ubuntu VM.
+Complete step-by-step instructions for deploying AI Assistant on a fresh Ubuntu VM.
 
 ---
 
@@ -213,7 +213,7 @@ Edit `.env` with the following minimum configuration:
 # =============================================================================
 
 # Domain for your deployment
-DOMAIN=policybot.example.com
+DOMAIN=ai.abhirup.app
 
 # OpenAI API Key (required for LLM and embeddings)
 OPENAI_API_KEY=sk-proj-...
@@ -225,7 +225,7 @@ ADMIN_EMAILS=admin@example.com,ops@example.com
 NEXTAUTH_SECRET=your-32-character-random-string-here
 
 # NextAuth URL (your full domain with https)
-NEXTAUTH_URL=https://policybot.example.com
+NEXTAUTH_URL=https://ai.abhirup.app
 
 # Let's Encrypt email for SSL certificates
 ACME_EMAIL=admin@example.com
@@ -324,18 +324,18 @@ Before starting, ensure your domain points to the server:
 
 ```bash
 # Verify DNS resolution
-dig policybot.example.com +short
+dig ai.abhirup.app +short
 # Should return your server's IP address
 
 # Or use host command
-host policybot.example.com
+host ai.abhirup.app
 ```
 
 > **Important:** DNS must propagate before Let's Encrypt can issue certificates. Allow 5-15 minutes after DNS changes.
 
 ### 2. Review Docker Compose Profiles
 
-Policy Bot uses Docker Compose profiles to select services:
+AI Assistant uses Docker Compose profiles to select services:
 
 | Profile | Service | Use Case |
 |---------|---------|----------|
@@ -400,7 +400,7 @@ policy-bot-traefik      Up                       0.0.0.0:80->80/tcp, 0.0.0.0:443
 docker compose logs traefik | grep -i certificate
 
 # Test HTTPS
-curl -I https://policybot.example.com
+curl -I https://ai.abhirup.app
 ```
 
 ### 5. Seed Database Settings
@@ -421,9 +421,9 @@ npm run db:setup
 
 ### 1. First Login (Before OAuth Setup)
 
-Policy Bot supports email/password login by default, allowing initial access without OAuth:
+AI Assistant supports email/password login by default, allowing initial access without OAuth:
 
-1. Navigate to `https://policybot.example.com/auth/signin`
+1. Navigate to `https://ai.abhirup.app/auth/signin`
 2. Enter the admin email from `ADMIN_EMAILS` (e.g., `admin@example.com`)
 3. Enter the password from `CREDENTIALS_ADMIN_PASSWORD`
 4. You're now logged in as admin
@@ -518,7 +518,7 @@ Once OAuth is working, you can disable email/password login:
 
 ```bash
 # Application
-curl -s https://policybot.example.com/api/health | jq
+curl -s https://ai.abhirup.app/api/health | jq
 
 # Redis
 docker compose exec redis redis-cli ping
@@ -567,7 +567,7 @@ du -sh ./data/*
 docker compose logs traefik | grep -i "certificate\|acme\|error"
 
 # Verify DNS is correct
-dig policybot.example.com +short
+dig ai.abhirup.app +short
 
 # Force certificate renewal (careful - rate limits apply)
 docker compose restart traefik
@@ -749,7 +749,7 @@ Traefik automatically renews Let's Encrypt certificates. To verify:
 
 ```bash
 # Check certificate expiry
-echo | openssl s_client -servername policybot.example.com -connect policybot.example.com:443 2>/dev/null | openssl x509 -noout -dates
+echo | openssl s_client -servername ai.abhirup.app -connect ai.abhirup.app:443 2>/dev/null | openssl x509 -noout -dates
 ```
 
 ---

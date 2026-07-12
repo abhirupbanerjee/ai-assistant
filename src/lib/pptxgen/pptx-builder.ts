@@ -60,7 +60,7 @@ export class PptxBuilder {
   }
 
   private initializePresentation(): void {
-    this.pptx.author = this.options.organizationName || 'Policy Bot';
+    this.pptx.author = this.options.organizationName || 'AI Assistant';
     this.pptx.title = this.options.title;
     this.pptx.subject = this.options.title;
     this.pptx.layout = 'LAYOUT_16x9';

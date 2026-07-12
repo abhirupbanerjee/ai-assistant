@@ -1,6 +1,6 @@
 # Workspace Chatbots — Standalone & Embed
 
-> **Audience:** Administrators, superusers, developers embedding Policy Bot on external sites  
+> **Audience:** Administrators, superusers, developers embedding AI Assistant on external sites  
 > **Scope:** Complete guide to creating, configuring, and integrating workspace chatbots
 
 ---
@@ -19,9 +19,9 @@
 
 ## 1. Objective
 
-**Workspaces** are scoped chat environments that expose Policy Bot's RAG capabilities through a dedicated URL slug. Each workspace is linked to one or more document **categories**, has independent branding, optional LLM overrides, and its own access control rules.
+**Workspaces** are scoped chat environments that expose AI Assistant's RAG capabilities through a dedicated URL slug. Each workspace is linked to one or more document **categories**, has independent branding, optional LLM overrides, and its own access control rules.
 
-Workspaces solve the problem of **deploying Policy Bot capabilities outside the main application** — whether as a full-featured standalone portal for authenticated users or as a lightweight embed widget on a public-facing website.
+Workspaces solve the problem of **deploying AI Assistant capabilities outside the main application** — whether as a full-featured standalone portal for authenticated users or as a lightweight embed widget on a public-facing website.
 
 ### Standalone vs Embed
 
@@ -73,9 +73,9 @@ Workspaces solve the problem of **deploying Policy Bot capabilities outside the 
 ```html
 <!-- Embedded in the footer of gov.gd -->
 <script
-  src="https://policybot.gov/embed/workspace.js"
+  src="https://ai.abhirup.app/embed/workspace.js"
   data-workspace-id="a1b2c3d4e5f67890"
-  data-api-base="https://policybot.gov"
+  data-api-base="https://ai.abhirup.app"
   data-position="bottom-right"
   async
 ></script>
@@ -99,7 +99,7 @@ Workspaces solve the problem of **deploying Policy Bot capabilities outside the 
 | **LLM Override** | Model: `claude-sonnet-4`, Temperature: `0.3` |
 | **Features** | File upload: enabled (max 25MB), Voice: enabled |
 
-**Usage:** Staff bookmark `https://policybot.gov/moh-portal-2026` and log in with their SSO credentials.
+**Usage:** Staff bookmark `https://ai.abhirup.app/moh-portal-2026` and log in with their SSO credentials.
 
 ---
 
@@ -116,7 +116,7 @@ Workspaces solve the problem of **deploying Policy Bot capabilities outside the 
    - Verify Token
    - App Secret (encrypted at rest)
    - Access Token (encrypted at rest)
-3. Register the webhook URL with Meta: `https://policybot.gov/api/w/{slug}/channels/whatsapp/webhook`
+3. Register the webhook URL with Meta: `https://ai.abhirup.app/api/w/{slug}/channels/whatsapp/webhook`
 4. Citizens message the official WhatsApp number
 
 **Current Limitation:** WhatsApp responses use a simplified LLM call without full RAG (see [Known Issues](#whatsapp-rag-is-minimal)). Best for simple Q&A.
@@ -506,7 +506,7 @@ For controlled placement within a page layout:
 For dynamic single-page applications:
 
 ```javascript
-window.PolicyBotEmbed({
+window.AIAssistantEmbed({
   workspaceId: 'a1b2c3d4e5f67890',
   apiBaseUrl: 'https://your-domain.com',
   position: 'bottom-right',
@@ -559,7 +559,7 @@ External Website
               │ POST /api/w/{slug}/init
               │ POST /api/w/{slug}/chat/stream (SSE)
               ▼
-        Policy Bot Backend
+        AI Assistant Backend
 ```
 
 **Key characteristics:**
@@ -679,13 +679,13 @@ The code comment explicitly states: *"For MVP, use a simple LLM call without ful
 
 #### Problem
 
-Unlike the main Policy Bot chat, workspaces explicitly pass **empty strings** for memory context and summary context. This means:
+Unlike the main AI Assistant chat, workspaces explicitly pass **empty strings** for memory context and summary context. This means:
 - No personalized memory recall across sessions
 - No thread summarization for long conversations
 
 #### Workaround
 
-- Use the main Policy Bot chat (`/chat`) if personalized memory is critical
+- Use the main AI Assistant chat (`/chat`) if personalized memory is critical
 - For workspaces, rely on RAG retrieval from documents and conversation history (last 10–20 messages)
 
 ---

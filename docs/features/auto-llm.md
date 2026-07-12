@@ -1,6 +1,6 @@
 # Auto LLM Selector
 
-Policy Bot's automatic model selection system. When a user selects "Auto" from the model dropdown, the system deterministically picks the best available model based on the prompt context, tool routing matches, capability scores, real user feedback, and model requirements declared by matched tools.
+AI Assistant's automatic model selection system. When a user selects "Auto" from the model dropdown, the system deterministically picks the best available model based on the prompt context, tool routing matches, capability scores, real user feedback, and model requirements declared by matched tools.
 
 > **Last updated:** July 2026 — Prompt classifier, feedback-to-selector closed loop, and tool capability profiles added.
 

@@ -20,7 +20,7 @@ export default function Header() {
   return (
     <header className="bg-white border-b px-4 py-3 flex items-center justify-between">
       <Link href="/chat" className="text-xl font-bold text-gray-900">
-        Policy Bot
+        AI Assistant
       </Link>
 
       <div className="relative">

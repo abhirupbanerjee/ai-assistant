@@ -2859,7 +2859,7 @@ When a recipient accesses a shared link:
 **After creating:**
 > ✅ Share link created!
 >
-> `https://policybot.example.com/shared/abc123xyz...`
+> `https://ai.abhirup.app/shared/abc123xyz...`
 >
 > Link expires: Jan 8, 2026
 
@@ -2894,7 +2894,7 @@ Enables sending email notifications via SendGrid. Used by other tools (like `sha
 interface SendEmailConfig {
   sendgridApiKey: string;      // SendGrid API key
   senderEmail: string;         // Sender email address
-  senderName: string;          // Display name (default: "Policy Bot")
+  senderName: string;          // Display name (default: "AI Assistant")
   rateLimitPerHour: number;    // Rate limit (default: 50)
 }
 ```
@@ -2907,7 +2907,7 @@ interface SendEmailConfig {
   "config": {
     "sendgridApiKey": "",
     "senderEmail": "",
-    "senderName": "Policy Bot",
+    "senderName": "AI Assistant",
     "rateLimitPerHour": 50
   }
 }
@@ -2933,7 +2933,7 @@ Subject: [User Name] shared a conversation with you
 
 Hi,
 
-[User Name] has shared a Policy Bot conversation with you:
+[User Name] has shared an AI Assistant conversation with you:
 
 "[Thread Title]"
 
@@ -2942,7 +2942,7 @@ View the conversation: [Share Link]
 This link will expire on [Expiry Date].
 
 ---
-Policy Bot
+AI Assistant
 ```
 
 ### Example Usage
@@ -2955,7 +2955,7 @@ await sendShareNotification({
   recipientEmail: 'colleague@example.com',
   sharedBy: 'John Doe',
   threadTitle: 'Leave Policy Discussion',
-  shareUrl: 'https://policybot.example.com/shared/abc123',
+  shareUrl: 'https://ai.abhirup.app/shared/abc123',
   expiresAt: new Date('2026-01-08')
 });
 ```
@@ -3637,7 +3637,7 @@ Tool Routing is managed in the Admin Dashboard under **Tools > Tool Routing**:
 ### Example: Create Routing Rule
 
 ```bash
-curl -X POST https://policybot.example.com/api/admin/tool-routing \
+curl -X POST https://ai.abhirup.app/api/admin/tool-routing \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=..." \
   -d '{
@@ -3655,7 +3655,7 @@ curl -X POST https://policybot.example.com/api/admin/tool-routing \
 ### Example: Test Routing
 
 ```bash
-curl -X POST https://policybot.example.com/api/admin/tool-routing/test \
+curl -X POST https://ai.abhirup.app/api/admin/tool-routing/test \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=..." \
   -d '{
@@ -3902,7 +3902,7 @@ function getEffectiveToolConfig(toolName: string, categoryId: number) {
 
 ## Creating a New Tool
 
-This guide walks through the process of creating a new tool in Policy Bot, based on the patterns established in tools like `podcast_gen`, `pptx_gen`, and `xlsx_gen`.
+This guide walks through the process of creating a new tool in AI Assistant, based on the patterns established in tools like `podcast_gen`, `pptx_gen`, and `xlsx_gen`.
 
 ### Overview
 
@@ -4508,7 +4508,7 @@ export const helloToolDefinition: ToolDefinition = {
 
     return JSON.stringify({
       success: true,
-      greeting: `Hello, ${name}! Welcome to Policy Bot.`,
+      greeting: `Hello, ${name}! Welcome to AI Assistant.`,
     });
   },
 
@@ -4554,7 +4554,7 @@ export default helloToolDefinition;
 ### Example: Update Tool Configuration
 
 ```bash
-curl -X PATCH https://policybot.example.com/api/admin/tools/web_search \
+curl -X PATCH https://ai.abhirup.app/api/admin/tools/web_search \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=..." \
   -d '{
@@ -4570,7 +4570,7 @@ curl -X PATCH https://policybot.example.com/api/admin/tools/web_search \
 ### Example: Test Tool
 
 ```bash
-curl -X POST https://policybot.example.com/api/admin/tools/web_search/test \
+curl -X POST https://ai.abhirup.app/api/admin/tools/web_search/test \
   -H "Cookie: next-auth.session-token=..."
 ```
 

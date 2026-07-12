@@ -92,9 +92,9 @@ const TIER_NAMES: Record<number, string> = {
 const PLATFORM_INTRO = {
   title: 'AI Assistant Platform Guide',
   tagline: 'An open-source, interoperable AI platform for governments, ministries, and enterprises.',
-  whyPolicyBot: `Governments and organizations face a critical challenge: how to adopt AI responsibly while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
+  whyPlatform: `Governments and organizations face a critical challenge: how to adopt AI responsibly while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
 
-Policy Bot solves this by providing:
+AI Assistant solves this by providing:
 - **Data Sovereignty** — All data remains on your infrastructure
 - **Open Source** — Fully auditable code with no proprietary dependencies
 - **Interoperability** — Switch AI providers freely
@@ -593,7 +593,7 @@ export default function HelpPage() {
       generatedAt: new Date().toISOString(),
       introduction: {
         tagline: PLATFORM_INTRO.tagline,
-        whyPolicyBot: PLATFORM_INTRO.whyPolicyBot,
+        whyPlatform: PLATFORM_INTRO.whyPlatform,
         supportedLLMs: PLATFORM_INTRO.supportedLLMs,
         aiCapabilities: PLATFORM_INTRO.aiCapabilities,
       },
@@ -630,9 +630,9 @@ export default function HelpPage() {
     lines.push(`> ${content.introduction.tagline}`);
     lines.push('');
 
-    lines.push('## Why Policy Bot?');
+    lines.push('## Why AI Assistant?');
     lines.push('');
-    lines.push(content.introduction.whyPolicyBot);
+    lines.push(content.introduction.whyPlatform);
     lines.push('');
 
     lines.push('## Supported LLMs');
@@ -779,9 +779,9 @@ export default function HelpPage() {
 
             <div className="prose prose-sm max-w-none mb-6">
               <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-900 mb-2">Why Policy Bot?</h3>
+                <h3 className="font-semibold text-gray-900 mb-2">Why AI Assistant?</h3>
                 <div className="text-gray-600 whitespace-pre-line text-sm">
-                  {PLATFORM_INTRO.whyPolicyBot}
+                  {PLATFORM_INTRO.whyPlatform}
                 </div>
               </div>
             </div>

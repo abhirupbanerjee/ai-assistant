@@ -10,13 +10,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Policy Bot',
+  title: 'AI Assistant',
   description: 'AI-powered policy assistant for government staff',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Policy Bot',
+    title: 'AI Assistant',
   },
   icons: {
     icon: '/icons/icon-192x192.png',

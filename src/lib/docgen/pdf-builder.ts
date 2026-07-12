@@ -122,10 +122,10 @@ export class PdfBuilder {
       },
       info: {
         Title: options.title,
-        Author: options.metadata?.author || options.branding.organizationName || 'Policy Bot',
+        Author: options.metadata?.author || options.branding.organizationName || 'AI Assistant',
         Subject: options.metadata?.subject || '',
         Keywords: options.metadata?.keywords?.join(', ') || '',
-        Creator: 'Policy Bot Document Generator',
+        Creator: 'AI Assistant Document Generator',
       },
       autoFirstPage: false,
     });

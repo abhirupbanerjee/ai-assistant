@@ -4,7 +4,7 @@
 
 ### 1.1 Overview
 
-Policy Bot supports two operational modes to handle different user requirements:
+AI Assistant supports two operational modes to handle different user requirements:
 
 | Mode | Description | Use Case |
 |------|-------------|----------|

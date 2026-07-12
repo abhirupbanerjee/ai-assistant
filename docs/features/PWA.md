@@ -1,6 +1,6 @@
 # Progressive Web App (PWA)
 
-Comprehensive guide to Policy Bot's Progressive Web App capabilities - install, configure, and use Policy Bot as a standalone application.
+Comprehensive guide to AI Assistant's Progressive Web App capabilities - install, configure, and use AI Assistant as a standalone application.
 
 ---
 
@@ -21,7 +21,7 @@ Comprehensive guide to Policy Bot's Progressive Web App capabilities - install, 
 
 ## Introduction
 
-Policy Bot is a **Progressive Web App (PWA)**, which means it can be installed on your device and used like a native application - without visiting an app store. Users can add Policy Bot to their home screen (mobile) or desktop and enjoy a streamlined, app-like experience.
+AI Assistant is a **Progressive Web App (PWA)**, which means it can be installed on your device and used like a native application - without visiting an app store. Users can add AI Assistant to their home screen (mobile) or desktop and enjoy a streamlined, app-like experience.
 
 ### Why PWA?
 
@@ -52,7 +52,7 @@ A **Progressive Web App** is a web application that uses modern web technologies
 ### How It Works
 
 ```
-User visits Policy Bot
+User visits AI Assistant
         ↓
 Browser detects PWA manifest
         ↓
@@ -73,12 +73,12 @@ Behaves like native app
 
 ### ✅ What Works
 
-Policy Bot PWA provides these capabilities:
+AI Assistant PWA provides these capabilities:
 
 #### 1. Standalone App Window
 - ✅ No browser UI (address bar, tabs, bookmarks)
 - ✅ Clean, distraction-free interface
-- ✅ Dedicated window for Policy Bot
+- ✅ Dedicated window for AI Assistant
 - ✅ App-switching via OS task switcher
 
 #### 2. Home Screen / Desktop Icon
@@ -94,7 +94,7 @@ Policy Bot PWA provides these capabilities:
 - ✅ Consistent visual identity
 
 #### 4. Full Functionality
-- ✅ All Policy Bot features work in PWA mode
+- ✅ All AI Assistant features work in PWA mode
 - ✅ Chat interface
 - ✅ Document uploads
 - ✅ Voice input
@@ -116,7 +116,7 @@ Policy Bot PWA provides these capabilities:
 
 ### ❌ Limitations
 
-Policy Bot PWA has these limitations:
+AI Assistant PWA has these limitations:
 
 #### 1. Online Connectivity Required
 - ❌ No offline document search (requires server)
@@ -144,7 +144,7 @@ Policy Bot PWA has these limitations:
 - ❌ Cannot browse cached threads
 - ❌ Cannot search documents offline
 
-**Why:** By design - Policy Bot is a connected application.
+**Why:** By design - AI Assistant is a connected application.
 
 ### 🔜 Future Enhancements
 
@@ -162,13 +162,13 @@ Potential future PWA features:
 
 #### Google Chrome / Microsoft Edge
 
-1. **Visit Policy Bot** in your browser
+1. **Visit AI Assistant** in your browser
 2. Look for the **install icon** in the address bar:
    - Chrome: ⊕ icon or computer with arrow
    - Edge: ➕ icon
 3. **Click the install icon**
 4. **Confirm installation** in the popup
-5. Policy Bot opens in a standalone window
+5. AI Assistant opens in a standalone window
 6. **App icon** appears:
    - Windows: Start Menu and Desktop
    - macOS: Applications folder and Dock
@@ -176,12 +176,12 @@ Potential future PWA features:
 
 **Alternative Method:**
 1. Click the **three-dot menu** (⋮)
-2. Select **"Install Policy Bot"** or **"Install app"**
+2. Select **"Install AI Assistant"** or **"Install app"**
 3. Confirm installation
 
 #### Safari (macOS)
 
-1. **Visit Policy Bot** in Safari
+1. **Visit AI Assistant** in Safari
 2. Click **Share** button (box with arrow)
 3. Select **"Add to Dock"**
 4. Confirm and add to Dock
@@ -200,7 +200,7 @@ Firefox has limited PWA support:
 
 #### Android (Chrome)
 
-1. **Visit Policy Bot** in Chrome
+1. **Visit AI Assistant** in Chrome
 2. **Install banner** appears at bottom of screen:
    ```
    ┌────────────────────────────┐
@@ -222,7 +222,7 @@ Firefox has limited PWA support:
 
 #### iOS (Safari)
 
-1. **Visit Policy Bot** in Safari
+1. **Visit AI Assistant** in Safari
 2. **Tap Share button** (box with arrow up)
 3. **Scroll down** and select **"Add to Home Screen"**
 4. **Edit name** if desired (defaults to site name)
@@ -267,24 +267,24 @@ If automatic prompts don't appear:
 #### Desktop
 
 **Chrome / Edge:**
-1. Open Policy Bot PWA
+1. Open AI Assistant PWA
 2. Click **three-dot menu** (⋮) in app window
-3. Select **"Uninstall Policy Bot"**
+3. Select **"Uninstall AI Assistant"**
 4. Confirm removal
 
 **Alternative:**
-- Windows: Apps & features → Policy Bot → Uninstall
+- Windows: Apps & features → AI Assistant → Uninstall
 - macOS: Applications → Move to Trash
 - Linux: Application menu → Right-click → Remove
 
 #### Mobile
 
 **Android:**
-1. **Long-press** the Policy Bot icon
+1. **Long-press** the AI Assistant icon
 2. Select **"Uninstall"** or **"App info"** → Uninstall
 
 **iOS:**
-1. **Long-press** the Policy Bot icon
+1. **Long-press** the AI Assistant icon
 2. Select **"Remove App"**
 3. **Choose "Delete App"**
 
@@ -294,7 +294,7 @@ If automatic prompts don't appear:
 
 ### Standalone Mode
 
-When launched as a PWA, Policy Bot runs in **standalone mode**:
+When launched as a PWA, AI Assistant runs in **standalone mode**:
 
 **Visual Changes:**
 - ❌ No browser address bar
@@ -360,7 +360,7 @@ An amber notification banner appears at the top of the screen.
 
 ### Web App Manifest
 
-Policy Bot uses a **dynamic manifest** generated at runtime:
+AI Assistant uses a **dynamic manifest** generated at runtime:
 
 **Endpoint:** `https://your-domain.com/manifest.webmanifest`
 
@@ -369,8 +369,8 @@ Policy Bot uses a **dynamic manifest** generated at runtime:
 {
   "id": "/",
   "scope": "/",
-  "name": "Policy Bot",
-  "short_name": "PolicyBot",
+  "name": "AI Assistant",
+  "short_name": "AI Assistant",
   "description": "AI-powered policy assistant",
   "start_url": "/",
   "display": "standalone",
@@ -592,7 +592,7 @@ Icons are configured via admin branding settings:
 - Browser preventing update
 
 **Solutions:**
-1. Close all Policy Bot tabs
+1. Close all AI Assistant tabs
 2. Clear service worker cache
 3. Unregister service worker in DevTools
 4. Reload the page

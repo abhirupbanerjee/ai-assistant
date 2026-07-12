@@ -1,6 +1,6 @@
 # Autonomous Mode — Multi-Agent Task Orchestration
 
-> **Audience:** Administrators, power users, developers integrating with Policy Bot  
+> **Audience:** Administrators, power users, developers integrating with AI Assistant  
 > **Scope:** Complete guide to autonomous mode configuration, operation, and integration
 
 ---
@@ -19,7 +19,7 @@
 
 ## 1. Objective
 
-**Autonomous Mode** transforms Policy Bot from a single-turn chat assistant into a **multi-agent task orchestration system**. Instead of answering one question at a time, the autonomous agent decomposes complex user requests into structured task plans, executes them iteratively with quality checks, and synthesizes a comprehensive final response.
+**Autonomous Mode** transforms AI Assistant from a single-turn chat assistant into a **multi-agent task orchestration system**. Instead of answering one question at a time, the autonomous agent decomposes complex user requests into structured task plans, executes them iteratively with quality checks, and synthesizes a comprehensive final response.
 
 ### Why Autonomous Mode?
 
@@ -121,7 +121,7 @@
 
 ```bash
 # External system triggers autonomous plan via chat API
-curl -X POST "https://policybot.gov/api/chat/stream" \
+curl -X POST "https://ai.abhirup.app/api/chat/stream" \
   -H "Cookie: next-auth.session-token=..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -390,7 +390,7 @@ During execution, the chat UI receives SSE events:
 Autonomous mode is triggered via the chat streaming API:
 
 ```bash
-curl -X POST "https://policybot.gov/api/chat/stream" \
+curl -X POST "https://ai.abhirup.app/api/chat/stream" \
   -H "Cookie: next-auth.session-token=..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -439,7 +439,7 @@ Once a plan is created, external systems can control it:
 Pauses execution after the current wave completes.
 
 ```bash
-curl -X POST "https://policybot.gov/api/autonomous/plan_123/pause" \
+curl -X POST "https://ai.abhirup.app/api/autonomous/plan_123/pause" \
   -H "Cookie: next-auth.session-token=..."
 ```
 
@@ -452,7 +452,7 @@ curl -X POST "https://policybot.gov/api/autonomous/plan_123/pause" \
 Resumes a paused plan.
 
 ```bash
-curl -X POST "https://policybot.gov/api/autonomous/plan_123/resume" \
+curl -X POST "https://ai.abhirup.app/api/autonomous/plan_123/resume" \
   -H "Cookie: next-auth.session-token=..."
 ```
 
@@ -463,7 +463,7 @@ curl -X POST "https://policybot.gov/api/autonomous/plan_123/resume" \
 Stops execution immediately. Pending tasks are marked `skipped`.
 
 ```bash
-curl -X POST "https://policybot.gov/api/autonomous/plan_123/stop" \
+curl -X POST "https://ai.abhirup.app/api/autonomous/plan_123/stop" \
   -H "Cookie: next-auth.session-token=..."
 ```
 
@@ -474,7 +474,7 @@ curl -X POST "https://policybot.gov/api/autonomous/plan_123/stop" \
 Resolves a plan-level HITL approval request.
 
 ```bash
-curl -X POST "https://policybot.gov/api/autonomous/plan_123/approve" \
+curl -X POST "https://ai.abhirup.app/api/autonomous/plan_123/approve" \
   -H "Cookie: next-auth.session-token=..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -495,7 +495,7 @@ curl -X POST "https://policybot.gov/api/autonomous/plan_123/approve" \
 Skips a specific pending task.
 
 ```bash
-curl -X POST "https://policybot.gov/api/autonomous/plan_123/tasks/5/skip" \
+curl -X POST "https://ai.abhirup.app/api/autonomous/plan_123/tasks/5/skip" \
   -H "Cookie: next-auth.session-token=..."
 ```
 
@@ -506,7 +506,7 @@ curl -X POST "https://policybot.gov/api/autonomous/plan_123/tasks/5/skip" \
 When a subagent encounters an unsafe tool, it emits a `subagent_approval` SSE event. The user (or external system) must approve via:
 
 ```bash
-curl -X POST "https://policybot.gov/api/agent/subagent/approve" \
+curl -X POST "https://ai.abhirup.app/api/agent/subagent/approve" \
   -H "Cookie: next-auth.session-token=..." \
   -H "Content-Type: application/json" \
   -d '{

@@ -10,7 +10,7 @@ import { createRoot } from 'react-dom/client';
 import { EmbedWidget } from './components/EmbedWidget';
 import './styles/embed.css';
 
-interface PolicyBotEmbedOptions {
+interface AIAssistantEmbedOptions {
   workspaceId: string;
   apiBaseUrl?: string;
   position?: 'bottom-right' | 'bottom-left';
@@ -19,7 +19,7 @@ interface PolicyBotEmbedOptions {
 }
 
 // Global initialization function
-function initPolicyBotEmbed(options: PolicyBotEmbedOptions) {
+function initAIAssistantEmbed(options: AIAssistantEmbedOptions) {
   const {
     workspaceId,
     apiBaseUrl = window.location.origin,
@@ -29,7 +29,7 @@ function initPolicyBotEmbed(options: PolicyBotEmbedOptions) {
   } = options;
 
   // Create container element
-  const containerId = 'policybot-embed-container';
+  const containerId = 'ai-assistant-embed-container';
   let container = document.getElementById(containerId);
 
   if (!container) {
@@ -67,7 +67,7 @@ function autoInit() {
     const workspaceId = script.getAttribute('data-workspace-id');
 
     if (workspaceId && script.src.includes('workspace.js')) {
-      initPolicyBotEmbed({
+      initAIAssistantEmbed({
         workspaceId,
         apiBaseUrl: script.getAttribute('data-api-base') || undefined,
         position: (script.getAttribute('data-position') as 'bottom-right' | 'bottom-left') || undefined,
@@ -85,7 +85,7 @@ function autoInit() {
 
 // Export for manual initialization
 if (typeof window !== 'undefined') {
-  (window as typeof window & { PolicyBotEmbed: typeof initPolicyBotEmbed }).PolicyBotEmbed = initPolicyBotEmbed;
+  (window as typeof window & { AIAssistantEmbed: typeof initAIAssistantEmbed }).AIAssistantEmbed = initAIAssistantEmbed;
 
   // Auto-init on DOM ready
   if (document.readyState === 'loading') {
@@ -95,4 +95,4 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export { initPolicyBotEmbed, EmbedWidget };
+export { initAIAssistantEmbed, EmbedWidget };

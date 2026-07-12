@@ -255,7 +255,7 @@ async function main(): Promise<void> {
   const provider = process.env.DATABASE_PROVIDER || 'sqlite';
 
   console.log('='.repeat(50));
-  console.log('Policy Bot Database Setup');
+  console.log('AI Assistant Database Setup');
   console.log('='.repeat(50));
   console.log(`Provider: ${provider}`);
   console.log('');

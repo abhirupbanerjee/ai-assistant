@@ -77,7 +77,7 @@ async function main() {
     {
       index: 4,
       code: `mindmap
-  root((Policy Bot))
+  root((AI Assistant))
     Reports
       HTML
       PDF

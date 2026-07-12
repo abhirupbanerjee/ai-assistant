@@ -1,6 +1,6 @@
 # Agent Bots — Programmatic AI API
 
-> **Audience:** Administrators, API integrators, developers building on Policy Bot  
+> **Audience:** Administrators, API integrators, developers building on AI Assistant  
 > **Scope:** Complete guide to creating, configuring, and invoking Agent Bots via REST API
 
 ---
@@ -19,7 +19,7 @@
 
 ## 1. Objective
 
-**Agent Bots** expose Policy Bot's RAG, tool-calling, and document-generation capabilities as a **versioned, programmatic REST API**. Instead of requiring users to log into the Policy Bot web interface and chat manually, external systems — such as government portals, enterprise dashboards, CI/CD pipelines, or mobile apps — can invoke an Agent Bot via HTTP and receive structured outputs (text, JSON, PDF, DOCX, spreadsheets, charts, diagrams, images, or podcasts).
+**Agent Bots** expose AI Assistant's RAG, tool-calling, and document-generation capabilities as a **versioned, programmatic REST API**. Instead of requiring users to log into the AI Assistant web interface and chat manually, external systems — such as government portals, enterprise dashboards, CI/CD pipelines, or mobile apps — can invoke an Agent Bot via HTTP and receive structured outputs (text, JSON, PDF, DOCX, spreadsheets, charts, diagrams, images, or podcasts).
 
 ### Why Agent Bots?
 
@@ -528,7 +528,7 @@ These endpoints require an authenticated admin/superuser session cookie.
                               │ HTTPS + Bearer Token
                               │
 ┌─────────────────────────────▼───────────────────────────────┐
-│                  Policy Bot Agent Bot API                   │
+│                  AI Assistant Agent Bot API                   │
 │                                                             │
 │  ┌─────────────┐    ┌──────────────┐    ┌──────────────┐   │
 │  │  RAG Engine │◄───│  LLM + Tools │───►│Doc Generator │   │
@@ -545,7 +545,7 @@ These endpoints require an authenticated admin/superuser session cookie.
 Before invoking an agent bot, an external system can discover its metadata using only the API key. No prior knowledge of the bot's slug, schema, or capabilities is required.
 
 ```bash
-curl -X GET "https://policybot.gov/api/agent-bots/spec" \
+curl -X GET "https://ai.abhirup.app/api/agent-bots/spec" \
   -H "Authorization: Bearer ab_pk_..."
 ```
 
@@ -556,7 +556,7 @@ curl -X GET "https://policybot.gov/api/agent-bots/spec" \
   "name": "HR Policy Assistant",
   "slug": "hr-assistant",
   "description": "Answers HR policy questions",
-  "baseUrl": "https://policybot.gov/api/agent-bots/hr-assistant",
+  "baseUrl": "https://ai.abhirup.app/api/agent-bots/hr-assistant",
   "version": {
     "number": 3,
     "label": "v1.2"
@@ -592,27 +592,27 @@ curl -X GET "https://policybot.gov/api/agent-bots/spec" \
   },
   "endpoints": [
     {
-      "path": "https://policybot.gov/api/agent-bots/hr-assistant/invoke",
+      "path": "https://ai.abhirup.app/api/agent-bots/hr-assistant/invoke",
       "method": "POST",
       "purpose": "Execute the agent bot (sync or async)"
     },
     {
-      "path": "https://policybot.gov/api/agent-bots/hr-assistant/upload",
+      "path": "https://ai.abhirup.app/api/agent-bots/hr-assistant/upload",
       "method": "POST",
       "purpose": "Upload files to include as context"
     },
     {
-      "path": "https://policybot.gov/api/agent-bots/hr-assistant/jobs/{jobId}",
+      "path": "https://ai.abhirup.app/api/agent-bots/hr-assistant/jobs/{jobId}",
       "method": "GET",
       "purpose": "Check async job status and results"
     },
     {
-      "path": "https://policybot.gov/api/agent-bots/hr-assistant/jobs/{jobId}/outputs/{outputId}/download",
+      "path": "https://ai.abhirup.app/api/agent-bots/hr-assistant/jobs/{jobId}/outputs/{outputId}/download",
       "method": "GET",
       "purpose": "Download generated file outputs"
     },
     {
-      "path": "https://policybot.gov/api/agent-bots/spec",
+      "path": "https://ai.abhirup.app/api/agent-bots/spec",
       "method": "GET",
       "purpose": "Discovery — returns this metadata"
     }
@@ -641,7 +641,7 @@ For requests that complete in under ~30 seconds (simple text/JSON queries with n
 
 ```javascript
 const response = await fetch(
-  'https://policybot.gov/api/agent-bots/hr-bot/invoke',
+  'https://ai.abhirup.app/api/agent-bots/hr-bot/invoke',
   {
     method: 'POST',
     headers: {
@@ -674,7 +674,7 @@ For complex requests (document generation, web search, large context):
 async function invokeAgentBot(slug, input, outputType = 'text') {
   // 1. Submit job
   const invokeRes = await fetch(
-    `https://policybot.gov/api/agent-bots/${slug}/invoke`,
+    `https://ai.abhirup.app/api/agent-bots/${slug}/invoke`,
     {
       method: 'POST',
       headers: {
@@ -700,7 +700,7 @@ async function invokeAgentBot(slug, input, outputType = 'text') {
   return new Promise((resolve, reject) => {
     const poll = async () => {
       const statusRes = await fetch(
-        `https://policybot.gov/api/agent-bots/${slug}/jobs/${jobId}`,
+        `https://ai.abhirup.app/api/agent-bots/${slug}/jobs/${jobId}`,
         {
           headers: { 'Authorization': 'Bearer ab_pk_...' },
         }
@@ -735,7 +735,7 @@ const result = await invokeAgentBot('service-simplification', {
 
 // Download the generated file
 if (result.outputs?.[0]?.downloadUrl) {
-  window.open(`https://policybot.gov${result.outputs[0].downloadUrl}`, '_blank');
+  window.open(`https://ai.abhirup.app${result.outputs[0].downloadUrl}`, '_blank');
 }
 ```
 
@@ -751,7 +751,7 @@ if (result.outputs?.[0]?.downloadUrl) {
 For server-to-server integrations where the external system has a webhook endpoint:
 
 ```bash
-curl -X POST "https://policybot.gov/api/agent-bots/compliance-reporter/invoke" \
+curl -X POST "https://ai.abhirup.app/api/agent-bots/compliance-reporter/invoke" \
   -H "Authorization: Bearer ab_pk_..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -776,7 +776,7 @@ curl -X POST "https://policybot.gov/api/agent-bots/compliance-reporter/invoke" \
     {
       "type": "pdf",
       "filename": "Q2_Compliance_Report.pdf",
-      "downloadUrl": "https://policybot.gov/api/agent-bots/compliance-reporter/jobs/550e8400/outputs/out_123/download",
+      "downloadUrl": "https://ai.abhirup.app/api/agent-bots/compliance-reporter/jobs/550e8400/outputs/out_123/download",
       "fileSize": 125000
     }
   ],

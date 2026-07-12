@@ -1,6 +1,6 @@
 # Admin Guide
 
-This guide explains how to use the Admin Dashboard to manage all aspects of Policy Bot.
+This guide explains how to use the Admin Dashboard to manage all aspects of AI Assistant.
 
 ---
 
@@ -30,7 +30,7 @@ This guide explains how to use the Admin Dashboard to manage all aspects of Poli
 
 ### What is an Admin?
 
-An **Admin** has full control over all aspects of Policy Bot. Admins can:
+An **Admin** has full control over all aspects of AI Assistant. Admins can:
 - Manage all categories, users, and content
 - Configure global settings and tools
 - Create and manage skills
@@ -57,7 +57,7 @@ An **Admin** has full control over all aspects of Policy Bot. Admins can:
 
 ### Accessing the Admin Dashboard
 
-1. Log in to Policy Bot with an Admin account
+1. Log in to AI Assistant with an Admin account
 2. Click your profile or the menu icon
 3. Select **Admin** from the navigation
 4. Or navigate directly to `/admin`
@@ -332,7 +332,7 @@ This allows a superuser to:
 
 ### Credentials Authentication
 
-Policy Bot supports email/password login alongside OAuth providers (Microsoft/Google). This is useful for:
+AI Assistant supports email/password login alongside OAuth providers (Microsoft/Google). This is useful for:
 - Fresh VM deployments before OAuth is configured
 - Development and testing environments
 - Offline or air-gapped deployments
@@ -715,7 +715,7 @@ Configure AI tools and their settings.
 
 ### Tool Overview
 
-Policy Bot includes these built-in tools:
+AI Assistant includes these built-in tools:
 
 | Tool | Description |
 |------|-------------|
@@ -1258,7 +1258,7 @@ A **Workspace** is a configurable chatbot instance that:
 
 ### Feature Comparison
 
-| Feature | Main Policy Bot | Standalone Workspace | Embed Workspace |
+| Feature | Main AI Assistant | Standalone Workspace | Embed Workspace |
 |---------|-----------------|---------------------|-----------------|
 | Memory (facts) | ✅ | ❌ | ❌ |
 | Settings menu | ✅ | ❌ | ❌ |
@@ -1345,8 +1345,8 @@ Workspaces use random 16-character slugs for security:
 
 | Type | URL Pattern | Example |
 |------|-------------|---------|
-| Standalone | `/{slug}` | `policybot.app/2yibbnmbmctyu` |
-| Embed (hosted) | `/e/{slug}` | `policybot.app/e/2yibbnmbmctyu` |
+| Standalone | `/{slug}` | `ai.abhirup.app/2yibbnmbmctyu` |
+| Embed (hosted) | `/e/{slug}` | `ai.abhirup.app/e/2yibbnmbmctyu` |
 | Embed (script) | External site with script tag | See embed script section |
 
 ### Embed Script
@@ -1354,9 +1354,9 @@ Workspaces use random 16-character slugs for security:
 For **Embed** workspaces, copy the generated script:
 
 ```html
-<!-- Policy Bot Workspace -->
+<!-- AI Assistant Workspace -->
 <script
-  src="https://policybot.abhirup.app/embed/workspace.js"
+  src="https://ai.abhirup.app/embed/workspace.js"
   data-workspace-id="2yibbnmbmctyu"
 ></script>
 ```
@@ -1458,7 +1458,7 @@ Superusers can create and manage workspaces within their assigned categories:
 
 ## 13. Agent Bots
 
-Expose Policy Bot capabilities as a REST API for external systems, CI/CD pipelines, or third-party apps.
+Expose AI Assistant capabilities as a REST API for external systems, CI/CD pipelines, or third-party apps.
 
 ### What are Agent Bots?
 
@@ -1636,7 +1636,7 @@ Set a primary and fallback TTS provider. Voice selection, style, and podcast-spe
 
 ### Routes
 
-The **Routes** section controls which LLM provider paths are active. Policy Bot uses a three-route architecture with all providers using direct native SDKs/APIs:
+The **Routes** section controls which LLM provider paths are active. AI Assistant uses a three-route architecture with all providers using direct native SDKs/APIs:
 
 | Route | Providers | Connection |
 |-------|-----------|------------|
@@ -1845,7 +1845,7 @@ Subagent mode enables multi-turn ReAct loops within individual tasks for complex
 
 ### Memory Settings
 
-The **Memory** section under Settings controls how Policy Bot extracts, stores, and retrieves user-specific facts across conversations. Memory enables the AI to personalize responses based on past interactions.
+The **Memory** section under Settings controls how AI Assistant extracts, stores, and retrieves user-specific facts across conversations. Memory enables the AI to personalize responses based on past interactions.
 
 #### Settings
 
@@ -1900,13 +1900,13 @@ The **Memory** section under Settings controls how Policy Bot extracts, stores, 
 
 ### Progressive Web App (PWA) Settings
 
-Configure Policy Bot as an installable Progressive Web App.
+Configure AI Assistant as an installable Progressive Web App.
 
 > **📖 Detailed Documentation:** For comprehensive information about PWA capabilities, installation, and technical details, see [docs/features/PWA.md](../../features/PWA.md).
 
 | Setting | Description |
 |---------|-------------|
-| **Enable PWA** | Allow users to install Policy Bot as a standalone app |
+| **Enable PWA** | Allow users to install AI Assistant as a standalone app |
 | **App Name** | Name shown in app launcher (defaults to Application Name) |
 | **App Short Name** | Short name for mobile home screen (max 12 chars) |
 | **App Icon** | Icon URL for the installed app (square PNG, 512x512px recommended) |
@@ -1924,7 +1924,7 @@ Configure Policy Bot as an installable Progressive Web App.
 **Testing PWA:**
 1. Enable PWA in settings
 2. Configure app name and icon
-3. Visit Policy Bot in Chrome or Edge
+3. Visit AI Assistant in Chrome or Edge
 4. Look for install prompt in address bar
 5. Click "Install" to test
 
@@ -1976,7 +1976,7 @@ Administrative functions for system maintenance.
 
 ### Database & Vector Store Selection
 
-Policy Bot supports two database backends and two vector store backends. Choose the combination that fits your deployment size.
+AI Assistant supports two database backends and two vector store backends. Choose the combination that fits your deployment size.
 
 #### Database Options
 

@@ -43,7 +43,7 @@ export function generateEmbedScript(
 
   const scriptUrl = `${baseUrl}/embed/workspace.js`;
 
-  return `<!-- Policy Bot Embed -->
+  return `<!-- AI Assistant Embed -->
 <script
   src="${scriptUrl}"
   ${dataAttrs.join('\n  ')}
@@ -66,7 +66,7 @@ export function generateEmbedScriptWithOptions(
 
   const basic = generateEmbedScript(workspace, baseUrl);
 
-  const withOptions = `<!-- Policy Bot Embed (with customization) -->
+  const withOptions = `<!-- AI Assistant Embed (with customization) -->
 <script
   src="${scriptUrl}"
   data-workspace-id="${workspace.slug}"
@@ -77,11 +77,11 @@ export function generateEmbedScriptWithOptions(
   async
 ></script>`;
 
-  const manual = `<!-- Policy Bot Embed (manual initialization) -->
+  const manual = `<!-- AI Assistant Embed (manual initialization) -->
 <script src="${scriptUrl}" async></script>
 <script>
   window.addEventListener('load', function() {
-    PolicyBotEmbed({
+    AIAssistantEmbed({
       workspaceId: '${workspace.slug}',
       apiBaseUrl: '${baseUrl}',
       position: 'bottom-right',
@@ -105,7 +105,7 @@ export function generateIframeEmbed(
   const { width = '400px', height = '600px' } = options;
   const embedUrl = `${baseUrl}/e/${workspace.slug}`;
 
-  return `<!-- Policy Bot Embed (iframe) -->
+  return `<!-- AI Assistant Embed (iframe) -->
 <iframe
   src="${embedUrl}"
   width="${width}"

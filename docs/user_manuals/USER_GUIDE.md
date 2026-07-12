@@ -1,6 +1,6 @@
 # User Guide
 
-This guide explains how to use Policy Bot as a regular user to chat with the AI assistant and access policy documents.
+This guide explains how to use AI Assistant as a regular user to chat with the AI assistant and access policy documents.
 
 ---
 
@@ -25,9 +25,9 @@ This guide explains how to use Policy Bot as a regular user to chat with the AI 
 
 ## 1. Introduction
 
-### What is Policy Bot?
+### What is AI Assistant?
 
-Policy Bot is an AI-powered assistant that helps you find information in your organization's policy documents. You can ask questions in plain English and get answers with source citations.
+AI Assistant is an AI-powered assistant that helps you find information in your organization's policy documents. You can ask questions in plain English and get answers with source citations.
 
 ### What You Can Do
 
@@ -38,7 +38,7 @@ As a user, you can:
 - Use voice input for hands-free questioning
 - Access documents from your subscribed categories
 - Personalize the interface with custom colors
-- Access Policy Bot from any device with a web browser
+- Access AI Assistant from any device with a web browser
 
 ### Role Overview
 
@@ -54,7 +54,7 @@ As a user, you can:
 
 ### Logging In
 
-1. Navigate to Policy Bot in your browser
+1. Navigate to AI Assistant in your browser
 2. Click **Sign In**
 3. Choose your authentication method:
    - **Microsoft** - Use your organization's Microsoft account
@@ -66,7 +66,7 @@ As a user, you can:
 ### First Time Setup
 
 When you first log in:
-1. Policy Bot creates your user profile
+1. AI Assistant creates your user profile
 2. You're automatically subscribed to default categories (if configured)
 3. You can start chatting immediately
 
@@ -74,7 +74,7 @@ When you first log in:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  [Logo] Policy Bot                    [Settings] [Profile]  │
+│  [Logo] AI Assistant                    [Settings] [Profile]  │
 ├─────────────────────────────────────────────────────────────┤
 │ ┌─────────────┐ ┌─────────────────────────────────────────┐ │
 │ │   Threads   │ │                                         │ │
@@ -109,7 +109,7 @@ When you first log in:
 
 ### Streaming Responses
 
-Policy Bot uses streaming responses, which means:
+AI Assistant uses streaming responses, which means:
 - You see the answer as it's being generated
 - A typing indicator shows the AI is working
 - Responses appear word by word for faster feedback
@@ -563,7 +563,7 @@ If you need access to additional categories:
 
 ### Responsive Design
 
-Policy Bot is fully responsive and works on any device with a modern web browser.
+AI Assistant is fully responsive and works on any device with a modern web browser.
 
 ### Mobile Features
 
@@ -582,7 +582,7 @@ Policy Bot is fully responsive and works on any device with a modern web browser
 
 ### Progressive Web App (PWA)
 
-Policy Bot can be installed as a standalone app on your device for a better experience.
+AI Assistant can be installed as a standalone app on your device for a better experience.
 
 #### Benefits
 
@@ -594,9 +594,9 @@ Policy Bot can be installed as a standalone app on your device for a better expe
 #### Installing on Desktop
 
 **Chrome / Edge:**
-1. Open Policy Bot in your browser
+1. Open AI Assistant in your browser
 2. Look for the **install icon** (⊕) in the address bar
-3. Click **"Install Policy Bot"**
+3. Click **"Install AI Assistant"**
 4. Confirm installation
 5. App opens in a standalone window
 6. Find the app in:
@@ -607,14 +607,14 @@ Policy Bot can be installed as a standalone app on your device for a better expe
 #### Installing on Mobile
 
 **Android (Chrome):**
-1. Visit Policy Bot in Chrome
+1. Visit AI Assistant in Chrome
 2. Tap the **install banner** at the bottom
 3. Or tap **⋮ menu** → **"Install app"**
 4. Icon appears on home screen
 5. Launch from home screen
 
 **iOS (Safari):**
-1. Visit Policy Bot in Safari
+1. Visit AI Assistant in Safari
 2. Tap the **Share button** (box with arrow)
 3. Scroll and select **"Add to Home Screen"**
 4. Tap **"Add"**
@@ -624,17 +624,17 @@ Policy Bot can be installed as a standalone app on your device for a better expe
 
 Once installed:
 - ✅ Launches in standalone window (no browser bars)
-- ✅ All Policy Bot features work normally
+- ✅ All AI Assistant features work normally
 - ✅ Custom app icon and name
 - ✅ Updates automatically
 - ⚠️ **Requires internet connection** - Cannot work offline
 
-**Note:** Policy Bot requires an online connection to search documents and chat with the AI. When offline, you'll see a message to check your connection.
+**Note:** AI Assistant requires an online connection to search documents and chat with the AI. When offline, you'll see a message to check your connection.
 
 #### Uninstalling
 
 **Desktop:**
-- Open the app → **⋮ menu** → **"Uninstall Policy Bot"**
+- Open the app → **⋮ menu** → **"Uninstall AI Assistant"**
 - Or use your OS app manager
 
 **Mobile:**

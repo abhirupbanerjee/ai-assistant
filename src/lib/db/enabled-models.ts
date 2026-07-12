@@ -1,7 +1,7 @@
 /**
  * Enabled Models Database Operations
  *
- * CRUD operations for managing which LLM models are enabled in Policy Bot
+ * CRUD operations for managing which LLM models are enabled in AI Assistant
  */
 
 import { execute, queryOne, queryAll } from './index';

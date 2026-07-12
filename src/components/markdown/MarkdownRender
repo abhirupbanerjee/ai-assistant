@@ -486,19 +486,21 @@ const CopyablePre: Components['pre'] = ({ children }) => {
   );
 };
 
+// HTML entity strings for escaping cell text in the clipboard HTML payload.
+// Defined as constants (not inline string literals) so auto-formatting cannot
+// decode the entities back to raw characters.
+const HTML_AMP = String.fromCharCode(38) + 'amp;';   // &
+const HTML_LT = String.fromCharCode(38) + 'lt;';    // <
+const HTML_GT = String.fromCharCode(38) + 'gt;';    // >
+
 /**
  * Escape HTML-special characters for safe inclusion in an HTML clipboard string.
- * Uses String.fromCharCode to build entity strings at runtime so that
- * auto-formatting cannot decode the entities back to raw characters.
  */
 function escapeHtml(s: string): string {
-  const amp = String.fromCharCode(38); // ampersand
-  return s.replace(/[&<>]/g, (ch) => {
-    if (ch === amp) return amp + 'amp;';
-    if (ch === '<') return amp + 'lt;';
-    if (ch === '>') return amp + 'gt;';
-    return ch;
-  });
+  return s
+    .replace(/&/g, HTML_AMP)
+    .replace(/</g, HTML_LT)
+    .replace(/>/g, HTML_GT);
 }
 
 /**

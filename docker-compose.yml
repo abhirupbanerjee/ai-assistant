@@ -1,5 +1,5 @@
 # =============================================================================
-# Policy Bot - Docker Compose Configuration
+# AI Assistant - Docker Compose Configuration
 # =============================================================================
 #
 # SETUP: Volume permissions are handled automatically by the entrypoint.

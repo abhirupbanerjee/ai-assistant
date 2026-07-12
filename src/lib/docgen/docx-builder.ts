@@ -132,7 +132,7 @@ export class DocxBuilder {
 
     // Create document
     const doc = new Document({
-      creator: this.options.metadata?.author || this.branding.organizationName || 'Policy Bot',
+      creator: this.options.metadata?.author || this.branding.organizationName || 'AI Assistant',
       title: this.options.title,
       subject: this.options.metadata?.subject,
       keywords: this.options.metadata?.keywords?.join(', '),

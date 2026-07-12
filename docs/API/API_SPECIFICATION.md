@@ -1,10 +1,10 @@
-# Policy Bot API Reference
+# AI Assistant API Reference
 
 ## Overview
 
-Policy Bot provides a RESTful API for RAG-based document querying and management. All endpoints use JSON for request/response bodies unless otherwise specified (file uploads use `multipart/form-data`).
+AI Assistant provides a RESTful API for RAG-based document querying and management. All endpoints use JSON for request/response bodies unless otherwise specified (file uploads use `multipart/form-data`).
 
-**Base URL**: `https://policybot.abhirup.app/api`
+**Base URL**: `https://ai.abhirup.app/api`
 **Local Development**: `http://localhost:3000/api`
 **Current Version**: v1 (implicit in all endpoints)
 
@@ -564,7 +564,7 @@ Send a message and receive a RAG-powered response with document sources.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/chat \
+curl -X POST https://ai.abhirup.app/api/chat \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -820,7 +820,7 @@ Convert audio to text using the configured STT provider (with route-based fallba
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/transcribe \
+curl -X POST https://ai.abhirup.app/api/transcribe \
   -H "Cookie: next-auth.session-token=abc123..." \
   -F "audio=@recording.webm"
 ```
@@ -907,7 +907,7 @@ List all threads for the current user.
 **Example Request**:
 
 ```bash
-curl -X GET "https://policybot.abhirup.app/api/threads?limit=20&offset=0" \
+curl -X GET "https://ai.abhirup.app/api/threads?limit=20&offset=0" \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -959,7 +959,7 @@ Create a new thread.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/threads \
+curl -X POST https://ai.abhirup.app/api/threads \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -993,7 +993,7 @@ Get a specific thread with all messages.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET https://ai.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1040,7 +1040,7 @@ Update thread metadata (title or categories).
 **Example Request**:
 
 ```bash
-curl -X PATCH https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
+curl -X PATCH https://ai.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -1072,7 +1072,7 @@ Delete a thread and all associated data (messages, uploads).
 **Example Request**:
 
 ```bash
-curl -X DELETE https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://ai.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1114,7 +1114,7 @@ Upload a PDF to a thread for compliance checking.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000/upload \
+curl -X POST https://ai.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000/upload \
   -H "Cookie: next-auth.session-token=abc123..." \
   -F "file=@document.pdf"
 ```
@@ -1150,7 +1150,7 @@ Delete an uploaded file from a thread.
 **Example Request**:
 
 ```bash
-curl -X DELETE https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000/upload/document.pdf \
+curl -X DELETE https://ai.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000/upload/document.pdf \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1178,7 +1178,7 @@ Get categories available to the current user based on their role.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/user/categories \
+curl -X GET https://ai.abhirup.app/api/user/categories \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1215,7 +1215,7 @@ Get the current user's category subscriptions.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/user/subscriptions \
+curl -X GET https://ai.abhirup.app/api/user/subscriptions \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1245,14 +1245,14 @@ Get branding settings. This is the only public endpoint (no authentication requi
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/branding
+curl -X GET https://ai.abhirup.app/api/branding
 ```
 
 **Response** `200 OK`:
 
 ```typescript
 {
-  botName: string;   // e.g., "Policy Bot"
+  botName: string;   // e.g., "AI Assistant"
   botIcon: string;   // Icon key
   availableIcons: Array<{
     key: string;
@@ -1289,7 +1289,7 @@ Get current image processing capabilities based on model and OCR configuration.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/config/capabilities \
+curl -X GET https://ai.abhirup.app/api/config/capabilities \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1336,7 +1336,7 @@ List all categories with statistics.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/categories \
+curl -X GET https://ai.abhirup.app/api/admin/categories \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1376,7 +1376,7 @@ Create a new category.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/categories \
+curl -X POST https://ai.abhirup.app/api/admin/categories \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{"name": "Human Resources", "description": "HR policies and procedures"}'
@@ -1416,7 +1416,7 @@ Get category details with users and documents.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/categories/1 \
+curl -X GET https://ai.abhirup.app/api/admin/categories/1 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1468,7 +1468,7 @@ Update a category.
 **Example Request**:
 
 ```bash
-curl -X PUT https://policybot.abhirup.app/api/admin/categories/1 \
+curl -X PUT https://ai.abhirup.app/api/admin/categories/1 \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{"name": "HR & Compliance", "description": "Updated description"}'
@@ -1499,7 +1499,7 @@ Delete a category. Documents in this category become unassigned.
 **Example Request**:
 
 ```bash
-curl -X DELETE https://policybot.abhirup.app/api/admin/categories/1 \
+curl -X DELETE https://ai.abhirup.app/api/admin/categories/1 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1530,7 +1530,7 @@ List all global policy documents.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/documents \
+curl -X GET https://ai.abhirup.app/api/admin/documents \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1563,7 +1563,7 @@ Upload a new policy document with category assignment.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/documents \
+curl -X POST https://ai.abhirup.app/api/admin/documents \
   -H "Cookie: next-auth.session-token=abc123..." \
   -F "file=@HR_Handbook.pdf" \
   -F "categoryIds=[1,2]" \
@@ -1621,7 +1621,7 @@ Upload text content directly as a document (bypasses file upload and OCR extract
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/documents/text \
+curl -X POST https://ai.abhirup.app/api/admin/documents/text \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -1671,7 +1671,7 @@ Get details of a specific document.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/documents/1 \
+curl -X GET https://ai.abhirup.app/api/admin/documents/1 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1718,7 +1718,7 @@ Update document category assignments.
 **Example Request**:
 
 ```bash
-curl -X PATCH https://policybot.abhirup.app/api/admin/documents/1 \
+curl -X PATCH https://ai.abhirup.app/api/admin/documents/1 \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{"categoryIds": [1, 2, 3], "isGlobal": false}'
@@ -1747,7 +1747,7 @@ Delete a policy document from the global store.
 **Example Request**:
 
 ```bash
-curl -X DELETE https://policybot.abhirup.app/api/admin/documents/1 \
+curl -X DELETE https://ai.abhirup.app/api/admin/documents/1 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1776,7 +1776,7 @@ Reindex an existing document (re-extract and re-embed).
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/documents/1/reindex \
+curl -X POST https://ai.abhirup.app/api/admin/documents/1/reindex \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1805,7 +1805,7 @@ List all users with their subscriptions/assignments.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/users \
+curl -X GET https://ai.abhirup.app/api/admin/users \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1841,7 +1841,7 @@ Add a new user with optional subscriptions/assignments.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/users \
+curl -X POST https://ai.abhirup.app/api/admin/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -1896,7 +1896,7 @@ Update a user's role.
 **Example Request**:
 
 ```bash
-curl -X PATCH https://policybot.abhirup.app/api/admin/users \
+curl -X PATCH https://ai.abhirup.app/api/admin/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{"email": "user@example.com", "role": "superuser"}'
@@ -1928,7 +1928,7 @@ Remove a user from the allowlist.
 **Example Request**:
 
 ```bash
-curl -X DELETE "https://policybot.abhirup.app/api/admin/users?email=user@example.com" \
+curl -X DELETE "https://ai.abhirup.app/api/admin/users?email=user@example.com" \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -1961,7 +1961,7 @@ Get a user's category subscriptions.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/users/1/subscriptions \
+curl -X GET https://ai.abhirup.app/api/admin/users/1/subscriptions \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2004,7 +2004,7 @@ Add a subscription for a user.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/users/1/subscriptions \
+curl -X POST https://ai.abhirup.app/api/admin/users/1/subscriptions \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{"categoryId": 1}'
@@ -2053,7 +2053,7 @@ Toggle subscription active status.
 **Example Request**:
 
 ```bash
-curl -X PUT https://policybot.abhirup.app/api/admin/users/1/subscriptions \
+curl -X PUT https://ai.abhirup.app/api/admin/users/1/subscriptions \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{"categoryId": 1, "isActive": false}'
@@ -2090,7 +2090,7 @@ Remove a subscription from a user.
 **Example Request**:
 
 ```bash
-curl -X DELETE "https://policybot.abhirup.app/api/admin/users/1/subscriptions?categoryId=1" \
+curl -X DELETE "https://ai.abhirup.app/api/admin/users/1/subscriptions?categoryId=1" \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2120,7 +2120,7 @@ Get all configurable settings.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/settings \
+curl -X GET https://ai.abhirup.app/api/admin/settings \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2215,7 +2215,7 @@ Update settings by type.
 **Example Request (Update LLM)**:
 
 ```bash
-curl -X PATCH https://policybot.abhirup.app/api/admin/settings \
+curl -X PATCH https://ai.abhirup.app/api/admin/settings \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -2269,7 +2269,7 @@ Get the current system prompt with metadata.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/system-prompt \
+curl -X GET https://ai.abhirup.app/api/admin/system-prompt \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2303,7 +2303,7 @@ Update the system prompt.
 **Example Request**:
 
 ```bash
-curl -X PUT https://policybot.abhirup.app/api/admin/system-prompt \
+curl -X PUT https://ai.abhirup.app/api/admin/system-prompt \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -2342,7 +2342,7 @@ Reindex all documents and clear cache.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/refresh \
+curl -X POST https://ai.abhirup.app/api/admin/refresh \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2373,7 +2373,7 @@ Get system statistics for the admin dashboard.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/stats \
+curl -X GET https://ai.abhirup.app/api/admin/stats \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2418,7 +2418,7 @@ Check the status and availability of configured LLM providers.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/providers \
+curl -X GET https://ai.abhirup.app/api/admin/providers \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2504,7 +2504,7 @@ Check reranker availability (BGE cross-encoder, Cohere API, and local bi-encoder
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/reranker-status \
+curl -X GET https://ai.abhirup.app/api/admin/reranker-status \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2541,7 +2541,7 @@ Get documents in super user's assigned categories.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/superuser/documents \
+curl -X GET https://ai.abhirup.app/api/superuser/documents \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2598,7 +2598,7 @@ Upload a document to one of super user's assigned categories.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/superuser/documents \
+curl -X POST https://ai.abhirup.app/api/superuser/documents \
   -H "Cookie: next-auth.session-token=abc123..." \
   -F "file=@HR_Policy.pdf" \
   -F "categoryId=1"
@@ -2653,7 +2653,7 @@ Upload text content directly to one of super user's assigned categories.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/superuser/documents/text \
+curl -X POST https://ai.abhirup.app/api/superuser/documents/text \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -2695,7 +2695,7 @@ Delete a document (only if uploaded by this super user).
 **Example Request**:
 
 ```bash
-curl -X DELETE https://policybot.abhirup.app/api/superuser/documents/5 \
+curl -X DELETE https://ai.abhirup.app/api/superuser/documents/5 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2737,7 +2737,7 @@ List all tools with their configurations.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/tools \
+curl -X GET https://ai.abhirup.app/api/admin/tools \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2789,7 +2789,7 @@ Get specific tool configuration with audit history.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/tools/web_search \
+curl -X GET https://ai.abhirup.app/api/admin/tools/web_search \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -2839,7 +2839,7 @@ Update tool configuration.
 **Example Request**:
 
 ```bash
-curl -X PATCH https://policybot.abhirup.app/api/admin/tools/web_search \
+curl -X PATCH https://ai.abhirup.app/api/admin/tools/web_search \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -2877,7 +2877,7 @@ Test tool connectivity and configuration.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/tools/web_search/test \
+curl -X POST https://ai.abhirup.app/api/admin/tools/web_search/test \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -3688,7 +3688,7 @@ Get users subscribed to super user's assigned categories.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/superuser/users \
+curl -X GET https://ai.abhirup.app/api/superuser/users \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -3735,7 +3735,7 @@ Add subscription for a user to one of super user's categories.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/superuser/users \
+curl -X POST https://ai.abhirup.app/api/superuser/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -3787,7 +3787,7 @@ Remove subscription from one of super user's categories.
 **Example Request**:
 
 ```bash
-curl -X DELETE "https://policybot.abhirup.app/api/superuser/users?userEmail=user@example.com&categoryId=1" \
+curl -X DELETE "https://ai.abhirup.app/api/superuser/users?userEmail=user@example.com&categoryId=1" \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -3819,7 +3819,7 @@ Get super user's accessible categories (both managed and subscribed).
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/superuser/categories \
+curl -X GET https://ai.abhirup.app/api/superuser/categories \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -3877,7 +3877,7 @@ Create a new category (within superuser's quota).
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/superuser/categories \
+curl -X POST https://ai.abhirup.app/api/superuser/categories \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -3937,7 +3937,7 @@ Delete a category created by this super user.
 **Example Request**:
 
 ```bash
-curl -X DELETE "https://policybot.abhirup.app/api/superuser/categories?categoryId=5" \
+curl -X DELETE "https://ai.abhirup.app/api/superuser/categories?categoryId=5" \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -3979,7 +3979,7 @@ List all routing rules with optional seeding of defaults.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/tool-routing \
+curl -X GET https://ai.abhirup.app/api/admin/tool-routing \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -4037,7 +4037,7 @@ Create a new routing rule.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/tool-routing \
+curl -X POST https://ai.abhirup.app/api/admin/tool-routing \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -4086,7 +4086,7 @@ Get a specific routing rule by ID.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/tool-routing/abc123 \
+curl -X GET https://ai.abhirup.app/api/admin/tool-routing/abc123 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -4145,7 +4145,7 @@ Update an existing routing rule.
 **Example Request**:
 
 ```bash
-curl -X PATCH https://policybot.abhirup.app/api/admin/tool-routing/abc123 \
+curl -X PATCH https://ai.abhirup.app/api/admin/tool-routing/abc123 \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -4186,7 +4186,7 @@ Delete a routing rule.
 **Example Request**:
 
 ```bash
-curl -X DELETE https://policybot.abhirup.app/api/admin/tool-routing/abc123 \
+curl -X DELETE https://ai.abhirup.app/api/admin/tool-routing/abc123 \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -4226,7 +4226,7 @@ Test routing rules against a message to see which rules would match.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/tool-routing/test \
+curl -X POST https://ai.abhirup.app/api/admin/tool-routing/test \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -4292,7 +4292,7 @@ List all agent bots.
 **Example Request**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/admin/agent-bots \
+curl -X GET https://ai.abhirup.app/api/admin/agent-bots \
   -H "Cookie: next-auth.session-token=abc123..."
 ```
 
@@ -4335,7 +4335,7 @@ Create a new agent bot.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/agent-bots \
+curl -X POST https://ai.abhirup.app/api/admin/agent-bots \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -4531,7 +4531,7 @@ Create a new version for an agent bot.
 **Example Request**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/admin/agent-bots/abc123/versions \
+curl -X POST https://ai.abhirup.app/api/admin/agent-bots/abc123/versions \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=abc123..." \
   -d '{
@@ -4789,7 +4789,7 @@ Invoke an agent bot to execute a task.
 **Example Request (Sync)**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
+curl -X POST https://ai.abhirup.app/api/agent-bots/hr-assistant/invoke \
   -H "Authorization: Bearer pb_abc123..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -4832,7 +4832,7 @@ curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
 **Example Request (Async with Webhook)**:
 
 ```bash
-curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
+curl -X POST https://ai.abhirup.app/api/agent-bots/hr-assistant/invoke \
   -H "Authorization: Bearer pb_abc123..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -4858,7 +4858,7 @@ curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
 **Example: Check Job Status**:
 
 ```bash
-curl -X GET https://policybot.abhirup.app/api/agent-bots/hr-assistant/jobs/job_abc123 \
+curl -X GET https://ai.abhirup.app/api/agent-bots/hr-assistant/jobs/job_abc123 \
   -H "Authorization: Bearer pb_abc123..."
 ```
 
@@ -4866,13 +4866,13 @@ curl -X GET https://policybot.abhirup.app/api/agent-bots/hr-assistant/jobs/job_a
 
 ```bash
 # 1. Upload a file
-curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/upload \
+curl -X POST https://ai.abhirup.app/api/agent-bots/hr-assistant/upload \
   -H "Authorization: Bearer pb_abc123..." \
   -F "file=@document.pdf"
 # Response: {"fileId": "file_xyz789", ...}
 
 # 2. Invoke with the file
-curl -X POST https://policybot.abhirup.app/api/agent-bots/hr-assistant/invoke \
+curl -X POST https://ai.abhirup.app/api/agent-bots/hr-assistant/invoke \
   -H "Authorization: Bearer pb_abc123..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -5625,7 +5625,7 @@ Then visit `http://localhost:8080` for interactive API exploration.
 ```typescript
 // Send chat message
 async function sendMessage(message: string, threadId: string) {
-  const response = await fetch('https://policybot.abhirup.app/api/chat', {
+  const response = await fetch('https://ai.abhirup.app/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, threadId }),
@@ -5647,7 +5647,7 @@ async function uploadDocument(file: File, categoryIds: number[], isGlobal: boole
   formData.append('categoryIds', JSON.stringify(categoryIds));
   formData.append('isGlobal', String(isGlobal));
 
-  const response = await fetch('https://policybot.abhirup.app/api/admin/documents', {
+  const response = await fetch('https://ai.abhirup.app/api/admin/documents', {
     method: 'POST',
     body: formData,
     credentials: 'include',
@@ -5658,7 +5658,7 @@ async function uploadDocument(file: File, categoryIds: number[], isGlobal: boole
 
 // Create user with subscriptions
 async function createUser(email: string, role: string, subscriptions: number[]) {
-  const response = await fetch('https://policybot.abhirup.app/api/admin/users', {
+  const response = await fetch('https://ai.abhirup.app/api/admin/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, role, subscriptions }),
@@ -5673,36 +5673,36 @@ async function createUser(email: string, role: string, subscriptions: number[]) 
 
 ```bash
 # Create category
-curl -X POST https://policybot.abhirup.app/api/admin/categories \
+curl -X POST https://ai.abhirup.app/api/admin/categories \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"name": "HR", "description": "Human Resources"}'
 
 # Create user with subscriptions
-curl -X POST https://policybot.abhirup.app/api/admin/users \
+curl -X POST https://ai.abhirup.app/api/admin/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"email": "user@example.com", "role": "user", "subscriptions": [1,2]}'
 
 # Upload document to categories
-curl -X POST https://policybot.abhirup.app/api/admin/documents \
+curl -X POST https://ai.abhirup.app/api/admin/documents \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -F "file=@policy.pdf" \
   -F "categoryIds=[1,2]"
 
 # Super user: add subscription
-curl -X POST https://policybot.abhirup.app/api/superuser/users \
+curl -X POST https://ai.abhirup.app/api/superuser/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"userEmail": "user@example.com", "categoryId": 1}'
 
 # Super user: upload document to assigned category
-curl -X POST https://policybot.abhirup.app/api/superuser/documents \
+curl -X POST https://ai.abhirup.app/api/superuser/documents \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -F "file=@HR_Policy.pdf" \
   -F "categoryId=1"
 
 # Super user: delete own document
-curl -X DELETE https://policybot.abhirup.app/api/superuser/documents/5 \
+curl -X DELETE https://ai.abhirup.app/api/superuser/documents/5 \
   -H "Cookie: next-auth.session-token=TOKEN"
 ```

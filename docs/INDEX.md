@@ -1,6 +1,6 @@
-# Policy Bot Documentation Index
+# AI Assistant Documentation Index
 
-Complete documentation reference for Policy Bot - an enterprise RAG platform for policy document management and intelligent querying.
+Complete documentation reference for AI Assistant - an enterprise RAG platform for policy document management and intelligent querying.
 
 ---
 

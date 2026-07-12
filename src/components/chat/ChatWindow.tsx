@@ -91,7 +91,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   activeThread,
   onThreadCreated,
   userSubscriptions = [],
-  brandingName = 'Policy Bot',
+  brandingName = 'AI Assistant',
   brandingSubtitle,
   globalWelcome,
   categoryWelcome,

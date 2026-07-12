@@ -1,6 +1,6 @@
 # Three-Route LLM Architecture
 
-Policy Bot routes all LLM requests through **three independent paths**, giving admins fine-grained control over which providers are active. Every provider connects directly via its native SDK or API — there is no LLM proxy intermediary.
+AI Assistant routes all LLM requests through **three independent paths**, giving admins fine-grained control over which providers are active. Every provider connects directly via its native SDK or API — there is no LLM proxy intermediary.
 
 > **Authoritative reference:** See [`docs/features/LLM.md`](LLM.md) for the complete provider table, SDK details, embeddings architecture, STT/TTS routing, and fallback chain order.
 

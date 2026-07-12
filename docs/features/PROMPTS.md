@@ -1,6 +1,6 @@
 # Prompts System
 
-Comprehensive guide to configuring AI behavior through the prompts system in Policy Bot.
+Comprehensive guide to configuring AI behavior through the prompts system in AI Assistant.
 
 ---
 
@@ -21,7 +21,7 @@ Comprehensive guide to configuring AI behavior through the prompts system in Pol
 
 ## Introduction
 
-The prompts system in Policy Bot allows administrators and superusers to customize how the AI assistant behaves and responds. The system uses a hierarchical approach where prompts can be defined globally and then augmented per category.
+The prompts system in AI Assistant allows administrators and superusers to customize how the AI assistant behaves and responds. The system uses a hierarchical approach where prompts can be defined globally and then augmented per category.
 
 ### Prompt Hierarchy
 
@@ -61,7 +61,7 @@ The prompts system in Policy Bot allows administrators and superusers to customi
 
 ## Global System Prompt
 
-The **Global System Prompt** is the base instruction set that applies to every conversation in Policy Bot.
+The **Global System Prompt** is the base instruction set that applies to every conversation in AI Assistant.
 
 ### What It Does
 
@@ -118,7 +118,7 @@ Format responses as follows:
 ### Example Global Prompt
 
 ```markdown
-You are the Policy Bot AI assistant for GEA Global Corporation. Your role
+You are the AI assistant for GEA Global Corporation. Your role
 is to help employees find accurate information in company policy documents
 and answer questions about procedures, benefits, and guidelines.
 
@@ -453,7 +453,7 @@ Operations:
 
 ## AI Prompt Optimization
 
-Policy Bot includes an AI-powered prompt optimizer that helps improve your prompts using AI suggestions.
+AI Assistant includes an AI-powered prompt optimizer that helps improve your prompts using AI suggestions.
 
 ### What It Does
 
@@ -519,7 +519,7 @@ Variables allow you to inject dynamic content into prompts.
 | `{user_name}` | Current user's display name | "John Doe" |
 | `{user_email}` | Current user's email | "john@company.com" |
 | `{date}` | Today's date | "January 19, 2025" |
-| `{bot_name}` | Bot name from branding | "Policy Bot" |
+| `{bot_name}` | Bot name from branding | "AI Assistant" |
 
 ### Using Variables
 
@@ -536,7 +536,7 @@ Please personalize responses appropriately.
 At runtime, this becomes:
 
 ```markdown
-You are Policy Bot, assisting in the HR Policies category.
+You are AI Assistant, assisting in the HR Policies category.
 User's name: John Doe
 Today's date: January 19, 2025
 
@@ -636,7 +636,7 @@ Please personalize responses appropriately.
 
 **Global Prompt:**
 ```markdown
-You are PolicyBot, the AI assistant for Acme Financial Services. You help
+You are AI Assistant, the AI assistant for Acme Financial Services. You help
 employees find information in company policy documents and answer questions
 about procedures, compliance, and guidelines.
 

@@ -63,7 +63,7 @@ export default function BrandingSettingsTab() {
       const data = await res.json();
 
       const brandingData = data.branding || {
-        botName: 'Policy Bot',
+        botName: 'AI Assistant',
         botIcon: 'policy',
         subtitle: '',
         welcomeTitle: '',
@@ -183,7 +183,7 @@ export default function BrandingSettingsTab() {
               type="text"
               value={editedSettings.botName}
               onChange={(e) => updateSetting('botName', e.target.value)}
-              placeholder="Policy Bot"
+              placeholder="AI Assistant"
               className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -230,7 +230,7 @@ export default function BrandingSettingsTab() {
               type="text"
               value={editedSettings.welcomeTitle || ''}
               onChange={(e) => updateSetting('welcomeTitle', e.target.value)}
-              placeholder="Welcome to Policy Bot"
+              placeholder="Welcome to AI Assistant"
               className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

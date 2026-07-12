@@ -1,14 +1,14 @@
-# Policy Bot
+# AI Assistant
 
 **An open-source, interoperable AI platform for governments, ministries, and enterprises.**
 
 Deploy AI-powered solutions across your organization while maintaining complete control over your data, infrastructure, and AI providers. No vendor lock-in. Core data stays on your infrastructure, while cloud LLM routes remain available for approved non-sensitive workloads. No ML expertise required.
 
-## Why Policy Bot?
+## Why AI Assistant?
 
 Governments and organizations face a critical challenge: **how to adopt AI responsibly** while meeting regulatory requirements for data protection, avoiding dependency on single vendors, and delivering value without building complex ML infrastructure.
 
-Policy Bot solves this by providing:
+AI Assistant solves this by providing:
 
 | Requirement | How We Deliver |
 |-------------|----------------|
@@ -260,7 +260,7 @@ policy-bot/
 │       ├── USER_GUIDE.md
 │       ├── ADMIN_GUIDE.md
 │       └── SUPERUSER_GUIDE.md
-├── litellm-proxy/              # LiteLLM configuration (legacy — no longer used by Policy Bot)
+├── litellm-proxy/              # LiteLLM configuration (legacy — no longer used by AI Assistant)
 ├── docker-compose.yml          # Production stack
 ├── docker-compose.local.yml    # Local development stack (Postgres + Qdrant + Redis)
 └── Dockerfile                  # Multi-stage build
@@ -326,7 +326,7 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 
 ## External API Keys & Licenses
 
-Policy Bot integrates with several external services. All are optional except LLM providers.
+AI Assistant integrates with several external services. All are optional except LLM providers.
 
 ### LLM Providers (At least one required)
 
@@ -372,7 +372,7 @@ Choose provider tier based on data sensitivity and task complexity:
 | **Azure Document Intelligence** | [Azure Portal](https://portal.azure.com) → Cognitive Services | Enterprise document processing with layout preservation (all formats) | Local parsers (included) |
 | **Mistral OCR** | [console.mistral.ai](https://console.mistral.ai/api-keys) | Vision-based PDF/image OCR with layout understanding | pdf-parse (included) |
 
-> **Built-in Local Parsers (no API key required):** Policy Bot includes local document processing that runs automatically before API providers: `mammoth` (DOCX), `exceljs` (XLSX), `officeparser` (PPTX), and `pdf-parse` (PDF). API providers above are only needed for enhanced extraction (layout preservation, handwriting, scanned documents).
+> **Built-in Local Parsers (no API key required):** AI Assistant includes local document processing that runs automatically before API providers: `mammoth` (DOCX), `exceljs` (XLSX), `officeparser` (PPTX), and `pdf-parse` (PDF). API providers above are only needed for enhanced extraction (layout preservation, handwriting, scanned documents).
 
 ### RAG Enhancements (Optional)
 
@@ -393,7 +393,7 @@ Choose provider tier based on data sensitivity and task complexity:
 - **Recursive** - Default chunking with configurable size and overlap
 - **Semantic** - Context-aware chunking based on content boundaries
 
-> **Local Reranker:** Policy Bot includes BGE cross-encoder rerankers using `onnxruntime-node` and Transformers.js. Models download automatically on first use (~670MB for large, ~220MB for base). Configure priority order via Admin > Settings > Reranker.
+> **Local Reranker:** AI Assistant includes BGE cross-encoder rerankers using `onnxruntime-node` and Transformers.js. Models download automatically on first use (~670MB for large, ~220MB for base). Configure priority order via Admin > Settings > Reranker.
 
 ### External Tools and Integrations (Optional)
 

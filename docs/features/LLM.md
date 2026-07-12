@@ -1,6 +1,6 @@
 # LLM Architecture — Routes, Providers, SDKs, and Fallback
 
-Authoritative reference for Policy Bot's LLM routing architecture. Covers all routes, service providers, SDKs, where each LLM is used, and the fallback chain order.
+Authoritative reference for AI Assistant's LLM routing architecture. Covers all routes, service providers, SDKs, where each LLM is used, and the fallback chain order.
 
 > **Last updated:** June 2026 — Post-migration: LiteLLM removed, all providers direct via native SDKs/APIs. Routes 2/3/5 active.
 
@@ -20,7 +20,7 @@ Authoritative reference for Policy Bot's LLM routing architecture. Covers all ro
 
 ## Route Architecture
 
-Policy Bot routes all LLM requests through **three independent paths**. Every provider connects directly via its native SDK or API — there is no LiteLLM proxy intermediary.
+AI Assistant routes all LLM requests through **three independent paths**. Every provider connects directly via its native SDK or API — there is no LiteLLM proxy intermediary.
 
 | Route | Purpose | Providers | Toggle |
 |-------|---------|-----------|--------|

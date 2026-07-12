@@ -518,7 +518,7 @@ export async function downloadPdfFromUrl(url: string): Promise<PdfDownloadResult
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; PolicyBot/1.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; AIAssistant/1.0)',
         'Accept': 'application/pdf,*/*',
       },
     });

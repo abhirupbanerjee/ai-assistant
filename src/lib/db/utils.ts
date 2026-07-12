@@ -222,7 +222,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
     config: {
       sendgridApiKey: '',
       senderEmail: '',
-      senderName: 'Policy Bot',
+      senderName: 'AI Assistant',
       rateLimitPerHour: 50,
     },
   },

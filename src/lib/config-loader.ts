@@ -569,7 +569,7 @@ function getHardcodedDefaults(): AppConfig {
       archiveOriginalMessages: true,
     },
     branding: {
-      botName: 'Policy Bot',
+      botName: 'AI Assistant',
       botIcon: 'policy',
     },
     limits: {

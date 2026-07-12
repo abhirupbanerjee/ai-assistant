@@ -50,7 +50,7 @@ const SIGN_IN_URL = '/auth/signin?callbackUrl=/chat';
 export default function LandingPage() {
   const { status } = useSession();
   const router = useRouter();
-  const [brandingName, setBrandingName] = useState('Policy Bot');
+  const [brandingName, setBrandingName] = useState('AI Assistant');
   const [brandingBotIcon, setBrandingBotIcon] = useState('policy');
 
   // Interactive UI States
@@ -494,7 +494,7 @@ export default function LandingPage() {
                     <input
                       type="text"
                       readOnly
-                      placeholder="Ask Policy Bot or type '/' command..."
+                      placeholder="Ask AI Assistant or type '/' command..."
                       className="w-full bg-slate-900/60 border border-slate-800/80 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-slate-300 focus:outline-none placeholder-slate-600"
                       value={typedPrompt}
                     />
@@ -852,7 +852,7 @@ export default function LandingPage() {
                   </div>
                   <h3 className="text-2xl font-bold text-white">Dynamic Planner-Executor-Checker Cycles</h3>
                   <p className="text-slate-400 text-sm leading-relaxed">
-                    Break down complex commands into sequenced tasks. Policy Bot utilizes a structured state machine with subagent execution routines to independently analyze, search, generate material, and verify results.
+                    Break down complex commands into sequenced tasks. AI Assistant utilizes a structured state machine with subagent execution routines to independently analyze, search, generate material, and verify results.
                   </p>
                   <p className="text-slate-400 text-sm leading-relaxed">
                     **Tool Safety Gating** automatically audits the tools requested. If an agent tries to execute a costly or high-impact tool (like `doc_gen` or custom `function_apis`), it pauses and requests direct administrative sign-off via a Human-In-The-Loop interface.
@@ -970,7 +970,7 @@ export default function LandingPage() {
               Flexible Multi-Route Model Connections
             </h2>
             <p className="mt-4 text-slate-400 leading-relaxed">
-              Policy Bot leverages unique internal communication pathways to connect with any local or cloud LLM, guaranteeing zero-downtime performance.
+              AI Assistant leverages unique internal communication pathways to connect with any local or cloud LLM, guaranteeing zero-downtime performance.
             </p>
           </div>
 
@@ -1043,7 +1043,7 @@ export default function LandingPage() {
             Take Control of Your Enterprise AI
           </h2>
           <p className="text-slate-400 max-w-2xl mx-auto text-base leading-relaxed">
-            Deploy Policy Bot on your own cloud, local server, or secure VM container. Open-source, self-hosted, and designed for military-grade sovereignty.
+            Deploy AI Assistant on your own cloud, local server, or secure VM container. Open-source, self-hosted, and designed for military-grade sovereignty.
           </p>
           <div className="pt-4">
             <Link

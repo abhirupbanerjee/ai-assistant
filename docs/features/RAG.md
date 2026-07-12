@@ -1,6 +1,6 @@
 # RAG Pipeline — Complete Reference
 
-> **Scope:** This document covers the entire Retrieval-Augmented Generation pipeline in Policy Bot, from document ingestion through vector search, graph-augmented retrieval, reranking, and response generation.
+> **Scope:** This document covers the entire Retrieval-Augmented Generation pipeline in AI Assistant, from document ingestion through vector search, graph-augmented retrieval, reranking, and response generation.
 
 ---
 

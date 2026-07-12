@@ -1,4 +1,4 @@
--- Policy Bot Database Schema (PostgreSQL)
+-- AI Assistant Database Schema (PostgreSQL)
 -- Converted from SQLite schema for PostgreSQL compatibility
 
 -- ============ Users & Roles ============

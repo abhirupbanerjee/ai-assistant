@@ -41,7 +41,7 @@ export function EmbedWidget({
   } = useEmbedChat({
     workspaceSlug,
     apiBaseUrl,
-    onError: (err) => console.error('[PolicyBot Embed]', err),
+    onError: (err) => console.error('[AI Assistant Embed]', err),
   });
 
   // Initialize on first open

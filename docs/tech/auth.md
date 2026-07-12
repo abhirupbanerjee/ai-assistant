@@ -1,6 +1,6 @@
 # Authentication System
 
-This document provides comprehensive coverage of Policy Bot's authentication system, including OAuth providers (Microsoft/Google), credentials authentication (email/password), and admin management features.
+This document provides comprehensive coverage of AI Assistant's authentication system, including OAuth providers (Microsoft/Google), credentials authentication (email/password), and admin management features.
 
 ---
 
@@ -24,7 +24,7 @@ This document provides comprehensive coverage of Policy Bot's authentication sys
 
 ## Overview
 
-Policy Bot uses [NextAuth.js v4](https://next-auth.js.org/) for authentication with a flexible multi-provider architecture:
+AI Assistant uses [NextAuth.js v4](https://next-auth.js.org/) for authentication with a flexible multi-provider architecture:
 
 | Provider | Type | Use Case | Default State |
 |----------|------|----------|---------------|
@@ -51,7 +51,7 @@ Enterprise single sign-on via Microsoft 365 / Azure Active Directory.
 1. Go to [Azure Portal](https://portal.azure.com) > **Azure Active Directory** > **App registrations**
 2. Click **New registration**
 3. Configure:
-   - **Name:** `Policy Bot` (or your app name)
+   - **Name:** `AI Assistant` (or your app name)
    - **Supported account types:** Choose based on your needs:
      - Single tenant: Only your organization
      - Multi-tenant: Any Azure AD directory
@@ -96,7 +96,7 @@ Google Workspace or personal Google account authentication.
 2. Click **Create Credentials** > **OAuth client ID**
 3. Configure:
    - **Application type:** Web application
-   - **Name:** `Policy Bot`
+   - **Name:** `AI Assistant`
    - **Authorized redirect URIs:** `https://your-domain.com/api/auth/callback/google`
 
 4. Note the credentials:
@@ -258,7 +258,7 @@ AZURE_AD_TENANT_ID=xxx
 
 ## Access Control Modes
 
-Policy Bot supports two access control modes:
+AI Assistant supports two access control modes:
 
 ### Allowlist Mode (Default)
 
@@ -534,7 +534,7 @@ When upgrading:
 
 ### Current Status
 
-Policy Bot currently uses **NextAuth v4**. Migration to v5 is planned when:
+AI Assistant currently uses **NextAuth v4**. Migration to v5 is planned when:
 - v5 reaches stable release
 - All required providers have v5 support
 - Edge runtime benefits become necessary

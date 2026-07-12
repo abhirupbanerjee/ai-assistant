@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy - Policy Bot',
-  description: 'Privacy Policy for Policy Bot — how we collect, use, and protect your data.',
+  title: 'Privacy Policy - AI Assistant',
+  description: 'Privacy Policy for AI Assistant — how we collect, use, and protect your data.',
 };
 
 export default function PrivacyPolicyPage() {
@@ -23,12 +23,12 @@ export default function PrivacyPolicyPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">1. Introduction</h2>
               <p>
-                Policy Bot (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) is committed to protecting your privacy.
+                AI Assistant (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) is committed to protecting your privacy.
                 This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use
                 our AI-powered platform for governments, ministries, and enterprises.
               </p>
               <p>
-                Policy Bot is an open-source, self-hosted platform. All data remains on your organization&rsquo;s
+                AI Assistant is an open-source, self-hosted platform. All data remains on your organization&rsquo;s
                 infrastructure. We do not sell, rent, or share your personal data with third parties for marketing purposes.
               </p>
             </section>
@@ -37,7 +37,7 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-lg font-semibold text-gray-900">2. Information We Collect</h2>
 
               <h3 className="text-base font-medium text-gray-800">2.1 Account Information</h3>
-              <p>When you sign in to Policy Bot, we collect the following information depending on your authentication method:</p>
+              <p>When you sign in to AI Assistant, we collect the following information depending on your authentication method:</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li><strong>Google OAuth:</strong> Your name, email address, and profile picture as provided by your Google account. We request only the <code>profile</code>, <code>email</code>, and <code>openid</code> scopes.</li>
                 <li><strong>Azure AD (Microsoft) OAuth:</strong> Your name, email address, and profile information as provided by your Azure AD directory.</li>
@@ -78,7 +78,7 @@ export default function PrivacyPolicyPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">4. Data Storage and Retention</h2>
               <p>
-                Policy Bot is a <strong>self-hosted platform</strong>. All data is stored on your organization&rsquo;s
+                AI Assistant is a <strong>self-hosted platform</strong>. All data is stored on your organization&rsquo;s
                 own infrastructure using PostgreSQL (primary database), Qdrant (vector store), and Redis (cache/sessions).
               </p>
               <ul className="list-disc pl-5 space-y-1">
@@ -134,14 +134,14 @@ export default function PrivacyPolicyPage() {
               </ul>
               <p>
                 To exercise these rights, use the self-service options in your Profile page or contact your
-                organization&rsquo;s Policy Bot administrator.
+                organization&rsquo;s AI Assistant administrator.
               </p>
             </section>
 
             <section>
               <h2 className="text-lg font-semibold text-gray-900">8. Cookies</h2>
               <p>
-                Policy Bot uses essential session cookies for authentication. These cookies are:
+                AI Assistant uses essential session cookies for authentication. These cookies are:
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li><strong>Session token:</strong> A secure, HTTP-only cookie used to maintain your authenticated session.</li>
@@ -156,7 +156,7 @@ export default function PrivacyPolicyPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">9. Children&rsquo;s Privacy</h2>
               <p>
-                Policy Bot is designed for government and enterprise use. We do not knowingly collect personal
+                AI Assistant is designed for government and enterprise use. We do not knowingly collect personal
                 information from children under the age of 13. If you believe a child has provided personal data,
                 please contact your organization&rsquo;s administrator.
               </p>
@@ -166,7 +166,7 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-lg font-semibold text-gray-900">10. Changes to This Policy</h2>
               <p>
                 We may update this Privacy Policy from time to time. We will notify users of material changes
-                through the platform or via email. Your continued use of Policy Bot after changes become effective
+                through the platform or via email. Your continued use of AI Assistant after changes become effective
                 constitutes acceptance of the updated policy.
               </p>
             </section>
@@ -174,8 +174,8 @@ export default function PrivacyPolicyPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">11. Contact</h2>
               <p>
-                Policy Bot is an open-source platform deployed and managed by your organization.
-                For privacy-related inquiries, please contact your organization&rsquo;s Policy Bot administrator
+                AI Assistant is an open-source platform deployed and managed by your organization.
+                For privacy-related inquiries, please contact your organization&rsquo;s AI Assistant administrator
                 or the platform operator at the support email configured in your deployment.
               </p>
               <p>

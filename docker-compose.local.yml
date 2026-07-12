@@ -1,5 +1,5 @@
 # =============================================================================
-# Policy Bot - Local Development Docker Compose (Hybrid Mode)
+# AI Assistant - Local Development Docker Compose (Hybrid Mode)
 # =============================================================================
 #
 # This file runs infrastructure services (PostgreSQL, Qdrant, Redis, LiteLLM)

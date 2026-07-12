@@ -1,6 +1,6 @@
 # LiteLLM Implementation Guide
 
-> **⚠️ STALE DOCUMENT — June 2026:** LiteLLM proxy has been **removed** from Policy Bot. All providers (OpenAI, Gemini, Mistral, Anthropic, DeepSeek, Moonshot, Ollama, Azure Foundry, Fireworks, Ollama Cloud) now use direct native SDKs/APIs. Routes 1 and 4 no longer exist. See [`docs/features/LLM.md`](../features/LLM.md) for the authoritative current architecture. This document is retained for historical reference and LiteLLM setup instructions that may apply to external consumers.
+> **⚠️ STALE DOCUMENT — June 2026:** LiteLLM proxy has been **removed** from AI Assistant. All providers (OpenAI, Gemini, Mistral, Anthropic, DeepSeek, Moonshot, Ollama, Azure Foundry, Fireworks, Ollama Cloud) now use direct native SDKs/APIs. Routes 1 and 4 no longer exist. See [`docs/features/LLM.md`](../features/LLM.md) for the authoritative current architecture. This document is retained for historical reference and LiteLLM setup instructions that may apply to external consumers.
 
 > Customized for multi-provider LLM abstraction with proxy approach, embeddings routing, function calling support, and audio transcription.
 
@@ -8,11 +8,11 @@
 
 ## LLM Service Routing Overview
 
-Policy Bot uses a **hybrid architecture**: most chat services route through LiteLLM proxy for unified model management, while **Anthropic Claude models bypass LiteLLM entirely** using the `@anthropic-ai/sdk` for direct API access (eliminating tool-calling JSON assembly issues), and specialized services (images, audio, document processing) call provider APIs directly or use local parsers.
+AI Assistant uses a **hybrid architecture**: most chat services route through LiteLLM proxy for unified model management, while **Anthropic Claude models bypass LiteLLM entirely** using the `@anthropic-ai/sdk` for direct API access (eliminating tool-calling JSON assembly issues), and specialized services (images, audio, document processing) call provider APIs directly or use local parsers.
 
 ### Service Routing Table
 
-| Service | Policy Bot Feature | Routes Through | Provider(s) | Notes |
+| Service | AI Assistant Feature | Routes Through | Provider(s) | Notes |
 |---------|-------------------|----------------|-------------|-------|
 | **Chat Completions** | Main chat, RAG responses | ✅ LiteLLM / ⚡ Anthropic Direct | OpenAI, Gemini, Mistral, DeepSeek, Fireworks AI, Ollama via LiteLLM; **Anthropic Claude via direct SDK** | Claude uses `@anthropic-ai/sdk` for reliable tool calling |
 | **Embeddings** | Document indexing, search | ✅ LiteLLM | OpenAI, Mistral, Gemini, Ollama, Fireworks | `text-embedding-3-large` default |
@@ -97,9 +97,9 @@ const anthropicClient = useAnthropicDirect ? await getAnthropicClient() : null; 
 
 ---
 
-## Policy Bot Integration
+## AI Assistant Integration
 
-This guide is configured for the Policy Bot RAG application. Default model preset:
+This guide is configured for the AI Assistant RAG application. Default model preset:
 
 | Setting | Value |
 |---------|-------|
@@ -109,7 +109,7 @@ This guide is configured for the Policy Bot RAG application. Default model prese
 | Embedding Model | `text-embedding-3-large` |
 | Embedding Dimensions | `3072` |
 
-Available model presets in Policy Bot (via `config/defaults.json`):
+Available model presets in AI Assistant (via `config/defaults.json`):
 - **gpt-4.1** - High Performance (1M context)
 - **gpt-4.1-mini** - Balanced (default)
 - **gpt-4.1-nano** - Cost-Effective
@@ -131,11 +131,11 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 
 ## Architecture Overview
 
-PolicyBot uses a **four-tier hybrid architecture**. LiteLLM handles most chat, embeddings, and transcription. **Anthropic Claude models bypass LiteLLM** via the native `@anthropic-ai/sdk` for reliable tool calling. Specialized services use direct API calls.
+AI Assistant uses a **four-tier hybrid architecture**. LiteLLM handles most chat, embeddings, and transcription. **Anthropic Claude models bypass LiteLLM** via the native `@anthropic-ai/sdk` for reliable tool calling. Specialized services use direct API calls.
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│                         PolicyBot Application                         │
+│                         AI Assistant Application                         │
 │              (Next.js — openai.ts, tools, translation)                │
 └──┬──────────────────┬──────────────────┬──────────────────┬───────────┘
    │                  │                  │                  │
@@ -178,7 +178,7 @@ Capabilities are auto-detected via regex patterns in `src/lib/services/model-dis
 
 ### Model Registration: Dynamic vs Static
 
-PolicyBot uses **two registration paths** for LiteLLM models:
+AI Assistant uses **two registration paths** for LiteLLM models:
 
 | Path | Providers | How |
 |------|-----------|-----|
@@ -278,7 +278,7 @@ OLLAMA_API_BASE=http://host.docker.internal:11434
 
 ## Step 2: LiteLLM Configuration
 
-> **Important**: The reference YAML below is a **complete template** listing all models statically. In actual PolicyBot deployment, chat models for OpenAI, Anthropic, Gemini, Mistral, and DeepSeek are **registered dynamically** via `litellm-sync.ts` (see Architecture Overview above). Only Fireworks, Ollama, embedding, and audio models are declared in the YAML. See the actual config at `litellm-proxy/litellm_config.yaml`.
+> **Important**: The reference YAML below is a **complete template** listing all models statically. In actual AI Assistant deployment, chat models for OpenAI, Anthropic, Gemini, Mistral, and DeepSeek are **registered dynamically** via `litellm-sync.ts` (see Architecture Overview above). Only Fireworks, Ollama, embedding, and audio models are declared in the YAML. See the actual config at `litellm-proxy/litellm_config.yaml`.
 
 Create `litellm_config.yaml`:
 
@@ -544,7 +544,7 @@ general_settings:
 
 ## Step 3: Docker Compose
 
-> **Note**: In the actual PolicyBot deployment, LiteLLM runs as part of the full stack in `docker-compose.local.yml` alongside Postgres, Qdrant, and Redis. The standalone example below is for reference.
+> **Note**: In the actual AI Assistant deployment, LiteLLM runs as part of the full stack in `docker-compose.local.yml` alongside Postgres, Qdrant, and Redis. The standalone example below is for reference.
 
 Create `docker-compose.yml`:
 
@@ -594,7 +594,7 @@ services:
 
 ### Minimal Change Required
 
-PolicyBot is a Next.js (TypeScript) application. The proxy switch is controlled entirely by environment variables — no code changes needed:
+AI Assistant is a Next.js (TypeScript) application. The proxy switch is controlled entirely by environment variables — no code changes needed:
 
 **Environment (`.env`):**
 ```bash
@@ -637,7 +637,7 @@ Since your `generateResponseWithTools()` uses function calling, here's how to ha
 # Provider capability mapping (Updated December 2025)
 
 # Full tool/function calling support
-# Matches Policy Bot config/defaults.json toolCapable list
+# Matches AI Assistant config/defaults.json toolCapable list
 TOOL_CAPABLE_MODELS = [
     # OpenAI
     "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-3.5-turbo",
@@ -910,11 +910,11 @@ curl -X POST http://localhost:4000/embeddings \
 | Use Case | Recommended Model | Why |
 |----------|-------------------|-----|
 | **Production Chat** | `gpt-4.1` or `gemini-2.5-pro` | Best instruction following, 1M context |
-| **Balanced (Default)** | `gpt-4.1-mini` or `gemini-2.5-flash` | Good quality at lower cost (Policy Bot default) |
+| **Balanced (Default)** | `gpt-4.1-mini` or `gemini-2.5-flash` | Good quality at lower cost (AI Assistant default) |
 | **Budget Chat** | `gpt-4.1-nano` or `gemini-2.5-flash-lite` | Cost-effective for simple queries |
 | **Deep Reasoning** | `gemini-2.5-pro` | Built-in thinking capabilities |
 | **Local/Offline Chat** | `ollama-llama3.2` or `ollama-qwen2.5` | Full tool support, runs locally |
-| **RAG Embeddings** | `text-embedding-3-large` | Best quality for retrieval (Policy Bot default) |
+| **RAG Embeddings** | `text-embedding-3-large` | Best quality for retrieval (AI Assistant default) |
 | **Local Embeddings** | `ollama-embedding` (nomic) | Good quality, no API cost |
 | **Audio Transcription** | `voxtral-transcribe` | Beats Whisper, half the cost |
 | **Budget Transcription** | `whisper-1` | Well-established, $0.006/min |

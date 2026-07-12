@@ -126,7 +126,7 @@ function SignInContent() {
                 />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Policy Bot</h1>
+            <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
             <p className="text-gray-500 mt-2">Sign in to continue</p>
           </div>
 

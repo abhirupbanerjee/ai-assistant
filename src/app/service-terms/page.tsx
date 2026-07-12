@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service - Policy Bot',
-  description: 'Terms of Service for Policy Bot — conditions governing the use of our AI-powered platform.',
+  title: 'Terms of Service - AI Assistant',
+  description: 'Terms of Service for AI Assistant — conditions governing the use of our AI-powered platform.',
 };
 
 export default function TermsOfServicePage() {
@@ -23,11 +23,11 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">1. Acceptance of Terms</h2>
               <p>
-                By accessing or using Policy Bot (&ldquo;the Service&rdquo;), you agree to be bound by these Terms of
+                By accessing or using AI Assistant (&ldquo;the Service&rdquo;), you agree to be bound by these Terms of
                 Service (&ldquo;Terms&rdquo;). If you do not agree to these Terms, you may not access or use the Service.
               </p>
               <p>
-                Policy Bot is an open-source AI platform licensed under the{' '}
+                AI Assistant is an open-source AI platform licensed under the{' '}
                 <a
                   href="https://polyformproject.org/licenses/noncommercial/1.0.0/"
                   className="text-blue-600 hover:text-blue-800 underline"
@@ -42,7 +42,7 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">2. Service Description</h2>
               <p>
-                Policy Bot is an AI-powered platform that provides the following capabilities to government,
+                AI Assistant is an AI-powered platform that provides the following capabilities to government,
                 ministry, and enterprise users:
               </p>
               <ul className="list-disc pl-5 space-y-1">
@@ -116,7 +116,7 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">6. Intellectual Property</h2>
               <p>
-                The Policy Bot software is open-source and licensed under the Polyform NonCommercial License 1.0.0.
+                The AI Assistant software is open-source and licensed under the Polyform NonCommercial License 1.0.0.
                 This means:
               </p>
               <ul className="list-disc pl-5 space-y-1">
@@ -164,7 +164,7 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">9. Data Sovereignty and Privacy</h2>
               <p>
-                Policy Bot is a self-hosted platform. All data is stored on your organization&rsquo;s infrastructure.
+                AI Assistant is a self-hosted platform. All data is stored on your organization&rsquo;s infrastructure.
                 By using the Service, you acknowledge that:
               </p>
               <ul className="list-disc pl-5 space-y-1">
@@ -208,7 +208,7 @@ export default function TermsOfServicePage() {
               <h2 className="text-lg font-semibold text-gray-900">12. Governing Law</h2>
               <p>
                 These Terms shall be governed by and construed in accordance with the laws of the jurisdiction
-                in which your organization&rsquo;s Policy Bot deployment is operated, without regard to conflict
+                in which your organization&rsquo;s AI Assistant deployment is operated, without regard to conflict
                 of law principles.
               </p>
             </section>
@@ -216,7 +216,7 @@ export default function TermsOfServicePage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-900">13. Contact</h2>
               <p>
-                For questions about these Terms of Service, please contact your organization&rsquo;s Policy Bot
+                For questions about these Terms of Service, please contact your organization&rsquo;s AI Assistant
                 administrator or the platform operator at the support email configured in your deployment.
               </p>
             </section>

@@ -1,8 +1,8 @@
-# Policy Bot - Solution Architecture
+# AI Assistant - Solution Architecture
 
 > **Last updated:** June 2026 — Post-migration: LiteLLM removed, all providers direct via native SDKs/APIs. Routes 2, 3, and 5 active. See [`docs/features/LLM.md`](../features/LLM.md) for the authoritative LLM architecture reference.
 
-Comprehensive architecture documentation for Policy Bot - an enterprise RAG platform for policy document management.
+Comprehensive architecture documentation for AI Assistant - an enterprise RAG platform for policy document management.
 
 ---
 
@@ -487,7 +487,7 @@ Artifacts Panel updates with new items
 
 ### 5. Data Tools
 
-Policy Bot includes tools for querying external data sources and executing dynamic functions:
+AI Assistant includes tools for querying external data sources and executing dynamic functions:
 
 #### Data Sources
 - **API Data Sources**: Connect to external REST APIs with authentication
@@ -1008,7 +1008,7 @@ On first access, these default rules are created:
 
 ### 14. Progressive Web App (PWA)
 
-Policy Bot implements PWA capabilities, allowing users to install the application as a standalone app on desktop and mobile devices.
+AI Assistant implements PWA capabilities, allowing users to install the application as a standalone app on desktop and mobile devices.
 
 > **📖 Full Documentation:** [docs/features/PWA.md](../../features/PWA.md)
 
@@ -1050,7 +1050,7 @@ Policy Bot implements PWA capabilities, allowing users to install the applicatio
 ```typescript
 // Example manifest structure
 {
-  "name": "Policy Bot",
+  "name": "AI Assistant",
   "short_name": "Policy",
   "description": "Enterprise RAG platform for policy documents",
   "start_url": "/",
@@ -1118,7 +1118,7 @@ pwa_background_color TEXT DEFAULT '#ffffff'
 #### Limitations
 
 **No Offline Support:**
-- Policy Bot requires network connectivity for:
+- AI Assistant requires network connectivity for:
   - Document search (vector database queries)
   - LLM API calls (chat completions)
   - Authentication validation
@@ -1147,7 +1147,7 @@ pwa_background_color TEXT DEFAULT '#ffffff'
 
 ### 15. Thinking Models
 
-Policy Bot natively processes extended reasoning tokens (`<think>`) emitted by reasoning-capable models:
+AI Assistant natively processes extended reasoning tokens (`<think>`) emitted by reasoning-capable models:
 
 ```
 LLM Response Stream
@@ -1337,7 +1337,7 @@ The agent streams progress updates to the UI:
 
 ### 18. Content Generation
 
-Policy Bot includes tools for generating images, diagrams, and translations.
+AI Assistant includes tools for generating images, diagrams, and translations.
 
 #### 16.1 Image Generation
 
@@ -1510,7 +1510,7 @@ getThreadContext(threadId)
 
 ## Agent Bots (Programmatic API)
 
-Agent Bots expose Policy Bot capabilities as a REST API for external systems, CI/CD pipelines, and third-party integrations.
+Agent Bots expose AI Assistant capabilities as a REST API for external systems, CI/CD pipelines, and third-party integrations.
 
 ### Architecture
 

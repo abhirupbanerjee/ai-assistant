@@ -1,6 +1,6 @@
 # Superuser Guide
 
-This guide explains how to use the Superuser Dashboard to manage your assigned categories in Policy Bot.
+This guide explains how to use the Superuser Dashboard to manage your assigned categories in AI Assistant.
 
 ---
 
@@ -27,7 +27,7 @@ This guide explains how to use the Superuser Dashboard to manage your assigned c
 
 ### What is a Superuser?
 
-A **Superuser** is a category-focused manager role in Policy Bot. Superusers can manage documents, users, and configurations for their **assigned categories** only. This role is ideal for department heads or team leads who need to manage their team's access to specific policy documents.
+A **Superuser** is a category-focused manager role in AI Assistant. Superusers can manage documents, users, and configurations for their **assigned categories** only. This role is ideal for department heads or team leads who need to manage their team's access to specific policy documents.
 
 ### Hybrid Role Support
 
@@ -71,7 +71,7 @@ Once assigned, you'll see the **Superuser** option in the navigation menu.
 
 ### Accessing the Superuser Dashboard
 
-1. Log in to Policy Bot
+1. Log in to AI Assistant
 2. Click your profile or the menu icon
 3. Select **Superuser** from the navigation
 4. Or navigate directly to `/superuser`

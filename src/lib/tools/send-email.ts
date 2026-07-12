@@ -27,7 +27,7 @@ export async function getSendEmailConfig(): Promise<{ enabled: boolean; config: 
       config: {
         sendgridApiKey: (config.sendgridApiKey as string) || '',
         senderEmail: (config.senderEmail as string) || '',
-        senderName: (config.senderName as string) || 'Policy Bot',
+        senderName: (config.senderName as string) || 'AI Assistant',
         rateLimitPerHour: (config.rateLimitPerHour as number) ?? 50,
       },
     };
@@ -37,7 +37,7 @@ export async function getSendEmailConfig(): Promise<{ enabled: boolean; config: 
     config: {
       sendgridApiKey: '',
       senderEmail: '',
-      senderName: 'Policy Bot',
+      senderName: 'AI Assistant',
       rateLimitPerHour: 50,
     },
   };
@@ -330,7 +330,7 @@ export const sendEmailTool: ToolDefinition = {
   defaultConfig: {
     sendgridApiKey: '',
     senderEmail: '',
-    senderName: 'Policy Bot',
+    senderName: 'AI Assistant',
     rateLimitPerHour: 50,
   },
 
@@ -354,7 +354,7 @@ export const sendEmailTool: ToolDefinition = {
         type: 'string',
         title: 'Sender Name',
         description: 'Display name for outgoing emails',
-        default: 'Policy Bot',
+        default: 'AI Assistant',
       },
       rateLimitPerHour: {
         type: 'number',

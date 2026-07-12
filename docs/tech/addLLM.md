@@ -2,7 +2,7 @@
 
 > **Last updated:** June 2026 — Post-migration: LiteLLM removed. All providers use direct native SDKs/APIs across Routes 2 (Direct), 3 (Ollama), and 5 (Aggregators). Models are enabled via Admin UI → DB; no proxy or YAML configuration needed. See [`docs/features/LLM.md`](../../features/LLM.md) for the authoritative LLM architecture reference.
 
-This guide explains how to add a new LLM model to the Policy Bot system.
+This guide explains how to add a new LLM model to the AI Assistant system.
 
 ## Table of Contents
 
@@ -142,7 +142,7 @@ The model is enabled immediately via Admin UI → database — no restart, no pr
 
 ### Prerequisites
 
-- Admin access to the Policy Bot application
+- Admin access to the AI Assistant application
 - API key for the provider (OpenAI, Gemini, Mistral, etc.)
 
 ### UI Overview

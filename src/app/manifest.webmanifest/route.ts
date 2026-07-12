@@ -18,8 +18,8 @@ export async function GET() {
   const manifest = {
     id: '/',
     scope: '/',
-    name: branding.botName || 'Policy Bot',
-    short_name: branding.botName || 'PolicyBot',
+    name: branding.botName || 'AI Assistant',
+    short_name: branding.botName || 'AI Assistant',
     description: 'AI-powered policy assistant',
     start_url: '/chat',
     display: 'standalone',

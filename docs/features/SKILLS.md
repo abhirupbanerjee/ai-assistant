@@ -1,6 +1,6 @@
 # Skills System
 
-Comprehensive guide to the Skills system in Policy Bot - modular AI behavior configurations that enhance and customize the assistant's capabilities based on context.
+Comprehensive guide to the Skills system in AI Assistant - modular AI behavior configurations that enhance and customize the assistant's capabilities based on context.
 
 ---
 
@@ -23,7 +23,7 @@ Comprehensive guide to the Skills system in Policy Bot - modular AI behavior con
 
 ## Introduction
 
-The **Skills System** in Policy Bot allows administrators to inject specialized behaviors and instructions into AI conversations based on context. Skills are modular prompt additions that activate based on triggers like keywords, categories, or global application.
+The **Skills System** in AI Assistant allows administrators to inject specialized behaviors and instructions into AI conversations based on context. Skills are modular prompt additions that activate based on triggers like keywords, categories, or global application.
 
 ### Why Use Skills?
 
