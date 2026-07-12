@@ -15,22 +15,14 @@ interface SttProviderConfig {
   model: string;
 }
 
-interface SttRouteConfig {
-  default: SttProvider;
-  fallback: SttProvider | 'none';
-}
-
 interface TtsProviderConfig {
   enabled: boolean;
 }
 
 interface SpeechSettings {
   stt: {
-    defaultRoute: 'route1' | 'route2';
-    routes: {
-      route1: SttRouteConfig;
-      route2: SttRouteConfig;
-    };
+    default: SttProvider;
+    fallback: SttProvider | 'none';
     providers: Record<SttProvider, SttProviderConfig>;
     recording: {
       minDurationSeconds: number;
@@ -46,11 +38,10 @@ interface SpeechSettings {
 
 // ============ Provider metadata ============
 
-const STT_PROVIDER_INFO: Record<SttProvider, { label: string; models: { id: string; label: string }[]; route: string; cost: string }> = {
+const STT_PROVIDER_INFO: Record<SttProvider, { label: string; models: { id: string; label: string }[]; cost: string }> = {
   openai: {
     label: 'OpenAI Whisper',
     models: [{ id: 'whisper-1', label: 'Whisper v2 Large' }],
-    route: 'Route 1',
     cost: '$0.006/min',
   },
   gemini: {
@@ -59,13 +50,11 @@ const STT_PROVIDER_INFO: Record<SttProvider, { label: string; models: { id: stri
       { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
       { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
     ],
-    route: 'Route 1',
     cost: '~$0.06/min',
   },
   mistral: {
     label: 'Mistral Voxtral',
     models: [{ id: 'voxtral-mini-transcribe-v2', label: 'Voxtral Mini Transcribe v2' }],
-    route: 'Route 1',
     cost: '$0.003/min',
   },
   fireworks: {
@@ -75,7 +64,6 @@ const STT_PROVIDER_INFO: Record<SttProvider, { label: string; models: { id: stri
       { id: 'whisper-v3-turbo', label: 'Whisper v3 Turbo' },
       { id: 'whisper-v3-large', label: 'Whisper v3 Large' },
     ],
-    route: 'Route 2',
     cost: '$0.001/min',
   },
 };
@@ -83,11 +71,6 @@ const STT_PROVIDER_INFO: Record<SttProvider, { label: string; models: { id: stri
 const TTS_PROVIDER_INFO: Record<TtsProvider, { label: string; description: string }> = {
   openai: { label: 'OpenAI TTS', description: 'gpt-4o-mini-tts — 13 voices, MP3 output' },
   gemini: { label: 'Google Gemini TTS', description: 'Flash/Pro preview — 30 voices, multi-speaker' },
-};
-
-const ROUTE_STT_PROVIDERS: Record<string, SttProvider[]> = {
-  route1: ['openai', 'gemini', 'mistral'],
-  route2: ['fireworks'],
 };
 
 // ============ Component ============
@@ -103,39 +86,6 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
   const [sttOpen, setSttOpen] = useState(true);
   const [ttsOpen, setTtsOpen] = useState(true);
 
-  // Map flat API format to legacy UI format for backward compat
-  const normalizeSettings = (data: any): SpeechSettings => {
-    const stt: any = data.stt || {};
-    return {
-      ...data,
-      stt: {
-        ...stt,
-        defaultRoute: stt.default ? (['fireworks', 'gemini'].includes(stt.default) ? 'route2' : 'route1') : 'route1',
-        routes: {
-          route1: { default: (stt.default && !['fireworks', 'gemini'].includes(stt.default)) ? stt.default : 'openai', fallback: stt.fallback && !['fireworks', 'gemini'].includes(stt.fallback) ? stt.fallback : 'none' },
-          route2: { default: stt.default === 'fireworks' ? 'fireworks' : 'gemini', fallback: stt.fallback === 'fireworks' || stt.fallback === 'gemini' ? stt.fallback : 'none' },
-        },
-      },
-    };
-  };
-
-  // Reverse-map old UI format back to flat API format for saving
-  const flatFormat = (data: SpeechSettings): any => {
-    const stt = data.stt;
-    const defaultRoute = stt.defaultRoute;
-    const defaultProvider = stt.routes[defaultRoute].default;
-    const fallbackProvider = stt.routes[defaultRoute].fallback;
-    return {
-      ...data,
-      stt: {
-        default: defaultProvider,
-        fallback: fallbackProvider,
-        providers: stt.providers,
-        recording: stt.recording,
-      },
-    };
-  };
-
   const fetchSettings = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -143,7 +93,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       if (!res.ok) throw new Error('Failed to fetch speech settings');
       const data = await res.json();
       setSettings(data.settings);
-      setEdited(normalizeSettings(data.settings));
+      setEdited(data.settings);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -167,7 +117,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       const res = await fetch('/api/admin/settings/speech', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(flatFormat(edited)),
+        body: JSON.stringify(edited),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -175,7 +125,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
       }
       const data = await res.json();
       setSettings(data.settings);
-      setEdited(normalizeSettings(data.settings));
+      setEdited(data.settings);
       setSuccess('Speech settings saved');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -201,20 +151,6 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
         providers: {
           ...edited.stt.providers,
           [id]: { ...edited.stt.providers[id], ...patch },
-        },
-      },
-    });
-  };
-
-  const updateSttRoute = (routeId: 'route1' | 'route2', patch: Partial<SttRouteConfig>) => {
-    if (!edited) return;
-    setEdited({
-      ...edited,
-      stt: {
-        ...edited.stt,
-        routes: {
-          ...edited.stt.routes,
-          [routeId]: { ...edited.stt.routes[routeId], ...patch },
         },
       },
     });
@@ -307,102 +243,51 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
         {sttOpen && (
           <div className="px-4 pb-4 space-y-5 border-t">
 
-            {/* Default Route */}
-            <div className="pt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Default STT Route</label>
-              <div className="flex gap-4">
-                {(['route1', 'route2'] as const).map(routeId => (
-                  <label key={routeId} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="stt-default-route"
-                      value={routeId}
-                      checked={edited.stt.defaultRoute === routeId}
-                      onChange={() => updateStt({ defaultRoute: routeId })}
-                      disabled={readOnly}
-                    />
-                    <span className="text-sm">
-                      {routeId === 'route1' ? 'Route 1 (LiteLLM)' : 'Route 2 (Direct)'}
-                    </span>
-                  </label>
-                ))}
+            {/* Default / Fallback Provider */}
+            <div className="pt-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Default Provider
+                </label>
+                <select
+                  value={edited.stt.default}
+                  onChange={e => updateStt({ default: e.target.value as SttProvider })}
+                  disabled={readOnly}
+                  className="w-full px-2 py-1.5 text-sm border rounded-md"
+                >
+                  {(Object.keys(STT_PROVIDER_INFO) as SttProvider[])
+                    .filter(p => edited.stt.providers[p].enabled)
+                    .map(p => (
+                      <option key={p} value={p}>
+                        {STT_PROVIDER_INFO[p].label}
+                      </option>
+                    ))}
+                </select>
               </div>
-              <p className="text-xs text-gray-400 mt-1">
-                Route 3 (Ollama) does not support STT
-              </p>
-            </div>
-
-            {/* Route Defaults */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-gray-700">Route Provider Defaults</h4>
-
-              {/* Route 1 */}
-              <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                <div className="text-sm font-medium">Route 1 — LiteLLM (Legacy)</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Default</label>
-                    <select
-                      value={edited.stt.routes.route1.default}
-                      onChange={e => updateSttRoute('route1', { default: e.target.value as SttProvider })}
-                      disabled={readOnly}
-                      className="w-full px-2 py-1.5 text-sm border rounded-md"
-                    >
-                      {ROUTE_STT_PROVIDERS.route1.map(p => (
-                        <option key={p} value={p} disabled={!edited.stt.providers[p].enabled}>
-                          {STT_PROVIDER_INFO[p].label}{!edited.stt.providers[p].enabled ? ' (disabled)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Fallback</label>
-                    <select
-                      value={edited.stt.routes.route1.fallback}
-                      onChange={e => updateSttRoute('route1', { fallback: e.target.value as SttProvider | 'none' })}
-                      disabled={readOnly}
-                      className="w-full px-2 py-1.5 text-sm border rounded-md"
-                    >
-                      <option value="none">None</option>
-                      {ROUTE_STT_PROVIDERS.route1
-                        .filter(p => p !== edited.stt.routes.route1.default)
-                        .map(p => (
-                          <option key={p} value={p} disabled={!edited.stt.providers[p].enabled}>
-                            {STT_PROVIDER_INFO[p].label}{!edited.stt.providers[p].enabled ? ' (disabled)' : ''}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Route 2 */}
-              <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                <div className="text-sm font-medium">Route 2 — Direct (Fireworks)</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Default</label>
-                    <select
-                      value={edited.stt.routes.route2.default}
-                      disabled
-                      className="w-full px-2 py-1.5 text-sm border rounded-md bg-gray-100"
-                    >
-                      <option value="fireworks">Fireworks AI</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Fallback</label>
-                    <select
-                      value="none"
-                      disabled
-                      className="w-full px-2 py-1.5 text-sm border rounded-md bg-gray-100"
-                    >
-                      <option value="none">None (single provider)</option>
-                    </select>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Fallback Provider
+                </label>
+                <select
+                  value={edited.stt.fallback}
+                  onChange={e => updateStt({ fallback: e.target.value as SttProvider | 'none' })}
+                  disabled={readOnly}
+                  className="w-full px-2 py-1.5 text-sm border rounded-md"
+                >
+                  <option value="none">None</option>
+                  {(Object.keys(STT_PROVIDER_INFO) as SttProvider[])
+                    .filter(p => p !== edited.stt.default && edited.stt.providers[p].enabled)
+                    .map(p => (
+                      <option key={p} value={p}>
+                        {STT_PROVIDER_INFO[p].label}
+                      </option>
+                    ))}
+                </select>
               </div>
             </div>
+            <p className="text-xs text-gray-400 -mt-3">
+              All providers connect directly via native APIs. No proxy or route intermediary.
+            </p>
 
             {/* STT Providers */}
             <div className="space-y-3">
@@ -415,7 +300,7 @@ export default function SpeechSettingsTab({ readOnly = false }: { readOnly?: boo
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-sm font-medium">{info.label}</span>
-                        <span className="ml-2 text-xs text-gray-400">{info.route} · {info.cost}</span>
+                        <span className="ml-2 text-xs text-gray-400">{info.cost}</span>
                       </div>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
