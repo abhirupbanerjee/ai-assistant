@@ -173,7 +173,7 @@ FalkorDB is a Redis-compatible graph database running as a Docker service (`--pr
 |---------|---------|---------|
 | `FALKORDB_HOST` | `localhost` | FalkorDB host (Docker: `falkordb`) |
 | `FALKORDB_PORT` | `6380` | FalkorDB port (avoids Redis 6379 conflict) |
-| `FALKORDB_GRAPH_NAME` | `policybot` | Graph name for all operations |
+| `FALKORDB_GRAPH_NAME | `ai-assistant`` | Graph name for all operations |
 
 **Health check:** `isGraphHealthy()` — verifies FalkorDB connection is live before any graph operation.
 

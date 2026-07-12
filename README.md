@@ -175,7 +175,7 @@ Expose your AI capabilities as a programmatic API for external systems, apps, an
 ## Directory Structure
 
 ```
-policy-bot/
+ai-assistant/
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/                # REST API endpoints

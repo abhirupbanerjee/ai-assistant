@@ -92,7 +92,7 @@ Supports: ~100-150 concurrent users with mixed workload
 
 ```bash
 # .env
-DATABASE_URL=postgresql://policybot:password@localhost:5432/policybot
+DATABASE_URL=postgresql://ai-assistant:password@localhost:5432/ai-assistant
 DATABASE_POOL_MAX=10
 VECTOR_STORE_PROVIDER=qdrant
 # Redis optional - omit REDIS_URL for in-process caching
@@ -151,7 +151,7 @@ docker compose --profile postgres --profile qdrant up -d
 ```bash
 # .env
 DATABASE_PROVIDER=postgres
-DATABASE_URL=postgresql://policybot:password@localhost:5432/policybot
+DATABASE_URL=postgresql://ai-assistant:password@localhost:5432/ai-assistant
 DATABASE_POOL_MAX=25
 DATABASE_POOL_IDLE_TIMEOUT=30000
 DATABASE_POOL_CONNECTION_TIMEOUT=10000
@@ -219,7 +219,7 @@ docker compose --profile postgres --profile qdrant up -d
 ```bash
 # .env
 DATABASE_PROVIDER=postgres
-DATABASE_URL=postgresql://policybot:password@pg-host:5432/policybot
+DATABASE_URL=postgresql://ai-assistant:password@pg-host:5432/ai-assistant
 DATABASE_POOL_MAX=40
 DATABASE_POOL_IDLE_TIMEOUT=20000
 DATABASE_POOL_CONNECTION_TIMEOUT=5000
@@ -292,7 +292,7 @@ Result: Comfortable headroom
 ```bash
 # .env
 DATABASE_PROVIDER=postgres
-DATABASE_URL=postgresql://policybot:password@pg-primary:5432/policybot
+DATABASE_URL=postgresql://ai-assistant:password@pg-primary:5432/ai-assistant
 DATABASE_POOL_MAX=50
 DATABASE_POOL_IDLE_TIMEOUT=15000
 DATABASE_POOL_CONNECTION_TIMEOUT=5000
@@ -369,7 +369,7 @@ QDRANT_PORT=6333
 # .env
 DATABASE_PROVIDER=postgres
 # Connect via PgBouncer, not directly to PostgreSQL
-DATABASE_URL=postgresql://policybot:password@pgbouncer:6432/policybot
+DATABASE_URL=postgresql://ai-assistant:password@pgbouncer:6432/ai-assistant
 DATABASE_POOL_MAX=50  # Per instance; PgBouncer handles multiplexing
 
 REDIS_URL=redis://redis-cluster:6379
@@ -413,12 +413,12 @@ reserve_pool_size = 25
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: policybot-hpa
+  name: ai-assistant-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: policybot
+    name: ai-assistant
   minReplicas: 8
   maxReplicas: 20
   metrics:

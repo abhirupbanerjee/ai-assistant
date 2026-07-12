@@ -32,24 +32,24 @@ export function EmbedMessage({ message, showSources: showSourcesProp = true }: E
 
   return (
     <div
-      className={`policybot-embed-message ${
-        isUser ? 'policybot-embed-message-user' : 'policybot-embed-message-assistant'
+      className={`ai-assistant-embed-message ${
+        isUser ? 'ai-assistant-embed-message-user' : 'ai-assistant-embed-message-assistant'
       }`}
     >
       <div dangerouslySetInnerHTML={renderContent(message.content)} />
 
       {message.isStreaming && (
-        <div className="policybot-embed-typing">
-          <span className="policybot-embed-typing-dot" />
-          <span className="policybot-embed-typing-dot" />
-          <span className="policybot-embed-typing-dot" />
+        <div className="ai-assistant-embed-typing">
+          <span className="ai-assistant-embed-typing-dot" />
+          <span className="ai-assistant-embed-typing-dot" />
+          <span className="ai-assistant-embed-typing-dot" />
         </div>
       )}
 
       {!isUser && showSourcesProp && message.sources && message.sources.length > 0 && !message.isStreaming && (
-        <div className="policybot-embed-sources">
+        <div className="ai-assistant-embed-sources">
           <button
-            className="policybot-embed-sources-toggle"
+            className="ai-assistant-embed-sources-toggle"
             onClick={() => setSourcesExpanded(!sourcesExpanded)}
           >
             <svg
@@ -68,13 +68,13 @@ export function EmbedMessage({ message, showSources: showSourcesProp = true }: E
           </button>
 
           {sourcesExpanded && (
-            <div className="policybot-embed-sources-list">
+            <div className="ai-assistant-embed-sources-list">
               {message.sources.slice(0, 3).map((source, idx) => (
-                <div key={idx} className="policybot-embed-source-item">
-                  <span className="policybot-embed-source-title">
+                <div key={idx} className="ai-assistant-embed-source-item">
+                  <span className="ai-assistant-embed-source-title">
                     {source.documentName}
                   </span>
-                  <span className="policybot-embed-source-page">
+                  <span className="ai-assistant-embed-source-page">
                     (Page {source.pageNumber})
                   </span>
                 </div>

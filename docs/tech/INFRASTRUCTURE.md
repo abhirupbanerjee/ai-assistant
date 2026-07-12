@@ -108,7 +108,7 @@ AI Assistant stores all structured metadata in PostgreSQL via the Kysely ORM:
 | Settings | `settings` | System configuration |
 
 **PostgreSQL**:
-- Container: `policy-bot-postgres` (port 5432 internal)
+- Container: `ai-assistant-postgres` (port 5432 internal)
 - Schema auto-initialised on first start via Kysely migrations
 - Connection pooling (max 20 connections, configurable)
 
@@ -124,7 +124,7 @@ Stores document embeddings for semantic search. Collections use the naming patte
 
 Global documents are indexed into ALL category collections.
 
-- Container: `policy-bot-qdrant` (port 6333 internal)
+- Container: `ai-assistant-qdrant` (port 6333 internal)
 - Data at `data/qdrant/`
 - Memory limit: 512MB (configurable in docker-compose)
 
@@ -207,9 +207,9 @@ EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
 
 # PostgreSQL (always required)
-POSTGRES_USER=policybot
+POSTGRES_USER=ai-assistant
 POSTGRES_PASSWORD=your-strong-password
-POSTGRES_DB=policybot
+POSTGRES_DB=ai-assistant
 
 # Vector store provider
 VECTOR_STORE_PROVIDER=qdrant
@@ -390,7 +390,7 @@ Qdrant is the vector store for all deployments. It provides advanced payload fil
 ```bash
 # 1. Clone repository
 git clone <repo-url>
-cd policy-bot
+cd ai-assistant
 
 # 2. Install dependencies
 npm install
@@ -478,7 +478,7 @@ ssh user@server
 
 # 2. Clone repository
 git clone <repo-url>
-cd policy-bot
+cd ai-assistant
 
 # 3. Create production environment file
 cp .env.example .env
@@ -543,7 +543,7 @@ docker compose logs -f app
 docker compose logs -f
 
 # Database size (PostgreSQL)
-docker exec policy-bot-postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
+docker exec ai-assistant-postgres psql -U ai-assistant -c "SELECT pg_size_pretty(pg_database_size('ai-assistant'));"
 
 # Vector store data size
 du -sh data/qdrant/
@@ -555,29 +555,29 @@ du -sh data/qdrant/
 #!/bin/bash
 # backup.sh
 
-BACKUP_DIR="/backups/policy-bot"
+BACKUP_DIR="/backups/ai-assistant"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p $BACKUP_DIR
 
 # Backup PostgreSQL database
-docker exec policy-bot-postgres pg_dump -U policybot policybot > $BACKUP_DIR/postgres-$DATE.sql
+docker exec ai-assistant-postgres pg_dump -U ai-assistant ai-assistant > $BACKUP_DIR/postgres-$DATE.sql
 
 # Backup app data (global-docs, threads)
 docker run --rm \
-  -v policy-bot-app-data:/data \
+  -v ai-assistant-app-data:/data \
   -v $BACKUP_DIR:/backup \
   alpine tar czvf /backup/app-data-$DATE.tar.gz -C /data .
 
 # Backup Qdrant
 docker run --rm \
-  -v policy-bot-qdrant-data:/data \
+  -v ai-assistant-qdrant-data:/data \
   -v $BACKUP_DIR:/backup \
   alpine tar czvf /backup/qdrant-$DATE.tar.gz -C /data .
 
 # Backup Redis
 docker run --rm \
-  -v policy-bot-redis-data:/data \
+  -v ai-assistant-redis-data:/data \
   -v $BACKUP_DIR:/backup \
   alpine tar czvf /backup/redis-$DATE.tar.gz -C /data .
 
@@ -594,7 +594,7 @@ echo "Backup completed: $DATE"
 #!/bin/bash
 # restore.sh
 
-BACKUP_DIR="/backups/policy-bot"
+BACKUP_DIR="/backups/ai-assistant"
 DATE=$1  # Pass date as argument
 
 if [ -z "$DATE" ]; then
@@ -606,23 +606,23 @@ fi
 docker compose down
 
 # Restore PostgreSQL database
-docker exec -i policy-bot-postgres psql -U policybot policybot < $BACKUP_DIR/postgres-$DATE.sql
+docker exec -i ai-assistant-postgres psql -U ai-assistant ai-assistant < $BACKUP_DIR/postgres-$DATE.sql
 
 # Restore app data (includes global-docs and threads)
 docker run --rm \
-  -v policy-bot-app-data:/data \
+  -v ai-assistant-app-data:/data \
   -v $BACKUP_DIR:/backup \
   alpine sh -c "rm -rf /data/* && tar xzvf /backup/app-data-$DATE.tar.gz -C /data"
 
 # Restore Qdrant
 docker run --rm \
-  -v policy-bot-qdrant-data:/data \
+  -v ai-assistant-qdrant-data:/data \
   -v $BACKUP_DIR:/backup \
   alpine sh -c "rm -rf /data/* && tar xzvf /backup/qdrant-$DATE.tar.gz -C /data"
 
 # Restore Redis
 docker run --rm \
-  -v policy-bot-redis-data:/data \
+  -v ai-assistant-redis-data:/data \
   -v $BACKUP_DIR:/backup \
   alpine sh -c "rm -rf /data/* && tar xzvf /backup/redis-$DATE.tar.gz -C /data"
 
@@ -638,14 +638,14 @@ echo "Restore completed from: $DATE"
 
 ```bash
 # Check connection and record counts
-docker exec policy-bot-postgres psql -U policybot -c "SELECT COUNT(*) FROM users;"
-docker exec policy-bot-postgres psql -U policybot -c "SELECT COUNT(*) FROM documents;"
+docker exec ai-assistant-postgres psql -U ai-assistant -c "SELECT COUNT(*) FROM users;"
+docker exec ai-assistant-postgres psql -U ai-assistant -c "SELECT COUNT(*) FROM documents;"
 
 # Database size
-docker exec policy-bot-postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
+docker exec ai-assistant-postgres psql -U ai-assistant -c "SELECT pg_size_pretty(pg_database_size('ai-assistant'));"
 
 # Active connections
-docker exec policy-bot-postgres psql -U policybot -c "SELECT count(*) FROM pg_stat_activity;"
+docker exec ai-assistant-postgres psql -U ai-assistant -c "SELECT count(*) FROM pg_stat_activity;"
 
 # Note: PostgreSQL performs auto-vacuum automatically — no manual VACUUM needed
 ```
@@ -850,7 +850,7 @@ AI Assistant's PWA implementation has intentional limitations:
 | App | `/api/auth/session` | 200 OK | Always |
 | Redis | `redis-cli ping` | PONG | Always |
 | Qdrant | `http://qdrant:6333/readyz` | 200 OK | `--profile qdrant` |
-| PostgreSQL | `pg_isready -U policybot` | accepting | `--profile postgres` (always) |
+| PostgreSQL | `pg_isready -U ai-assistant` | accepting | `--profile postgres` (always) |
 
 > **Tip:** Use Admin → Dashboard → Infrastructure to check provider status via the UI.
 
@@ -869,21 +869,21 @@ else
   echo "✗ App: unhealthy"
 fi
 
-if docker exec policy-bot-redis redis-cli ping | grep -q PONG; then
+if docker exec ai-assistant-redis redis-cli ping | grep -q PONG; then
   echo "✓ Redis: healthy"
 else
   echo "✗ Redis: unhealthy"
 fi
 
 # Qdrant
-if docker exec policy-bot-qdrant curl -sf http://localhost:6333/readyz > /dev/null; then
+if docker exec ai-assistant-qdrant curl -sf http://localhost:6333/readyz > /dev/null; then
   echo "✓ Qdrant: healthy"
 else
   echo "✗ Qdrant: unhealthy"
 # fi
 
 # PostgreSQL (always active)
-if docker exec policy-bot-postgres pg_isready -U policybot | grep -q "accepting"; then
+if docker exec ai-assistant-postgres pg_isready -U ai-assistant | grep -q "accepting"; then
   echo "✓ PostgreSQL: healthy"
 else
   echo "✗ PostgreSQL: unhealthy"
@@ -996,7 +996,7 @@ docker compose --profile qdrant ps qdrant
 docker compose --profile qdrant logs qdrant
 
 # Test connection
-docker exec policy-bot-qdrant curl http://localhost:6333/readyz
+docker exec ai-assistant-qdrant curl http://localhost:6333/readyz
 ```
 
 #### PostgreSQL Connection Failed
@@ -1009,10 +1009,10 @@ docker compose --profile postgres ps postgres
 docker compose --profile postgres logs postgres
 
 # Test connection
-docker exec policy-bot-postgres pg_isready -U policybot
+docker exec ai-assistant-postgres pg_isready -U ai-assistant
 
 # Check schema was initialised (should show 49+ tables)
-docker exec policy-bot-postgres psql -U policybot -c "\dt" | wc -l
+docker exec ai-assistant-postgres psql -U ai-assistant -c "\dt" | wc -l
 ```
 
 #### Redis Connection Failed
@@ -1025,7 +1025,7 @@ docker compose ps redis
 docker compose logs redis
 
 # Test connection
-docker exec policy-bot-redis redis-cli ping
+docker exec ai-assistant-redis redis-cli ping
 ```
 
 #### Out of Memory

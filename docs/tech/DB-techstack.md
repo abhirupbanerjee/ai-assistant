@@ -399,9 +399,9 @@ DATABASE_POOL_CONNECTION_TIMEOUT=10000    # Connection timeout in ms (default: 1
 # PostgreSQL (required)
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
 # Or individual vars:
-POSTGRES_USER=policybot
+POSTGRES_USER=ai-assistant
 POSTGRES_PASSWORD=your-strong-password
-POSTGRES_DB=policybot
+POSTGRES_DB=ai-assistant
 ```
 
 ---

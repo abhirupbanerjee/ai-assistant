@@ -1,4 +1,4 @@
-# 🔐 Security Audit Report — policy-bot
+# 🔐 Security Audit Report — ai-assistant
 
 **Audit Date:** 2026-05-22  
 **Fixes Applied:** 2026-05-23  
@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-A comprehensive security audit of the policy-bot codebase identified **16 findings** across critical and high severity levels. Of these:
+A comprehensive security audit of the ai-assistant codebase identified **16 findings** across critical and high severity levels. Of these:
 
 - **4 findings** were confirmed as valid exploitable vulnerabilities
 - **10 findings** were overstated, misattributed, or false positives

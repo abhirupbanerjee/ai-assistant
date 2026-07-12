@@ -716,9 +716,9 @@ export default function HelpPage() {
       const content = buildExportContent();
 
       if (format === 'json') {
-        downloadFile(JSON.stringify(content, null, 2), 'policy-bot-documentation.json', 'application/json');
+        downloadFile(JSON.stringify(content, null, 2), 'ai-assistant-documentation.json', 'application/json');
       } else {
-        downloadFile(buildMarkdown(content), 'policy-bot-documentation.md', 'text/markdown');
+        downloadFile(buildMarkdown(content), 'ai-assistant-documentation.md', 'text/markdown');
       }
     } catch (error) {
       console.error('Export failed:', error);

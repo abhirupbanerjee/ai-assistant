@@ -907,7 +907,7 @@ export default function LandingPage() {
                     <span className="text-[10px] px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 font-mono font-bold">REST Spec</span>
                   </div>
                   <pre className="text-[10px] text-teal-300 font-mono bg-slate-950 p-4 rounded-lg overflow-x-auto leading-relaxed">
-{`curl -X POST "https://policy-bot/api/agent-bots/compliance/invoke" \\
+{`curl -X POST "https://ai.abhirup.app/api/agent-bots/compliance/invoke" \\
   -H "Authorization: Bearer ab_pk_live_d8a92..." \\
   -H "Content-Type: application/json" \\
   -d '{

@@ -2184,16 +2184,16 @@ for (const slug of categoryCollections) {
 
 ```bash
 # 1. Flush complete Redis database (all cache)
-docker exec policy-bot-redis redis-cli FLUSHALL
+docker exec ai-assistant-redis redis-cli FLUSHALL
 
 # 2. Flush RAG query cache only (excludes Tavily)
-docker exec policy-bot-redis redis-cli --scan --pattern "query:*" --count 1000 | grep -v "tavily" | xargs -r docker exec -i policy-bot-redis redis-cli DEL
+docker exec ai-assistant-redis redis-cli --scan --pattern "query:*" --count 1000 | grep -v "tavily" | xargs -r docker exec -i ai-assistant-redis redis-cli DEL
 
 # 3. Flush Tavily web search cache only
-docker exec policy-bot-redis redis-cli --scan --pattern "query:tavily:*" | xargs -r docker exec -i policy-bot-redis redis-cli DEL
+docker exec ai-assistant-redis redis-cli --scan --pattern "query:tavily:*" | xargs -r docker exec -i ai-assistant-redis redis-cli DEL
 
 # Verify cache entries
-docker exec policy-bot-redis redis-cli KEYS "*"
+docker exec ai-assistant-redis redis-cli KEYS "*"
 ```
 
 > **Note:** The Admin Documents page "Refresh" button performs a complete Redis flush (`FLUSHALL`) plus reindexes all documents.
@@ -2511,21 +2511,21 @@ Qdrant maintains HNSW (Hierarchical Navigable Small World) index for fast ANN se
 
 ```bash
 # Backup database
-docker exec policy-bot-postgres pg_dump -U policybot policybot > data/backup-$(date +%Y%m%d).sql
+docker exec ai-assistant-postgres pg_dump -U ai-assistant ai-assistant > data/backup-$(date +%Y%m%d).sql
 
 # Restore database
-docker exec -i policy-bot-postgres psql -U policybot policybot < data/backup-20241202.sql
+docker exec -i ai-assistant-postgres psql -U ai-assistant ai-assistant < data/backup-20241202.sql
 ```
 
 ### Qdrant Backup
 
 ```bash
 # Backup Qdrant volume
-docker run --rm -v policy-bot_qdrant_data:/data -v $(pwd):/backup \
+docker run --rm -v ai-assistant_qdrant_data:/data -v $(pwd):/backup \
   alpine tar czvf /backup/qdrant-backup.tar.gz -C /data .
 
 # Restore
-docker run --rm -v policy-bot_qdrant_data:/data -v $(pwd):/backup \
+docker run --rm -v ai-assistant_qdrant_data:/data -v $(pwd):/backup \
   alpine tar xzvf /backup/qdrant-backup.tar.gz -C /data
 ```
 
@@ -2533,7 +2533,7 @@ docker run --rm -v policy-bot_qdrant_data:/data -v $(pwd):/backup \
 
 ```bash
 # Backup Redis RDB
-docker run --rm -v policy-bot_redis_data:/data -v $(pwd):/backup \
+docker run --rm -v ai-assistant_redis_data:/data -v $(pwd):/backup \
   alpine cp /data/dump.rdb /backup/redis-backup.rdb
 ```
 
@@ -2541,11 +2541,11 @@ docker run --rm -v policy-bot_redis_data:/data -v $(pwd):/backup \
 
 ```bash
 #!/bin/bash
-BACKUP_DIR="/backups/policy-bot/$(date +%Y%m%d)"
+BACKUP_DIR="/backups/ai-assistant/$(date +%Y%m%d)"
 mkdir -p $BACKUP_DIR
 
 # PostgreSQL
-docker exec policy-bot-postgres pg_dump -U policybot policybot > $BACKUP_DIR/postgres.sql
+docker exec ai-assistant-postgres pg_dump -U ai-assistant ai-assistant > $BACKUP_DIR/postgres.sql
 
 # Global docs
 tar -czvf $BACKUP_DIR/global-docs.tar.gz data/global-docs/
@@ -2554,7 +2554,7 @@ tar -czvf $BACKUP_DIR/global-docs.tar.gz data/global-docs/
 tar -czvf $BACKUP_DIR/threads.tar.gz data/threads/
 
 # Qdrant
-docker run --rm -v policy-bot_qdrant_data:/data -v $BACKUP_DIR:/backup \
+docker run --rm -v ai-assistant_qdrant_data:/data -v $BACKUP_DIR:/backup \
   alpine tar czvf /backup/qdrant.tar.gz -C /data .
 ```
 
@@ -2683,11 +2683,11 @@ The PostgreSQL database is managed via Docker volume mount and Kysely ORM migrat
 
 When migrating to a new VM:
 
-1. **Backup PostgreSQL** - `docker exec policy-bot-postgres pg_dump -U policybot policybot > backup.sql`
+1. **Backup PostgreSQL** - `docker exec ai-assistant-postgres pg_dump -U ai-assistant ai-assistant > backup.sql`
 2. **Copy app data** - Transfer `./data/app/` (global-docs, threads)
 3. **Rebuild the Docker image** - `docker compose build app`
 4. **Start the containers** - `docker compose --profile postgres --profile qdrant up -d`
-5. **Restore PostgreSQL** - `docker exec -i policy-bot-postgres psql -U policybot policybot < backup.sql`
+5. **Restore PostgreSQL** - `docker exec -i ai-assistant-postgres psql -U ai-assistant ai-assistant < backup.sql`
 
 The Kysely migration system will automatically apply any missing schema changes on startup.
 
@@ -2704,7 +2704,7 @@ docker compose logs app | grep -i migration
 Connect to PostgreSQL directly:
 
 ```bash
-docker exec -it policy-bot-postgres psql -U policybot policybot
+docker exec -it ai-assistant-postgres psql -U ai-assistant ai-assistant
 
 # Example: Add missing column
 ALTER TABLE threads ADD COLUMN IF NOT EXISTS selected_model TEXT;

@@ -85,11 +85,11 @@ export function EmbedWidget({
   const primaryColor = config?.primaryColor || '#2563eb';
 
   return (
-    <div className="policybot-embed-widget">
+    <div className="ai-assistant-embed-widget">
       {/* Floating button */}
       {!isOpen && (
         <button
-          className="policybot-embed-button"
+          className="ai-assistant-embed-button"
           onClick={handleToggle}
           style={{ ...positionStyles, backgroundColor: primaryColor }}
           aria-label="Open chat"
@@ -105,9 +105,9 @@ export function EmbedWidget({
       {isOpen && (
         <>
           {isLoading ? (
-            <div className="policybot-embed-window" style={windowPositionStyles}>
-              <div className="policybot-embed-loading">
-                <div className="policybot-embed-spinner" />
+            <div className="ai-assistant-embed-window" style={windowPositionStyles}>
+              <div className="ai-assistant-embed-loading">
+                <div className="ai-assistant-embed-spinner" />
               </div>
             </div>
           ) : config ? (
@@ -124,8 +124,8 @@ export function EmbedWidget({
               />
             </div>
           ) : error ? (
-            <div className="policybot-embed-window" style={windowPositionStyles}>
-              <div className="policybot-embed-error">
+            <div className="ai-assistant-embed-window" style={windowPositionStyles}>
+              <div className="ai-assistant-embed-error">
                 {error}
                 <br />
                 <button

@@ -161,9 +161,9 @@ sudo apt-mark hold docker-ce docker-ce-cli containerd.io
 
 ```bash
 cd /opt
-sudo git clone https://github.com/your-org/policy-bot.git
-sudo chown -R $USER:$USER policy-bot
-cd policy-bot
+sudo git clone https://github.com/your-org/ai-assistant.git
+sudo chown -R $USER:$USER ai-assistant
+cd ai-assistant
 ```
 
 ### 2. Run Initial Setup Script
@@ -235,9 +235,9 @@ ACME_EMAIL=admin@example.com
 # =============================================================================
 
 # PostgreSQL (required — SQLite removed March 2026)
-POSTGRES_USER=policybot
+POSTGRES_USER=ai-assistant
 POSTGRES_PASSWORD=your-strong-password-here
-POSTGRES_DB=policybot
+POSTGRES_DB=ai-assistant
 
 # =============================================================================
 # VECTOR STORE CONFIGURATION
@@ -387,10 +387,10 @@ docker compose ps
 Expected output:
 ```
 NAME                    STATUS                   PORTS
-policy-bot-app          Up (healthy)             0.0.0.0:3000->3000/tcp
-policy-bot-qdrant       Up (healthy)             6333/tcp
-policy-bot-redis        Up (healthy)             6379/tcp
-policy-bot-traefik      Up                       0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
+ai-assistant-app          Up (healthy)             0.0.0.0:3000->3000/tcp
+ai-assistant-qdrant       Up (healthy)             6333/tcp
+ai-assistant-redis        Up (healthy)             6379/tcp
+ai-assistant-traefik      Up                       0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
 ```
 
 ### 4. Verify SSL Certificate
@@ -409,7 +409,7 @@ The PostgreSQL schema is automatically created when the Postgres container start
 
 ```bash
 # Run database setup from the host (NOT inside the container)
-export DATABASE_URL="postgresql://policybot:${POSTGRES_PASSWORD}@localhost:5432/policybot"
+export DATABASE_URL="postgresql://ai-assistant:${POSTGRES_PASSWORD}@localhost:5432/ai-assistant"
 npm run db:setup
 ```
 
@@ -528,7 +528,7 @@ docker compose exec redis redis-cli ping
 docker compose exec qdrant curl -s http://localhost:6333/readyz
 
 # PostgreSQL (if using)
-docker compose exec postgres pg_isready -U policybot
+docker compose exec postgres pg_isready -U ai-assistant
 ```
 
 ### 2. Test LLM Connection
@@ -577,18 +577,18 @@ docker compose restart traefik
 
 ```bash
 # SQLite - check file exists and permissions
-ls -la ./data/app/policybot.db
+ls -la ./data/app/ai-assistant.db
 
 # PostgreSQL - check connection
-docker compose exec postgres psql -U policybot -c "SELECT 1"
+docker compose exec postgres psql -U ai-assistant -c "SELECT 1"
 
 # Reinitialize database schema and settings
 # Must be run from the host, not inside the container:
-export DATABASE_URL="postgresql://policybot:${POSTGRES_PASSWORD}@localhost:5432/policybot"
+export DATABASE_URL="postgresql://ai-assistant:${POSTGRES_PASSWORD}@localhost:5432/ai-assistant"
 npm run db:setup
 
 # If you only need to re-run the raw schema, use psql directly:
-# docker compose exec postgres psql -U policybot -d policybot -f /docker-entrypoint-initdb.d/01-schema.sql
+# docker compose exec postgres psql -U ai-assistant -d ai-assistant -f /docker-entrypoint-initdb.d/01-schema.sql
 ```
 
 ### LLM API Errors
@@ -677,11 +677,11 @@ docker stats --no-stream
 #### Via Command Line
 ```bash
 # SQLite backup
-docker compose exec app sqlite3 /app/data/policybot.db ".backup '/app/data/backup.db'"
-docker cp policy-bot-app:/app/data/backup.db ./backups/$(date +%Y%m%d).db
+docker compose exec app sqlite3 /app/data/ai-assistant.db ".backup '/app/data/backup.db'"
+docker cp ai-assistant-app:/app/data/backup.db ./backups/$(date +%Y%m%d).db
 
 # PostgreSQL backup
-docker compose exec postgres pg_dump -U policybot policybot > ./backups/$(date +%Y%m%d).sql
+docker compose exec postgres pg_dump -U ai-assistant ai-assistant > ./backups/$(date +%Y%m%d).sql
 ```
 
 ### Updates
@@ -703,19 +703,19 @@ docker compose logs -f app
 #### SQLite
 ```bash
 # Reclaim space (monthly)
-docker compose exec app sqlite3 /app/data/policybot.db 'VACUUM;'
+docker compose exec app sqlite3 /app/data/ai-assistant.db 'VACUUM;'
 
 # Check integrity
-docker compose exec app sqlite3 /app/data/policybot.db 'PRAGMA integrity_check;'
+docker compose exec app sqlite3 /app/data/ai-assistant.db 'PRAGMA integrity_check;'
 ```
 
 #### PostgreSQL
 ```bash
 # Analyze tables (automatic, but can run manually)
-docker compose exec postgres psql -U policybot -c "ANALYZE;"
+docker compose exec postgres psql -U ai-assistant -c "ANALYZE;"
 
 # Check database size
-docker compose exec postgres psql -U policybot -c "SELECT pg_size_pretty(pg_database_size('policybot'));"
+docker compose exec postgres psql -U ai-assistant -c "SELECT pg_size_pretty(pg_database_size('ai-assistant'));"
 ```
 
 ### Log Rotation

@@ -1982,7 +1982,7 @@ AI Assistant supports two database backends and two vector store backends. Choos
 
 | Option | Users | Setup | Concurrency | Notes |
 |--------|-------|-------|-------------|-------|
-| **SQLite** (default) | Up to ~50 | Zero config | WAL mode | Single file at `data/app/policybot.db` |
+| **SQLite** (default) | Up to ~50 | Zero config | WAL mode | Single file at `data/app/ai-assistant.db` |
 | **PostgreSQL** | 50+ | One-time init | Connection pool (10) | Requires `DATABASE_PROVIDER=postgres` |
 
 #### Vector Store Options
@@ -1997,10 +1997,10 @@ Set these environment variables in `.env` before starting containers:
 
 ```env
 DATABASE_PROVIDER=postgres
-DATABASE_URL=postgresql://policybot:password@postgres:5432/policybot
-POSTGRES_USER=policybot
+DATABASE_URL=postgresql://ai-assistant:password@postgres:5432/ai-assistant
+POSTGRES_USER=ai-assistant
 POSTGRES_PASSWORD=<strong-password>
-POSTGRES_DB=policybot
+POSTGRES_DB=ai-assistant
 ```
 
 Then start with the postgres profile:

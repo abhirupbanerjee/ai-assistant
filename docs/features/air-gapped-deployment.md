@@ -157,7 +157,7 @@ In a true air-gapped environment, models must be pre-loaded before disconnecting
 To pre-warm all models:
 ```bash
 # Ollama LLM (handled by entrypoint)
-docker exec policy-bot-ollama ollama pull llama3.2:3b
+docker exec ai-assistant-ollama ollama pull llama3.2:3b
 
 # Embedding + reranker models download on first use via transformers.js
 # Trigger by uploading a test document in the admin UI

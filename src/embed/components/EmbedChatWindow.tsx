@@ -72,25 +72,25 @@ export function EmbedChatWindow({
   const showWelcome = messages.length === 0;
 
   return (
-    <div className="policybot-embed-window">
+    <div className="ai-assistant-embed-window">
       {/* Header */}
       <div
-        className="policybot-embed-header"
+        className="ai-assistant-embed-header"
         style={{ backgroundColor: config.primaryColor }}
       >
-        <div className="policybot-embed-header-left">
+        <div className="ai-assistant-embed-header-left">
           {config.logoUrl && (
             <img
               src={config.logoUrl}
               alt=""
-              className="policybot-embed-logo"
+              className="ai-assistant-embed-logo"
             />
           )}
-          <span className="policybot-embed-title">
+          <span className="ai-assistant-embed-title">
             {config.chatTitle || 'Chat'}
           </span>
         </div>
-        <button className="policybot-embed-close" onClick={onClose}>
+        <button className="ai-assistant-embed-close" onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -99,19 +99,19 @@ export function EmbedChatWindow({
       </div>
 
       {/* Messages area */}
-      <div className="policybot-embed-messages">
+      <div className="ai-assistant-embed-messages">
         {showWelcome ? (
-          <div className="policybot-embed-welcome">
-            <div className="policybot-embed-welcome-text">
+          <div className="ai-assistant-embed-welcome">
+            <div className="ai-assistant-embed-welcome-text">
               {config.greetingMessage}
             </div>
 
             {config.suggestedPrompts && config.suggestedPrompts.length > 0 && (
-              <div className="policybot-embed-prompts">
+              <div className="ai-assistant-embed-prompts">
                 {config.suggestedPrompts.map((prompt, idx) => (
                   <button
                     key={idx}
-                    className="policybot-embed-prompt-btn"
+                    className="ai-assistant-embed-prompt-btn"
                     onClick={() => handlePromptClick(prompt)}
                   >
                     {prompt}
@@ -130,18 +130,18 @@ export function EmbedChatWindow({
         )}
 
         {error && (
-          <div className="policybot-embed-error">
+          <div className="ai-assistant-embed-error">
             {error}
           </div>
         )}
       </div>
 
       {/* Input area */}
-      <div className="policybot-embed-input-area">
-        <div className="policybot-embed-input-container">
+      <div className="ai-assistant-embed-input-area">
+        <div className="ai-assistant-embed-input-container">
           <textarea
             ref={textareaRef}
-            className="policybot-embed-textarea"
+            className="ai-assistant-embed-textarea"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -150,7 +150,7 @@ export function EmbedChatWindow({
             disabled={isStreaming}
           />
           <button
-            className="policybot-embed-send-btn"
+            className="ai-assistant-embed-send-btn"
             onClick={handleSubmit}
             disabled={!inputValue.trim() || isStreaming}
             style={{ backgroundColor: config.primaryColor }}
@@ -163,9 +163,9 @@ export function EmbedChatWindow({
       </div>
 
       {/* Actions bar */}
-      <div className="policybot-embed-actions">
+      <div className="ai-assistant-embed-actions">
         <button
-          className="policybot-embed-clear-btn"
+          className="ai-assistant-embed-clear-btn"
           onClick={onClearMessages}
           disabled={messages.length === 0}
         >
