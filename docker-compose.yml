@@ -205,7 +205,7 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
-  networks:
+networks:
   policy-bot-network:
     name: policy-bot-network
 
