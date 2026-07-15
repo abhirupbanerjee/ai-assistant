@@ -250,14 +250,15 @@ export const imageGenTool: ToolDefinition = {
     type: 'function',
     function: {
       name: 'image_gen',
-      description: `Generate an artistic image from a text description. Best for:
-- Infographics combining text, icons, and visual hierarchy (use "infographic")
-- Posters and promotional graphics with typography (use "poster")
-- Illustrations for presentations and documents (use "illustration")
-- Photorealistic images and editorial photography (use "photo")
-- Product mockups and commercial photography (use "product-mockup")
-- Icons and simple graphics (use "icon")
-- Social media graphics and banners (use "social-media")
+      description: `Generate a professional, high-quality image from a text description. The system automatically enhances prompts with style-specific layout, typography, color, and composition guidance tailored to each style. Best for:
+
+- INFOGRAPHIC: Data-rich visualizations with charts, KPIs, icons, and multi-panel layouts. Supports data charts, process flows, and general infographics with automatic sub-mode detection.
+- POSTER: Promotional posters with structured content zones, hero headlines, CTA elements, and print-ready design.
+- ILLUSTRATION: Clean vector illustrations with flat/shaded color blocks, consistent stroke weights, and presentation-grade quality.
+- PHOTO: Photorealistic images with professional composition, lighting matched to mood, and DSLR aesthetic.
+- PRODUCT-MOCKUP: Commercial product photography with infinity sweep backgrounds, material-aware lighting, and e-commerce ready output.
+- ICON: Minimal flat design icons on a 24px grid, optically centered, consistent stroke widths and corner radius.
+- SOCIAL-MEDIA: Platform-aware graphics with safe zones, engagement hooks, and mobile-first optimization.
 
 IMPORTANT: This tool produces artistic/presentational raster images. It is NOT for data-accurate charts or editable technical diagrams.
 - For data-driven interactive charts from real datasets, use chart_gen instead.
@@ -266,12 +267,14 @@ IMPORTANT: This tool produces artistic/presentational raster images. It is NOT f
 The generated image will be displayed in the chat.
 
 Guidelines:
-- Be specific about content, layout, colors, and style
-- For infographics, describe the data and key points clearly
+- Be specific about content, layout, colors, and style — the more detail you provide, the better the output
+- For infographics, include specific data points, numbers, categories, and the type of charts needed
+- For posters, specify key details like date, time, venue, or CTA text
 - For text that should appear in the image, enclose it in quotes (e.g., "Q3 Revenue")
-- Specify typography when text is important (e.g., "bold sans-serif font")
-- Use "infographic" or "poster" style for designs with text that needs to be readable
-- Use "photo" or "product-mockup" for photorealistic commercial imagery`,
+- Specify typography preferences when text is important (e.g., "bold sans-serif font")
+- Use "infographic" for data/concept visualizations, "poster" for promotional graphics
+- Use "photo" or "product-mockup" for photorealistic commercial imagery
+- Use "auto" to let the system intelligently select the best style based on your prompt`,
       parameters: {
         type: 'object',
         properties: {
