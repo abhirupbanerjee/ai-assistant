@@ -30,13 +30,6 @@ import { getAvailableDataSourcesDescription } from './tools/data-source';
 import { ragLogger as logger } from './logger';
 import { detectFollowUp } from './conversation-context';
 import {
-  graphAugmentedRetrieval,
-  shouldSkipGraphAugmentation,
-  type GraphAugmentationResult,
-} from './graph/retrieval';
-import { getGraphSettings } from './db/compat';
-import { insertQueryLog, insertRetrievalTrace } from './db/compat/query-logs';
-import {
   MAX_QUERY_EXPANSIONS,
   MAX_USER_DOC_CHUNKS,
   MAX_USER_CHUNKS_RETURNED,
@@ -1124,76 +1117,6 @@ export async function ragQuery(
   }
   // ============ END KB Document Detection ============
 
-  // ============ Phase 2: Graph-Augmented Retrieval ============
-  const graphSettings = await getGraphSettings();
-  const graphEnabled = graphSettings.graphAugmentationEnabled;
-  let graphResult: GraphAugmentationResult = { graphChunks: [], seedEntityIds: [], pprTopEntities: [], used: false };
-
-  // Note: mergedGlobalChunks was initialized above (before graph augmentation)
-  // to include any KB document chunks retrieved via document-name detection.
-  // Graph augmentation now extends that merged set.
-
-  if (graphEnabled && !shouldSkipGraphAugmentation(globalChunks, graphSettings.skipThreshold)) {
-    const graphStart = Date.now();
-    try {
-      graphResult = await graphAugmentedRetrieval(globalChunks, {
-        seedChunkCount: graphSettings.seedChunkCount,
-        pprTopK: graphSettings.pprTopK,
-      });
-      if (graphResult.used && graphResult.graphChunks.length > 0) {
-        mergedGlobalChunks = deduplicateChunks([...mergedGlobalChunks, ...graphResult.graphChunks]);
-        logger.debug('Graph augmentation added chunks', {
-          originalCount: globalChunks.length,
-          graphChunkCount: graphResult.graphChunks.length,
-          mergedCount: mergedGlobalChunks.length,
-          seedEntities: graphResult.seedEntityIds.length,
-          pprTopEntities: graphResult.pprTopEntities.length,
-        });
-      }
-    } catch (err) {
-      logger.warn('Graph augmentation failed, falling back to pure RAG', { error: String(err) });
-    }
-    const graphLatency = Date.now() - graphStart;
-
-    // Log to query_logs + retrieval_traces (Phase 3 foundation)
-    try {
-      const queryLogId = await insertQueryLog({
-        query: userMessage,
-        category_slugs: categorySlugs?.join(',') || null,
-        graph_enabled: true,
-        graph_skipped: !graphResult.used,
-        skip_reason: graphResult.used ? null : 'no_seed_entities_or_ppr_empty',
-        latency_ms: graphLatency,
-      });
-      if (graphResult.used) {
-        await insertRetrievalTrace({
-          query_log_id: queryLogId,
-          seed_entity_ids: JSON.stringify(graphResult.seedEntityIds),
-          ppr_top_entities: JSON.stringify(graphResult.pprTopEntities),
-          traversal_paths: null,
-          graph_chunk_ids: JSON.stringify(graphResult.graphChunks.map(c => c.id)),
-          final_chunk_ids: null,
-          rerank_scores: null,
-        });
-      }
-    } catch (logErr) {
-      // Logging is non-blocking
-      logger.warn('Failed to write query log', { error: String(logErr) });
-    }
-  } else if (graphEnabled) {
-    // Graph was enabled but skipped (high-confidence Qdrant result)
-    try {
-      await insertQueryLog({
-        query: userMessage,
-        category_slugs: categorySlugs?.join(',') || null,
-        graph_enabled: true,
-        graph_skipped: true,
-        skip_reason: 'high_confidence_qdrant',
-        latency_ms: 0,
-      });
-    } catch { /* non-blocking */ }
-  }
-
   // Detect follow-up and extract previous sources for boosting
   const { isFollowUp } = detectFollowUp(userMessage);
   let boostDocuments: string[] = [];
@@ -1219,7 +1142,7 @@ export async function ragQuery(
   // doesn't lexically match the document content. Previously the non-streaming route
   // always used 0.30, silently dropping all chunks for summary/review requests.
   // Rerank global and user chunks concurrently.
-  // Use mergedGlobalChunks (which includes graph + KB document chunks) for the
+  // Use mergedGlobalChunks (which includes KB document chunks) for the
   // global rerank. When a KB document was targeted by name, lower the rerank
   // floor to 0 and enable the KB-document safety net so the referenced
   // document's chunks are never silently dropped by the reranker threshold.

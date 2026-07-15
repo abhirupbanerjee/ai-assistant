@@ -112,7 +112,6 @@ Detection functions live in [`src/lib/llm-fallback.ts`](../../src/lib/llm-fallba
 | **Prompt Optimization** | [`src/lib/llm-client.ts`](../../src/lib/llm-client.ts) — `createInternalCompletion()` | Refine queries before RAG |
 | **Compliance Checking** | [`src/lib/llm-client.ts`](../../src/lib/llm-client.ts) — `createInternalCompletion()` | HITL clarification generation |
 | **Diagram Generation** | [`src/lib/diagram-gen/generator.ts`](../../src/lib/diagram-gen/generator.ts) | Generate Mermaid syntax via LLM |
-| **Graph Entity Extraction** | [`src/lib/graph/entity-extraction.ts`](../../src/lib/graph/entity-extraction.ts) | Extract entities for FalkorDB |
 
 All internal services route through [`createInternalCompletion()`](src/lib/llm-client.ts:311) which dispatches to the correct native provider based on model prefix — no LiteLLM involved.
 

@@ -163,7 +163,6 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 
 | Operation | Table(s) | Access Module |
 |-----------|----------|---------------|
-| Log query | `query_logs` | `compat/query-logs.ts` |
 | Log token usage | `token_usage_log` | `compat/token-usage.ts` |
 
 ### Evolved Knowledge Base
@@ -261,7 +260,6 @@ The application uses **PostgreSQL** as its primary database backend, accessed vi
 | `compliance_results` | Compliance | Check results & HITL |
 | `rag_test_queries` | Testing | RAG test queries |
 | `rag_test_results` | Testing | RAG test results |
-| `query_logs` | Monitoring | Query logging |
 | `token_usage_log` | Monitoring | Per-request token usage |
 | `model_latency_log` | Monitoring | Model latency tracking (P50 for auto model selection) |
 | `evolved_kb_settings` | KB | Evolved knowledge base settings |

@@ -908,68 +908,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   await sql`ALTER TABLE agent_bots ADD CONSTRAINT agent_bots_created_by_role_check CHECK (created_by_role IN ('super_admin', 'admin', 'superuser'))`.execute(database);
   console.log('[Kysely] Updated agent_bots.created_by_role CHECK constraint to include super_admin');
 
-  // Migration: Add graph_extraction_status column to documents table
-  await sql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS graph_extraction_status TEXT DEFAULT 'pending'`.execute(database);
-  // Drop and re-add CHECK constraint to include the new valid values
-  await sql`ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_graph_extraction_status_check`.execute(database);
-  await sql`ALTER TABLE documents ADD CONSTRAINT documents_graph_extraction_status_check CHECK (graph_extraction_status IN ('pending', 'processing', 'completed', 'failed', 'skipped'))`.execute(database);
-  console.log('[Kysely] Ensured documents.graph_extraction_status column exists');
-
-  // Migration: Update citation_trajectories source_type CHECK to include 'graph'
-  await sql`ALTER TABLE citation_trajectories DROP CONSTRAINT IF EXISTS citation_trajectories_source_type_check`.execute(database);
-  await sql`ALTER TABLE citation_trajectories ADD CONSTRAINT citation_trajectories_source_type_check CHECK (source_type IN ('vector', 'graph', 'user_upload', 'web'))`.execute(database);
-  console.log('[Kysely] Updated citation_trajectories.source_type CHECK to include graph');
-
-  // Migration: Create query_logs table for graph RAG analytics (Phase 2/3)
-  await sql`
-    CREATE TABLE IF NOT EXISTS query_logs (
-      id BIGSERIAL PRIMARY KEY,
-      query TEXT NOT NULL,
-      category_slugs TEXT,
-      graph_enabled BOOLEAN DEFAULT FALSE,
-      graph_skipped BOOLEAN DEFAULT FALSE,
-      skip_reason TEXT,
-      latency_ms INTEGER,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `.execute(database);
-  await sql`CREATE INDEX IF NOT EXISTS idx_query_logs_created ON query_logs(created_at DESC)`.execute(database);
-  console.log('[Kysely] Ensured query_logs table exists');
-
-  // Migration: Create retrieval_traces table for graph RAG analytics (Phase 2/3)
-  await sql`
-    CREATE TABLE IF NOT EXISTS retrieval_traces (
-      id BIGSERIAL PRIMARY KEY,
-      query_log_id BIGINT REFERENCES query_logs(id) ON DELETE CASCADE,
-      seed_entity_ids TEXT,
-      ppr_top_entities TEXT,
-      traversal_paths TEXT,
-      graph_chunk_ids TEXT,
-      final_chunk_ids TEXT,
-      rerank_scores TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `.execute(database);
-  await sql`CREATE INDEX IF NOT EXISTS idx_retrieval_traces_query ON retrieval_traces(query_log_id)`.execute(database);
-  console.log('[Kysely] Ensured retrieval_traces table exists');
-
-  // Migration: Create extraction_failures table for graph RAG (Phase 2)
-  await sql`
-    CREATE TABLE IF NOT EXISTS extraction_failures (
-      id BIGSERIAL PRIMARY KEY,
-      qdrant_id TEXT NOT NULL,
-      document_id TEXT NOT NULL,
-      document_name TEXT,
-      error TEXT NOT NULL,
-      retry_count INTEGER DEFAULT 0,
-      max_retries INTEGER DEFAULT 3,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `.execute(database);
-  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_failures_qdrant ON extraction_failures(qdrant_id)`.execute(database);
-  console.log('[Kysely] Ensured extraction_failures table exists');
-
   // Migration: Self-Evolving Knowledge Base — Phase 0 (Prerequisites)
 
   // User feedback on assistant answers
@@ -1052,19 +990,6 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     )
     .catch(err => console.warn('[Backup] Module load failed:', err));
 
-  // Fire-and-forget: clean up orphaned extraction failure records
-  // (records whose parent document has been deleted without cascade cleanup)
-  import('../db/compat/query-logs')
-    .then(({ cleanupOrphanedExtractionFailures }) =>
-      cleanupOrphanedExtractionFailures().then((count: number) => {
-        if (count > 0) {
-          console.log(`[Kysely] Cleaned up ${count} orphaned extraction failure record(s)`);
-        }
-      })
-    )
-    .catch(() => {
-      /* ignore — table may not exist on very first boot */
-    });
 }
 
 /**

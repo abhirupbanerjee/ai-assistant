@@ -16,7 +16,7 @@ import { sql } from 'kysely';
 
 // ============ Types ============
 
-export type TrajectorySourceType = 'vector' | 'graph' | 'user_upload' | 'web';
+export type TrajectorySourceType = 'vector' | 'user_upload' | 'web';
 
 export interface CitationTrajectoryEntry {
   id: number;

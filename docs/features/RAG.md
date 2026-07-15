@@ -1,6 +1,6 @@
 # RAG Pipeline — Complete Reference
 
-> **Scope:** This document covers the entire Retrieval-Augmented Generation pipeline in AI Assistant, from document ingestion through vector search, graph-augmented retrieval, reranking, and response generation.
+> **Scope:** This document covers the entire Retrieval-Augmented Generation pipeline in AI Assistant, from document ingestion through vector search, hybrid retrieval, reranking, and response generation.
 
 ---
 
@@ -9,8 +9,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        DOCUMENT INGESTION                            │
-│  Upload → Extract → Chunk → Embed → Qdrant  +  Entity Extract →    │
-│                                       FalkorDB                       │
+│  Upload → Extract → Chunk → Embed → Qdrant                           │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │
 ┌──────────────────────────────▼───────────────────────────────────────┐
@@ -24,11 +23,6 @@
 │       │     │  Qdrant Search  │◄── Dense + Sparse (BM25) Hybrid     │
 │       │     │  (RRF Merge)    │                                      │
 │       │     └────────┬────────┘                                      │
-│       │              │                                               │
-│       │     ┌────────▼────────┐     ┌────────────────────┐          │
-│       │     │  Graph-Augmented│────►│  FalkorDB PPR      │          │
-│       │     │  Retrieval      │◄────│  Entity Expansion  │          │
-│       │     └────────┬────────┘     └────────────────────┘          │
 │       │              │                                               │
 │       │     ┌────────▼────────┐                                      │
 │       │     │  Reranker        │◄── BGE Large / Cohere / BGE Base   │
@@ -103,7 +97,6 @@ Two strategies, configurable per-category via Admin > Settings > RAG:
   pageNumber: number;       // Source page (1-based)
   originalId: string;       // Unique chunk ID for dedup/delete
   text: string;             // Chunk text content
-  entityIds?: string[];     // Graph entity references (Phase 2)
 }
 ```
 
@@ -112,15 +105,14 @@ Two strategies, configurable per-category via Admin > Settings > RAG:
 - `query()` — Dense vector search with optional score threshold
 - `query()` with `hybridSearch=true` — Dense + BM25 sparse search with RRF merge
 - `deleteDocuments()` — Delete by `originalId` payload filter
-- `getDocumentChunksByDocId()` — Fetch all chunks for a document (used by backfill/reprocessing)
+- `getDocumentChunksByDocId()` — Fetch all chunks for a document (used by reprocessing)
 
 ### 1.5 Background Ingestion
 
 Documents are processed asynchronously via `processDocumentAsync()` in `src/lib/ingest.ts`:
 
 1. Extract text → chunk → embed → upsert to Qdrant
-2. If graph augmentation is enabled, extract entities → write to FalkorDB
-3. Update document status in Postgres (`processing` → `completed` / `failed`)
+2. Update document status in Postgres (`processing` → `completed` / `failed`)
 
 The fire-and-forget pattern means the API returns immediately after upload while processing continues in the background.
 
@@ -156,175 +148,13 @@ This balances contributions from both search methods without requiring score nor
 
 ---
 
-## Phase 3: Graph-Augmented Retrieval
-
-**Key files:**
-- `src/lib/graph/falkordb-client.ts` — FalkorDB connection singleton
-- `src/lib/graph/entity-extraction.ts` — Entity/relation extraction pipeline
-- `src/lib/graph/retrieval.ts` — PPR-based retrieval with chunk expansion
-
-### 3.1 FalkorDB Graph Database
-
-FalkorDB is a Redis-compatible graph database running as a Docker service (`--profile falkordb`). It stores entity-relationship data as a property graph with Cypher query support.
-
-**Connection:** `src/lib/graph/falkordb-client.ts`
-
-| Env Var | Default | Purpose |
-|---------|---------|---------|
-| `FALKORDB_HOST` | `localhost` | FalkorDB host (Docker: `falkordb`) |
-| `FALKORDB_PORT` | `6380` | FalkorDB port (avoids Redis 6379 conflict) |
-| `FALKORDB_GRAPH_NAME | `ai-assistant`` | Graph name for all operations |
-
-**Health check:** `isGraphHealthy()` — verifies FalkorDB connection is live before any graph operation.
-
-**Retry wrapper:** `retryGraphQuery()` — exponential backoff (100ms, 200ms, 400ms) for transient socket errors during heavy parallel writes.
-
-### 3.2 Graph Schema
-
-```
-Nodes:
-  (:Entity {id, name, type})              // Canonical entity (person, org, policy, etc.)
-  (:Document {id, name, category, source}) // Document reference
-  (:Chunk {qdrantId, documentId, pageNumber})  // Lightweight Qdrant reference
-
-Edges:
-  (:Entity)-[:MENTIONS]->(:Chunk)          // Entity appears in chunk
-  (:Chunk)-[:PART_OF]->(:Document)         // Chunk belongs to document
-  (:Entity)-[:RELATES_TO {type, confidence}]->(:Entity)  // Extracted relation
-  (:Entity)-[:SAME_AS {score}]->(:Entity)  // Synonymy/canonicalization
-```
-
-**Design decisions:**
-- `Chunk` nodes store only `qdrantId` — no text. Text is fetched from Qdrant on demand.
-- `QueryLog` nodes are **not** in the graph. Query telemetry goes to Postgres (`query_logs` + `retrieval_traces` tables) to avoid graph bloat and PPR pollution.
-- `SAME_AS` edges link synonym entities (e.g., "PTO" ↔ "paid time off") to bridge phrasings during PPR traversal.
-
-### 3.3 Entity Extraction Pipeline
-
-**File:** `src/lib/graph/entity-extraction.ts`
-
-Runs during background ingestion (`processDocumentAsync`), never on the query path.
-
-**Flow:**
-
-1. **Per-chunk LLM call** — `createInternalCompletion()` routes through the three-route LLM architecture to a configurable extraction model (default: the system's primary model; recommended: cheap local model like `llama3.1:8b`)
-2. **Extraction prompt** returns JSON: `{ entities: [{name, type}], relations: [{head, relation, tail}] }`
-3. **Robust JSON extraction** — greedy `{` → `}` matching (same pattern as `rag.ts`)
-4. **Entity resolution** — canonical ID from `entity:{name_lowercase_underscore}`; FalkorDB `MERGE` handles exact duplicates; future: embedding-based `SAME_AS` for near-duplicates
-5. **Batch Cypher writes** — `UNWIND` queries for entities, chunks, MENTIONS, RELATES_TO (5-10x faster than individual queries)
-6. **Idempotency** — keyed by chunk `qdrantId`; in-memory `processedChunks` set prevents re-extraction within a session
-
-**Prompt safeguards:**
-- Explicitly excludes filenames, headers, footers, page numbers, generic terms
-- Returns `{"entities": [], "relations": []}` for chunks with no real-world entities
-- System message reinforces JSON-only output
-
-**Configurable settings** (Admin > Settings > Graph RAG):
-
-| Setting | Default | Range | Purpose |
-|---------|---------|-------|---------|
-| `extractionModel` | (system default) | Any route-compatible model | LLM for entity extraction |
-| `maxTokens` | 4096 | 128–4096 | Max tokens for extraction response |
-| `concurrency` | 5 | 1–10 | Parallel chunk processing limit |
-
-**Failure persistence:** Extraction failures are logged to `extraction_failures` table in Postgres, visible in Admin > Settings > Graph RAG > Failures tab. Supports one-click reprocessing.
-
-### 3.4 HippoRAG-Style Retrieval with In-Process PPR
-
-**File:** `src/lib/graph/retrieval.ts`
-
-This is the query-time graph augmentation step, inserted between Qdrant search and reranking.
-
-**Flow:**
-
-```
-Qdrant top chunks
-       │
-       ▼
-┌──────────────────┐
-│ 1. Seed Selection │  Top-N chunks → MENTIONS → Entity nodes
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ 2. Subgraph Fetch │  2-3 hop neighborhood via Cypher
-│    (bounded)      │  RELATES_TO | SAME_AS *1..3
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ 3. In-Process PPR │  Personalized PageRank (TypeScript)
-│    (power iter.)  │  damping=0.85, converge Δ<1e-6
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ 4. Chunk Expansion│  Top-K PPR entities → MENTIONS → Chunk IDs
-│                    │  → Qdrant batch retrieve
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ 5. Merge & Rerank │  Combine with original Qdrant chunks
-│                    │  → rerankChunks() (Cohere/BGE)
-└──────────────────┘
-```
-
-**Step 1 — Seed Selection:**
-- Takes top-N Qdrant chunks (configurable: `seedChunkCount`, default 10)
-- Looks up their `Entity` nodes in FalkorDB via `MENTIONS` edges
-- Returns seed entity IDs
-
-**Step 2 — Subgraph Fetch:**
-- Cypher query with bounded variable-length path: `RELATES_TO|SAME_AS*1..3`
-- Path-explosion guard: `SUBGRAPH_RESULT_CAP = 1000`
-- Returns entities and edges for the local neighborhood
-
-**Step 3 — In-Process Personalized PageRank:**
-- ~60-80 lines of TypeScript power iteration
-- Damping factor: 0.85
-- Seed mass concentrated on seed nodes (uniform over seed set)
-- Convergence: Δ < 1e-6 or 50 iterations max
-- Returns ranked entity list, truncated to `pprTopK` (configurable, default 20)
-
-> **Why in-process?** FalkorDB's built-in `algo.pageRank` lacks seed-node personalization. In-process PPR gives full control over the seed vector, which is the core of HippoRAG's retrieval mechanism.
-
-**Step 4 — Chunk Expansion:**
-- For top PPR entities, fetch `MENTIONS → Chunk` qdrantIds
-- Deduplicate against original Qdrant chunks
-- Retrieve chunk text from Qdrant (currently via zero-vector + ID filter; future: batch retrieve API)
-
-**Step 5 — Merge & Rerank:**
-- Combine PPR-expanded chunks with original Qdrant top chunks
-- Pass through `rerankChunks()` (unchanged from Phase 1)
-- Feed into `formatContext()` → `generateResponseWithTools()` (unchanged)
-
-**Conditional execution:**
-- Graph step is **skipped** when the top Qdrant chunk score exceeds `skipThreshold` (default 0.85) — indicates a clear single-document answer that doesn't need graph expansion
-- Falls back to pure RAG when graph returns empty/low-confidence results or FalkorDB is unhealthy
-
-**Latency budget:**
-- Graph step: ~15-35ms typical
-- End-to-end: ~450-650ms (graph) vs ~300-500ms (pure RAG)
-
-**Configurable settings** (Admin > Settings > Graph RAG):
-
-| Setting | Default | Range | Purpose |
-|---------|---------|-------|---------|
-| `graphAugmentationEnabled` | false | boolean | Master toggle |
-| `skipThreshold` | 0.85 | 0.5–0.99 | Qdrant score above which graph is skipped |
-| `pprTopK` | 20 | 3–100 | Top PPR entities to expand |
-| `seedChunkCount` | 10 | 3–50 | Qdrant chunks used for seeding |
-
----
-
-## Phase 4: Reranking
+## Phase 3: Reranking
 
 **File:** `src/lib/reranker.ts`
 
-After vector search (and optional graph expansion), chunks are reranked by a cross-encoder for higher precision.
+After vector search, chunks are reranked by a cross-encoder for higher precision.
 
-### 4.1 Priority Fallback Chain
+### 3.1 Priority Fallback Chain
 
 | Priority | Provider | Accuracy | Cost | Requirements |
 |----------|----------|----------|------|-------------|
@@ -336,9 +166,9 @@ After vector search (and optional graph expansion), chunks are reranked by a cro
 
 The system automatically selects the highest-priority provider that's available and healthy.
 
-### 4.2 Reranking Process
+### 3.2 Reranking Process
 
-1. **Input:** Merged chunk list (Qdrant + graph-expanded), user query
+1. **Input:** Merged chunk list, user query
 2. **Score:** Each chunk receives a relevance score from the cross-encoder
 3. **Filter:** Chunks below `minScore` threshold are dropped
 4. **Boost:** Documents from prior conversation turns get a score multiplier (default 1.3x)
@@ -349,11 +179,11 @@ The system automatically selects the highest-priority provider that's available 
 
 ---
 
-## Phase 5: Response Generation
+## Phase 4: Response Generation
 
 **File:** `src/lib/openai.ts` (`generateResponseWithTools()`)
 
-### 5.1 Context Assembly
+### 4.1 Context Assembly
 
 `formatContext()` in `src/lib/rag.ts` assembles the final prompt:
 
@@ -364,19 +194,20 @@ The system automatically selects the highest-priority provider that's available 
 5. **Data source descriptions** — Available external API descriptions
 6. **Skills** — Resolved skill instructions
 
-### 5.2 LLM Routing (Three-Route Architecture)
+### 4.2 LLM Routing (Four-Route Architecture)
 
 All providers use direct native SDKs/APIs — no proxy intermediary.
 
 | Route | Provider | Use Case |
 |-------|----------|----------|
-| **Route 2** | Direct Providers | OpenAI, Anthropic Claude, Gemini, Mistral, DeepSeek, Moonshot |
+| **Route 1** | LiteLLM proxy | General chat, embeddings, transcription |
+| **Route 2** | Direct SDKs | Anthropic Claude, Fireworks AI, DeepSeek, Moonshot |
 | **Route 3** | Local Ollama | Air-gapped deployments |
-| **Route 5** | Aggregator Gateways | Azure AI Foundry, Fireworks AI, Ollama Cloud |
+| **Route 4** | Ollama Cloud | Hosted Ollama models via native API |
 
-Model detection is prefix-based: `openai/`, `gpt-`, `anthropic/`, `claude-`, `gemini/`, `mistral/`, `deepseek-`, `ollama-`, `azure-foundry/`, `fireworks/`, `ollama-cloud/`. See [`docs/features/LLM.md`](LLM.md) for the authoritative reference.
+Model detection is prefix-based: `anthropic/`, `claude-`, `fireworks/`, `ollama-`, `deepseek-`, `moonshot/`, etc. See [`docs/features/LLM.md`](LLM.md) for the authoritative reference.
 
-### 5.3 Tool Calling
+### 4.3 Tool Calling
 
 When the LLM decides to invoke a tool:
 1. Tool call parsed from LLM response
@@ -406,19 +237,11 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
     b. Optional hybrid search (dense + BM25 sparse + RRF merge)
     c. Multi-collection search (category + global)
     d. User document search (if files attached)
-7.  Graph-augmented retrieval (if enabled):
-    a. Check skip threshold (high-confidence shortcut)
-    b. Seed selection from Qdrant top chunks
-    c. Subgraph fetch (bounded 2-3 hop)
-    d. In-process PPR (power iteration)
-    e. Chunk expansion from PPR entities
-    f. Merge with original chunks
-    g. Log to query_logs + retrieval_traces
-8.  Rerank merged chunks (cross-encoder fallback chain)
-9.  Format context with source citations
-10. Generate response with tools (4-route LLM)
-11. Cache result in Redis (if enabled)
-12. Return response with sources + metadata
+7.  Rerank merged chunks (cross-encoder fallback chain)
+8.  Format context with source citations
+9.  Generate response with tools (4-route LLM)
+10. Cache result in Redis (if enabled)
+11. Return response with sources + metadata
 ```
 
 ---
@@ -442,19 +265,6 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 | `cacheEnabled` | true | Redis query caching |
 | `cacheTTLSeconds` | 86400 | Cache TTL (24h) |
 
-### Graph Settings (Admin > Settings > Graph RAG)
-
-| Setting | Default | Purpose |
-|---------|---------|---------|
-| `graphAugmentationEnabled` | false | Master toggle for graph-augmented RAG |
-| `skipThreshold` | 0.85 | Qdrant score above which graph is skipped |
-| `pprTopK` | 20 | Top PPR entities to expand |
-| `seedChunkCount` | 10 | Qdrant chunks used for seeding PPR |
-| `resolutionThreshold` | 0.92 | Entity similarity for SAME_AS linking |
-| `extractionModel` | (system default) | LLM model for entity extraction |
-| `maxTokens` | 4096 | Max tokens for extraction response |
-| `concurrency` | 5 | Parallel chunk extraction limit |
-
 ### Reranker Settings (Admin > Settings > Reranker)
 
 | Setting | Default | Purpose |
@@ -462,7 +272,7 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 | `provider` | `bge-large` | Active reranker provider |
 | `minScore` | 0.1 | Min reranker score for inclusion |
 | `cohereApiKey` | — | Cohere API key |
-| `fireworksApiKey` | — | Fireworks API key (for Qwen3 reranker) |
+| `fireworksApiKey` | — | Fireworks AI key (for Qwen3 reranker) |
 
 ---
 
@@ -472,17 +282,9 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 - `POST /api/chat` — Main RAG chat endpoint (SSE streaming)
 - `GET /api/chat/slash-commands` — Available slash commands
 
-### Graph Admin API
-- `GET /api/admin/graph/status` — FalkorDB health + graph stats
-- `POST /api/admin/graph/backfill` — Backfill graph from existing Qdrant data
-- `GET /api/admin/graph/failures` — List extraction failures
-- `POST /api/admin/graph/failures` — Reprocess failed extractions
-- `DELETE /api/admin/graph/clear` — Clear entire graph
-- `GET /api/admin/graph/performance` — Performance metrics (hit rate, latency, trend)
-
 ### Settings API
-- `GET /api/admin/settings` — All settings including graph config
-- `PUT /api/admin/settings` — Update settings (`{ type: 'graph', settings: {...} }`)
+- `GET /api/admin/settings` — All settings
+- `PUT /api/admin/settings` — Update settings
 
 ---
 
@@ -495,10 +297,7 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 | `documents` | Document metadata, status, category assignments |
 | `categories` | Category definitions with slugs |
 | `document_categories` | Many-to-many document ↔ category |
-| `settings` | Key-value store for all RAG/graph/reranker settings |
-| `query_logs` | Query telemetry (query, graph enabled/skipped, latency) |
-| `retrieval_traces` | Graph retrieval details (seed entities, PPR results, chunk IDs) |
-| `extraction_failures` | Failed entity extractions for admin reprocessing |
+| `settings` | Key-value store for all RAG/reranker settings |
 
 ### Qdrant Collections
 
@@ -507,82 +306,22 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 | `global_documents` | 3072 | int8 | Global (uncategorized) documents |
 | `policy_{slug}` | 3072 | int8 | Per-category documents |
 
-### FalkorDB Graph
-
-| Label | Properties | Purpose |
-|-------|-----------|---------|
-| `Entity` | id, name, type | Canonical entity node |
-| `Document` | id, name, category, source | Document reference |
-| `Chunk` | qdrantId, documentId, pageNumber | Qdrant chunk reference |
-
 ---
 
-## Backfill & Maintenance
+## Document Reindexing
 
-### Backfill Script
+### Reindex API
 
-`src/scripts/backfill-graph.ts` — Processes all existing Qdrant documents through entity extraction:
-
-```bash
-npx tsx src/scripts/backfill-graph.ts
-```
-
-- Idempotent: re-running produces no duplicate nodes/edges
-- Processes documents in batches with configurable concurrency
-- Skips chunks already in the `processedChunks` set
+- `POST /api/admin/refresh?mode=vector` — Re-embed all documents in Qdrant
+- `POST /api/admin/refresh?mode=all` — Full reprocess (extract → chunk → embed)
+- `POST /api/admin/documents/[id]/reindex` — Reindex a single document
 
 ### Admin UI Operations
 
-Available at **Admin > Settings > Graph RAG > Maintenance**:
+Available at **Admin > Documents**:
 
 | Action | What it does |
 |--------|-------------|
-| **Backfill All** | Runs backfill for all documents in Qdrant |
-| **Reprocess Failed** | Re-attempts failed extractions from `extraction_failures` table |
-| **Clear Graph** | Deletes all nodes and edges from FalkorDB |
-
-### Performance Monitoring
-
-**Admin > Settings > Graph RAG > Performance** panel shows:
-
-- **Hit rate** — % of graph-enabled queries that used graph expansion
-- **Skip rate** — % of queries skipped due to high Qdrant confidence
-- **Avg chunk expansion** — Average additional chunks retrieved via graph
-- **Avg latency** — Graph step latency in ms
-- **Daily trend** — Hit rate, skip rate, latency over time
-- **Top expanded entities** — Most frequently expanded entities via PPR
-
----
-
-## Phase 3: Self-Evolving Knowledge Base (Future — Not Yet Started)
-
-> **Status:** Foundations are in place (see table below), but no Phase 3 code has been written yet. This section describes the planned capabilities and the specific pending implementation items.
-
-### What Phase 3 Will Do
-
-Phase 3 transforms the graph from a static index into a **self-evolving knowledge base** that continuously improves its own retrieval quality based on query feedback.
-
-### Pending Implementation Items
-
-| # | Item | Description | Depends On |
-|---|------|-------------|------------|
-| 1 | **Query Observer** | Background service that reads `query_logs`/`retrieval_traces` to identify knowledge gaps — queries where graph augmentation was skipped, returned empty, or PPR scores were low | `query_logs` + `retrieval_traces` tables (✅ exist) |
-| 2 | **Connection Miner** | Discovers implicit relationships between entities by re-running `entity-extraction.ts` with a "relationship discovery" prompt on entity pairs that co-occur in queries but lack `RELATES_TO` edges | Modular extraction service (✅ exists) |
-| 3 | **Embedding-based SAME_AS** | Replace the current pass-through entity resolution with actual embedding similarity: embed entity names, query Qdrant for near-duplicates above `resolutionThreshold`, create `SAME_AS` edges automatically | `createEmbeddings()` (✅ exists), entity resolution hook in `entity-extraction.ts` |
-| 4 | **Auto-Enrichment Pipeline** | Scheduled job that runs the connection miner + SAME_AS linker on new documents as they arrive, adding nodes/edges without full graph rebuild | Idempotent extraction (✅ exists), `processDocumentAsync` hook (✅ exists) |
-| 5 | **Feedback Loop** | Compare PPR score deltas before/after enrichment to evaluate whether new edges improved retrieval. Surface metrics in the admin performance panel. | PPR scores in traces (✅ logged), performance API (✅ exists) |
-| 6 | **Batch Retrieve API** | Add a `retrieveByIDs()` method to `VectorStoreClient` for efficient chunk text lookup by Qdrant point IDs, replacing the current zero-vector + filter workaround in `retrieval.ts` | Qdrant client (✅ exists) |
-| 7 | **Working Memory (beta)** | `plan_memories` table with heuristic keyword extraction and deterministic wave summary injection for the autonomous agent. Feature flag: `agent_working_memory_enabled` (default false). | Agent planner/executor (✅ exists) |
-
-### Foundations Already In Place
-
-| Foundation | Status | Location |
-|-----------|--------|----------|
-| Postgres `query_logs` + `retrieval_traces` | ✅ Created | `src/lib/db/compat/query-logs.ts` |
-| Modular entity extraction service | ✅ Complete | `src/lib/graph/entity-extraction.ts` |
-| `SAME_AS` synonymy edges | ✅ Schema supports | FalkorDB schema |
-| Bidirectional Qdrant↔FalkorDB refs | ✅ Via qdrantId | Both modules |
-| Interpretable PPR scores in traces | ✅ Logged | `src/lib/rag.ts` |
-| Idempotent incremental updates | ✅ MERGE + processedChunks | `src/lib/graph/entity-extraction.ts` |
-| Admin performance panel | ✅ Live | `src/components/admin/settings/GraphSettings.tsx` |
-| Extraction failure tracking | ✅ Live | `extraction_failures` table + reprocessing API |
+| **Reindex (single doc)** | Re-embeds a single document into Qdrant |
+| **Refresh Vector** | Re-embeds all documents (mode=vector) |
+| **Refresh All** | Full reprocess of all documents (mode=all) |

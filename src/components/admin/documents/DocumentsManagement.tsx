@@ -119,7 +119,6 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [docCategoryFilter, setDocCategoryFilter] = useState<number | 'all' | 'global' | 'uncategorized'>('all');
   const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'ready' | 'error' | 'processing'>('all');
-  const [docGraphStatusFilter, setDocGraphStatusFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed' | 'skipped'>('all');
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
   const [docSortKey, setDocSortKey] = useState<keyof GlobalDocument | null>(null);
   const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
@@ -386,7 +385,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   // Poll for processing documents (refresh every 5s while any doc is 'processing')
   useEffect(() => {
     const hasProcessing = documents.some(
-      d => d.status === 'processing' || d.graphExtractionStatus === 'processing'
+      d => d.status === 'processing'
     );
     if (!hasProcessing) return;
 
@@ -752,11 +751,10 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   };
 
   // Refresh documents with mode selection
-  const handleRefresh = async (mode: 'vector' | 'graph' | 'all') => {
+  const handleRefresh = async (mode: 'vector' | 'all') => {
     const modeLabels = {
-      vector: 'Refresh Vector: Re-embed all documents into Qdrant (graph status will reset to pending)',
-      graph: 'Refresh Graph: Extract entities from existing Qdrant chunks into FalkorDB',
-      all: 'Refresh All: Re-embed all documents and extract entities (full rebuild)',
+      vector: 'Refresh Vector: Re-embed all documents into Qdrant',
+      all: 'Refresh All: Re-embed all documents (full rebuild)',
     };
     if (!confirm(`${modeLabels[mode]}. This may take a few minutes. Continue?`)) {
       return;
@@ -946,7 +944,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   // Clear selection when filters change
   useEffect(() => {
     setSelectedDocIds(new Set());
-  }, [docCategoryFilter, docStatusFilter, docGraphStatusFilter, docSearchTerm]);
+  }, [docCategoryFilter, docStatusFilter, docSearchTerm]);
 
   // Filtered and sorted documents
   const filteredAndSortedDocs = useMemo(() => {
@@ -966,11 +964,6 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     // Apply status filter
     if (docStatusFilter !== 'all') {
       result = result.filter(doc => doc.status === docStatusFilter);
-    }
-
-    // Apply graph status filter
-    if (docGraphStatusFilter !== 'all') {
-      result = result.filter(doc => doc.graphExtractionStatus === docGraphStatusFilter);
     }
 
     // Apply fuzzy search
@@ -1055,7 +1048,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     }
 
     return result;
-  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docStatusFilter, docGraphStatusFilter, docSortOption]);
+  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docStatusFilter, docSortOption]);
 
   // Sortable header component
   const SortableDocHeader = ({ columnKey, label, className = '' }: { columnKey: keyof GlobalDocument; label: string; className?: string }) => {
@@ -1129,7 +1122,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   disabled={refreshingAll || documents.length === 0}
                   loading={refreshingAll}
                   onClick={() => handleRefresh('all')}
-                  title="Re-embed all documents and extract entities (full rebuild)"
+                  title="Re-embed all documents (full rebuild)"
                   className="text-xs px-2.5 py-1.5"
                 >
                   <RefreshCw size={14} className={`mr-1 ${refreshingAll ? 'animate-spin' : ''}`} />
@@ -1139,21 +1132,11 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   variant="secondary"
                   disabled={refreshingAll || documents.length === 0}
                   onClick={() => handleRefresh('vector')}
-                  title="Re-embed all documents into Qdrant only (graph status will reset)"
+                  title="Re-embed all documents into Qdrant"
                   className="text-xs px-2.5 py-1.5"
                 >
                   <RefreshCw size={14} className="mr-1" />
                   Vector
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={refreshingAll || documents.length === 0}
-                  onClick={() => handleRefresh('graph')}
-                  title="Extract entities from existing Qdrant chunks into FalkorDB"
-                  className="text-xs px-2.5 py-1.5"
-                >
-                  <RefreshCw size={14} className="mr-1" />
-                  Graph
                 </Button>
                 <Button
                   disabled={uploading}
@@ -1234,22 +1217,6 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   </select>
                 </div>
 
-                {/* Graph Status Filter */}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={docGraphStatusFilter}
-                    onChange={(e) => setDocGraphStatusFilter(e.target.value as typeof docGraphStatusFilter)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                  >
-                    <option value="all">All Graph Status</option>
-                    <option value="pending">Pending ({documents.filter(d => d.graphExtractionStatus === 'pending').length})</option>
-                    <option value="processing">Processing ({documents.filter(d => d.graphExtractionStatus === 'processing').length})</option>
-                    <option value="completed">Completed ({documents.filter(d => d.graphExtractionStatus === 'completed').length})</option>
-                    <option value="failed">Failed ({documents.filter(d => d.graphExtractionStatus === 'failed').length})</option>
-                    <option value="skipped">Skipped ({documents.filter(d => d.graphExtractionStatus === 'skipped').length})</option>
-                  </select>
-                </div>
-
                 {/* Sort Dropdown */}
                 <div className="flex items-center gap-2">
                   <SortAsc size={16} className="text-gray-400" />
@@ -1268,12 +1235,11 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 </div>
 
                 {/* Clear filters button */}
-                {(docCategoryFilter !== 'all' || docStatusFilter !== 'all' || docGraphStatusFilter !== 'all' || docSearchTerm) && (
+                {(docCategoryFilter !== 'all' || docStatusFilter !== 'all' || docSearchTerm) && (
                   <button
                     onClick={() => {
                       setDocCategoryFilter('all');
                       setDocStatusFilter('all');
-                      setDocGraphStatusFilter('all');
                       setDocSearchTerm('');
                     }}
                     className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1304,7 +1270,6 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 onClick={() => {
                   setDocCategoryFilter('all');
                   setDocStatusFilter('all');
-                  setDocGraphStatusFilter('all');
                   setDocSearchTerm('');
                 }}
                 className="text-blue-600 hover:text-blue-700 text-sm font-medium"
@@ -1423,24 +1388,6 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                           >
                             {doc.status}
                           </span>
-                          {doc.status === 'ready' && doc.graphExtractionStatus && (
-                            <span
-                              className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                                doc.graphExtractionStatus === 'completed'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : doc.graphExtractionStatus === 'processing'
-                                  ? 'bg-indigo-100 text-indigo-700'
-                                  : doc.graphExtractionStatus === 'failed'
-                                  ? 'bg-red-100 text-red-700'
-                                  : doc.graphExtractionStatus === 'skipped'
-                                  ? 'bg-gray-100 text-gray-500'
-                                  : 'bg-amber-100 text-amber-700'
-                              }`}
-                              title={`Graph extraction: ${doc.graphExtractionStatus}`}
-                            >
-                              G:{doc.graphExtractionStatus}
-                            </span>
-                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-gray-600">

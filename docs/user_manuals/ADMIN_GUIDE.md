@@ -174,7 +174,6 @@ Widgets showing recent system activity:
 | **Speech** | STT/TTS provider selection, route defaults, recording limits, fallback configuration |
 | **Cache** | Cache TTL and management |
 | **Display** | UI appearance, dark mode, font size |
-| **Graph RAG** | FalkorDB graph-augmented RAG toggle and configuration |
 
 ---
 

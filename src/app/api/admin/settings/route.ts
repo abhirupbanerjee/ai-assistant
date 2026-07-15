@@ -39,8 +39,6 @@ import {
   setPWASettings,
   getDisplaySettings,
   setDisplaySettings,
-  getGraphSettings,
-  setGraphSettings,
 } from '@/lib/db/compat';
 import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
@@ -105,8 +103,6 @@ export async function GET() {
     const tokenLimitsSettings = await getTokenLimitsSettings();
     const ocrSettings = await getOcrSettings();
     const displaySettings = await getDisplaySettings();
-    const graphSettings = await getGraphSettings();
-
     // Get metadata for last updated info
     const ragMeta = await getSettingMetadata('rag-settings');
     const llmMeta = await getSettingMetadata('llm-settings');
@@ -123,8 +119,6 @@ export async function GET() {
     const retentionMeta = await getSettingMetadata('retention-settings');
     const ocrMeta = await getSettingMetadata('ocr-settings');
     const displayMeta = await getSettingMetadata('display-settings');
-    const graphMeta = await getSettingMetadata('graph-settings');
-
     return NextResponse.json({
       rag: {
         ...ragSettings,
@@ -226,11 +220,6 @@ export async function GET() {
         ...displaySettings,
         updatedAt: displayMeta?.updatedAt || new Date().toISOString(),
         updatedBy: displayMeta?.updatedBy || 'system',
-      },
-      graph: {
-        ...graphSettings,
-        updatedAt: graphMeta?.updatedAt || new Date().toISOString(),
-        updatedBy: graphMeta?.updatedBy || 'system',
       },
       availableModels: await getAvailableModels(),
       brandingIcons: BRANDING_ICONS,
@@ -1570,82 +1559,6 @@ export async function PUT(request: NextRequest) {
         });
       }
 
-      case 'graph': {
-        const {
-          graphAugmentationEnabled,
-          skipThreshold,
-          pprTopK,
-          seedChunkCount,
-          resolutionThreshold,
-          extractionModel,
-          maxTokens,
-          concurrency,
-        } = settings;
-
-        if (graphAugmentationEnabled !== undefined && typeof graphAugmentationEnabled !== 'boolean') {
-          return NextResponse.json<ApiError>(
-            { error: 'graphAugmentationEnabled must be a boolean', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        if (skipThreshold !== undefined && (typeof skipThreshold !== 'number' || skipThreshold < 0 || skipThreshold > 1)) {
-          return NextResponse.json<ApiError>(
-            { error: 'skipThreshold must be between 0 and 1', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        if (pprTopK !== undefined && (typeof pprTopK !== 'number' || pprTopK < 1 || pprTopK > 100)) {
-          return NextResponse.json<ApiError>(
-            { error: 'pprTopK must be between 1 and 100', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        if (seedChunkCount !== undefined && (typeof seedChunkCount !== 'number' || seedChunkCount < 1 || seedChunkCount > 50)) {
-          return NextResponse.json<ApiError>(
-            { error: 'seedChunkCount must be between 1 and 50', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        if (maxTokens !== undefined && (typeof maxTokens !== 'number' || maxTokens < 128 || maxTokens > 4096)) {
-          return NextResponse.json<ApiError>(
-            { error: 'maxTokens must be between 128 and 4096', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        if (concurrency !== undefined && (typeof concurrency !== 'number' || concurrency < 1 || concurrency > 10)) {
-          return NextResponse.json<ApiError>(
-            { error: 'concurrency must be between 1 and 10', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        result = await setGraphSettings({
-          ...(graphAugmentationEnabled !== undefined ? { graphAugmentationEnabled } : {}),
-          ...(skipThreshold !== undefined ? { skipThreshold } : {}),
-          ...(pprTopK !== undefined ? { pprTopK } : {}),
-          ...(seedChunkCount !== undefined ? { seedChunkCount } : {}),
-          ...(resolutionThreshold !== undefined ? { resolutionThreshold } : {}),
-          ...(extractionModel !== undefined ? { extractionModel } : {}),
-          ...(maxTokens !== undefined ? { maxTokens } : {}),
-          ...(concurrency !== undefined ? { concurrency } : {}),
-        }, user.email);
-
-        const graphMeta = await getSettingMetadata('graph-settings');
-        return NextResponse.json({
-          success: true,
-          graph: {
-            ...result,
-            updatedAt: graphMeta?.updatedAt || new Date().toISOString(),
-            updatedBy: graphMeta?.updatedBy || user.email,
-          },
-        });
-      }
-
       case 'restoreAllDefaults': {
         // Delete all settings from SQLite to fall back to JSON config defaults
         const settingKeys = [
@@ -1666,7 +1579,6 @@ export async function PUT(request: NextRequest) {
           'limits-settings',
           'token-limits-settings',
           'display-settings',
-          'graph-settings',
           'model-token-limits',
         ] as const;
 

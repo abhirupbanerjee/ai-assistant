@@ -103,7 +103,6 @@ export {
   type TtsProvider,
   type SttProviderConfig,
   type TtsProviderConfig,
-  type GraphSettings,
   // Display Settings
   getDisplaySettings,
   setDisplaySettings,
@@ -174,10 +173,6 @@ export {
   // LLM Routes
   getRoutesSettings,
   setRoutesSettings,
-  // Graph-Augmented RAG (Phase 2)
-  DEFAULT_GRAPH_SETTINGS,
-  getGraphSettings,
-  setGraphSettings,
   // Speech (STT + TTS)
   getSpeechSettings,
   setSpeechSettings,
@@ -359,8 +354,6 @@ export {
   getTotalStorageSize,
   // Folder Sync Operations
   updateDocumentFolderSync,
-  // Graph Extraction Status
-  resetAllGraphExtractionStatuses,
 } from './documents';
 
 // ============ Skills ============
@@ -1079,25 +1072,6 @@ export {
   getTokenUsageSummary,
   getFilterOptions as getTokenUsageFilterOptions,
 } from './token-usage';
-
-// ============ Query Logs (Graph-Augmented RAG Phase 2) ============
-export {
-  type QueryLogRecord,
-  type RetrievalTraceRecord,
-  insertQueryLog,
-  getRecentQueryLogs,
-  insertRetrievalTrace,
-  getTracesForQuery,
-  cleanupOldQueryLogs,
-  // Extraction failures (Phase 2)
-  type ExtractionFailure,
-  logExtractionFailure,
-  getExtractionFailures,
-  clearExtractionFailure,
-  clearAllExtractionFailures,
-  getExtractionFailureStats,
-  cleanupOrphanedExtractionFailures,
-} from './query-logs';
 
 // ============ Evolved KB (Self-Evolving Knowledge Base) ============
 export {

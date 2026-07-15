@@ -498,8 +498,7 @@ export type SettingKey =
   // Auto Model Selection
   | 'auto-tool-model-map'
   | 'model-scoring-weights'
-  // Graph-Augmented RAG (Phase 2)
-  | 'graph-settings';
+  ;
 
 // ============ Speech Settings Types ============
 

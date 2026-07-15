@@ -21,7 +21,6 @@ export interface DbDocument {
   error_message: string | null;
   uploaded_by: string;
   created_at: string;
-  graph_extraction_status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
 }
 
 export interface DocumentWithCategories extends Omit<DbDocument, 'is_global'> {
@@ -46,7 +45,6 @@ export interface UpdateDocumentInput {
   chunkCount?: number;
   status?: DocumentStatus;
   errorMessage?: string | null;
-  graphExtractionStatus?: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
 }
 
 // ============ Document CRUD ============

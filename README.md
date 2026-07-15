@@ -47,7 +47,6 @@ Built with enterprise-grade, open-source technologies:
 - **Qdrant** — Open-source vector database for semantic search
 - **Direct LLM SDKs** — All providers use native SDKs/APIs (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Azure AI Foundry, Fireworks, Ollama Cloud) — zero proxy dependencies
 - **Redis** — High-performance caching and session management
-- **FalkorDB** (optional) — Graph database for graph-augmented RAG (multi-hop entity queries)
 - **Traefik** — Production-ready reverse proxy with automatic TLS
 - **Ollama** — Local LLM inference for air-gapped / sensitive deployments
 
@@ -58,7 +57,7 @@ Built with enterprise-grade, open-source technologies:
 - **RAG-Powered Q&A** — Natural language queries with source citations over organizational documents
 - **Multi-Provider LLM** — 10 providers: OpenAI, Anthropic Claude, Gemini, Mistral, DeepSeek, Moonshot, Ollama, Azure AI Foundry, Fireworks AI, Ollama Cloud — all via direct native SDKs
 - **Three-Route Architecture** — Route 2 (Direct Providers), Route 3 (Local Ollama), Route 5 (Aggregator Gateways) independently toggled for resilience, cost control, and compliance
-- **Graph-Augmented RAG** (optional) — FalkorDB integration for multi-hop entity queries across documents
+- **Hybrid Search** — Dense + BM25 sparse retrieval with Reciprocal Rank Fusion (RRF) for improved recall
 - **Vision/Multimodal** — Analyze images with vision-capable models (GPT-4.1/5.x, Claude 4.5, Gemini 2.5, Mistral, Anthropic)
 - **Thinking Models** — Native `<think>` token processing for extended reasoning models (DeepSeek R1, Claude 3.7+, Gemini Thinking, Kimi K2-family)
 - **Slash Commands** — 16 predefined `/` commands for fast terminal tool invocation (`/image`, `/chart`, `/pdf`, `/slide`, etc.) with inline autocomplete

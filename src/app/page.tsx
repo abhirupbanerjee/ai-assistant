@@ -101,7 +101,6 @@ export default function LandingPage() {
 
   const thinkingLogs = [
     'Retrieving context from Qdrant collection: policy_governance...',
-    'Querying FalkorDB Graph KB for cross-department relationships...',
     'Reranking top-k chunks with local BGE Cross-Encoder...',
     'Running compliance-checker tool & diagram-gen engine...'
   ];
@@ -579,11 +578,11 @@ export default function LandingPage() {
                 <h3 className="font-bold text-white text-base">State-of-the-Art RAG</h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Combines high-performance collection-based semantic retrieval via Qdrant with FalkorDB Graph Knowledge Bases. Includes local BGE Cross-Encoder reranking models and persistent memory layers.
+                Combines high-performance collection-based semantic retrieval via Qdrant with hybrid BM25 sparse search and Reciprocal Rank Fusion. Includes local BGE Cross-Encoder reranking models and persistent memory layers.
               </p>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">Vector Collection</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">Graph DB</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">Hybrid Search</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">BGE Rerank</span>
               </div>
             </div>
@@ -814,19 +813,19 @@ export default function LandingPage() {
                   <div className="inline-flex px-2.5 py-1 rounded bg-blue-500/10 border border-blue-500/20 text-xs font-semibold text-blue-400 uppercase tracking-wider">
                     Core RAG Engine
                   </div>
-                  <h3 className="text-2xl font-bold text-white">Vector Ingestion Coupled with Graph DBs</h3>
+                  <h3 className="text-2xl font-bold text-white">Vector Ingestion with Hybrid Retrieval</h3>
                   <p className="text-slate-400 text-sm leading-relaxed">
                     Upon document upload, files undergo custom chunking, are embedded locally via text-embedding models, and are stored in workspace-isolated Qdrant collections.
                   </p>
                   <p className="text-slate-400 text-sm leading-relaxed">
-                    With Graph-RAG enabled, entities are extracted and cross-referenced in FalkorDB, unlocking deep multi-hop relationship queries that standard vector models fail to answer. Local BGE rerankers guarantee maximum utility.
+                    Hybrid search combines dense vector similarity with BM25 sparse keyword matching and Reciprocal Rank Fusion, ensuring both semantic and lexical relevance. Local BGE rerankers guarantee maximum utility.
                   </p>
                 </div>
                 {/* Visual Representation */}
                 <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-800 space-y-3 font-mono text-[11px] text-slate-400">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                     <span className="text-slate-200 font-bold">RAG Pipeline Stage</span>
-                    <span className="text-blue-400 font-semibold">Qdrant + FalkorDB</span>
+                    <span className="text-blue-400 font-semibold">Qdrant Hybrid</span>
                   </div>
                   <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800">
                     <p className="text-slate-300 font-bold">1. Multi-Format Chunking & Embed</p>
@@ -1083,7 +1082,7 @@ export default function LandingPage() {
             </div>
           </div>
           <p className="text-xs text-slate-500 font-mono">
-            Powered by Kysely, Qdrant, FalkorDB and Ollama
+            Powered by Kysely, Qdrant and Ollama
           </p>
         </div>
       </footer>
