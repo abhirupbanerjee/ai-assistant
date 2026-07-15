@@ -29,6 +29,23 @@ export interface RerankOptions {
   boostFactor?: number;
   /** If provided, will be populated with all chunk scores before threshold filtering */
   scoresOut?: Map<string, number>;
+  /**
+   * If true, the chunks being reranked are user-uploaded documents.
+   * When the reranker succeeds but filters out EVERY chunk (e.g. the query
+   * is a generic "summarise this" that doesn't topically match any passage),
+   * we fall back to returning the original chunks unfiltered so the model
+   * always sees the attached file content. A user explicitly attached these
+   * files — they should never be silently dropped.
+   */
+  isUserUpload?: boolean;
+  /**
+   * If true, the chunks include a KB document that the user explicitly
+   * referenced by name (e.g. "summarise the Q3_Report.pdf"). Same safety
+   * net as isUserUpload: if the reranker filters out ALL chunks, fall back
+   * to returning the original chunks so the referenced document's content
+   * is never silently dropped.
+   */
+  isKbDocumentTargeted?: boolean;
 }
 
 // Cohere rerank result type
@@ -585,6 +602,29 @@ export async function rerankChunks(
 
   // Combine reranked and remaining chunks
   const finalChunks = [...filteredReranked, ...filteredRemaining];
+
+  // SAFETY NET for explicitly-referenced documents: if the reranker succeeded
+  // but the threshold filtering removed EVERY chunk (e.g. the query is a generic
+  // "summarise this" that doesn't topically match any document passage, so
+  // Qwen3/BGE assigns every chunk a low probability), fall back to returning
+  // the original chunks unfiltered. A user who explicitly attached a file or
+  // referenced a KB document by name should never have it silently dropped —
+  // the model needs the content to fulfil the request. This complements (does
+  // not replace) the full-document context path in buildContext() and
+  // retrieveFullKbDocumentChunks().
+  const isExplicitlyReferenced = options?.isUserUpload || options?.isKbDocumentTargeted;
+  if (
+    isExplicitlyReferenced &&
+    finalChunks.length === 0 &&
+    chunks.length > 0
+  ) {
+    const label = options?.isUserUpload ? 'user-upload' : 'KB-document-targeted';
+    console.warn(
+      `[Reranker] All ${chunks.length} ${label} chunks were filtered out by threshold ${minScore}. ` +
+      `Falling back to original chunks (provider succeeded but nothing passed).`
+    );
+    return [...chunks].sort((a, b) => b.score - a.score);
+  }
 
   return finalChunks;
 }

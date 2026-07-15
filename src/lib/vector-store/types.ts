@@ -107,6 +107,17 @@ export interface VectorStoreClient {
     documentId: string
   ): Promise<{ id: string; vector: number[]; text: string; metadata: ChunkMetadata }[]>;
 
+  /**
+   * Fetch all chunks for a document from a collection by documentName payload filter.
+   * Used for full-document retrieval when a user references a KB document by name
+   * (e.g., "summarise the Q3 report" where "Q3_Report.pdf" is in the knowledge base).
+   * Returns chunks without vectors for efficiency (context injection, not re-embedding).
+   */
+  getDocumentChunksByDocName(
+    collectionName: string,
+    documentName: string
+  ): Promise<{ id: string; text: string; metadata: ChunkMetadata }[]>;
+
   // ============ Query Operations ============
 
    /**

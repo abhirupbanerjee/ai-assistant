@@ -458,6 +458,61 @@ export class QdrantVectorStore implements VectorStoreClient {
     return results;
   }
 
+  /**
+   * Fetch all chunks for a document from a collection by documentName payload filter.
+   * Used for full-document retrieval when a user references a KB document by name
+   * (e.g., "summarise the Q3 report" where "Q3_Report.pdf" is in the knowledge base).
+   * Returns chunks without vectors for efficiency (context injection, not re-embedding).
+   * Chunks are sorted by chunkIndex then pageNumber to preserve document order.
+   */
+  async getDocumentChunksByDocName(
+    collectionName: string,
+    documentName: string
+  ): Promise<{ id: string; text: string; metadata: ChunkMetadata }[]> {
+    if (!(await this.collectionExists(collectionName))) {
+      return [];
+    }
+
+    const qdrant = getClient();
+    const results: { id: string; text: string; metadata: ChunkMetadata }[] = [];
+    let offset: string | number | undefined = undefined;
+
+    do {
+      const response = await qdrant.scroll(collectionName, {
+        filter: {
+          must: [{ key: 'documentName', match: { value: documentName } }],
+        },
+        with_vector: false,
+        with_payload: true,
+        limit: 100,
+        ...(offset !== undefined ? { offset } : {}),
+      });
+
+      for (const point of response.points) {
+        const payload = point.payload || {};
+        const { text, originalId, ...metadata } = payload as Record<string, unknown>;
+        results.push({
+          id: (originalId as string) || String(point.id),
+          text: (text as string) || '',
+          metadata: metadata as unknown as ChunkMetadata,
+        });
+      }
+
+      const next = response.next_page_offset;
+      offset = (typeof next === 'string' || typeof next === 'number') ? next : undefined;
+    } while (offset !== undefined);
+
+    // Sort by chunkIndex (falling back to pageNumber) to preserve document order
+    results.sort((a, b) => {
+      const aIdx = a.metadata.chunkIndex ?? 0;
+      const bIdx = b.metadata.chunkIndex ?? 0;
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      return (a.metadata.pageNumber ?? 1) - (b.metadata.pageNumber ?? 1);
+    });
+
+    return results;
+  }
+
   // ============ Query Operations ============
 
   async query(

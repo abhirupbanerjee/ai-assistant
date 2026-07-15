@@ -13,6 +13,8 @@ import { rerankChunks } from '../reranker';
 import { getRagSettings, getAcronymMappings } from '../db/compat/config';
 import { getResolvedSystemPrompt } from '../db/compat/category-prompts';
 import { getCategoryIdsBySlugs } from '../db/compat/categories';
+import { getDocumentsByCategory, getGlobalDocuments } from '../db/compat';
+import { detectReferencedDocument, retrieveFullKbDocumentChunks } from '../document-detection';
 import { resolveSkills } from '../skills/resolver';
 import { getAvailableDataSourcesDescription } from '../tools/data-source';
 import { getToolDefinitions } from '../tools';
@@ -104,10 +106,24 @@ export interface RAGRetrievalResult {
 }
 
 /**
- * Format chunks into context string for LLM
+ * Determine whether the user's message is directed at an uploaded document.
+ *
+ * DESIGN DECISION (Fix #3): When a file is attached, ALWAYS treat the query as
+ * upload-directed. The previous keyword-regex approach silently failed when the
+ * user's phrasing didn't match English trigger words (e.g. "summarise this",
+ * "tldr", "key points", or any non-English prompt), causing:
+ *   1. The full-document context path to be skipped (model never sees the file)
+ *   2. The rerank score floor to stay at 0.30 (all chunks dropped for generic
+ *      queries that don't topically match document passages)
+ *
+ * If the user attached a file, they want the model to use it. The keyword
+ * patterns are retained only as a secondary signal for messages that reference
+ * a document without uploads being present (shouldn't normally happen, but
+ * preserves backward compatibility).
  */
 function isUploadDirectedQuery(userMessage: string, hasUploads: boolean): boolean {
-  if (!hasUploads) return false;
+  // A file is attached — always treat as upload-directed.
+  if (hasUploads) return true;
 
   const message = userMessage.toLowerCase();
   const mentionsUpload = /\b(attached|attachment|uploaded|upload|provided|selected)\b/.test(message);
@@ -269,6 +285,65 @@ export async function performRAGRetrieval(
     userMessage
   );
 
+  // ============ KB Document Detection & Full-Document Retrieval ============
+  // When a user references a specific KB document by name (e.g. "summarise the
+  // Q3_Report.pdf"), the standard similarity search + reranker may drop all
+  // chunks because "summarise this" doesn't topically match any paragraph.
+  // We detect the document reference, fetch ALL its chunks directly from Qdrant,
+  // and merge them into the global chunks so the model sees the full document.
+  let kbDocTargetedName: string | null = null;
+  let kbDocChunks: RetrievedChunk[] = [];
+
+  // Only attempt detection when there are no user uploads (user uploads are
+  // already handled by the upload-directed path above) and we have categories
+  // or global docs to search.
+  if (userDocPaths.length === 0) {
+    try {
+      // Fetch documents for the thread's categories + global documents in parallel
+      const categoryDocPromises = categoryIds.map(id => getDocumentsByCategory(id));
+      const [categoryDocSets, globalDocs] = await Promise.all([
+        Promise.all(categoryDocPromises),
+        getGlobalDocuments(),
+      ]);
+
+      // Combine all documents (deduplicate by id), filter to 'ready' status
+      const allKbDocs = [...globalDocs, ...categoryDocSets.flat()]
+        .filter(doc => doc.status === 'ready');
+      const seenDocIds = new Set<number>();
+      const uniqueKbDocs = allKbDocs.filter(doc => {
+        if (seenDocIds.has(doc.id)) return false;
+        seenDocIds.add(doc.id);
+        return true;
+      });
+
+      const detected = detectReferencedDocument(userMessage, uniqueKbDocs);
+      if (detected) {
+        kbDocTargetedName = detected.document.filename;
+        send?.({ type: 'operation_log', category: 'rag', message: `Retrieving full document: ${detected.document.filename}` });
+        kbDocChunks = await retrieveFullKbDocumentChunks(detected.document, categorySlugs);
+        logger.debug('KB document targeted by user', {
+          filename: detected.document.filename,
+          matchStrategy: detected.matchStrategy,
+          chunkCount: kbDocChunks.length,
+        });
+      }
+    } catch (err) {
+      logger.warn('KB document detection failed', { error: String(err) });
+    }
+  }
+
+  // Merge KB document chunks into the global chunks pool
+  let mergedGlobalChunks = globalChunks;
+  if (kbDocChunks.length > 0) {
+    mergedGlobalChunks = deduplicateChunks([...globalChunks, ...kbDocChunks]);
+    logger.debug('Merged KB document chunks into global pool', {
+      originalCount: globalChunks.length,
+      kbDocChunkCount: kbDocChunks.length,
+      mergedCount: mergedGlobalChunks.length,
+    });
+  }
+  // ============ END KB Document Detection ============
+
   // ============ Phase 2b: Graph-Augmented Retrieval ============
   const graphSettings = await getGraphSettings();
   const graphEnabled = graphSettings.graphAugmentationEnabled;
@@ -278,7 +353,10 @@ export async function performRAGRetrieval(
     pprTopEntities: [],
     used: false,
   };
-  let mergedGlobalChunks = globalChunks;
+
+  // Note: mergedGlobalChunks was initialized above (before graph augmentation)
+  // to include any KB document chunks retrieved via document-name detection.
+  // Graph augmentation now extends that merged set.
 
   if (graphEnabled && !shouldSkipGraphAugmentation(globalChunks, graphSettings.skipThreshold)) {
     const graphStart = Date.now();
@@ -289,7 +367,7 @@ export async function performRAGRetrieval(
         pprTopK: graphSettings.pprTopK,
       });
       if (graphResult.used && graphResult.graphChunks.length > 0) {
-        mergedGlobalChunks = deduplicateChunks([...globalChunks, ...graphResult.graphChunks]);
+        mergedGlobalChunks = deduplicateChunks([...mergedGlobalChunks, ...graphResult.graphChunks]);
         logger.debug('Graph augmentation added chunks', {
           originalCount: globalChunks.length,
           graphChunkCount: graphResult.graphChunks.length,
@@ -369,12 +447,21 @@ export async function performRAGRetrieval(
     });
   }
 
-  // Rerank global and user chunks concurrently
+  // Rerank global and user chunks concurrently.
+  // When a KB document was targeted by name, lower the global rerank floor to 0
+  // and enable the KB-document safety net so the referenced document's chunks
+  // are never silently dropped by the reranker threshold.
   const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
-    rerankChunks(userMessage, mergedGlobalChunks, { boostDocuments }),
+    rerankChunks(userMessage, mergedGlobalChunks, {
+      boostDocuments,
+      ...(kbDocTargetedName
+        ? { minScoreOverride: 0, isKbDocumentTargeted: true }
+        : {}),
+    }),
     rerankChunks(userMessage, userChunks, {
       minScoreOverride: uploadDirected ? 0 : USER_UPLOAD_MIN_RERANK_SCORE,
       boostDocuments,
+      isUserUpload: true,
     }),
   ]);
 
@@ -513,6 +600,10 @@ export async function performRAGRetrieval(
 
   if (uploadDirected) {
     systemPrompt = `${systemPrompt}\n\nThe user is asking about uploaded files in this conversation. Prioritize the USER UPLOADED DOCUMENT context over the general knowledge base. If uploaded document content is partial or extraction failed, state that clearly instead of saying there was no attachment.`;
+  }
+
+  if (kbDocTargetedName) {
+    systemPrompt = `${systemPrompt}\n\nThe user is asking about a specific knowledge base document: "${kbDocTargetedName}". Prioritize the content from this document in the KNOWLEDGE BASE DOCUMENTS section. The full document has been retrieved and included in context — use it to answer the user's question comprehensively.`;
   }
 
   // Inject data source descriptions
