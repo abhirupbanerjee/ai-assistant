@@ -51,12 +51,12 @@ export function isOpenAIModel(model: string): boolean {
 
 /**
  * Detect OpenAI models that do NOT support the Chat Completions API.
- * These models (e.g., gpt-5.5-pro) only work with legacy /v1/completions
- * or /v1/responses and cannot be used for chat with tools.
+ * These models (e.g., gpt-5.5-pro, gpt-5.6-pro) only work with legacy
+ * /v1/completions or /v1/responses and cannot be used for chat with tools.
  */
 export function isNonChatOpenAIModel(model: string): boolean {
   const clean = stripOpenAIPrefix(model);
-  return clean === 'gpt-5.5-pro';
+  return clean === 'gpt-5.5-pro' || clean === 'gpt-5.6-pro';
 }
 
 /**

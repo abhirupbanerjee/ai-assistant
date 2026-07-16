@@ -641,6 +641,8 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     { id: 'gpt-5.4-nano', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 0.20, output_cost_per_1m: 1.25, forced_tool_capable: 1 },
     { id: 'gpt-5.4-pro', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 30.00, output_cost_per_1m: 180.00, forced_tool_capable: 1 },
     // OpenAI - GPT-5.6 family (Sol, Terra, Luna)
+    // gpt-5.6 is the base alias that routes to gpt-5.6-sol (OpenAI convention).
+    { id: 'gpt-5.6', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 5.00, output_cost_per_1m: 30.00, forced_tool_capable: 1 },
     { id: 'gpt-5.6-sol', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 5.00, output_cost_per_1m: 30.00, forced_tool_capable: 1 },
     { id: 'gpt-5.6-terra', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 15.00, forced_tool_capable: 1 },
     { id: 'gpt-5.6-luna', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, input_cost_per_1m: 1.00, output_cost_per_1m: 6.00, forced_tool_capable: 1 },

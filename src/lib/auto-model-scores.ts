@@ -25,8 +25,11 @@ export function deriveScores(m: EnabledModel): CapabilityScores {
     function_calling: m.toolCapable ? (m.parallelToolCapable ? 0.85 : 0.7) : 0.3,
     visual_reasoning: m.visionCapable ? 0.75 : 0.2,
     reasoning:        m.thinkingCapable ? 0.8 : 0.55,
-    // coarse family heuristic for code quality
-    code_quality:     /gpt-5\.6-sol/.test(id) ? 0.85
+    // coarse family heuristic for code quality — based on Terminal-Bench 2.1 scores:
+    //   gpt-5.6-sol: 88.8% (SOTA), gpt-5.6-terra: 87.4% (beats gpt-5.5 at 85.6%),
+    //   gpt-5.6-luna: 84.7% (narrowly trails gpt-5.5)
+    code_quality:     /gpt-5\.6-sol/.test(id) ? 0.90
+                    : /gpt-5\.6-terra/.test(id) ? 0.80
                     : /deepseek|qwen|glm|claude|gpt-5|codestral/.test(id) ? 0.75
                     : 0.6,
   };

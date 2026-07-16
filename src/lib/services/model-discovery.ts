@@ -223,6 +223,7 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5.6-sol': 1050000,
   'gpt-5.6-terra': 1050000,
   'gpt-5.6-luna': 1050000,
+  'gpt-5.6-pro': 1050000,
   // OpenAI - GPT-5 base family (272K input + 128K output)
   'gpt-5': 272000,
   'gpt-5.1': 272000,
