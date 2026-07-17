@@ -117,6 +117,8 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   const [summarising, setSummarising] = useState<Set<string>>(new Set());
   const [generatingAll, setGeneratingAll] = useState(false);
   const [summaryCategoryId, setSummaryCategoryId] = useState<number | ''>('');
+  const [summaryStats, setSummaryStats] = useState({ withSummary: 0, totalReady: 0 });
+  const [summarizedDocIds, setSummarizedDocIds] = useState<Set<number>>(new Set());
 
   // Documents state
   const [documents, setDocuments] = useState<GlobalDocument[]>([]);
@@ -388,6 +390,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
   useEffect(() => {
     loadDocuments();
     loadCategories();
+    loadSummaryStats();
     loadAcronymMappings();
     loadFolderSyncs();
   }, [loadDocuments, loadCategories, loadAcronymMappings, loadFolderSyncs]);
@@ -843,6 +846,18 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     }
   };
 
+  // Load summary statistics
+  const loadSummaryStats = async () => {
+    try {
+      const res = await fetch('/api/admin/document-summaries');
+      const data = await res.json();
+      setSummaryStats({ withSummary: data.withSummary, totalReady: data.totalReady });
+      if (data.summarizedDocIds) {
+        setSummarizedDocIds(new Set(data.summarizedDocIds));
+      }
+    } catch { /* ignore */ }
+  };
+
   // Document sort handler
   const handleDocSort = (key: keyof GlobalDocument) => {
     if (docSortKey === key) {
@@ -1123,7 +1138,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                 <div>
                   <h3 className="font-medium text-gray-900">Knowledge Base Documents</h3>
                   <p className="text-sm text-gray-500">
-                  {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents, {totalChunks} chunks indexed
+                  {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents, {totalChunks} chunks indexed{summaryStats.totalReady > 0 ? ` · ${summaryStats.withSummary} of ${summaryStats.totalReady} summarised` : ''}
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1498,7 +1513,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                             }}
                             disabled={doc.status !== 'ready' || summarising.has(doc.id)}
                             className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg disabled:opacity-50"
-                            title="Generate AI Summary"
+                            title={summarizedDocIds.has(Number(doc.id)) ? "Regenerate AI Summary" : "Generate AI Summary"}
                           >
                             {summarising.has(doc.id) ? <Spinner size="sm" /> : <Sparkles size={16} />}
                           </button>
