@@ -6,7 +6,19 @@
  */
 
 import { getDb } from '../kysely';
-import type { LoadTestResults as LoadTestResult, NewLoadTestResult } from '../db-types';
+import type { LoadTestResults as LoadTestResult } from '../db-types';
+
+/** Insertable shape for load_test_results (auto-generated columns omitted) */
+type NewLoadTestResult = {
+  url: string;
+  test_run_id?: string | null;
+  output_url?: string | null;
+  users: number;
+  duration: number;
+  metrics_json: string;
+  passed?: boolean;
+  run_by?: string | null;
+};
 
 /**
  * Insert a new load test result
