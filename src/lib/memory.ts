@@ -570,11 +570,12 @@ export async function getMemoryContext(
           for (let i = 0; i < result.documents.length; i++) {
             const metadata = result.metadatas[i] as unknown as Record<string, unknown> | undefined;
 
-            // Category isolation: keep global facts (no categoryId) + active category facts
+            // Category isolation: when a category is active, keep only that category's facts
+            // (skip global facts and facts from other categories)
             if (activeCategoryId !== null) {
               const factCategoryId = metadata?.categoryId as string | undefined;
-              if (factCategoryId !== undefined && factCategoryId !== String(activeCategoryId)) {
-                continue; // Skip facts from other categories
+              if (factCategoryId !== String(activeCategoryId)) {
+                continue; // Skip global facts and facts from other categories
               }
             }
 
@@ -609,14 +610,15 @@ export async function getMemoryContext(
   // Fallback: SQLite full-scan (original behavior)
   const allFacts: FactEntry[] = [];
 
-  // Get global memory (category_id = null)
-  const globalMemory = await getMemoryForUser(userId, null);
-  if (globalMemory) {
-    allFacts.push(...globalMemory.facts);
-  }
-
-  // Get category-specific memory (only the active category)
-  if (activeCategoryId !== null) {
+  // Fetch global or category-specific memory (mutually exclusive)
+  if (activeCategoryId === null) {
+    // No category selected — global memory only
+    const globalMemory = await getMemoryForUser(userId, null);
+    if (globalMemory) {
+      allFacts.push(...globalMemory.facts);
+    }
+  } else {
+    // Category selected — that category's memory only (no global)
     const categoryMemory = await getMemoryForUser(userId, activeCategoryId);
     if (categoryMemory) {
       allFacts.push(...categoryMemory.facts);
