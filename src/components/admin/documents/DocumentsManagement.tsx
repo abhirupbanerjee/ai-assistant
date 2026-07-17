@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save, FolderOpen, Clock, ChevronRight } from 'lucide-react';
+import { Upload, RefreshCw, Trash2, FileText, Globe, Tag, Search, X, Filter, SortAsc, Download, Edit2, CheckCircle, AlertCircle, Youtube, ChevronUp, ChevronDown, ChevronsUpDown, Save, FolderOpen, Clock, ChevronRight, Sparkles } from 'lucide-react';
+import { useToast } from '@/contexts/ToastContext';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -108,6 +109,15 @@ export default function DocumentsManagement({ documentsSection: initialSection }
       return newSet;
     });
   };
+  
+  // Toast context for feedback
+  const { addToast } = useToast();
+  
+  // Summary generation state
+  const [summarising, setSummarising] = useState<Set<string>>(new Set());
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [summaryCategoryId, setSummaryCategoryId] = useState<number | ''>('');
+
   // Documents state
   const [documents, setDocuments] = useState<GlobalDocument[]>([]);
   const [totalChunks, setTotalChunks] = useState(0);
@@ -1139,6 +1149,60 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   Vector
                 </Button>
                 <Button
+                  variant="secondary"
+                  disabled={generatingAll || documents.filter(d => d.status === 'ready').length === 0}
+                  loading={generatingAll}
+                  onClick={() => {
+                    const readyCount = documents.filter(d => d.status === 'ready').length;
+                    if (confirm(`Generate AI summaries for all ${readyCount} ready documents?`)) {
+                      (async () => {
+                        setGeneratingAll(true);
+                        try {
+                          const res = await fetch('/api/admin/document-summaries/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) });
+                          const data = await res.json();
+                          addToast(data.success ? data.message : data.error || 'Failed', data.success ? 'success' : 'error');
+                        } catch { addToast('Failed to generate summaries', 'error'); }
+                        finally { setGeneratingAll(false); }
+                      })();
+                    }
+                  }}
+                  title="Generate AI summaries for all documents"
+                  className="text-xs px-2.5 py-1.5"
+                >
+                  <Sparkles size={14} className="mr-1" />
+                  {generatingAll ? 'Summarising...' : 'Summarise All'}
+                </Button>
+                <select
+                  value={summaryCategoryId}
+                  onChange={(e) => setSummaryCategoryId(e.target.value ? Number(e.target.value) : '')}
+                  className="text-xs border rounded px-2 py-1.5 bg-white text-gray-700 w-32 h-8"
+                  disabled={categories.length === 0}
+                >
+                  <option value="">Category...</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+                <Button
+                  variant="secondary"
+                  disabled={summaryCategoryId === ''}
+                  onClick={() => {
+                    (async () => {
+                      setGeneratingAll(true);
+                      try {
+                        const res = await fetch('/api/admin/document-summaries/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categoryId: summaryCategoryId }) });
+                        const data = await res.json();
+                        addToast(data.success ? data.message : data.error || 'Failed', data.success ? 'success' : 'error');
+                      } catch { addToast('Failed', 'error'); }
+                      finally { setGeneratingAll(false); }
+                    })();
+                  }}
+                  className="text-xs px-2.5 py-1.5"
+                >
+                  <Tag size={14} className="mr-1" />
+                  Category
+                </Button>
+                <Button
                   disabled={uploading}
                   loading={uploading}
                   onClick={() => {
@@ -1421,6 +1485,22 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                             ) : (
                               <RefreshCw size={16} />
                             )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              const id = doc.id;
+                              setSummarising(prev => new Set(prev).add(id));
+                              fetch('/api/admin/document-summaries/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentId: id }) })
+                                .then(r => r.json())
+                                .then(data => addToast(data.success ? data.message : data.error || 'Failed', data.success ? 'success' : 'error'))
+                                .catch(() => addToast('Failed', 'error'))
+                                .finally(() => setSummarising(prev => { const s = new Set(prev); s.delete(id); return s; }));
+                            }}
+                            disabled={doc.status !== 'ready' || summarising.has(doc.id)}
+                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg disabled:opacity-50"
+                            title="Generate AI Summary"
+                          >
+                            {summarising.has(doc.id) ? <Spinner size="sm" /> : <Sparkles size={16} />}
                           </button>
                           <button
                             onClick={() => setDeleteDoc(doc)}
