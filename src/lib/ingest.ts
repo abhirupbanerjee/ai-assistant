@@ -349,6 +349,16 @@ async function processDocumentAsync(
     });
 
     console.log(`[Ingest] Document "${filename}" processed: ${chunks.length} chunks`);
+
+    // Generate a per-document summary for KB overview queries.
+    // Fire-and-forget: don't block the upload completion on summary generation.
+    import('./document-summarizer')
+      .then(({ generateDocumentSummary }) =>
+        generateDocumentSummary(docId).catch((err: unknown) =>
+          console.error(`[Ingest] Summary generation failed for "${filename}":`, err)
+        )
+      )
+      .catch(() => {});
   } catch (error) {
     await updateDocument(docId, {
       status: 'error',
@@ -638,6 +648,16 @@ export async function reindexDocument(
       status: 'ready',
       errorMessage: null,
     });
+
+    // Regenerate per-document summary after reindex.
+    // Fire-and-forget: don't block the reindex response on summary generation.
+    import('./document-summarizer')
+      .then(({ generateDocumentSummary }) =>
+        generateDocumentSummary(numericId).catch((err: unknown) =>
+          console.error(`[Ingest] Summary regeneration failed for "${doc.filename}" after reindex:`, err)
+        )
+      )
+      .catch(() => {});
 
     const updatedDoc = await getDocumentWithCategories(numericId);
     return toGlobalDocument(updatedDoc!);

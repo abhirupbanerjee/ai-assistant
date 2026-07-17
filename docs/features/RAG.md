@@ -295,6 +295,7 @@ The complete `ragQuery()` flow in `src/lib/rag.ts`:
 | Table | Purpose |
 |-------|---------|
 | `documents` | Document metadata, status, category assignments |
+| `document_summaries` | Pre-computed per-document LLM summaries for KB overview queries |
 | `categories` | Category definitions with slugs |
 | `document_categories` | Many-to-many document ↔ category |
 | `settings` | Key-value store for all RAG/reranker settings |

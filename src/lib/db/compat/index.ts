@@ -356,6 +356,18 @@ export {
   updateDocumentFolderSync,
 } from './documents';
 
+// ============ Document Summaries ============
+export {
+  type DocumentSummary,
+  type DocumentSummaryWithFilename,
+  getDocumentSummary,
+  getDocumentSummariesByCategories,
+  upsertDocumentSummary,
+  deleteDocumentSummary,
+  hasDocumentSummary,
+  getCategorySummaryCount,
+} from './document-summaries';
+
 // ============ Skills ============
 export {
   // Types

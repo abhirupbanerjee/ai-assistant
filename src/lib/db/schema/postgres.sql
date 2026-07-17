@@ -136,6 +136,19 @@ CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_is_global ON documents(is_global);
 CREATE INDEX IF NOT EXISTS idx_documents_folder_sync ON documents(folder_sync_id);
 
+-- Pre-computed per-document summaries for KB overview queries.
+-- Used when a user asks "summarise the knowledge base" — the summaries
+-- are fetched directly and synthesized at query time, bypassing
+-- similarity search and the reranker entirely.
+CREATE TABLE IF NOT EXISTS document_summaries (
+  id SERIAL PRIMARY KEY,
+  document_id INTEGER NOT NULL UNIQUE,
+  summary_text TEXT NOT NULL,
+  generated_at TIMESTAMP DEFAULT NOW(),
+  model_used TEXT,
+  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
 -- Document to category mapping (many-to-many)
 CREATE TABLE IF NOT EXISTS document_categories (
   document_id INTEGER NOT NULL,

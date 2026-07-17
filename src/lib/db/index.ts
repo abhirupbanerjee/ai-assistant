@@ -1626,6 +1626,16 @@ CREATE TABLE IF NOT EXISTS document_categories (
 CREATE INDEX IF NOT EXISTS idx_document_categories_doc ON document_categories(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_categories_cat ON document_categories(category_id);
 
+-- Pre-computed per-document summaries for KB overview queries
+CREATE TABLE IF NOT EXISTS document_summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  document_id INTEGER NOT NULL UNIQUE,
+  summary_text TEXT NOT NULL,
+  generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  model_used TEXT,
+  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
 -- Threads
 CREATE TABLE IF NOT EXISTS threads (
   id TEXT PRIMARY KEY,

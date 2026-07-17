@@ -970,6 +970,19 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured evolved_kb_settings table exists');
 
+  // Migration: Document summaries for KB overview queries
+  await sql`
+    CREATE TABLE IF NOT EXISTS document_summaries (
+      id SERIAL PRIMARY KEY,
+      document_id INTEGER NOT NULL UNIQUE,
+      summary_text TEXT NOT NULL,
+      generated_at TIMESTAMP DEFAULT NOW(),
+      model_used TEXT,
+      FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+    )
+  `.execute(database);
+  console.log('[Kysely] Ensured document_summaries table exists');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

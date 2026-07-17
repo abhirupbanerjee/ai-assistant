@@ -1062,6 +1062,60 @@ export async function ragQuery(
     userMessage
   );
 
+  // ============ KB Overview Detection ============
+  // When a user asks to "summarise the knowledge base" or "what documents do you
+  // have", the query text has zero semantic similarity to any document chunk.
+  // We detect this intent, fetch per-document summaries directly from the DB,
+  // and inject a synthesized category overview into context — bypassing
+  // similarity search, chunk retrieval, and the reranker entirely.
+  let kbOverviewContext: string | null = null;
+
+  // Detect KB overview intent via regex patterns
+  if (categoryIds.length > 0) {
+    const kbOverviewPatterns = [
+      /summar[iy]se\s+(the\s+)?(knowledge\s*base|kb)/i,
+      /overview\s+of\s+(all\s+)?documents/i,
+      /what('s| is)\s+(in|covered by)\s+(the\s+)?(knowledge\s*base|this\s+category)/i,
+      /what\s+documents\s+(are|do\s+you)\s+have/i,
+    ];
+
+    const isKbOverviewQuery = kbOverviewPatterns.some(p => p.test(userMessage));
+
+    if (isKbOverviewQuery) {
+      try {
+        const { getDocumentSummariesByCategories } = await import('./db/compat/document-summaries');
+        const { synthesizeCategoryOverview } = await import('./document-summarizer');
+        const { getCategoriesByIds } = await import('./db/compat/categories');
+
+        const summaries = await getDocumentSummariesByCategories(categoryIds);
+
+        if (summaries.length > 0) {
+          const categories = await getCategoriesByIds(categoryIds);
+          const categoryName = categories.map(c => c.name).join(', ');
+
+          const overview = summaries.length <= 3
+            ? summaries.map(s => `### ${s.filename}\n${s.summaryText}`).join('\n\n')
+            : await synthesizeCategoryOverview(summaries, categoryName);
+
+          kbOverviewContext = `=== KNOWLEDGE BASE OVERVIEW (${categoryName}) ===\n\n` +
+            `The following summarizes all ${summaries.length} document(s) in the selected categories. ` +
+            `Use this overview to answer the user's question about what's in the knowledge base.\n\n${overview}`;
+        } else {
+          kbOverviewContext = 'The selected categories contain no documents with summaries.';
+        }
+
+        logger.debug('KB overview prepared', {
+          categoryIds,
+          docCount: summaries.length,
+          contextLength: kbOverviewContext.length,
+        });
+      } catch (err) {
+        logger.warn('KB overview detection failed', { error: String(err) });
+      }
+    }
+  }
+  // ============ END KB Overview Detection ============
+
   // ============ KB Document Detection & Full-Document Retrieval ============
   // When a user references a specific KB document by name (e.g. "summarise the
   // Q3_Report.pdf"), the standard similarity search + reranker may drop all
@@ -1182,6 +1236,17 @@ export async function ragQuery(
     logger.debug('Injected full-document context', {
       docCount: fullDocContexts.length,
       totalChars: fullDocSection.length,
+    });
+  }
+
+  // KB overview context: when the user asked for a KB summary, replace the
+  // chunk-based context with the synthesized category overview. This bypasses
+  // the similarity search and reranker results entirely — the KB overview is
+  // built from pre-computed per-document summaries, not from chunk retrieval.
+  if (kbOverviewContext) {
+    context = kbOverviewContext;
+    logger.debug('Using KB overview context instead of chunk-based context', {
+      contextLength: kbOverviewContext.length,
     });
   }
 
