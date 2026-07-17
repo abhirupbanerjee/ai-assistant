@@ -344,7 +344,7 @@ async function getMessagesToSummarize(threadId: string, keepRecent: number): Pro
     role: r.role,
     content: r.content,
     sources_json: r.sources_json,
-    created_at: r.created_at,
+    created_at: r.created_at ?? '',
   }));
 }
 
