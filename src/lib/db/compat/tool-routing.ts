@@ -226,8 +226,8 @@ interface DbToolRoutingRow {
   priority: number | null;
   category_ids: string | null;
   is_active: number | boolean | null;
-  created_at: string | Date;
-  updated_at: string | Date;
+  created_at: string | Date | null;
+  updated_at: string | Date | null;
   created_by: string;
   updated_by: string;
 }
@@ -246,9 +246,9 @@ function mapDbToRoutingRule(row: DbToolRoutingRow): ToolRoutingRule {
         ? JSON.parse(row.category_ids)
         : row.category_ids
       : null,
-    isActive: row.is_active === true || row.is_active === (1 as unknown as boolean) || false,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    isActive: row.is_active === true || row.is_active === 1,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : (row.created_at ?? ''),
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : (row.updated_at ?? ''),
     createdBy: row.created_by,
     updatedBy: row.updated_by,
   };
