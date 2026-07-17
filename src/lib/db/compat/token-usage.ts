@@ -3,11 +3,19 @@
  *
  * Stores and retrieves LLM token usage for the admin dashboard.
  * Uses Kysely query builder for PostgreSQL.
+ *
+ * IMPORTANT: Types are derived from DB['token_usage_log'] rather than
+ * importing named exports (e.g. NewTokenUsageLog) because `npm run db:types`
+ * regenerates db-types.ts from scratch via kysely-codegen, which wipes
+ * convenience aliases.  Using indexed access on DB is immune to regeneration.
  */
 
 import { getDb } from '../kysely';
 import { sql } from 'kysely';
-import type { NewTokenUsageLog } from '../db-types';
+import type { Insertable } from 'kysely';
+import type { DB } from '../db-types';
+
+type NewTokenUsageLog = Insertable<DB['token_usage_log']>;
 
 // ============ Types ============
 
