@@ -121,7 +121,7 @@ export async function getThreadSummary(threadId: string): Promise<ThreadSummary 
     messagesSummarized: row.messages_summarized,
     tokensBefore: row.tokens_before,
     tokensAfter: row.tokens_after,
-    createdAt: row.created_at,
+    createdAt: row.created_at ?? '',
   };
 }
 
@@ -144,7 +144,7 @@ export async function getThreadSummaryHistory(threadId: string): Promise<ThreadS
     messagesSummarized: row.messages_summarized,
     tokensBefore: row.tokens_before,
     tokensAfter: row.tokens_after,
-    createdAt: row.created_at,
+    createdAt: row.created_at ?? '',
   }));
 }
 
@@ -166,8 +166,8 @@ export async function getArchivedMessages(threadId: string): Promise<ArchivedMes
     role: row.role,
     content: row.content,
     sourcesJson: row.sources_json,
-    createdAt: row.created_at,
-    archivedAt: row.archived_at,
+    createdAt: row.created_at ?? '',
+    archivedAt: row.archived_at ?? '',
     summaryId: row.summary_id,
   }));
 }
