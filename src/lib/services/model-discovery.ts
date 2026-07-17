@@ -189,9 +189,9 @@ const THINKING_CAPABLE_PATTERNS = [
   /^accounts\/fireworks\/models\/deepseek-v4-(flash|pro)/,
   /^deepseek-reasoner/,
   // Moonshot / Kimi (future-proofing for reasoning mode exposure)
-  /^kimi-k2/,
-  /^fireworks\/kimi-k2/,
-  /^accounts\/fireworks\/models\/kimi-k2/,
+  /^kimi-k/,
+  /^fireworks\/kimi-k/,
+  /^accounts\/fireworks\/models\/kimi-k/,
   // Other exposed-reasoning families
   /^gpt-oss/,
   /^gemini-2\.5/,
@@ -287,6 +287,9 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'moonshot/kimi-k2.5': 262144,
   'kimi-k2.6': 262144,
   'kimi-k2.5': 262144,
+  // Moonshot / Kimi K3 (native API) — 1M context
+  'moonshot/kimi-k3': 1048576,
+  'kimi-k3': 1048576,
   // Mistral legacy aliases
   'mistral-medium': 256000,
   'mistral-large': 262144,
@@ -378,7 +381,7 @@ export function isThinkTagModel(modelId: string): boolean {
   if (lastSlash !== -1) id = id.slice(lastSlash + 1);
   // Strip version/tag suffixes (e.g. ":8b", ":latest", "-instruct")
   id = id.replace(/:.*$/, '');
-  return /^(qwen3|qwq|deepseek-v4-pro|kimi-k2|gpt-oss)/.test(id);
+  return /^(qwen3|qwq|deepseek-v4-pro|kimi-k|gpt-oss)/.test(id);
 }
 
 function isToolCapable(modelId: string): boolean {

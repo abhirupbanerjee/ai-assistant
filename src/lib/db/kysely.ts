@@ -513,6 +513,8 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     WHERE (
         id LIKE 'kimi-k2%'
         OR id LIKE '%/kimi-k2%'
+        OR id LIKE 'kimi-k3%'
+        OR id LIKE '%/kimi-k3%'
         OR id LIKE 'deepseek-v4-pro%'
         OR id LIKE '%/deepseek-v4-pro%'
         OR id LIKE 'qwen3%'
@@ -662,6 +664,9 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     // Moonshot/Kimi K2 (native API)
     { id: 'moonshot/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
     { id: 'moonshot/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 3.50, forced_tool_capable: 1 },
+    // Moonshot/Kimi K3 (native API)
+    { id: 'moonshot/kimi-k3', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
+    { id: 'kimi-k3', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
     // Moonshot/Kimi K2 (dot-notation aliases)
     { id: 'moonshot/kimi-k2.5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 0 },
     { id: 'moonshot/kimi-k2.6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 2.50, forced_tool_capable: 0 },
@@ -697,7 +702,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     UPDATE enabled_models
     SET thinking_capable = 1
     WHERE (
-        id IN ('deepseek-v4-pro', 'deepseek/deepseek-v4-pro', 'fireworks/deepseek-v4-pro', 'fireworks/deepseek-v4-flash', 'fireworks/kimi-k2p6', 'moonshot/kimi-k2p6', 'fireworks/minimax-m3', 'fireworks/kimi-k2p7-code')
+        id IN ('deepseek-v4-pro', 'deepseek/deepseek-v4-pro', 'fireworks/deepseek-v4-pro', 'fireworks/deepseek-v4-flash', 'fireworks/kimi-k2p6', 'moonshot/kimi-k2p6', 'fireworks/minimax-m3', 'fireworks/kimi-k2p7-code', 'moonshot/kimi-k3', 'kimi-k3')
         OR id LIKE 'gpt-5%'
         OR id LIKE 'openai/gpt-5%'
       )

@@ -52,6 +52,7 @@ export function isTemperatureLockedModel(modelId: string): boolean {
     || id.startsWith('kimi-k2p6')
     || id.startsWith('kimi-k2.5')
     || id.startsWith('kimi-k2p5')
+    || id.startsWith('kimi-k3')
     || id.startsWith('deepseek-v4-pro')
     || id.startsWith('deepseek-reasoner')
   );
@@ -129,7 +130,7 @@ export function isLikelyThinkingCapableModel(modelId: string): boolean {
     /^qwq/,
     /^deepseek-v4-pro/,
     /^deepseek-reasoner/,
-    /^kimi-k2/,
+    /^kimi-k/,
     /^gpt-oss/,
     /^gemini-2\.5/,
     /^magistral/,
@@ -148,7 +149,7 @@ function isDeepSeekThinkingModel(modelId: string): boolean {
 }
 
 function isKimiThinkingModel(modelId: string): boolean {
-  return normalizeModelId(modelId).startsWith('kimi-k2');
+  return normalizeModelId(modelId).startsWith('kimi-k');
 }
 
 function isOllamaModel(modelId: string): boolean {
@@ -184,11 +185,13 @@ export function buildThinkingRequestProfile(options: {
 
   if (!enabled) {
     if (isNonOOpenAIGpt5Model(options.modelId)) {
-      // gpt-5.4+ and gpt-5.5+ reject reasoning_effort with function tools in
-      // /v1/chat/completions and require /v1/responses instead.
-      // Skipping 'none' is semantically safe — it means "don't think" and omitting
-      // the param achieves the same outcome without triggering a 400 error.
-      if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
+      const id = normalizeModelId(options.modelId);
+      if (id.startsWith('gpt-5.6')) {
+        // GPT-5.6 defaults reasoning ON — must explicitly set 'none' even with tools.
+        // Omitting the param is NOT safe for this family (unlike gpt-5.4/5.5).
+        requestParams.reasoning_effort = 'none';
+      } else if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
+        // gpt-5.4/5.5: 'none' rejected with tools — only set when tools absent
         requestParams.reasoning_effort = 'none';
       }
     }
@@ -216,12 +219,12 @@ export function buildThinkingRequestProfile(options: {
     streamFields.add('thinking');
     streamFields.add('reasoning_content');
   } else if (isReasoningEffortModel(options.modelId)) {
-    // gpt-5.4+ and gpt-5.5+ reject reasoning_effort with function tools in
-    // /v1/chat/completions and require /v1/responses instead. Preserve the param
-    // so the fallback system can switch to a model that supports thinking+tools
-    // rather than silently degrading.
-    if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
-      const id = normalizeModelId(options.modelId);
+    const id = normalizeModelId(options.modelId);
+    if (id.startsWith('gpt-5.6') && options.toolsEnabled) {
+      // GPT-5.6: tools + reasoning incompatible on /v1/chat/completions.
+      // Must explicitly set 'none' — omitting the param still triggers default reasoning.
+      requestParams.reasoning_effort = 'none';
+    } else if (!(options.toolsEnabled && isGpt5ModelRejectingReasoningWithTools(options.modelId))) {
       // GPT-5.6 Sol supports the new 'max' reasoning effort; use 'high' for Terra/Luna and other families.
       requestParams.reasoning_effort = (id === 'gpt-5.6' || id.startsWith('gpt-5.6-sol')) ? 'max' : 'high';
     }
