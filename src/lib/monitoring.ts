@@ -595,20 +595,20 @@ export async function getRecentActivityForCategories(categoryIds: number[], limi
       title: t.title,
       userEmail: t.userEmail,
       messageCount: Number(t.messageCount) || 0,
-      createdAt: t.createdAt,
+      createdAt: t.createdAt ?? '',
     })),
     recentDocuments: recentDocuments.map(d => ({
       id: d.id,
       filename: d.filename,
       uploadedBy: d.uploadedBy,
       status: d.status,
-      createdAt: d.createdAt,
+      createdAt: d.createdAt ?? '',
     })),
     recentUsers: recentUsers.map(u => ({
       id: u.id,
       email: u.email,
       role: u.role,
-      createdAt: u.createdAt,
+      createdAt: u.createdAt ?? '',
     })),
   };
 }
