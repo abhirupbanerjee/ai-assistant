@@ -961,6 +961,7 @@ export interface LoadTestResultsTable {
 }
 
 export type LoadTestResult = Selectable<LoadTestResultsTable>;
+export type LoadTestResults = LoadTestResult;
 export type NewLoadTestResult = Insertable<LoadTestResultsTable>;
 
 // ============ Reindex Jobs ============

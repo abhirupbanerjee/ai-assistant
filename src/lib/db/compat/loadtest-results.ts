@@ -6,7 +6,7 @@
  */
 
 import { getDb } from '../kysely';
-import type { LoadTestResult, NewLoadTestResult } from '../db-types';
+import type { LoadTestResults as LoadTestResult, NewLoadTestResult } from '../db-types';
 
 /**
  * Insert a new load test result
