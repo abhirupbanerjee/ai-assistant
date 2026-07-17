@@ -21,6 +21,7 @@ import { codeAnalysisTool } from './tools/sonarcloud';
 import { loadTestingTool } from './tools/loadtest';
 import { fileToHtmlTool } from './tools/file-to-html';
 import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
+import { kbSummaryTool } from './tools/kb-summary';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -178,6 +179,10 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   share_thread: shareThreadTool,
   send_email: sendEmailTool,
   compliance_checker: complianceCheckerTool,
+
+  // ── Knowledge Base ──
+  kb_summary: { ...kbSummaryTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true } },
 };
 
 /**

@@ -2971,6 +2971,50 @@ await sendShareNotification({
 
 ---
 
+## KB Summary Tool
+
+### Purpose
+
+Provides a summary overview of all documents in the knowledge base for the current thread's categories. The LLM calls this tool when the user asks about KB contents — no regex-based intent detection needed.
+
+### How It Works
+
+1. User asks "what documents do you have?" or "summarise the KB" (any phrasing)
+2. LLM recognizes the intent and calls `kb_summary`
+3. Tool fetches pre-computed per-document summaries from the `document_summaries` table
+4. For ≤3 documents: returns individual summaries directly
+5. For >3 documents: synthesizes a consolidated category overview via LLM
+6. LLM incorporates the overview into its response
+
+### Prerequisites
+
+- Documents must have summaries generated (Admin > Documents > Summarise All)
+- New documents get summaries automatically on upload
+- Thread must have categories selected
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enabled | `true` | Toggle in Admin > Tools |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/tools/kb-summary.ts` | Tool definition and execution |
+| `src/lib/document-summarizer.ts` | Per-document summary generation + category synthesis |
+| `src/lib/db/compat/document-summaries.ts` | Database CRUD for `document_summaries` table |
+
+### Admin API
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/admin/document-summaries/generate` | POST | Generate summaries (`{ documentId }`, `{ categoryId }`, or `{ all: true }`) |
+| `/api/admin/document-summaries` | GET | Get summary statistics and doc IDs with summaries |
+
+---
+
 ## Compliance Checker Tool
 
 ### Purpose

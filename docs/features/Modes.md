@@ -214,7 +214,7 @@ User Request
 - **Tool result truncation**: structured JSON-aware truncation at **4000 characters** to prevent context bloat
 - **Chain-of-thought preservation**: captures thinking/reasoning content from thinking-capable models, truncates to **2000 characters** before reinjection
 - **Tool call deduplication**: hash-based cache prevents redundant identical tool calls within a single subagent loop
-- **Tool safety classification**: `subagentSafe` flag on all 21 tools — safe tools (read-only: `web_search`, `code_analysis`, etc.) run freely; unsafe tools (generative: `doc_gen`, `image_gen`, etc.) trigger HITL pause for approval
+- **Tool safety classification**: `subagentSafe` flag on all 22 tools — safe tools (read-only: `web_search`, `code_analysis`, `kb_summary`, etc.) run freely; unsafe tools (generative: `doc_gen`, `image_gen`, etc.) trigger HITL pause for approval
 - **Per-task timeouts**: type-specific execution limits (deep_analysis: 20 min, image/document/podcast: 15 min, chart/diagram/spreadsheet/research: 10 min)
 - **Retry with exponential backoff**: recoverable API errors (rate limits, timeouts) transition to `pending` with `retry_after`; fatal errors skip retry
 - Code generation for dynamic tasks (temperature: 0.4, max tokens: 4096)

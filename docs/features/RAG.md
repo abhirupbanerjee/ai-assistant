@@ -215,7 +215,7 @@ When the LLM decides to invoke a tool:
 3. Tool result injected back into conversation
 4. LLM generates final response incorporating tool output
 
-**22 built-in tools:** Web search, document generation (PDF, DOCX, HTML, PPTX, XLSX), chart/diagram generation, image generation, translation, and more.
+**23 built-in tools:** Web search, document generation (PDF, DOCX, HTML, PPTX, XLSX), chart/diagram generation, image generation, KB summary, translation, and more.
 
 ---
 
