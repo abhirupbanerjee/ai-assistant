@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         const {
           message,
           threadId,
+          activeCategoryId,
           mode = 'normal',
           webSearchEnabled = true,
           targetLanguage = 'en',
@@ -195,11 +196,12 @@ export async function POST(request: NextRequest) {
           const conversationHistory = await getMessages(user.id, threadId, 50);
           const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
           const categoryIds = thread.categories?.map(c => c.id) || [];
+          const effectiveCategoryId = activeCategoryId ?? categoryIds[0] ?? null;
 
           // Get memory and summary context
           let memoryContext = '';
           if (memorySettings.enabled && dbUser) {
-            memoryContext = await getMemoryContext(dbUser.id, categoryIds, message);
+            memoryContext = await getMemoryContext(dbUser.id, effectiveCategoryId, message);
           }
 
           let summaryContext = '';
@@ -276,7 +278,7 @@ export async function POST(request: NextRequest) {
                     role: m.role,
                     content: m.content,
                   }));
-                  processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(() => {});
+                  processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages).catch(() => {});
                 }
 
                 // Send completion
@@ -298,6 +300,7 @@ export async function POST(request: NextRequest) {
         const conversationHistory = await getMessages(user.id, threadId, 50);
         const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
         const categoryIds = thread.categories?.map(c => c.id) || [];
+        const effectiveCategoryId = activeCategoryId ?? categoryIds[0] ?? null;
 
         // Compute estimated token count for Auto model selection context-length filtering.
         // Uses message + conversation history (the dominant token consumers).
@@ -346,7 +349,7 @@ export async function POST(request: NextRequest) {
         // Get memory and summary context
         let memoryContext = '';
         if (memorySettings.enabled && dbUser) {
-          memoryContext = await getMemoryContext(dbUser.id, categoryIds, message);
+          memoryContext = await getMemoryContext(dbUser.id, effectiveCategoryId, message);
         }
 
         let summaryContext = '';
@@ -902,7 +905,7 @@ export async function POST(request: NextRequest) {
                 role: m.role,
                 content: m.content,
               }));
-              processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(() => {});
+              processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages).catch(() => {});
             }
 
             // Log token usage for dashboard

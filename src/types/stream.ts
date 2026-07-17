@@ -393,6 +393,8 @@ export interface ChatPreferences {
   showCitationTrajectory: boolean;
   thinkingEnabled: boolean;
   toolHint?: string; // Transient slash command hint for this message only
+  /** Scope memory retrieval/extraction to a single category */
+  activeCategoryId?: number;
 }
 
 /**
@@ -425,6 +427,8 @@ export interface DisplaySettings {
 export interface StreamChatRequest {
   message: string;
   threadId: string;
+  /** Scope memory retrieval/extraction to a single category */
+  activeCategoryId?: number;
   mode?: 'normal' | 'autonomous'; // Optional mode selection (defaults to 'normal')
   modelConfigPreset?: string; // For autonomous mode: 'default', 'quality', 'economy', 'compliance'
   // Chat preferences

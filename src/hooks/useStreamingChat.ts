@@ -1003,6 +1003,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         body: JSON.stringify({
           message,
           threadId,
+          activeCategoryId: preferences?.activeCategoryId,
           mode,
           // Include chat preferences if provided
           webSearchEnabled: preferences?.webSearchEnabled,

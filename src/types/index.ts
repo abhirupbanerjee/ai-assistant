@@ -244,6 +244,8 @@ export interface ChunkMetadata {
 export interface ChatRequest {
   message: string;
   threadId: string;
+  /** Scope memory retrieval/extraction to a single category */
+  activeCategoryId?: number;
 }
 
 export interface TranscribeRequest {

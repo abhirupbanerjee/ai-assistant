@@ -537,7 +537,7 @@ Use this context to provide more personalized and relevant responses.
  */
 export async function getMemoryContext(
   userId: number,
-  categoryIds: number[] = [],
+  activeCategoryId: number | null = null,
   query?: string
 ): Promise<string> {
   const settings = await getMemorySettings();
@@ -564,31 +564,40 @@ export async function getMemoryContext(
         if (result.documents.length > 0) {
           console.log(`[Memory] Semantic retrieval returned ${result.documents.length} relevant facts for user ${userId}`);
 
-          // Apply temporal filtering to semantic results if factMaxAgeDays is set
-          if (settings.factMaxAgeDays > 0 && result.metadatas.length > 0) {
-            const filteredDocs: string[] = [];
-            for (let i = 0; i < result.documents.length; i++) {
-              const metadata = result.metadatas[i] as unknown as Record<string, unknown> | undefined;
-              const timestamp = metadata?.timestamp as string | undefined;
-              if (!timestamp) {
-                // Legacy facts without timestamp always included
-                filteredDocs.push(result.documents[i]);
-              } else {
-                const cutoff = new Date();
-                cutoff.setDate(cutoff.getDate() - settings.factMaxAgeDays);
-                if (new Date(timestamp) >= cutoff) {
-                  filteredDocs.push(result.documents[i]);
-                }
+          // Apply category + age post-filtering
+          // Qdrant does not support OR-filter natively, so we post-filter in JS
+          const filteredDocs: string[] = [];
+          for (let i = 0; i < result.documents.length; i++) {
+            const metadata = result.metadatas[i] as unknown as Record<string, unknown> | undefined;
+
+            // Category isolation: keep global facts (no categoryId) + active category facts
+            if (activeCategoryId !== null) {
+              const factCategoryId = metadata?.categoryId as string | undefined;
+              if (factCategoryId !== undefined && factCategoryId !== String(activeCategoryId)) {
+                continue; // Skip facts from other categories
               }
             }
-            if (filteredDocs.length > 0) {
-              return formatMemoryForPrompt(filteredDocs);
+
+            // Temporal filtering
+            if (settings.factMaxAgeDays > 0) {
+              const timestamp = metadata?.timestamp as string | undefined;
+              if (timestamp) {
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - settings.factMaxAgeDays);
+                if (new Date(timestamp) < cutoff) {
+                  continue; // Skip expired facts
+                }
+              }
+              // Legacy facts without timestamp always included
             }
-            // If all results filtered out, fall through to SQLite fallback
-            console.log(`[Memory] All ${result.documents.length} semantic results filtered by age, falling back to SQLite`);
-          } else {
-            return formatMemoryForPrompt(result.documents);
+
+            filteredDocs.push(result.documents[i]);
           }
+          if (filteredDocs.length > 0) {
+            return formatMemoryForPrompt(filteredDocs);
+          }
+          // If all results filtered out, fall through to SQLite fallback
+          console.log(`[Memory] All ${result.documents.length} semantic results filtered out, falling back to SQLite`);
         }
       }
     } catch (error) {
@@ -606,9 +615,9 @@ export async function getMemoryContext(
     allFacts.push(...globalMemory.facts);
   }
 
-  // Get category-specific memories
-  for (const categoryId of categoryIds) {
-    const categoryMemory = await getMemoryForUser(userId, categoryId);
+  // Get category-specific memory (only the active category)
+  if (activeCategoryId !== null) {
+    const categoryMemory = await getMemoryForUser(userId, activeCategoryId);
     if (categoryMemory) {
       allFacts.push(...categoryMemory.facts);
     }

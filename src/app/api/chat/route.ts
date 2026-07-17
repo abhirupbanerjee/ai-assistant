@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json() as ChatRequest;
-    const { message, threadId } = body;
+    const { message, threadId, activeCategoryId } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json<ApiError>(
@@ -100,11 +100,12 @@ export async function POST(request: NextRequest) {
 
     // Get category IDs for memory context
     const categoryIds = thread.categories?.map(c => c.id) || [];
+    const effectiveCategoryId = activeCategoryId ?? categoryIds[0] ?? null;
 
     // Get memory context if enabled
     let memoryContext = '';
     if (memorySettings.enabled && dbUser) {
-      memoryContext = await getMemoryContext(dbUser.id, categoryIds, message);
+      memoryContext = await getMemoryContext(dbUser.id, effectiveCategoryId, message);
     }
 
     // Get thread summary context if available
@@ -265,7 +266,7 @@ export async function POST(request: NextRequest) {
         role: m.role,
         content: m.content,
       }));
-      processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(err => {
+      processConversationForMemory(dbUser.id, effectiveCategoryId, recentMessages).catch(err => {
         console.error('[Chat API] Background memory extraction failed:', err);
       });
     }

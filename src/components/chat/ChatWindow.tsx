@@ -779,7 +779,11 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     setLoading(true);
 
     // Use provided preferences or fall back to current state
-    const prefsToUse = preferences || chatPreferences;
+    // Include activeCategoryId derived from the thread's first category for memory isolation
+    const prefsToUse = {
+      ...(preferences || chatPreferences),
+      activeCategoryId: activeThread?.categories?.[0]?.id,
+    };
     try {
       await sendStreamingMessage(content, currentThreadId, mode, prefsToUse);
     } finally {
