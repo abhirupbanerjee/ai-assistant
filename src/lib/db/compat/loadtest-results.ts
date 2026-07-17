@@ -6,10 +6,14 @@
  */
 
 import { getDb } from '../kysely';
+import type { Insertable } from 'kysely';
 import type {
   LoadTestResults as LoadTestResult,
-  NewLoadTestResult,
+  LoadTestResultsTable,
 } from '../db-types';
+
+/** Insertable shape derived from the Kysely table type */
+type NewLoadTestResult = Insertable<LoadTestResultsTable>;
 
 /**
  * Insert a new load test result
