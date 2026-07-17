@@ -98,9 +98,11 @@ export const kbSummaryTool: ToolDefinition = {
       name: 'kb_summary',
       description:
         'Get a summary overview of all documents in the knowledge base for the current categories. ' +
-        'Call this when the user asks what documents are available, wants a summary of the knowledge base, ' +
+        'IMPORTANT: Call this when the user asks what documents are available, wants a summary or overview of the knowledge base (KB), ' +
         'asks about KB contents, or wants to know what information is in the system. ' +
-        'This returns pre-computed summaries of each document and a consolidated overview.',
+        'This tool uses pre-computed document summaries stored separately from the search index — ' +
+        'call it EVEN IF the knowledge base search context appears empty or returns no results. ' +
+        'The search context only matches specific queries; this tool provides a complete inventory of all documents.',
       parameters: {
         type: 'object',
         properties: {},

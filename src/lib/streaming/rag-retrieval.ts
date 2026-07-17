@@ -527,6 +527,10 @@ export async function performRAGRetrieval(
     systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
   }
 
+  // KB summary tool instruction: tell the LLM to use kb_summary when the user
+  // asks about KB contents, even if the search-based context is empty.
+  systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results.`;
+
   // Inject memory context into system prompt
   if (memoryContext?.trim()) {
     systemPrompt = `${systemPrompt}\n\n${memoryContext}`;
