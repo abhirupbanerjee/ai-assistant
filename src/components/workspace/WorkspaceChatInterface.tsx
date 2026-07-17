@@ -389,7 +389,18 @@ function MessageBubble({ message, primaryColor, showSources: showSourcesProp = t
                     key={idx}
                     className="text-xs bg-gray-50 p-2 rounded text-gray-600"
                   >
-                    <span className="font-medium">{source.documentName}</span>
+                    {source.url ? (
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 hover:underline"
+                      >
+                        {source.documentName.replace(/^\[WEB\]\s*/i, '')}
+                      </a>
+                    ) : (
+                      <span className="font-medium">{source.documentName}</span>
+                    )}
                     <span className="text-gray-400 ml-1">(Page {source.pageNumber})</span>
                   </div>
                 ))}

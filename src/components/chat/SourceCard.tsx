@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText } from 'lucide-react';
+import { FileText, ExternalLink, Globe } from 'lucide-react';
 import type { Source } from '@/types';
 
 interface SourceCardProps {
@@ -21,15 +21,38 @@ function getRelevanceLabel(score: number): string {
   return 'Low';
 }
 
+/** Strip [WEB] prefix for display and extract a clean display name */
+function getDisplayName(source: Source): string {
+  return source.documentName.replace(/^\[WEB\]\s*/i, '');
+}
+
 export default function SourceCard({ source }: SourceCardProps) {
   const relevancePercent = Math.round(source.score * 100);
+  const displayName = getDisplayName(source);
+  const isWebSource = !!source.url;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-3 text-sm">
       <div className="flex items-start justify-between gap-2 mb-1">
         <div className="flex items-center gap-2 text-blue-600 min-w-0 flex-1">
-          <FileText size={14} className="shrink-0" />
-          <span className="font-medium truncate">{source.documentName}</span>
+          {isWebSource ? (
+            <Globe size={14} className="shrink-0 text-green-500" />
+          ) : (
+            <FileText size={14} className="shrink-0" />
+          )}
+          {isWebSource ? (
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium truncate hover:underline flex items-center gap-1"
+            >
+              {displayName}
+              <ExternalLink size={12} className="shrink-0" />
+            </a>
+          ) : (
+            <span className="font-medium truncate">{displayName}</span>
+          )}
           {source.pageNumber > 0 && (
             <span className="text-gray-500 text-xs shrink-0">Page {source.pageNumber}</span>
           )}

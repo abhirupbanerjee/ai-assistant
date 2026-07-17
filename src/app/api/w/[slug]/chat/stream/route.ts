@@ -438,6 +438,7 @@ export async function POST(
                         pageNumber: 0,
                         chunkText: result.content?.substring(0, 200) || '',
                         score: result.score || 0,
+                        url: result.url,
                       });
                     }
                   }
@@ -474,6 +475,7 @@ export async function POST(
               page_number: s.pageNumber,
               chunk_text: s.chunkText,
               score: s.score,
+              url: s.url,
             }));
 
             await addMessage({

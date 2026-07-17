@@ -145,6 +145,8 @@ export interface WorkspaceMessageSource {
   page_number: number;
   chunk_text: string;
   score: number;
+  /** URL for web search sources; undefined for RAG/knowledge base sources */
+  url?: string;
 }
 
 // ============================================================================

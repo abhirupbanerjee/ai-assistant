@@ -198,6 +198,8 @@ export interface Source {
   readonly chunkText: string;
   readonly score: number;
   readonly retrievalMethod?: 'vector';
+  /** URL for web search sources; undefined for RAG/knowledge base sources */
+  readonly url?: string;
 }
 
 // ============ Document Types ============

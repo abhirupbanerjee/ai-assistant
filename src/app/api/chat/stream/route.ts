@@ -733,6 +733,7 @@ export async function POST(request: NextRequest) {
                         pageNumber: 0,
                         chunkText: result.content?.substring(0, 200) || '',
                         score: result.score || 0,
+                        url: result.url,
                       });
                       // Save web search trajectory entry
                       webTrajectoryEntries.push({

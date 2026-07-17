@@ -1386,6 +1386,7 @@ function extractWebSourcesFromHistory(
               pageNumber: 0, // N/A for web results
               chunkText: result.content?.substring(0, CHUNK_PREVIEW_LENGTH) || '',
               score: result.score || 0,
+              url: result.url,
             });
           }
         }
