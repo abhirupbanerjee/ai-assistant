@@ -3,17 +3,20 @@
  *
  * Stores and retrieves k6 Cloud load test results.
  * Uses Kysely query builder for PostgreSQL.
+ *
+ * IMPORTANT: Types are derived from DB['load_test_results'] rather than
+ * importing named exports (e.g. LoadTestResultsTable) because `npm run db:types`
+ * regenerates db-types.ts from scratch via kysely-codegen, which can change
+ * interface names and wipes convenience aliases.  Using indexed access on DB
+ * is immune to regeneration.
  */
 
 import { getDb } from '../kysely';
-import type { Insertable } from 'kysely';
-import type {
-  LoadTestResults as LoadTestResult,
-  LoadTestResultsTable,
-} from '../db-types';
+import type { Selectable, Insertable } from 'kysely';
+import type { DB } from '../db-types';
 
-/** Insertable shape derived from the Kysely table type */
-type NewLoadTestResult = Insertable<LoadTestResultsTable>;
+type LoadTestResult = Selectable<DB['load_test_results']>;
+type NewLoadTestResult = Insertable<DB['load_test_results']>;
 
 /**
  * Insert a new load test result
