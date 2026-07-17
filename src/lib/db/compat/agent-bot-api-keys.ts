@@ -336,7 +336,7 @@ export async function checkRateLimit(apiKeyId: string): Promise<RateLimitCheckRe
     .where('date', '=', today)
     .executeTakeFirst();
 
-  const requestsThisMinute = usage.request_count;
+  const requestsThisMinute = usage?.request_count ?? 0;
   const requestsToday = dailyUsage?.total || 0;
 
   // Calculate reset times
