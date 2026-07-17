@@ -223,7 +223,7 @@ interface DbToolRoutingRow {
   rule_type: string;
   patterns: string;
   force_mode: string;
-  priority: number;
+  priority: number | null;
   category_ids: string | null;
   is_active: number | boolean;
   created_at: string | Date;
@@ -240,7 +240,7 @@ function mapDbToRoutingRule(row: DbToolRoutingRow): ToolRoutingRule {
     ruleType: row.rule_type as 'keyword' | 'regex',
     patterns: typeof row.patterns === 'string' ? JSON.parse(row.patterns) : row.patterns,
     forceMode: row.force_mode as 'required' | 'preferred',
-    priority: row.priority,
+    priority: row.priority ?? 0,
     categoryIds: row.category_ids
       ? typeof row.category_ids === 'string'
         ? JSON.parse(row.category_ids)
