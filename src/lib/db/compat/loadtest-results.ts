@@ -32,7 +32,7 @@ export async function insertLoadTestResult(
     .values(result)
     .returningAll()
     .executeTakeFirstOrThrow();
-  return inserted;
+  return inserted as LoadTestResult;
 }
 
 /**
