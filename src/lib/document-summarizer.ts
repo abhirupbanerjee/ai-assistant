@@ -15,13 +15,80 @@ import {
   upsertDocumentSummary,
   type DocumentSummaryWithFilename,
 } from './db/compat/document-summaries';
-import { getDocumentWithCategories } from './db/compat/documents';
+import { getDocumentWithCategories, type DocumentWithCategories } from './db/compat/documents';
+import { retrieveFullKbDocumentChunks } from './document-detection';
 import { ragLogger as logger } from './logger';
 
 /**
+ * Load the full text of a document for summarisation.
+ *
+ * PRIMARY PATH — Qdrant chunks: the document was already extracted during
+ * ingestion (text → chunks → embed → Qdrant). We reassemble the chunk texts
+ * in their original order (chunkIndex then pageNumber, see
+ * `retrieveFullKbDocumentChunks`). This avoids re-paying for Azure DI on
+ * every summary run and removes the dependency on the source file being on
+ * disk.
+ *
+ * FALLBACK PATH — disk + extractText: used when no chunks are found in
+ * Qdrant (e.g. the document was ingested before reliable chunking, or chunks
+ * were purged) but the original file is still present. Preserves the
+ * pre-fix behaviour for those edge cases.
+ *
+ * @returns `{ text, source }` where source is 'qdrant' | 'disk' | 'none'.
+ *   'none' means neither chunks nor a readable file were available.
+ */
+async function loadDocumentText(
+  doc: DocumentWithCategories
+): Promise<{ text: string; source: 'qdrant' | 'disk' | 'none'; chunkCount?: number }> {
+  // PRIMARY: reassemble text from Qdrant chunks (already-extracted text)
+  const categorySlugs = doc.categories.map(c => c.slug);
+  // retrieveFullKbDocumentChunks expects a DbDocument (with is_global), while
+  // DocumentWithCategories carries isGlobal instead. Reconstruct the DbDocument
+  // shape — only filename is actually read by the chunk fetcher.
+  const docForChunks = {
+    ...doc,
+    is_global: doc.isGlobal ? 1 : 0,
+  };
+  try {
+    const chunks = await retrieveFullKbDocumentChunks(docForChunks, categorySlugs);
+    if (chunks.length > 0) {
+      const text = chunks
+        .map(c => c.text)
+        .filter(t => typeof t === 'string' && t.length > 0)
+        .join('\n\n');
+      if (text.trim()) {
+        return { text, source: 'qdrant', chunkCount: chunks.length };
+      }
+    }
+    logger.debug('No usable chunks found in Qdrant, falling back to disk', {
+      docId: doc.id, filename: doc.filename, chunkCount: chunks.length,
+    });
+  } catch (err) {
+    logger.warn('Qdrant chunk fetch failed, falling back to disk', {
+      docId: doc.id, filename: doc.filename, error: String(err),
+    });
+  }
+
+  // FALLBACK: re-extract from the original file on disk
+  const globalDocsDir = getGlobalDocsDir();
+  const filePath = path.join(globalDocsDir, doc.filepath);
+  if (!(await fileExists(filePath))) {
+    return { text: '', source: 'none' };
+  }
+  const buffer = await readFileBuffer(filePath);
+  const mimeType = getMimeTypeFromFilename(doc.filename);
+  const { text } = await extractText(buffer, mimeType, doc.filename);
+  return { text, source: 'disk' };
+}
+
+/**
  * Generate and store a summary for a single document.
- * Reads the file from disk, extracts text, and produces a concise summary.
- * Reuses the summarization thresholds from the RAG constants for consistency.
+ *
+ * Loads the document text from Qdrant chunks first (the text already
+ * extracted during ingestion), falling back to re-extraction from the
+ * original file on disk only when chunks are unavailable. Produces a
+ * concise summary via the internal LLM completion API and upserts it into
+ * the document_summaries table.
  *
  * @param docId - Document ID to summarize
  * @returns The generated summary text, or null if generation failed
@@ -34,23 +101,18 @@ export async function generateDocumentSummary(docId: number): Promise<string | n
   }
 
   try {
-    // Read file from disk for coherent full-text summarization
-    const globalDocsDir = getGlobalDocsDir();
-    const filePath = path.join(globalDocsDir, doc.filepath);
+    const { text, source, chunkCount } = await loadDocumentText(doc);
 
-    if (!(await fileExists(filePath))) {
-      logger.warn('Document file missing, cannot generate summary', { docId, filename: doc.filename });
+    if (source === 'none' || !text.trim()) {
+      logger.warn('No text available for document — no chunks in Qdrant and file missing', {
+        docId, filename: doc.filename,
+      });
       return null;
     }
 
-    const buffer = await readFileBuffer(filePath);
-    const mimeType = getMimeTypeFromFilename(doc.filename);
-    const { text } = await extractText(buffer, mimeType, doc.filename);
-
-    if (!text.trim()) {
-      logger.warn('No text extracted from document, cannot generate summary', { docId, filename: doc.filename });
-      return null;
-    }
+    logger.debug('Document text loaded for summarisation', {
+      docId, filename: doc.filename, source, chunkCount, textLength: text.length,
+    });
 
     const llmSettings = await getLlmSettings();
     const model = llmSettings.model;
@@ -70,13 +132,24 @@ export async function generateDocumentSummary(docId: number): Promise<string | n
             'You are a precise document summariser. Produce a concise but comprehensive summary ' +
             'of the provided document. Include: the document type/purpose, key topics covered, ' +
             'main findings or conclusions, and any notable data points. Write in clear prose. ' +
-            'Keep the summary to 2-4 paragraphs. Do not add commentary or opinions.',
+            'Keep the summary to 2-4 paragraphs. Do not add commentary or opinions.\n\n' +
+            'The document content below is reassembled from retrieval chunks and may contain ' +
+            'artefacts: (1) duplicated passages where chunks overlap — treat these as a single ' +
+            'passage and do not repeat content; (2) lines like "[Document: <filename>]" which ' +
+            'are metadata markers — ignore them entirely and do not mention the filename beyond ' +
+            'the explicit request; (3) lines starting with "##" or similar which are section ' +
+            'headings extracted from the document — use these as structural cues to organise ' +
+            'your summary. Synthesise across the entire provided text; do not narrate it ' +
+            'sequentially.',
         },
         {
           role: 'user',
           content:
             `Summarise the document "${doc.filename}" for a knowledge base overview. ` +
-            `Focus on what this document contains and what questions it could help answer.\n\n` +
+            `Focus on what this document contains and what questions it could help answer. ` +
+            `Note: the content may include chunking artefacts (duplicated passages, metadata ` +
+            `markers, heading prefixes) as described in the system instructions — focus on the ` +
+            `substantive content only.\n\n` +
             `--- DOCUMENT CONTENT ---\n\n${textToSummarize}`,
         },
       ],

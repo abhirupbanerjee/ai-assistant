@@ -23,9 +23,24 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { documentId, categoryId, all } = body;
 
+    // Coerce string ids to numbers — the frontend GlobalDocument.id is a string
+    // (stringified by toGlobalDocument), but the DB primary key is SERIAL (numeric).
+    const numericDocumentId =
+      typeof documentId === 'number'
+        ? documentId
+        : typeof documentId === 'string' && documentId.trim() !== '' && !isNaN(Number(documentId))
+        ? Number(documentId)
+        : undefined;
+    const numericCategoryId =
+      typeof categoryId === 'number'
+        ? categoryId
+        : typeof categoryId === 'string' && categoryId.trim() !== '' && !isNaN(Number(categoryId))
+        ? Number(categoryId)
+        : undefined;
+
     // Mode 1: Generate summary for a single document
-    if (typeof documentId === 'number') {
-      const doc = await getDocumentById(documentId);
+    if (typeof numericDocumentId === 'number') {
+      const doc = await getDocumentById(numericDocumentId);
       if (!doc) {
         return NextResponse.json(
           { error: 'Document not found', code: 'NOT_FOUND' },
@@ -41,20 +56,20 @@ export async function POST(request: NextRequest) {
       }
 
       // Fire-and-forget: the generation is async and may take time
-      generateDocumentSummary(documentId).catch(err =>
-        console.error(`[Admin] Summary generation failed for doc ${documentId}:`, err)
+      generateDocumentSummary(numericDocumentId).catch(err =>
+        console.error(`[Admin] Summary generation failed for doc ${numericDocumentId}:`, err)
       );
 
       return NextResponse.json({
         success: true,
         message: `Summary generation started for "${doc.filename}"`,
-        documentId,
+        documentId: numericDocumentId,
       });
     }
 
     // Mode 2: Generate summaries for all documents in a category
-    if (typeof categoryId === 'number') {
-      const category = await getCategoryById(categoryId);
+    if (typeof numericCategoryId === 'number') {
+      const category = await getCategoryById(numericCategoryId);
       if (!category) {
         return NextResponse.json(
           { error: 'Category not found', code: 'NOT_FOUND' },
@@ -62,14 +77,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const docs = await getDocumentsByCategory(categoryId);
+      const docs = await getDocumentsByCategory(numericCategoryId);
       const readyDocs = docs.filter(d => d.status === 'ready');
 
       if (readyDocs.length === 0) {
         return NextResponse.json({
           success: true,
           message: `No ready documents found in category "${category.name}"`,
-          categoryId,
+          categoryId: numericCategoryId,
           docCount: 0,
         });
       }
@@ -84,7 +99,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `Summary generation started for ${readyDocs.length} document(s) in "${category.name}"`,
-        categoryId,
+        categoryId: numericCategoryId,
         docCount: readyDocs.length,
       });
     }

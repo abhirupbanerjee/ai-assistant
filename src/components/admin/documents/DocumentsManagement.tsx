@@ -1504,8 +1504,9 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                           <button
                             onClick={() => {
                               const id = doc.id;
+                              const numericId = Number(id);
                               setSummarising(prev => new Set(prev).add(id));
-                              fetch('/api/admin/document-summaries/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentId: id }) })
+                              fetch('/api/admin/document-summaries/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentId: numericId }) })
                                 .then(r => r.json())
                                 .then(data => addToast(data.success ? data.message : data.error || 'Failed', data.success ? 'success' : 'error'))
                                 .catch(() => addToast('Failed', 'error'))
