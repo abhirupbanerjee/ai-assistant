@@ -403,8 +403,24 @@ function isParallelToolCapable(modelId: string): boolean {
 
 function isForcedToolCapable(modelId: string): boolean {
   const id = modelId.toLowerCase().replace(/^ollama-/, '');
-  // Reasoning / tag models and Ollama generally don't support forced tool choice reliably
-  if (isThinkTagModel(modelId)) return false;
+  // Reasoning / tag models and Ollama generally don't support forced tool choice reliably.
+  // EXCEPTION: Kimi K3 and DeepSeek V4 Pro are newer reasoning models that DO support
+  // tool_choice: 'required' (per official Moonshot and DeepSeek API docs). Without this
+  // exemption, site_gen and other generative tools are never called by these models
+  // because tool_choice gets downgraded to 'auto', letting the LLM choose text/web_search
+  // over the intended tool.
+  if (isThinkTagModel(modelId)) {
+    // Normalize to last path segment for comparison (same logic as isThinkTagModel)
+    let lastSeg = id;
+    const slashIdx = lastSeg.lastIndexOf('/');
+    if (slashIdx !== -1) lastSeg = lastSeg.slice(slashIdx + 1);
+    lastSeg = lastSeg.replace(/:.*$/, '');
+    if (lastSeg.startsWith('kimi-k3') || lastSeg.endsWith('deepseek-v4-pro')) {
+      // These models support forced tool_choice — fall through to pattern check below
+    } else {
+      return false;
+    }
+  }
   if (id.startsWith('ollama-') || id.startsWith('ollama/') || id.startsWith('ollama-cloud/')) return false;
   // Claude adaptive-thinking models (e.g. claude-fable-5, opus-4.7+) reject forced
   // tool_choice — they decide their own reasoning/tool strategy. Exclude them even

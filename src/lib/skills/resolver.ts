@@ -107,10 +107,16 @@ export function determineToolChoice(
   }
 
   // No required matches - check for preferred
-  // preferred = strongly suggest but let the LLM decide (avoids force-mode issues with thinking models)
+  // preferred = force a tool call (LLM picks which tool), but don't pin to a specific function.
+  // The openai.ts isModelForcedToolCapable safeguard downgrades 'required' → 'auto' for models
+  // that can't handle forced tool_choice (older think-tag models: qwen3, qwq, gpt-oss, kimi-k2),
+  // preserving the original "avoid force-mode issues with thinking models" intent for those.
+  // Capable reasoning models (kimi-k3, deepseek-v4-pro) now have forced_tool_capable=1 so they
+  // receive 'required' and must call a tool — without this, they pick text/web_search over
+  // generative tools like site_gen even when the skill prompt steers them toward it.
   const preferredMatches = sorted.filter(m => m.forceMode === 'preferred');
   if (preferredMatches.length > 0) {
-    return 'auto';
+    return 'required';
   }
 
   // Only suggested matches: don't force

@@ -528,6 +528,27 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured think-tag/reasoning models are not marked forced-tool-capable');
 
+  // Migration: Kimi K3 and DeepSeek V4 Pro are newer reasoning models that DO support
+  // tool_choice: 'required' (per official Moonshot and DeepSeek API docs). The blanket
+  // think-tag backfill above incorrectly set forced_tool_capable=0 for them, which causes
+  // tool_choice:'required' to be downgraded to 'auto' at runtime (see openai.ts
+  // isModelForcedToolCapable guard). With 'auto', reasoning models pick text/web_search
+  // or hallucinate tool results instead of calling generative tools like site_gen.
+  // Re-enable forced tool support for these specific models. See model-discovery.isForcedToolCapable.
+  await sql`
+    UPDATE enabled_models
+    SET forced_tool_capable = 1
+    WHERE (
+        id IN ('moonshot/kimi-k3', 'kimi-k3', 'deepseek-v4-pro', 'deepseek/deepseek-v4-pro', 'fireworks/deepseek-v4-pro')
+        OR id LIKE 'moonshot/kimi-k3%'
+        OR id LIKE '%/kimi-k3'
+        OR id LIKE 'deepseek-v4-pro'
+        OR id LIKE '%/deepseek-v4-pro'
+      )
+      AND forced_tool_capable = 0
+  `.execute(database);
+  console.log('[Kysely] Re-enabled forced_tool_capable for Kimi K3 and DeepSeek V4 Pro (reasoning models that support tool_choice: required)');
+
   // Migration: Add input_cost_per_1m and output_cost_per_1m columns to enabled_models
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS input_cost_per_1m NUMERIC(12,8)`.execute(database);
   await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS output_cost_per_1m NUMERIC(12,8)`.execute(database);
@@ -605,7 +626,10 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     { id: 'fireworks/gpt-oss-20b', max_input_tokens: 131072, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.07, output_cost_per_1m: 0.30, forced_tool_capable: 0 },
     { id: 'fireworks/nemotron-3-ultra-nvfp4', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.60, output_cost_per_1m: 2.40, forced_tool_capable: 1 },
     { id: 'fireworks/deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28, forced_tool_capable: 1 },
-    { id: 'fireworks/deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 1.74, output_cost_per_1m: 3.48, forced_tool_capable: 0 },
+    // DeepSeek V4 Pro supports tool_choice: 'required' per official DeepSeek API docs.
+    // Without forced_tool_capable=1, tool_choice gets downgraded to 'auto', letting the
+    // reasoning model pick text/web_search over generative tools like site_gen.
+    { id: 'fireworks/deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 1.74, output_cost_per_1m: 3.48, forced_tool_capable: 1 },
   ];
   for (const m of fireworksServerlessSpecs) {
     await sql`
@@ -677,15 +701,20 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     { id: 'mistral-small-3.2', max_input_tokens: 128000, max_output_tokens: 3000, vision_capable: 0, input_cost_per_1m: 0.08, output_cost_per_1m: 0.20, forced_tool_capable: 1 },
     // DeepSeek V4 (native API)
     { id: 'deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28, forced_tool_capable: 1 },
-    { id: 'deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.435, output_cost_per_1m: 0.87, forced_tool_capable: 0 },
+    // DeepSeek V4 Pro supports tool_choice: 'required' per official DeepSeek API docs.
+    { id: 'deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, input_cost_per_1m: 0.435, output_cost_per_1m: 0.87, forced_tool_capable: 1 },
     // Moonshot/Kimi K2 (native API)
     { id: 'moonshot/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
     { id: 'moonshot/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 3.50, forced_tool_capable: 1 },
     // Moonshot/Kimi K3 (native API) — 1M context, 131K default max output (caps at 1M),
     // always-on reasoning (reasoning_effort: "max" only), $3 in / $15 out per 1M tokens.
     // Temperature/top_p/n are fixed — isTemperatureLockedModel handles via kimi-k3 prefix.
-    { id: 'moonshot/kimi-k3', max_input_tokens: 1048576, max_output_tokens: 131072, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
-    { id: 'kimi-k3', max_input_tokens: 1048576, max_output_tokens: 131072, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
+    // Kimi K3 supports tool_choice: 'required' per official Moonshot API docs.
+    // Without forced_tool_capable=1, tool_choice gets downgraded to 'auto', letting the
+    // reasoning model pick text/web_search over generative tools like site_gen, or worse,
+    // hallucinate tool results without actually calling the tool.
+    { id: 'moonshot/kimi-k3', max_input_tokens: 1048576, max_output_tokens: 131072, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 1 },
+    { id: 'kimi-k3', max_input_tokens: 1048576, max_output_tokens: 131072, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 1 },
     // Moonshot/Kimi K2 (dot-notation aliases)
     { id: 'moonshot/kimi-k2.5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 0 },
     { id: 'moonshot/kimi-k2.6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 2.50, forced_tool_capable: 0 },
