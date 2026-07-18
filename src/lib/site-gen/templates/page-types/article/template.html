@@ -1,0 +1,50 @@
+<!-- Article Page Template -->
+<article class="article-page" style="max-width: var(--content-width-narrow); margin: 0 auto; padding: var(--spacing-section) var(--spacing-md);">
+  <header class="article-header" style="margin-bottom: var(--spacing-xl);">
+    <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text); line-height: 1.2;">
+      {{page_title}}
+    </h1>
+    {{#author}}
+    <div class="article-meta" style="margin-top: var(--spacing-md); display: flex; gap: var(--spacing-md); align-items: center;">
+      <span style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted);">
+        By {{author}}
+      </span>
+      {{#date}}
+      <span style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted);">
+        {{date}}
+      </span>
+      {{/date}}
+    </div>
+    {{/author}}
+  </header>
+
+  {{#hero_image_url}}
+  <figure style="margin-bottom: var(--spacing-xl);">
+    <img src="{{hero_image_url}}" alt="{{page_title}}" style="width: 100%; border-radius: var(--border-radius-lg);" loading="lazy" />
+  </figure>
+  {{/hero_image_url}}
+
+  <div class="article-content" style="font-family: var(--font-body); font-size: var(--font-size-base); line-height: var(--line-height); color: var(--color-text);">
+    <p style="font-size: var(--font-size-h3); color: var(--color-text-muted); margin-bottom: var(--spacing-lg);">
+      {{content}}
+    </p>
+
+    {{#sections}}
+    <section style="margin-top: var(--spacing-xl);">
+      <h2 style="font-family: var(--font-heading); font-size: var(--font-size-h2); color: var(--color-text); margin-bottom: var(--spacing-md);">
+        {{heading}}
+      </h2>
+      <p style="color: var(--color-text);">{{body}}</p>
+      {{#image_url}}
+      <img src="{{image_url}}" alt="{{heading}}" style="width: 100%; border-radius: var(--border-radius); margin-top: var(--spacing-md);" loading="lazy" />
+      {{/image_url}}
+    </section>
+    {{/sections}}
+  </div>
+
+  <footer style="margin-top: var(--spacing-xl); padding-top: var(--spacing-lg); border-top: 1px solid var(--color-border);">
+    <p style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted);">
+      Published {{date}}
+    </p>
+  </footer>
+</article>

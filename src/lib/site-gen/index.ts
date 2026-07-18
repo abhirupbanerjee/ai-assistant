@@ -14,6 +14,8 @@ export { renderTemplate, loadTemplate, loadComponent, templateExists } from './r
 export { wrapPage } from './renderer/assembler';
 export type { PageInfo, AssemblyInput } from './renderer/assembler';
 
+export { buildFallbackPrompt, validateFallbackHtml, buildRetryPrompt } from './renderer/fallback';
+
 export { generateSampleData, getPlaceholderImage } from './data/generator';
 
 export { packageWebsite, getZipFilename } from './packager/zip';

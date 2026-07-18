@@ -45,6 +45,7 @@ Slash commands are **strong hints**, not forced directives. When a user invokes 
 | `/pdf` | — | `doc_gen` | PDF document | Formatted PDF report |
 | `/docx` | `doc`, `word` | `doc_gen` | Word document | Editable DOCX file |
 | `/html` | — | `html_gen` | HTML page | Interactive HTML page |
+| `/site` | `website`, `web` | `site_gen` | Website (zip) | Multi-page themed website |
 | `/slide` | `pptx` | `pptx_gen` | Presentation | PowerPoint presentation |
 | `/sheet` | `xlsx` | `xlsx_gen` | Spreadsheet | Excel spreadsheet |
 

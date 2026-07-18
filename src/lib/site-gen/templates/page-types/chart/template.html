@@ -1,0 +1,80 @@
+<!-- Chart Page Template -->
+<section class="chart-page" style="padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <header style="margin-bottom: var(--spacing-xl);">
+      <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+        {{page_title}}
+      </h1>
+      {{#page_description}}
+      <p style="font-family: var(--font-body); font-size: var(--font-size-base); color: var(--color-text-muted); margin-top: var(--spacing-sm);">
+        {{page_description}}
+      </p>
+      {{/page_description}}
+    </header>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: var(--spacing-lg);">
+      {{#charts}}
+      <div style="
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius-lg);
+        padding: var(--spacing-lg);
+      ">
+        <h3 style="font-family: var(--font-heading); font-size: var(--font-size-h3); color: var(--color-text); margin-bottom: var(--spacing-sm);">
+          {{title}}
+        </h3>
+        {{#description}}
+        <p style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted); margin-bottom: var(--spacing-md);">
+          {{description}}
+        </p>
+        {{/description}}
+
+        <!-- Bar chart visualization -->
+        {{#bars}}
+        <div style="display: flex; align-items: flex-end; gap: var(--spacing-sm); height: 250px; padding-top: var(--spacing-md);">
+          {{#bars}}
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--spacing-xs);">
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-text-muted);">{{value}}</span>
+            <div style="
+              width: 100%;
+              height: {{height}}%;
+              background: var(--color-primary);
+              border-radius: var(--border-radius) var(--border-radius) 0 0;
+              transition: opacity var(--transition-fast);
+            " onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'"></div>
+            <span style="font-family: var(--font-body); font-size: 0.65rem; color: var(--color-text-muted); text-align: center;">{{label}}</span>
+          </div>
+          {{/bars}}
+        </div>
+        {{/bars}}
+
+        <!-- Pie/Donut placeholder -->
+        {{#segments}}
+        <div style="display: flex; align-items: center; gap: var(--spacing-lg);">
+          <div style="
+            width: 180px; height: 180px;
+            border-radius: 50%;
+            background: conic-gradient({{#segments}}var(--color-primary) {{start}}% {{end}}%, var(--color-secondary) {{start}}% {{end}}%{{^last}}, {{/last}}{{/segments}});
+            flex-shrink: 0;
+          "></div>
+          <div style="flex: 1;">
+            {{#segments}}
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-xs);">
+              <span style="width: 12px; height: 12px; background: var(--color-primary); border-radius: 2px; flex-shrink: 0;"></span>
+              <span style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text);">{{label}} ({{value}}%)</span>
+            </div>
+            {{/segments}}
+          </div>
+        </div>
+        {{/segments}}
+      </div>
+      {{/charts}}
+    </div>
+
+    {{^charts}}
+    <div style="text-align: center; padding: var(--spacing-xl); color: var(--color-text-muted);">
+      <p>Chart data will be rendered here.</p>
+    </div>
+    {{/charts}}
+  </div>
+</section>

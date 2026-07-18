@@ -1,0 +1,94 @@
+<!-- Diagram Page Template -->
+<section class="diagram-page" style="padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <header style="text-align: center; margin-bottom: var(--spacing-xl);">
+      <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+        {{page_title}}
+      </h1>
+      {{#page_description}}
+      <p style="font-family: var(--font-body); font-size: var(--font-size-base); color: var(--color-text-muted); margin-top: var(--spacing-sm);">
+        {{page_description}}
+      </p>
+      {{/page_description}}
+    </header>
+
+    <!-- Flowchart / Process Diagram -->
+    {{#flowchart}}
+    <div style="
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-lg);
+      padding: var(--spacing-xl);
+      overflow-x: auto;
+    ">
+      <div style="display: flex; align-items: center; justify-content: center; gap: var(--spacing-md); flex-wrap: wrap; min-width: min-content;">
+        {{#steps}}
+        <div style="display: flex; align-items: center; gap: var(--spacing-md);">
+          <div style="
+            background: var(--color-primary);
+            color: white;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-radius: var(--border-radius);
+            font-family: var(--font-body);
+            font-size: var(--font-size-small);
+            font-weight: 600;
+            text-align: center;
+            min-width: 120px;
+            white-space: nowrap;
+          ">{{label}}</div>
+          {{^last}}
+          <div style="
+            width: 40px;
+            height: 2px;
+            background: var(--color-border);
+            position: relative;
+          ">
+            <div style="
+              position: absolute;
+              right: -4px;
+              top: -4px;
+              width: 0; height: 0;
+              border-left: 8px solid var(--color-border);
+              border-top: 5px solid transparent;
+              border-bottom: 5px solid transparent;
+            "></div>
+          </div>
+          {{/last}}
+        </div>
+        {{/steps}}
+      </div>
+    </div>
+    {{/flowchart}}
+
+    <!-- Architecture / Block Diagram -->
+    {{#blocks}}
+    <div style="
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius-lg);
+      padding: var(--spacing-xl);
+    ">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md);">
+        {{#blocks}}
+        <div style="
+          border: 2px solid var(--color-primary);
+          border-radius: var(--border-radius);
+          padding: var(--spacing-lg);
+          text-align: center;
+        ">
+          <div style="
+            font-family: var(--font-heading);
+            font-size: var(--font-size-h3);
+            color: var(--color-primary);
+            margin-bottom: var(--spacing-xs);
+          ">{{title}}</div>
+          <p style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted);">
+            {{description}}
+          </p>
+        </div>
+        {{/blocks}}
+      </div>
+    </div>
+    {{/blocks}}
+  </div>
+</section>

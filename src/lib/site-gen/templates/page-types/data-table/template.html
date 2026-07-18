@@ -1,0 +1,74 @@
+<!-- Data Table Page Template -->
+<section class="data-table-page" style="padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <header style="margin-bottom: var(--spacing-lg); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-md);">
+      <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+        {{page_title}}
+      </h1>
+      <input type="search" placeholder="Search..." style="
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius);
+        background: var(--color-background);
+        color: var(--color-text);
+        min-width: 250px;
+      " />
+    </header>
+
+    <div style="overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--border-radius);">
+      <table style="
+        width: 100%;
+        border-collapse: collapse;
+        font-family: var(--font-body);
+        font-size: var(--font-size-small);
+      ">
+        <thead>
+          <tr style="background: var(--color-surface); border-bottom: 2px solid var(--color-border);">
+            {{#columns}}
+            <th style="
+              padding: var(--spacing-sm) var(--spacing-md);
+              text-align: left;
+              font-weight: 600;
+              color: var(--color-text);
+              white-space: nowrap;
+              cursor: {{sortable}} ? 'pointer' : 'default';
+            ">
+              {{label}}{{#sortable}} ↕{{/sortable}}
+            </th>
+            {{/columns}}
+          </tr>
+        </thead>
+        <tbody>
+          {{#rows}}
+          <tr style="border-bottom: 1px solid var(--color-border); transition: background var(--transition-fast);" onmouseover="this.style.background='var(--color-surface)'" onmouseout="this.style.background=''">
+            {{#columns}}
+            <td style="padding: var(--spacing-sm) var(--spacing-md); color: var(--color-text);">
+              {{.}}
+            </td>
+            {{/columns}}
+          </tr>
+          {{/rows}}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: var(--spacing-md);
+      font-family: var(--font-body);
+      font-size: var(--font-size-small);
+      color: var(--color-text-muted);
+    ">
+      <span>Showing {{rows.length}} entries</span>
+      <div style="display: flex; gap: var(--spacing-xs);">
+        <button style="padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius); background: var(--color-background); color: var(--color-text); cursor: pointer;">← Prev</button>
+        <button style="padding: var(--spacing-xs) var(--spacing-sm); background: var(--color-primary); color: white; border: none; border-radius: var(--border-radius);">1</button>
+        <button style="padding: var(--spacing-xs) var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--border-radius); background: var(--color-background); color: var(--color-text); cursor: pointer;">Next →</button>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,87 @@
+<!-- Settings Page Template -->
+<section class="settings-page" style="max-width: var(--content-width-narrow); margin: 0 auto; padding: var(--spacing-section) var(--spacing-md);">
+  <header style="margin-bottom: var(--spacing-xl);">
+    <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+      {{page_title}}
+    </h1>
+  </header>
+
+  <form onsubmit="event.preventDefault();">
+    {{#sections}}
+    <fieldset style="
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-lg);
+      margin-bottom: var(--spacing-lg);
+      background: var(--color-surface);
+    ">
+      <legend style="
+        font-family: var(--font-heading);
+        font-size: var(--font-size-h3);
+        color: var(--color-text);
+        padding: 0 var(--spacing-sm);
+      ">{{title}}</legend>
+
+      {{#groups}}
+      <div style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--spacing-md) 0;
+        border-bottom: 1px solid var(--color-border);
+      ">
+        <div>
+          <label style="font-family: var(--font-body); font-size: var(--font-size-base); font-weight: 500; color: var(--color-text);">
+            {{label}}
+          </label>
+          {{#description}}
+          <p style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted); margin-top: 2px;">
+            {{description}}
+          </p>
+          {{/description}}
+        </div>
+        <label style="position: relative; display: inline-block; width: 48px; height: 26px; flex-shrink: 0;">
+          <input type="checkbox" {{#enabled}}checked{{/enabled}} style="opacity: 0; width: 0; height: 0;" />
+          <span style="
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--color-border);
+            border-radius: 26px;
+            transition: background var(--transition-fast);
+          "></span>
+        </label>
+      </div>
+      {{/groups}}
+    </fieldset>
+    {{/sections}}
+
+    <div style="display: flex; gap: var(--spacing-md); justify-content: flex-end;">
+      <button type="button" style="
+        padding: var(--spacing-sm) var(--spacing-lg);
+        background: var(--color-surface);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        cursor: pointer;
+        transition: background var(--transition-fast);
+      ">Cancel</button>
+      <button type="submit" style="
+        padding: var(--spacing-sm) var(--spacing-lg);
+        background: var(--color-primary);
+        color: white;
+        border: none;
+        border-radius: var(--border-radius);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        font-weight: 600;
+        cursor: pointer;
+        transition: background var(--transition-fast);
+      " onmouseover="this.style.background='var(--color-primary-hover)'" onmouseout="this.style.background='var(--color-primary)'">
+        Save Changes
+      </button>
+    </div>
+  </form>
+</section>

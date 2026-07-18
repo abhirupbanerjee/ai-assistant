@@ -1,0 +1,87 @@
+<!-- List/Grid Page Template -->
+<section class="list-grid-page" style="padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <header style="margin-bottom: var(--spacing-xl);">
+      <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+        {{page_title}}
+      </h1>
+    </header>
+
+    {{#categories}}
+    <div class="filters" style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-lg);">
+      <button class="filter-btn active" style="
+        padding: var(--spacing-xs) var(--spacing-md);
+        background: var(--color-primary);
+        color: white;
+        border: none;
+        border-radius: var(--border-radius-pill);
+        font-family: var(--font-body);
+        font-size: var(--font-size-small);
+        cursor: pointer;
+        transition: background var(--transition-fast);
+      ">All</button>
+      {{#categories}}
+      <button class="filter-btn" style="
+        padding: var(--spacing-xs) var(--spacing-md);
+        background: var(--color-surface);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius-pill);
+        font-family: var(--font-body);
+        font-size: var(--font-size-small);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+      " onmouseover="this.style.background='var(--color-primary)'; this.style.color='white'; this.style.borderColor='var(--color-primary)'" onmouseout="this.style.background='var(--color-surface)'; this.style.color='var(--color-text)'; this.style.borderColor='var(--color-border)'">
+        {{.}}
+      </button>
+      {{/categories}}
+    </div>
+    {{/categories}}
+
+    <div class="card-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--grid-gap);">
+      {{#items}}
+      <article class="card" style="
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        transition: box-shadow var(--transition-base), transform var(--transition-base);
+      ">
+        {{#image_url}}
+        <img src="{{image_url}}" alt="{{title}}" style="width: 100%; height: 200px; object-fit: cover;" loading="lazy" />
+        {{/image_url}}
+        <div style="padding: var(--spacing-lg);">
+          {{#category}}
+          <span style="
+            display: inline-block;
+            padding: 2px var(--spacing-sm);
+            background: var(--color-primary);
+            color: white;
+            font-family: var(--font-body);
+            font-size: 0.75rem;
+            border-radius: var(--border-radius-pill);
+            margin-bottom: var(--spacing-sm);
+          ">{{category}}</span>
+          {{/category}}
+          <h3 style="font-family: var(--font-heading); font-size: var(--font-size-h3); color: var(--color-text); margin-bottom: var(--spacing-xs);">
+            {{title}}
+          </h3>
+          <p style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted); line-height: var(--line-height);">
+            {{description}}
+          </p>
+          {{#url}}
+          <a href="{{url}}" style="
+            display: inline-block;
+            margin-top: var(--spacing-sm);
+            color: var(--color-primary);
+            font-family: var(--font-body);
+            font-size: var(--font-size-small);
+            text-decoration: none;
+          ">Learn more →</a>
+          {{/url}}
+        </div>
+      </article>
+      {{/items}}
+    </div>
+  </div>
+</section>

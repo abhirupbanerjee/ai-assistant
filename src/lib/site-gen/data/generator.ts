@@ -247,6 +247,153 @@ export function generateSampleData(
         })),
       };
 
+    case 'dashboard':
+      return {
+        page_title: `${siteName} Dashboard`,
+        kpis: [
+          { label: 'Total Revenue', value: '$124,500', trend: '+12.5%', positive: true },
+          { label: 'Active Users', value: '12,340', trend: '+8.3%', positive: true },
+          { label: 'Conversion Rate', value: '3.2%', trend: '-0.5%', positive: false },
+          { label: 'Avg. Session', value: '4m 32s', trend: '+15%', positive: true },
+        ],
+        charts: [
+          {
+            title: 'Monthly Revenue',
+            bars: [
+              { label: 'Jan', height: 45, value: '$8.2k' },
+              { label: 'Feb', height: 52, value: '$9.5k' },
+              { label: 'Mar', height: 48, value: '$8.8k' },
+              { label: 'Apr', height: 65, value: '$11.9k' },
+              { label: 'May', height: 72, value: '$13.2k' },
+              { label: 'Jun', height: 85, value: '$15.6k' },
+            ],
+          },
+          {
+            title: 'User Growth',
+            bars: [
+              { label: 'Q1', height: 35, value: '3.2k' },
+              { label: 'Q2', height: 55, value: '5.1k' },
+              { label: 'Q3', height: 70, value: '6.5k' },
+              { label: 'Q4', height: 90, value: '8.4k' },
+            ],
+          },
+        ],
+        table: {
+          headers: ['Name', 'Status', 'Revenue', 'Growth'],
+          rows: [
+            { cells: ['Product A', 'Active', '$45,200', '+12%'] },
+            { cells: ['Product B', 'Active', '$32,100', '+8%'] },
+            { cells: ['Product C', 'Pending', '$18,900', '-3%'] },
+            { cells: ['Product D', 'Active', '$28,300', '+22%'] },
+          ],
+        },
+      };
+
+    case 'chart':
+      return {
+        page_title: `${siteName} Analytics`,
+        page_description: 'Visual data analysis and insights.',
+        charts: [
+          {
+            title: 'Revenue by Quarter',
+            description: 'Quarterly revenue breakdown across all product lines.',
+            bars: [
+              { label: 'Q1', height: 40, value: '$42k' },
+              { label: 'Q2', height: 55, value: '$58k' },
+              { label: 'Q3', height: 70, value: '$73k' },
+              { label: 'Q4', height: 90, value: '$95k' },
+            ],
+          },
+          {
+            title: 'Market Share Distribution',
+            description: 'Market share by product category.',
+            segments: [
+              { label: 'Enterprise', value: 45, start: 0, end: 45 },
+              { label: 'SMB', value: 30, start: 45, end: 75, last: false },
+              { label: 'Consumer', value: 25, start: 75, end: 100, last: true },
+            ],
+          },
+        ],
+      };
+
+    case 'diagram':
+      return {
+        page_title: `${siteName} Process`,
+        page_description: 'Visual process flow and architecture overview.',
+        flowchart: {
+          steps: [
+            { label: 'Input' },
+            { label: 'Process' },
+            { label: 'Validate' },
+            { label: 'Output', last: true },
+          ],
+        },
+        blocks: [
+          { title: 'Frontend', description: 'React-based SPA with component library' },
+          { title: 'API Gateway', description: 'REST and GraphQL endpoints' },
+          { title: 'Services', description: 'Microservices for business logic' },
+          { title: 'Database', description: 'PostgreSQL with Redis caching' },
+        ],
+      };
+
+    case 'playbook':
+      return {
+        page_title: `${siteName} Playbook`,
+        page_description: 'Interactive guide covering key processes, policies, and best practices.',
+        cards: [
+          {
+            title: 'Getting Started',
+            topics: [
+              { heading: 'Account Setup', content: 'Follow these steps to create and configure your account. Ensure all required fields are completed before proceeding.' },
+              { heading: 'Team Onboarding', content: 'Invite team members via email and assign appropriate roles and permissions based on their responsibilities.' },
+              { heading: 'First Project', content: 'Create your first project using the guided setup wizard, which walks through configuration options step by step.' },
+            ],
+          },
+          {
+            title: 'Best Practices',
+            topics: [
+              { heading: 'Naming Conventions', content: 'Use descriptive, consistent names for projects, files, and resources to maintain clarity across the team.' },
+              { heading: 'Code Review Process', content: 'All changes must pass automated checks and receive at least one peer approval before merging.' },
+            ],
+          },
+          {
+            title: 'Troubleshooting',
+            topics: [
+              { heading: 'Common Issues', content: 'Most issues can be resolved by clearing cache and restarting. Check the status page for known outages.' },
+              { heading: 'Support Escalation', content: 'If the issue persists, escalate to Tier 2 support with relevant logs and screenshots attached.' },
+            ],
+          },
+        ],
+      };
+
+    case 'settings':
+      return {
+        page_title: 'Settings',
+        sections: [
+          {
+            title: 'Profile',
+            groups: [
+              { label: 'Display Name', description: 'Your public display name visible to other users', enabled: true },
+              { label: 'Email Notifications', description: 'Receive email updates about account activity', enabled: true },
+            ],
+          },
+          {
+            title: 'Privacy',
+            groups: [
+              { label: 'Public Profile', description: 'Make your profile visible to other users', enabled: false },
+              { label: 'Activity Status', description: 'Show when you are online', enabled: true },
+            ],
+          },
+          {
+            title: 'Appearance',
+            groups: [
+              { label: 'Dark Mode', description: 'Use dark color theme for the interface', enabled: false },
+              { label: 'Compact View', description: 'Use a more compact layout with smaller spacing', enabled: false },
+            ],
+          },
+        ],
+      };
+
     default:
       return {
         page_title: `${siteName} - ${pageType}`,

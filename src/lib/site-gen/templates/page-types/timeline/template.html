@@ -1,0 +1,56 @@
+<!-- Timeline Page Template -->
+<section class="timeline-page" style="max-width: var(--content-width-narrow); margin: 0 auto; padding: var(--spacing-section) var(--spacing-md);">
+  <header style="text-align: center; margin-bottom: var(--spacing-xl);">
+    <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+      {{page_title}}
+    </h1>
+  </header>
+
+  <div class="timeline" style="position: relative; padding-left: var(--spacing-xl);">
+    <!-- Vertical line -->
+    <div style="
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--color-border);
+    "></div>
+
+    {{#events}}
+    <div class="timeline-event" style="
+      position: relative;
+      margin-bottom: var(--spacing-xl);
+      padding-left: var(--spacing-lg);
+    ">
+      <!-- Dot -->
+      <div style="
+        position: absolute;
+        left: calc(-1 * var(--spacing-xl) + 2px);
+        top: 4px;
+        width: 14px;
+        height: 14px;
+        background: var(--color-primary);
+        border: 3px solid var(--color-background);
+        border-radius: 50%;
+        z-index: 1;
+      "></div>
+
+      <time style="
+        font-family: var(--font-mono);
+        font-size: var(--font-size-small);
+        color: var(--color-primary);
+        font-weight: 600;
+      ">{{date}}</time>
+
+      <h3 style="font-family: var(--font-heading); font-size: var(--font-size-h3); color: var(--color-text); margin: var(--spacing-xs) 0;">
+        {{#icon}}{{icon}} {{/icon}}{{title}}
+      </h3>
+
+      <p style="font-family: var(--font-body); font-size: var(--font-size-base); color: var(--color-text-muted); line-height: var(--line-height);">
+        {{description}}
+      </p>
+    </div>
+    {{/events}}
+  </div>
+</section>

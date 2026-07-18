@@ -1,0 +1,74 @@
+<!-- FAQ Page Template -->
+<section class="faq-page" style="max-width: var(--content-width-narrow); margin: 0 auto; padding: var(--spacing-section) var(--spacing-md);">
+  <header style="text-align: center; margin-bottom: var(--spacing-xl);">
+    <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+      {{page_title}}
+    </h1>
+    <div style="margin-top: var(--spacing-md); max-width: 400px; margin-left: auto; margin-right: auto;">
+      <input type="search" placeholder="Search questions..." style="
+        width: 100%;
+        padding: var(--spacing-sm);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius);
+        background: var(--color-background);
+        color: var(--color-text);
+      " oninput="
+        const query = this.value.toLowerCase();
+        document.querySelectorAll('.faq-item').forEach(item => {
+          const text = item.textContent.toLowerCase();
+          item.style.display = text.includes(query) ? '' : 'none';
+        });
+      " />
+    </div>
+  </header>
+
+  {{#categories}}
+  <section style="margin-bottom: var(--spacing-xl);">
+    <h2 style="font-family: var(--font-heading); font-size: var(--font-size-h2); color: var(--color-text); margin-bottom: var(--spacing-md); border-bottom: 2px solid var(--color-primary); padding-bottom: var(--spacing-xs);">
+      {{category_name}}
+    </h2>
+
+    {{#questions}}
+    <details class="faq-item" style="
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      margin-bottom: var(--spacing-sm);
+      background: var(--color-surface);
+      overflow: hidden;
+    ">
+      <summary style="
+        padding: var(--spacing-md);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        font-weight: 500;
+        color: var(--color-text);
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      ">
+        {{question}}
+        <span style="font-size: 1.2em; color: var(--color-text-muted); transition: transform var(--transition-fast);">+</span>
+      </summary>
+      <div style="
+        padding: 0 var(--spacing-md) var(--spacing-md);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        line-height: var(--line-height);
+        color: var(--color-text-muted);
+      ">
+        {{answer}}
+      </div>
+    </details>
+    {{/questions}}
+  </section>
+  {{/categories}}
+
+  <style>
+    details[open] summary span { transform: rotate(45deg); }
+    details summary::-webkit-details-marker { display: none; }
+  </style>
+</section>

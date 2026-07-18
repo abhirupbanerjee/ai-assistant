@@ -1,0 +1,96 @@
+<!-- Playbook Page Template -->
+<section class="playbook-page" style="padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <!-- Hero search bar -->
+    <header style="
+      background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+      border-radius: var(--border-radius-lg);
+      padding: var(--spacing-xl);
+      text-align: center;
+      margin-bottom: var(--spacing-xl);
+    ">
+      <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: white; margin-bottom: var(--spacing-md);">
+        {{page_title}}
+      </h1>
+      {{#page_description}}
+      <p style="font-family: var(--font-body); font-size: var(--font-size-base); color: rgba(255,255,255,0.9); margin-bottom: var(--spacing-lg);">
+        {{page_description}}
+      </p>
+      {{/page_description}}
+      <input type="search" placeholder="Search topics..." style="
+        width: 100%;
+        max-width: 500px;
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-family: var(--font-body);
+        font-size: var(--font-size-base);
+        border: none;
+        border-radius: var(--border-radius-pill);
+        background: white;
+        color: var(--color-text);
+      " oninput="
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('.playbook-card').forEach(card => {
+          card.style.display = card.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+      " />
+    </header>
+
+    <!-- Playbook cards -->
+    {{#cards}}
+    <div class="playbook-card" style="
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      margin-bottom: var(--spacing-md);
+      overflow: hidden;
+    ">
+      <details style="cursor: pointer;">
+        <summary style="
+          padding: var(--spacing-lg);
+          font-family: var(--font-heading);
+          font-size: var(--font-size-h3);
+          color: var(--color-text);
+          list-style: none;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        ">
+          {{title}}
+          <span style="
+            width: 32px; height: 32px;
+            background: var(--color-primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: transform var(--transition-fast);
+            flex-shrink: 0;
+          ">+</span>
+        </summary>
+        <div style="padding: 0 var(--spacing-lg) var(--spacing-lg);">
+          {{#topics}}
+          <div style="
+            padding: var(--spacing-md) 0;
+            border-top: 1px solid var(--color-border);
+          ">
+            <h4 style="font-family: var(--font-heading); font-size: var(--font-size-base); color: var(--color-primary); margin-bottom: var(--spacing-xs);">
+              {{heading}}
+            </h4>
+            <p style="font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted); line-height: var(--line-height);">
+              {{content}}
+            </p>
+          </div>
+          {{/topics}}
+        </div>
+      </details>
+    </div>
+    {{/cards}}
+
+    <style>
+      details[open] > summary span { transform: rotate(45deg); }
+      details summary::-webkit-details-marker { display: none; }
+    </style>
+  </div>
+</section>

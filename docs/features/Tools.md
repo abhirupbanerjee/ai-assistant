@@ -28,15 +28,16 @@ This document describes the AI tools system that extends the bot's capabilities 
 20. [Preflight Clarification (Pre-response HITL)](#preflight-clarification-pre-response-hitl)
 21. [Diagram Generator Tool](#diagram-generator-tool)
 22. [HTML Generator Tool](#html-generator-tool)
-23. [File to HTML Tool](#file-to-html-tool)
-24. [Website Analysis Tool](#website-analysis-tool)
-25. [Code Quality Tool](#code-quality-tool)
-26. [Load Test Tool](#load-test-tool)
-27. [Tool Routing](#tool-routing)
-28. [Tool Configuration](#tool-configuration)
-29. [Category-Level Overrides](#category-level-overrides)
-30. [Creating a New Tool](#creating-a-new-tool)
-31. [API Reference](#api-reference)
+23. [Website Generator Tool](#website-generator-tool)
+24. [File to HTML Tool](#file-to-html-tool)
+25. [Website Analysis Tool](#website-analysis-tool)
+26. [Code Quality Tool](#code-quality-tool)
+27. [Load Test Tool](#load-test-tool)
+28. [Tool Routing](#tool-routing)
+29. [Tool Configuration](#tool-configuration)
+30. [Category-Level Overrides](#category-level-overrides)
+31. [Creating a New Tool](#creating-a-new-tool)
+32. [API Reference](#api-reference)
 
 ---
 
@@ -2691,6 +2692,156 @@ html_gen({
 })
 ```
 **Result:** Interactive playbook HTML page with accordion cards, search bar, and playbook branding.
+
+---
+
+## Website Generator Tool
+
+### Purpose
+
+Generates complete multi-page themed websites from user requirements using pre-built templates and W3C DTCG design tokens. Auto-selects from 10 purpose-based themes, plans appropriate pages, fills them with context-aware sample data, and packages everything into a downloadable zip file. Includes dark mode CSS from day one.
+
+**Tool name:** `site_gen` | **Category:** Autonomous | **Terminal:** Yes
+**Slash command:** `/site` (aliases: `site`, `website`, `web`)
+
+### Architecture
+
+```
+User Requirement → Theme Auto-Selection → Page Planning → Template Loading
+                                                              ↓ (if unavailable)
+                                                         LLM Fallback
+                                                              ↓
+                                                    Data Generation
+                                                              ↓
+                                                    Page Assembly (nav, footer, fonts)
+                                                              ↓
+                                                    Zip Packaging → Download
+```
+
+### Themes (10)
+
+The system auto-detects the best theme from keyword matches in the user's requirement. Users can also explicitly specify a theme.
+
+| Theme | Purpose | Fonts |
+|-------|---------|-------|
+| `portfolio` | Personal/creative showcase | Playfair Display + Inter |
+| `product` | SaaS/product marketing | Inter |
+| `company` | Corporate/business presence | Inter |
+| `blog` | Content publishing | Lora + Inter |
+| `documentation` | Technical docs & API references | Inter + Fira Code |
+| `dashboard` | Data/analytics interfaces | Inter + JetBrains Mono |
+| `store` | E-commerce & product catalogs | Inter |
+| `event` | Conference & meetup sites | Poppins + Inter |
+| `nonprofit` | NGO & charity sites | Merriweather + Inter |
+| `education` | Courses & LMS platforms | Inter + Fira Code |
+
+### Page Types (15)
+
+Each page type has a pre-built HTML template that uses CSS custom properties exclusively (`var(--color-primary)`, `var(--font-heading)`, etc.).
+
+| Page Type | Description |
+|-----------|-------------|
+| `landing` | Hero section with CTA, feature grid, testimonials |
+| `article` | Long-form content with prose, headings, images |
+| `form` | User input with validation, submit, success state |
+| `list-grid` | Card grid with category filters |
+| `detail` | Single item view with metadata and related items |
+| `gallery` | Masonry grid with filter buttons and overlays |
+| `faq` | Accordion cards with live search filter |
+| `timeline` | Vertical chronological axis with event dots |
+| `comparison` | Feature matrix table with verdict card |
+| `data-table` | Sortable table with search and pagination |
+| `dashboard` | KPI cards, CSS bar charts, data table |
+| `chart` | Bar and pie/donut visualizations with legends |
+| `diagram` | Flowchart steps and architecture block diagrams |
+| `playbook` | Hero search, accordion cards, topic rows |
+| `settings` | Toggle groups, fieldset sections, save/cancel |
+
+### Design Tokens (DTCG)
+
+All themes use W3C Design Tokens Community Group (DTCG) format. Tokens are authored as JSON and compiled to CSS custom properties via `npm run build:tokens`.
+
+**Token architecture (three-tier):**
+- **Primitive tier** — Raw values (e.g., `--color-blue-600: #2563eb`), never applied directly
+- **Semantic tier** — Purpose-based references (e.g., `--color-primary: var(--color-blue-600)`)
+- **Component tier** — Inherited via semantic re-pointing
+
+Each theme defines semantic tokens for: colors (11), fonts (3), spacing (6), layout (4), shadows (3), transitions (2), and motion (3).
+
+### Dark Mode
+
+Dark mode CSS overrides are generated for every theme from day one. The `[data-theme="dark"]` selector re-points semantic tokens to dark-appropriate primitives. A floating toggle button (`theme-toggle.js`) is available for v2 integration.
+
+### LLM Fallback
+
+When a page type is not available for the selected theme (✗ in the compatibility matrix), the system:
+1. Builds a prompt with full theme CSS tokens injected
+2. Asks the LLM to generate HTML using only `var(--*)` references
+3. Validates output: no hardcoded hex colors, ≥5 CSS variables, semantic HTML tags, no hardcoded fonts
+4. Retries up to 2 times with stricter prompts if validation fails
+
+### Compatibility Matrix
+
+| Page Type | Portfolio | Product | Company | Blog | Docs | Dashboard | Store | Event | Nonprofit | Education |
+|-----------|-----------|---------|---------|------|------|-----------|-------|-------|-----------|-----------|
+| landing | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| gallery | ✓ | ✗ | ◐ | ✗ | ✗ | ✗ | ✓ | ◐ | ✓ | ✗ |
+| article | ✓ | ◐ | ✓ | ✓ | ✓ | ✗ | ✗ | ◐ | ✓ | ✓ |
+| form | ✓ | ✓ | ✓ | ◐ | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ |
+| detail | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ |
+| faq | ✗ | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| timeline | ◐ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| comparison | ✗ | ✓ | ◐ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| data-table | ✗ | ◐ | ◐ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✓ |
+| dashboard | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ◐ |
+| chart | ✗ | ◐ | ◐ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ◐ |
+| diagram | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| playbook | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| settings | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| list-grid | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✓ |
+
+✓ = Full template | ◐ = Partial (LLM enhanced) | ✗ = LLM fallback
+
+### Usage Example
+
+```typescript
+// LLM calls site_gen with user requirement
+site_gen({
+  requirement: "Build a portfolio website for my photography business with a gallery and contact form",
+  site_name: "Jane Doe Photography"
+})
+```
+
+**Result:** Portfolio theme auto-selected. Pages generated: Home (landing), Gallery (gallery), Contact (form). Packaged as `jane-doe-photography.zip`.
+
+### Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `defaultTheme` | enum | `company` | Fallback theme for low-confidence auto-detection |
+| `maxPagesPerSite` | number | 10 | Maximum pages per generated website |
+| `maxRetriesFallback` | number | 2 | LLM fallback retry attempts |
+| `outputFormat` | enum | `zip` | Output format: zip or folder |
+| `includeReadme` | boolean | true | Generate README.md with project summary |
+| `darkMode.cssOverrides` | boolean | true | Generate dark mode CSS (always true) |
+| `darkMode.toggleUi` | boolean | false | Include dark mode toggle button (v2) |
+
+### Output Structure
+
+The generated zip contains:
+```
+{project-name}/
+├── index.html              # Home/landing page
+├── {page-slug}.html        # Additional pages
+├── assets/
+│   ├── css/
+│   │   └── global.css      # Theme tokens (light + dark blocks)
+│   └── js/
+│       └── theme-toggle.js # Dark mode toggle (v2)
+└── README.md               # Project summary
+```
+
+Each page includes: semantic HTML5 structure, theme CSS variables, Google Fonts via CDN with `display=swap`, shared navigation with mobile hamburger menu, shared footer, and cross-links between pages.
 
 ---
 
