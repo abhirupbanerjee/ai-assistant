@@ -109,7 +109,7 @@ export function useChatArtifacts({
     // These take priority as the authoritative source with expiration data.
     if (threadOutputs) {
       for (const output of threadOutputs) {
-        const docTypes = ['pdf', 'docx', 'xlsx', 'pptx', 'md', 'html'];
+        const docTypes = ['pdf', 'docx', 'xlsx', 'pptx', 'md', 'html', 'zip'];
         const imageTypes = ['image'];
         const podcastTypes = ['mp3', 'wav'];
 
