@@ -549,6 +549,23 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Updated Kimi K2.7 Code pricing to $0.95 in / $4.00 out per 1M tokens');
 
+  // Migration: Ensure Kimi K2.7 Code (highspeed, Moonshot native) pricing + caps match
+  // the official Moonshot rates — $1.90 in / $8.00 out per 1M tokens, 262K context,
+  // 16K max output, vision + tool capable, temperature fixed at 1 (thinking always on).
+  await sql`
+    UPDATE enabled_models
+    SET max_input_tokens = 262144,
+        max_output_tokens = 16384,
+        vision_capable = 1,
+        tool_capable = 1,
+        parallel_tool_capable = 1,
+        input_cost_per_1m = 1.90,
+        output_cost_per_1m = 8.00,
+        forced_tool_capable = 1
+    WHERE id = 'moonshot/kimi-k2.7-code-highspeed'
+  `.execute(database);
+  console.log('[Kysely] Updated Kimi K2.7 Code (highspeed) spec — $1.90 in / $8.00 out, 262K ctx, 16K out, vision+tools');
+
   // Migration: Ensure Fireworks DeepSeek V4 Pro / Flash pricing matches Fireworks serverless rates
   await sql`
     UPDATE enabled_models
@@ -664,12 +681,18 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
     // Moonshot/Kimi K2 (native API)
     { id: 'moonshot/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 1 },
     { id: 'moonshot/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.75, output_cost_per_1m: 3.50, forced_tool_capable: 1 },
-    // Moonshot/Kimi K3 (native API)
-    { id: 'moonshot/kimi-k3', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
-    { id: 'kimi-k3', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
+    // Moonshot/Kimi K3 (native API) — 1M context, 131K default max output (caps at 1M),
+    // always-on reasoning (reasoning_effort: "max" only), $3 in / $15 out per 1M tokens.
+    // Temperature/top_p/n are fixed — isTemperatureLockedModel handles via kimi-k3 prefix.
+    { id: 'moonshot/kimi-k3', max_input_tokens: 1048576, max_output_tokens: 131072, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
+    { id: 'kimi-k3', max_input_tokens: 1048576, max_output_tokens: 131072, vision_capable: 1, input_cost_per_1m: 3.00, output_cost_per_1m: 15.00, forced_tool_capable: 0 },
     // Moonshot/Kimi K2 (dot-notation aliases)
     { id: 'moonshot/kimi-k2.5', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 0, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00, forced_tool_capable: 0 },
     { id: 'moonshot/kimi-k2.6', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 2.50, forced_tool_capable: 0 },
+    // Moonshot/Kimi K2.7 Code (highspeed) — native API. Temperature is fixed at 1
+    // (Moonshot rejects any other value); thinking is always on (billed as output).
+    // Input $1.90 / Output $8.00 per 1M tokens. Vision + tool calling supported.
+    { id: 'moonshot/kimi-k2.7-code-highspeed', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, input_cost_per_1m: 1.90, output_cost_per_1m: 8.00, forced_tool_capable: 1 },
     // Mistral legacy aliases
     { id: 'mistral-large-latest', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, input_cost_per_1m: 0.50, output_cost_per_1m: 1.50, forced_tool_capable: 1 },
     { id: 'mistral-medium', max_input_tokens: 256000, max_output_tokens: 8000, vision_capable: 0, input_cost_per_1m: 0.40, output_cost_per_1m: 2.00, forced_tool_capable: 1 },

@@ -354,7 +354,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
   site_gen: {
     enabled: true,
     config: {
-      defaultTheme: 'company',
+      defaultTheme: 'auto',
       maxPagesPerSite: 10,
       maxRetriesFallback: 2,
       imagePlaceholderService: 'https://placehold.co',
@@ -364,10 +364,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       responsiveBreakpoints: [768, 1024],
       fontProvider: 'google-cdn',
       fontDisplayStrategy: 'swap',
-      darkMode: {
-        cssOverrides: true,
-        toggleUi: false,
-      },
+      darkMode: 'css-only',
     },
   },
   pptx_gen: {

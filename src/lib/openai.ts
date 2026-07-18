@@ -1151,6 +1151,15 @@ async function streamOneCompletionWithThinkingRetry(
           onThinkingChunk,
           interChunkTimeoutMsOverride,
         );
+      } else {
+        // Temperature correction produced no change — the model is likely
+        // temperature-locked but not yet recognized by isTemperatureLockedModel.
+        // Log so the gap can be fixed in llm-thinking.ts.
+        logger.warn('Temperature param error but getTemperatureForModel returned same value — possible gap in isTemperatureLockedModel', {
+          model: params.model,
+          temperature: currentTemp,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     throw error;

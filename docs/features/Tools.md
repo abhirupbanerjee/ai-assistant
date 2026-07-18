@@ -2770,7 +2770,7 @@ Each theme defines semantic tokens for: colors (11), fonts (3), spacing (6), lay
 
 ### Dark Mode
 
-Dark mode CSS overrides are generated for every theme from day one. The `[data-theme="dark"]` selector re-points semantic tokens to dark-appropriate primitives. A floating toggle button (`theme-toggle.js`) is available for v2 integration.
+Dark mode behavior is controlled by the `darkMode` admin setting (an enum: `off`, `css-only`, or `css-with-toggle`). When enabled, the `[data-theme="dark"]` selector re-points semantic tokens to dark-appropriate primitives. The `css-with-toggle` mode also injects a floating toggle button (`theme-toggle.js`) so end users can switch between light and dark at runtime. The legacy `{cssOverrides, toggleUi}` object shape is accepted for backward compatibility and auto-mapped to the closest enum value.
 
 ### LLM Fallback
 
@@ -2818,13 +2818,14 @@ site_gen({
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `defaultTheme` | enum | `company` | Fallback theme for low-confidence auto-detection |
+| `defaultTheme` | enum (`auto` + 10 themes) | `auto` | Fallback theme for low-confidence auto-detection. `auto` lets the LLM choose via the `theme` argument and keyword detection (no forced fallback). A concrete theme is used as the low-confidence fallback. |
 | `maxPagesPerSite` | number | 10 | Maximum pages per generated website |
 | `maxRetriesFallback` | number | 2 | LLM fallback retry attempts |
 | `outputFormat` | enum | `zip` | Output format: zip or folder |
 | `includeReadme` | boolean | true | Generate README.md with project summary |
-| `darkMode.cssOverrides` | boolean | true | Generate dark mode CSS (always true) |
-| `darkMode.toggleUi` | boolean | false | Include dark mode toggle button (v2) |
+| `darkMode` | enum (`off` \| `css-only` \| `css-with-toggle`) | `css-only` | Dark mode behavior: `off` disables dark styles, `css-only` generates dark CSS overrides, `css-with-toggle` adds a dark/light toggle UI |
+
+> **Auto mode:** When `defaultTheme = 'auto'`, the keyword-based selector keeps the highest-scoring theme even when no keywords match, trusting the LLM to override via the optional `theme` argument. Selecting a concrete theme (e.g. `company`) forces that theme as the low-confidence fallback.
 
 ### Output Structure
 

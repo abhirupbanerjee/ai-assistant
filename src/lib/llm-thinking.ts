@@ -48,10 +48,9 @@ export function isTemperatureLockedModel(modelId: string): boolean {
   const id = normalizeModelId(modelId);
   return (
     id.startsWith('gpt-5')
-    || id.startsWith('kimi-k2.6')
-    || id.startsWith('kimi-k2p6')
-    || id.startsWith('kimi-k2.5')
-    || id.startsWith('kimi-k2p5')
+    // All Kimi K2.x variants lock temperature to 1 (k2.5, k2.6, k2.7, k2p5, k2p6,
+    // k2p7-code, k2.7-code-highspeed, etc.). Moonshot rejects any temperature ≠ 1.
+    || id.startsWith('kimi-k2')
     || id.startsWith('kimi-k3')
     || id.startsWith('deepseek-v4-pro')
     || id.startsWith('deepseek-reasoner')

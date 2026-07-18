@@ -148,8 +148,8 @@ function planPages(
 export async function runPipeline(input: PipelineInput): Promise<PipelineOutput> {
   const { requirement, explicitTheme, explicitPages, siteName, config } = input;
 
-  // 1. Select theme
-  const selection = selectTheme(requirement, explicitTheme);
+  // 1. Select theme (forward admin-configured defaultTheme as the low-confidence fallback)
+  const selection = selectTheme(requirement, explicitTheme, config.defaultTheme);
   const themeId = selection.themeId;
 
   // 2. Plan pages

@@ -61,10 +61,18 @@ export interface ThemeSelectionResult {
 /**
  * Select the best theme based on keyword matching in the requirement text.
  * Phase 3: Full implementation with tie-breaking and confidence scoring.
+ *
+ * @param requirement   The user's requirement description (used for keyword matching).
+ * @param explicitTheme Optional explicit theme override (bypasses auto-detection).
+ * @param defaultTheme  Admin-configured fallback theme used when keyword detection has
+ *                      low confidence. `"auto"` (default) keeps the highest-scoring theme
+ *                      even at score 0 — i.e. the LLM is trusted to pick via the theme arg
+ *                      or keyword detection. A concrete ThemeId is used as the fallback.
  */
 export function selectTheme(
   requirement: string,
-  explicitTheme?: ThemeId
+  explicitTheme?: ThemeId,
+  defaultTheme: ThemeId | 'auto' = 'auto'
 ): ThemeSelectionResult {
   // Explicit override takes precedence
   if (explicitTheme) {
@@ -93,13 +101,23 @@ export function selectTheme(
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   const bestTheme = sorted[0];
 
-  // If no keywords matched, default to 'company'
+  // If no keywords matched, use the admin-configured default.
   if (bestTheme[1] === 0) {
+    if (defaultTheme === 'auto') {
+      // Trust the LLM: keep the first theme alphabetically as a neutral starting point.
+      const firstTheme = sorted[0][0] as ThemeId;
+      return {
+        themeId: firstTheme,
+        confidence: 'low',
+        reason: 'No specific keywords detected. Auto mode — defaulting to the first theme; LLM may override via the theme argument.',
+        alternatives: ['company', 'portfolio', 'blog'],
+      };
+    }
     return {
-      themeId: 'company',
+      themeId: defaultTheme,
       confidence: 'low',
-      reason: 'No specific keywords detected. Defaulting to Company theme.',
-      alternatives: ['portfolio', 'blog'],
+      reason: `No specific keywords detected. Defaulting to ${defaultTheme} theme (admin-configured default).`,
+      alternatives: ['company', 'portfolio', 'blog'],
     };
   }
 

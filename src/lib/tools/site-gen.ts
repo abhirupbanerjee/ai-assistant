@@ -63,7 +63,9 @@ export type PageTypeId =
 
 export interface SiteGenConfig {
   enabled: boolean;
-  defaultTheme: ThemeId;
+  /** "auto" lets the LLM pick the theme via the theme argument / keyword detection;
+   *  a concrete ThemeId is used as the low-confidence fallback. */
+  defaultTheme: ThemeId | 'auto';
   maxPagesPerSite: number;
   maxRetriesFallback: number;
   imagePlaceholderService: string;
@@ -73,10 +75,14 @@ export interface SiteGenConfig {
   responsiveBreakpoints: number[];
   fontProvider: 'google-cdn';
   fontDisplayStrategy: 'swap';
-  darkMode: {
-    cssOverrides: boolean;
-    toggleUi: boolean;
-  };
+  /** Flattened dark-mode behavior. Internally mapped to {cssOverrides, toggleUi}. */
+  darkMode: 'off' | 'css-only' | 'css-with-toggle';
+}
+
+/** Internal representation derived from the darkMode enum. */
+export interface DarkModeSettings {
+  cssOverrides: boolean;
+  toggleUi: boolean;
 }
 
 export interface SiteGenArgs {
@@ -98,12 +104,12 @@ const siteGenConfigSchema = {
     defaultTheme: {
       type: 'string',
       title: 'Default Theme',
-      description: 'Fallback theme when auto-detection has low confidence',
+      description: 'Theme to use when auto-detection has low confidence. "auto" lets the LLM choose via the theme argument and keyword detection.',
       enum: [
-        'portfolio', 'product', 'company', 'blog', 'documentation',
+        'auto', 'portfolio', 'product', 'company', 'blog', 'documentation',
         'dashboard', 'store', 'event', 'nonprofit', 'education',
       ],
-      default: 'company',
+      default: 'auto',
     },
     maxPagesPerSite: {
       type: 'number',
@@ -135,23 +141,11 @@ const siteGenConfigSchema = {
       default: true,
     },
     darkMode: {
-      type: 'object',
+      type: 'string',
       title: 'Dark Mode',
-      description: 'Dark mode settings (CSS overrides are always generated; toggle UI is v2)',
-      properties: {
-        cssOverrides: {
-          type: 'boolean',
-          title: 'CSS Overrides',
-          description: 'Generate dark mode CSS overrides',
-          default: true,
-        },
-        toggleUi: {
-          type: 'boolean',
-          title: 'Toggle UI',
-          description: 'Include dark mode toggle UI (v2 feature)',
-          default: false,
-        },
-      },
+      description: 'Dark mode behavior: "off" disables dark styles, "css-only" generates dark CSS overrides, "css-with-toggle" adds a dark/light toggle UI.',
+      enum: ['off', 'css-only', 'css-with-toggle'],
+      default: 'css-only',
     },
   },
 };
@@ -162,12 +156,33 @@ function validateSiteGenConfig(config: Record<string, unknown>): ValidationResul
   const errors: string[] = [];
 
   const validThemes = [
-    'portfolio', 'product', 'company', 'blog', 'documentation',
+    'auto', 'portfolio', 'product', 'company', 'blog', 'documentation',
     'dashboard', 'store', 'event', 'nonprofit', 'education',
   ];
 
   if (config.defaultTheme && !validThemes.includes(config.defaultTheme as string)) {
     errors.push(`defaultTheme must be one of: ${validThemes.join(', ')}`);
+  }
+
+  // Accept the legacy nested-object shape {cssOverrides, toggleUi} for backward compat,
+  // but the canonical form is now the enum string.
+  const validDarkModes = ['off', 'css-only', 'css-with-toggle'];
+  if (config.darkMode !== undefined) {
+    if (typeof config.darkMode === 'string') {
+      if (!validDarkModes.includes(config.darkMode)) {
+        errors.push(`darkMode must be one of: ${validDarkModes.join(', ')}`);
+      }
+    } else if (typeof config.darkMode === 'object' && config.darkMode !== null) {
+      const dm = config.darkMode as Record<string, unknown>;
+      if (typeof dm.cssOverrides !== 'boolean') {
+        errors.push('darkMode.cssOverrides must be a boolean');
+      }
+      if (typeof dm.toggleUi !== 'boolean') {
+        errors.push('darkMode.toggleUi must be a boolean');
+      }
+    } else {
+      errors.push('darkMode must be a string enum or an object with cssOverrides and toggleUi');
+    }
   }
 
   if (config.maxPagesPerSite !== undefined) {
@@ -315,9 +330,26 @@ export const siteGenTool: ToolDefinition = {
         });
       }
 
+      // Normalize darkMode: accept the new enum string or the legacy object shape.
+      const rawDarkMode = config.darkMode as unknown;
+      let darkMode: SiteGenConfig['darkMode'];
+      if (typeof rawDarkMode === 'string') {
+        darkMode = rawDarkMode as SiteGenConfig['darkMode'];
+      } else if (rawDarkMode && typeof rawDarkMode === 'object') {
+        // Legacy {cssOverrides, toggleUi} → map to the closest enum.
+        const legacy = rawDarkMode as { cssOverrides?: boolean; toggleUi?: boolean };
+        darkMode = !legacy.cssOverrides
+          ? 'off'
+          : legacy.toggleUi
+            ? 'css-with-toggle'
+            : 'css-only';
+      } else {
+        darkMode = 'css-only';
+      }
+
       const siteGenConfig: SiteGenConfig = {
         enabled: toolConfig?.isEnabled ?? true,
-        defaultTheme: (config.defaultTheme as ThemeId) || 'company',
+        defaultTheme: (config.defaultTheme as SiteGenConfig['defaultTheme']) || 'auto',
         maxPagesPerSite: (config.maxPagesPerSite as number) || 10,
         maxRetriesFallback: (config.maxRetriesFallback as number) || 2,
         imagePlaceholderService: (config.imagePlaceholderService as string) || 'https://placehold.co',
@@ -327,10 +359,7 @@ export const siteGenTool: ToolDefinition = {
         responsiveBreakpoints: (config.responsiveBreakpoints as number[]) || [768, 1024],
         fontProvider: (config.fontProvider as 'google-cdn') || 'google-cdn',
         fontDisplayStrategy: (config.fontDisplayStrategy as 'swap') || 'swap',
-        darkMode: (config.darkMode as SiteGenConfig['darkMode']) || {
-          cssOverrides: true,
-          toggleUi: false,
-        },
+        darkMode,
       };
 
       // Validate thread context
