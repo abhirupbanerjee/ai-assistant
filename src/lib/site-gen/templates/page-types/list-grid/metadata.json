@@ -1,0 +1,26 @@
+{
+  "page_type": "list-grid",
+  "displayName": "List/Grid Page",
+  "description": "Card-based listing with filters, sort, and pagination",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "items": {
+      "type": "array",
+      "min_count": 3,
+      "max_count": 20,
+      "items": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "image_url": { "type": "string", "required": false },
+        "category": { "type": "string", "required": false },
+        "url": { "type": "string", "required": false }
+      }
+    },
+    "categories": {
+      "type": "array",
+      "min_count": 0,
+      "max_count": 8,
+      "items": { "type": "string" }
+    }
+  }
+}

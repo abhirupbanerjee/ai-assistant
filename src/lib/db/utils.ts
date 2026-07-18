@@ -351,6 +351,25 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       maxDocumentSizeMB: 50,
     },
   },
+  site_gen: {
+    enabled: true,
+    config: {
+      defaultTheme: 'company',
+      maxPagesPerSite: 10,
+      maxRetriesFallback: 2,
+      imagePlaceholderService: 'https://placehold.co',
+      outputFormat: 'zip',
+      includeReadme: true,
+      includeSourceMaps: false,
+      responsiveBreakpoints: [768, 1024],
+      fontProvider: 'google-cdn',
+      fontDisplayStrategy: 'swap',
+      darkMode: {
+        cssOverrides: true,
+        toggleUi: false,
+      },
+    },
+  },
   pptx_gen: {
     enabled: true,
     config: {

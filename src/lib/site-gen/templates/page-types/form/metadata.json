@@ -1,0 +1,23 @@
+{
+  "page_type": "form",
+  "displayName": "Form Page",
+  "description": "User input collection with validation, submit, and success state",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "page_description": { "type": "string", "required": false },
+    "fields": {
+      "type": "array",
+      "min_count": 1,
+      "max_count": 10,
+      "items": {
+        "label": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "required": { "type": "boolean" },
+        "placeholder": { "type": "string", "required": false }
+      }
+    },
+    "submit_label": { "type": "string", "required": true },
+    "success_message": { "type": "string", "required": false }
+  }
+}

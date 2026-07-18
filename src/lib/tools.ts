@@ -21,6 +21,7 @@ import { codeAnalysisTool } from './tools/sonarcloud';
 import { loadTestingTool } from './tools/loadtest';
 import { fileToHtmlTool } from './tools/file-to-html';
 import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
+import { siteGenTool } from './tools/site-gen';
 import { kbSummaryTool } from './tools/kb-summary';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
@@ -150,6 +151,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   pptx_gen: { ...pptxGenTool, subagentSafe: false,
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true } },
   html_gen: { ...htmlGenTool, subagentSafe: false,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true } },
+  site_gen: { ...siteGenTool, subagentSafe: false,
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true } },
   file_to_html: { ...fileToHtmlTool, subagentSafe: false,
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },

@@ -1,0 +1,30 @@
+{
+  "$description": "Dashboard theme — Data/analytics interface for admin panels, monitoring, reports. Light mode.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.blue.blue-600}", "$description": "Primary brand color" },
+    "primary-hover": { "$value": "{color.blue.blue-700}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.neutral.gray-500}", "$description": "Secondary accent color" },
+    "background": { "$value": "{color.neutral.gray-50}", "$description": "Page background — slightly off-white for reduced glare" },
+    "surface": { "$value": "{color.neutral.white}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-800}", "$description": "Body text" },
+    "text-muted": { "$value": "{color.neutral.gray-500}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-200}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-600}", "$description": "Success state color" },
+    "warning": { "$value": "{color.amber.amber-600}", "$description": "Warning state color" },
+    "error": { "$value": "{color.red.red-600}", "$description": "Error state color" }
+  },
+  "font": {
+    "heading": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Clean sans-serif for data labels" },
+    "body": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Body font stack" },
+    "mono": { "$value": "JetBrains Mono, monospace", "$type": "fontFamily", "$description": "Monospace for numbers and data" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 2px 8px rgba(0, 0, 0, 0.08)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 4px 16px rgba(0, 0, 0, 0.1)", "$type": "shadow" }
+  },
+  "letterSpacing": {
+    "letter-spacing": { "$value": "-0.01em", "$type": "dimension" }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "$description": "Store theme — E-commerce product listings, catalogs, shops. Light mode.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.blue.blue-600}", "$description": "Primary brand color — trustworthy for commerce" },
+    "primary-hover": { "$value": "{color.blue.blue-700}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.green.green-600}", "$description": "Secondary accent — green for purchase signals" },
+    "background": { "$value": "{color.neutral.white}", "$description": "Page background" },
+    "surface": { "$value": "{color.neutral.gray-50}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-800}", "$description": "Body text" },
+    "text-muted": { "$value": "{color.neutral.gray-500}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-200}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-600}", "$description": "Success — purchase confirmation" },
+    "warning": { "$value": "{color.amber.amber-600}", "$description": "Warning — low stock" },
+    "error": { "$value": "{color.red.red-600}", "$description": "Error — out of stock" }
+  },
+  "font": {
+    "heading": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Clean modern heading font" },
+    "body": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Body font stack" },
+    "mono": { "$value": "JetBrains Mono, monospace", "$type": "fontFamily", "$description": "Monospace for prices and SKUs" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 3px rgba(0, 0, 0, 0.08)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 4px 12px rgba(0, 0, 0, 0.1)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 8px 24px rgba(0, 0, 0, 0.12)", "$type": "shadow" }
+  },
+  "letterSpacing": {
+    "letter-spacing": { "$value": "normal", "$type": "dimension" }
+  }
+}

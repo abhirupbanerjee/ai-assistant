@@ -1,0 +1,22 @@
+{
+  "page_type": "article",
+  "displayName": "Article Page",
+  "description": "Long-form text content with prose, headings, images, blockquotes, and table of contents",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "author": { "type": "string", "required": false },
+    "date": { "type": "string", "required": false },
+    "hero_image_url": { "type": "string", "required": false, "format": "url" },
+    "content": { "type": "string", "required": true },
+    "sections": {
+      "type": "array",
+      "min_count": 0,
+      "max_count": 20,
+      "items": {
+        "heading": { "type": "string" },
+        "body": { "type": "string" },
+        "image_url": { "type": "string", "required": false }
+      }
+    }
+  }
+}

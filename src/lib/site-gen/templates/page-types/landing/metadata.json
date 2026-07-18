@@ -1,0 +1,32 @@
+{
+  "page_type": "landing",
+  "displayName": "Landing Page",
+  "description": "Hero section with CTA, feature grid, testimonials, and call-to-action",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "hero_headline": { "type": "string", "required": true },
+    "hero_subtitle": { "type": "string", "required": false },
+    "hero_cta_text": { "type": "string", "required": true },
+    "hero_cta_url": { "type": "string", "required": false },
+    "features": {
+      "type": "array",
+      "min_count": 3,
+      "max_count": 6,
+      "items": {
+        "feature_title": { "type": "string" },
+        "feature_description": { "type": "string" },
+        "feature_icon": { "type": "string", "required": false }
+      }
+    },
+    "testimonials": {
+      "type": "array",
+      "min_count": 0,
+      "max_count": 4,
+      "items": {
+        "quote": { "type": "string" },
+        "author": { "type": "string" },
+        "author_title": { "type": "string", "required": false }
+      }
+    }
+  }
+}

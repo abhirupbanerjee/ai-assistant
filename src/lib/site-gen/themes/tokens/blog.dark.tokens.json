@@ -1,0 +1,22 @@
+{
+  "$description": "Blog theme — Dark mode semantic overrides.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.neutral.gray-200}", "$description": "Primary color — lighter in dark mode" },
+    "primary-hover": { "$value": "{color.neutral.gray-100}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.neutral.gray-400}", "$description": "Secondary accent color" },
+    "background": { "$value": "{color.neutral.gray-950}", "$description": "Page background" },
+    "surface": { "$value": "{color.neutral.gray-900}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-200}", "$description": "Body text" },
+    "text-muted": { "$value": "{color.neutral.gray-400}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-800}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-500}", "$description": "Success state color" },
+    "warning": { "$value": "{color.amber.amber-500}", "$description": "Warning state color" },
+    "error": { "$value": "{color.red.red-500}", "$description": "Error state color" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.3)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 2px 8px rgba(0, 0, 0, 0.4)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 4px 16px rgba(0, 0, 0, 0.5)", "$type": "shadow" }
+  }
+}

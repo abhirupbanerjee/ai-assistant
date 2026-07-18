@@ -1,0 +1,30 @@
+{
+  "$description": "Event theme — Conference, meetup, workshop, summit sites. Light mode.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.blue.blue-600}", "$description": "Primary brand color — energetic and inviting" },
+    "primary-hover": { "$value": "{color.blue.blue-700}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.amber.amber-500}", "$description": "Secondary accent — warm and attention-grabbing" },
+    "background": { "$value": "{color.neutral.white}", "$description": "Page background" },
+    "surface": { "$value": "{color.blue.blue-50}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-800}", "$description": "Body text" },
+    "text-muted": { "$value": "{color.neutral.gray-500}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-200}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-600}", "$description": "Success — registration confirmed" },
+    "warning": { "$value": "{color.amber.amber-600}", "$description": "Warning — limited seats" },
+    "error": { "$value": "{color.red.red-600}", "$description": "Error — sold out" }
+  },
+  "font": {
+    "heading": { "$value": "Poppins, sans-serif", "$type": "fontFamily", "$description": "Modern geometric sans-serif for event branding" },
+    "body": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Body font stack" },
+    "mono": { "$value": "JetBrains Mono, monospace", "$type": "fontFamily", "$description": "Monospace font stack" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 3px rgba(0, 0, 0, 0.08)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 8px 30px rgba(0, 0, 0, 0.12)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 20px 50px rgba(0, 0, 0, 0.15)", "$type": "shadow" }
+  },
+  "letterSpacing": {
+    "letter-spacing": { "$value": "-0.01em", "$type": "dimension" }
+  }
+}

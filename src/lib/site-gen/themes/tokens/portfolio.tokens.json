@@ -1,0 +1,30 @@
+{
+  "$description": "Portfolio theme — Personal/creative showcase for photographers, designers, developers. Light mode.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.blue.blue-700}", "$description": "Primary brand color — bold and creative" },
+    "primary-hover": { "$value": "{color.blue.blue-800}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.neutral.gray-500}", "$description": "Secondary accent color" },
+    "background": { "$value": "{color.neutral.white}", "$description": "Page background" },
+    "surface": { "$value": "{color.neutral.gray-50}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-900}", "$description": "Body text — strong contrast for readability" },
+    "text-muted": { "$value": "{color.neutral.gray-500}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-200}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-600}", "$description": "Success state color" },
+    "warning": { "$value": "{color.amber.amber-600}", "$description": "Warning state color" },
+    "error": { "$value": "{color.red.red-600}", "$description": "Error state color" }
+  },
+  "font": {
+    "heading": { "$value": "Playfair Display, serif", "$type": "fontFamily", "$description": "Elegant serif for creative showcase" },
+    "body": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Clean body font" },
+    "mono": { "$value": "JetBrains Mono, monospace", "$type": "fontFamily", "$description": "Monospace for code/technical" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 4px 20px rgba(0, 0, 0, 0.08)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 10px 40px rgba(0, 0, 0, 0.12)", "$type": "shadow" }
+  },
+  "letterSpacing": {
+    "letter-spacing": { "$value": "normal", "$type": "dimension" }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "page_type": "faq",
+  "displayName": "FAQ Page",
+  "description": "Question-answer pairs with accordion and category search",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "categories": {
+      "type": "array",
+      "min_count": 1,
+      "max_count": 6,
+      "items": {
+        "category_name": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "min_count": 1,
+          "max_count": 10,
+          "items": {
+            "question": { "type": "string" },
+            "answer": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

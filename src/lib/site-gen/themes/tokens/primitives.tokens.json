@@ -1,0 +1,92 @@
+{
+  "$description": "Shared primitive design tokens — raw values reused across all 10 themes. These are building blocks, never applied directly. Semantic tokens reference these.",
+  "color": {
+    "neutral": {
+      "white": { "$value": "#ffffff", "$type": "color" },
+      "gray-50": { "$value": "#f8fafc", "$type": "color" },
+      "gray-100": { "$value": "#f1f5f9", "$type": "color" },
+      "gray-200": { "$value": "#e2e8f0", "$type": "color" },
+      "gray-300": { "$value": "#cbd5e1", "$type": "color" },
+      "gray-400": { "$value": "#94a3b8", "$type": "color" },
+      "gray-500": { "$value": "#64748b", "$type": "color" },
+      "gray-600": { "$value": "#475569", "$type": "color" },
+      "gray-700": { "$value": "#334155", "$type": "color" },
+      "gray-800": { "$value": "#1e293b", "$type": "color" },
+      "gray-900": { "$value": "#0f172a", "$type": "color" },
+      "gray-950": { "$value": "#020617", "$type": "color" },
+      "black": { "$value": "#000000", "$type": "color" }
+    },
+    "blue": {
+      "blue-50": { "$value": "#eff6ff", "$type": "color" },
+      "blue-100": { "$value": "#dbeafe", "$type": "color" },
+      "blue-200": { "$value": "#bfdbfe", "$type": "color" },
+      "blue-300": { "$value": "#93c5fd", "$type": "color" },
+      "blue-400": { "$value": "#60a5fa", "$type": "color" },
+      "blue-500": { "$value": "#3b82f6", "$type": "color" },
+      "blue-600": { "$value": "#2563eb", "$type": "color" },
+      "blue-700": { "$value": "#1d4ed8", "$type": "color" },
+      "blue-800": { "$value": "#1e40af", "$type": "color" },
+      "blue-900": { "$value": "#1e3a8a", "$type": "color" }
+    },
+    "green": {
+      "green-50": { "$value": "#f0fdf4", "$type": "color" },
+      "green-100": { "$value": "#dcfce7", "$type": "color" },
+      "green-400": { "$value": "#4ade80", "$type": "color" },
+      "green-500": { "$value": "#22c55e", "$type": "color" },
+      "green-600": { "$value": "#16a34a", "$type": "color" },
+      "green-700": { "$value": "#15803d", "$type": "color" }
+    },
+    "amber": {
+      "amber-50": { "$value": "#fffbeb", "$type": "color" },
+      "amber-100": { "$value": "#fef3c7", "$type": "color" },
+      "amber-400": { "$value": "#fbbf24", "$type": "color" },
+      "amber-500": { "$value": "#f59e0b", "$type": "color" },
+      "amber-600": { "$value": "#d97706", "$type": "color" }
+    },
+    "red": {
+      "red-50": { "$value": "#fef2f2", "$type": "color" },
+      "red-100": { "$value": "#fee2e2", "$type": "color" },
+      "red-500": { "$value": "#ef4444", "$type": "color" },
+      "red-600": { "$value": "#dc2626", "$type": "color" },
+      "red-700": { "$value": "#b91c1c", "$type": "color" }
+    }
+  },
+  "spacing": {
+    "spacing-xs": { "$value": "0.25rem", "$type": "dimension" },
+    "spacing-sm": { "$value": "0.5rem", "$type": "dimension" },
+    "spacing-md": { "$value": "1rem", "$type": "dimension" },
+    "spacing-lg": { "$value": "2rem", "$type": "dimension" },
+    "spacing-xl": { "$value": "4rem", "$type": "dimension" },
+    "spacing-section": { "$value": "5rem", "$type": "dimension" }
+  },
+  "fontSize": {
+    "font-size-base": { "$value": "1rem", "$type": "dimension" },
+    "font-size-small": { "$value": "0.875rem", "$type": "dimension" },
+    "font-size-h3": { "$value": "1.5rem", "$type": "dimension" },
+    "font-size-h2": { "$value": "2rem", "$type": "dimension" },
+    "font-size-h1": { "$value": "2.5rem", "$type": "dimension" }
+  },
+  "lineHeight": {
+    "line-height": { "$value": "1.6", "$type": "number" }
+  },
+  "borderRadius": {
+    "border-radius": { "$value": "8px", "$type": "dimension" },
+    "border-radius-lg": { "$value": "16px", "$type": "dimension" },
+    "border-radius-pill": { "$value": "9999px", "$type": "dimension" }
+  },
+  "layout": {
+    "content-width": { "$value": "1200px", "$type": "dimension" },
+    "content-width-narrow": { "$value": "720px", "$type": "dimension" },
+    "sidebar-width": { "$value": "280px", "$type": "dimension" },
+    "grid-gap": { "$value": "1.5rem", "$type": "dimension" }
+  },
+  "transition": {
+    "transition-fast": { "$value": "150ms ease", "$type": "duration" },
+    "transition-base": { "$value": "300ms ease", "$type": "duration" }
+  },
+  "motion": {
+    "motion-duration-fast": { "$value": "150ms", "$type": "duration" },
+    "motion-duration-base": { "$value": "300ms", "$type": "duration" },
+    "motion-ease-standard": { "$value": "cubic-bezier(0.4, 0, 0.2, 1)", "$type": "cubicBezier" }
+  }
+}

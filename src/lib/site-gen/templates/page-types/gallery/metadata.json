@@ -1,0 +1,30 @@
+{
+  "page_type": "gallery",
+  "displayName": "Gallery Page",
+  "description": "Visual media showcase with grid/masonry layout and lightbox",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "page_description": { "type": "string", "required": false },
+    "filters": {
+      "type": "array",
+      "min_count": 0,
+      "max_count": 6,
+      "items": {
+        "filter_id": { "type": "string" },
+        "filter_label": { "type": "string" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "min_count": 6,
+      "max_count": 24,
+      "items": {
+        "image_url": { "type": "string" },
+        "image_alt": { "type": "string" },
+        "item_title": { "type": "string" },
+        "item_description": { "type": "string", "required": false },
+        "category": { "type": "string", "required": false }
+      }
+    }
+  }
+}

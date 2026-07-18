@@ -7,6 +7,7 @@
     "prebuild": "node -e \"const fs=require('fs');let f=fs.readFileSync('src/lib/db/db-types.ts','utf8');f=f.replace(/\\bDate\\b/g,'string').replace(/Generated<string\\s*\\|\\s*null>/g,'Generated<string>');fs.writeFileSync('src/lib/db/db-types.ts',f);\"",
     "build": "next build",
     "build:embed": "npx tsx scripts/build-embed.ts",
+    "build:tokens": "node scripts/build-tokens.mjs",
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",

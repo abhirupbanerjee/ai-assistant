@@ -84,6 +84,18 @@ const DEFAULT_COMMANDS: Omit<SlashCommandConfig, 'id' | 'createdAt' | 'updatedAt
     sortOrder: 5,
   },
   {
+    commandKey: 'site',
+    toolName: 'site_gen',
+    label: 'Generate Website',
+    description: 'Create a multi-page themed website',
+    aliases: ['site', 'website', 'web'],
+    hint: 'The user wants to generate a complete website. Use the site_gen tool to fulfill this request.',
+    icon: 'Globe',
+    formatHint: null,
+    enabled: true,
+    sortOrder: 6,
+  },
+  {
     commandKey: 'slide',
     toolName: 'pptx_gen',
     label: 'Generate Presentation',

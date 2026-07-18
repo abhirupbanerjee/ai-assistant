@@ -1,0 +1,30 @@
+{
+  "$description": "Blog theme — Content publishing for blogs, magazines, newsletters. Light mode.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.neutral.gray-900}", "$description": "Primary color — dark and authoritative" },
+    "primary-hover": { "$value": "{color.neutral.gray-700}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.neutral.gray-500}", "$description": "Secondary accent color" },
+    "background": { "$value": "{color.neutral.white}", "$description": "Page background" },
+    "surface": { "$value": "{color.neutral.gray-50}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-800}", "$description": "Body text — high readability" },
+    "text-muted": { "$value": "{color.neutral.gray-500}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-200}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-600}", "$description": "Success state color" },
+    "warning": { "$value": "{color.amber.amber-600}", "$description": "Warning state color" },
+    "error": { "$value": "{color.red.red-600}", "$description": "Error state color" }
+  },
+  "font": {
+    "heading": { "$value": "Lora, serif", "$type": "fontFamily", "$description": "Warm serif for article headings" },
+    "body": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Clean body font for readability" },
+    "mono": { "$value": "JetBrains Mono, monospace", "$type": "fontFamily", "$description": "Monospace for code snippets" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 2px 8px rgba(0, 0, 0, 0.08)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 4px 16px rgba(0, 0, 0, 0.1)", "$type": "shadow" }
+  },
+  "letterSpacing": {
+    "letter-spacing": { "$value": "normal", "$type": "dimension" }
+  }
+}

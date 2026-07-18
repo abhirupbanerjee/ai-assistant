@@ -1,0 +1,22 @@
+{
+  "$description": "Store theme — Dark mode semantic overrides.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.blue.blue-400}", "$description": "Primary brand color" },
+    "primary-hover": { "$value": "{color.blue.blue-300}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.green.green-500}", "$description": "Secondary accent" },
+    "background": { "$value": "{color.neutral.gray-950}", "$description": "Page background" },
+    "surface": { "$value": "{color.neutral.gray-900}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-100}", "$description": "Body text" },
+    "text-muted": { "$value": "{color.neutral.gray-400}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-700}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-500}", "$description": "Success state color" },
+    "warning": { "$value": "{color.amber.amber-500}", "$description": "Warning state color" },
+    "error": { "$value": "{color.red.red-500}", "$description": "Error state color" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 3px rgba(0, 0, 0, 0.3)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 4px 12px rgba(0, 0, 0, 0.4)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 8px 24px rgba(0, 0, 0, 0.5)", "$type": "shadow" }
+  }
+}

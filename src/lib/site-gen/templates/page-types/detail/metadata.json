@@ -1,0 +1,28 @@
+{
+  "page_type": "detail",
+  "displayName": "Detail Page",
+  "description": "Single item detail view with header, metadata, description, and related items",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "header_image_url": { "type": "string", "required": false },
+    "metadata": {
+      "type": "array",
+      "min_count": 0,
+      "max_count": 6,
+      "items": {
+        "label": { "type": "string" },
+        "value": { "type": "string" }
+      }
+    },
+    "description": { "type": "string", "required": true },
+    "related_items": {
+      "type": "array",
+      "min_count": 0,
+      "max_count": 4,
+      "items": {
+        "title": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    }
+  }
+}

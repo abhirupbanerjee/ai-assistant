@@ -1,0 +1,30 @@
+{
+  "$description": "Education theme — Course, LMS, training platform sites. Light mode.",
+  "color": {
+    "$type": "color",
+    "primary": { "$value": "{color.blue.blue-700}", "$description": "Primary brand color — trustworthy for education" },
+    "primary-hover": { "$value": "{color.blue.blue-800}", "$description": "Hover state of primary" },
+    "secondary": { "$value": "{color.green.green-600}", "$description": "Secondary accent — growth and achievement" },
+    "background": { "$value": "{color.neutral.white}", "$description": "Page background" },
+    "surface": { "$value": "{color.blue.blue-50}", "$description": "Card / surface background" },
+    "text": { "$value": "{color.neutral.gray-800}", "$description": "Body text — high readability for learning" },
+    "text-muted": { "$value": "{color.neutral.gray-500}", "$description": "Secondary / muted text" },
+    "border": { "$value": "{color.neutral.gray-200}", "$description": "Border / divider color" },
+    "success": { "$value": "{color.green.green-600}", "$description": "Success — course completed" },
+    "warning": { "$value": "{color.amber.amber-600}", "$description": "Warning state color" },
+    "error": { "$value": "{color.red.red-600}", "$description": "Error state color" }
+  },
+  "font": {
+    "heading": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Clean modern heading font" },
+    "body": { "$value": "Inter, sans-serif", "$type": "fontFamily", "$description": "Body font stack" },
+    "mono": { "$value": "Fira Code, monospace", "$type": "fontFamily", "$description": "Monospace for code examples" }
+  },
+  "shadow": {
+    "shadow-sm": { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)", "$type": "shadow" },
+    "shadow-md": { "$value": "0 4px 12px rgba(0, 0, 0, 0.08)", "$type": "shadow" },
+    "shadow-lg": { "$value": "0 8px 24px rgba(0, 0, 0, 0.1)", "$type": "shadow" }
+  },
+  "letterSpacing": {
+    "letter-spacing": { "$value": "normal", "$type": "dimension" }
+  }
+}

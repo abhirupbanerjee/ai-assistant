@@ -1,0 +1,19 @@
+{
+  "page_type": "timeline",
+  "displayName": "Timeline Page",
+  "description": "Chronological events with axis, event cards, and period grouping",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "events": {
+      "type": "array",
+      "min_count": 3,
+      "max_count": 20,
+      "items": {
+        "date": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string", "required": false }
+      }
+    }
+  }
+}

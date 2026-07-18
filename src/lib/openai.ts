@@ -190,7 +190,7 @@ import { isOpenAIModel, stripOpenAIPrefix, streamOpenAICompletion, requiresMaxCo
  * These tools produce final outputs (images, documents) and should not be called again
  * unless the user explicitly requests it.
  */
-export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'html_gen', 'file_to_html', 'chart_gen', 'diagram_gen', 'podcast_gen']);
+export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'html_gen', 'site_gen', 'file_to_html', 'chart_gen', 'diagram_gen', 'podcast_gen']);
 
 /**
  * Generate a prompt for the LLM to summarize a terminal tool result.

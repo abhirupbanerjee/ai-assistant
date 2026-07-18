@@ -1,0 +1,24 @@
+{
+  "page_type": "data-table",
+  "displayName": "Data Table Page",
+  "description": "Sortable tabular data with pagination, search, and filters",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "columns": {
+      "type": "array",
+      "min_count": 2,
+      "max_count": 8,
+      "items": {
+        "key": { "type": "string" },
+        "label": { "type": "string" },
+        "sortable": { "type": "boolean" }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "min_count": 1,
+      "max_count": 50,
+      "items": { "type": "object" }
+    }
+  }
+}

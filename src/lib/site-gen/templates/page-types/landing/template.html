@@ -1,0 +1,80 @@
+<!-- Landing Page Template -->
+<!-- Theme-agnostic: uses var(--*) CSS variables exclusively -->
+<!-- Phase 4: Full HTML scaffold with blocks from shadcn/ui patterns -->
+
+<section class="landing-hero">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto; padding: var(--spacing-section) var(--spacing-md);">
+    <h1 style="font-family: var(--font-heading); font-size: var(--font-size-h1); color: var(--color-text);">
+      {{hero_headline}}
+    </h1>
+    {{#hero_subtitle}}
+    <p style="font-family: var(--font-body); font-size: var(--font-size-h3); color: var(--color-text-muted); margin-top: var(--spacing-sm);">
+      {{hero_subtitle}}
+    </p>
+    {{/hero_subtitle}}
+    <a href="{{hero_cta_url}}" class="btn-primary" style="
+      display: inline-block;
+      margin-top: var(--spacing-lg);
+      padding: var(--spacing-sm) var(--spacing-lg);
+      background: var(--color-primary);
+      color: white;
+      border-radius: var(--border-radius);
+      font-family: var(--font-body);
+      font-size: var(--font-size-base);
+      text-decoration: none;
+      transition: background var(--transition-fast);
+    " onmouseover="this.style.background='var(--color-primary-hover)'" onmouseout="this.style.background='var(--color-primary)'">
+      {{hero_cta_text}}
+    </a>
+  </div>
+</section>
+
+{{#features}}
+<section class="landing-features" style="background: var(--color-surface); padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <div class="feature-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--grid-gap);">
+      {{#features}}
+      <div class="feature-card" style="
+        background: var(--color-background);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius);
+        padding: var(--spacing-lg);
+        transition: box-shadow var(--transition-base);
+      ">
+        <h3 style="font-family: var(--font-heading); font-size: var(--font-size-h3); color: var(--color-text);">
+          {{feature_title}}
+        </h3>
+        <p style="font-family: var(--font-body); font-size: var(--font-size-base); color: var(--color-text-muted); margin-top: var(--spacing-sm);">
+          {{feature_description}}
+        </p>
+      </div>
+      {{/features}}
+    </div>
+  </div>
+</section>
+{{/features}}
+
+{{#testimonials}}
+<section class="landing-testimonials" style="padding: var(--spacing-section) var(--spacing-md);">
+  <div class="container" style="max-width: var(--content-width); margin: 0 auto;">
+    <div class="testimonial-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--grid-gap);">
+      {{#testimonials}}
+      <blockquote class="testimonial-card" style="
+        background: var(--color-surface);
+        border-left: 4px solid var(--color-primary);
+        border-radius: var(--border-radius);
+        padding: var(--spacing-lg);
+        margin: 0;
+      ">
+        <p style="font-family: var(--font-body); font-size: var(--font-size-base); color: var(--color-text); font-style: italic;">
+          "{{quote}}"
+        </p>
+        <footer style="margin-top: var(--spacing-sm); font-family: var(--font-body); font-size: var(--font-size-small); color: var(--color-text-muted);">
+          — {{author}}{{#author_title}}, {{author_title}}{{/author_title}}
+        </footer>
+      </blockquote>
+      {{/testimonials}}
+    </div>
+  </div>
+</section>
+{{/testimonials}}

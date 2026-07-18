@@ -1,0 +1,30 @@
+{
+  "page_type": "comparison",
+  "displayName": "Comparison Page",
+  "description": "Side-by-side comparison table with pros/cons and verdict",
+  "required_fields": {
+    "page_title": { "type": "string", "required": true },
+    "columns": {
+      "type": "array",
+      "min_count": 2,
+      "max_count": 4,
+      "items": {
+        "name": { "type": "string" },
+        "description": { "type": "string", "required": false }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "min_count": 3,
+      "max_count": 15,
+      "items": {
+        "feature": { "type": "string" },
+        "values": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "verdict": { "type": "string", "required": false }
+  }
+}

@@ -1,0 +1,32 @@
+<!-- Shared Footer Component -->
+<!-- Injected into every generated page -->
+
+<footer class="site-footer" style="
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-lg) var(--spacing-md);
+  margin-top: var(--spacing-section);
+">
+  <div class="footer-container" style="
+    max-width: var(--content-width);
+    margin: 0 auto;
+    text-align: center;
+  ">
+    <p class="footer-copy" style="
+      font-family: var(--font-body);
+      font-size: var(--font-size-small);
+      color: var(--color-text-muted);
+      margin: 0;
+    ">
+      &copy; {{current_year}} {{site_name}}. All rights reserved.
+    </p>
+    <p class="footer-meta" style="
+      font-family: var(--font-body);
+      font-size: var(--font-size-small);
+      color: var(--color-text-muted);
+      margin: var(--spacing-xs) 0 0 0;
+    ">
+      Built with {{theme_name}} theme
+    </p>
+  </div>
+</footer>
