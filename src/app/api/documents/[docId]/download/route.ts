@@ -106,6 +106,7 @@ function getContentType(fileType: string): string {
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     md: 'text/markdown',
     html: 'text/html; charset=utf-8',
+    zip: 'application/zip',
     image: 'image/webp', // Generated images are stored as WebP
     mp3: 'audio/mpeg', // Generated podcasts
   };

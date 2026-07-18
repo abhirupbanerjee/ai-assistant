@@ -128,7 +128,7 @@ export interface Message {
 export interface GeneratedDocumentInfo {
   id: string;
   filename: string;
-  fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'html';
+  fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'html' | 'zip';
   fileSize: number;
   fileSizeFormatted: string;
   downloadUrl: string;

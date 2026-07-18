@@ -56,7 +56,7 @@ export interface DbThreadOutput {
   message_id: string | null;
   filename: string;
   filepath: string;
-  file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx';
+  file_type: 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'mp3' | 'wav' | 'html' | 'zip';
   file_size: number;
   generation_config?: string | null;
   expires_at?: string | null;

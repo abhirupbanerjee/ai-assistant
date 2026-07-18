@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Paperclip,
   FileText,
+  FileArchive,
   ImageIcon,
   Link as LinkIcon,
   Youtube,
@@ -53,6 +54,7 @@ interface SectionState {
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase();
   if (ext === 'pdf') return <FileText size={14} className="text-red-500" />;
+  if (ext === 'zip') return <FileArchive size={14} className="text-amber-600" />;
   if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '')) return <ImageIcon size={14} className="text-green-500" />;
   if (ext === 'txt') return <FileText size={14} className="text-gray-500" />;
   return <FileText size={14} className="text-blue-500" />;

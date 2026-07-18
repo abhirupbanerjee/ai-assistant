@@ -379,7 +379,7 @@ export const siteGenTool: ToolDefinition = {
           threadContext.actualThreadId ?? null,
           zipFilename,
           filepath,
-          'html',
+          'zip',
           result.zipBuffer.length,
           generationConfig,
           null
@@ -392,7 +392,7 @@ export const siteGenTool: ToolDefinition = {
           null,
           zipFilename,
           filepath,
-          'html',
+          'zip',
           result.zipBuffer.length,
           generationConfig,
           null

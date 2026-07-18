@@ -814,6 +814,43 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Updated file_type constraints to include html format');
 
+  // Migration: Add 'zip' file_type to thread_outputs and workspace_outputs for site_gen website packaging
+  // Repair any site_gen rows previously mislabeled as 'html' (filename ends in .zip)
+  await sql`
+    UPDATE thread_outputs SET file_type = 'zip'
+    WHERE file_type = 'html' AND filename LIKE '%.zip'
+  `.execute(database);
+  await sql`
+    UPDATE workspace_outputs SET file_type = 'zip'
+    WHERE file_type = 'html' AND filename LIKE '%.zip'
+  `.execute(database);
+  // Safety: normalize any unknown file_type to 'md' before re-adding the CHECK constraint
+  await sql`
+    UPDATE thread_outputs SET file_type = 'md'
+    WHERE file_type NOT IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html', 'zip')
+  `.execute(database);
+  await sql`
+    UPDATE workspace_outputs SET file_type = 'md'
+    WHERE file_type NOT IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav', 'html', 'zip')
+  `.execute(database);
+  await sql`
+    ALTER TABLE thread_outputs DROP CONSTRAINT IF EXISTS thread_outputs_file_type_check
+  `.execute(database);
+  await sql`
+    ALTER TABLE thread_outputs
+    ADD CONSTRAINT thread_outputs_file_type_check
+      CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md', 'mp3', 'wav', 'html', 'zip'))
+  `.execute(database);
+  await sql`
+    ALTER TABLE workspace_outputs DROP CONSTRAINT IF EXISTS workspace_outputs_file_type_check
+  `.execute(database);
+  await sql`
+    ALTER TABLE workspace_outputs
+    ADD CONSTRAINT workspace_outputs_file_type_check
+      CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md', 'xlsx', 'pptx', 'mp3', 'wav', 'html', 'zip'))
+  `.execute(database);
+  console.log('[Kysely] Added zip file_type to thread_outputs and workspace_outputs');
+
   // Migration: Create citation_trajectories table if it doesn't exist
   await sql`
     CREATE TABLE IF NOT EXISTS citation_trajectories (

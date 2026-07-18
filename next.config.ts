@@ -137,6 +137,11 @@ const nextConfig: NextConfig = {
       './node_modules/strtok3/**/*',
       './node_modules/token-types/**/*',
       './node_modules/uint8array-extras/**/*',
+      // site-gen: theme CSS (compiled from DTCG tokens) and HTML templates
+      // are read via readFileSync at runtime — not traced by static import analysis.
+      './src/lib/site-gen/themes/dist/**/*.css',
+      './src/lib/site-gen/templates/**/*.html',
+      './src/lib/site-gen/templates/components/*.js',
     ],
   },
   // Exclude data directory from build (contains Redis files with restricted permissions)

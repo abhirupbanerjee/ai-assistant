@@ -30,7 +30,7 @@ function outputToDocument(output: ThreadOutputItem): GeneratedDocumentInfo {
   return {
     id: String(output.id),
     filename: output.filename,
-    fileType: (output.fileType as 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'html') || 'md',
+    fileType: (output.fileType as 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'md' | 'html' | 'zip') || 'md',
     fileSize: output.fileSize,
     fileSizeFormatted: formatFileSize(output.fileSize),
     downloadUrl: output.downloadUrl,

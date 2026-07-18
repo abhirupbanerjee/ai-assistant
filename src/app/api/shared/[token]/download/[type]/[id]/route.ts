@@ -208,6 +208,7 @@ function getContentType(fileType: string): string {
     webp: 'image/webp',
     svg: 'image/svg+xml',
     image: 'image/webp',
+    zip: 'application/zip',
   };
 
   return contentTypes[fileType] || 'application/octet-stream';

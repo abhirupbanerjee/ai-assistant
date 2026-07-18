@@ -30,6 +30,9 @@ RUN mkdir -p public/vendor && \
 # Build-time environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Compile DTCG design tokens to CSS (required by site_gen tool at runtime)
+RUN npm run build:tokens
+
 RUN npm run build
 
 # Stage 3: Runner

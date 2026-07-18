@@ -89,12 +89,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Determine content type
     const contentType = getContentType(doc.file_type, filename);
 
+    // Use inline disposition for HTML and audio (previewable in-browser);
+    // attachment for downloads (zip, pdf, docx, xlsx, pptx, md, images, charts)
+    const fileType = doc.file_type as string;
+    const disposition = (fileType === 'mp3' || fileType === 'wav' || fileType === 'html') ? 'inline' : 'attachment';
+
     // Create response with file
     const response = new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+        'Content-Disposition': `${disposition}; filename="${encodeURIComponent(filename)}"`,
         'Content-Length': fileBuffer.length.toString(),
         'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
       },
@@ -124,6 +129,7 @@ function getContentType(fileType: string, filename: string): string {
     jpeg: 'image/jpeg',
     gif: 'image/gif',
     svg: 'image/svg+xml',
+    zip: 'application/zip',
   };
 
   if (ext && extensionTypes[ext]) {
@@ -137,6 +143,7 @@ function getContentType(fileType: string, filename: string): string {
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     md: 'text/markdown',
     html: 'text/html; charset=utf-8',
+    zip: 'application/zip',
     image: 'image/webp', // Default for generated images
     chart: 'image/png',
   };

@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, FileSpreadsheet, FileCode, Globe, Download, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileCode, Globe, FileArchive, Download, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
 import type { GeneratedDocumentInfo } from '@/types';
 
 interface DocumentResultCardProps {
@@ -20,6 +20,8 @@ function getFileIcon(fileType: string) {
       return <FileCode size={20} className="text-gray-600" />;
     case 'html':
       return <Globe size={20} className="text-emerald-500" />;
+    case 'zip':
+      return <FileArchive size={20} className="text-amber-600" />;
     default:
       return <FileText size={20} className="text-gray-500" />;
   }
@@ -38,6 +40,8 @@ function getFileTypeLabel(fileType: string): string {
       return 'Markdown';
     case 'html':
       return 'HTML Page';
+    case 'zip':
+      return 'ZIP Archive';
     default:
       return 'Document';
   }
