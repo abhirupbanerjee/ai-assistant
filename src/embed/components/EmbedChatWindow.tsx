@@ -4,9 +4,11 @@
  * The main chat window for the embed widget.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { EmbedMessage } from './EmbedMessage';
 import type { EmbedMessage as EmbedMessageType, EmbedConfig } from '../types';
+import ScrollNavButtons from '@/components/chat/ScrollNavButtons';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 
 interface EmbedChatWindowProps {
   config: EmbedConfig;
@@ -30,13 +32,33 @@ export function EmbedChatWindow({
   showSources = true,
 }: EmbedChatWindowProps) {
   const [inputValue, setInputValue] = useState('');
+  const [scrollPos, setScrollPos] = useState({ top: 0, height: 0, clientHeight: 0 });
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isTouchDevice = useIsTouchDevice();
+
+  const scrollToBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Scroll position tracking
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    setScrollPos({ top: container.scrollTop, height: container.scrollHeight, clientHeight: container.clientHeight });
+  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -99,7 +121,11 @@ export function EmbedChatWindow({
       </div>
 
       {/* Messages area */}
-      <div className="ai-assistant-embed-messages">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
+        className="ai-assistant-embed-messages ai-assistant-embed-scroll-container"
+      >
         {showWelcome ? (
           <div className="ai-assistant-embed-welcome">
             <div className="ai-assistant-embed-welcome-text">
@@ -134,6 +160,19 @@ export function EmbedChatWindow({
             {error}
           </div>
         )}
+
+        {/* Scroll navigation buttons */}
+        <ScrollNavButtons
+          containerRef={messagesContainerRef}
+          scrollTop={scrollPos.top}
+          scrollHeight={scrollPos.height}
+          clientHeight={scrollPos.clientHeight}
+          isStreaming={isStreaming}
+          isTouchDevice={isTouchDevice}
+          className="ai-assistant-embed-scroll-buttons"
+          hoverClassName="ai-assistant-embed-scroll-hover"
+          buttonClassName="ai-assistant-embed-scroll-btn"
+        />
       </div>
 
       {/* Input area */}

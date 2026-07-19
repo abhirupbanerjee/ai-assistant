@@ -8,11 +8,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, RefreshCw, ArrowDown } from 'lucide-react';
+import { ArrowUp, RefreshCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const REMARK_PLUGINS = [remarkGfm];
+import ScrollNavButtons from '@/components/chat/ScrollNavButtons';
 import type { Source } from '@/types';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 import VoiceInput from '@/components/chat/VoiceInput';
@@ -79,6 +80,7 @@ export function WorkspaceChatInterface({
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [scrollPos, setScrollPos] = useState({ top: 0, height: 0, clientHeight: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -98,12 +100,18 @@ export function WorkspaceChatInterface({
     if (!container) return;
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     setIsScrolledUp(distanceFromBottom > 100);
+    setScrollPos({ top: container.scrollTop, height: container.scrollHeight, clientHeight: container.clientHeight });
   }, []);
 
   const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
     if (container) container.scrollTop = container.scrollHeight;
     setIsScrolledUp(false);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   // Auto-resize textarea
@@ -156,7 +164,7 @@ export function WorkspaceChatInterface({
       <div
         ref={messagesContainerRef}
         onScroll={handleMessagesScroll}
-        className="flex-1 overflow-y-auto p-4 relative"
+        className="flex-1 overflow-y-auto p-4 relative group"
       >
         {showWelcome ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
@@ -226,16 +234,15 @@ export function WorkspaceChatInterface({
           </div>
         )}
 
-        {/* Scroll to bottom FAB */}
-        {isScrolledUp && (
-          <button
-            onClick={scrollToBottom}
-            className="absolute bottom-4 right-4 z-10 w-8 h-8 rounded-full bg-white shadow-md border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors"
-            title="Scroll to bottom"
-          >
-            <ArrowDown size={16} />
-          </button>
-        )}
+        {/* Scroll navigation buttons (scroll-up + scroll-down) */}
+        <ScrollNavButtons
+          containerRef={messagesContainerRef}
+          scrollTop={scrollPos.top}
+          scrollHeight={scrollPos.height}
+          clientHeight={scrollPos.clientHeight}
+          isStreaming={isStreaming}
+          isTouchDevice={isTouchDevice}
+        />
       </div>
 
       {/* Input area */}

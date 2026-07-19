@@ -151,6 +151,11 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
   const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
   const [detailsPreview, setDetailsPreview] = useState<{ modelId: string; data: DetailsResult; applyError?: string } | null>(null);
 
+  // Bulk "Clear All" state
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearAllError, setClearAllError] = useState<string | null>(null);
+
 
   // ============ Route Gating (derived) ============
 
@@ -340,6 +345,42 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
     }
     setActiveModelMenu(null);
     setMenuAnchor(null);
+  };
+
+  // Models eligible for the "Clear All" action — everything except the default
+  // and the configured universal fallback. The server re-validates this, but
+  // computing it on the client lets us disable the button and show an accurate
+  // count in the confirmation modal.
+  const clearableModels = enabledModels.filter(
+    m => !m.isDefault && m.id !== fallbackModelId && m.providerEnabled !== false
+  );
+
+  const handleClearAllModels = async () => {
+    setClearAllError(null);
+    const idsToDelete = clearableModels.map(m => m.id);
+    if (idsToDelete.length === 0) {
+      setShowClearAllConfirm(false);
+      return;
+    }
+    setClearingAll(true);
+    try {
+      const res = await fetch('/api/admin/llm/models/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: idsToDelete }),
+      });
+      const data = await res.json().catch(() => ({})) as { message?: string; error?: string; deleted?: number };
+      if (!res.ok) {
+        throw new Error(data.error || `Failed (${res.status})`);
+      }
+      await fetchModels();
+      setShowClearAllConfirm(false);
+      showSuccess(data.message || `Removed ${data.deleted ?? idsToDelete.length} models`);
+    } catch (err) {
+      setClearAllError(err instanceof Error ? err.message : 'Failed to clear models');
+    } finally {
+      setClearingAll(false);
+    }
   };
 
   const handleEditDisplayName = async (modelId: string) => {
@@ -700,16 +741,27 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
       <div className="bg-white rounded-lg border shadow-sm">
         <SectionHeader id="models" title="Enabled Models" subtitle="Models available for users in the chat dropdown">
           {!readOnly && (
-            <Button
-              onClick={() => {
-                setSelectedProviderForDiscovery(null);
-                setShowDiscoveryModal(true);
-              }}
-              disabled={configuredProviders.length === 0}
-            >
-              <Settings2 size={16} className="mr-2" />
-              Manage Models
-            </Button>
+            <>
+              <Button
+                variant="danger"
+                onClick={() => { setClearAllError(null); setShowClearAllConfirm(true); }}
+                disabled={clearableModels.length === 0}
+                title={clearableModels.length === 0 ? 'No models available to clear (only default/fallback remain)' : `Remove ${clearableModels.length} model${clearableModels.length === 1 ? '' : 's'} (keeps default & fallback)`}
+              >
+                <Trash2 size={16} className="mr-2" />
+                Clear All
+              </Button>
+              <Button
+                onClick={() => {
+                  setSelectedProviderForDiscovery(null);
+                  setShowDiscoveryModal(true);
+                }}
+                disabled={configuredProviders.length === 0}
+              >
+                <Settings2 size={16} className="mr-2" />
+                Manage Models
+              </Button>
+            </>
           )}
         </SectionHeader>
         {expandedSections.has('models') && (
@@ -1206,6 +1258,53 @@ export default function UnifiedLLMSettings({ readOnly = false }: { readOnly?: bo
         initialProvider={selectedProviderForDiscovery}
         onModelsAdded={handleModelsAdded}
       />
+
+      {/* Clear All Models confirmation modal */}
+      <Modal
+        isOpen={showClearAllConfirm}
+        onClose={() => { if (!clearingAll) setShowClearAllConfirm(false); }}
+        title="Clear All Models"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            This will remove{' '}
+            <strong className="text-red-600">{clearableModels.length}</strong>{' '}
+            model{clearableModels.length === 1 ? '' : 's'} from the enabled list.
+          </p>
+          <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-xs text-yellow-800 space-y-1">
+            <p className="font-medium">The following are preserved and will NOT be removed:</p>
+            <ul className="list-disc pl-5 space-y-0.5">
+              <li>The default model (required for chat).</li>
+              <li>The configured universal fallback model.</li>
+            </ul>
+          </div>
+          {clearAllError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+              <p className="text-sm text-red-700">{clearAllError}</p>
+              <button onClick={() => setClearAllError(null)} className="text-red-500 hover:text-red-700">×</button>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => setShowClearAllConfirm(false)}
+              disabled={clearingAll}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleClearAllModels}
+              loading={clearingAll}
+              disabled={clearableModels.length === 0}
+            >
+              <Trash2 size={16} className="mr-2" />
+              Remove {clearableModels.length} Model{clearableModels.length === 1 ? '' : 's'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Model action menu — portal into document.body to escape stacking contexts */}
       {activeModelMenu && menuAnchor && (() => {

@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
-import { RefreshCw, ArrowDown } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
@@ -19,10 +19,12 @@ import { useScrollHide } from '@/hooks/useScrollHide';
 import { useScrollMemory } from '@/hooks/useScrollMemory';
 import { useChatArtifacts } from '@/hooks/useChatArtifacts';
 import { useThreadOutputs } from '@/hooks/useThreadOutputs';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ChatSummaryBanner from './ChatSummaryBanner';
 import ChatWelcome from './ChatWelcome';
+import ScrollNavButtons from './ScrollNavButtons';
 
 // Lazy-load heavy conditional components that only render during specific streaming states
 const SubagentPanel = dynamic(() => import('./SubagentPanel'), { ssr: false, loading: () => <div className="h-24 animate-pulse bg-gray-100 rounded-lg mb-3" /> });
@@ -245,6 +247,10 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   // Mobile scroll-based hiding
   const { isHidden: isScrollingDown, onScroll: onScrollHide } = useScrollHide();
   const mobileMenu = useMobileMenuOptional();
+  const isTouchDevice = useIsTouchDevice();
+
+  // Scroll position tracking for ScrollNavButtons
+  const [scrollPos, setScrollPos] = useState({ top: 0, height: 0, clientHeight: 0 });
 
   // Per-thread scroll position memory
   const { saveScroll, restoreScroll, confirmRestore, cancelRestore } = useScrollMemory(messagesContainerRef);
@@ -685,6 +691,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (!container) return;
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setIsScrolledUp(!atBottom);
+    // Track scroll position for ScrollNavButtons
+    setScrollPos({ top: container.scrollTop, height: container.scrollHeight, clientHeight: container.clientHeight });
     // If user scrolls up while streaming, latch the pause so auto-scroll stays off
     // for the rest of this streaming turn (resets on next send).
     if (isStreamingRef.current && !atBottom) {
@@ -710,6 +718,18 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       const c = messagesContainerRef.current;
       if (c) c.scrollTop = c.scrollHeight;
       // Reset guard after the second scroll event has fired
+      requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
+    });
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    programmaticScrollRef.current = true;
+    container.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         programmaticScrollRef.current = false;
       });
@@ -937,7 +957,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       <div
         ref={messagesContainerRef}
         onScroll={handleMessagesScroll}
-        className={`flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative${streamingState.isStreaming ? ' is-streaming' : ''}`}
+        className={`flex-1 min-h-0 overflow-y-auto p-4 scroll-container relative group${streamingState.isStreaming ? ' is-streaming' : ''}`}
       >
             {messages.length === 0 && archivedMessages.length === 0 && !loading && (
               <ChatWelcome
@@ -1061,16 +1081,15 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
           />
         )}
 
-        {/* Scroll to bottom FAB */}
-        {isScrolledUp && (
-          <button
-            onClick={scrollToBottom}
-            className="absolute bottom-4 right-4 p-2 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all text-gray-600"
-            title="Scroll to bottom"
-          >
-            <ArrowDown size={16} />
-          </button>
-        )}
+        {/* Scroll navigation buttons (scroll-up + scroll-down) */}
+        <ScrollNavButtons
+          containerRef={messagesContainerRef}
+          scrollTop={scrollPos.top}
+          scrollHeight={scrollPos.height}
+          clientHeight={scrollPos.clientHeight}
+          isStreaming={streamingState.isStreaming}
+          isTouchDevice={isTouchDevice}
+        />
       </div>
 
       {/* Ephemeral processing/control strip — sits above the input bar, never scrolls.

@@ -457,3 +457,47 @@
   color: var(--embed-text-secondary);
   margin-left: 4px;
 }
+
+/* Scroll navigation buttons */
+.ai-assistant-embed-scroll-container {
+  position: relative;
+}
+
+.ai-assistant-embed-scroll-buttons {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-assistant-embed-scroll-hover {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.ai-assistant-embed-scroll-container:hover .ai-assistant-embed-scroll-hover {
+  opacity: 1;
+}
+
+.ai-assistant-embed-scroll-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--embed-border);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  color: var(--embed-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.ai-assistant-embed-scroll-btn:hover {
+  background: var(--embed-bg-secondary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
