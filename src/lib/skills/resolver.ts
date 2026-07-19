@@ -107,15 +107,27 @@ export function determineToolChoice(
   }
 
   // No required matches - check for preferred
-  // preferred = force a tool call (LLM picks which tool), but don't pin to a specific function.
-  // The openai.ts isModelForcedToolCapable safeguard downgrades 'required' → 'auto' for models
-  // that can't handle forced tool_choice (older think-tag models: qwen3, qwq, gpt-oss, kimi-k2),
-  // preserving the original "avoid force-mode issues with thinking models" intent for those.
-  // Capable reasoning models (kimi-k3, deepseek-v4-pro) now have forced_tool_capable=1 so they
-  // receive 'required' and must call a tool — without this, they pick text/web_search over
-  // generative tools like site_gen even when the skill prompt steers them toward it.
+  // preferred = force a tool call. To guarantee the matched tool is actually called (and not a
+  // competing tool like web_search that the LLM might prefer), pin to the specific function when
+  // there's a single preferred match — same behavior as the single-required-match branch above.
+  // The openai.ts isModelForcedToolCapable safeguard downgrades function-pinned/required tool_choice
+  // → 'auto' for models that can't handle forced tool_choice (older think-tag models: qwen3, qwq,
+  // gpt-oss, kimi-k2), preserving the original "avoid force-mode issues with thinking models" intent
+  // for those. Capable reasoning models (kimi-k3, deepseek-v4-pro, glm-5p2) have forced_tool_capable=1
+  // so the function pin is honored and site_gen is guaranteed to be called.
   const preferredMatches = sorted.filter(m => m.forceMode === 'preferred');
-  if (preferredMatches.length > 0) {
+  if (preferredMatches.length === 1) {
+    // Single preferred match: pin to that specific tool (same as single required match)
+    const toolName = preferredMatches[0].toolName;
+    // function_api is a dynamic tool that injects multiple function definitions
+    // Don't force a specific function name - let LLM pick from injected functions
+    if (toolName === 'function_api') {
+      return 'required';
+    }
+    return { type: 'function', function: { name: toolName } };
+  }
+  if (preferredMatches.length > 1) {
+    // Multiple preferred matches: force some tool (LLM picks among the matched tools)
     return 'required';
   }
 

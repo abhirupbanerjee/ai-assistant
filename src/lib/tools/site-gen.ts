@@ -319,6 +319,8 @@ export const siteGenTool: ToolDefinition = {
         });
       }
 
+      console.log(`[SiteGen] Starting website generation for thread ${threadId}: "${args.requirement?.slice(0, 80)}..."`);
+
       // Get tool configuration
       const toolConfig = await getToolConfig('site_gen');
       const config = (toolConfig?.config || {}) as Record<string, unknown>;
@@ -373,6 +375,7 @@ export const siteGenTool: ToolDefinition = {
 
       // Run the full site generation pipeline
       const { runPipeline } = await import('../site-gen/pipeline/orchestrator');
+      console.log(`[SiteGen] Running pipeline: theme=${args.theme || 'auto'}, pages=${args.pages?.length || 'auto'}`);
 
       const result = await runPipeline({
         requirement: args.requirement,
@@ -382,6 +385,8 @@ export const siteGenTool: ToolDefinition = {
         config: siteGenConfig,
       });
 
+      console.log(`[SiteGen] Pipeline complete: ${result.pageCount} pages, theme=${result.themeId}, fallbacks=${result.fallbackCount}, zip=${result.zipBuffer.length} bytes`);
+
       // Save zip to disk
       const outputDir = (await import('../docgen/branding')).getOutputDirectory();
       const zipFilename = (await import('../site-gen/packager/zip')).getZipFilename(result.projectName);
@@ -389,6 +394,8 @@ export const siteGenTool: ToolDefinition = {
       const { join } = await import('path');
       const filepath = join(outputDir, zipFilename);
       writeFileSync(filepath, result.zipBuffer);
+
+      console.log(`[SiteGen] Zip saved to disk: ${zipFilename} (${(result.zipBuffer.length / 1024).toFixed(1)} KB)`);
 
       // Save to thread/workspace output
       const generationConfig = JSON.stringify({
@@ -430,20 +437,35 @@ export const siteGenTool: ToolDefinition = {
         downloadUrlPrefix = '/api/documents';
       }
 
+      console.log(`[SiteGen] Output saved to DB: id=${docId}, fileType=zip, url=${downloadUrlPrefix}/${docId}/download`);
+
       const fileSizeMB = result.zipBuffer.length / (1024 * 1024);
       const themeDisplayName = result.themeName;
+      const fileSizeFormatted = fileSizeMB >= 1
+        ? `${fileSizeMB.toFixed(2)} MB`
+        : `${(result.zipBuffer.length / 1024).toFixed(1)} KB`;
+      const downloadUrl = `${downloadUrlPrefix}/${docId}/download`;
 
       return JSON.stringify({
         success: true,
         message: `Website generated successfully using the ${themeDisplayName} theme with ${result.pageCount} pages. Do NOT call site_gen again unless the user explicitly requests another website.`,
+        // `document` key mirrors doc_gen's return shape so openai.ts processToolResult
+        // fires the onArtifact('document') streaming callback for real-time UI display.
+        // Without this, the zip only appears after a page refresh fetches threadOutputs.
+        document: {
+          id: docId,
+          filename: zipFilename,
+          fileType: 'zip',
+          fileSize: result.zipBuffer.length,
+          fileSizeFormatted,
+          downloadUrl,
+        },
         website: {
           id: docId,
           filename: zipFilename,
           fileSize: result.zipBuffer.length,
-          fileSizeFormatted: fileSizeMB >= 1
-            ? `${fileSizeMB.toFixed(2)} MB`
-            : `${(result.zipBuffer.length / 1024).toFixed(1)} KB`,
-          downloadUrl: `${downloadUrlPrefix}/${docId}/download`,
+          fileSizeFormatted,
+          downloadUrl,
           theme: result.themeId,
           themeName: themeDisplayName,
           pages: result.pages,

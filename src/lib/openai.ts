@@ -2350,7 +2350,7 @@ export async function generateResponseWithTools(
 
           // Check if terminal tool succeeded
           if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
-            logger.debug(`Terminal tool ${toolName} succeeded, stopping tool loop`);
+            logger.info(`[Tools] Terminal tool ${toolName} succeeded, stopping tool loop`);
             terminalToolSucceeded = true;
             terminalToolResult = { toolName, parsedResult: parsed };
           }
@@ -2385,6 +2385,8 @@ export async function generateResponseWithTools(
           }
           if (parsed.document?.downloadUrl) {
             executionRecord.artifactUrl = parsed.document.downloadUrl;
+          } else if (parsed.website?.downloadUrl) {
+            executionRecord.artifactUrl = parsed.website.downloadUrl;
           } else if (parsed.imageHint?.url) {
             executionRecord.artifactUrl = parsed.imageHint.url;
           }
@@ -2470,7 +2472,7 @@ export async function generateResponseWithTools(
 
         const displayName = getToolDisplayName(toolName);
         const startTime = Date.now();
-        logger.debug(`Executing tool: ${toolName}`);
+        logger.info(`[Tools] Executing tool: ${toolName}`);
         callbacks?.onToolStart?.(toolName, displayName);
 
         let result: string;
@@ -2549,6 +2551,7 @@ export async function generateResponseWithTools(
         validCalls.map(async (tc) => {
           const startTime = Date.now();
           const configOverride = toolConfigOverrides.get(tc.function.name);
+          logger.info(`[Tools] Executing tool (parallel): ${tc.function.name}`);
           try {
             const result = await executeTool(tc.function.name, tc.function.arguments, configOverride);
             return { result, success: true as boolean, errorMsg: undefined as string | undefined, startTime };
