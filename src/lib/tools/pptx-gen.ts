@@ -36,10 +36,12 @@ const MAX_PAYLOAD_MB = 5;
 // ============ Default Configuration ============
 
 export const PPTX_GEN_DEFAULTS: PptxGenConfig = {
-  defaultTheme: 'corporate',
+  defaultTheme: 'light',
   maxSlides: 12,
   maxImageSlides: 3,
   enableImageGeneration: true,
+  maxCharsPerSlide: 500,
+  maxDescriptionLength: 300,
   branding: {
     enabled: false,
     logoUrl: '',
@@ -55,8 +57,8 @@ const pptxGenConfigSchema = {
     defaultTheme: {
       type: 'string',
       title: 'Default Theme',
-      enum: ['corporate', 'modern', 'minimal', 'bold'],
-      default: 'corporate',
+      enum: ['light', 'dark'],
+      default: 'light',
     },
     maxSlides: {
       type: 'number',
@@ -79,6 +81,22 @@ const pptxGenConfigSchema = {
       title: 'Enable AI Image Slides',
       description: 'Allow AI-generated full-bleed image slides (requires image_gen tool)',
       default: true,
+    },
+    maxCharsPerSlide: {
+      type: 'number',
+      title: 'Max Characters Per Slide',
+      description: 'Maximum characters allowed per slide content before overflow warning',
+      minimum: 100,
+      maximum: 2000,
+      default: 500,
+    },
+    maxDescriptionLength: {
+      type: 'number',
+      title: 'Max Description Length',
+      description: 'Maximum characters for slide description paragraphs',
+      minimum: 50,
+      maximum: 1000,
+      default: 300,
     },
     branding: {
       type: 'object',
@@ -111,7 +129,21 @@ function validatePptxGenConfig(config: Record<string, unknown>): ValidationResul
     }
   }
 
-  const validThemes = ['corporate', 'modern', 'minimal', 'bold'];
+  if (config.maxCharsPerSlide !== undefined) {
+    const max = config.maxCharsPerSlide as number;
+    if (typeof max !== 'number' || max < 100 || max > 2000) {
+      errors.push('maxCharsPerSlide must be between 100 and 2000');
+    }
+  }
+
+  if (config.maxDescriptionLength !== undefined) {
+    const max = config.maxDescriptionLength as number;
+    if (typeof max !== 'number' || max < 50 || max > 1000) {
+      errors.push('maxDescriptionLength must be between 50 and 1000');
+    }
+  }
+
+  const validThemes = ['light', 'dark'];
   if (config.defaultTheme && !validThemes.includes(config.defaultTheme as string)) {
     errors.push(`defaultTheme must be one of: ${validThemes.join(', ')}`);
   }
@@ -144,18 +176,38 @@ export const pptxGenTool: ToolDefinition = {
 
 Slide and image limits are configured by the administrator. If the request exceeds limits, you will receive an error with the current configured limits.
 
+Available themes: "light" (white background, best for screens/print) or "dark" (black background, best for projectors). Use accentColor for brand colors.
+
 Available slide types:
-- title: Opening slide with title and subtitle
-- content: Title + bullet points
-- two-column: Side-by-side content
-- comparison: Two boxes for pros/cons or before/after
-- stats: Large numbers with labels (2-4 stats)
-- image: Visual slide with AI-generated imagery (provide imagePrompt)
-- closing: Thank you or contact slide
+- title: Opening slide with title and optional description/subtitle
+- content: Title + description + bullet points. Supports layout: "split-left", "split-right", "split-top"
+- two-column: Side-by-side text columns with description
+- comparison: Two boxes for pros/cons or before/after with description
+- stats: Large numbers with labels and optional per-stat captions. Supports layout for split mode.
+- image: Visual slide with AI-generated imagery. Use imagePrompt. Supports description overlay and split layout.
+- closing: Thank you or contact slide with description
+- chart: Data visualization (bar, line, pie, doughnut, area). Provide chartData with categories, series, chartType. Supports layout for split mode.
+- table: Structured data with headers and rows. Provide tableData. Supports striped rows and layout for split mode.
+- timeline: Roadmap or milestone events. Provide timelineData with events array (date, title, description). Supports horizontal or vertical orientation.
+- metric-cards: KPI dashboard cards with trend indicators. Provide metricCardsData with cards array (label, value, trend, trendValue). Auto-colored trend arrows.
+- swot: Strategic SWOT analysis in a 2x2 grid. Provide swotData with strengths, weaknesses, opportunities, threats arrays.
+- funnel: Sales pipeline or conversion funnel. Provide funnelData with stages array (label, value, color). Optional showPercentages.
+- before-after: Transformation comparison with side-by-side panels. Provide beforeAfterData with left/right panels (label, content, color).
+- process: Workflow or step-by-step guide. Provide processData with steps array (number, title, description). Horizontal or vertical orientation.
+- kanban: Sprint board or project status. Provide kanbanData with columns array (header, color, cards). Trello-style layout.
+- pyramid: Hierarchy or framework diagram. Provide pyramidData with levels array (label, color, description). Top-down or bottom-up.
+- radial-progress: Goal tracking with donut rings. Provide radialProgressData with items array (label, value 0-100, color).
+- icon-grid: Feature highlights or capabilities grid. Provide iconGridData with items array (icon emoji, title, desc). 2x2 or 3x2 layout.
+- comparison-matrix: Vendor/option evaluation table. Provide comparisonMatrixData with headers and rows. Optional winner highlighting.
+- quote: Testimonial or key statement. Provide quoteData with quote text, attribution, and optional role.
+- agenda: Meeting outline or table of contents. Provide agendaData with items array (number, title, description). Numbered or plain.
+- team: Leadership profiles or contact cards. Provide teamData with members array (name, role, bio). Card grid layout.
+- geo: Regional or location data. Provide geoData with markers array (label, lat, lng, size). Simplified map visualization.
 
-For image slides, provide an imagePrompt describing the visual.
+All slide types support an optional "description" field — a 1-2 sentence explanatory paragraph below the title.
+All slide types support optional "speakerNotes" for presenter notes.
 
-Available themes: corporate, modern, minimal, bold`,
+For image slides, provide an imagePrompt describing the visual.`,
       parameters: {
         type: 'object',
         properties: {
@@ -171,12 +223,22 @@ Available themes: corporate, modern, minimal, bold`,
               properties: {
                 type: {
                   type: 'string',
-                  enum: ['title', 'content', 'two-column', 'comparison', 'stats', 'image', 'closing'],
+                  enum: ['title', 'content', 'two-column', 'comparison', 'stats', 'image', 'closing', 'chart', 'table', 'timeline', 'metric-cards', 'swot', 'funnel', 'before-after', 'process', 'kanban', 'pyramid', 'radial-progress', 'icon-grid', 'comparison-matrix', 'quote', 'agenda', 'team', 'geo'],
                   description: 'Slide layout type',
                 },
                 title: {
                   type: 'string',
                   description: 'Slide title',
+                },
+                description: {
+                  type: 'string',
+                  description: 'Optional explanatory paragraph (1-2 sentences) describing the slide content, key insight, or context',
+                },
+                layout: {
+                  type: 'string',
+                  enum: ['full', 'split-left', 'split-right', 'split-top'],
+                  description: 'Layout mode for visual slides: "full" (default, visual only), "split-left" (visual left, text right), "split-right" (text left, visual right), "split-top" (text top, visual bottom)',
+                  default: 'full',
                 },
                 content: {
                   type: 'string',
@@ -198,6 +260,7 @@ Available themes: corporate, modern, minimal, bold`,
                     properties: {
                       value: { type: 'string', description: 'Large number or value' },
                       label: { type: 'string', description: 'Description label' },
+                      caption: { type: 'string', description: 'Optional small caption below label (e.g., "+12% vs last month")' },
                     },
                     required: ['value', 'label'],
                   },
@@ -208,9 +271,247 @@ Available themes: corporate, modern, minimal, bold`,
                 },
                 imageStyle: {
                   type: 'string',
-                  enum: ['infographic', 'photo', 'illustration', 'diagram'],
-                  // Note: 'diagram' is mapped to 'illustration' by the builder since image_gen no longer supports diagram style
-                  description: 'Style hint for image generation (default: infographic)',
+                  enum: ['auto', 'infographic', 'poster', 'illustration', 'photo', 'product-mockup', 'icon', 'social-media'],
+                  description: 'Style hint for image generation: auto (model decides), infographic, poster, illustration, photo, product-mockup, icon, social-media. Default: infographic for presentation slides.',
+                },
+                imageResolution: {
+                  type: 'string',
+                  enum: ['512', '1K', '2K', '4K'],
+                  description: 'Image resolution: 512 (preview/thumbnail), 1K (standard quality), 2K (high-fidelity display), 4K (print-ready). Default: 1K.',
+                },
+                chartData: {
+                  type: 'object',
+                  description: 'Chart data (required for chart slides)',
+                  properties: {
+                    chartType: { type: 'string', enum: ['bar', 'line', 'pie', 'doughnut', 'area'], description: 'Chart type' },
+                    categories: { type: 'array', items: { type: 'string' }, description: 'X-axis category labels' },
+                    series: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string', description: 'Series name (legend)' },
+                          values: { type: 'array', items: { type: 'number' }, description: 'Data values' },
+                        },
+                        required: ['name', 'values'],
+                      },
+                      description: 'Data series',
+                    },
+                    showLegend: { type: 'boolean', description: 'Show legend (default: true for multi-series)' },
+                    showValues: { type: 'boolean', description: 'Show data labels on chart' },
+                    yAxisLabel: { type: 'string', description: 'Optional Y-axis label' },
+                  },
+                  required: ['chartType', 'categories', 'series'],
+                },
+                tableData: {
+                  type: 'object',
+                  description: 'Table data (required for table slides)',
+                  properties: {
+                    headers: { type: 'array', items: { type: 'string' }, description: 'Column headers' },
+                    rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Data rows' },
+                    columnWidths: { type: 'array', items: { type: 'number' }, description: 'Optional relative column width weights (e.g. [1,2,1]). Normalized to fit the table width. Omit for equal columns.' },
+                    headerColor: { type: 'string', description: 'Header row background color hex' },
+                    striped: { type: 'boolean', description: 'Alternate row shading (default: true)' },
+                  },
+                  required: ['headers', 'rows'],
+                },
+                timelineData: {
+                  type: 'object',
+                  description: 'Timeline data (required for timeline slides)',
+                  properties: {
+                    events: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          date: { type: 'string', description: 'Date or timeframe label' },
+                          title: { type: 'string', description: 'Event title' },
+                          description: { type: 'string', description: 'Optional event detail' },
+                        },
+                        required: ['date', 'title'],
+                      },
+                      description: 'Timeline events in chronological order',
+                    },
+                    orientation: { type: 'string', enum: ['horizontal', 'vertical'], description: 'Layout orientation (default: horizontal)' },
+                  },
+                  required: ['events'],
+                },
+                metricCardsData: {
+                  type: 'object',
+                  description: 'Metric cards data (required for metric-cards slides)',
+                  properties: {
+                    cards: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          label: { type: 'string', description: 'Metric name' },
+                          value: { type: 'string', description: 'Display value (e.g., "99.97%", "$12.4M")' },
+                          trend: { type: 'string', enum: ['up', 'down', 'flat'], description: 'Trend direction' },
+                          trendValue: { type: 'string', description: 'Trend delta (e.g., "+0.02%")' },
+                          color: { type: 'string', description: 'Card accent color hex (default: auto from trend)' },
+                        },
+                        required: ['label', 'value'],
+                      },
+                      description: 'Metric cards',
+                    },
+                    columns: { type: 'number', description: 'Number of cards per row (default: auto)' },
+                  },
+                  required: ['cards'],
+                },
+                swotData: {
+                  type: 'object',
+                  description: 'SWOT analysis data (required for swot slides)',
+                  properties: {
+                    strengths: { type: 'array', items: { type: 'string' }, description: 'Internal positive factors' },
+                    weaknesses: { type: 'array', items: { type: 'string' }, description: 'Internal negative factors' },
+                    opportunities: { type: 'array', items: { type: 'string' }, description: 'External positive factors' },
+                    threats: { type: 'array', items: { type: 'string' }, description: 'External negative factors' },
+                  },
+                  required: ['strengths', 'weaknesses', 'opportunities', 'threats'],
+                },
+                funnelData: {
+                  type: 'object',
+                  description: 'Funnel data (required for funnel slides)',
+                  properties: {
+                    stages: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          label: { type: 'string', description: 'Stage name' },
+                          value: { type: 'number', description: 'Count or value at this stage' },
+                          color: { type: 'string', description: 'Stage color hex' },
+                        },
+                        required: ['label', 'value'],
+                      },
+                      description: 'Funnel stages from top to bottom',
+                    },
+                    showPercentages: { type: 'boolean', description: 'Show conversion percentages between stages' },
+                    valuePrefix: { type: 'string', description: 'Prefix for value display (e.g., "$")' },
+                    valueSuffix: { type: 'string', description: 'Suffix for value display (e.g., "%")' },
+                  },
+                  required: ['stages'],
+                },
+                beforeAfterData: {
+                  type: 'object',
+                  description: 'Before/after data (required for before-after slides)',
+                  properties: {
+                    left: {
+                      type: 'object',
+                      properties: {
+                        label: { type: 'string', description: 'Panel label (e.g., "Before")' },
+                        content: { type: 'string', description: 'Bullet points (newline separated)' },
+                        color: { type: 'string', description: 'Panel accent color hex (default: red)' },
+                      },
+                      required: ['label', 'content'],
+                    },
+                    right: {
+                      type: 'object',
+                      properties: {
+                        label: { type: 'string', description: 'Panel label (e.g., "After")' },
+                        content: { type: 'string', description: 'Bullet points (newline separated)' },
+                        color: { type: 'string', description: 'Panel accent color hex (default: green)' },
+                      },
+                      required: ['label', 'content'],
+                    },
+                  },
+                  required: ['left', 'right'],
+                },
+                processData: {
+                  type: 'object',
+                  description: 'Process data (required for process slides)',
+                  properties: {
+                    steps: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          number: { type: 'number', description: 'Step number (1-based)' },
+                          title: { type: 'string', description: 'Step title' },
+                          description: { type: 'string', description: 'Step detail' },
+                        },
+                        required: ['number', 'title'],
+                      },
+                      description: 'Process steps in order',
+                    },
+                    orientation: { type: 'string', enum: ['horizontal', 'vertical'], description: 'Layout orientation (default: horizontal)' },
+                    showNumbers: { type: 'boolean', description: 'Show step numbers (default: true)' },
+                    showArrows: { type: 'boolean', description: 'Show connector arrows (default: true)' },
+                  },
+                  required: ['steps'],
+                },
+                kanbanData: {
+                  type: 'object', description: 'Kanban board data (required for kanban slides)',
+                  properties: {
+                    columns: { type: 'array', items: { type: 'object', properties: { header: { type: 'string' }, color: { type: 'string' }, cards: { type: 'array', items: { type: 'string' } } }, required: ['header', 'cards'] } },
+                  }, required: ['columns'],
+                },
+                pyramidData: {
+                  type: 'object', description: 'Pyramid data (required for pyramid slides)',
+                  properties: {
+                    levels: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, color: { type: 'string' }, description: { type: 'string' } }, required: ['label'] } },
+                    orientation: { type: 'string', enum: ['top-down', 'bottom-up'] },
+                  }, required: ['levels'],
+                },
+                radialProgressData: {
+                  type: 'object', description: 'Radial progress data (required for radial-progress slides)',
+                  properties: {
+                    items: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'number' }, color: { type: 'string' } }, required: ['label', 'value'] } },
+                  }, required: ['items'],
+                },
+                iconGridData: {
+                  type: 'object', description: 'Icon grid data (required for icon-grid slides)',
+                  properties: {
+                    items: { type: 'array', items: { type: 'object', properties: { icon: { type: 'string' }, title: { type: 'string' }, desc: { type: 'string' } }, required: ['icon', 'title', 'desc'] } },
+                    layout: { type: 'string', enum: ['2x2', '3x2', '4x2'] },
+                  }, required: ['items'],
+                },
+                comparisonMatrixData: {
+                  type: 'object', description: 'Comparison matrix data (required for comparison-matrix slides)',
+                  properties: {
+                    headers: { type: 'array', items: { type: 'string' } },
+                    rows: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          criteria: { type: 'string', description: 'Row label / criterion name (first column)' },
+                          winner: { type: 'string', description: 'Name of the column header that wins this row (enables highlighting when showWinner is true). Must match one of the headers exactly.' },
+                        },
+                        required: ['criteria'],
+                        // Allow dynamic option columns (each header name maps to a string value)
+                      },
+                      description: 'Data rows. Each row must include "criteria" plus a string value for each option column header.',
+                    },
+                    showWinner: { type: 'boolean' },
+                  }, required: ['headers', 'rows'],
+                },
+                quoteData: {
+                  type: 'object', description: 'Quote data (required for quote slides)',
+                  properties: { quote: { type: 'string' }, attribution: { type: 'string' }, role: { type: 'string' } },
+                  required: ['quote'],
+                },
+                agendaData: {
+                  type: 'object', description: 'Agenda data (required for agenda slides)',
+                  properties: {
+                    items: { type: 'array', items: { type: 'object', properties: { number: { type: 'number' }, title: { type: 'string' }, description: { type: 'string' } }, required: ['title'] } },
+                    numbered: { type: 'boolean' },
+                  }, required: ['items'],
+                },
+                teamData: {
+                  type: 'object', description: 'Team data (required for team slides)',
+                  properties: {
+                    members: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, role: { type: 'string' }, bio: { type: 'string' } }, required: ['name', 'role'] } },
+                    columns: { type: 'number' },
+                  }, required: ['members'],
+                },
+                geoData: {
+                  type: 'object', description: 'Geo data (required for geo slides)',
+                  properties: {
+                    region: { type: 'string', enum: ['world', 'us', 'europe', 'asia'] },
+                    markers: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, lat: { type: 'number' }, lng: { type: 'number' }, size: { type: 'string', enum: ['small', 'medium', 'large'] } }, required: ['label', 'lat', 'lng'] } },
+                  }, required: ['markers'],
                 },
                 speakerNotes: {
                   type: 'string',
@@ -222,8 +523,12 @@ Available themes: corporate, modern, minimal, bold`,
           },
           theme: {
             type: 'string',
-            enum: ['corporate', 'modern', 'minimal', 'bold'],
-            description: 'Visual theme (default: corporate)',
+            enum: ['light', 'dark'],
+            description: 'Visual theme: "light" (white background) or "dark" (black background). Default: light.',
+          },
+          accentColor: {
+            type: 'string',
+            description: 'Hex accent color for highlights, chart fills, and stat numbers (e.g., "#3B82F6"). Default: blue.',
           },
         },
         required: ['title', 'slides'],
@@ -352,7 +657,7 @@ Available themes: corporate, modern, minimal, bold`,
         title: args.title,
         slides: slidesToProcess as SlideDefinition[],
         theme: args.theme,
-        colorScheme: args.colorScheme,
+        accentColor: args.accentColor,
         organizationName,
       });
 

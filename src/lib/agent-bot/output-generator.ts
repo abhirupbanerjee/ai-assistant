@@ -531,10 +531,8 @@ async function generatePptxOutput(params: {
   const result = await generatePptx({
     title: title || 'Presentation',
     slides,
-    theme: 'corporate',
-    colorScheme: branding?.primaryColor
-      ? { primary: branding.primaryColor, secondary: '#666666', accent: '#003366' }
-      : undefined,
+    theme: 'light',
+    accentColor: branding?.primaryColor || undefined,
     organizationName: branding?.organizationName,
   });
 
