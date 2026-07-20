@@ -15,6 +15,7 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import {
   generateImage,
   getImageGenConfig,
@@ -213,22 +214,19 @@ function validateImageGenConfig(config: Record<string, unknown>): ValidationResu
     const ip = config.imageProcessing as Record<string, unknown>;
 
     if (ip.maxDimension !== undefined) {
-      const max = ip.maxDimension as number;
-      if (typeof max !== 'number' || max < 1024 || max > 4096) {
+      if (!numInRange(ip.maxDimension, 1024, 4096)) {
         errors.push('maxDimension must be between 1024 and 4096');
       }
     }
 
     if (ip.quality !== undefined) {
-      const quality = ip.quality as number;
-      if (typeof quality !== 'number' || quality < 0 || quality > 100) {
+      if (!numInRange(ip.quality, 0, 100)) {
         errors.push('quality must be between 0 and 100');
       }
     }
 
     if (ip.thumbnailSize !== undefined) {
-      const size = ip.thumbnailSize as number;
-      if (typeof size !== 'number' || size < 100 || size > 800) {
+      if (!numInRange(ip.thumbnailSize, 100, 800)) {
         errors.push('thumbnailSize must be between 100 and 800');
       }
     }

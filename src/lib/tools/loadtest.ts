@@ -16,7 +16,7 @@ import { getToolConfig } from '../db/compat/tool-config';
 import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { insertLoadTestResult, getLatestLoadTestResult } from '../db/compat/loadtest-results';
-import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
+import { numInRange, type ToolDefinition, type ValidationResult, type ToolExecutionOptions } from '../tools';
 
 // ============ Types ============
 
@@ -903,32 +903,17 @@ const configSchema = {
 function validateConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
-  if (config.maxConcurrentUsers !== undefined) {
-    const v = config.maxConcurrentUsers as number;
-    if (typeof v !== 'number' || v < 10 || v > 100) {
-      errors.push('maxConcurrentUsers must be between 10 and 100');
-    }
+  if (config.maxConcurrentUsers !== undefined && !numInRange(config.maxConcurrentUsers, 10, 100)) {
+    errors.push('maxConcurrentUsers must be between 10 and 100');
   }
-
-  if (config.defaultDuration !== undefined) {
-    const v = config.defaultDuration as number;
-    if (typeof v !== 'number' || v < 90 || v > 600) {
-      errors.push('defaultDuration must be between 90 and 600');
-    }
+  if (config.defaultDuration !== undefined && !numInRange(config.defaultDuration, 90, 600)) {
+    errors.push('defaultDuration must be between 90 and 600');
   }
-
-  if (config.maxDuration !== undefined) {
-    const v = config.maxDuration as number;
-    if (typeof v !== 'number' || v < 90 || v > 600) {
-      errors.push('maxDuration must be between 90 and 600');
-    }
+  if (config.maxDuration !== undefined && !numInRange(config.maxDuration, 90, 600)) {
+    errors.push('maxDuration must be between 90 and 600');
   }
-
-  if (config.cacheTTLSeconds !== undefined) {
-    const v = config.cacheTTLSeconds as number;
-    if (typeof v !== 'number' || v < 3600 || v > 2592000) {
-      errors.push('cacheTTLSeconds must be between 3600 and 2592000');
-    }
+  if (config.cacheTTLSeconds !== undefined && !numInRange(config.cacheTTLSeconds, 3600, 2592000)) {
+    errors.push('cacheTTLSeconds must be between 3600 and 2592000');
   }
 
   return { valid: errors.length === 0, errors };

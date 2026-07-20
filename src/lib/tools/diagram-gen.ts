@@ -6,6 +6,7 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import { getToolConfig } from '../db/compat/tool-config';
 import { generateMermaidDiagram, getDiagramGenConfig, DIAGRAM_GEN_DEFAULTS } from '../diagram-gen/generator';
 import { DIAGRAM_TEMPLATES } from '../diagram-gen/templates';
@@ -61,22 +62,19 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
   if (config.temperature !== undefined) {
-    const temp = config.temperature as number;
-    if (typeof temp !== 'number' || temp < 0 || temp > 1) {
+    if (!numInRange(config.temperature, 0, 1)) {
       errors.push('Temperature must be between 0 and 1');
     }
   }
 
   if (config.maxTokens !== undefined) {
-    const tokens = config.maxTokens as number;
-    if (typeof tokens !== 'number' || tokens < 500 || tokens > 4000) {
+    if (!numInRange(config.maxTokens, 500, 4000)) {
       errors.push('Max tokens must be between 500 and 4000');
     }
   }
 
   if (config.maxRetries !== undefined) {
-    const retries = config.maxRetries as number;
-    if (typeof retries !== 'number' || retries < 0 || retries > 5) {
+    if (!numInRange(config.maxRetries, 0, 5)) {
       errors.push('Max retries must be between 0 and 5');
     }
   }

@@ -21,6 +21,7 @@ import {
   validateShareAccess,
 } from '@/lib/db/compat';
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import type { ShareThreadToolConfig, ThreadShare } from '@/types';
 
 // ============ Tool Configuration ============
@@ -210,8 +211,7 @@ export const shareThreadTool: ToolDefinition = {
 
     // Validate defaultExpiryDays
     if (config.defaultExpiryDays !== undefined && config.defaultExpiryDays !== null) {
-      const days = config.defaultExpiryDays as number;
-      if (typeof days !== 'number' || days < 1 || days > 365) {
+      if (!numInRange(config.defaultExpiryDays, 1, 365)) {
         errors.push('defaultExpiryDays must be between 1 and 365');
       }
     }
@@ -229,16 +229,14 @@ export const shareThreadTool: ToolDefinition = {
 
     // Validate maxSharesPerThread
     if (config.maxSharesPerThread !== undefined) {
-      const max = config.maxSharesPerThread as number;
-      if (typeof max !== 'number' || max < 1 || max > 100) {
+      if (!numInRange(config.maxSharesPerThread, 1, 100)) {
         errors.push('maxSharesPerThread must be between 1 and 100');
       }
     }
 
     // Validate rateLimitPerHour
     if (config.rateLimitPerHour !== undefined) {
-      const limit = config.rateLimitPerHour as number;
-      if (typeof limit !== 'number' || limit < 1 || limit > 1000) {
+      if (!numInRange(config.rateLimitPerHour, 1, 1000)) {
         errors.push('rateLimitPerHour must be between 1 and 1000');
       }
     }

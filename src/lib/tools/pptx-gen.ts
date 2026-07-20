@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import type {
   PptxGenToolArgs,
   PptxGenConfig,
@@ -116,29 +117,25 @@ function validatePptxGenConfig(config: Record<string, unknown>): ValidationResul
   const errors: string[] = [];
 
   if (config.maxSlides !== undefined) {
-    const max = config.maxSlides as number;
-    if (typeof max !== 'number' || max < 5 || max > ABSOLUTE_MAX_SLIDES) {
+    if (!numInRange(config.maxSlides, 5, ABSOLUTE_MAX_SLIDES)) {
       errors.push(`maxSlides must be between 5 and ${ABSOLUTE_MAX_SLIDES}`);
     }
   }
 
   if (config.maxImageSlides !== undefined) {
-    const max = config.maxImageSlides as number;
-    if (typeof max !== 'number' || max < 0 || max > ABSOLUTE_MAX_IMAGE_SLIDES) {
+    if (!numInRange(config.maxImageSlides, 0, ABSOLUTE_MAX_IMAGE_SLIDES)) {
       errors.push(`maxImageSlides must be between 0 and ${ABSOLUTE_MAX_IMAGE_SLIDES}`);
     }
   }
 
   if (config.maxCharsPerSlide !== undefined) {
-    const max = config.maxCharsPerSlide as number;
-    if (typeof max !== 'number' || max < 100 || max > 2000) {
+    if (!numInRange(config.maxCharsPerSlide, 100, 2000)) {
       errors.push('maxCharsPerSlide must be between 100 and 2000');
     }
   }
 
   if (config.maxDescriptionLength !== undefined) {
-    const max = config.maxDescriptionLength as number;
-    if (typeof max !== 'number' || max < 50 || max > 1000) {
+    if (!numInRange(config.maxDescriptionLength, 50, 1000)) {
       errors.push('maxDescriptionLength must be between 50 and 1000');
     }
   }

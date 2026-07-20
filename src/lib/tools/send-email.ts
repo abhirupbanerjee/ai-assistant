@@ -11,6 +11,7 @@
 import sgMail from '@sendgrid/mail';
 import { getToolConfig } from '../db/compat/tool-config';
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import type { SendEmailToolConfig } from '@/types';
 
 // ============ Tool Configuration ============
@@ -317,8 +318,7 @@ export const sendEmailTool: ToolDefinition = {
 
     // Validate rateLimitPerHour
     if (config.rateLimitPerHour !== undefined) {
-      const limit = config.rateLimitPerHour as number;
-      if (typeof limit !== 'number' || limit < 1 || limit > 10000) {
+      if (!numInRange(config.rateLimitPerHour, 1, 10000)) {
         errors.push('rateLimitPerHour must be between 1 and 10000');
       }
     }

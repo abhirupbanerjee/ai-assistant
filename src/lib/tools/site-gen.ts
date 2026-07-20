@@ -20,6 +20,7 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import { getToolConfig, TOOL_DEFAULTS } from '../db/compat/tool-config';
 import { getRequestContext } from '../request-context';
 import {
@@ -186,15 +187,13 @@ function validateSiteGenConfig(config: Record<string, unknown>): ValidationResul
   }
 
   if (config.maxPagesPerSite !== undefined) {
-    const max = config.maxPagesPerSite as number;
-    if (typeof max !== 'number' || max < 1 || max > 20) {
+    if (!numInRange(config.maxPagesPerSite, 1, 20)) {
       errors.push('maxPagesPerSite must be between 1 and 20');
     }
   }
 
   if (config.maxRetriesFallback !== undefined) {
-    const retries = config.maxRetriesFallback as number;
-    if (typeof retries !== 'number' || retries < 0 || retries > 5) {
+    if (!numInRange(config.maxRetriesFallback, 0, 5)) {
       errors.push('maxRetriesFallback must be between 0 and 5');
     }
   }

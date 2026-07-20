@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import mammoth from 'mammoth';
 import type { ToolDefinition, ValidationResult } from '@/lib/tools';
+import { numInRange } from '@/lib/tools';
 import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/compat/tool-config';
 import { getEffectiveToolConfig, type BrandingConfig } from '@/lib/db/compat/category-tool-config';
 import { getThreadUploads } from '@/lib/db/compat/threads';
@@ -97,8 +98,7 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
   }
 
   if (config.expirationDays !== undefined) {
-    const days = config.expirationDays as number;
-    if (typeof days !== 'number' || days < 0 || days > 365) {
+    if (!numInRange(config.expirationDays, 0, 365)) {
       errors.push('expirationDays must be a number between 0 and 365');
     }
   }

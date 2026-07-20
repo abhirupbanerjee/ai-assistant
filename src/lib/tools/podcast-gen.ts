@@ -14,6 +14,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import OpenAI from 'openai';
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import { getToolConfigAsync, getThreadContext, addThreadOutput } from '@/lib/db/compat';
 import { getRequestContext } from '@/lib/request-context';
 import { getDisclaimerConfigIfEnabled } from '../disclaimer';
@@ -1131,8 +1132,7 @@ function validatePodcastGenConfig(config: Record<string, unknown>): ValidationRe
     if (providers.openai) {
       const openai = providers.openai as Record<string, unknown>;
       if (openai.speed !== undefined) {
-        const speed = openai.speed as number;
-        if (typeof speed !== 'number' || speed < 0.25 || speed > 4.0) {
+        if (!numInRange(openai.speed, 0.25, 4.0)) {
           errors.push('OpenAI speed must be between 0.25 and 4.0');
         }
       }
@@ -1150,8 +1150,7 @@ function validatePodcastGenConfig(config: Record<string, unknown>): ValidationRe
 
   // Validate expirationDays
   if (config.expirationDays !== undefined) {
-    const days = config.expirationDays as number;
-    if (typeof days !== 'number' || days < 0 || days > 365) {
+    if (!numInRange(config.expirationDays, 0, 365)) {
       errors.push('expirationDays must be between 0 and 365');
     }
   }

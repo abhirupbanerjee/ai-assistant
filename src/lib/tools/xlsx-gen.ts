@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import type { XlsxGenToolArgs, XlsxGenConfig, XlsxGenResponse } from '@/types/xlsx-gen';
 import { getRequestContext } from '../request-context';
 import { getToolConfig } from '../db/compat/tool-config';
@@ -94,22 +95,19 @@ function validateXlsxGenConfig(config: Record<string, unknown>): ValidationResul
   const errors: string[] = [];
 
   if (config.maxSheets !== undefined) {
-    const max = config.maxSheets as number;
-    if (typeof max !== 'number' || max < 1 || max > 20) {
+    if (!numInRange(config.maxSheets, 1, 20)) {
       errors.push('maxSheets must be between 1 and 20');
     }
   }
 
   if (config.maxRowsPerSheet !== undefined) {
-    const max = config.maxRowsPerSheet as number;
-    if (typeof max !== 'number' || max < 100 || max > MAX_ROWS) {
+    if (!numInRange(config.maxRowsPerSheet, 100, MAX_ROWS)) {
       errors.push(`maxRowsPerSheet must be between 100 and ${MAX_ROWS}`);
     }
   }
 
   if (config.maxColumnsPerSheet !== undefined) {
-    const max = config.maxColumnsPerSheet as number;
-    if (typeof max !== 'number' || max < 5 || max > MAX_COLUMNS) {
+    if (!numInRange(config.maxColumnsPerSheet, 5, MAX_COLUMNS)) {
       errors.push(`maxColumnsPerSheet must be between 5 and ${MAX_COLUMNS}`);
     }
   }

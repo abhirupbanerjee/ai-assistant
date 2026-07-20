@@ -8,6 +8,7 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import { toolsLogger as logger } from '../logger';
 import {
   translate,
@@ -228,8 +229,7 @@ export const translationTool: ToolDefinition = {
     if (providers) {
       for (const [name, settings] of Object.entries(providers)) {
         if (settings.temperature !== undefined) {
-          const temp = settings.temperature as number;
-          if (typeof temp !== 'number' || temp < 0 || temp > 1) {
+          if (!numInRange(settings.temperature, 0, 1)) {
             errors.push(`${name}: Temperature must be a number between 0 and 1`);
           }
         }

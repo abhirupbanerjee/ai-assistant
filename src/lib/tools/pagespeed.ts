@@ -18,7 +18,7 @@ import { getToolConfig } from '../db/compat/tool-config';
 import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
-import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
+import { numInRange, type ToolDefinition, type ValidationResult, type ToolExecutionOptions } from '../tools';
 
 // ========================================================================
 // 1. PAGESPEED INSIGHTS — Types & Implementation
@@ -1067,25 +1067,20 @@ const defaultConfig: WebsiteAnalysisConfig = {
 function validateConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
   if (config.defaultStrategy && !['mobile', 'desktop'].includes(config.defaultStrategy as string)) errors.push('defaultStrategy must be "mobile" or "desktop"');
-  if (config.cacheTTLSeconds !== undefined) {
-    const v = config.cacheTTLSeconds as number;
-    if (typeof v !== 'number' || v < 60 || v > 86400) errors.push('cacheTTLSeconds must be between 60 and 86400');
+  if (config.cacheTTLSeconds !== undefined && !numInRange(config.cacheTTLSeconds, 60, 86400)) {
+    errors.push('cacheTTLSeconds must be between 60 and 86400');
   }
-  if (config.securityMinAcceptableScore !== undefined) {
-    const v = config.securityMinAcceptableScore as number;
-    if (typeof v !== 'number' || v < 0 || v > 100) errors.push('securityMinAcceptableScore must be between 0 and 100');
+  if (config.securityMinAcceptableScore !== undefined && !numInRange(config.securityMinAcceptableScore, 0, 100)) {
+    errors.push('securityMinAcceptableScore must be between 0 and 100');
   }
-  if (config.sslMaxWaitSeconds !== undefined) {
-    const v = config.sslMaxWaitSeconds as number;
-    if (typeof v !== 'number' || v < 60 || v > 300) errors.push('sslMaxWaitSeconds must be between 60 and 300');
+  if (config.sslMaxWaitSeconds !== undefined && !numInRange(config.sslMaxWaitSeconds, 60, 300)) {
+    errors.push('sslMaxWaitSeconds must be between 60 and 300');
   }
-  if (config.redirectMaxHops !== undefined) {
-    const v = config.redirectMaxHops as number;
-    if (typeof v !== 'number' || v < 3 || v > 20) errors.push('redirectMaxHops must be between 3 and 20');
+  if (config.redirectMaxHops !== undefined && !numInRange(config.redirectMaxHops, 3, 20)) {
+    errors.push('redirectMaxHops must be between 3 and 20');
   }
-  if (config.redirectTimeoutMs !== undefined) {
-    const v = config.redirectTimeoutMs as number;
-    if (typeof v !== 'number' || v < 2000 || v > 30000) errors.push('redirectTimeoutMs must be between 2000 and 30000');
+  if (config.redirectTimeoutMs !== undefined && !numInRange(config.redirectTimeoutMs, 2000, 30000)) {
+    errors.push('redirectTimeoutMs must be between 2000 and 30000');
   }
   if (config.dkimSelectors !== undefined && !Array.isArray(config.dkimSelectors)) errors.push('dkimSelectors must be an array of strings');
   return { valid: errors.length === 0, errors };

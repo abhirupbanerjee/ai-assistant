@@ -14,7 +14,7 @@
 import { getToolConfig } from '../db/compat/tool-config';
 import { getEffectiveToolConfig } from '../db/compat/category-tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
-import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
+import { numInRange, type ToolDefinition, type ValidationResult, type ToolExecutionOptions } from '../tools';
 
 // ============ Types ============
 
@@ -567,19 +567,13 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
   const errors: string[] = [];
 
   // Validate cacheTTLSeconds
-  if (config.cacheTTLSeconds !== undefined) {
-    const cacheTTL = config.cacheTTLSeconds as number;
-    if (typeof cacheTTL !== 'number' || cacheTTL < 60 || cacheTTL > 86400) {
-      errors.push('cacheTTLSeconds must be a number between 60 and 86400');
-    }
+  if (config.cacheTTLSeconds !== undefined && !numInRange(config.cacheTTLSeconds, 60, 86400)) {
+    errors.push('cacheTTLSeconds must be a number between 60 and 86400');
   }
 
   // Validate maxIssuesPerCategory
-  if (config.maxIssuesPerCategory !== undefined) {
-    const maxIssues = config.maxIssuesPerCategory as number;
-    if (typeof maxIssues !== 'number' || maxIssues < 5 || maxIssues > 100) {
-      errors.push('maxIssuesPerCategory must be a number between 5 and 100');
-    }
+  if (config.maxIssuesPerCategory !== undefined && !numInRange(config.maxIssuesPerCategory, 5, 100)) {
+    errors.push('maxIssuesPerCategory must be a number between 5 and 100');
   }
 
   // Validate preConfiguredRepos

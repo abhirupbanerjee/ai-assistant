@@ -7,7 +7,7 @@
  */
 
 import { getToolConfig } from '../db/compat/tool-config';
-import type { ToolDefinition, ValidationResult } from '../tools';
+import { coerceNum, numInRange, type ToolDefinition, type ValidationResult } from '../tools';
 import type {
   ComplianceContext,
   ComplianceGlobalConfig,
@@ -203,23 +203,16 @@ function validateComplianceConfig(config: Record<string, unknown>): ValidationRe
   const errors: string[] = [];
 
   // Validate thresholds
-  if (config.passThreshold !== undefined) {
-    const threshold = config.passThreshold as number;
-    if (typeof threshold !== 'number' || threshold < 0 || threshold > 100) {
-      errors.push('passThreshold must be between 0 and 100');
-    }
+  if (config.passThreshold !== undefined && !numInRange(config.passThreshold, 0, 100)) {
+    errors.push('passThreshold must be between 0 and 100');
+  }
+  if (config.warnThreshold !== undefined && !numInRange(config.warnThreshold, 0, 100)) {
+    errors.push('warnThreshold must be between 0 and 100');
   }
 
-  if (config.warnThreshold !== undefined) {
-    const threshold = config.warnThreshold as number;
-    if (typeof threshold !== 'number' || threshold < 0 || threshold > 100) {
-      errors.push('warnThreshold must be between 0 and 100');
-    }
-  }
-
-  // Ensure pass > warn
-  const pass = (config.passThreshold as number) ?? COMPLIANCE_CHECKER_DEFAULTS.passThreshold;
-  const warn = (config.warnThreshold as number) ?? COMPLIANCE_CHECKER_DEFAULTS.warnThreshold;
+  // Ensure pass > warn (coerce to number in case legacy DB stored strings)
+  const pass = coerceNum(config.passThreshold) ?? COMPLIANCE_CHECKER_DEFAULTS.passThreshold;
+  const warn = coerceNum(config.warnThreshold) ?? COMPLIANCE_CHECKER_DEFAULTS.warnThreshold;
   if (pass <= warn) {
     errors.push('passThreshold must be greater than warnThreshold');
   }
@@ -231,11 +224,8 @@ function validateComplianceConfig(config: Record<string, unknown>): ValidationRe
   }
 
   // Validate timeout
-  if (config.clarificationTimeout !== undefined) {
-    const timeout = config.clarificationTimeout as number;
-    if (typeof timeout !== 'number' || timeout < 1000 || timeout > 30000) {
-      errors.push('clarificationTimeout must be between 1000 and 30000 ms');
-    }
+  if (config.clarificationTimeout !== undefined && !numInRange(config.clarificationTimeout, 1000, 30000)) {
+    errors.push('clarificationTimeout must be between 1000 and 30000 ms');
   }
 
   return { valid: errors.length === 0, errors };

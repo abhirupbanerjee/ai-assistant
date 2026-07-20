@@ -12,6 +12,7 @@
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import { getToolConfig, TOOL_DEFAULTS } from '../db/compat/tool-config';
 import { getEffectiveToolConfig, type BrandingConfig } from '../db/compat/category-tool-config';
 import { generateHtml, type HtmlPageType } from '../docgen/html-builder';
@@ -383,15 +384,13 @@ function validateHtmlGenConfig(config: Record<string, unknown>): ValidationResul
   }
 
   if (config.expirationDays !== undefined) {
-    const days = config.expirationDays as number;
-    if (typeof days !== 'number' || days < 0 || days > 365) {
+    if (!numInRange(config.expirationDays, 0, 365)) {
       errors.push('expirationDays must be a number between 0 and 365');
     }
   }
 
   if (config.maxDocumentSizeMB !== undefined) {
-    const size = config.maxDocumentSizeMB as number;
-    if (typeof size !== 'number' || size < 1 || size > 100) {
+    if (!numInRange(config.maxDocumentSizeMB, 1, 100)) {
       errors.push('maxDocumentSizeMB must be a number between 1 and 100');
     }
   }

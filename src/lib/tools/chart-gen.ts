@@ -7,6 +7,7 @@
 
 import { getToolConfig } from '../db/compat/tool-config';
 import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange } from '../tools';
 import type { ChartType } from '../../types/data-sources';
 import type {
   ChartGenToolArgs,
@@ -253,8 +254,7 @@ function validateChartGenConfig(config: Record<string, unknown>): ValidationResu
 
   // Validate maxDataRows
   if (config.maxDataRows !== undefined) {
-    const rows = config.maxDataRows as number;
-    if (typeof rows !== 'number' || rows < 10 || rows > 1000) {
+    if (!numInRange(config.maxDataRows, 10, 1000)) {
       errors.push('maxDataRows must be between 10 and 1000');
     }
   }

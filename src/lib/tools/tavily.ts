@@ -2,6 +2,7 @@ import { getWebSearchConfig } from '../db/compat/tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { validateUrlIsPublic } from '../ssrf-guard';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
+import { numInRange } from '../tools';
 
 // ============ URL Extract Types ============
 
@@ -856,8 +857,7 @@ function validateWebSearchConfig(config: Record<string, unknown>): ValidationRes
 
   // Validate maxResults
   if (config.maxResults !== undefined) {
-    const maxResults = config.maxResults as number;
-    if (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 20) {
+    if (!numInRange(config.maxResults, 1, 20)) {
       errors.push('maxResults must be a number between 1 and 20');
     }
   }
@@ -872,8 +872,7 @@ function validateWebSearchConfig(config: Record<string, unknown>): ValidationRes
 
   // Validate cacheTTLSeconds
   if (config.cacheTTLSeconds !== undefined) {
-    const cacheTTL = config.cacheTTLSeconds as number;
-    if (typeof cacheTTL !== 'number' || cacheTTL < 60 || cacheTTL > 2592000) {
+    if (!numInRange(config.cacheTTLSeconds, 60, 2592000)) {
       errors.push('cacheTTLSeconds must be a number between 60 and 2592000');
     }
   }

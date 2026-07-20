@@ -13,7 +13,7 @@ import { queryCSVData, queryCSVDataWithAggregation } from '../data-sources/csv-h
 import { aggregateData } from '../data-sources/aggregation';
 import { parseEphemeralSourceName } from '../data-sources/ephemeral-csv';
 import { getRequestContext } from '../request-context';
-import type { ToolDefinition, ValidationResult } from '../tools';
+import { numInRange, type ToolDefinition, type ValidationResult } from '../tools';
 import type {
   DataFilter,
   DataSort,
@@ -94,35 +94,23 @@ function validateDataSourceConfig(config: Record<string, unknown>): ValidationRe
   const errors: string[] = [];
 
   // Validate cacheTTLSeconds
-  if (config.cacheTTLSeconds !== undefined) {
-    const cacheTTL = config.cacheTTLSeconds as number;
-    if (typeof cacheTTL !== 'number' || cacheTTL < 60 || cacheTTL > 86400) {
-      errors.push('cacheTTLSeconds must be a number between 60 and 86400');
-    }
+  if (config.cacheTTLSeconds !== undefined && !numInRange(config.cacheTTLSeconds, 60, 86400)) {
+    errors.push('cacheTTLSeconds must be a number between 60 and 86400');
   }
 
   // Validate timeout
-  if (config.timeout !== undefined) {
-    const timeout = config.timeout as number;
-    if (typeof timeout !== 'number' || timeout < 5 || timeout > 120) {
-      errors.push('timeout must be a number between 5 and 120');
-    }
+  if (config.timeout !== undefined && !numInRange(config.timeout, 5, 120)) {
+    errors.push('timeout must be a number between 5 and 120');
   }
 
   // Validate defaultLimit
-  if (config.defaultLimit !== undefined) {
-    const defaultLimit = config.defaultLimit as number;
-    if (typeof defaultLimit !== 'number' || defaultLimit < 1 || defaultLimit > 200) {
-      errors.push('defaultLimit must be a number between 1 and 200');
-    }
+  if (config.defaultLimit !== undefined && !numInRange(config.defaultLimit, 1, 200)) {
+    errors.push('defaultLimit must be a number between 1 and 200');
   }
 
   // Validate maxLimit
-  if (config.maxLimit !== undefined) {
-    const maxLimit = config.maxLimit as number;
-    if (typeof maxLimit !== 'number' || maxLimit < 1 || maxLimit > 500) {
-      errors.push('maxLimit must be a number between 1 and 500');
-    }
+  if (config.maxLimit !== undefined && !numInRange(config.maxLimit, 1, 500)) {
+    errors.push('maxLimit must be a number between 1 and 500');
   }
 
   // Validate defaultChartType

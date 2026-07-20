@@ -874,7 +874,168 @@ function DocGenConfig({
 }
 
 /**
- * Generic tool config renderer for tools without custom forms
+ * Schema property shape supported by the generic config renderer.
+ * Supports nested objects (e.g. branding) via recursive GenericToolField.
+ */
+interface GenericSchemaProp {
+  type: string;
+  title?: string;
+  description?: string;
+  enum?: string[];
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  properties?: Record<string, GenericSchemaProp>;
+}
+
+/**
+ * Recursively renders a single config field. Handles enum, boolean, number,
+ * string (with prompt/template detection), and nested object properties.
+ */
+function GenericToolField({
+  propKey,
+  prop,
+  value,
+  onChange,
+  disabled,
+}: {
+  propKey: string;
+  prop: GenericSchemaProp;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  disabled: boolean;
+}) {
+  // Nested object: recurse into its properties
+  if (prop.type === 'object' && prop.properties) {
+    const nested = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
+    return (
+      <div className="space-y-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+        <div className="text-sm font-semibold text-gray-700">{prop.title || propKey}</div>
+        {Object.entries(prop.properties).map(([subKey, subProp]) => (
+          <div key={subKey}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {subProp.title || subKey}
+            </label>
+            <GenericToolField
+              propKey={subKey}
+              prop={subProp}
+              value={nested[subKey]}
+              onChange={(subValue) => onChange({ ...nested, [subKey]: subValue })}
+              disabled={disabled}
+            />
+            {subProp.description && (
+              <p className="text-xs text-gray-500 mt-1">{subProp.description}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Dropdown for enum properties
+  if (prop.enum && Array.isArray(prop.enum)) {
+    return (
+      <select
+        value={String(value ?? prop.default ?? '')}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+      >
+        {prop.default === '' && <option value="">Use default LLM settings</option>}
+        {prop.enum.map((option: string) => (
+          <option key={option} value={option}>
+            {option === 'auto' ? 'Auto (use default LLM provider)' : option.charAt(0).toUpperCase() + option.slice(1)}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  // Boolean
+  if (prop.type === 'boolean') {
+    return (
+      <input
+        type="checkbox"
+        checked={!!value}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+    );
+  }
+
+  // Number (coerce string input to finite number; empty falls back to default)
+  if (prop.type === 'number') {
+    const numDefault = typeof prop.default === 'number' ? prop.default : 0;
+    const displayValue = (value === undefined || value === null || value === '')
+      ? numDefault
+      : value;
+    return (
+      <>
+        <input
+          type="number"
+          min={prop.minimum}
+          max={prop.maximum}
+          value={displayValue as number | string}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              onChange(numDefault);
+            } else {
+              const n = Number(raw);
+              onChange(Number.isFinite(n) ? n : numDefault);
+            }
+          }}
+          disabled={disabled}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+        />
+        {(prop.minimum !== undefined || prop.maximum !== undefined) && (
+          <p className="text-xs text-gray-500 mt-1">
+            {prop.minimum !== undefined && prop.maximum !== undefined
+              ? `Between ${prop.minimum} and ${prop.maximum}`
+              : prop.minimum !== undefined
+                ? `Minimum: ${prop.minimum}`
+                : `Maximum: ${prop.maximum}`}
+          </p>
+        )}
+      </>
+    );
+  }
+
+  // String / fallback — use textarea for prompt-like or long values
+  const lowerTitle = (prop.title || '').toLowerCase();
+  const lowerKey = propKey.toLowerCase();
+  const isPromptLike = lowerTitle.includes('prompt') || lowerTitle.includes('template') || lowerKey.includes('prompt') || lowerKey.includes('template') || lowerKey.includes('instruction');
+  const strValue = (value as string) ?? (prop.default as string) ?? '';
+  if (isPromptLike || strValue.length > 120) {
+    return (
+      <textarea
+        rows={6}
+        value={strValue}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
+        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+      />
+    );
+  }
+  return (
+    <input
+      type="text"
+      value={strValue}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
+      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+    />
+  );
+}
+
+/**
+ * Generic tool config renderer for tools without custom forms.
+ * Delegates per-field rendering to the recursive GenericToolField so that
+ * nested object properties (e.g. branding) render as grouped sub-fields
+ * instead of falling through to a text input that corrupts the object.
  */
 function GenericToolConfig({
   config,
@@ -887,7 +1048,7 @@ function GenericToolConfig({
   onChange: (config: Record<string, unknown>) => void;
   disabled: boolean;
 }) {
-  const properties = (schema as { properties?: Record<string, { type: string; title?: string; description?: string; enum?: string[]; default?: unknown; minimum?: number; maximum?: number }> }).properties || {};
+  const properties = (schema as { properties?: Record<string, GenericSchemaProp> }).properties || {};
 
   return (
     <div className="space-y-4">
@@ -896,80 +1057,13 @@ function GenericToolConfig({
           <label className="block text-sm font-medium text-gray-700 mb-1">
             {prop.title || key}
           </label>
-          {/* Dropdown for enum properties */}
-          {prop.enum && Array.isArray(prop.enum) ? (
-            <select
-              value={String(config[key] ?? prop.default ?? '')}
-              onChange={(e) => onChange({ ...config, [key]: e.target.value })}
-              disabled={disabled}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-            >
-              {/* Show "Use default" option only if default is empty string */}
-              {prop.default === '' && <option value="">Use default LLM settings</option>}
-              {prop.enum.map((option: string) => (
-                <option key={option} value={option}>
-                  {option === 'auto' ? 'Auto (use default LLM provider)' : option.charAt(0).toUpperCase() + option.slice(1)}
-                </option>
-              ))}
-            </select>
-          ) : prop.type === 'boolean' ? (
-            <input
-              type="checkbox"
-              checked={!!config[key]}
-              onChange={(e) => onChange({ ...config, [key]: e.target.checked })}
-              disabled={disabled}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-          ) : prop.type === 'number' ? (
-            <>
-              <input
-                type="number"
-                min={prop.minimum}
-                max={prop.maximum}
-                value={(config[key] as number) ?? (prop.default as number) ?? 0}
-                onChange={(e) => onChange({ ...config, [key]: parseInt(e.target.value) })}
-                disabled={disabled}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-              {(prop.minimum !== undefined || prop.maximum !== undefined) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {prop.minimum !== undefined && prop.maximum !== undefined
-                    ? `Between ${prop.minimum} and ${prop.maximum}`
-                    : prop.minimum !== undefined
-                      ? `Minimum: ${prop.minimum}`
-                      : `Maximum: ${prop.maximum}`}
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              {(() => {
-                const lowerTitle = (prop.title || '').toLowerCase();
-                const lowerKey = key.toLowerCase();
-                const isPromptLike = lowerTitle.includes('prompt') || lowerTitle.includes('template') || lowerKey.includes('prompt') || lowerKey.includes('template') || lowerKey.includes('instruction');
-                const val = (config[key] as string) ?? (prop.default as string) ?? '';
-                return isPromptLike || val.length > 120;
-              })() ? (
-                <textarea
-                  rows={6}
-                  value={(config[key] as string) ?? (prop.default as string) ?? ''}
-                  onChange={(e) => onChange({ ...config, [key]: e.target.value })}
-                  disabled={disabled}
-                  placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={(config[key] as string) ?? (prop.default as string) ?? ''}
-                  onChange={(e) => onChange({ ...config, [key]: e.target.value })}
-                  disabled={disabled}
-                  placeholder={prop.default === '' ? 'Leave empty to use default' : undefined}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              )}
-            </>
-          )}
+          <GenericToolField
+            propKey={key}
+            prop={prop}
+            value={config[key]}
+            onChange={(fieldValue) => onChange({ ...config, [key]: fieldValue })}
+            disabled={disabled}
+          />
           {prop.description && (
             <p className="text-xs text-gray-500 mt-1">{prop.description}</p>
           )}
@@ -1861,7 +1955,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to save configuration');
+        // Surface field-level validation details when the API provides them
+        const detailMsg = Array.isArray(data.details) && data.details.length > 0
+          ? data.details.join('; ')
+          : data.error;
+        throw new Error(detailMsg || 'Failed to save configuration');
       }
 
       setSuccess('Configuration saved successfully');
