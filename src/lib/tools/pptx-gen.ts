@@ -14,6 +14,7 @@ import type {
   PptxGenConfig,
   PptxGenResponse,
   SlideDefinition,
+  SlideType,
 } from '@/types/pptx-gen';
 import { getRequestContext } from '../request-context';
 import { getToolConfig } from '../db/compat/tool-config';
@@ -156,6 +157,52 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+// ============ Slide-Type Priority Tiers ============
+
+/**
+ * Plain text fallback types — Tier 3. These are only acceptable when no
+ * Tier 1 visual type or Tier 2 image slide fits the content.
+ */
+const TEXT_FALLBACK_TYPES = new Set<SlideType>(['content', 'closing', 'title']);
+
+/**
+ * Keyword → emoji icon map for Tier 3 fallback slides. When the LLM does not
+ * provide an explicit `icon`, this heuristic assigns one so the fallback is
+ * never a bare text wall.
+ */
+const ICON_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/finance|revenue|cost|budget|money|profit/i, '💰'],
+  [/growth|increase|trend|up|rise/i, '📈'],
+  [/decline|decrease|drop|down|fall|loss/i, '📉'],
+  [/risk|security|threat|vulnerab|compliance/i, '🛡️'],
+  [/team|people|staff|workforce|talent/i, '👥'],
+  [/goal|target|objective|aim|kpi/i, '🎯'],
+  [/idea|innovation|concept|creative|invent/i, '💡'],
+  [/process|workflow|step|procedure|pipeline/i, '⚙️'],
+  [/data|analytic|metric|insight|report/i, '📊'],
+  [/customer|client|user|consumer|audience/i, '🤝'],
+  [/time|schedule|deadline|timeline|duration/i, '⏰'],
+  [/roadmap|plan|strategy|future|vision/i, '🗺️'],
+  [/checklist|todo|task|action|deliverable/i, '✅'],
+  [/warning|alert|caution|issue|problem/i, '⚠️'],
+  [/location|region|global|geography|map/i, '🌍'],
+  [/technology|software|system|infrastructure|cloud/i, '💻'],
+  [/question|faq|ask|inquiry/i, '❓'],
+  [/summary|conclusion|wrap|recap|overview/i, '📝'],
+];
+
+/**
+ * Returns a context-appropriate emoji icon for a Tier 3 fallback slide when
+ * the LLM did not specify one. Falls back to a generic pushpin.
+ */
+function autoIcon(title: string, content: string): string {
+  const text = `${title} ${content}`;
+  for (const [re, icon] of ICON_HINTS) {
+    if (re.test(text)) return icon;
+  }
+  return '📌';
+}
+
 // ============ Tool Definition ============
 
 export const pptxGenTool: ToolDefinition = {
@@ -175,14 +222,10 @@ Slide and image limits are configured by the administrator. If the request excee
 
 Available themes: "light" (white background, best for screens/print) or "dark" (black background, best for projectors). Use accentColor for brand colors.
 
-Available slide types:
-- title: Opening slide with title and optional description/subtitle
-- content: Title + description + bullet points. Supports layout: "split-left", "split-right", "split-top"
-- two-column: Side-by-side text columns with description
-- comparison: Two boxes for pros/cons or before/after with description
-- stats: Large numbers with labels and optional per-stat captions. Supports layout for split mode.
-- image: Visual slide with AI-generated imagery. Use imagePrompt. Supports description overlay and split layout.
-- closing: Thank you or contact slide with description
+SLIDE-TYPE SELECTION PRIORITY — always prefer visual/structured slides over plain text.
+Plain "content" text slides are a LAST-RESORT fallback, never the default choice.
+
+Tier 1 — Structured visual slides (PREFER THESE for any data, comparisons, steps, frameworks):
 - chart: Data visualization (bar, line, pie, doughnut, area). Provide chartData with categories, series, chartType. Supports layout for split mode.
 - table: Structured data with headers and rows. Provide tableData. Supports striped rows and layout for split mode.
 - timeline: Roadmap or milestone events. Provide timelineData with events array (date, title, description). Supports horizontal or vertical orientation.
@@ -194,12 +237,34 @@ Available slide types:
 - kanban: Sprint board or project status. Provide kanbanData with columns array (header, color, cards). Trello-style layout.
 - pyramid: Hierarchy or framework diagram. Provide pyramidData with levels array (label, color, description). Top-down or bottom-up.
 - radial-progress: Goal tracking with donut rings. Provide radialProgressData with items array (label, value 0-100, color).
-- icon-grid: Feature highlights or capabilities grid. Provide iconGridData with items array (icon emoji, title, desc). 2x2 or 3x2 layout.
+- icon-grid: Feature highlights or capabilities grid (4-6 discrete points). Provide iconGridData with items array (icon emoji, title, desc). 2x2 or 3x2 layout.
 - comparison-matrix: Vendor/option evaluation table. Provide comparisonMatrixData with headers and rows. Optional winner highlighting.
+- stats: Large numbers with labels and optional per-stat captions. Supports layout for split mode.
+- comparison: Two boxes for pros/cons or before/after with description
+- two-column: Side-by-side text columns with description
 - quote: Testimonial or key statement. Provide quoteData with quote text, attribution, and optional role.
 - agenda: Meeting outline or table of contents. Provide agendaData with items array (number, title, description). Numbered or plain.
 - team: Leadership profiles or contact cards. Provide teamData with members array (name, role, bio). Card grid layout.
 - geo: Regional or location data. Provide geoData with markers array (label, lat, lng, size). Simplified map visualization.
+
+Tier 2 — AI-generated image slide (use when no Tier 1 type fits but a generated visual strengthens the slide):
+- image: Visual slide with AI-generated imagery. Use imagePrompt. Supports description overlay and split layout.
+
+Tier 3 — Last-resort text fallback (use ONLY when no Tier 1 or Tier 2 type fits; narrative/transition slides with no visualisable data):
+- content: Title + description + bullet points + optional "icon" emoji. Supports layout: "split-left", "split-right", "split-top"
+
+Special:
+- title: Opening slide with title and optional description/subtitle (first slide only)
+- closing: Thank you or contact slide with description (final slide only)
+
+SELECTION RULES (enforce strictly):
+- Numeric data → use stats, metric-cards, or chart — NEVER content.
+- Comparisons (pros/cons, A vs B) → use comparison, comparison-matrix, or before-after — NEVER content.
+- Steps, workflow, phases → use process or timeline — NEVER content.
+- 4-6 discrete feature points → use icon-grid — NEVER content.
+- Hierarchy, levels, framework → use pyramid — NEVER content.
+- Do NOT produce consecutive "content" slides. If two slides in a row would both be content, restructure one into a Tier 1 visual type.
+- When you DO use a "content" slide, include an "icon" emoji (e.g. 💡, 📊, 🎯, ⚙️, 🛡️) so it is not a bare text wall.
 
 All slide types support an optional "description" field — a 1-2 sentence explanatory paragraph below the title.
 All slide types support optional "speakerNotes" for presenter notes.
@@ -221,7 +286,7 @@ For image slides, provide an imagePrompt describing the visual.`,
                 type: {
                   type: 'string',
                   enum: ['title', 'content', 'two-column', 'comparison', 'stats', 'image', 'closing', 'chart', 'table', 'timeline', 'metric-cards', 'swot', 'funnel', 'before-after', 'process', 'kanban', 'pyramid', 'radial-progress', 'icon-grid', 'comparison-matrix', 'quote', 'agenda', 'team', 'geo'],
-                  description: 'Slide layout type',
+                  description: 'Slide layout type. Prefer Tier 1 visual types (chart, table, timeline, metric-cards, swot, funnel, before-after, process, kanban, pyramid, radial-progress, icon-grid, comparison-matrix, stats, comparison, two-column, quote, agenda, team, geo). Use "image" (Tier 2) only when no visual type fits. Use "content" (Tier 3) only as a last-resort narrative fallback.',
                 },
                 title: {
                   type: 'string',
@@ -239,7 +304,11 @@ For image slides, provide an imagePrompt describing the visual.`,
                 },
                 content: {
                   type: 'string',
-                  description: 'Main content (use newlines for bullet points)',
+                  description: 'Main content for content/closing slides (use newlines for bullet points). Only use for Tier 3 fallback slides — prefer a visual slide type instead.',
+                },
+                icon: {
+                  type: 'string',
+                  description: 'Optional emoji icon shown next to the title for content/closing fallback slides (e.g. "💡", "📊", "🎯", "⚙️", "🛡️"). Required when using the "content" fallback type to avoid a bare text wall.',
                 },
                 leftContent: {
                   type: 'string',
@@ -622,27 +691,64 @@ For image slides, provide an imagePrompt describing the visual.`,
         } as PptxGenResponse);
       }
 
-      // Step 3: Check image_gen availability and prepare slides
+      // Step 3: Check image_gen availability and prepare slides (tier cascade)
       const imageGenAvailable = await isImageGenEnabled();
       let slidesToProcess = args.slides;
       let imagesFallbackToText = 0;
+      let contentSlidesAutoIconed = 0;
 
       if (!imageGenAvailable && imageSlides.length > 0) {
         console.log(
-          `[PptxGen] image_gen disabled, converting ${imageSlides.length} image slides to content slides`
+          `[PptxGen] image_gen disabled, converting ${imageSlides.length} image slides to content slides (Tier 3 fallback)`
         );
-        // Convert image slides to content slides with narrative
-        slidesToProcess = args.slides.map((slide) => {
+        // Convert image slides (Tier 2) to content slides (Tier 3) with an icon
+        // so the fallback is not a bare text wall.
+        slidesToProcess = slidesToProcess.map((slide) => {
           if (slide.type === 'image') {
             imagesFallbackToText++;
+            const fallbackContent = slide.imagePrompt || slide.content || 'Visual content placeholder';
             return {
               ...slide,
               type: 'content' as const,
-              content: slide.imagePrompt || slide.content || 'Visual content placeholder',
+              content: fallbackContent,
+              icon: slide.icon || autoIcon(slide.title, fallbackContent),
             };
           }
           return slide;
         });
+      }
+
+      // Tier 3 enhancement: ensure plain "content" fallback slides carry an
+      // icon so they are not bare text walls. If the LLM omitted an icon we
+      // auto-assign one via the keyword→emoji heuristic.
+      slidesToProcess = slidesToProcess.map((slide) => {
+        if (TEXT_FALLBACK_TYPES.has(slide.type) && !slide.icon) {
+          const inferred = autoIcon(slide.title, slide.content || slide.description || '');
+          if (slide.type === 'content') contentSlidesAutoIconed++;
+          return { ...slide, icon: inferred };
+        }
+        return slide;
+      });
+
+      if (contentSlidesAutoIconed > 0) {
+        console.log(
+          `[PptxGen] auto-assigned icons to ${contentSlidesAutoIconed} content fallback slide(s) missing icons`
+        );
+      }
+
+      // Audit log: warn when the LLM chose a Tier 3 fallback for content that
+      // looks visualisable (contains numbers, "vs", or is verbose). We do not
+      // auto-convert (the LLM's choice is respected) but surface it for review.
+      const visualishPattern = /\d+%|\bvs\b|\bcompared?\b|\$[\d,]+|\d{2,}\s/gi;
+      for (const slide of slidesToProcess) {
+        if (
+          TEXT_FALLBACK_TYPES.has(slide.type) &&
+          visualishPattern.test(`${slide.title} ${slide.content || ''}`)
+        ) {
+          console.warn(
+            `[PptxGen] content slide "${slide.title}" looks data-heavy — consider a Tier 1 visual type instead`
+          );
+        }
       }
 
       // Step 4: Generate presentation

@@ -177,7 +177,9 @@ export class PptxBuilder {
         this.buildGeoSlide(pptxSlide, slide);
         break;
       default:
-        this.buildContentSlide(pptxSlide, slide);
+        // Unknown slide type → Tier 3 text fallback; ensure an icon so it is
+        // not a bare text wall.
+        this.buildContentSlide(pptxSlide, { ...slide, icon: slide.icon || '📌' });
     }
 
     // Add AI disclaimer footer if enabled
@@ -334,11 +336,29 @@ export class PptxBuilder {
 
     pptxSlide.background = { color: background };
 
+    // Optional icon rendered to the left of the title (Tier 3 fallback enhancement)
+    const icon = slide.icon;
+    const titleX = icon ? 1.5 : 0.5;
+    const titleW = icon ? '78%' : '90%';
+
+    if (icon) {
+      pptxSlide.addText(icon, {
+        x: 0.5,
+        y: 0.28,
+        w: 0.9,
+        h: 0.85,
+        fontSize: 32,
+        fontFace: bodyFont,
+        align: 'center',
+        valign: 'middle',
+      });
+    }
+
     // Title
     pptxSlide.addText(slide.title, {
-      x: 0.5,
+      x: titleX,
       y: 0.3,
-      w: '90%',
+      w: titleW,
       h: 0.8,
       fontSize: 36,
       fontFace: headerFont,

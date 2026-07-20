@@ -108,6 +108,8 @@ export interface SlideDefinition {
   imageResolution?: string;
   /** Speaker notes */
   speakerNotes?: string;
+  /** Optional emoji/icon shown alongside the title for content/closing fallback slides (Tier 3) */
+  icon?: string;
 }
 
 export interface StatItem {

@@ -1238,7 +1238,66 @@ async function executePptxGenTool(
   callbacks?: ExecutorCallbacks
 ): Promise<TaskExecutionPayload> {
   const depContext = buildDependencyContext(task, plan);
-  const prompt = `Generate presentation slide data for: ${task.description}\n\n${depContext}\n\nRespond with JSON: { "title": "...", "slides": [{ "title": "...", "content": "...", "notes": "..." }] }`;
+  const prompt = `Generate a professional presentation for: ${task.description}
+
+${depContext}
+
+SLIDE-TYPE SELECTION PRIORITY — prefer visual/structured slides over plain text.
+Plain "content" slides are a LAST-RESORT fallback, never the default.
+
+Tier 1 — Structured visual slides (PREFER THESE):
+  chart, table, timeline, metric-cards, swot, funnel, before-after, process,
+  kanban, pyramid, radial-progress, icon-grid, comparison-matrix, stats,
+  comparison, two-column, quote, agenda, team, geo
+
+Tier 2 — AI-generated image slide (use when no Tier 1 type fits):
+  image (requires image_gen; provide imagePrompt + imageStyle)
+
+Tier 3 — Last-resort text fallback (narrative/transition only; include an "icon" emoji):
+  content
+
+Special:
+  title   — first slide only
+  closing — final slide only
+
+SELECTION RULES (enforce strictly):
+- Numeric data → use stats, metric-cards, or chart — NEVER content.
+- Comparisons → use comparison, comparison-matrix, or before-after — NEVER content.
+- Steps/process → use process or timeline — NEVER content.
+- 4-6 discrete points → use icon-grid — NEVER content.
+- Do NOT produce consecutive "content" slides.
+
+Available slide types and required fields:
+- title: { title, description }                                   — first slide only
+- content: { title, content, icon }                               — last resort; include an icon emoji
+- chart: { title, chartData: { categories:[...], series:[{name,data:[...]}], chartType:"bar"|"line"|"pie"|"doughnut"|"area" } }
+- table: { title, tableData: { headers:[...], rows:[[...],...] } }
+- timeline: { title, timelineData: { events:[{date,title,description}] } }
+- metric-cards: { title, metricCardsData: { cards:[{label,value,trend:"up"|"down"|"flat",trendValue}] } }
+- stats: { title, stats:[{value,label,caption?}] }
+- comparison: { title, leftContent, rightContent }
+- two-column: { title, leftContent, rightContent }
+- swot: { title, swotData: { strengths:[...], weaknesses:[...], opportunities:[...], threats:[...] } }
+- funnel: { title, funnelData: { stages:[{label,value}] } }
+- process: { title, processData: { steps:[{number,title,description}] } }
+- before-after: { title, beforeAfterData: { left:{label,content}, right:{label,content} } }
+- icon-grid: { title, iconGridData: { items:[{icon,title,desc}] } }
+- radial-progress: { title, radialProgressData: { items:[{label,value,color}] } }
+- pyramid: { title, pyramidData: { levels:[{label}] } }
+- kanban: { title, kanbanData: { columns:[{header,cards:[...]}] } }
+- comparison-matrix: { title, comparisonMatrixData: { headers:[...], rows:[[...],...] } }
+- quote: { title, quoteData: { quote, attribution } }
+- agenda: { title, agendaData: { items:[{number,title,description}] } }
+- team: { title, teamData: { members:[{name,role,bio}] } }
+- geo: { title, geoData: { markers:[{label,lat,lng}] } }
+- image: { title, imagePrompt, imageStyle }                       — if image_gen enabled
+- closing: { title, description }                                  — final slide only
+
+All slide types support optional "description" and "speakerNotes".
+
+For content fallback slides, pick an icon emoji matching the topic (e.g. 💡, 📊, 🎯, ⚙️, 🛡️, 👥).
+
+Respond with JSON: { "title": "...", "slides": [ { "type": "...", "title": "...", ...per-type fields... } ] }`;
   const response = await generateWithModelFallback(executorModel, prompt, { temperature: 0.4 });
 
   try {
