@@ -485,56 +485,117 @@ The document generation system uses specialized builders for each format:
 
 ### Purpose
 
-Enables the AI to generate professional PowerPoint presentations (.pptx) with multiple slide types, visual themes, and optional AI-generated images.
+Enables the AI to generate professional PowerPoint presentations (.pptx) with 24 slide types, two visual themes with configurable accent colors, split layouts, preventive text fitting, and optional AI-generated images.
 
 ### Features
 
-- **Multiple Slide Types**: 7 different slide layouts
-- **Visual Themes**: 4 pre-configured color themes
-- **AI Image Integration**: Optional image generation for image slides
+- **24 Slide Types**: Structured visual layouts for data, comparisons, processes, frameworks, and more
+- **3-Tier Slide Priority**: The LLM is guided to prefer visual slide types over plain text — text-only slides are a last-resort fallback
+- **Visual Themes**: 2 themes (light/dark) with a configurable accent color for highlights, charts, and stat numbers
+- **Split Layouts**: Hybrid visual+text side-by-side layouts (`split-left`, `split-right`, `split-top`)
+- **Description & Caption Fields**: Every slide supports an explanatory description; stats support per-stat captions
+- **Preventive Text Fitting**: Heuristic font-size calculation prevents text overflow
+- **Icon-Enhanced Fallbacks**: Plain text slides auto-receive a context-appropriate emoji icon
+- **AI Image Integration**: Optional image generation for image slides (Tier 2)
 - **Speaker Notes**: Support for presenter notes on each slide
 - **Branding Support**: Custom logos and organization names
 
+### Slide-Type Selection Priority
+
+The tool enforces a 3-tier decision cascade to avoid bare text-only slides:
+
+| Tier | Slide Types | When to Use |
+|------|-------------|-------------|
+| **Tier 1 — Structured visual** | `chart`, `table`, `timeline`, `metric-cards`, `swot`, `funnel`, `before-after`, `process`, `kanban`, `pyramid`, `radial-progress`, `icon-grid`, `comparison-matrix`, `stats`, `comparison`, `two-column`, `quote`, `agenda`, `team`, `geo` | **Preferred.** Use for any data, comparisons, steps, frameworks, or structured content. |
+| **Tier 2 — AI image** | `image` | When no Tier 1 type fits but a generated visual strengthens the slide. Requires `image_gen` enabled. |
+| **Tier 3 — Text fallback** | `content` | **Last resort.** Narrative/transition slides with no visualisable data. Must include an `icon` emoji. |
+| **Special** | `title` (first slide only), `closing` (final slide only) | Opening and closing slides. |
+
+**Selection rules enforced by the LLM prompt:**
+- Numeric data → use `stats`, `metric-cards`, or `chart` — never `content`
+- Comparisons → use `comparison`, `comparison-matrix`, or `before-after` — never `content`
+- Steps/process → use `process` or `timeline` — never `content`
+- 4-6 discrete points → use `icon-grid` — never `content`
+- No consecutive `content` slides
+
+**Runtime fallback behavior:**
+- If `image_gen` is disabled, `image` slides are downgraded to `content` slides **with an auto-assigned icon** (not bare text)
+- Any `content`/`closing`/`title` slide missing an `icon` gets one auto-assigned via a keyword→emoji heuristic (e.g. finance → 💰, growth → 📈, risk → 🛡️)
+- An audit log warns when a Tier 3 fallback slide contains data-heavy content that would be better as a Tier 1 visual type
+
 ### Supported Slide Types
 
-| Type | Description | Content |
-|------|-------------|---------|
-| `title` | Opening slide | Title and subtitle |
-| `content` | Standard content | Title with bullet points |
-| `two-column` | Side-by-side | Two columns of content |
-| `comparison` | Compare/contrast | Two boxes for pros/cons or before/after |
-| `stats` | Key statistics | 2-4 large numbers with labels |
-| `image` | Visual slide | Full-bleed background with AI-generated imagery |
-| `closing` | Final slide | Thank you or contact information |
+| Type | Tier | Description | Key Data Fields |
+|------|------|-------------|-----------------|
+| `title` | Special | Opening slide | `title`, `description` |
+| `content` | 3 | Standard content (last resort; include `icon`) | `title`, `content`, `icon`, `description`, `layout` |
+| `two-column` | 1 | Side-by-side text columns | `title`, `leftContent`, `rightContent`, `description` |
+| `comparison` | 1 | Compare/contrast boxes | `title`, `leftContent`, `rightContent`, `description` |
+| `stats` | 1 | Key statistics | `title`, `stats[]` (value, label, caption), `description`, `layout` |
+| `image` | 2 | Visual slide with AI-generated imagery | `title`, `imagePrompt`, `imageStyle`, `imageResolution`, `description`, `layout` |
+| `closing` | Special | Final slide | `title`, `description` |
+| `chart` | 1 | Data visualization (bar, line, pie, doughnut, area) | `title`, `chartData` (categories, series, chartType), `description`, `layout` |
+| `table` | 1 | Structured data table | `title`, `tableData` (headers, rows), `description`, `layout` |
+| `timeline` | 1 | Roadmap or milestones | `title`, `timelineData` (events[]), `description` |
+| `metric-cards` | 1 | KPI dashboard cards with trends | `title`, `metricCardsData` (cards[]), `description` |
+| `swot` | 1 | SWOT analysis 2×2 grid | `title`, `swotData` (strengths, weaknesses, opportunities, threats) |
+| `funnel` | 1 | Sales/conversion funnel | `title`, `funnelData` (stages[]), `description` |
+| `before-after` | 1 | Transformation comparison | `title`, `beforeAfterData` (left, right panels) |
+| `process` | 1 | Workflow or step-by-step guide | `title`, `processData` (steps[]), `description` |
+| `kanban` | 1 | Sprint board / project status | `title`, `kanbanData` (columns[]), `description` |
+| `pyramid` | 1 | Hierarchy or framework diagram | `title`, `pyramidData` (levels[]), `description` |
+| `radial-progress` | 1 | Goal tracking with donut rings | `title`, `radialProgressData` (items[]), `description` |
+| `icon-grid` | 1 | Feature highlights grid (4-6 items) | `title`, `iconGridData` (items[]), `description` |
+| `comparison-matrix` | 1 | Vendor/option evaluation table | `title`, `comparisonMatrixData` (headers, rows), `description` |
+| `quote` | 1 | Testimonial or key statement | `title`, `quoteData` (quote, attribution, role) |
+| `agenda` | 1 | Meeting outline / table of contents | `title`, `agendaData` (items[]), `description` |
+| `team` | 1 | Leadership profiles / contact cards | `title`, `teamData` (members[]), `description` |
+| `geo` | 1 | Regional or location data | `title`, `geoData` (markers[]), `description` |
+
+All slide types support optional `description` (1-2 sentence paragraph below title), `speakerNotes`, and `layout` (for visual slides).
 
 ### Visual Themes
 
-| Theme | Description |
-|-------|-------------|
-| `corporate` | Professional business look (default) |
-| `modern` | Contemporary design |
-| `minimal` | Clean, minimalist aesthetic |
-| `bold` | Vibrant, eye-catching styling |
+| Theme | Background | Best For |
+|-------|------------|----------|
+| `light` | White (`FFFFFF`) | Screens, print (default) |
+| `dark` | Black (`000000`) | Projectors |
+
+Each theme accepts a configurable **accent color** (hex, e.g. `#3B82F6`) used for highlights, chart fills, stat numbers, and accent bars. Legacy theme names (`corporate`, `modern`, `minimal`, `bold`) are automatically mapped to the new system for backward compatibility.
+
+### Split Layouts
+
+Visual slide types support hybrid layouts via the `layout` field:
+
+| Layout | Description |
+|--------|-------------|
+| `full` | Visual only, full width (default) |
+| `split-left` | Visual on left, text on right |
+| `split-right` | Text on left, visual on right |
+| `split-top` | Text on top, visual on bottom |
 
 ### Image Generation
 
-Image slides support optional AI-generated imagery:
+Image slides (Tier 2) support optional AI-generated imagery:
 
 | Property | Description |
 |----------|-------------|
 | `imagePrompt` | Description of the desired image |
-| `imageStyle` | Style: `auto`, `infographic`, `poster`, `illustration`, `photo`, `product-mockup`, `icon`, `social-media` |
+| `imageStyle` | Style: `auto`, `infographic`, `poster`, `illustration`, `photo`, `product-mockup`, `icon`, `social-media` (default: `infographic`) |
+| `imageResolution` | Resolution: `512`, `1K`, `2K`, `4K` (default: `1K`) |
 
-Images integrate with the `image_gen` tool. If image generation fails or is unavailable, slides fall back to text content.
+Images integrate with the `image_gen` tool. If image generation is disabled or unavailable, image slides fall back to `content` slides **with an auto-assigned icon** so the result is not a bare text wall.
 
 ### Configuration
 
 ```typescript
 interface PptxGenConfig {
-  maxSlides: number;           // 1-20, default: 12
-  maxImageSlides: number;      // 0-5, default: 3
-  defaultTheme: 'corporate' | 'modern' | 'minimal' | 'bold';
-  enableImageGeneration: boolean;  // Allow AI image generation
+  defaultTheme: 'light' | 'dark';       // Default theme, default: 'light'
+  maxSlides: number;                     // 1-50, default: 12
+  maxImageSlides: number;                // 0-50, default: 3
+  enableImageGeneration: boolean;        // Allow AI image generation
+  maxCharsPerSlide: number;              // 100-2000, default: 500 (overflow warning threshold)
+  maxDescriptionLength: number;          // 50-1000, default: 300
   branding: {
     enabled: boolean;
     logoUrl?: string;
@@ -549,10 +610,12 @@ interface PptxGenConfig {
 {
   "enabled": false,
   "config": {
+    "defaultTheme": "light",
     "maxSlides": 12,
     "maxImageSlides": 3,
-    "defaultTheme": "corporate",
     "enableImageGeneration": true,
+    "maxCharsPerSlide": 500,
+    "maxDescriptionLength": 300,
     "branding": {
       "enabled": false,
       "logoUrl": "",
@@ -567,64 +630,46 @@ interface PptxGenConfig {
 ```json
 {
   "name": "pptx_gen",
-  "description": "Generate a PowerPoint presentation with multiple slides and visual themes.",
+  "description": "Generate a PowerPoint presentation (.pptx) with professional styling. Slide-type selection priority: prefer visual/structured slides (Tier 1) over plain text. Plain content slides are a last-resort fallback.",
   "parameters": {
     "type": "object",
     "properties": {
-      "title": {
-        "type": "string",
-        "description": "Presentation title"
-      },
+      "title": { "type": "string", "description": "Presentation title" },
       "theme": {
         "type": "string",
-        "enum": ["corporate", "modern", "minimal", "bold"],
-        "description": "Visual theme for the presentation"
+        "enum": ["light", "dark"],
+        "description": "Visual theme: light (white background) or dark (black background). Default: light."
+      },
+      "accentColor": {
+        "type": "string",
+        "description": "Hex accent color for highlights, chart fills, and stat numbers (e.g. #3B82F6). Default: blue."
       },
       "slides": {
         "type": "array",
-        "description": "Array of slide definitions (max 12)",
+        "description": "Array of slide definitions (max configured by admin, default 12)",
         "items": {
           "type": "object",
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["title", "content", "two-column", "comparison", "stats", "image", "closing"]
+              "enum": ["title","content","two-column","comparison","stats","image","closing","chart","table","timeline","metric-cards","swot","funnel","before-after","process","kanban","pyramid","radial-progress","icon-grid","comparison-matrix","quote","agenda","team","geo"],
+              "description": "Slide layout type. Prefer Tier 1 visual types. Use content (Tier 3) only as a last-resort fallback."
             },
             "title": { "type": "string" },
-            "subtitle": { "type": "string" },
-            "bullets": {
-              "type": "array",
-              "items": { "type": "string" }
-            },
-            "leftColumn": {
-              "type": "object",
-              "properties": {
-                "title": { "type": "string" },
-                "bullets": { "type": "array", "items": { "type": "string" } }
-              }
-            },
-            "rightColumn": {
-              "type": "object",
-              "properties": {
-                "title": { "type": "string" },
-                "bullets": { "type": "array", "items": { "type": "string" } }
-              }
-            },
-            "stats": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "value": { "type": "string" },
-                  "label": { "type": "string" }
-                }
-              }
-            },
-            "imagePrompt": { "type": "string" },
-            "imageStyle": {
+            "description": { "type": "string", "description": "Optional 1-2 sentence explanatory paragraph below the title" },
+            "layout": {
               "type": "string",
-              "enum": ["infographic", "photo", "illustration", "diagram"]
+              "enum": ["full","split-left","split-right","split-top"],
+              "default": "full"
             },
+            "content": { "type": "string", "description": "Main content for content/closing slides (newlines for bullets)" },
+            "icon": { "type": "string", "description": "Emoji icon for content fallback slides (e.g. 💡, 📊)" },
+            "leftContent": { "type": "string" },
+            "rightContent": { "type": "string" },
+            "stats": { "type": "array", "items": { "type": "object", "properties": { "value": {"type":"string"}, "label": {"type":"string"}, "caption": {"type":"string"} }, "required": ["value","label"] } },
+            "imagePrompt": { "type": "string" },
+            "imageStyle": { "type": "string", "enum": ["auto","infographic","poster","illustration","photo","product-mockup","icon","social-media"] },
+            "imageResolution": { "type": "string", "enum": ["512","1K","2K","4K"] },
             "speakerNotes": { "type": "string" }
           },
           "required": ["type"]
@@ -636,10 +681,14 @@ interface PptxGenConfig {
 }
 ```
 
+> **Note:** The schema above is abbreviated. The full tool definition includes per-type data fields (`chartData`, `tableData`, `timelineData`, `metricCardsData`, `swotData`, `funnelData`, `beforeAfterData`, `processData`, `kanbanData`, `pyramidData`, `radialProgressData`, `iconGridData`, `comparisonMatrixData`, `quoteData`, `agendaData`, `teamData`, `geoData`). See [`src/lib/tools/pptx-gen.ts`](src/lib/tools/pptx-gen.ts) for the complete schema.
+
 ### Constraints
 
-- Maximum **12 slides** per presentation
-- Maximum **3 AI-generated image slides**
+- Maximum slides: configurable (default **12**, absolute max **50**)
+- Maximum image slides: configurable (default **3**, absolute max **50**)
+- `maxCharsPerSlide`: 100–2000 (default 500) — triggers overflow warning
+- `maxDescriptionLength`: 50–1000 (default 300)
 - Maximum payload size: **5 MB**
 - 16:9 aspect ratio layout
 
@@ -654,12 +703,12 @@ interface PptxGenConfig {
 >
 > The presentation includes 8 slides:
 > - Title slide
-> - Executive summary
-> - Revenue highlights (stats)
-> - Regional breakdown (comparison)
-> - Key achievements
-> - Challenges and learnings
-> - 2025 outlook
+> - Executive summary (metric-cards)
+> - Revenue highlights (stats with captions)
+> - Regional breakdown (comparison-matrix)
+> - Key achievements (icon-grid)
+> - Challenges and learnings (process)
+> - 2025 outlook (timeline)
 > - Thank you slide
 
 ---
