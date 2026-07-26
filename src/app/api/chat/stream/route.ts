@@ -807,7 +807,10 @@ export async function POST(request: NextRequest) {
 
             let fullContent = toolResult.content;
 
-            if (targetLanguage && targetLanguage !== 'en') {
+            // Skip translation when there is no content to translate (e.g. a pure
+            // terminal-tool turn that only emitted artifacts with no status marker).
+            // Avoids a wasted LLM call on an empty string.
+            if (targetLanguage && targetLanguage !== 'en' && fullContent.trim()) {
               send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
               try {
                 const translationResult = await translate({
@@ -840,7 +843,10 @@ export async function POST(request: NextRequest) {
               s => s.complianceConfig?.enabled === true
             );
 
-            if ((await isToolEnabled('compliance_checker')) && skillsWithComplianceEnabled.length > 0) {
+            // Skip compliance checking when there is no substantive response text
+            // (e.g. a pure terminal-tool turn — the deliverable is artifacts, not
+            // prose, and compliance checks text content, not artifacts).
+            if (fullContent.trim() && (await isToolEnabled('compliance_checker')) && skillsWithComplianceEnabled.length > 0) {
               try {
                 const complianceResultStr = await complianceCheckerTool.execute({
                   userMessage: message,

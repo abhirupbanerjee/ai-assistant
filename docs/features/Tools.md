@@ -136,7 +136,9 @@ Processor tools are applied to the AI's response after generation. They transfor
 
 ### Purpose
 
-Terminal tools are a special category of autonomous tools that produce final outputs (images, documents, charts, diagrams). When a terminal tool succeeds, the tool loop stops to prevent redundant re-execution, and the system automatically generates an LLM summary explaining what was created.
+Terminal tools are a special category of autonomous tools that produce final outputs (images, documents, charts, diagrams, podcasts, HTML). When a terminal tool succeeds, the tool loop stops to prevent redundant re-execution. Instead of making an extra LLM completion call to summarize the artifact, the loop streams a deterministic one-line status marker and renders each artifact in a collapsible card — eliminating the summary latency and token cost while still giving the user a clear textual anchor.
+
+> **Multi-artifact turns.** Terminal mode never blocked multiple tools from running in one LLM response — every requested tool executes before the loop breaks. A single prompt can therefore produce 1 image, 1 presentation, 1 document, and 1 podcast in parallel. The status marker and collapsible cards are designed for exactly this case: with 2+ artifacts the cards start collapsed so the user sees a compact list, and the marker reads "Tool run completed — N artifacts generated below."
 
 ### Current Terminal Tools
 
@@ -149,37 +151,50 @@ Terminal tools are a special category of autonomous tools that produce final out
 | `podcast_gen` | Audio | AI-generated podcast episodes (MP3/WAV) |
 | `chart_gen` | Visualization | Interactive charts from LLM-constructed data |
 | `diagram_gen` | Diagram | Mermaid diagrams (18 types: flowcharts, sequence, C4, architecture, timeline, quadrant, etc.) |
+| `html_gen` | HTML | Standalone HTML documents |
+| `site_gen` | HTML | Multi-page static sites |
+| `file_to_html` | HTML | Convert uploaded files to HTML |
 
 ### Behavior
 
 When a terminal tool executes successfully:
 
 1. **Tool executes** - Generates the artifact (image, document, etc.)
-2. **Artifact sent to client** - Via `onArtifact` callback
-3. **Tool loop stops** - Prevents redundant tool calls
-4. **LLM generates summary** - Automatically makes one more API call to explain what was created
-5. **Summary streams to user** - Via `onChunk` callback alongside the artifact
+2. **Artifact sent to client** - Via `onArtifact` callback (one event per artifact)
+3. **All queued tools run** - The terminal flag only stops the *next* LLM iteration; every tool in the current LLM response completes first
+4. **Tool loop stops** - Prevents a follow-up LLM completion
+5. **Status marker streams** - A deterministic one-line marker (no LLM call):
+   - Single artifact: `Tool run completed — 1 artifact generated below.`
+   - Multiple artifacts: `Tool run completed — N artifacts generated below.`
+6. **Collapsible artifact cards render** - Each artifact appears in a `CollapsibleArtifactCard`; with 2+ artifacts they start collapsed, expanding reveals the full artifact plus metadata (filename, file type/size, dimensions, duration, diagram type, chart type)
 
-This ensures users always receive both the artifact AND an explanatory text response.
+This ensures users receive the artifact(s) plus a concise textual anchor without paying for an extra LLM summary call. The empty-bubble problem (pure-artifact turns with no prose) is solved by the status marker being persisted into `message.content`.
 
 ### Implementation
 
 Terminal tools are defined in `src/lib/openai.ts`:
 
 ```typescript
-const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen', 'podcast_gen', 'chart_gen', 'diagram_gen']);
+export const TERMINAL_TOOLS = new Set([
+  'image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen',
+  'html_gen', 'site_gen', 'file_to_html',
+  'chart_gen', 'diagram_gen', 'podcast_gen',
+]);
 ```
+
+The post-loop block collects every successful terminal tool result into `terminalToolResults` (an array, not a scalar) and streams the status marker via `callbacks.onChunk` while persisting it to `responseMessage.content`.
 
 ### Adding New Terminal Tools
 
 To add a new terminal tool:
 
-1. **Add to TERMINAL_TOOLS set** in `src/lib/openai.ts`:
+1. **Add to `TERMINAL_TOOLS` set** in `src/lib/openai.ts`:
    ```typescript
-   const TERMINAL_TOOLS = new Set([
-     'image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen', 'podcast_gen',
-     'chart_gen', 'diagram_gen',
-     'new_tool'  // Add new tool here
+   export const TERMINAL_TOOLS = new Set([
+     'image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen',
+     'html_gen', 'site_gen', 'file_to_html',
+     'chart_gen', 'diagram_gen', 'podcast_gen',
+     'new_tool',  // Add new tool here
    ]);
    ```
 
@@ -194,20 +209,16 @@ To add a new terminal tool:
    }
    ```
 
-3. **No other changes needed** - The generic summary prompt automatically handles any terminal tool by converting the tool name to a human-readable label (e.g., `ppt_gen` → "ppt generation").
+3. **Emit the artifact** via the `onArtifact` callback so the frontend renders a collapsible card. The generic status marker automatically handles any terminal tool — no tool-specific hardcoding.
 
-### Summary Prompt
+### Status Marker (replaces the former Summary Prompt)
 
-The system uses a generic prompt that works for any terminal tool:
+Previously the system made one extra LLM completion call per terminal turn to produce a natural-language summary. That call is now removed. The replacement is a deterministic, template-generated status line streamed once the tool loop ends:
 
-```
-The [tool label] tool has completed successfully. Based on the tool result above,
-provide a brief, helpful summary (1-2 sentences) explaining what was created.
-Mention key details like the output type/format and how the user can access or
-download it. Do not use markdown formatting.
-```
+- `Tool run completed — 1 artifact generated below.` (single artifact)
+- `Tool run completed — N artifacts generated below.` (N ≥ 2)
 
-This generates natural, context-aware summaries without tool-specific hardcoding.
+This is emitted in `generateResponseWithTools` after the while-loop breaks, persisted into `responseMessage.content`, and streamed to the client via `onChunk`. No LLM call is made. The collapsible cards (`CollapsibleArtifactCard`, and `AgentResponseCard` for agent-return-result artifacts) carry the metadata that the old summary used to narrate.
 
 ---
 
@@ -4495,25 +4506,22 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
 
 ### Step 4: Terminal Tool Setup (Optional)
 
-If your tool generates final artifacts (documents, images, audio), add to `TERMINAL_TOOLS` in `src/lib/openai.ts`:
+If your tool generates final artifacts (documents, images, audio, HTML), add to `TERMINAL_TOOLS` in `src/lib/openai.ts`:
 
 ```typescript
-const TERMINAL_TOOLS = new Set([
-  'image_gen',
-  'doc_gen',
-  'pptx_gen',
-  'xlsx_gen',
-  'podcast_gen',
-  'chart_gen',
-  'diagram_gen',
+export const TERMINAL_TOOLS = new Set([
+  'image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen',
+  'html_gen', 'site_gen', 'file_to_html',
+  'chart_gen', 'diagram_gen', 'podcast_gen',
   'my_tool',  // Add here
 ]);
 ```
 
 Terminal tools:
-- Stop the tool loop after successful execution (prevents re-calling)
-- Automatically get an LLM-generated summary explaining what was created
-- Can emit artifacts via the callback system
+- Stop the tool loop after successful execution (prevents a follow-up LLM completion — note every tool in the current LLM response still runs)
+- Get a deterministic one-line status marker streamed to the client (no LLM summary call): `Tool run completed — N artifacts generated below.`
+- Render as collapsible cards in the chat UI (`CollapsibleArtifactCard`); with 2+ artifacts they start collapsed
+- Can emit artifacts via the `onArtifact` callback system
 
 ### Step 5: Artifact Callbacks (Optional)
 

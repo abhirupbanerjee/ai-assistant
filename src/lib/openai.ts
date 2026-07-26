@@ -190,21 +190,17 @@ import { isOpenAIModel, stripOpenAIPrefix, streamOpenAICompletion, requiresMaxCo
  * Terminal tools that should stop the tool loop after successful execution.
  * These tools produce final outputs (images, documents) and should not be called again
  * unless the user explicitly requests it.
+ *
+ * Note: terminal status is backend loop-control only — it is never injected into the
+ * LLM-facing function definitions, so nothing here discourages the model from emitting
+ * multiple terminal tools in a single turn. All tool calls in one response execute and
+ * emit artifacts regardless; this flag only stops the subsequent LLM iteration.
  */
-export const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'html_gen', 'site_gen', 'file_to_html', 'chart_gen', 'diagram_gen', 'podcast_gen']);
-
-/**
- * Generate a prompt for the LLM to summarize a terminal tool result.
- * Works generically for any terminal tool.
- */
-function getTerminalToolSummaryPrompt(toolName: string): string {
-  // Convert tool name to human-readable format (e.g., "image_gen" -> "image generation")
-  const toolLabel = toolName
-    .replace(/_gen$/, ' generation')
-    .replace(/_/g, ' ');
-
-  return `The ${toolLabel} tool has completed successfully. Based on the tool result above, provide a brief, helpful summary (1-2 sentences) explaining what was created. Mention key details like the output type/format and how the user can access or download it. Do not use markdown formatting.`;
-}
+export const TERMINAL_TOOLS = new Set([
+  'image_gen', 'doc_gen', 'pptx_gen', 'xlsx_gen',
+  'html_gen', 'site_gen', 'file_to_html',
+  'chart_gen', 'diagram_gen', 'podcast_gen',
+]);
 
 // ============ Anthropic Direct Client ============
 
@@ -2218,7 +2214,12 @@ export async function generateResponseWithTools(
   let totalToolCalls = 0;
   const toolCallCounts = new Map<string, number>();
   let terminalToolSucceeded = false;
-  let terminalToolResult: { toolName: string; parsedResult: Record<string, unknown> } | null = null;
+  // Collect every successful terminal tool's metadata so the post-loop status marker
+  // can name the correct count. Previously a scalar that was overwritten on each
+  // success, causing the summary to mention only the last artifact. The handoff
+  // branch deliberately does NOT push here — it emits its own `handoff` SSE event
+  // and sets only `terminalToolSucceeded`, mirroring this array staying empty.
+  let terminalToolResults: Array<{ toolName: string; parsedResult: Record<string, unknown> }> = [];
 
   // Collect tool execution results for compliance checking
   const toolExecutionResults: ToolExecutionRecord[] = [];
@@ -2384,8 +2385,8 @@ export async function generateResponseWithTools(
           // ownership, emit the `handoff` SSE event, and end the turn. We treat
           // the handoff as terminal by setting ONLY `terminalToolSucceeded`
           // (which breaks the tool loop at the `while` guard and the post-loop
-          // `break`). We intentionally do NOT set `terminalToolResult`, so the
-          // post-loop summary block (`terminalToolSucceeded && finalTerminalResult`)
+          // `break`). We intentionally do NOT push to `terminalToolResults`, so
+          // the post-loop status marker (`terminalToolSucceeded && length > 0`)
           // is skipped — handoffs produce no artifact to summarize, and an extra
           // summary LLM call would stream spurious `chunk` text after the
           // `handoff` SSE event, contradicting the "turn ends" semantics.
@@ -2402,14 +2403,14 @@ export async function generateResponseWithTools(
             }
             logger.info(`[Tools] handoff_to_category succeeded (target=${parsed.targetCategorySlug}), stopping tool loop (no summary)`);
             terminalToolSucceeded = true;
-            // Deliberately do NOT set terminalToolResult — see comment above.
+            // Deliberately do NOT push to terminalToolResults — see comment above.
           }
 
           // Check if terminal tool succeeded
           if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
             logger.info(`[Tools] Terminal tool ${toolName} succeeded, stopping tool loop`);
             terminalToolSucceeded = true;
-            terminalToolResult = { toolName, parsedResult: parsed };
+            terminalToolResults.push({ toolName, parsedResult: parsed });
           }
         }
       } catch {
@@ -2837,112 +2838,31 @@ export async function generateResponseWithTools(
     }
   }
 
-  // Generate LLM summary for terminal tool success
-  // terminalToolResult is set inside processToolResult closure — TS can't track this
-  const finalTerminalResult = terminalToolResult as { toolName: string; parsedResult: Record<string, unknown> } | null;
-  if (terminalToolSucceeded && finalTerminalResult) {
-    const summaryPrompt = getTerminalToolSummaryPrompt(finalTerminalResult.toolName);
-
-    logger.debug(`Generating summary for terminal tool: ${finalTerminalResult.toolName}`);
-
-    if (useAnthropicDirect && anthropicClient) {
-      anthropicMessages.push({ role: 'user', content: summaryPrompt });
-      const summaryResponse = await streamAnthropicCompletion(
-        anthropicClient,
-        {
-          model: getAnthropicModelId(effectiveModel),
-          messages: anthropicMessages,
-          system: systemPrompt,
-          max_tokens: effectiveMaxTokens,
-          temperature: effectiveTemperature,
-          tools: convertToolsToAnthropic(tools),
-          // Don't set tool_choice — Anthropic handles this via the message flow
-          thinking: thinkingProfile.enabled ? thinkingProfile.requestParams.thinking as Anthropic.ThinkingConfigParam : undefined,
-          output_config: thinkingProfile.requestParams.output_config as Anthropic.OutputConfig | undefined,
-        },
-        callbacks?.onChunk,
-        callbacks?.onThinkingChunk,
-      );
-      responseMessage = summaryResponse;
-      accumulatedTokens += summaryResponse.totalTokens;
-    } else if (useMistralDirect) {
-      const summaryMessages = messages.map(m => ({
-        role: m.role as string,
-        content: m.content,
-      }));
-      summaryMessages.push({ role: 'user', content: summaryPrompt } as any);
-      const summaryResult = await streamMistralCompletion(
-        effectiveModel,
-        summaryMessages,
-        {
-          temperature: effectiveTemperature,
-          maxTokens: effectiveMaxTokens,
-          onChunk: callbacks?.onChunk,
-          onThinkingChunk: callbacks?.onThinkingChunk,
-        },
-      );
-      responseMessage = {
-        content: summaryResult.content,
-        tool_calls: undefined,
-        thinkingContent: summaryResult.thinkingContent,
-        totalTokens: summaryResult.totalTokens,
-      };
-      accumulatedTokens += summaryResult.totalTokens;
-    } else if (useGeminiDirect) {
-      const summaryMessages = messages.map(m => ({
-        role: m.role as string,
-        content: m.content,
-      }));
-      summaryMessages.push({ role: 'user', content: summaryPrompt } as any);
-      const summaryResult = await streamGeminiCompletion(
-        effectiveModel,
-        summaryMessages,
-        {
-          temperature: effectiveTemperature,
-          maxTokens: effectiveMaxTokens,
-          systemPrompt,
-          thinkingConfig: thinkingProfile.enabled
-            ? { thinkingBudget: -1 }
-            : undefined,
-          onChunk: callbacks?.onChunk,
-          onThinkingChunk: callbacks?.onThinkingChunk,
-        },
-      );
-      responseMessage = {
-        content: summaryResult.content,
-        tool_calls: undefined,
-        thinkingContent: summaryResult.thinkingContent,
-        totalTokens: summaryResult.totalTokens,
-      };
-      accumulatedTokens += summaryResult.totalTokens;
-    } else {
-      // Add the summary request to messages (tool result already present from tool execution)
-      const summaryMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-        ...messages,
-        { role: 'user' as const, content: summaryPrompt },
-      ];
-
-      // Make final LLM call for summary
-      // Anthropic requires tools array when messages contain tool_calls/tool responses
-      // Use tool_choice: 'none' to prevent new tool calls
-      const summaryResponse = await streamOneCompletionWithThinkingRetry(
-        openai!,
-        {
-          model: completionParams.model,
-          messages: summaryMessages,
-          max_tokens: completionParams.max_tokens,
-          temperature: completionParams.temperature,
-          tools: completionParams.tools,
-          tool_choice: 'none',
-          ...thinkingProfile.requestParams,
-        },
-        thinkingProfile,
-        callbacks?.onChunk,
-        callbacks?.onThinkingChunk,
-      );
-      responseMessage = summaryResponse;
-      accumulatedTokens += summaryResponse.totalTokens;
-    }
+  // Terminal tool success — stream a one-line status marker instead of making an
+  // extra LLM summary call. The artifact cards (already emitted via onArtifact)
+  // carry the full metadata (filename, alt, title, provider, etc.) and render as
+  // collapsible cards in the client, so no prose summary is needed. This mirrors
+  // the handoff branch's "terminal-stop without summary" precedent and eliminates
+  // a redundant LLM completion per terminal turn — which compounds across nested
+  // agent loops (return-result mode) and future Phase 3 swarm Executor calls,
+  // since they all reuse this function.
+  //
+  // The status line is streamed via onChunk so it persists as the assistant
+  // message text (so shared threads / history show something and the bubble is
+  // never empty). The rich per-artifact detail lives in the cards below it.
+  if (terminalToolSucceeded && terminalToolResults.length > 0) {
+    const count = terminalToolResults.length;
+    const statusLine = count === 1
+      ? 'Tool run completed — 1 artifact generated below.'
+      : `Tool run completed — ${count} artifacts generated below.`;
+    logger.info(`[Tools] Terminal turn completed with ${count} artifact(s); streaming status marker (no summary LLM call)`);
+    callbacks?.onChunk?.(statusLine);
+    // Ensure responseMessage.content carries the marker so callers that read
+    // `content` (e.g. the agent invoker's rawOutput) see it instead of ''.
+    responseMessage = {
+      ...responseMessage,
+      content: (responseMessage.content ? responseMessage.content + '\n\n' : '') + statusLine,
+    };
   }
 
   return {

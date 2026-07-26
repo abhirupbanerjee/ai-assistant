@@ -4,6 +4,54 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 — 2026-07-26
+
+### Major: Terminal-tool multi-artifact summary fix (collapsible-card UX)
+
+Replaces the per-terminal-turn LLM summary call with a deterministic one-line
+status marker and collapsible artifact cards. Eliminates a redundant LLM
+completion per terminal turn — a cost that compounds across nested agent loops
+(0.2.0 return-result routing) and the future Phase 3 swarm Executor pool, since
+they all reuse [`generateResponseWithTools`](src/lib/openai.ts).
+
+### Added
+
+- **`CollapsibleArtifactCard`** ([`src/components/chat/CollapsibleArtifactCard.tsx`](src/components/chat/CollapsibleArtifactCard.tsx)) — reusable collapsible wrapper mirroring the `AgentResponseCard` pattern (chevron toggle, per-kind icon + accent, title/subtitle, `i / N` position badge). Wraps document, image, podcast, diagram, and visualization artifacts in [`MessageBubble.tsx`](src/components/chat/MessageBubble.tsx).
+- **`pptx_gen` and `xlsx_gen` added to `TERMINAL_TOOLS`** ([`src/lib/openai.ts`](src/lib/openai.ts:189)) — closes a doc/code drift where the set listed only 8 of the 10 terminal tools.
+- **Status marker persistence** — the one-line marker (`Tool run completed — N artifacts generated below.`) is streamed via `onChunk` and persisted into `responseMessage.content`, so shared threads, history, and the embed client always show a textual anchor and the assistant bubble is never empty.
+
+### Changed
+
+- **Terminal-turn summary LLM call removed** ([`src/lib/openai.ts`](src/lib/openai.ts:2841)) — the post-loop block no longer dispatches a follow-up completion (Anthropic/Mistral/Gemini/OpenAI branches all deleted). Instead it streams a deterministic status line and lets the artifact cards carry metadata. Mirrors the `handoff_to_category` "terminal-stop without summary" precedent.
+- **`terminalToolResult` scalar → `terminalToolResults` array** ([`src/lib/openai.ts`](src/lib/openai.ts:2216)) — the scalar was overwritten on each success, so the old summary named only the last artifact. The array retains every successful terminal tool result; the status line reports the correct count.
+- **Translation and compliance guards on empty content** ([`src/app/api/chat/stream/route.ts`](src/app/api/chat/stream/route.ts:810)) — both blocks now skip when `fullContent.trim()` is empty, so pure-artifact turns don't trigger spurious translation/compliance LLM calls.
+- **Agent contract preamble strengthened** ([`src/lib/agent-registry/invoker.ts`](src/lib/agent-registry/invoker.ts:117)) — agents are now instructed to always return the JSON contract envelope even when tools produced artifacts, using the `file_ref` artifact type with a human-readable description. Keeps return-result routing consistent with the no-summary flow.
+- **Collapsible cards: collapsed for 2+ artifacts, expanded for 1** — per approved UX default.
+
+### Fixed
+
+- **Multi-artifact summary named only the last artifact** — root cause was the scalar `terminalToolResult` overwrite; now fixed by the array and the count-based status marker.
+- **Empty assistant bubble on pure-artifact turns** — solved by the persisted status line plus a `suppressEmptyProse` guard in [`MessageBubble.tsx`](src/components/chat/MessageBubble.tsx) that hides the empty markdown container when artifacts are present.
+
+### Docs
+
+- **[`docs/features/Tools.md`](docs/features/Tools.md)** — reconciled the terminal-tool table (added `html_gen`, `site_gen`, `file_to_html`), the behavior list, and the implementation snippet; replaced the "Summary Prompt" section with a "Status Marker" section; updated "Step 4: Terminal Tool Setup" in the tool-authoring guide.
+
+### Verification
+
+- `npm run type-check` — exit 0
+- `npm run lint` — exit 0
+- `npm run build` — compiled successfully, 126 static pages generated
+- `npm run eval:routing:mock` — 30/30 passed (solo 10/10, return_result 10/10, handoff 10/10)
+
+### Deployment
+
+No DB migrations required. No environment variable changes. The change is
+purely in the tool-loop control flow and frontend rendering. Existing terminal
+tools continue to work unchanged; the only observable difference is that
+assistant turns ending in a terminal tool now show a one-line status marker
+plus collapsible artifact cards instead of a generated summary paragraph.
+
 ## 0.2.0 — 2026-07-26
 
 ### Major: Agent System — Single-Agent Routing (Phase 1 + Phase 2.2)

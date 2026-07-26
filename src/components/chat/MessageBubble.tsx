@@ -13,6 +13,7 @@ import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components
 import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
 import AgentResponseCard from './AgentResponseCard';
+import CollapsibleArtifactCard from './CollapsibleArtifactCard';
 
 // Shared remark plugins — defined at module level so the reference is stable
 // and accessible by FrozenBlock / StreamingMarkdown before the main export.
@@ -251,6 +252,21 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
 
   const hasMoreSources = sortedSources.length > MAX_SOURCES_DISPLAYED;
 
+  // Pure-artifact assistant turn: no prose text, only generated artifacts.
+  // The backend streams a one-line status marker into content for these turns,
+  // so displayContent is normally non-empty. This guard handles any legacy
+  // or edge case where content is truly empty — we avoid rendering an empty
+  // markdown bubble and let the artifact cards below carry the turn.
+  const hasArtifacts = Boolean(
+    (message.generatedDocuments && message.generatedDocuments.length > 0) ||
+    (message.generatedImages && message.generatedImages.length > 0) ||
+    (message.generatedPodcasts && message.generatedPodcasts.length > 0) ||
+    (message.generatedDiagrams && message.generatedDiagrams.length > 0) ||
+    (message.visualizations && message.visualizations.length > 0) ||
+    (message.agentResponses && message.agentResponses.length > 0)
+  );
+  const suppressEmptyProse = !isUser && !displayContent.trim() && hasArtifacts;
+
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString('en-US', {
       hour: 'numeric',
@@ -347,6 +363,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           </div>
         ) : (
           <div className="markdown-content relative">
+            {!suppressEmptyProse && (
             <div
               ref={isUser ? contentRef : undefined}
               className={isUser && needsClamp && collapsed ? 'user-bubble-collapsed' : ''}
@@ -358,6 +375,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 isUser={isUser}
               />
             </div>
+            )}
             {/* Show more / Show less toggle — user messages only, when content overflows 3 lines */}
             {isUser && needsClamp && (
               <button
@@ -399,29 +417,65 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           </div>
         )}
 
+        {/* Terminal-tool artifacts — each wrapped in a CollapsibleArtifactCard.
+            When 2+ artifacts share the turn, cards start collapsed so the user
+            sees a compact list (the streamed status line "Tool run completed —
+            N artifacts generated below." stands in for the deleted LLM summary).
+            A single artifact expands immediately. Expanding reveals the full
+            artifact + metadata with no extra LLM call. */}
         {/* Generated Documents */}
         {message.generatedDocuments && message.generatedDocuments.length > 0 && (
-          <div className="mt-2">
-            {message.generatedDocuments.map((doc) => (
-              <DocumentResultCard key={doc.id} document={doc} />
+          <div className="mt-2 space-y-2">
+            {message.generatedDocuments.map((doc, i) => (
+              <CollapsibleArtifactCard
+                key={doc.id}
+                kind="document"
+                title={doc.filename}
+                subtitle={`${doc.fileType.toUpperCase()} · ${doc.fileSizeFormatted}`}
+                index={i}
+                total={message.generatedDocuments!.length}
+                defaultCollapsed={message.generatedDocuments!.length > 1}
+              >
+                <DocumentResultCard document={doc} />
+              </CollapsibleArtifactCard>
             ))}
           </div>
         )}
 
         {/* Generated Images */}
         {message.generatedImages && message.generatedImages.length > 0 && (
-          <div className="mt-4 space-y-4">
-            {message.generatedImages.map((image) => (
-              <ImageDisplay key={image.id} image={image} />
+          <div className="mt-4 space-y-2">
+            {message.generatedImages.map((image, i) => (
+              <CollapsibleArtifactCard
+                key={image.id}
+                kind="image"
+                title={image.alt || 'Generated image'}
+                subtitle={`${image.width}×${image.height}${image.provider ? ` · ${image.provider}` : ''}`}
+                index={i}
+                total={message.generatedImages!.length}
+                defaultCollapsed={message.generatedImages!.length > 1}
+              >
+                <ImageDisplay image={image} />
+              </CollapsibleArtifactCard>
             ))}
           </div>
         )}
 
         {/* Generated Podcasts */}
         {message.generatedPodcasts && message.generatedPodcasts.length > 0 && (
-          <div className="mt-4 space-y-4">
-            {message.generatedPodcasts.map((podcast) => (
-              <PodcastPlayer key={podcast.id} podcast={podcast} />
+          <div className="mt-4 space-y-2">
+            {message.generatedPodcasts.map((podcast, i) => (
+              <CollapsibleArtifactCard
+                key={podcast.id}
+                kind="podcast"
+                title={podcast.filename}
+                subtitle={`${Math.round(podcast.duration)}s · ${podcast.format.toUpperCase()}`}
+                index={i}
+                total={message.generatedPodcasts!.length}
+                defaultCollapsed={message.generatedPodcasts!.length > 1}
+              >
+                <PodcastPlayer podcast={podcast} />
+              </CollapsibleArtifactCard>
             ))}
           </div>
         )}
@@ -441,39 +495,51 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
 
         {/* Data Visualizations */}
         {message.visualizations && message.visualizations.length > 0 && (
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-2">
             {message.visualizations.map((viz, index) => (
-              <DataVisualization
+              <CollapsibleArtifactCard
                 key={index}
-                chartType={viz.chartType}
-                data={viz.data}
-                xField={viz.xField}
-                yField={viz.yField}
-                yFields={viz.yFields}
-                groupBy={viz.groupBy}
-                sourceName={viz.sourceName}
-                cached={viz.cached}
-                fields={viz.fields}
-                title={viz.title}
-                notes={viz.notes}
-                seriesMode={viz.seriesMode}
-              />
+                kind="visualization"
+                title={viz.title || `${viz.chartType} chart`}
+                subtitle={`${viz.chartType}${viz.sourceName ? ` · ${viz.sourceName}` : ''}`}
+                index={index}
+                total={message.visualizations!.length}
+                defaultCollapsed={message.visualizations!.length > 1}
+              >
+                <DataVisualization
+                  chartType={viz.chartType}
+                  data={viz.data}
+                  xField={viz.xField}
+                  yField={viz.yField}
+                  yFields={viz.yFields}
+                  groupBy={viz.groupBy}
+                  sourceName={viz.sourceName}
+                  cached={viz.cached}
+                  fields={viz.fields}
+                  title={viz.title}
+                  notes={viz.notes}
+                  seriesMode={viz.seriesMode}
+                />
+              </CollapsibleArtifactCard>
             ))}
           </div>
         )}
 
         {/* Generated Diagrams */}
         {message.generatedDiagrams && message.generatedDiagrams.length > 0 && (
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-2">
             {message.generatedDiagrams.map((diagram, index) => (
-              <div key={index} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                {diagram.title && (
-                  <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-                    <span className="text-sm font-medium text-gray-700">{diagram.title}</span>
-                  </div>
-                )}
+              <CollapsibleArtifactCard
+                key={index}
+                kind="diagram"
+                title={diagram.title || `${diagram.type} diagram`}
+                subtitle={diagram.type}
+                index={index}
+                total={message.generatedDiagrams!.length}
+                defaultCollapsed={message.generatedDiagrams!.length > 1}
+              >
                 <MermaidDiagram code={diagram.code} />
-              </div>
+              </CollapsibleArtifactCard>
             ))}
           </div>
         )}
