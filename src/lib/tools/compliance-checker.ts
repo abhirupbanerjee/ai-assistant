@@ -7,7 +7,25 @@
  */
 
 import { getToolConfig } from '../db/compat/tool-config';
-import { coerceNum, numInRange, type ToolDefinition, type ValidationResult } from '../tools';
+import type { ToolDefinition, ValidationResult } from '../tools';
+// NOTE: `coerceNum` and `numInRange` are intentionally NOT imported from
+// '../tools' at runtime. That created a circular import:
+//   tools.ts → tools/compliance-checker.ts (static import of complianceCheckerTool)
+//   tools/compliance-checker.ts → tools.ts (runtime import of coerceNum/numInRange)
+// Turbopack's stricter module evaluation surfaces this as
+// "Cannot access 'm' before initialization" at build time (page-data
+// collection). The helpers are trivial pure functions; inlining them here
+// breaks the cycle without changing any behavior or the public API of tools.ts.
+function numInRange(value: unknown, min: number, max: number): boolean {
+  if (value === null || value === undefined || value === '') return false;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= min && n <= max;
+}
+function coerceNum(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
 import type {
   ComplianceContext,
   ComplianceGlobalConfig,

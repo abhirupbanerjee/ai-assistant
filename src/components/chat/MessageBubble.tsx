@@ -12,6 +12,7 @@ import FeedbackButtons from './FeedbackButtons';
 import { MarkdownComponents, MarkdownComponentsWithCodeCopy } from '@/components/markdown/MarkdownRenderers';
 import MessageActions from './MessageActions';
 import CitationTrajectoryCard from './CitationTrajectoryCard';
+import AgentResponseCard from './AgentResponseCard';
 
 // Shared remark plugins — defined at module level so the reference is stable
 // and accessible by FrozenBlock / StreamingMarkdown before the main export.
@@ -425,6 +426,19 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           </div>
         )}
 
+        {/* Agent Responses (Phase 2.2 return-result routing) — collapsible cards */}
+        {message.agentResponses && message.agentResponses.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {message.agentResponses.map((resp, idx) => (
+              <AgentResponseCard
+                key={`${resp.agentId}-${idx}`}
+                response={resp}
+                defaultCollapsed={idx < message.agentResponses!.length - 1}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Data Visualizations */}
         {message.visualizations && message.visualizations.length > 0 && (
           <div className="mt-4 space-y-4">
@@ -584,6 +598,7 @@ function areMessageBubblePropsEqual(
   if (!arrayRefsEqual(pm.generatedImages, nm.generatedImages)) return false;
   if (!arrayRefsEqual(pm.generatedPodcasts, nm.generatedPodcasts)) return false;
   if (!arrayRefsEqual(pm.generatedDiagrams, nm.generatedDiagrams)) return false;
+  if (!arrayRefsEqual(pm.agentResponses, nm.agentResponses)) return false;
 
   return true;
 }

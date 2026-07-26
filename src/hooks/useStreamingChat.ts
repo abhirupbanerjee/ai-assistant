@@ -27,7 +27,7 @@ import type {
   ChatPreferences,
 } from '@/types';
 import type { PreflightClarificationEvent, HitlClarificationEvent } from '@/types/compliance';
-import type { PlanApprovalEvent } from '@/types/stream';
+import type { PlanApprovalEvent, AgentResponseInfo } from '@/types/stream';
 
 // ============ Types ============
 
@@ -95,6 +95,12 @@ export interface StreamingState {
   diagrams: DiagramHint[];
   /** Generated podcasts from tools */
   podcasts: PodcastHint[];
+  /**
+   * Agent responses surfaced via return-result (Phase 2.2). Each entry renders
+   * as a collapsible "Answered by agent X" card. See
+   * plans/phase_2_2_implementation_plan.md §1 decision (a).
+   */
+  agentResponses: AgentResponseInfo[];
   /** Autonomous plan state (for autonomous mode) */
   autonomousPlan: AutonomousPlanState | null;
   /** Cumulative cost for autonomous mode */
@@ -124,7 +130,7 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata, thinkingContent?: string) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata, thinkingContent?: string, agentResponses?: AgentResponseInfo[]) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
@@ -213,6 +219,7 @@ const initialState: StreamingState = {
   images: [],
   diagrams: [],
   podcasts: [],
+  agentResponses: [],
   autonomousPlan: null,
   totalCost: 0,
   budgetWarning: null,
@@ -255,6 +262,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const imagesRef = useRef<GeneratedImageInfo[]>([]);
   const diagramsRef = useRef<DiagramHint[]>([]);
   const podcastsRef = useRef<PodcastHint[]>([]);
+  const agentResponsesRef = useRef<AgentResponseInfo[]>([]);
 
   const resetArtifactRefs = useCallback(() => {
     sourcesRef.current = [];
@@ -263,6 +271,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     imagesRef.current = [];
     diagramsRef.current = [];
     podcastsRef.current = [];
+    agentResponsesRef.current = [];
   }, []);
 
   // Unified RAF flush — always writes both content and thinking buffers so that
@@ -428,7 +437,35 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             ...prev,
             podcasts: podcastsRef.current,
           }));
+        } else if (event.subtype === 'agent') {
+          // Phase 2.2 return-result surfacing — "Answered by agent X" card.
+          agentResponsesRef.current = [...agentResponsesRef.current, event.data];
+          setState(prev => ({
+            ...prev,
+            agentResponses: agentResponsesRef.current,
+          }));
         }
+        break;
+
+      case 'handoff':
+        // Phase 2.2 — category ownership transferred; the current turn ends.
+        // Surface a category-change indicator in processing details. The route
+        // emits `done` immediately after, so no streaming state teardown here
+        // beyond recording the handoff for UI display.
+        setState(prev => ({
+          ...prev,
+          processingDetails: {
+            ...prev.processingDetails,
+            operationLog: [
+              ...prev.processingDetails.operationLog,
+              {
+                timestamp: Date.now(),
+                category: 'system' as const,
+                message: `Conversation handed off to category "${event.toCategoryName}"${event.reason ? `: ${event.reason}` : ''}`,
+              },
+            ],
+          },
+        }));
         break;
 
       case 'sources':
@@ -916,6 +953,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         const finalImages = imagesRef.current;
         const finalDiagrams = diagramsRef.current;
         const finalPodcasts = podcastsRef.current;
+        const finalAgentResponses = agentResponsesRef.current;
         const metadata = (event.model || event.totalMs || event.completionTokens) ? {
           model: event.model,
           totalMs: event.totalMs,
@@ -939,7 +977,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           },
         }));
         completedRef.current = true;
-        onComplete?.(event.messageId, finalContent, finalSources, finalVisualizations, finalDocuments, finalImages, finalDiagrams, finalPodcasts, metadata, finalThinking || undefined);
+        onComplete?.(event.messageId, finalContent, finalSources, finalVisualizations, finalDocuments, finalImages, finalDiagrams, finalPodcasts, metadata, finalThinking || undefined, finalAgentResponses);
         break;
       }
 
@@ -1087,6 +1125,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           podcastsRef.current,
           undefined,
           thinkingBufferRef.current || undefined,
+          agentResponsesRef.current,
         );
       }
     } catch (error) {

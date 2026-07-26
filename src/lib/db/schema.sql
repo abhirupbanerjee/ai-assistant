@@ -328,6 +328,7 @@ CREATE TABLE IF NOT EXISTS enabled_models (
   parallel_tool_capable INTEGER DEFAULT 0,
   thinking_capable INTEGER DEFAULT 0,
   forced_tool_capable INTEGER DEFAULT 1,
+  capability_tier TEXT NOT NULL DEFAULT 'unclassified', -- 'swarm_full' | 'swarm_limited' | 'unclassified' (swarm-ineligible)
   max_input_tokens INTEGER,
   max_output_tokens INTEGER,        -- Max tokens for LLM output (provider-specific defaults)
   is_default INTEGER DEFAULT 0,     -- Only one can be default
@@ -574,3 +575,46 @@ CREATE TABLE IF NOT EXISTS agent_bot_usage (
 CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_key ON agent_bot_usage(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_bot ON agent_bot_usage(agent_bot_id);
 CREATE INDEX IF NOT EXISTS idx_agent_bot_usage_date ON agent_bot_usage(date);
+
+-- ============ Agent System (Phase 1) ============
+-- See plans/agent_system_architecture___implementation_plan.md
+
+-- Agent registry — 5 role families, category-scoped, model-bound
+CREATE TABLE IF NOT EXISTS agent (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  role_family     TEXT NOT NULL CHECK (role_family IN ('planner','executor','critic','researcher','presenter')),
+  category_id     INTEGER,
+  model_id        TEXT,
+  system_prompt   TEXT NOT NULL DEFAULT '',
+  tool_allowlist  TEXT,             -- JSON array of tool names (SQLite stores JSON as TEXT)
+  config          TEXT,             -- JSON object of agent config (SQLite stores JSON as TEXT)
+  enabled         INTEGER NOT NULL DEFAULT 1,
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (model_id) REFERENCES enabled_models(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_category ON agent(category_id);
+CREATE INDEX IF NOT EXISTS idx_agent_role_family ON agent(role_family);
+CREATE INDEX IF NOT EXISTS idx_agent_enabled ON agent(enabled);
+
+-- Swarm kill switch, category-keyed (NULL = global). v1 reads only the global row.
+CREATE TABLE IF NOT EXISTS swarm_control (
+  id              TEXT PRIMARY KEY,
+  category_id     INTEGER,
+  swarm_enabled   INTEGER NOT NULL DEFAULT 1,
+  updated_by      TEXT,
+  updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_swarm_control_category ON swarm_control(category_id);
+
+-- Force-swarm role allowlist — which user roles may use the per-message Force swarm action
+CREATE TABLE IF NOT EXISTS force_swarm_role_allowlist (
+  id          TEXT PRIMARY KEY,
+  role        TEXT NOT NULL UNIQUE CHECK (role IN ('super_admin','admin','superuser','user')),
+  allowed     INTEGER NOT NULL DEFAULT 1
+);

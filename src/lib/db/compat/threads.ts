@@ -325,6 +325,52 @@ export async function setThreadCategories(threadId: string, categoryIds: number[
   });
 }
 
+/**
+ * Transfer a thread's category ownership from one category to another.
+ *
+ * Phase 2.2 handoff (see plans/phase_2_2_implementation_plan.md §1 decision c):
+ * the `handoff_to_category` tool calls this to move a conversation's primary
+ * category to a new one. Unlike `setThreadCategories` (which wipes and
+ * re-inserts the full set), this performs a single delete-one + insert-one
+ * transaction so any *other* categories the thread belongs to are preserved.
+ *
+ * Semantics: this is a *transfer*, not an addition — the `fromCategoryId` row
+ * is removed. If `fromCategoryId` is not currently attached, only the insert
+ * occurs (idempotent on the source side). Returns the thread's category ids
+ * after the transfer so the caller can re-scope context on the next turn.
+ *
+ * @param threadId         Thread whose ownership is transferring.
+ * @param fromCategoryId   Category to detach (the current primary category).
+ * @param toCategoryId     Category to attach (the handoff target).
+ * @returns The thread's category ids after the transfer.
+ */
+export async function transferThreadCategory(
+  threadId: string,
+  fromCategoryId: number,
+  toCategoryId: number
+): Promise<number[]> {
+  await transaction(async (trx) => {
+    // Detach the source category (no-op if it isn't attached).
+    await trx
+      .deleteFrom('thread_categories')
+      .where('thread_id', '=', threadId)
+      .where('category_id', '=', fromCategoryId)
+      .execute();
+
+    // Attach the target category. Insert-if-not-exists via ON CONFLICT keeps
+    // it idempotent if the target was already attached (e.g. a multi-category
+    // thread that already included the target).
+    await trx
+      .insertInto('thread_categories')
+      .values({ thread_id: threadId, category_id: toCategoryId })
+      .onConflict((oc) => oc.columns(['thread_id', 'category_id']).doNothing())
+      .execute();
+  });
+
+  // Return the post-transfer category set so the caller can re-scope.
+  return getThreadCategories(threadId);
+}
+
 // ============ Messages ============
 
 export async function addMessage(

@@ -1386,6 +1386,30 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE enabled_models ADD COLUMN forced_tool_capable INTEGER DEFAULT 1');
     console.log('[DB Migration] Added forced_tool_capable column to enabled_models');
   }
+  if (!enabledModelsColumnNames.includes('capability_tier')) {
+    // Phase 1 Agent System — swarm-eligibility tier: 'swarm_full' | 'swarm_limited' | 'unclassified'
+    database.exec(
+      "ALTER TABLE enabled_models ADD COLUMN capability_tier TEXT NOT NULL DEFAULT 'unclassified'"
+    );
+    console.log('[DB Migration] Added capability_tier column to enabled_models (Phase 1)');
+
+    // Seed tiers for known platform models (mirrors src/lib/db/kysely.ts).
+    database.exec(`
+      UPDATE enabled_models SET capability_tier = 'swarm_full'
+      WHERE id IN (
+        'gpt-4o', 'gpt-4.1', 'gpt-4.1-mini',
+        'claude-3-5-sonnet-20241022', 'anthropic/claude-3-5-sonnet-20241022',
+        'anthropic/claude-sonnet-4', 'anthropic/claude-opus-4',
+        'fireworks/deepseek-v4-pro', 'moonshot/kimi-k2.6'
+      ) AND capability_tier = 'unclassified';
+      UPDATE enabled_models SET capability_tier = 'swarm_limited'
+      WHERE id IN (
+        'gpt-4o-mini',
+        'fireworks/deepseek-v4-flash', 'mistral-medium'
+      ) AND capability_tier = 'unclassified';
+    `);
+    console.log('[DB Migration] Seeded capability_tier for known models (Phase 1)');
+  }
 
   // Migration: Add xlsx and pptx to workspace_outputs file_type CHECK constraint
   // SQLite requires table recreation to modify CHECK constraints
@@ -1650,6 +1674,34 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE agent_bot_api_keys ADD COLUMN encrypted_key TEXT');
     console.log('[DB Migration] Added encrypted_key column to agent_bot_api_keys');
   }
+
+  // ===================================================================
+  // Agent System — Phase 1 Foundations (see plans/agent_system_architecture___implementation_plan.md)
+  // Seeds for agent registry, swarm kill switch, and force-swarm role allowlist.
+  // The tables themselves are created via schema.sql / getInlineSchema();
+  // these seeds are idempotent INSERT OR IGNORE so they run on every boot.
+  // ===================================================================
+  database.exec(`
+    INSERT OR IGNORE INTO swarm_control (id, category_id, swarm_enabled)
+    VALUES ('global', NULL, 1);
+
+    INSERT OR IGNORE INTO force_swarm_role_allowlist (id, role, allowed) VALUES
+      ('allow-super_admin', 'super_admin', 1),
+      ('allow-admin',       'admin',       1),
+      ('allow-superuser',   'superuser',   1),
+      ('allow-user',        'user',        1);
+  `);
+  console.log('[DB Migration] Seeded swarm_control global row + force-swarm role allowlist (Phase 1)');
+
+  database.exec(`
+    INSERT OR IGNORE INTO agent (id, name, role_family, category_id, model_id, system_prompt, tool_allowlist, config, enabled) VALUES
+      ('tpl-planner',    'Planner (template)',    'planner',    NULL, NULL, 'You are a Planner. Decompose the user''s goal into a DAG of subtasks and assign each subtask to the best-suited executor/researcher agent. Output the plan as structured JSON.', '[]', '{"max_subtasks": 12, "allow_parallel": true}', 1),
+      ('tpl-executor',   'Executor (template)',   'executor',   NULL, NULL, 'You are an Executor. Complete the assigned subtask using the tools in your allowlist. Return an artifact, a confidence score (0-1), and a suggested_next action.', '[]', '{"max_retries": 2}', 1),
+      ('tpl-critic',     'Critic (template)',     'critic',     NULL, NULL, 'You are a Critic. Review the executor artifact against the subtask criteria. Approve, or loop back with specific failure reasons. Never approve low-confidence artifacts without justification.', '[]', '{"min_confidence": 0.6}', 1),
+      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary"]', '{}', 1),
+      ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '[]', '{}', 1);
+  `);
+  console.log('[DB Migration] Seeded 5 global template agents (Phase 1)');
 
   console.log('[DB Migration] Migrations completed successfully');
 }
@@ -2102,6 +2154,44 @@ CREATE TABLE IF NOT EXISTS folder_sync_files (
 CREATE INDEX IF NOT EXISTS idx_folder_sync_files_sync ON folder_sync_files(folder_sync_id);
 CREATE INDEX IF NOT EXISTS idx_folder_sync_files_doc ON folder_sync_files(document_id);
 CREATE INDEX IF NOT EXISTS idx_folder_sync_files_hash ON folder_sync_files(file_hash);
+
+-- ============ Agent System (Phase 1) ============
+-- See plans/agent_system_architecture___implementation_plan.md
+
+CREATE TABLE IF NOT EXISTS agent (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  role_family     TEXT NOT NULL CHECK (role_family IN ('planner','executor','critic','researcher','presenter')),
+  category_id     INTEGER,
+  model_id        TEXT,
+  system_prompt   TEXT NOT NULL DEFAULT '',
+  tool_allowlist  TEXT,
+  config          TEXT,
+  enabled         INTEGER NOT NULL DEFAULT 1,
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (model_id) REFERENCES enabled_models(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_category ON agent(category_id);
+CREATE INDEX IF NOT EXISTS idx_agent_role_family ON agent(role_family);
+CREATE INDEX IF NOT EXISTS idx_agent_enabled ON agent(enabled);
+
+CREATE TABLE IF NOT EXISTS swarm_control (
+  id              TEXT PRIMARY KEY,
+  category_id     INTEGER,
+  swarm_enabled   INTEGER NOT NULL DEFAULT 1,
+  updated_by      TEXT,
+  updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_swarm_control_category ON swarm_control(category_id);
+
+CREATE TABLE IF NOT EXISTS force_swarm_role_allowlist (
+  id          TEXT PRIMARY KEY,
+  role        TEXT NOT NULL UNIQUE CHECK (role IN ('super_admin','admin','superuser','user')),
+  allowed     INTEGER NOT NULL DEFAULT 1
+);
   `;
 }
 

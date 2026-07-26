@@ -1,0 +1,252 @@
+[
+  {
+    "id": "solo-01",
+    "input": "What is the capital of France?",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "General knowledge, no specialist needed"
+  },
+  {
+    "id": "solo-02",
+    "input": "Summarize this paragraph in two sentences.",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Simple summarization, no delegation"
+  },
+  {
+    "id": "solo-03",
+    "input": "Thanks, that was helpful!",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Conversational acknowledgement"
+  },
+  {
+    "id": "solo-04",
+    "input": "Translate 'hello' to Spanish.",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Direct trivial translation"
+  },
+  {
+    "id": "solo-05",
+    "input": "What does 15 * 23 equal?",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Arithmetic the model can do inline"
+  },
+  {
+    "id": "solo-06",
+    "input": "List three benefits of exercise.",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Open-ended general advice"
+  },
+  {
+    "id": "solo-07",
+    "input": "Rewrite this email to be more polite.",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Light editing, no specialist"
+  },
+  {
+    "id": "solo-08",
+    "input": "Explain recursion in simple terms.",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "Conceptual explanation"
+  },
+  {
+    "id": "solo-09",
+    "input": "Give me a recipe for pancakes.",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "General knowledge recipe"
+  },
+  {
+    "id": "solo-10",
+    "input": "What time is it in Tokyo?",
+    "threadCategories": [],
+    "expectedMode": "solo",
+    "expectedToolCall": null,
+    "notes": "General question (time tool optional, not delegation)"
+  },
+  {
+    "id": "return-result-01",
+    "input": "Draft a detailed project plan for migrating our database.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Planning task best delegated to a planner agent"
+  },
+  {
+    "id": "return-result-02",
+    "input": "Review this architecture and identify risks.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Critique task for a critic agent"
+  },
+  {
+    "id": "return-result-03",
+    "input": "Research the latest trends in vector databases and summarize.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Research task for a researcher agent"
+  },
+  {
+    "id": "return-result-04",
+    "input": "Build a slide deck from these bullet points.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Presentation task for a presenter agent"
+  },
+  {
+    "id": "return-result-05",
+    "input": "Execute the data cleaning script and report results.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Execution task for an executor agent"
+  },
+  {
+    "id": "return-result-06",
+    "input": "Analyze these logs and find the root cause of the outage.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Deep analysis delegation"
+  },
+  {
+    "id": "return-result-07",
+    "input": "Critique my essay and suggest improvements.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Critic role delegation"
+  },
+  {
+    "id": "return-result-08",
+    "input": "Investigate the competitor's pricing strategy.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Research delegation"
+  },
+  {
+    "id": "return-result-09",
+    "input": "Create a financial model from this spreadsheet.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Specialist execution"
+  },
+  {
+    "id": "return-result-10",
+    "input": "Produce a stakeholder presentation for Q3 results.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Presenter delegation"
+  },
+  {
+    "id": "handoff-01",
+    "input": "This is really a legal question about contract terms.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "legal",
+    "notes": "Belongs in the legal category"
+  },
+  {
+    "id": "handoff-02",
+    "input": "I need HR to handle this employee grievance.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "hr",
+    "notes": "Belongs in HR"
+  },
+  {
+    "id": "handoff-03",
+    "input": "Move this to the finance category, it's about invoices.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "finance",
+    "notes": "Explicit handoff request to finance"
+  },
+  {
+    "id": "handoff-04",
+    "input": "This IT support ticket should go to the systems team.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "systems",
+    "notes": "IT handoff"
+  },
+  {
+    "id": "handoff-05",
+    "input": "Route this policy question to the policy workspace.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "policy",
+    "notes": "Explicit routing to policy"
+  },
+  {
+    "id": "handoff-06",
+    "input": "This is an operations matter, please transfer me.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "operations",
+    "notes": "Operations handoff"
+  },
+  {
+    "id": "handoff-07",
+    "input": "The government relations team should handle this.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "government",
+    "notes": "Government category handoff"
+  },
+  {
+    "id": "handoff-08",
+    "input": "Hand this off to the monitoring category.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "monitoring",
+    "notes": "Explicit handoff to monitoring"
+  },
+  {
+    "id": "handoff-09",
+    "input": "This belongs in the data workspace, not here.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "data",
+    "notes": "Data category transfer"
+  },
+  {
+    "id": "handoff-10",
+    "input": "Please move my question to the architecture category.",
+    "threadCategories": [1],
+    "expectedMode": "handoff",
+    "expectedToolCall": "handoff_to_category",
+    "expectedTargetCategory": "architecture",
+    "notes": "Architecture handoff"
+  }
+]

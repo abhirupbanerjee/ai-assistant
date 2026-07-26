@@ -35,6 +35,7 @@ interface EnabledModelRow {
   parallel_tool_capable: number;
   thinking_capable: number;
   forced_tool_capable: number;
+  capability_tier: string;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
   input_cost_per_1m: number | null;
@@ -58,6 +59,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     parallelToolCapable: row.parallel_tool_capable === 1,
     thinkingCapable: row.thinking_capable === 1,
     forcedToolCapable: row.forced_tool_capable === 1,
+    capabilityTier: (row.capability_tier as 'swarm_full' | 'swarm_limited' | 'unclassified') || 'unclassified',
     maxInputTokens: row.max_input_tokens,
     maxOutputTokens: row.max_output_tokens,
     inputCostPer1M: row.input_cost_per_1m == null ? row.input_cost_per_1m : Number(row.input_cost_per_1m),
@@ -241,6 +243,7 @@ export async function createEnabledModel(input: CreateEnabledModelInput): Promis
       parallel_tool_capable: input.parallelToolCapable ? 1 : 0,
       thinking_capable: input.thinkingCapable ? 1 : 0,
       forced_tool_capable: input.forcedToolCapable !== false ? 1 : 0,
+      capability_tier: input.capabilityTier || 'unclassified',
       max_input_tokens: input.maxInputTokens || null,
       max_output_tokens: input.maxOutputTokens || null,
       input_cost_per_1m: input.inputCostPer1M ?? null,
@@ -300,6 +303,9 @@ export async function updateEnabledModel(id: string, input: UpdateEnabledModelIn
   }
   if (input.forcedToolCapable !== undefined) {
     updateObj.forced_tool_capable = input.forcedToolCapable ? 1 : 0;
+  }
+  if (input.capabilityTier !== undefined) {
+    updateObj.capability_tier = input.capabilityTier;
   }
   if (input.maxInputTokens !== undefined) {
     updateObj.max_input_tokens = input.maxInputTokens || null;

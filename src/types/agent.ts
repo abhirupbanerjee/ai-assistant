@@ -321,3 +321,174 @@ export interface OrchestratorResult {
     average_confidence: number;
   };
 }
+
+// ===================================================================
+// Universal I/O Contract (Phase 1 Agent System)
+// See plans/agent_system_architecture___implementation_plan.md §3.2.
+// Every agent invocation — single-agent or swarm — returns an
+// AgentResponse envelope with { artifact, confidence, suggested_next }.
+// Malformed responses collapse to confidence:0 via validateAgentResponse().
+// ===================================================================
+
+/**
+ * The work product an agent produces. `type` is a coarse classification the
+ * orchestrator/presenter uses to assemble the final deliverable; `content`
+ * is the payload (text, JSON string, markdown, etc.); `sources` carries
+ * citations for researcher agents.
+ */
+export interface AgentArtifact {
+  type:
+    | 'text'
+    | 'plan'
+    | 'research'
+    | 'analysis'
+    | 'critique'
+    | 'presentation'
+    | 'data'
+    | 'error';
+  content: string;
+  sources?: Array<{ title: string; url?: string }>;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * The next action an agent recommends. The orchestrator is the authority on
+ * what actually happens next; this is advisory. `reason` is required so the
+ * critic and trace can explain the transition.
+ */
+export type SuggestedNext =
+  | { action: 'complete'; reason: string }
+  | { action: 'loop_back'; reason: string; target_subtask?: string }
+  | { action: 'escalate'; reason: string }
+  | { action: 'handoff'; reason: string; target_role?: string };
+
+/**
+ * The universal response envelope. `confidence` is 0..1 (normalized from the
+ * legacy 0..100 checker scale at the boundary). `agentId` and `roleFamily`
+ * identify the producing agent for tracing.
+ */
+export interface AgentResponse {
+  agentId: string;
+  roleFamily:
+    | 'planner'
+    | 'executor'
+    | 'critic'
+    | 'researcher'
+    | 'presenter';
+  artifact: AgentArtifact;
+  confidence: number; // 0..1
+  suggestedNext: SuggestedNext;
+  /** Optional token/cost telemetry for the tracing module. */
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    costUsd?: number;
+  };
+}
+
+/**
+ * Validate and normalize a raw agent output into an AgentResponse.
+ *
+ * Per the plan §3.2, malformed responses collapse to a minimal envelope with
+ * `confidence: 0` and a `suggestedNext` of `escalate` — never throw. This is
+ * the single chokepoint every agent invocation passes through so the
+ * orchestrator never sees a structurally-invalid response.
+ *
+ * @param raw    The parsed JSON (or string) the model returned.
+ * @param agentId  The id of the agent that produced `raw`.
+ * @param roleFamily  The role family of that agent.
+ */
+export function validateAgentResponse(
+  raw: unknown,
+  agentId: string,
+  roleFamily: AgentResponse['roleFamily']
+): AgentResponse {
+  const fallback: AgentResponse = {
+    agentId,
+    roleFamily,
+    artifact: { type: 'error', content: 'Malformed agent response' },
+    confidence: 0,
+    suggestedNext: { action: 'escalate', reason: 'Agent response failed validation' },
+  };
+
+  if (raw === null || raw === undefined || typeof raw !== 'object') {
+    return fallback;
+  }
+  const obj = raw as Record<string, unknown>;
+
+  // --- artifact ---
+  let artifact: AgentArtifact = fallback.artifact;
+  if (obj.artifact !== null && typeof obj.artifact === 'object') {
+    const a = obj.artifact as Record<string, unknown>;
+    const content = typeof a.content === 'string' ? a.content : '';
+    const type = isValidArtifactType(a.type) ? a.type : 'text';
+    const sources = Array.isArray(a.sources)
+      ? (a.sources as unknown[]).filter(isValidSource).map((s) => s as { title: string; url?: string })
+      : undefined;
+    artifact = { type, content, sources, metadata: a.metadata as Record<string, unknown> | undefined };
+  }
+
+  // --- confidence (accept 0..1 or 0..100; normalize to 0..1) ---
+  let confidence = 0;
+  if (typeof obj.confidence === 'number' && Number.isFinite(obj.confidence)) {
+    confidence = obj.confidence > 1 ? obj.confidence / 100 : obj.confidence;
+    confidence = Math.max(0, Math.min(1, confidence));
+  }
+
+  // --- suggestedNext ---
+  let suggestedNext: SuggestedNext = fallback.suggestedNext;
+  if (obj.suggestedNext !== null && typeof obj.suggestedNext === 'object') {
+    const sn = obj.suggestedNext as Record<string, unknown>;
+    if (isValidNextAction(sn.action) && typeof sn.reason === 'string') {
+      suggestedNext = {
+        action: sn.action as SuggestedNext['action'],
+        reason: sn.reason,
+        ...(typeof sn.target_subtask === 'string' ? { target_subtask: sn.target_subtask } : {}),
+        ...(typeof sn.target_role === 'string' ? { target_role: sn.target_role } : {}),
+      } as SuggestedNext;
+    }
+  }
+
+  // --- usage (optional, pass-through) ---
+  let usage: AgentResponse['usage'] | undefined;
+  if (obj.usage !== null && typeof obj.usage === 'object') {
+    const u = obj.usage as Record<string, unknown>;
+    usage = {
+      ...(typeof u.promptTokens === 'number' ? { promptTokens: u.promptTokens } : {}),
+      ...(typeof u.completionTokens === 'number' ? { completionTokens: u.completionTokens } : {}),
+      ...(typeof u.costUsd === 'number' ? { costUsd: u.costUsd } : {}),
+    };
+    if (Object.keys(usage).length === 0) usage = undefined;
+  }
+
+  return { agentId, roleFamily, artifact, confidence, suggestedNext, ...(usage ? { usage } : {}) };
+}
+
+// --- internal helpers for validateAgentResponse ---
+
+const ARTIFACT_TYPES: AgentArtifact['type'][] = [
+  'text',
+  'plan',
+  'research',
+  'analysis',
+  'critique',
+  'presentation',
+  'data',
+  'error',
+];
+
+function isValidArtifactType(value: unknown): value is AgentArtifact['type'] {
+  return typeof value === 'string' && (ARTIFACT_TYPES as string[]).includes(value);
+}
+
+const NEXT_ACTIONS: SuggestedNext['action'][] = ['complete', 'loop_back', 'escalate', 'handoff'];
+
+function isValidNextAction(value: unknown): value is SuggestedNext['action'] {
+  return typeof value === 'string' && (NEXT_ACTIONS as string[]).includes(value);
+}
+
+function isValidSource(value: unknown): value is { title: string; url?: string } {
+  if (value === null || typeof value !== 'object') return false;
+  const s = value as Record<string, unknown>;
+  return typeof s.title === 'string';
+}

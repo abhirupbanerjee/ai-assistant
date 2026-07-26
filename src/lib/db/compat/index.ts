@@ -255,6 +255,7 @@ export {
   getThreadCategories,
   getThreadCategorySlugs,
   setThreadCategories,
+  transferThreadCategory,
   // Messages
   addMessage,
   getMessageById,
@@ -1099,3 +1100,39 @@ export {
   getEvolvedKbSettings,
   updateEvolvedKbSettings,
 } from './evolved-kb';
+
+// ============ Agent Registry (Phase 1) ============
+export {
+  type AgentRoleFamily,
+  type CapabilityTier,
+  type AgentRecord,
+  type CreateAgentInput,
+  type UpdateAgentInput,
+  listAgents,
+  listEnabledAgents,
+  getAgentsForCategory,
+  getAgentsByRoleFamily,
+  getAgentById,
+  createAgent,
+  updateAgent,
+  deleteAgent,
+  disableAgent,
+  getModelCapabilityTier,
+  isSwarmEligible,
+  canFillPlannerOrCriticRole,
+  getCapabilityTiersForModels,
+} from './agents';
+
+// ============ Swarm Control (Phase 1) ============
+export {
+  type SwarmRole,
+  type KillSwitchState,
+  type RoleAllowlistEntry,
+  getGlobalKillSwitch,
+  setGlobalKillSwitch,
+  getCategoryKillSwitch,
+  getEffectiveKillSwitch,
+  getForceSwarmRoleAllowlist,
+  isRoleAllowedForceSwarm,
+  setForceSwarmRoleAllowed,
+} from './swarm-control';

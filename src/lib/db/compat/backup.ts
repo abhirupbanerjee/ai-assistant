@@ -783,6 +783,23 @@ export async function importTaskPlans(records: TaskPlanRecord[]): Promise<void> 
   await importBatch('task_plans', records, db);
 }
 
+// ============ Agent System Registry Import Functions ============
+
+export async function importAgents(records: unknown[]): Promise<void> {
+  const db = await getDb();
+  await importBatch('agent', records, db);
+}
+
+export async function importSwarmControl(records: unknown[]): Promise<void> {
+  const db = await getDb();
+  await importBatch('swarm_control', records, db);
+}
+
+export async function importForceSwarmRoleAllowlist(records: unknown[]): Promise<void> {
+  const db = await getDb();
+  await importBatch('force_swarm_role_allowlist', records, db);
+}
+
 // ============ Agent Bot Import Functions ============
 
 export async function importAgentBots(records: AgentBotRecord[]): Promise<void> {
@@ -861,6 +878,10 @@ export async function clearAllData(): Promise<void> {
     await trx.deleteFrom('workspace_users').execute();
     await trx.deleteFrom('workspace_categories').execute();
     await trx.deleteFrom('workspaces').execute();
+    // Agent system registry (FKs to categories + enabled_models)
+    await trx.deleteFrom('force_swarm_role_allowlist').execute();
+    await trx.deleteFrom('swarm_control').execute();
+    await trx.deleteFrom('agent').execute();
     // Categories last (due to FK refs)
     await trx.deleteFrom('categories').execute();
   });

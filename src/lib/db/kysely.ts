@@ -1077,6 +1077,119 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured document_summaries table exists');
 
+  // ===================================================================
+  // Agent System — Phase 1 Foundations (see plans/agent_system_architecture___implementation_plan.md)
+  // DB-first agent registry, swarm kill switch, force-swarm role allowlist,
+  // and model capability tiers. Runtime enforcement lands in Phase 4; these
+  // migrations only establish schema + seed data.
+  // ===================================================================
+
+  // agent registry — 5 role families, category-scoped, model-bound
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      role_family     TEXT NOT NULL CHECK (role_family IN ('planner','executor','critic','researcher','presenter')),
+      category_id     INTEGER,
+      model_id        TEXT,
+      system_prompt   TEXT NOT NULL DEFAULT '',
+      tool_allowlist  JSONB,
+      config          JSONB,
+      enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+      FOREIGN KEY (model_id) REFERENCES enabled_models(id) ON DELETE SET NULL
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_category ON agent(category_id)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_role_family ON agent(role_family)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_enabled ON agent(enabled)`.execute(database);
+  console.log('[Kysely] Ensured agent table exists (Phase 1)');
+
+  // Seed global template agents (category_id NULL) — one per role family.
+  // Per the plan, agents are category-scoped; but categories are user-created and
+  // may not exist at first boot, so we seed category-agnostic templates that admins
+  // clone/scope via the registry UI rather than seeding per-category in a migration.
+  await sql`
+    INSERT INTO agent (id, name, role_family, category_id, model_id, system_prompt, tool_allowlist, config, enabled) VALUES
+      ('tpl-planner',    'Planner (template)',    'planner',    NULL, NULL, 'You are a Planner. Decompose the user''s goal into a DAG of subtasks and assign each subtask to the best-suited executor/researcher agent. Output the plan as structured JSON.', '[]', '{"max_subtasks": 12, "allow_parallel": true}'::jsonb, TRUE),
+      ('tpl-executor',   'Executor (template)',   'executor',   NULL, NULL, 'You are an Executor. Complete the assigned subtask using the tools in your allowlist. Return an artifact, a confidence score (0-1), and a suggested_next action.', '[]', '{"max_retries": 2}'::jsonb, TRUE),
+      ('tpl-critic',     'Critic (template)',     'critic',     NULL, NULL, 'You are a Critic. Review the executor artifact against the subtask criteria. Approve, or loop back with specific failure reasons. Never approve low-confidence artifacts without justification.', '[]', '{"min_confidence": 0.6}'::jsonb, TRUE),
+      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary"]', '{}'::jsonb, TRUE),
+      ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '[]', '{}'::jsonb, TRUE)
+    ON CONFLICT (id) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Seeded 5 global template agents (one per role family) (Phase 1)');
+
+  // model registry — capability tier column (swarm-eligibility + role assignment)
+  // 'unclassified' is the conservative default: swarm-ineligible until an admin assigns a tier.
+  await sql`ALTER TABLE enabled_models ADD COLUMN IF NOT EXISTS capability_tier TEXT NOT NULL DEFAULT 'unclassified'`.execute(database);
+  console.log('[Kysely] Ensured enabled_models.capability_tier column exists (Phase 1)');
+
+  // Seed capability tiers for known platform models. Tier values:
+  //   'swarm_full'   — may fill any swarm role (planner/executor/critic/researcher/presenter)
+  //   'swarm_limited'— may fill executor/researcher/presenter only (no planner/critic)
+  //   'unclassified' — swarm-ineligible (default)
+  // Only well-established tool-capable reasoning models get 'swarm_full'.
+  await sql`
+    UPDATE enabled_models SET capability_tier = 'swarm_full'
+    WHERE id IN (
+      'gpt-4o', 'gpt-4.1', 'gpt-4.1-mini',
+      'claude-3-5-sonnet-20241022', 'anthropic/claude-3-5-sonnet-20241022',
+      'anthropic/claude-sonnet-4', 'anthropic/claude-opus-4',
+      'fireworks/deepseek-v4-pro', 'moonshot/kimi-k2.6'
+    ) AND capability_tier = 'unclassified'
+  `.execute(database);
+  await sql`
+    UPDATE enabled_models SET capability_tier = 'swarm_limited'
+    WHERE id IN (
+      'gpt-4o-mini', 'gpt-4.1-mini',
+      'fireworks/deepseek-v4-flash', 'mistral-medium'
+    ) AND capability_tier = 'unclassified'
+  `.execute(database);
+  console.log('[Kysely] Seeded capability_tier for known models (Phase 1)');
+
+  // swarm_control — kill switch, category-keyed from day one (NULL = global).
+  // v1 runtime reads only the global row; per-category rows reserved for future use.
+  await sql`
+    CREATE TABLE IF NOT EXISTS swarm_control (
+      id              TEXT PRIMARY KEY,
+      category_id     INTEGER,
+      swarm_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_by      TEXT,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+    )
+  `.execute(database);
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_swarm_control_category ON swarm_control(category_id)`.execute(database);
+  // Seed exactly one global row: category_id NULL, swarm_enabled TRUE (ON at launch).
+  await sql`
+    INSERT INTO swarm_control (id, category_id, swarm_enabled)
+    VALUES ('global', NULL, TRUE)
+    ON CONFLICT DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Ensured swarm_control table + global kill-switch row exists (Phase 1)');
+
+  // force_swarm_role_allowlist — which user roles may use the per-message Force swarm action.
+  // All roles allowed by default; admins may revoke per role.
+  await sql`
+    CREATE TABLE IF NOT EXISTS force_swarm_role_allowlist (
+      id          TEXT PRIMARY KEY,
+      role        TEXT NOT NULL UNIQUE CHECK (role IN ('super_admin','admin','superuser','user')),
+      allowed     BOOLEAN NOT NULL DEFAULT TRUE
+    )
+  `.execute(database);
+  await sql`
+    INSERT INTO force_swarm_role_allowlist (id, role, allowed) VALUES
+      ('allow-super_admin', 'super_admin', TRUE),
+      ('allow-admin',       'admin',       TRUE),
+      ('allow-superuser',   'superuser',   TRUE),
+      ('allow-user',        'user',        TRUE)
+    ON CONFLICT (role) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Ensured force_swarm_role_allowlist table + default rows exist (Phase 1)');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

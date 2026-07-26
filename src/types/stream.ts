@@ -163,6 +163,27 @@ export interface AgentPlanStats {
 }
 
 /**
+ * Agent response info for the Phase 2.2 "Answered by agent X" card.
+ *
+ * Mirrors the fields of `AgentResponse` (src/types/agent.ts) that the UI needs,
+ * without importing the agent-contract type into the stream-type module (kept
+ * cross-domain-clean). The stream route populates this from the invoker result.
+ */
+export interface AgentResponseInfo {
+  agentId: string;
+  agentName: string;
+  roleFamily: 'planner' | 'executor' | 'critic' | 'researcher' | 'presenter';
+  artifact: {
+    type: 'text' | 'table' | 'file_ref' | 'structured' | 'error';
+    content: string;
+  };
+  /** 0..1 self-assessed confidence. */
+  confidence: number;
+  /** Optional short reason from the agent's suggested_next. */
+  suggestedNextReason?: string;
+}
+
+/**
  * Plan approval HITL event for autonomous mode
  */
 export interface PlanApprovalEvent {
@@ -203,6 +224,11 @@ export type StreamEvent =
   | { type: 'artifact'; subtype: 'image'; data: GeneratedImageInfo }
   | { type: 'artifact'; subtype: 'diagram'; data: DiagramHint }
   | { type: 'artifact'; subtype: 'podcast'; data: PodcastHint }
+  // Agent System (Phase 2.2) — return-result surfacing. Emitted when the LLM
+  // calls an `agent__*` tool; the UI renders a collapsible "Answered by agent
+  // X" card with the artifact + confidence. The main LLM still synthesizes a
+  // final summary on top. See plans/phase_2_2_implementation_plan.md §1 (a).
+  | { type: 'artifact'; subtype: 'agent'; data: AgentResponseInfo }
 
   // RAG sources
   | { type: 'sources'; data: Source[] }
@@ -306,7 +332,21 @@ export type StreamEvent =
   | { type: 'model_switch'; originalModel: string; newModel: string; reason: FallbackReason; message: string }
 
   // Backend operation log (RAG steps, LLM switches, memory loading) for Operations UI section
-  | { type: 'operation_log'; category: OperationCategory; message: string };
+  | { type: 'operation_log'; category: OperationCategory; message: string }
+
+  // Agent System (Phase 2.2) — single-agent routing
+  // Emitted by the stream route when the LLM calls `handoff_to_category`.
+  // Ownership has transferred to toCategoryId; the current turn ends after
+  // this event. The UI surfaces a category-change banner. See
+  // plans/phase_2_2_implementation_plan.md §1 decision (c).
+  | {
+      type: 'handoff';
+      fromCategoryId: number;
+      toCategoryId: number;
+      toCategoryName: string;
+      toCategorySlug: string;
+      reason?: string;
+    };
 
 /**
  * Stream error codes
@@ -479,8 +519,16 @@ export interface StreamingCallbacks {
   onThinkingChunk?: (text: string) => void;
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
-  onArtifact?: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint) => void;
+  onArtifact?: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast' | 'agent', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint | AgentResponseInfo) => void;
   /** Called when the LLM invokes request_clarification. Pauses the stream, shows HITL UI, resolves with user's answer or null. */
   onClarification?: (question: string, options: string[], allowFreeText: boolean) => Promise<string | null>;
+  /**
+   * Called when the `handoff_to_category` tool returns a handoff-request
+   * envelope (`{ handoff: true, targetCategoryId, ... }`). The route layer
+   * performs the actual `transferThreadCategory` call, emits the `handoff` SSE
+   * event, and ends the current turn. Returning from this callback lets the
+   * tool loop treat the handoff as terminal (no summary LLM call).
+   */
+  onHandoff?: (envelope: { targetCategoryId: number; targetCategoryName: string; targetCategorySlug: string; reason?: string }) => void;
 }
 

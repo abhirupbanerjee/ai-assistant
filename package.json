@@ -1,6 +1,6 @@
 {
   "name": "ai-assistant",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -20,6 +20,10 @@
     "db:setup": "npx tsx src/lib/db/setup.ts",
     "db:types": "kysely-codegen --out-file src/lib/db/db-types.ts && node -e \"const fs=require('fs');let f=fs.readFileSync('src/lib/db/db-types.ts','utf8');f=f.replace(/\\bDate\\b/g,'string').replace(/Generated<string\\s*\\|\\s*null>/g,'Generated<string>');fs.writeFileSync('src/lib/db/db-types.ts',f);\"",
     "cleanup:expired": "npx tsx src/scripts/cleanup-expired-outputs.ts",
+    "eval:routing": "npx tsx eval/routing.ts --mock",
+    "eval:routing:mock": "npx tsx eval/routing.ts --mock",
+    "eval:routing:live": "npx tsx eval/routing.ts --live",
+    "eval:routing:update-baseline": "npx tsx eval/routing.ts --mock --update-baseline",
     "sonar:scan": "sonar-scanner",
     "sonar:pipeline": "bash scripts/sonar-scan.sh"
   },

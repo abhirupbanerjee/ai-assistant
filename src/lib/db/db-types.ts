@@ -305,6 +305,7 @@ export interface EnabledModelsTable {
   parallel_tool_capable: Generated<number>;
   thinking_capable: Generated<number>;
   forced_tool_capable: Generated<number>;
+  capability_tier: Generated<string>;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
   input_cost_per_1m: number | null;
@@ -1080,6 +1081,10 @@ export interface DB {
   slash_command_configs: SlashCommandConfigsTable;
   // Model Latency Log (Auto selection)
   model_latency_log: ModelLatencyLogTable;
+  // Agent System (Phase 1) — registry + swarm controls
+  agent: AgentTable;
+  swarm_control: SwarmControlTable;
+  force_swarm_role_allowlist: ForceSwarmRoleAllowlistTable;
 }
 
 // ============ WhatsApp Channels ============
@@ -1159,3 +1164,43 @@ export interface ModelLatencyLogTable {
 
 export type ModelLatencyLog = Selectable<ModelLatencyLogTable>;
 export type NewModelLatencyLog = Insertable<ModelLatencyLogTable>;
+
+// ============ Agent System (Phase 1) ============
+// See plans/agent_system_architecture___implementation_plan.md
+
+export interface AgentTable {
+  id: string;
+  name: string;
+  role_family: 'planner' | 'executor' | 'critic' | 'researcher' | 'presenter';
+  category_id: number | null;
+  model_id: string | null;
+  system_prompt: string;
+  tool_allowlist: unknown | null;
+  config: unknown | null;
+  enabled: Generated<boolean>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
+export type Agent = Selectable<AgentTable>;
+export type NewAgent = Insertable<AgentTable>;
+
+export interface SwarmControlTable {
+  id: string;
+  category_id: number | null;
+  swarm_enabled: Generated<boolean>;
+  updated_by: string | null;
+  updated_at: Generated<string>;
+}
+
+export type SwarmControl = Selectable<SwarmControlTable>;
+export type NewSwarmControl = Insertable<SwarmControlTable>;
+
+export interface ForceSwarmRoleAllowlistTable {
+  id: string;
+  role: 'super_admin' | 'admin' | 'superuser' | 'user';
+  allowed: Generated<boolean>;
+}
+
+export type ForceSwarmRoleAllowlist = Selectable<ForceSwarmRoleAllowlistTable>;
+export type NewForceSwarmRoleAllowlist = Insertable<ForceSwarmRoleAllowlistTable>;

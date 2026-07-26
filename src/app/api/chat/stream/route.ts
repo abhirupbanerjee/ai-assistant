@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory } from '@/lib/db/compat';
+import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory, transferThreadCategory } from '@/lib/db/compat';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
@@ -30,7 +30,7 @@ import {
 import { saveTrajectoryEntries } from '@/lib/db/citation-trajectory';
 import { translate } from '@/lib/translation';
 import { TONE_PRESETS } from '@/types/stream';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
@@ -588,7 +588,7 @@ export async function POST(request: NextRequest) {
               onToolEnd: (name: string, success: boolean, duration: number, error?: string) => {
                 send({ type: 'tool_end', name, success, duration, error });
               },
-              onArtifact: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint) => {
+              onArtifact: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast' | 'agent', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint | AgentResponseInfo) => {
                 if (type === 'visualization') {
                   const viz = data as MessageVisualization;
                   visualizations.push(viz);
@@ -609,7 +609,42 @@ export async function POST(request: NextRequest) {
                   const podcast = data as PodcastHint;
                   podcasts.push(podcast);
                   send({ type: 'artifact', subtype: 'podcast', data: podcast });
+                } else if (type === 'agent') {
+                  // Phase 2.2 return-result: surfaced as collapsible AgentResponseCard
+                  const info = data as AgentResponseInfo;
+                  send({ type: 'artifact', subtype: 'agent', data: info });
                 }
+              },
+              // Phase 2.2 handoff routing: transfer the thread to the target
+              // category and emit a `handoff` SSE event so the UI can show a
+              // category-change banner. The tool loop treats this as terminal.
+              onHandoff: async (envelope: { targetCategoryId: number; targetCategoryName: string; targetCategorySlug: string; reason?: string }) => {
+                const fromCategoryId = effectiveCategoryId ?? categoryIds[0] ?? null;
+                // Edge case: a thread with no attached categories has
+                // fromCategoryId === null. In that case there is no source row
+                // to detach, but we still attach the target so the next turn
+                // runs in the right context — using the target id as the
+                // "from" for transferThreadCategory is harmless because the
+                // delete is a no-op (the target row, if any, is re-inserted
+                // idempotently by onConflict doNothing). This avoids a silent
+                // skip where the DB never moves ownership but the SSE event
+                // claims a handoff occurred.
+                const transferFromId = fromCategoryId ?? envelope.targetCategoryId;
+                if (transferFromId !== envelope.targetCategoryId || fromCategoryId === null) {
+                  try {
+                    await transferThreadCategory(threadId, transferFromId, envelope.targetCategoryId);
+                  } catch (transferError) {
+                    console.error('[Stream] transferThreadCategory failed during handoff:', transferError);
+                  }
+                }
+                send({
+                  type: 'handoff',
+                  fromCategoryId: fromCategoryId ?? envelope.targetCategoryId,
+                  toCategoryId: envelope.targetCategoryId,
+                  toCategoryName: envelope.targetCategoryName,
+                  toCategorySlug: envelope.targetCategorySlug,
+                  reason: envelope.reason,
+                });
               },
               // Called when main LLM invokes request_clarification tool
               onClarification: async (question: string, options: string[], allowFreeText: boolean): Promise<string | null> => {

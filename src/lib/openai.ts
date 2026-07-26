@@ -9,7 +9,8 @@ import {
   getTemperatureForModel,
   type ThinkingRequestProfile,
 } from '@/lib/llm-thinking';
-import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint } from '@/types';
+import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, DiagramHint, PodcastHint, AgentResponseInfo } from '@/types';
+import { isAgentTool } from './agent-registry/agent-tools';
 import type { ModelSpec } from '@/types/agent';
 import type { ToolExecutionRecord, FailureType } from '@/types/compliance';
 import type { ImageCapabilities } from '@/lib/config-capability-checker';
@@ -2343,9 +2344,65 @@ export async function generateResponseWithTools(
               if (parsed.success && parsed.podcastHint) {
                 callbacks.onArtifact('podcast', parsed.podcastHint);
               }
+              // Phase 2.2 — agent-as-tool return-result: surface the agent's
+              // contract envelope as an `agent` artifact so the client renders
+              // an "Answered by agent X" card. `executeAgentTool` injects
+              // `agentName` at the top level (not part of AgentResponse).
+              if (isAgentTool(toolName) && parsed.artifact) {
+                const info: AgentResponseInfo = {
+                  agentId: String(parsed.agentId ?? toolName),
+                  agentName: typeof parsed.agentName === 'string' ? parsed.agentName : String(parsed.agentId ?? toolName),
+                  roleFamily: parsed.roleFamily ?? 'executor',
+                  artifact: {
+                    // Preserve the full artifact type union ('text' | 'table' |
+                    // 'file_ref' | 'structured' | 'error') rather than collapsing
+                    // table/file_ref to 'structured'. The AgentResponseCard can
+                    // render these distinctly. Unknown values fall back to
+                    // 'structured' for forward-compat safety.
+                    type: ((): AgentResponseInfo['artifact']['type'] => {
+                      const t = parsed.artifact.type;
+                      if (t === 'text' || t === 'table' || t === 'file_ref' || t === 'structured' || t === 'error') {
+                        return t;
+                      }
+                      return 'structured';
+                    })(),
+                    content: typeof parsed.artifact.content === 'string' ? parsed.artifact.content : JSON.stringify(parsed.artifact.content),
+                  },
+                  confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0,
+                  suggestedNextReason: parsed.suggestedNext?.reason,
+                };
+                callbacks.onArtifact('agent', info);
+              }
             } catch (artifactError) {
               logger.error(`Artifact callback error for tool ${toolName}:`, artifactError);
             }
+          }
+
+          // Phase 2.2 — handoff_to_category: the executor returns a
+          // handoff-request envelope and performs no DB mutation. Fire the
+          // onHandoff callback so the route layer can transfer thread
+          // ownership, emit the `handoff` SSE event, and end the turn. We treat
+          // the handoff as terminal by setting ONLY `terminalToolSucceeded`
+          // (which breaks the tool loop at the `while` guard and the post-loop
+          // `break`). We intentionally do NOT set `terminalToolResult`, so the
+          // post-loop summary block (`terminalToolSucceeded && finalTerminalResult`)
+          // is skipped — handoffs produce no artifact to summarize, and an extra
+          // summary LLM call would stream spurious `chunk` text after the
+          // `handoff` SSE event, contradicting the "turn ends" semantics.
+          if (toolName === 'handoff_to_category' && parsed.handoff === true && parsed.targetCategoryId) {
+            try {
+              callbacks?.onHandoff?.({
+                targetCategoryId: parsed.targetCategoryId,
+                targetCategoryName: String(parsed.targetCategoryName ?? ''),
+                targetCategorySlug: String(parsed.targetCategorySlug ?? ''),
+                reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+              });
+            } catch (handoffError) {
+              logger.error(`Handoff callback error for tool ${toolName}:`, handoffError);
+            }
+            logger.info(`[Tools] handoff_to_category succeeded (target=${parsed.targetCategorySlug}), stopping tool loop (no summary)`);
+            terminalToolSucceeded = true;
+            // Deliberately do NOT set terminalToolResult — see comment above.
           }
 
           // Check if terminal tool succeeded

@@ -17,6 +17,7 @@ import {
   Layers,
   Database,
   Settings,
+  Shield,
   Palette,
   Wrench,
   ChevronDown,
@@ -30,7 +31,7 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'agent-registry' | 'swarm-control' | 'workspaces' | 'settings';
 
 // Section types for expandable menus
 type DocumentsSection = 'documents' | 'acronyms';
@@ -81,6 +82,8 @@ const MENU_CONFIG: MenuConfigItem[] = [
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
   { id: 'autonomous-mode', label: 'Autonomous Mode', icon: BrainCircuit, expandable: false },
   { id: 'agent', label: 'Agent Bots', icon: Bot, expandable: false },
+  { id: 'agent-registry', label: 'Agent Registry', icon: Users, expandable: false },
+  { id: 'swarm-control', label: 'Swarm Control', icon: Shield, expandable: false },
   {
     id: 'settings',
     label: 'Settings',

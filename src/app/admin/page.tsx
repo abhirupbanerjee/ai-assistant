@@ -35,6 +35,8 @@ import SystemPromptSettings from '@/components/admin/prompts/SystemPromptSetting
 import CategoryPromptsSettings from '@/components/admin/prompts/CategoryPromptsSettings';
 import BrandingSettingsTab from '@/components/admin/BrandingSettings';
 import AgentSettingsTab from '@/components/admin/AgentSettings';
+import AgentRegistryTab from '@/components/admin/AgentRegistryTab';
+import SwarmControlTab from '@/components/admin/SwarmControlTab';
 import TokenLimitsSettingsTab from '@/components/admin/tokens/TokenLimitsSettings';
 import TokenUsageDashboard from '@/components/admin/TokenUsageDashboard';
 
@@ -112,7 +114,7 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'agent-registry' | 'swarm-control' | 'workspaces' | 'settings';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
@@ -1333,6 +1335,16 @@ function AdminPageContent() {
               onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
             />
           )
+        )}
+
+        {/* Agent Registry Tab (L1 menu item) - swarm role agent registry */}
+        {activeTab === 'agent-registry' && (
+          <AgentRegistryTab />
+        )}
+
+        {/* Swarm Control Tab (L1 menu item) - kill switch + force-swarm role matrix */}
+        {activeTab === 'swarm-control' && (
+          <SwarmControlTab />
         )}
 
         </main>

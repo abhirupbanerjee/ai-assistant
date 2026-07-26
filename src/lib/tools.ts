@@ -23,8 +23,10 @@ import { fileToHtmlTool } from './tools/file-to-html';
 import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
 import { siteGenTool } from './tools/site-gen';
 import { kbSummaryTool } from './tools/kb-summary';
+import { handoffToCategoryTool } from './tools/handoff-category';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
+import { isAgentTool, executeAgentTool, getAgentToolDefinitions } from './agent-registry/agent-tools';
 
 // ============ Types ============
 
@@ -206,6 +208,14 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   // ── Knowledge Base ──
   kb_summary: { ...kbSummaryTool, subagentSafe: true,
     modelRequirements: { requiresToolCalling: true } },
+
+  // ── Agent System (Phase 2.2) — single-agent routing ──
+  // LLM-driven category handoff. The executor resolves the target category
+  // and returns a handoff-request envelope; the stream route performs the
+  // actual transferThreadCategory + emits the handoff SSE event + ends the
+  // turn. See plans/phase_2_2_implementation_plan.md §1 decision (c).
+  handoff_to_category: { ...handoffToCategoryTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true } },
 };
 
 /**
@@ -334,6 +344,14 @@ export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI
     tools.push(...functionDefinitions);
   }
 
+  // Add agent-as-tool definitions (Phase 2.1). When categoryIds are provided,
+  // scope agents to the first category (matching the swarm pool rule: global
+  // templates + category-scoped agents). When omitted, expose all enabled
+  // agents. These dispatch through executeTool via the isAgentTool branch.
+  const agentCategoryId = categoryIds && categoryIds.length > 0 ? categoryIds[0] : undefined;
+  const agentToolDefinitions = await getAgentToolDefinitions(agentCategoryId);
+  tools.push(...agentToolDefinitions);
+
   return tools;
 }
 
@@ -432,6 +450,23 @@ export async function executeTool(
   configOverride?: Record<string, unknown>
 ): Promise<string> {
   await initializeTools();
+
+  // Agent-as-tool dispatch (Phase 2.1): names prefixed with `agent__` route
+  // to the registry agent invoker, not the static tool registry. This must
+  // run before the AVAILABLE_TOOLS lookup so agent tool calls never fall
+  // through to the "Unknown tool" branch.
+  if (isAgentTool(name)) {
+    try {
+      return await executeAgentTool(name, args);
+    } catch (error) {
+      logger.error(`Agent tool execution error [${name}]`, error);
+      return JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorCode: 'EXECUTION_ERROR',
+      });
+    }
+  }
 
   // Check standard tools first
   let tool = AVAILABLE_TOOLS[name];

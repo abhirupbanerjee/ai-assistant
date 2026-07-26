@@ -18,6 +18,7 @@ export interface EnabledModel {
   parallelToolCapable: boolean;
   thinkingCapable: boolean;
   forcedToolCapable: boolean;
+  capabilityTier: 'swarm_full' | 'swarm_limited' | 'unclassified';
   maxInputTokens: number | null;
   maxOutputTokens: number | null;  // Max tokens for LLM output
   inputCostPer1M?: number | null;
@@ -48,6 +49,7 @@ interface EnabledModelRow {
   parallel_tool_capable: number;
   thinking_capable: number;
   forced_tool_capable: number;
+  capability_tier: string;
   max_input_tokens: number | null;
   max_output_tokens: number | null;
   input_cost_per_1m: number | null;
@@ -70,6 +72,7 @@ export interface CreateEnabledModelInput {
   parallelToolCapable?: boolean;
   thinkingCapable?: boolean;
   forcedToolCapable?: boolean;
+  capabilityTier?: 'swarm_full' | 'swarm_limited' | 'unclassified';
   maxInputTokens?: number;
   maxOutputTokens?: number;
   inputCostPer1M?: number | null;
@@ -86,6 +89,7 @@ export interface UpdateEnabledModelInput {
   parallelToolCapable?: boolean;
   thinkingCapable?: boolean;
   forcedToolCapable?: boolean;
+  capabilityTier?: 'swarm_full' | 'swarm_limited' | 'unclassified';
   maxInputTokens?: number;
   maxOutputTokens?: number;
   inputCostPer1M?: number | null;
@@ -108,6 +112,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
     parallelToolCapable: row.parallel_tool_capable === 1,
     thinkingCapable: row.thinking_capable === 1,
     forcedToolCapable: row.forced_tool_capable === 1,
+    capabilityTier: (row.capability_tier as 'swarm_full' | 'swarm_limited' | 'unclassified') || 'unclassified',
     maxInputTokens: row.max_input_tokens,
     maxOutputTokens: row.max_output_tokens,
     inputCostPer1M: row.input_cost_per_1m == null ? row.input_cost_per_1m : Number(row.input_cost_per_1m),
@@ -130,7 +135,7 @@ function mapRowToModel(row: EnabledModelRow): EnabledModel {
 export function getAllEnabledModels(): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
     SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
-           m.parallel_tool_capable, m.thinking_capable, m.forced_tool_capable,
+           m.parallel_tool_capable, m.thinking_capable, m.forced_tool_capable, m.capability_tier,
            m.max_input_tokens, m.max_output_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at,
            p.enabled as provider_enabled
     FROM enabled_models m
@@ -147,7 +152,7 @@ export function getAllEnabledModels(): EnabledModel[] {
 export function getActiveModels(): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
     SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
-           m.parallel_tool_capable, m.thinking_capable, m.forced_tool_capable,
+           m.parallel_tool_capable, m.thinking_capable, m.forced_tool_capable, m.capability_tier,
            m.max_input_tokens, m.max_output_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
     FROM enabled_models m
     INNER JOIN llm_providers p ON m.provider_id = p.id
@@ -163,7 +168,7 @@ export function getActiveModels(): EnabledModel[] {
 export function getModelsByProvider(providerId: string): EnabledModel[] {
   const rows = queryAll<EnabledModelRow>(`
     SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           parallel_tool_capable, thinking_capable, forced_tool_capable,
+           parallel_tool_capable, thinking_capable, forced_tool_capable, capability_tier,
            max_input_tokens, max_output_tokens, is_default, enabled, sort_order, created_at, updated_at
     FROM enabled_models
     WHERE provider_id = ?
@@ -178,7 +183,7 @@ export function getModelsByProvider(providerId: string): EnabledModel[] {
 export function getEnabledModel(id: string): EnabledModel | null {
   const row = queryOne<EnabledModelRow>(`
     SELECT id, provider_id, display_name, tool_capable, vision_capable,
-           parallel_tool_capable, thinking_capable, forced_tool_capable,
+           parallel_tool_capable, thinking_capable, forced_tool_capable, capability_tier,
            max_input_tokens, max_output_tokens, is_default, enabled, sort_order, created_at, updated_at
     FROM enabled_models
     WHERE id = ?
@@ -192,7 +197,7 @@ export function getEnabledModel(id: string): EnabledModel | null {
 export function getDefaultModel(): EnabledModel | null {
   const row = queryOne<EnabledModelRow>(`
     SELECT m.id, m.provider_id, m.display_name, m.tool_capable, m.vision_capable,
-           m.parallel_tool_capable, m.thinking_capable, m.forced_tool_capable,
+           m.parallel_tool_capable, m.thinking_capable, m.forced_tool_capable, m.capability_tier,
            m.max_input_tokens, m.max_output_tokens, m.is_default, m.enabled, m.sort_order, m.created_at, m.updated_at
     FROM enabled_models m
     INNER JOIN llm_providers p ON m.provider_id = p.id
@@ -220,10 +225,10 @@ export function createEnabledModel(input: CreateEnabledModelInput): EnabledModel
   execute(`
     INSERT INTO enabled_models (
       id, provider_id, display_name, tool_capable, vision_capable,
-      parallel_tool_capable, thinking_capable, forced_tool_capable,
+      parallel_tool_capable, thinking_capable, forced_tool_capable, capability_tier,
       max_input_tokens, max_output_tokens, is_default, enabled, sort_order
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     input.id,
     input.providerId,
@@ -233,6 +238,7 @@ export function createEnabledModel(input: CreateEnabledModelInput): EnabledModel
     input.parallelToolCapable ? 1 : 0,
     input.thinkingCapable ? 1 : 0,
     input.forcedToolCapable !== false ? 1 : 0,
+    input.capabilityTier || 'unclassified',
     input.maxInputTokens || null,
     input.maxOutputTokens || null,
     input.isDefault ? 1 : 0,
@@ -293,6 +299,10 @@ export function updateEnabledModel(id: string, input: UpdateEnabledModelInput): 
   if (input.forcedToolCapable !== undefined) {
     updates.push('forced_tool_capable = ?');
     params.push(input.forcedToolCapable ? 1 : 0);
+  }
+  if (input.capabilityTier !== undefined) {
+    updates.push('capability_tier = ?');
+    params.push(input.capabilityTier);
   }
   if (input.maxInputTokens !== undefined) {
     updates.push('max_input_tokens = ?');

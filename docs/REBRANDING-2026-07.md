@@ -39,7 +39,7 @@ Updated in all API specifications, curl examples, embed scripts, webhook URLs, N
 |--------|-------|
 | `policy-bot` | `ai-assistant` |
 
-The `name` field in `package.json` changed. npm scripts now display as `ai-assistant@0.1.0`.
+The `name` field in `package.json` changed. npm scripts now display as `ai-assistant@0.2.0`.
 
 ### 4. Copyright Holder
 

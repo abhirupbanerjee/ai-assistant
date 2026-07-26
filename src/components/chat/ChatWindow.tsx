@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import dynamic from 'next/dynamic';
 import { RefreshCw } from 'lucide-react';
-import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt } from '@/types';
+import type { Message, MessageMetadata, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource, ChatPreferences, DiagramHint, PodcastHint, StarterPrompt, AgentResponseInfo } from '@/types';
 import { DEFAULT_CHAT_PREFERENCES } from '@/types/stream';
 import MessageBubble from './MessageBubble';
 import SkeletonMessage, { CompactSkeletonMessage } from './SkeletonMessage';
@@ -272,7 +272,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     _diagrams: DiagramHint[],
     podcasts: PodcastHint[],
     metadata?: MessageMetadata,
-    thinkingContent?: string
+    thinkingContent?: string,
+    agentResponses?: AgentResponseInfo[]
   ) => {
     const assistantMessage: Message = {
       id: messageId,
@@ -284,6 +285,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       generatedImages: images.length > 0 ? images : undefined,
       generatedDiagrams: _diagrams.length > 0 ? _diagrams : undefined,
       generatedPodcasts: podcasts.length > 0 ? podcasts : undefined,
+      agentResponses: agentResponses && agentResponses.length > 0 ? agentResponses : undefined,
       timestamp: new Date(),
       metadata,
       thinkingContent,
@@ -910,6 +912,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
         sources: partialSources.length > 0 ? partialSources : undefined,
         generatedDocuments: partialDocuments.length > 0 ? partialDocuments : undefined,
         generatedImages: partialImages.length > 0 ? partialImages : undefined,
+        agentResponses: streamingState.agentResponses.length > 0 ? streamingState.agentResponses : undefined,
         timestamp: new Date(),
         thinkingContent: partialThinking || undefined,
         // Tag so the bubble can optionally show a "Stopped" indicator
@@ -1042,6 +1045,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
                 visualizations: streamingState.visualizations,
                 generatedDocuments: streamingState.documents,
                 generatedImages: streamingState.images,
+                agentResponses: streamingState.agentResponses.length > 0 ? streamingState.agentResponses : undefined,
                 timestamp: new Date(),
                 thinkingContent: streamingState.currentThinkingContent || undefined,
               }}

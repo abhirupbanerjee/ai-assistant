@@ -78,6 +78,9 @@ export interface BackupData {
     toolRoutingRules: unknown[];
     threadShares: unknown[];
     taskPlans: unknown[];
+    agents: unknown[];
+    swarmControl: unknown[];
+    forceSwarmRoleAllowlist: unknown[];
   };
 }
 
@@ -122,6 +125,9 @@ export async function exportAllDataAsync(): Promise<BackupData> {
     toolRoutingRules,
     threadShares,
     taskPlans,
+    agents,
+    swarmControl,
+    forceSwarmRoleAllowlist,
   ] = await Promise.all([
     db.selectFrom('users').selectAll().execute(),
     db.selectFrom('categories').selectAll().execute(),
@@ -153,6 +159,9 @@ export async function exportAllDataAsync(): Promise<BackupData> {
     db.selectFrom('tool_routing_rules').selectAll().execute(),
     db.selectFrom('thread_shares').selectAll().execute(),
     db.selectFrom('task_plans').selectAll().execute(),
+    db.selectFrom('agent').selectAll().execute(),
+    db.selectFrom('swarm_control').selectAll().execute(),
+    db.selectFrom('force_swarm_role_allowlist').selectAll().execute(),
   ]);
 
   return {
@@ -190,6 +199,9 @@ export async function exportAllDataAsync(): Promise<BackupData> {
       toolRoutingRules,
       threadShares,
       taskPlans,
+      agents,
+      swarmControl,
+      forceSwarmRoleAllowlist,
     },
   };
 }
@@ -233,6 +245,9 @@ export async function importAllDataAsync(backup: BackupData): Promise<void> {
     await trx.deleteFrom('data_api_configs').execute();
     await trx.deleteFrom('data_csv_categories').execute();
     await trx.deleteFrom('data_csv_configs').execute();
+    await trx.deleteFrom('force_swarm_role_allowlist').execute();
+    await trx.deleteFrom('swarm_control').execute();
+    await trx.deleteFrom('agent').execute();
     await trx.deleteFrom('users').execute();
     await trx.deleteFrom('categories').execute();
     await trx.deleteFrom('settings').execute();
@@ -252,6 +267,9 @@ export async function importAllDataAsync(backup: BackupData): Promise<void> {
     await insertBatch('users', data.users);
     await insertBatch('categories', data.categories);
     await insertBatch('settings', data.settings);
+    await insertBatch('force_swarm_role_allowlist', data.forceSwarmRoleAllowlist);
+    await insertBatch('swarm_control', data.swarmControl);
+    await insertBatch('agent', data.agents);
 
     // Category-dependent tables
     await insertBatch('category_prompts', data.categoryPrompts);
