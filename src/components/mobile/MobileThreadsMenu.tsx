@@ -469,11 +469,11 @@ function ThreadItem({
           href={`/api/threads/${thread.id}/export`}
           download
           onClick={(e) => e.stopPropagation()}
-          className="p-1 text-gray-400"
+          className="min-w-[48px] min-h-[48px] flex items-center justify-center text-gray-400"
         >
           <Download size={14} />
         </a>
-        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1 text-gray-400">
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="min-w-[48px] min-h-[48px] flex items-center justify-center text-gray-400">
           <Trash2 size={14} />
         </button>
       </div>

@@ -6,7 +6,15 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#2563eb',
+  // P1.1 — Treat the on-screen keyboard as a viewport resize (Chrome/Android)
+  // so the layout shrinks above it. Paired with the `100dvh` shell in
+  // globals.css, no visualViewport JS observer is needed.
+  interactiveWidget: 'resizes-content',
+  // P1.5 — Flip the browser chrome tint by color scheme.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#2563eb' },
+    { media: '(prefers-color-scheme: dark)', color: '#1c1c1c' },
+  ],
 };
 
 export const metadata: Metadata = {

@@ -20,6 +20,14 @@ html, body {
   margin: 0;
 }
 
+/* P1.2 — Kill pull-to-refresh at the root. Chrome/Android requires this on
+   `html` (not just the scroll container) to disable the native gesture.
+   The scroll-chaining containment inside the app is handled separately on
+   `.scroll-container` below. */
+html {
+  overscroll-behavior-y: contain;
+}
+
 /* Fixed full-screen layout for Chrome compatibility */
 /* Reference: https://github.com/philipwalton/flexbugs/issues/197 */
 .fixed-layout {
@@ -355,22 +363,40 @@ body {
 
 /* ============ Mobile UX Utilities ============ */
 
-/* Touch target utilities */
+/* P1.3 — Eliminate the 300ms double-tap-zoom delay and the blue tap-highlight
+   flash on touch devices. `manipulation` is an alias for pan-x pan-y pinch-zoom,
+   so scrolling and pinch-zoom still work. Applies to interactive elements only. */
+button,
+a,
+[role="button"],
+[role="link"],
+input[type="submit"],
+input[type="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* P1.6 — Touch target utilities. 48dp is the Material Design 3 / Android
+   platform standard (WCAG 2.5.5 AAA is 44px, but 48dp is the de-facto Android
+   minimum). Pair with >=8px spacing between adjacent targets. */
 .touch-target {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 48px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Safe area for notched devices */
+/* P1.4 — Safe area for notched / gesture-nav devices. `max()` guarantees a
+   comfortable floor on devices that report a 0 inset (e.g. older phones),
+   while respecting the actual inset where present. Requires `viewport-fit=
+   cover` in the viewport meta (already set in layout.tsx). */
 .safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
 }
 
 .safe-area-top {
-  padding-top: env(safe-area-inset-top, 0);
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
 }
 
 /* Dynamic viewport height with fallback */

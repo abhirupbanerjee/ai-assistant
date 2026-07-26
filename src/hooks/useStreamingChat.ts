@@ -245,6 +245,17 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   const stateRef = useRef<StreamingState>(initialState);
   stateRef.current = state;
 
+  // P1.7 — SSE backpressure / runaway-stream safeguard.
+  // SSE has no flow-control. On a fast model streaming to a low-end device,
+  // contentBufferRef (the authoritative accumulator read at 'done') can grow
+  // without bound and crash the tab. We do NOT drop prefixes (that would
+  // corrupt the canonical text); instead we abort with a recoverable error
+  // once a pathological threshold is exceeded, surfacing a clear message
+  // rather than an OOM. Tuned generously — only truly runaway streams trip it.
+  const MAX_CONTENT_BUFFER_BYTES = 8 * 1024 * 1024; // 8 MiB
+  const MAX_THINKING_BUFFER_BYTES = 4 * 1024 * 1024; // 4 MiB
+  const backpressureTrippedRef = useRef(false);
+
   // Refs for chunk batching and race condition prevention
   const contentBufferRef = useRef('');
   const thinkingBufferRef = useRef('');
@@ -926,11 +937,43 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       case 'chunk':
         // Use RAF batching for smooth updates
         contentBufferRef.current += event.content;
+        // P1.7 — backpressure guard (see declaration above)
+        if (
+          !backpressureTrippedRef.current &&
+          contentBufferRef.current.length > MAX_CONTENT_BUFFER_BYTES
+        ) {
+          backpressureTrippedRef.current = true;
+          setState(prev => ({
+            ...prev,
+            isStreaming: false,
+            phase: 'error',
+            error: 'The response was too large to stream safely to this device. Please ask for a shorter reply.',
+            errorRecoverable: true,
+          }));
+          abort();
+          return;
+        }
         scheduleFlush();
         break;
 
       case 'thinking_chunk':
         thinkingBufferRef.current += event.content;
+        // P1.7 — backpressure guard for thinking content
+        if (
+          !backpressureTrippedRef.current &&
+          thinkingBufferRef.current.length > MAX_THINKING_BUFFER_BYTES
+        ) {
+          backpressureTrippedRef.current = true;
+          setState(prev => ({
+            ...prev,
+            isStreaming: false,
+            phase: 'error',
+            error: 'The reasoning trace was too large to stream safely to this device.',
+            errorRecoverable: true,
+          }));
+          abort();
+          return;
+        }
         scheduleFlush();
         break;
 
@@ -1012,6 +1055,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     // Reset state for new message
     contentBufferRef.current = '';
     thinkingBufferRef.current = '';
+    backpressureTrippedRef.current = false; // P1.7 — re-arm guard for new stream
     resetArtifactRefs();
     completedRef.current = false;
     if (rafRef.current) {
@@ -1201,6 +1245,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
     abort();
     contentBufferRef.current = '';
     thinkingBufferRef.current = '';
+    backpressureTrippedRef.current = false; // P1.7 — re-arm guard for new conversation
     resetArtifactRefs();
     setState(initialState);
   }, [abort]);

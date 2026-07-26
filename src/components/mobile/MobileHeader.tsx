@@ -50,7 +50,7 @@ export default function MobileHeader({
         {/* Back button - opens threads menu */}
         <button
           onClick={onBack}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+          className="min-w-[48px] min-h-[48px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
           aria-label="Back to threads"
         >
           <ChevronLeft size={24} className="text-gray-600" />
@@ -75,7 +75,7 @@ export default function MobileHeader({
         {/* New thread button */}
         <button
           onClick={onNewThread}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+          className="min-w-[48px] min-h-[48px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
           aria-label="New thread"
           style={{ color: 'var(--accent-color)' }}
         >
