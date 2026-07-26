@@ -59,6 +59,9 @@ interface ChatWindowProps {
   // Callbacks for input focus (mobile sidebar hiding)
   onInputFocus?: () => void;
   onInputBlur?: () => void;
+  // Share-target prefill (Phase 2.3) — seeds the composer from the Android
+  // share sheet. Passed through to MessageInput.initialDraft.
+  initialDraft?: string;
 }
 
 // Ref interface for external control
@@ -101,6 +104,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   onArtifactsChange,
   onInputFocus,
   onInputBlur,
+  initialDraft,
 }, ref) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -1332,6 +1336,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
            categoryChipSlot={categoryChipSlot}
            attachmentChipsSlot={attachmentChipsSlot}
            lastAutoPick={lastAutoPick}
+           initialDraft={initialDraft}
          />
        </ErrorBoundary>
 

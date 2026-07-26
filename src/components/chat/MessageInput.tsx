@@ -58,6 +58,10 @@ interface MessageInputProps {
   attachmentChipsSlot?: React.ReactNode;
   // Auto model selection — last picked model display name
   lastAutoPick?: string | null;
+  // Share-target prefill (Phase 2.3) — seeds the composer once on mount
+  // when the app is opened via the Android share sheet. Cleared after first
+  // use so it does not re-apply on subsequent re-renders.
+  initialDraft?: string;
 }
 
 interface CurrentModelInfo {
@@ -88,6 +92,7 @@ const MessageInput = memo(function MessageInput({
   categoryChipSlot,
   attachmentChipsSlot,
   lastAutoPick,
+  initialDraft,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   // Mode defaults to normal on every page load.
@@ -112,6 +117,19 @@ const MessageInput = memo(function MessageInput({
 
   // Draft persistence
   const { clearDraft, restoredEvent, dismissRestoredEvent, draftSaveError, clearDraftSaveError } = useDraftPersistence(threadId, message, setMessage);
+
+  // Phase 2.3: seed the composer once with a shared payload (Android share
+  // sheet). Declared AFTER useDraftPersistence so this effect runs after the
+  // localStorage draft-restore effect on mount — otherwise a stale saved
+  // draft for the 'new' thread would clobber the incoming share. The ref
+  // guard ensures it applies only on the first mount that receives a draft.
+  const draftAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialDraft && !draftAppliedRef.current) {
+      draftAppliedRef.current = true;
+      setMessage(initialDraft);
+    }
+  }, [initialDraft, setMessage]);
 
   // Fire toast when draft is restored or when draft save fails
   useEffect(() => {

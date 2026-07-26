@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import ChatWindow, { type ChatWindowRef } from '@/components/chat/ChatWindow';
 import ThreadSidebar, { type ThreadSidebarRef } from '@/components/layout/ThreadSidebar';
@@ -27,6 +28,17 @@ function HomeContent() {
   const { data: session } = useSession();
   const chatWindowRef = useRef<ChatWindowRef>(null);
   const sidebarRef = useRef<ThreadSidebarRef>(null);
+  // Phase 2.3: read a shared payload from the Android share sheet
+  // (redirected here by /api/share-target). Memoize so the value is stable
+  // across re-renders; the MessageInput only consumes it once.
+  const searchParams = useSearchParams();
+  const shareDraft = useMemo(
+    () => {
+      const raw = searchParams.get('share');
+      return raw && raw.trim().length > 0 ? raw.trim() : undefined;
+    },
+    [searchParams]
+  );
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('AI Assistant');
@@ -239,6 +251,7 @@ function HomeContent() {
               onArtifactsChange={handleArtifactsChange}
               onInputFocus={handleInputFocus}
               onInputBlur={handleInputBlur}
+              initialDraft={shareDraft}
             />
           </ErrorBoundary>
         </main>
@@ -290,11 +303,15 @@ function HomeContent() {
   );
 }
 
-// Main export wraps content in MobileMenuProvider
+// Main export wraps content in MobileMenuProvider + Suspense.
+// Suspense is required by Next.js App Router because HomeContent now calls
+// useSearchParams() (Phase 2.3 share-target prefill).
 export default function Home() {
   return (
     <MobileMenuProvider>
-      <HomeContent />
+      <Suspense fallback={null}>
+        <HomeContent />
+      </Suspense>
     </MobileMenuProvider>
   );
 }
