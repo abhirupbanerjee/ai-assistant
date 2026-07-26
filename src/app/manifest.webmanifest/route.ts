@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPWASettings, getBrandingSettings } from '@/lib/db/compat';
+import { getPWASettings, getBrandingSettings, getSettingMetadata } from '@/lib/db/compat';
 
 // Force dynamic rendering - reads from database at runtime
 export const dynamic = 'force-dynamic';
@@ -20,6 +20,15 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const pwa = await getPWASettings();
   const branding = await getBrandingSettings();
+  // Cache-bust token: when the admin changes the branding icon, the
+  // branding-settings row's updatedAt changes, which changes this query
+  // param, which forces browsers/CDNs to re-fetch the manifest and its
+  // referenced PNGs instead of serving a stale home-screen icon.
+  const brandingMeta = await getSettingMetadata('branding-settings');
+  const iconVersion = brandingMeta?.updatedAt
+    ? encodeURIComponent(brandingMeta.updatedAt)
+    : (pwa.updatedAt ? encodeURIComponent(pwa.updatedAt) : '0');
+  const iconQuery = `?v=${iconVersion}`;
 
   // Build an absolute URL for the share_target action. Web Manifest
   // share_target.action must be an absolute URL or relative to the manifest
@@ -27,8 +36,12 @@ export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const shareAction = `${origin}/api/share-target`;
 
-  const icon192 = pwa.icon192Path || '/icons/icon-192x192.png';
-  const icon512 = pwa.icon512Path || '/icons/icon-512x512.png';
+  const icon192 = (pwa.icon192Path || '/icons/icon-192x192.png') + iconQuery;
+  const icon512 = (pwa.icon512Path || '/icons/icon-512x512.png') + iconQuery;
+  // Monochrome icons are static (text silhouette), no cache-bust needed,
+  // but we keep them stable so Android's themed-icon cache stays valid.
+  const mono192 = '/icons/icon-monochrome-192x192.png';
+  const mono512 = '/icons/icon-monochrome-512x512.png';
 
   const manifest = {
     id: '/',
@@ -70,13 +83,13 @@ export async function GET(req: Request) {
       // Android 13+ Material You themed icons — single-color silhouette
       // that the system tints to match the user's wallpaper palette.
       {
-        src: '/icons/icon-monochrome-192x192.png',
+        src: mono192,
         sizes: '192x192',
         type: 'image/png',
         purpose: 'monochrome',
       },
       {
-        src: '/icons/icon-monochrome-512x512.png',
+        src: mono512,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'monochrome',

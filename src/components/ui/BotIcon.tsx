@@ -13,6 +13,7 @@ import {
   Globe,
   Server,
   ScrollText,
+  BrainCircuit,
 } from 'lucide-react';
 import AiIcon from '@/components/ui/icons/AiIcon';
 
@@ -41,7 +42,12 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
   internet: Globe,
   systems: Server,
   policy: ScrollText,
-  'ai-icon': AiIcon,
+  // The AI Assistant option renders as a neural-network glyph (BrainCircuit)
+  // in the header. The legacy robot AiIcon is kept under a separate key for
+  // backward compatibility if anyone selected it before.
+  'ai-icon': BrainCircuit,
+  'ai-neural': BrainCircuit,
+  'ai-bot-legacy': AiIcon,
 };
 
 /**

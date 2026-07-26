@@ -1,4 +1,6 @@
-const CACHE_VERSION = 'v7';
+// v8 — evict manifest + bot-icon caches on BRANDING_UPDATED so the
+// PWA home-screen icon and favicon refresh after an admin icon change.
+const CACHE_VERSION = 'v8';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
@@ -34,6 +36,38 @@ self.addEventListener('activate', (event) => {
       )
     ).then(() => self.clients.claim())
   );
+});
+
+// Evict cached manifest + bot-icon entries so a branding icon change is
+// visible without a hard reload. Triggered by a postMessage from the
+// admin settings save handler (see src/app/api/admin/settings/route.ts
+// branding case) OR by any client that detects branding changed.
+async function evictBrandingCaches() {
+  const keys = await caches.keys();
+  await Promise.all(keys.map(async (cacheName) => {
+    const cache = await caches.open(cacheName);
+    const requests = await cache.keys();
+    await Promise.all(requests.map((req) => {
+      const u = new URL(req.url);
+      // Drop the manifest and any /icons/bot/* PNG so the next fetch
+      // re-fetches the branding-selected icon. Keep the static default
+      // app icons (icon-192x192.png etc.) and monochrome icons.
+      if (u.pathname === '/manifest.webmanifest' || u.pathname.startsWith('/icons/bot/')) {
+        return cache.delete(req);
+      }
+      return Promise.resolve();
+    }));
+  }));
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'BRANDING_UPDATED') {
+    event.waitUntil(evictBrandingCaches().then(() =>
+      self.clients.matchAll().then((clients) =>
+        clients.forEach((c) => c.postMessage({ type: 'BRANDING_UPDATED_ACK' }))
+      )
+    ));
+  }
 });
 
 // Helper: safely cache a response (only cache valid responses)
@@ -124,6 +158,19 @@ self.addEventListener('fetch', (event) => {
       caches.match(event.request).then(cached =>
         cached || fetch(event.request).then(res => cacheResponse(event.request, res))
       )
+    );
+    return;
+  }
+
+  // Manifest: network-first (the route sets no-cache headers and embeds a
+  // ?v=<branding.updatedAt> bust token on icon srcs). Stale cache is only
+  // used if the network is down, so a branding change propagates on the
+  // next page load instead of being masked by an old manifest.
+  if (url.pathname === '/manifest.webmanifest') {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => { cacheResponse(event.request, res); return res; })
+        .catch(() => caches.match(event.request).then((c) => c || new Response('{}', { status: 503 })))
     );
     return;
   }

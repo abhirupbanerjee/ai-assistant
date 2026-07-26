@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Providers from './providers';
+import { getBrandingSettings, getPWASettings, getSettingMetadata } from '@/lib/db/compat';
+import { BRANDING_ICONS } from '@/lib/db/config';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -17,20 +19,67 @@ export const viewport: Viewport = {
   ],
 };
 
-export const metadata: Metadata = {
-  title: 'AI Assistant',
-  description: 'AI-powered policy assistant for government staff',
-  manifest: '/manifest.webmanifest',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
+/**
+ * Resolve the favicon / apple-touch-icon PNG for the currently selected
+ * branding icon. Falls back to the PWA settings path, then to the default
+ * app icon. Used by `generateMetadata` so the browser-tab icon and the
+ * PWA home-screen icon track the admin's Branding selection instead of a
+ * build-time static path.
+ *
+ * @returns `{ icon, apple, version }` where `version` is a cache-bust token
+ * (the branding-settings `updatedAt` timestamp) appended as `?v=` so the
+ * browser re-fetches the favicon when the admin changes the icon.
+ */
+async function resolveBrandingIcon(): Promise<{ icon: string; apple: string; version: string }> {
+  // NEXT_PHASE guard — DB is unavailable during `next build`. Fall back to
+  // the static default so the build does not crash. See src/lib/auth-options.ts.
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return { icon: '/icons/icon-192x192.png', apple: '/icons/icon-192x192.png', version: '0' };
+  }
+
+  try {
+    const branding = await getBrandingSettings();
+    const pwa = await getPWASettings();
+    const meta = await getSettingMetadata('branding-settings');
+    const version = meta?.updatedAt
+      ? encodeURIComponent(meta.updatedAt)
+      : (pwa.updatedAt ? encodeURIComponent(pwa.updatedAt) : '0');
+
+    // Prefer the PNG mapped to the selected bot icon key; fall back to the
+    // PWA settings path, then the static default.
+    const selected = BRANDING_ICONS.find(i => i.key === branding.botIcon);
+    const icon192 = selected?.png192 || pwa.icon192Path || '/icons/icon-192x192.png';
+
+    return {
+      icon: `${icon192}?v=${version}`,
+      apple: `${icon192}?v=${version}`,
+      version,
+    };
+  } catch {
+    // DB unavailable at runtime (e.g. during migrations) — use the static
+    // default so the page still renders with a favicon.
+    return { icon: '/icons/icon-192x192.png', apple: '/icons/icon-192x192.png', version: '0' };
+  }
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { icon, apple } = await resolveBrandingIcon();
+
+  return {
     title: 'AI Assistant',
-  },
-  icons: {
-    icon: '/icons/icon-192x192.png',
-    apple: '/icons/icon-192x192.png',
-  },
-};
+    description: 'AI-powered policy assistant for government staff',
+    manifest: '/manifest.webmanifest',
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'default',
+      title: 'AI Assistant',
+    },
+    icons: {
+      icon,
+      apple,
+    },
+  };
+}
 
 export default function RootLayout({
   children,

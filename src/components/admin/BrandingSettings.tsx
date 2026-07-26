@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Save, Globe, Landmark, DollarSign, Activity, Layers, Server, ScrollText, Settings, BarChart3, FileText, Database } from 'lucide-react';
-import AiIcon from '@/components/ui/icons/AiIcon';
+import { Save, Globe, Landmark, DollarSign, Activity, Layers, Server, ScrollText, Settings, BarChart3, FileText, Database, BrainCircuit } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -36,7 +35,12 @@ const BRANDING_ICONS = [
   { key: 'internet', label: 'Internet', Icon: Globe },
   { key: 'systems', label: 'Systems', Icon: Server },
   { key: 'policy', label: 'Policy', Icon: ScrollText },
-  { key: 'ai-icon', label: 'AI Bot', Icon: AiIcon },
+  // AI Assistant — neural-network glyph. `ai-icon` is the production DB key
+  // and is repointed here; `ai-neural` is exposed as an explicit pickable
+  // option. Both must stay in sync with BRANDING_ICONS in src/lib/db/config.ts
+  // (the save validator rejects keys not present there).
+  { key: 'ai-icon', label: 'AI Assistant', Icon: BrainCircuit },
+  { key: 'ai-neural', label: 'AI Neural', Icon: BrainCircuit },
 ] as const;
 
 export default function BrandingSettingsTab() {
@@ -110,6 +114,17 @@ export default function BrandingSettingsTab() {
       const data = await res.json();
       setSettings(data.branding);
       setIsModified(false);
+
+      // Notify the service worker to evict cached manifest + bot-icon
+      // entries so the favicon and PWA home-screen icon refresh without a
+      // hard reload. See public/sw.js BRANDING_UPDATED handler.
+      if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+        try {
+          navigator.serviceWorker.controller.postMessage('BRANDING_UPDATED');
+        } catch {
+          /* non-fatal: SW may be unavailable */
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save branding settings');
     } finally {

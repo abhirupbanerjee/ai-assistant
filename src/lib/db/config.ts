@@ -334,7 +334,12 @@ export const BRANDING_ICONS = [
   { key: 'internet', label: 'Internet', lucideIcon: 'Globe', png192: '/icons/bot/internet-192.png', png512: '/icons/bot/internet-512.png' },
   { key: 'systems', label: 'Systems', lucideIcon: 'Server', png192: '/icons/bot/systems-192.png', png512: '/icons/bot/systems-512.png' },
   { key: 'policy', label: 'Policy', lucideIcon: 'ScrollText', png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
-  { key: 'ai-icon', label: 'AI Bot', lucideIcon: '__custom__', png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
+  // AI Assistant — neural-network glyph with "abai"/"ai" wordmark.
+  // The `ai-icon` key is the value already stored in production DBs, so it
+  // is repointed to the new ai-neural PNGs. A second `ai-neural` key is
+  // exposed so admins can pick it explicitly going forward.
+  { key: 'ai-icon', label: 'AI Assistant', lucideIcon: 'BrainCircuit', png192: '/icons/bot/ai-neural-192.png', png512: '/icons/bot/ai-neural-512.png' },
+  { key: 'ai-neural', label: 'AI Neural', lucideIcon: 'BrainCircuit', png192: '/icons/bot/ai-neural-192.png', png512: '/icons/bot/ai-neural-512.png' },
 ] as const;
 
 // ============ Available Models ============
