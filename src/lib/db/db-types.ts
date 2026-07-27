@@ -318,6 +318,22 @@ export interface EnabledModelsTable {
   updated_at: Generated<string>;
 }
 
+// ============ MCP Servers ============
+
+export interface McpServersTable {
+  id: string;
+  name: string;
+  url: string;
+  auth_token: string | null;
+  enabled: Generated<number>;
+  timeout_ms: Generated<number>;
+  tool_count: Generated<number>;
+  last_health_check: Generated<string> | null;
+  health_status: Generated<string>;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
 // ============ Tool Configs ============
 
 export interface ToolConfigsTable {
@@ -326,6 +342,7 @@ export interface ToolConfigsTable {
   is_enabled: Generated<number>;
   config_json: string;
   description_override: string | null;
+  tool_type: Generated<string>;
   created_at: Generated<string>;
   updated_at: Generated<string>;
   updated_by: string;
@@ -1085,6 +1102,8 @@ export interface DB {
   agent: AgentTable;
   swarm_control: SwarmControlTable;
   force_swarm_role_allowlist: ForceSwarmRoleAllowlistTable;
+  // MCP Servers
+  mcp_servers: McpServersTable;
 }
 
 // ============ WhatsApp Channels ============

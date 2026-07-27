@@ -17,6 +17,8 @@ import {
   type CategoryToolConfig,
 } from '@/lib/db/compat/category-tool-config';
 import { getAllTools, initializeTools, HYBRID_TOOLS } from '@/lib/tools';
+import { isMcpEnabled } from '@/lib/mcp/config';
+import { getMcpToolDefinitions } from '@/lib/mcp/mcp-tools';
 import { TERMINAL_TOOLS } from '@/lib/openai';
 
 interface CategoryToolStatus {
@@ -72,7 +74,29 @@ export async function GET() {
     await initializeTools();
 
     // Get all tool definitions from registry
-    const toolDefinitions = getAllTools();
+    const builtinToolDefinitions = getAllTools();
+
+    // Append MCP tools if enabled
+    const mcpToolDefinitions: typeof builtinToolDefinitions = [];
+    if (isMcpEnabled()) {
+      const mcpDefs = await getMcpToolDefinitions();
+      for (const def of mcpDefs) {
+        mcpToolDefinitions.push({
+          name: def.function.name,
+          displayName: def.function.name,
+          description: def.function.description ?? '',
+          category: 'autonomous',
+          group: 'mcp',
+          definition: def,
+          execute: async () => '',
+          validateConfig: () => ({ valid: true, errors: [] }),
+          defaultConfig: {},
+          configSchema: {} as Record<string, unknown>,
+        } as ReturnType<typeof getAllTools>[number]);
+      }
+    }
+
+    const toolDefinitions = [...builtinToolDefinitions, ...mcpToolDefinitions];
 
     // Get all global tool configurations
     const globalConfigs = await getAllToolConfigs();
@@ -108,6 +132,7 @@ export async function GET() {
         globalEnabled,
         isTerminal: TERMINAL_TOOLS.has(tool.name),
         isHybrid: HYBRID_TOOLS.has(tool.name),
+        toolType: globalConfig?.config?.toolType ?? (tool.group === 'mcp' ? 'mcp' : 'builtin'),
         categories,
       };
     }));

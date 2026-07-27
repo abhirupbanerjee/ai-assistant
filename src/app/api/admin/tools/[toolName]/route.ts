@@ -16,6 +16,8 @@ import {
   TOOL_DEFAULTS,
 } from '@/lib/db/compat/tool-config';
 import { getTool, validateToolConfig, initializeTools } from '@/lib/tools';
+import { isMcpTool, getMcpToolDefinitions } from '@/lib/mcp/mcp-tools';
+import { isMcpEnabled } from '@/lib/mcp/config';
 import { invalidateTavilyCache } from '@/lib/redis';
 import { upsertToolConfigAsync } from '@/lib/db/compat';
 
@@ -54,6 +56,35 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Get tool definition
     const tool = getTool(toolName);
+
+    // MCP tool fallback
+    if (!tool && isMcpTool(toolName) && isMcpEnabled()) {
+      const config = await getToolConfig(toolName);
+      const mcpDefs = await getMcpToolDefinitions();
+      const mcpDef = mcpDefs.find(d => d.function.name === toolName);
+      const defaultDescription = mcpDef?.function.description ?? '';
+
+      return NextResponse.json({
+        name: toolName,
+        displayName: toolName,
+        description: defaultDescription,
+        category: 'autonomous',
+        enabled: config?.isEnabled ?? true,
+        config: config?.config ?? { toolType: 'mcp' },
+        configSchema: null,
+        defaultConfig: {},
+        descriptionOverride: config?.descriptionOverride ?? null,
+        defaultDescription,
+        metadata: config ? {
+          id: config.id,
+          createdAt: config.createdAt,
+          updatedAt: config.updatedAt,
+          updatedBy: config.updatedBy,
+        } : null,
+        auditHistory: [],
+      });
+    }
+
     if (!tool) {
       return NextResponse.json(
         { error: `Unknown tool: ${toolName}` },
@@ -141,6 +172,55 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Get tool definition
     const tool = getTool(toolName);
+
+    // MCP tool PATCH: only allow enable/disable and description override
+    if (!tool && isMcpTool(toolName)) {
+      const body = await request.json();
+      const { enabled, descriptionOverride } = body;
+
+      if (enabled === undefined && descriptionOverride === undefined) {
+        return NextResponse.json(
+          { error: 'MCP tools only support enabled and descriptionOverride updates' },
+          { status: 400 }
+        );
+      }
+
+      const updates: { isEnabled?: boolean; descriptionOverride?: string | null; toolType?: 'builtin' | 'mcp' } = {};
+      if (enabled !== undefined) updates.isEnabled = enabled;
+      if (descriptionOverride !== undefined) updates.descriptionOverride = descriptionOverride;
+      updates.toolType = 'mcp';
+
+      let updated = await updateToolConfig(toolName, updates, user.email);
+      if (!updated) {
+        const created = await createToolConfig(toolName, {}, enabled ?? true, user.email, 'mcp');
+        if (!created) {
+          return NextResponse.json(
+            { error: 'Failed to create MCP tool configuration' },
+            { status: 500 }
+          );
+        }
+        updated = created;
+      }
+
+      await upsertToolConfigAsync(toolName, {
+        isEnabled: updated.isEnabled,
+        config: updated.config,
+        descriptionOverride: updated.descriptionOverride,
+      }, user.email);
+
+      return NextResponse.json({
+        success: true,
+        tool: {
+          name: toolName,
+          displayName: toolName,
+          enabled: updated.isEnabled,
+          descriptionOverride: updated.descriptionOverride,
+          updatedAt: updated.updatedAt,
+          updatedBy: updated.updatedBy,
+        },
+      });
+    }
+
     if (!tool) {
       return NextResponse.json(
         { error: `Unknown tool: ${toolName}` },

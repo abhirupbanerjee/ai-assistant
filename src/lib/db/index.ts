@@ -452,6 +452,36 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE tool_configs ADD COLUMN description_override TEXT');
   }
 
+  // Migration: tool_type column on tool_configs for MCP tools
+  if (!toolConfigsColumnNames.includes('tool_type')) {
+    database.exec("ALTER TABLE tool_configs ADD COLUMN tool_type TEXT DEFAULT 'builtin'");
+    console.log('[DB Migration] Added tool_type column to tool_configs');
+  }
+
+  // Migration: mcp_servers table for MCP server configurations
+  const mcpServersTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='mcp_servers'"
+  ).get();
+  if (!mcpServersTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS mcp_servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        auth_token TEXT,
+        enabled INTEGER DEFAULT 1,
+        timeout_ms INTEGER DEFAULT 30000,
+        tool_count INTEGER DEFAULT 0,
+        last_health_check DATETIME,
+        health_status TEXT DEFAULT 'unknown',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled);
+    `);
+    console.log('[DB Migration] Created mcp_servers table');
+  }
+
   // Check and create tool_routing_rules table for keyword-based tool routing
   const toolRoutingRulesTableExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='tool_routing_rules'"

@@ -8,6 +8,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/compat/tool-config';
 import { getTool, initializeTools } from '@/lib/tools';
+import { isMcpTool, parseMcpToolName } from '@/lib/mcp/mcp-tools';
+import { getMcpServer } from '@/lib/db/compat/mcp-servers';
+import { healthCheckMcpServer } from '@/lib/mcp/client';
+import { isMcpEnabled } from '@/lib/mcp/config';
 import { testImageGen as testImageGenProvider } from '@/lib/tools/image-gen';
 
 interface RouteParams {
@@ -219,6 +223,45 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Get tool definition
     const tool = getTool(toolName);
+
+    // MCP tool test: validate server connectivity
+    if (!tool && isMcpTool(toolName)) {
+      if (!isMcpEnabled()) {
+        return NextResponse.json(
+          { success: false, message: 'MCP is globally disabled' },
+          { status: 403 }
+        );
+      }
+
+      const parsed = parseMcpToolName(toolName);
+      if (!parsed) {
+        return NextResponse.json(
+          { success: false, message: `Invalid MCP tool name: ${toolName}` },
+          { status: 400 }
+        );
+      }
+
+      const server = await getMcpServer(parsed.serverId);
+      if (!server) {
+        return NextResponse.json(
+          { success: false, message: `MCP server not found: ${parsed.serverId}` },
+          { status: 404 }
+        );
+      }
+
+      const start = Date.now();
+      const health = await healthCheckMcpServer(server);
+      const latency = Date.now() - start;
+
+      return NextResponse.json({
+        success: health.status === 'connected',
+        message: health.status === 'connected'
+          ? `Connected to ${server.name} (${health.toolCount} tools available)`
+          : `Connection failed: ${health.error}`,
+        latency,
+      });
+    }
+
     if (!tool) {
       return NextResponse.json(
         { error: `Unknown tool: ${toolName}` },

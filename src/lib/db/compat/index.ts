@@ -1136,3 +1136,18 @@ export {
   isRoleAllowedForceSwarm,
   setForceSwarmRoleAllowed,
 } from './swarm-control';
+
+// ============ MCP Servers ============
+export {
+  type McpServerPublicConfig,
+  listMcpServers,
+  listMcpServersPublic,
+  getMcpServer,
+  getMcpServerPublic,
+  getMcpServerAuthToken,
+  createMcpServer,
+  updateMcpServer,
+  deleteMcpServer,
+  bulkUpdateMcpServersEnabled,
+  updateMcpServerHealth,
+} from './mcp-servers';

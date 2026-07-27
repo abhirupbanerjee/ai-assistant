@@ -281,7 +281,7 @@ function AdminPageContent() {
   const [selectedAgentBotId, setSelectedAgentBotId] = useState<string | null>(null);
 
   // Tools section state with URL sync
-  const VALID_TOOLS_SECTIONS: ToolsSection[] = ['management', 'dependencies', 'routing', 'conflicts', 'slash-commands'];
+  const VALID_TOOLS_SECTIONS: ToolsSection[] = ['management', 'dependencies', 'routing', 'conflicts', 'slash-commands', 'mcp-servers'];
   const toolsSectionParam = searchParams.get('toolsSection');
   const [toolsSection, setToolsSection] = useState<ToolsSection>(
     VALID_TOOLS_SECTIONS.includes(toolsSectionParam as ToolsSection)

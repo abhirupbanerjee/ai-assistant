@@ -50,6 +50,7 @@ import SecurityScanConfig from './SecurityScanConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 import KeywordConflictAnalyzer from './KeywordConflictAnalyzer';
 import SlashCommandsTab from './SlashCommandsTab';
+import McpServersTab from './McpServersTab';
 
 // Tool interface matching API response
 interface Tool {
@@ -66,6 +67,8 @@ interface Tool {
   defaultDescription: string;
   isTerminal: boolean;
   isHybrid: boolean;
+  toolType?: 'builtin' | 'mcp';
+  serverId?: string;
   metadata: {
     id: string;
     createdAt: string;
@@ -1695,7 +1698,7 @@ STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyph
   );
 }
 
-type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
+type ToolsSubTab = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands' | 'mcp-servers';
 
 interface ToolsTabProps {
   /** If true, shows read-only view (for superusers in legacy mode) */
@@ -1703,7 +1706,7 @@ interface ToolsTabProps {
   /** If true, shows superuser mode with category selection and per-category config */
   isSuperuser?: boolean;
   /** Optional controlled sub-tab from sidebar. When provided, hides internal tab UI */
-  activeSubTab?: 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
+  activeSubTab?: ToolsSubTab;
 }
 
 /**
@@ -2264,6 +2267,17 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
               <Zap size={16} />
               Slash Commands
             </button>
+            <button
+              onClick={() => setInternalSubTab('mcp-servers')}
+              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeSubTab === 'mcp-servers'
+                  ? 'border-purple-500 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Server size={16} />
+              MCP Servers
+            </button>
           </nav>
         </div>
       )}
@@ -2276,6 +2290,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       {/* Slash Commands Sub-tab */}
       {!readOnly && !isSuperuser && activeSubTab === 'slash-commands' && (
         <SlashCommandsTab />
+      )}
+
+      {/* MCP Servers Sub-tab */}
+      {!readOnly && !isSuperuser && activeSubTab === 'mcp-servers' && (
+        <McpServersTab />
       )}
 
       {/* Tool Routing Sub-tab - DEPRECATED */}
@@ -2613,6 +2632,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                           >
                             {tool.category}
                           </span>
+                          {tool.toolType === 'mcp' && (
+                            <span
+                              className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 cursor-help"
+                              title="MCP tool from an external MCP server"
+                            >
+                              MCP
+                            </span>
+                          )}
                           {tool.isHybrid && (
                             <span
                               className="px-2 py-0.5 text-xs rounded-full bg-teal-100 text-teal-700 cursor-help"
@@ -2722,7 +2749,18 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
                   {isExpanded && (
                     <div className={`px-6 py-4 border-t bg-gray-50 ${tool.name === 'data_source' ? '' : ''}`}>
                       <div className={tool.name === 'data_source' ? '' : 'max-w-2xl'}>
-                        {renderConfigForm(tool)}
+                        {tool.toolType !== 'mcp' && renderConfigForm(tool)}
+
+                        {tool.toolType === 'mcp' && (
+                          <div className="text-sm text-gray-600 mb-4">
+                            <p>
+                              MCP tool schema is managed by the remote server. Only enable/disable and description override can be changed here.
+                            </p>
+                            {tool.serverId && (
+                              <p className="mt-1 text-xs text-gray-500">Server ID: {tool.serverId}</p>
+                            )}
+                          </div>
+                        )}
 
                         {/* Metadata and Save - not shown for data_source and function_api which have their own UI */}
                         {tool.name !== 'data_source' && tool.name !== 'function_api' && (

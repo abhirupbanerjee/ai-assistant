@@ -105,12 +105,17 @@ export async function isToolEnabled(toolName: string): Promise<boolean> {
 
 /**
  * Create a new tool configuration
+ *
+ * @param toolType Optional tool source type ('builtin' | 'mcp'). Defaults to
+ *   'builtin'. MCP tool discovery passes 'mcp' so the `tool_type` column stays
+ *   consistent with the `toolType` key embedded in `config_json`.
  */
 export async function createToolConfig(
   toolName: string,
   config: Record<string, unknown>,
   isEnabled: boolean,
-  updatedBy: string
+  updatedBy: string,
+  toolType: 'builtin' | 'mcp' = 'builtin'
 ): Promise<ToolConfig> {
   const id = uuidv4();
   const configJson = JSON.stringify(config);
@@ -124,6 +129,7 @@ export async function createToolConfig(
         tool_name: toolName,
         is_enabled: isEnabled ? 1 : 0,
         config_json: configJson,
+        tool_type: toolType,
         updated_by: updatedBy,
       })
       .execute();
@@ -159,6 +165,7 @@ export async function updateToolConfig(
     isEnabled?: boolean;
     config?: Record<string, unknown>;
     descriptionOverride?: string | null;
+    toolType?: 'builtin' | 'mcp';
   },
   updatedBy: string
 ): Promise<ToolConfig | undefined> {
@@ -173,16 +180,21 @@ export async function updateToolConfig(
   const newDescriptionOverride = updates.descriptionOverride !== undefined
     ? updates.descriptionOverride
     : existing.descriptionOverride;
+  // Only update tool_type when explicitly provided; otherwise preserve existing.
+  const updateSet: Record<string, unknown> = {
+    is_enabled: newEnabled ? 1 : 0,
+    config_json: newConfigJson,
+    description_override: newDescriptionOverride,
+    updated_by: updatedBy,
+  };
+  if (updates.toolType) {
+    updateSet.tool_type = updates.toolType;
+  }
 
   return transaction(async (trx) => {
     await trx
       .updateTable('tool_configs')
-      .set({
-        is_enabled: newEnabled ? 1 : 0,
-        config_json: newConfigJson,
-        description_override: newDescriptionOverride,
-        updated_by: updatedBy,
-      })
+      .set(updateSet)
       .where('tool_name', '=', toolName)
       .execute();
 

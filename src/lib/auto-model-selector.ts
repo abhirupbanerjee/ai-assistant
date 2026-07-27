@@ -28,6 +28,7 @@ import { DEPRECATED_MODELS } from './services/model-discovery';
 import { classifyPrompt } from './classifier/prompt-category';
 import { getModelQualityScores } from './model-quality';
 import { AVAILABLE_TOOLS } from './tools';
+import { isMcpTool } from './mcp/mcp-tools';
 import type { EnabledModel, CapabilityScores } from './db/enabled-models';
 import type { ModelRequirements } from './tools';
 
@@ -159,7 +160,12 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
   // using a generic "function_calling" dimension for all tool requests.
 
   const toolReqs: ModelRequirements[] = routing.matches
-    .map(m => AVAILABLE_TOOLS[m.toolName]?.modelRequirements)
+    .map(m => {
+      if (isMcpTool(m.toolName)) {
+        return { requiresToolCalling: true };
+      }
+      return AVAILABLE_TOOLS[m.toolName]?.modelRequirements;
+    })
     .filter((r): r is ModelRequirements => r != null);
 
   if (toolReqs.length > 0) {

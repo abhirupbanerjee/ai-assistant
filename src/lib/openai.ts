@@ -202,6 +202,23 @@ export const TERMINAL_TOOLS = new Set([
   'chart_gen', 'diagram_gen', 'podcast_gen',
 ]);
 
+/**
+ * Check whether a tool name should be treated as terminal.
+ * Built-in terminal membership is hardcoded in TERMINAL_TOOLS; MCP tools can be
+ * marked terminal via their tool_configs metadata.
+ */
+export async function isTerminalTool(toolName: string): Promise<boolean> {
+  if (TERMINAL_TOOLS.has(toolName)) return true;
+  // Fast-path: only MCP tool names can be terminal beyond the hardcoded set.
+  if (!toolName.startsWith('mcp_')) return false;
+  // Avoid a circular import by lazy-loading the MCP module.
+  const { isMcpTool, isMcpToolTerminal } = await import('./mcp/mcp-tools');
+  if (isMcpTool(toolName)) {
+    return isMcpToolTerminal(toolName);
+  }
+  return false;
+}
+
 // ============ Anthropic Direct Client ============
 
 /**
@@ -2264,7 +2281,7 @@ export async function generateResponseWithTools(
     const anthropicToolResults: Anthropic.ToolResultBlockParam[] = [];
 
     // ── Helper: process a single tool call result (error detection, artifacts, terminal tools, compliance) ──
-    const processToolResult = (
+    const processToolResult = async (
       toolName: string,
       toolCallId: string,
       result: string,
@@ -2407,7 +2424,7 @@ export async function generateResponseWithTools(
           }
 
           // Check if terminal tool succeeded
-          if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
+          if (parsed.success && (await isTerminalTool(toolName))) {
             logger.info(`[Tools] Terminal tool ${toolName} succeeded, stopping tool loop`);
             terminalToolSucceeded = true;
             terminalToolResults.push({ toolName, parsedResult: parsed });
@@ -2546,7 +2563,7 @@ export async function generateResponseWithTools(
           result = JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' });
         }
 
-        processToolResult(toolName, toolCall.id, result, success, errorMsg, startTime);
+        await processToolResult(toolName, toolCall.id, result, success, errorMsg, startTime);
       }
     } else {
       // ── Parallel path: execute independent tool calls concurrently ──
@@ -2633,12 +2650,12 @@ export async function generateResponseWithTools(
 
         if (settled.status === 'fulfilled') {
           const { result, success, errorMsg, startTime } = settled.value;
-          processToolResult(toolName, tc.id, result, success, errorMsg, startTime);
+          await processToolResult(toolName, tc.id, result, success, errorMsg, startTime);
         } else {
           // Should not happen since we catch inside the map, but handle gracefully
           const errorMsg = settled.reason instanceof Error ? settled.reason.message : 'Unknown error';
           const result = JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' });
-          processToolResult(toolName, tc.id, result, false, errorMsg, Date.now());
+          await processToolResult(toolName, tc.id, result, false, errorMsg, Date.now());
         }
       }
     }

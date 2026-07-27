@@ -14,6 +14,8 @@ import {
 } from '@/lib/db/compat/tool-config';
 import { getAllTools, initializeTools, HYBRID_TOOLS } from '@/lib/tools';
 import { TERMINAL_TOOLS } from '@/lib/openai';
+import { getMcpToolDefinitions } from '@/lib/mcp/mcp-tools';
+import { isMcpEnabled } from '@/lib/mcp/config';
 
 /**
  * Mask sensitive data like API keys in responses
@@ -43,7 +45,29 @@ export async function GET() {
     await initializeTools();
 
     // Get all tool definitions from registry
-    const toolDefinitions = getAllTools();
+    const builtinToolDefinitions = getAllTools();
+
+    // Append MCP tool definitions if MCP is enabled.
+    const mcpToolDefinitions: typeof builtinToolDefinitions = [];
+    if (isMcpEnabled()) {
+      const mcpDefinitions = await getMcpToolDefinitions();
+      for (const def of mcpDefinitions) {
+        mcpToolDefinitions.push({
+          name: def.function.name,
+          displayName: def.function.name,
+          description: def.function.description ?? '',
+          category: 'autonomous',
+          group: 'mcp',
+          definition: def,
+          execute: async () => '',
+          validateConfig: () => ({ valid: true, errors: [] }),
+          defaultConfig: {},
+          configSchema: {} as Record<string, unknown>,
+        } as ReturnType<typeof getAllTools>[number]);
+      }
+    }
+
+    const toolDefinitions = [...builtinToolDefinitions, ...mcpToolDefinitions];
 
     // Get all tool configurations from database
     const toolConfigs = await getAllToolConfigs();
@@ -77,6 +101,8 @@ export async function GET() {
         defaultDescription: tool.definition?.function?.description ?? tool.description,
         isTerminal: TERMINAL_TOOLS.has(tool.name),
         isHybrid: HYBRID_TOOLS.has(tool.name),
+        toolType: config?.config?.toolType ?? (tool.group === 'mcp' ? 'mcp' : 'builtin'),
+        serverId: config?.config?.serverId ?? null,
         metadata: config ? {
           id: config.id,
           createdAt: config.createdAt,

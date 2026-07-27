@@ -1077,6 +1077,30 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured document_summaries table exists');
 
+  // Migration: MCP server configurations (Strategy A — MCP Tool Integration)
+  await sql`
+    CREATE TABLE IF NOT EXISTS mcp_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      auth_token TEXT,
+      enabled INTEGER DEFAULT 1,
+      timeout_ms INTEGER DEFAULT 30000,
+      tool_count INTEGER DEFAULT 0,
+      last_health_check TIMESTAMPTZ,
+      health_status TEXT DEFAULT 'unknown',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled)`.execute(database);
+  console.log('[Kysely] Ensured mcp_servers table exists');
+
+  // Migration: tool_type column on tool_configs for MCP tools
+  await sql`ALTER TABLE tool_configs ADD COLUMN IF NOT EXISTS tool_type TEXT DEFAULT 'builtin'`
+    .execute(database);
+  console.log('[Kysely] Ensured tool_configs.tool_type column exists');
+
   // ===================================================================
   // Agent System — Phase 1 Foundations (see plans/agent_system_architecture___implementation_plan.md)
   // DB-first agent registry, swarm kill switch, force-swarm role allowlist,

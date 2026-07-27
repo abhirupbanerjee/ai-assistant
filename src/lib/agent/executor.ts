@@ -31,6 +31,7 @@ import { resolveSkills } from '../skills/resolver';
 import { getCategoryBySlug } from '../db/compat/categories';
 import { AVAILABLE_TOOLS, isToolEnabled } from '../tools';
 import { isToolEnabledForCategory } from '../db/compat/category-tool-config';
+import { isMcpTool } from '../mcp/mcp-tools';
 
 // ============ Skills Resolution ============
 
@@ -205,7 +206,7 @@ function mapSkillToolToExecutorTool(toolName: string): ExecutorToolType | null {
  */
 function detectToolForTask(task: AgentTask, planId?: string): string | null {
   // 0. Planner-specified tool_name (highest priority — planner already evaluated)
-  if (task.tool_name && AVAILABLE_TOOLS[task.tool_name]) {
+  if (task.tool_name && (AVAILABLE_TOOLS[task.tool_name] || isMcpTool(task.tool_name))) {
     return task.tool_name;
   }
 
@@ -1068,6 +1069,12 @@ async function executeGenericTool(
   }
 
   const tool = AVAILABLE_TOOLS[toolName];
+  if (!tool && isMcpTool(toolName)) {
+    // MCP tools are dispatched through executeTool; the agent executor generic
+    // bridge does not build MCP arguments, so route back through executeTool.
+    const { executeTool } = await import('../tools');
+    return await executeTool(toolName, JSON.stringify({ target: task.target, description: task.description }));
+  }
   if (!tool) {
     return `Tool "${toolName}" not found in registry`;
   }

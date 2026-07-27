@@ -81,6 +81,7 @@ export interface BackupData {
     agents: unknown[];
     swarmControl: unknown[];
     forceSwarmRoleAllowlist: unknown[];
+    mcpServers: unknown[];
   };
 }
 
@@ -128,6 +129,7 @@ export async function exportAllDataAsync(): Promise<BackupData> {
     agents,
     swarmControl,
     forceSwarmRoleAllowlist,
+    mcpServers,
   ] = await Promise.all([
     db.selectFrom('users').selectAll().execute(),
     db.selectFrom('categories').selectAll().execute(),
@@ -162,6 +164,7 @@ export async function exportAllDataAsync(): Promise<BackupData> {
     db.selectFrom('agent').selectAll().execute(),
     db.selectFrom('swarm_control').selectAll().execute(),
     db.selectFrom('force_swarm_role_allowlist').selectAll().execute(),
+    db.selectFrom('mcp_servers').selectAll().execute(),
   ]);
 
   return {
@@ -202,6 +205,7 @@ export async function exportAllDataAsync(): Promise<BackupData> {
       agents,
       swarmControl,
       forceSwarmRoleAllowlist,
+      mcpServers,
     },
   };
 }
@@ -234,6 +238,7 @@ export async function importAllDataAsync(backup: BackupData): Promise<void> {
     await trx.deleteFrom('workspace_categories').execute();
     await trx.deleteFrom('workspaces').execute();
     await trx.deleteFrom('category_tool_configs').execute();
+    await trx.deleteFrom('mcp_servers').execute();
     await trx.deleteFrom('tool_configs').execute();
     await trx.deleteFrom('tool_routing_rules').execute();
     await trx.deleteFrom('category_skills').execute();
@@ -275,6 +280,7 @@ export async function importAllDataAsync(backup: BackupData): Promise<void> {
     await insertBatch('category_prompts', data.categoryPrompts);
     await insertBatch('skills', data.skills);
     await insertBatch('category_skills', data.categorySkills);
+    await insertBatch('mcp_servers', data.mcpServers);
     await insertBatch('tool_configs', data.toolConfigs);
     await insertBatch('category_tool_configs', data.categoryToolConfigs);
     await insertBatch('tool_routing_rules', data.toolRoutingRules);

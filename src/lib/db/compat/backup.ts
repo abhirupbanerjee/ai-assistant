@@ -151,6 +151,11 @@ export async function exportToolConfigs(): Promise<ToolConfigRecord[]> {
   return db.selectFrom('tool_configs').selectAll().orderBy('tool_name').execute() as Promise<ToolConfigRecord[]>;
 }
 
+export async function exportMcpServers(): Promise<unknown[]> {
+  const db = await getDb();
+  return db.selectFrom('mcp_servers').selectAll().orderBy('id').execute();
+}
+
 export async function exportCategoryToolConfigs(): Promise<CategoryToolConfigRecord[]> {
   const db = await getDb();
   return db.selectFrom('category_tool_configs').selectAll().orderBy('category_id').execute() as Promise<CategoryToolConfigRecord[]>;
@@ -698,6 +703,11 @@ export async function importToolConfigs(records: ToolConfigRecord[]): Promise<vo
   await importBatch('tool_configs', records, db);
 }
 
+export async function importMcpServers(records: unknown[]): Promise<void> {
+  const db = await getDb();
+  await importBatch('mcp_servers', records, db);
+}
+
 export async function importCategoryToolConfigs(records: CategoryToolConfigRecord[]): Promise<void> {
   const db = await getDb();
   await importBatch('category_tool_configs', records, db);
@@ -863,6 +873,7 @@ export async function clearAllData(): Promise<void> {
     await trx.deleteFrom('category_prompts').execute();
     await trx.deleteFrom('category_tool_configs').execute();
     await trx.deleteFrom('category_skills').execute();
+    await trx.deleteFrom('mcp_servers').execute();
     await trx.deleteFrom('tool_configs').execute();
     await trx.deleteFrom('tool_routing_rules').execute();
     await trx.deleteFrom('skills').execute();

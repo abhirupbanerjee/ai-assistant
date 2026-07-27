@@ -18,6 +18,7 @@ import type { AgentTask, AgentPlan, AgentModelConfig } from '@/types/agent';
 import type { StreamEvent } from '@/types/stream';
 import { AVAILABLE_TOOLS, isToolEnabled } from '@/lib/tools';
 import { isToolEnabledForCategory } from '@/lib/db/compat/category-tool-config';
+import { isMcpTool, getMcpToolDefinitions } from '@/lib/mcp/mcp-tools';
 import { getCategoryBySlug } from '@/lib/db/compat/categories';
 import { getModelForRole, getModelContextLimit, estimateTokens } from './llm-router';
 import { resolveSkillsForTask, resolveExecutorModelForTask } from './executor';
@@ -49,27 +50,38 @@ const HITL_TIMEOUT_MS = 300_000; // 5 minutes
 const MAX_TOOL_RESULT_CHARS = 4000;
 const CONTEXT_SAFETY_MARGIN = 8000; // Leave headroom for response tokens
 
-function getToolDefinitionsForSubagent(enabledToolNames: string[]): OpenAI.Chat.ChatCompletionTool[] {
+async function getToolDefinitionsForSubagent(enabledToolNames: string[]): Promise<OpenAI.Chat.ChatCompletionTool[]> {
   const tools: OpenAI.Chat.ChatCompletionTool[] = [];
 
   for (const name of enabledToolNames) {
     const tool = AVAILABLE_TOOLS[name];
-    if (!tool) continue;
-    if (tool.category !== 'autonomous') continue;
-
-    if (tool.definition) {
-      tools.push(tool.definition as OpenAI.Chat.ChatCompletionTool);
+    if (tool) {
+      if (tool.category !== 'autonomous') continue;
+      if (tool.definition) {
+        tools.push(tool.definition as OpenAI.Chat.ChatCompletionTool);
+      }
+      // function_api has dynamic definitions — skip in generic subagent loop
     }
-    // function_api has dynamic definitions — skip in generic subagent loop
+  }
+
+  // Append MCP tool definitions for enabled MCP tools.
+  const mcpDefinitions = await getMcpToolDefinitions();
+  for (const def of mcpDefinitions) {
+    if (enabledToolNames.includes(def.function.name)) {
+      tools.push(def as OpenAI.Chat.ChatCompletionTool);
+    }
   }
 
   return tools;
 }
 
 async function getEnabledToolsForPlan(plan: AgentPlan): Promise<string[]> {
-  const allAutonomous = Object.entries(AVAILABLE_TOOLS)
+  const builtinAutonomous = Object.entries(AVAILABLE_TOOLS)
     .filter(([, tool]) => tool.category === 'autonomous')
     .map(([name]) => name);
+  const mcpDefinitions = await getMcpToolDefinitions();
+  const mcpAutonomous = mcpDefinitions.map(d => d.function.name);
+  const allAutonomous = [...builtinAutonomous, ...mcpAutonomous];
 
   const categorySlug = (plan as any).category_slug || (plan as any).categorySlug;
   let categoryId: number | undefined;
@@ -234,7 +246,7 @@ export async function runSubagentTaskLoop(
 
   // Resolve enabled tools for this plan/category
   const enabledToolNames = await getEnabledToolsForPlan(plan);
-  const tools = getToolDefinitionsForSubagent(enabledToolNames);
+  const tools = await getToolDefinitionsForSubagent(enabledToolNames);
 
   if (tools.length === 0) {
     const result: SubagentResult = {
@@ -400,6 +412,18 @@ export async function runSubagentTaskLoop(
       const tool = AVAILABLE_TOOLS[toolName];
 
       if (!tool || tool.category !== 'autonomous') {
+        // MCP tools are not in AVAILABLE_TOOLS but are dispatched through executeTool.
+        if (isMcpTool(toolName)) {
+          const { executeTool } = await import('@/lib/tools');
+          const result = await executeTool(toolName, toolCall.function.arguments);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: result,
+          });
+          continue;
+        }
+
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,

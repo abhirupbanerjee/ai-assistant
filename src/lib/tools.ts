@@ -27,6 +27,8 @@ import { handoffToCategoryTool } from './tools/handoff-category';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
 import { isAgentTool, executeAgentTool, getAgentToolDefinitions } from './agent-registry/agent-tools';
+import { isMcpEnabled } from './mcp/config';
+import { isMcpTool, executeMcpTool, getMcpToolDefinitions, refreshMcpTools } from './mcp/mcp-tools';
 
 // ============ Types ============
 
@@ -266,6 +268,15 @@ export async function initializeTools(): Promise<void> {
     // Ensure all registered tools have configs
     await ensureToolConfigsExist();
 
+    // Discover MCP tools from enabled servers when MCP is enabled
+    if (isMcpEnabled()) {
+      try {
+        await refreshMcpTools();
+      } catch (error) {
+        logger.error('Failed to discover MCP tools during initialization', { error: String(error) });
+      }
+    }
+
     toolsInitialized = true;
     logger.info('Tools system initialized');
   } catch (error) {
@@ -351,6 +362,16 @@ export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI
   const agentCategoryId = categoryIds && categoryIds.length > 0 ? categoryIds[0] : undefined;
   const agentToolDefinitions = await getAgentToolDefinitions(agentCategoryId);
   tools.push(...agentToolDefinitions);
+
+  // Add MCP tool definitions when MCP is enabled
+  if (isMcpEnabled()) {
+    try {
+      const mcpToolDefinitions = await getMcpToolDefinitions();
+      tools.push(...mcpToolDefinitions);
+    } catch (error) {
+      logger.error('Failed to load MCP tool definitions', { error: String(error) });
+    }
+  }
 
   return tools;
 }
@@ -466,6 +487,13 @@ export async function executeTool(
         errorCode: 'EXECUTION_ERROR',
       });
     }
+  }
+
+  // MCP tool dispatch: names prefixed with `mcp_` route to the MCP client.
+  // This runs before the standard tool lookup and after the agent-as-tool
+  // check so MCP tool calls never fall through to built-in or function_api.
+  if (isMcpTool(name)) {
+    return await executeMcpTool(name, args);
   }
 
   // Check standard tools first

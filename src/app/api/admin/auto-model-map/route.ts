@@ -3,6 +3,8 @@ import { requireAdmin } from '@/lib/auth';
 import { getAutoToolModelMap, setAutoToolModelMap } from '@/lib/db/compat/config';
 import { getActiveModels } from '@/lib/db/compat/enabled-models';
 import { getAllTools, initializeTools } from '@/lib/tools';
+import { isMcpEnabled } from '@/lib/mcp/config';
+import { getMcpToolDefinitions } from '@/lib/mcp/mcp-tools';
 
 /**
  * GET /api/admin/auto-model-map
@@ -21,7 +23,30 @@ export async function GET() {
 
     // Get tool definitions for the UI
     await initializeTools();
-    const tools = getAllTools().map(t => ({
+    const builtinTools = getAllTools();
+
+    const mcpTools: typeof builtinTools = [];
+    if (isMcpEnabled()) {
+      const mcpDefs = await getMcpToolDefinitions();
+      for (const def of mcpDefs) {
+        mcpTools.push({
+          name: def.function.name,
+          displayName: def.function.name,
+          description: def.function.description ?? '',
+          category: 'autonomous',
+          group: 'mcp',
+          definition: def,
+          execute: async () => '',
+          validateConfig: () => ({ valid: true, errors: [] }),
+          defaultConfig: {},
+          configSchema: {} as Record<string, unknown>,
+        } as ReturnType<typeof getAllTools>[number]);
+      }
+    }
+
+    const allTools = [...builtinTools, ...mcpTools];
+
+    const tools = allTools.map(t => ({
       name: t.name,
       displayName: t.displayName,
     }));

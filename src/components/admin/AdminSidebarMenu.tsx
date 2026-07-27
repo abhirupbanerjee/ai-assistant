@@ -37,7 +37,7 @@ type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands';
+type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands' | 'mcp-servers';
 type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
@@ -76,6 +76,7 @@ const MENU_CONFIG: MenuConfigItem[] = [
       { id: 'routing', label: 'Tool Routing' },
       { id: 'conflicts', label: 'Conflicts' },
       { id: 'slash-commands', label: 'Slash Commands' },
+      { id: 'mcp-servers', label: 'MCP Servers' },
     ]
   },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
