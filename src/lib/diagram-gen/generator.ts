@@ -5,9 +5,8 @@
  * Uses the system default LLM configuration (not hardcoded).
  */
 
-import OpenAI from 'openai';
 import { getLlmSettings } from '@/lib/db/compat/config';
-import { getApiKey } from '@/lib/provider-helpers';
+import { createInternalCompletion } from '@/lib/llm-client';
 import { getTemperatureForModel } from '@/lib/llm-thinking';
 import { getToolConfig } from '@/lib/db/compat/tool-config';
 import { logger } from '@/lib/logger';
@@ -49,20 +48,12 @@ export async function getDiagramGenConfig(): Promise<DiagramGenConfig> {
 }
 
 // ===== LLM Client =====
-
-async function getOpenAIClient(): Promise<OpenAI> {
-  // Use direct OpenAI API (Route 2) — no LiteLLM proxy
-  const apiKey = await getApiKey('openai');
-
-  if (!apiKey) {
-    throw new Error('OpenAI API key required for diagram generation');
-  }
-
-  return new OpenAI({
-    apiKey,
-    baseURL: 'https://api.openai.com/v1', // Direct, bypasses LiteLLM
-  });
-}
+// diagram_gen routes through createInternalCompletion (the canonical
+// internal-completion helper in llm-client.ts) instead of a hardcoded OpenAI
+// direct client. This respects the system's configured provider/routing —
+// Claude → Anthropic, Fireworks → Fireworks, Moonshot → Moonshot, etc. — so a
+// non-OpenAI system default model no longer produces "400 invalid model ID"
+// against api.openai.com.
 
 // ===== Server-Side Parse Validation =====
 
@@ -151,11 +142,10 @@ export async function generateMermaidDiagram(
 ): Promise<DiagramGenerationResult> {
   const config = await getDiagramGenConfig();
 
-  // Get the default model from system LLM settings
+  // Get the default model from system LLM settings. createInternalCompletion
+  // routes to the correct provider based on the model ID prefix.
   const llmSettings = await getLlmSettings();
   const model = llmSettings.model;
-
-  const client = await getOpenAIClient();
 
   // Get effective system prompt (from config override or hardcoded default)
   const effectiveSystemPrompt = await getDiagramSystemPrompt(diagramType);
@@ -183,17 +173,15 @@ export async function generateMermaidDiagram(
           ? user + buildRetryGuidance(retryCount, lastError, config.maxRetries)
           : user;
 
-      const response = await client.chat.completions.create({
+      const rawCode = await createInternalCompletion({
         model,
         temperature: getTemperatureForModel(model, config.temperature),
-        max_tokens: config.maxTokens,
+        maxTokens: config.maxTokens,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: userContent },
         ],
       });
-
-      const rawCode = response.choices[0]?.message?.content;
 
       if (!rawCode) {
         lastError = 'Empty response from LLM';
