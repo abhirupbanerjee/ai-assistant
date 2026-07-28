@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ChartBlockConfig } from './types';
 import { escapeHtml } from './markdown/escape';
+import { mermaidInitConfigJson } from '@/lib/diagram-gen/mermaid-config';
 
 // ============ Types ============
 
@@ -115,6 +116,102 @@ function getMermaidBundle(): string {
   return readLocalFile('public', 'vendor', 'mermaid.min.js')
     ?? readLocalFile('node_modules', 'mermaid', 'dist', 'mermaid.min.js')
     ?? '';
+}
+
+// ============ Standalone Mermaid → SVG (Phase 3 internal endpoint) ============
+
+/**
+ * Render a single Mermaid diagram to an SVG string using the self-hosted
+ * Playwright + bundled mermaid.min.js pipeline. Air-gap safe — NO external
+ * egress (mermaid.ink/pako dropped per user constraint).
+ *
+ * Used by the /api/diagram/render endpoint as a client-side render fallback.
+ * Reuses the same getBrowser()/getMermaidBundle() as serverRenderAll so the
+ * browser instance and vendor bundle are shared.
+ *
+ * @returns SVG string on success, or null if Playwright is unavailable or
+ *          the diagram fails to render.
+ */
+export async function renderMermaidToSvg(code: string): Promise<string | null> {
+  const mermaidBundle = getMermaidBundle();
+  if (!mermaidBundle) return null;
+
+  const browser = await getBrowser();
+  if (!browser) return null;
+
+  let page: import('playwright').Page | null = null;
+  try {
+    page = await browser.newPage();
+    const html = `<!DOCTYPE html><html><head>
+<script>${mermaidBundle}</script>
+<style>body{margin:0;padding:20px;font-family:system-ui,sans-serif;} .mermaid{display:flex;justify-content:center;}</style>
+</head><body>
+<div class="mermaid" id="mermaid-target"></div>
+<script>
+(function(){
+  mermaid.initialize(${mermaidInitConfigJson()});
+  window.__mermaidCheck = function() {
+    var el = document.getElementById('mermaid-target');
+    return el && el.querySelector('svg') !== null;
+  };
+})();
+</script>
+</body></html>`;
+
+    await page.setContent(html, { waitUntil: 'load' });
+
+    // Inject raw mermaid source via textContent (safe — no HTML parsing).
+    await page.evaluate((src) => {
+      const el = document.getElementById('mermaid-target');
+      if (el) el.textContent = src;
+    }, code);
+
+    // Trigger mermaid.run() to process the populated div.
+    await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mmd = (globalThis as any).mermaid;
+      if (mmd?.run) {
+        await mmd.run({ nodes: [document.getElementById('mermaid-target')!] });
+      } else if (mmd?.init) {
+        await mmd.init(undefined, '#mermaid-target');
+      }
+    });
+
+    // Wait for mermaid to render (up to 15s).
+    try {
+      await page.waitForFunction('window.__mermaidCheck()', { timeout: 15000 });
+    } catch {
+      // Mermaid may have rendered despite the check failing; try to get SVG.
+    }
+
+    // Extract the SVG.
+    let svgHtml = await page.evaluate(() => {
+      const el = document.getElementById('mermaid-target');
+      const svg = el?.querySelector('svg');
+      return svg ? svg.outerHTML : null;
+    });
+
+    // Fallback to mermaid.render() API directly.
+    if (!svgHtml) {
+      svgHtml = await page.evaluate(async (src) => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mmd = (globalThis as any).mermaid;
+          if (!mmd) return null;
+          const id = 'mermaid-svg-' + Date.now();
+          const { svg } = await mmd.render(id, src);
+          return svg;
+        } catch { return null; }
+      }, code);
+    }
+
+    return svgHtml;
+  } catch (err) {
+    console.warn('[ServerRenderer] renderMermaidToSvg failed:', (err as Error).message);
+    return null;
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
 }
 
 // ============ Chart config builder (with datalabels) ============
@@ -384,15 +481,7 @@ ${datalabelsBundle ? `<script>${datalabelsBundle}</script>` : ''}
 <div class="mermaid" id="mermaid-target"></div>
 <script>
 (function(){
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'default',
-    securityLevel: 'loose',
-    suppressErrorRendering: true,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
-    mindmap: { useMaxWidth: true, padding: 16 }
-  });
+  mermaid.initialize(${mermaidInitConfigJson()});
   window.__mermaidCheck = function() {
     var el = document.getElementById('mermaid-target');
     return el && el.querySelector('svg') !== null;

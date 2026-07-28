@@ -311,10 +311,10 @@ export function upgradeStateDiagram(code: string): string {
 
 /**
  * Fix architecture-beta diagrams.
- * architecture-beta has strict syntax rules (mermaid 11.12.2):
+ * architecture-beta has strict syntax rules (mermaid 11.16.0):
  * - Labels inside [...] may only contain [\w ] (letters, digits, underscores, spaces)
  * - IDs may only contain [\w-] (letters, digits, underscores, hyphens — no dots)
- * - Edges use -- (double dash) ONLY, never -->
+ * - Edges use -- (double dash) for ungrouped nodes and --> with ports for grouped nodes
  */
 export function sanitizeArchitectureCode(code: string): string {
   let sanitized = code.replace(/^architecture\b(?!-beta)/m, 'architecture-beta');
@@ -420,7 +420,15 @@ export function sanitizeMermaidCode(code: string): string {
   sanitized = upgradeStateDiagram(sanitized);
 
   // 6. Type-specific fixes
-  const firstLine = sanitized.trim().toLowerCase();
+  // Mermaid v11.16.0 supports two config prefixes that precede the diagram
+  // keyword: the `%%{init: {...}}%%` directive and the `--- config: ... ---`
+  // frontmatter block. Type detection must skip these so flowchart/ELK
+  // diagrams still receive flowchart-specific sanitization.
+  const forTypeDetect = sanitized
+    .replace(/^---[\s\S]*?---\s*/, '') // strip frontmatter block
+    .replace(/^%%\{[^}]*\}%%\s*/, '')  // strip init directive
+    .trim();
+  const firstLine = forTypeDetect.toLowerCase();
 
   // --- Flowchart / Graph ---
   if (firstLine.startsWith('flowchart') || firstLine.startsWith('graph')) {

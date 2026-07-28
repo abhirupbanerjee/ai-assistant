@@ -115,6 +115,30 @@ function StreamingMarkdown({ content, isStreaming, isUser }: { content: string; 
   // Find the last safe freeze boundary (respects open code fences)
   const [frozenContent, liveTail] = splitAtSafeBoundary(content);
 
+  // Phase 6.3 — detect an UNCLOSED ```mermaid fence in the live tail. If the
+  // fence is still open, ReactMarkdown would pass the partial code to
+  // MermaidDiagram, causing flicker / re-render churn as bytes arrive. Instead
+  // render a lightweight "Writing diagram…" placeholder until the closing fence
+  // arrives (at which point splitAtSafeBoundary freezes it and the full render
+  // kicks in). We strip the open fence so any prose before it still renders.
+  let renderLiveTail = liveTail;
+  let writingDiagram = false;
+  if (liveTail && !isUser) {
+    const fenceStart = liveTail.search(/```mermaid\s*\n/i);
+    if (fenceStart !== -1) {
+      // Count opening ```mermaid fences vs closing ``` fences from the first
+      // opener onward. If opens > closes the fence is still open and bytes are
+      // still arriving — show the placeholder instead of a partial render.
+      const afterStart = liveTail.slice(fenceStart);
+      const opens = (afterStart.match(/```mermaid\s*\n/gi) || []).length;
+      const closes = (afterStart.match(/```\s*$/gi) || []).length;
+      if (opens > closes) {
+        writingDiagram = true;
+        renderLiveTail = liveTail.slice(0, fenceStart).trimEnd();
+      }
+    }
+  }
+
   return (
     <>
       {/* Frozen completed content — never re-renders */}
@@ -122,13 +146,20 @@ function StreamingMarkdown({ content, isStreaming, isUser }: { content: string; 
         <FrozenBlock content={frozenContent} isUser={isUser} />
       )}
       {/* Active tail: small, cheap single-block re-parse each frame */}
-      {liveTail && (
+      {renderLiveTail && (
         <ReactMarkdown
           remarkPlugins={REMARK_PLUGINS}
           components={isUser ? MarkdownComponents : MarkdownComponentsWithCodeCopy}
         >
-          {liveTail}
+          {renderLiveTail}
         </ReactMarkdown>
+      )}
+      {/* Phase 6.3 — placeholder for an in-progress mermaid fence */}
+      {writingDiagram && (
+        <div className="my-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300">
+          <span className="inline-block w-3 h-3 mr-2 rounded-full bg-blue-400 animate-pulse align-middle" />
+          Writing diagram…
+        </div>
       )}
       {/* Claude-style blinking block cursor at the streaming edge */}
       <span

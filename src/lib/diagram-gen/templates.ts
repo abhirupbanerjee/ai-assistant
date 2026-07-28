@@ -14,7 +14,7 @@ export const MERMAID_SYSTEM_PROMPT = `You are a Mermaid diagram generator. Your 
 RULES:
 1. Output ONLY the Mermaid code - no explanations, no markdown fences, no commentary
 2. Use proper Mermaid syntax for the requested diagram type
-3. Keep diagrams focused - maximum 15 nodes for flowcharts, 10 items for mindmaps
+3. Keep diagrams focused - maximum 30 nodes for flowcharts, 10 items for mindmaps
 4. Use descriptive but concise labels
 5. Escape special characters: use "and" instead of "&", avoid parentheses in labels
 6. Do NOT include \`\`\`mermaid or \`\`\` markers
@@ -25,6 +25,156 @@ RULES:
 11. In flowcharts, never start a node ID with lowercase "o" or "x" — they are misread as edge markers; capitalise them (e.g. "OAuth" not "oAuth", "XmlParser" not "xmlParser")
 
 NEVER output anything except valid Mermaid code.`;
+
+// ===== Complexity Limits (verified against mermaid.js.org official docs, v11.16.0) =====
+
+/**
+ * Per-diagram-type complexity limits and known failure modes.
+ *
+ * Source: mermaid.js.org official docs (architecture.html, flowchart.html,
+ * c4.html, config schema, syntax-reference.html) + GitHub release notes for
+ * v11.16.0 (PR #7708 — `align` directive). Verified 2026-07-27.
+ *
+ * These are appended to every diagram-type system prompt as a footer so the
+ * LLM self-limits diagram size and avoids documented failure modes. The
+ * validator.ts node-count threshold references flowchart.maxNodes as the
+ * single source of truth for the flowchart cap.
+ */
+export const COMPLEXITY_LIMITS: Record<MermaidDiagramType, {
+  maxNodes: number;
+  layoutEngine: string;
+  failureMode: string;
+  guidance: string;
+}> = {
+  flowchart: {
+    maxNodes: 30,
+    layoutEngine: 'dagre (default) / elk (experimental)',
+    failureMode: '>25 dagre nodes: slow/overlapping. ELK requires lazy-load enabled.',
+    guidance: 'Use default dagre for ≤15 nodes. For 16-30 nodes, enable ELK via frontmatter: "---\\nconfig:\\n  layout: elk\\n---" before the `flowchart` line. ELK is experimental — if it fails to render, remove the frontmatter and fall back to dagre with a smaller node count.',
+  },
+  sequence: {
+    maxNodes: 10,
+    layoutEngine: 'custom',
+    failureMode: 'Many participants → wide, unreadable diagram.',
+    guidance: 'Hard cap 10 participants and 30 messages. Split into multiple sequence diagrams if more actors are needed.',
+  },
+  mindmap: {
+    maxNodes: 10,
+    layoutEngine: 'cose-bilkent',
+    failureMode: '>15 nodes: layout sprawl. Empty lines break the parser.',
+    guidance: 'Hard cap 10 nodes, 4 levels deep. No empty lines anywhere in the mindmap body.',
+  },
+  'c4-context': {
+    maxNodes: 8,
+    layoutEngine: 'manual (statement-order, no auto-layout)',
+    failureMode: 'C4 is in MAINTENANCE MODE. camelCase (SystemExt) is invalid. No auto-layout — position is by statement order.',
+    guidance: 'Use underscore variants only (System_Ext, Person_Ext). ≤2 boundary nesting levels. For complex nested boundaries prefer architecture-beta. Hard cap 8 elements.',
+  },
+  'c4-container': {
+    maxNodes: 8,
+    layoutEngine: 'manual (statement-order, no auto-layout)',
+    failureMode: 'C4 is in MAINTENANCE MODE. camelCase (ContainerBoundary) is invalid. No auto-layout.',
+    guidance: 'Use underscore variants only (Container_Ext, Container_Boundary). ≤2 boundary nesting levels. For complex nested boundaries prefer architecture-beta. Hard cap 8 elements.',
+  },
+  'c4-component': {
+    maxNodes: 8,
+    layoutEngine: 'manual (statement-order, no auto-layout)',
+    failureMode: 'C4 is in MAINTENANCE MODE. camelCase (ComponentExt) is invalid. No auto-layout.',
+    guidance: 'Use underscore variants only (Component_Ext). ≤2 boundary nesting levels. For complex nested boundaries prefer architecture-beta. Hard cap 8 elements.',
+  },
+  'c4-dynamic': {
+    maxNodes: 8,
+    layoutEngine: 'manual (statement-order, no auto-layout)',
+    failureMode: 'C4 is in MAINTENANCE MODE. No auto-layout.',
+    guidance: 'Hard cap 8 elements. For complex runtime flows prefer sequence diagrams.',
+  },
+  'c4-deployment': {
+    maxNodes: 8,
+    layoutEngine: 'manual (statement-order, no auto-layout)',
+    failureMode: 'C4 is in MAINTENANCE MODE. No auto-layout.',
+    guidance: 'Hard cap 8 elements. Use underscore variants for external nodes.',
+  },
+  gantt: {
+    maxNodes: 20,
+    layoutEngine: 'custom',
+    failureMode: 'Colons inside task names break parsing. "critical" is invalid (use "crit").',
+    guidance: 'Hard cap 20 tasks. Use `crit` not `critical`. Every task must be inside a section. No colons in task names.',
+  },
+  classDiagram: {
+    maxNodes: 12,
+    layoutEngine: 'dagre',
+    failureMode: 'Nested namespaces (v11.15+) add complexity.',
+    guidance: 'Hard cap 12 classes. Avoid nested namespaces unless strictly needed.',
+  },
+  stateDiagram: {
+    maxNodes: 15,
+    layoutEngine: 'dagre',
+    failureMode: '—',
+    guidance: 'Hard cap 15 states.',
+  },
+  erDiagram: {
+    maxNodes: 8,
+    layoutEngine: 'dagre',
+    failureMode: 'Reserved words (ONE/MANY/TO/U) and dots in entity names break parsing.',
+    guidance: 'Hard cap 8 entities. UPPERCASE no-dot names. Always label relationships.',
+  },
+  pie: {
+    maxNodes: 8,
+    layoutEngine: 'custom',
+    failureMode: '—',
+    guidance: 'Hard cap 8 slices.',
+  },
+  journey: {
+    maxNodes: 8,
+    layoutEngine: 'custom',
+    failureMode: '—',
+    guidance: 'Hard cap 8 steps.',
+  },
+  timeline: {
+    maxNodes: 10,
+    layoutEngine: 'custom',
+    failureMode: '—',
+    guidance: 'Hard cap 10 events.',
+  },
+  block: {
+    maxNodes: 12,
+    layoutEngine: 'dagre',
+    failureMode: '—',
+    guidance: 'Hard cap 12 blocks.',
+  },
+  quadrant: {
+    maxNodes: 12,
+    layoutEngine: 'custom',
+    failureMode: '—',
+    guidance: 'Hard cap 12 points. x/y must be decimals strictly between 0 and 1.',
+  },
+  architecture: {
+    maxNodes: 20,
+    layoutEngine: 'fcose',
+    failureMode: '`align` order contradicting edge directions → HARD FAIL. Dots in IDs. Invalid icon names. Labels with special chars.',
+    guidance: 'Hard cap 20 services, ≤3 group nesting levels. IDs only [A-Za-z0-9_-] (no dots). Icons limited to EXACTLY: cloud, database, disk, internet, server. Labels inside [...] only letters/numbers/underscores/spaces. The `align row|column {members}` directive (v11.16.0+) requires members pre-declared, ≥2 members, one directive per line, AND the declared order MUST NOT contradict edge directions — if `a:L --> R:b` exists, use `align row b a` (NOT `align row a b`) or the layout engine will fail to render.',
+  },
+  gitGraph: {
+    maxNodes: 12,
+    layoutEngine: 'custom',
+    failureMode: 'Branch names with spaces break parsing.',
+    guidance: 'Hard cap 12 commits. Single-word branch names only.',
+  },
+};
+
+/**
+ * Build the complexity-limits footer appended to every diagram system prompt.
+ * Keeps the LLM aware of documented failure modes and size caps.
+ */
+export function buildComplexityFooter(diagramType: MermaidDiagramType): string {
+  const limit = COMPLEXITY_LIMITS[diagramType];
+  if (!limit) return '';
+  return `\n\nCOMPLEXITY LIMITS (${diagramType}, mermaid v11.16.0):
+- Layout engine: ${limit.layoutEngine}
+- Recommended maximum: ${limit.maxNodes} elements
+- Known failure mode: ${limit.failureMode}
+- Guidance: ${limit.guidance}`;
+}
 
 // ===== Diagram Type Templates =====
 
@@ -43,7 +193,14 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
 - Use flowchart {DIRECTION} as the first line
 - Use [Box] for rectangles, {Decision} for diamonds, ([Rounded]) for stadium shapes
 - Use --> for arrows, -->|Label| for labeled arrows — NEVER use single -> (invalid in Mermaid)
-- Keep max 12-15 nodes
+- Keep max 20-30 nodes (hard cap 30, enforced by validator.ts)
+- For diagrams with MORE than 15 nodes, enable the ELK layout engine by prepending frontmatter BEFORE the flowchart line:
+  ---
+  config:
+    layout: elk
+  ---
+  flowchart {DIRECTION}
+  ELK is experimental and requires lazy-loading to be enabled. If ELK fails to render, remove the frontmatter and fall back to the default dagre layout with a smaller node count.
 - If a label contains a URL path or forward slash, wrap it in quotes: ["/api/users"] not [/api/users]`,
     example: `flowchart TD
     A[Start] --> B{Is valid?}
@@ -99,13 +256,14 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   },
 
   'c4-context': {
-    systemPrompt: `Generate a Mermaid C4 Context diagram.
+    systemPrompt: `Generate a Mermaid C4 Context diagram (maintenance mode).
 - Start with: C4Context
+- C4 is in MAINTENANCE MODE with no auto-layout (position is by statement order). For complex nested boundaries, PREFER architecture-beta instead.
 - Use title for diagram title
 - Internal elements: Person(alias, "Name", "Desc"), System(alias, "Name", "Desc"), SystemDb(alias, "Name", "Desc")
 - External elements use underscore suffix: System_Ext(alias, "Name", "Desc"), SystemDb_Ext(alias, "Name", "Desc"), Person_Ext(alias, "Name", "Desc")
   CRITICAL: NEVER use camelCase — SystemExt, PersonExt are INVALID; always use System_Ext, Person_Ext
-- Boundaries: System_Boundary(id, "label") { ... } or Enterprise_Boundary(id, "label") { ... }
+- Boundaries: System_Boundary(id, "label") { ... } or Enterprise_Boundary(id, "label") { ... } — avoid more than 2 levels of nesting
 - Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional`,
     example: `C4Context
     title System Context
@@ -118,14 +276,15 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   },
 
   'c4-container': {
-    systemPrompt: `Generate a Mermaid C4 Container diagram.
+    systemPrompt: `Generate a Mermaid C4 Container diagram (maintenance mode).
 - Start with: C4Container
+- C4 is in MAINTENANCE MODE with no auto-layout (position is by statement order). For complex nested boundaries, PREFER architecture-beta instead.
 - People: Person(alias, "Name", "Desc"), Person_Ext(alias, "Name", "Desc") for external users
 - Containers: Container(alias, "Name", "Tech", "Desc"), ContainerDb(alias, "Name", "Tech", "Desc"), ContainerQueue(alias, "Name", "Tech", "Desc")
 - External systems: System_Ext(alias, "Name", "Desc"), SystemDb_Ext(alias, "Name", "Desc")
   CRITICAL: NEVER use camelCase — SystemExt, ContainerExt, PersonExt, ContainerBoundary are all INVALID
   Always use underscore variants: System_Ext, Container_Ext, Person_Ext, Container_Boundary
-- Group containers with: Container_Boundary(id, "label") { ... } — NEVER ContainerBoundary
+- Group containers with: Container_Boundary(id, "label") { ... } — NEVER ContainerBoundary. Avoid more than 2 levels of nesting.
 - Relationships: Rel(from, to, "label") or BiRel(from, to, "label") for bidirectional
 - Optional layout: UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")`,
     example: `C4Container
@@ -337,18 +496,25 @@ export const DIAGRAM_TEMPLATES: Record<MermaidDiagramType, DiagramTemplate> = {
   },
 
   architecture: {
-    systemPrompt: `Generate a Mermaid architecture diagram (beta feature).
+    systemPrompt: `Generate a Mermaid architecture-beta diagram.
 - Start with: architecture-beta
-- MAXIMUM 8 services total — this is a hard limit. For larger architectures use c4-container instead.
+- PREFER architecture-beta over C4 for complex nested boundaries. architecture-beta supports groups + junctions + the align directive for predictable layouts. C4 is in maintenance mode with no auto-layout.
+- MAXIMUM 20 services total, ≤3 group nesting levels (readability limit). For larger systems, split into multiple diagrams.
 - Services: service id(icon)[Label]
   Icons MUST be one of EXACTLY: cloud, database, disk, internet, server
   NEVER use: computer, api, network, browser, queue, cache, lb, loadbalancer, or any other icon name
 - Groups: group id(icon)[Label]
 - Nest a service/group inside a group: add "in parentGroupId" after the definition
 - Junctions (for multi-way connections): junction id
-- Edges: id:Direction -- Direction:id  (ALWAYS use -- double dash, NEVER -->)
+- Edges (ungrouped nodes): id:Direction -- Direction:id  (double dash, undirected)
+- Edges (across group boundaries with ports): id:Direction --> Direction:id  (arrow form is valid when ports are specified, e.g. db:R --> L:server)
   Directions: T (top), B (bottom), L (left), R (right)
   Labeled edge: id:Direction -[Label]- Direction:id
+- align directive (NEW in mermaid v11.16.0): align row|column {idA} {idB} ...
+  Members MUST be pre-declared services/junctions BEFORE the align line.
+  ≥2 members, one align directive per line.
+  CRITICAL: the declared order MUST NOT contradict the directions of edges between the listed members.
+    If the diagram contains "a:L --> R:b" (a is to the right of b), then "align row a b" will CONFLICT and the layout engine will HARD FAIL. Use "align row b a" instead.
 STRICT LABEL RULES — labels inside [...] may ONLY contain letters, numbers, underscores, and spaces.
   NO dots, NO apostrophes, NO hyphens, NO slashes, NO special characters.
   Write "NextJS 16" not "Next.js 16"; write "Lets Encrypt" not "Let's Encrypt"
@@ -359,7 +525,8 @@ STRICT ID RULES — IDs may ONLY contain letters, numbers, underscores, and hyph
     service db(database)[Database] in api
     service cache(disk)[Cache] in api
     web:R -- L:db
-    web:B -- T:cache`,
+    web:B -- T:cache
+    align column web db cache`,
     prefix: 'architecture-beta',
   },
 
@@ -475,7 +642,7 @@ export async function getDiagramSystemPrompt(diagramType: MermaidDiagramType): P
   
   // Fall back to hardcoded template
   const template = DIAGRAM_TEMPLATES[diagramType];
-  return MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt;
+  return MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt + buildComplexityFooter(diagramType);
 }
 
 /**
@@ -491,10 +658,12 @@ export function buildGenerationPrompt(
 ): { system: string; user: string } {
   const template = DIAGRAM_TEMPLATES[diagramType];
 
-  // Use provided effective prompt (from config override) or build from hardcoded defaults
-  let systemPrompt = effectiveSystemPrompt 
-    ? effectiveSystemPrompt 
-    : MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt;
+  // Use provided effective prompt (from config override) or build from hardcoded defaults.
+  // Admin overrides already include the complexity footer (see getDiagramSystemPrompt),
+  // so only append it when falling back to the hardcoded default.
+  let systemPrompt = effectiveSystemPrompt
+    ? effectiveSystemPrompt
+    : MERMAID_SYSTEM_PROMPT + '\n\n' + template.systemPrompt + buildComplexityFooter(diagramType);
 
   // Replace {DIRECTION} in system prompt regardless of source (default or admin override)
   if (diagramType === 'flowchart') {

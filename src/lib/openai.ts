@@ -2240,6 +2240,11 @@ export async function generateResponseWithTools(
 
   // Collect tool execution results for compliance checking
   const toolExecutionResults: ToolExecutionRecord[] = [];
+  // Phase 6.1 — accumulate inline mermaid fences emitted by diagram_gen so they
+  // can be appended to responseMessage.content after the tool loop (mirrors the
+  // terminal-tool status-marker pattern). This keeps the inline render in shared
+  // threads / persisted history, not just the live SSE stream.
+  const inlineDiagramFences: string[] = [];
 
   // Check if this model supports parallel tool execution
   const parallelToolCapable = await isModelParallelToolCapable(effectiveModel);
@@ -2358,6 +2363,14 @@ export async function generateResponseWithTools(
                   title: parsed.diagramHint.title,
                 };
                 callbacks.onArtifact('diagram', diagram);
+                // Phase 6.1 — inline streaming continuity: accumulate the mermaid
+                // fence so it can be emitted into BOTH the live content stream
+                // (onChunk) and the persisted responseMessage.content AFTER the
+                // tool loop, BEFORE the terminal-tool status marker. Emitting at
+                // a single post-loop point guarantees the live SSE order matches
+                // the persisted/shared-thread order (fence → status marker).
+                const fence = '```mermaid\n' + parsed.diagramHint.code + '\n```';
+                inlineDiagramFences.push(fence);
               }
               if (parsed.success && parsed.podcastHint) {
                 callbacks.onArtifact('podcast', parsed.podcastHint);
@@ -2853,6 +2866,21 @@ export async function generateResponseWithTools(
       );
       accumulatedTokens += responseMessage.totalTokens;
     }
+  }
+
+  // Phase 6.1 — emit inline mermaid fences into BOTH the live content stream
+  // (onChunk) and the persisted content BEFORE the terminal-tool status marker.
+  // Doing both at a single post-loop point guarantees the live SSE order matches
+  // the persisted/shared-thread order (fence → status marker), avoiding the
+  // out-of-order mismatch that occurred when the fence was emitted via onChunk
+  // during tool execution but appended to content after the status marker.
+  if (inlineDiagramFences.length > 0) {
+    const fenceBlock = inlineDiagramFences.join('\n\n');
+    callbacks?.onChunk?.('\n\n' + fenceBlock + '\n');
+    responseMessage = {
+      ...responseMessage,
+      content: (responseMessage.content ? responseMessage.content + '\n\n' : '') + fenceBlock,
+    };
   }
 
   // Terminal tool success — stream a one-line status marker instead of making an

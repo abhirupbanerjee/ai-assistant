@@ -1,6 +1,8 @@
 /**
  * Client-side JavaScript bundle for generated HTML pages.
  */
+import { mermaidInitConfigJson } from '@/lib/diagram-gen/mermaid-config';
+
 export function buildJs(): string {
   const jsLines = [
     '// Mermaid init - explicit rendering with missing-library fallback',
@@ -27,15 +29,7 @@ export function buildJs(): string {
     '    });',
     '    return;',
     '  }',
-    '  mermaid.initialize({',
-    '    startOnLoad: false,',
-    '    theme: "default",',
-    '    securityLevel: "loose",',
-    '    suppressErrorRendering: true,',
-    '    fontFamily: "system-ui, -apple-system, sans-serif",',
-    '    flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },',
-    '    mindmap: { useMaxWidth: true, padding: 16 }',
-    '  });',
+    '  mermaid.initialize(' + mermaidInitConfigJson() + ');',
     '  var mermaidBlocks = document.querySelectorAll(".mermaid");',
     '  if (mermaidBlocks.length === 0) return;',
     '  mermaidBlocks.forEach(function(block, index) {',

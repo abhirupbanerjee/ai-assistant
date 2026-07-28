@@ -24,6 +24,9 @@
     "eval:routing:mock": "npx tsx eval/routing.ts --mock",
     "eval:routing:live": "npx tsx eval/routing.ts --live",
     "eval:routing:update-baseline": "npx tsx eval/routing.ts --mock --update-baseline",
+    "eval:mermaid": "npx tsx eval/mermaid-render.ts",
+    "eval:mermaid:render": "npx tsx eval/mermaid-render.ts --render",
+    "eval:mermaid:update-baseline": "npx tsx eval/mermaid-render.ts --update-baseline",
     "sonar:scan": "sonar-scanner",
     "sonar:pipeline": "bash scripts/sonar-scan.sh"
   },
@@ -55,7 +58,7 @@
     "kysely": "0.28.11",
     "lucide-react": "^0.468.0",
     "mammoth": "1.12.0",
-    "mermaid": "11.12.2",
+    "mermaid": "^11.16.0",
     "next": "^16.1.6",
     "next-auth": "^4.24.11",
     "officeparser": "6.0.7",

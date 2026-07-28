@@ -10,8 +10,10 @@ import { getLlmSettings } from '@/lib/db/compat/config';
 import { getApiKey } from '@/lib/provider-helpers';
 import { getTemperatureForModel } from '@/lib/llm-thinking';
 import { getToolConfig } from '@/lib/db/compat/tool-config';
+import { logger } from '@/lib/logger';
 import { buildGenerationPrompt, getDiagramSystemPrompt, DIAGRAM_TEMPLATES } from './templates';
 import { validateMermaidSyntax, sanitizeMermaidCode } from './validator';
+import { MERMAID_INIT_CONFIG } from './mermaid-config';
 import type {
   MermaidDiagramType,
   FlowDirection,
@@ -62,31 +64,77 @@ async function getOpenAIClient(): Promise<OpenAI> {
   });
 }
 
+// ===== Server-Side Parse Validation =====
+
+/**
+ * Lazily-imported mermaid parse() for server-side syntax validation.
+ *
+ * Phase 2: the validator.ts regex checks catch structural issues, but only
+ * the real mermaid parser catches syntax errors the regex misses (e.g. a
+ * mis-placed `end`, a bad `align` directive order). We call parse() after
+ * sanitize + validateMermaidSyntax so the repair loop gets the most
+ * actionable error message possible.
+ *
+ * parse() is async in v11 and THROWS on invalid syntax (returns a
+ * ParseResult on success). We never need the return value here — only the
+ * throw/no-throw signal.
+ */
+let mermaidParseModule: typeof import('mermaid') | null = null;
+async function getMermaidParse() {
+  if (!mermaidParseModule) {
+    const mod = await import('mermaid');
+    // Initialize once with the shared config so parse uses the same rules
+    // as the client + Playwright renderer.
+    mod.default.initialize(MERMAID_INIT_CONFIG);
+    mermaidParseModule = mod;
+  }
+  return mermaidParseModule;
+}
+
+/**
+ * Validate mermaid code with the real parser. Returns null on success or
+ * the error message on failure.
+ */
+async function parseValidate(code: string): Promise<string | null> {
+  try {
+    const mermaid = await getMermaidParse();
+    await mermaid.default.parse(code);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : 'Mermaid parse validation failed';
+  }
+}
+
 // ===== Retry Guidance =====
 
 /**
- * Build retry-specific prompt guidance based on attempt number.
- * Progressive strategy: later attempts request simpler, more conservative output.
+ * Build retry-specific prompt guidance.
+ *
+ * Phase 2 strategy: TARGETED repair, NOT progressive simplification. Every
+ * attempt asks the LLM to fix the specific error and keep the same structure.
+ * Progressive degradation (≤8 nodes → minimal example) was removed because it
+ * discarded diagram intent on retries that could have succeeded with a one-line
+ * fix. The last attempt (retryCount === maxRetries) is the only one that asks
+ * for a simplified fallback, preserving a safety net without degrading early.
  */
-function buildRetryGuidance(attempt: number, lastError: string): string {
+function buildRetryGuidance(attempt: number, lastError: string, maxRetries: number): string {
   const base = `\n\nPrevious attempt failed with: ${lastError}`;
 
-  if (attempt === 1) {
-    return base + '\nFix the specific error above and try again. Keep the same structure.';
-  }
-  if (attempt === 2) {
+  // Final attempt: simplified safety net so we return SOMETHING valid.
+  if (attempt >= maxRetries) {
     return (
       base +
-      '\nSimplify the diagram — reduce to 8 or fewer nodes/elements. ' +
-      'Remove optional labels, notes, and complex nesting. Fix the error above.'
+      '\nThis is the final retry. If you cannot fix the specific error while keeping the structure, ' +
+      'produce the simplest possible valid diagram for the request using the example format shown above. ' +
+      'Do not add extra nodes, labels, or styling beyond what is strictly required.'
     );
   }
-  // attempt >= 3: last resort — use the example exactly
+
+  // All non-final attempts: targeted fix, preserve structure.
   return (
     base +
-    '\nUse the minimal example format shown above as a template. ' +
-    'Produce the simplest possible valid diagram for the request. ' +
-    'Do not add extra nodes, labels, or styling.'
+    '\nFix the specific error above and try again. Keep the same structure and node count — ' +
+    'do not simplify or remove nodes unless the error directly requires it.'
   );
 }
 
@@ -126,12 +174,13 @@ export async function generateMermaidDiagram(
   let lastError: string | undefined;
   let retryCount = 0;
 
-  // Retry loop with progressive simplification
+  // Retry loop — targeted repair (Phase 2). maxRetries stays at 3 (4 total
+  // attempts). Reducing it would lower the >95% success-rate target.
   while (retryCount <= config.maxRetries) {
     try {
       const userContent =
         lastError
-          ? user + buildRetryGuidance(retryCount, lastError)
+          ? user + buildRetryGuidance(retryCount, lastError, config.maxRetries)
           : user;
 
       const response = await client.chat.completions.create({
@@ -159,7 +208,9 @@ export async function generateMermaidDiagram(
         console.log(`[DiagramGen] Attempt ${retryCount + 1} code:`, code);
       }
 
-      // Validate if enabled
+      // Validate if enabled: regex/structural checks first, then the real
+      // mermaid parser. The parse error is more actionable for the LLM repair
+      // loop, so we prefer it when both fire.
       if (config.validateSyntax) {
         const validation = validateMermaidSyntax(code, diagramType);
 
@@ -173,9 +224,32 @@ export async function generateMermaidDiagram(
           retryCount++;
           continue;
         }
+
+        // Phase 2: real parser check — catches syntax errors the regex misses.
+        const parseError = await parseValidate(code);
+        if (parseError) {
+          lastError = parseError;
+          // Phase 7 telemetry — track parse failures (info level, production-default).
+          logger.info('[DiagramGen] mermaid.parse() failed', {
+            diagramType,
+            attempt: retryCount + 1,
+            error: parseError.substring(0, 200),
+          });
+
+          if (config.debugMode) {
+            console.log('[DiagramGen] mermaid.parse() failed:', parseError);
+          }
+
+          retryCount++;
+          continue;
+        }
       }
 
       // Success
+      if (retryCount > 0) {
+        // Phase 7 telemetry — repair loop invocations that succeeded.
+        logger.info('[DiagramGen] repaired after retries', { diagramType, retryCount });
+      }
       return {
         success: true,
         code,
@@ -193,6 +267,12 @@ export async function generateMermaidDiagram(
   }
 
   // All retries exhausted
+  // Phase 7 telemetry — generation failure after all attempts.
+  logger.warn('[DiagramGen] generation failed after all retries', {
+    diagramType,
+    attempts: retryCount,
+    lastError: lastError?.substring(0, 200),
+  });
   return {
     success: false,
     retryCount,

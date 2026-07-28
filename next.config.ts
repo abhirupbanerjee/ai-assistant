@@ -110,6 +110,11 @@ const nextConfig: NextConfig = {
     // ("Cannot find package 'file-type' imported from .next/server/chunks/...").
     'officeparser',
     'file-type',
+    // diagram-gen generator.ts dynamically imports mermaid server-side for
+    // mermaid.parse() pre-validation in the repair loop. Mermaid is ESM and
+    // pulls in cytoscape/dagre/elkjs — without externalization the standalone
+    // Docker build fails to resolve these from the bundled server chunk.
+    'mermaid',
   ],
   // Body size limit for large file uploads (backup restore, document uploads)
   experimental: {

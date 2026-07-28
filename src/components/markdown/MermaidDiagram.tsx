@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState, useId, useMemo } from 'react';
 import { Download, ZoomIn, ZoomOut, RotateCcw, FileText } from 'lucide-react';
 import { sanitizeMermaidCode } from '@/lib/diagram-gen/sanitize';
+import { MERMAID_INIT_CONFIG } from '@/lib/diagram-gen/mermaid-config';
 
 interface MermaidDiagramProps {
   /** The Mermaid diagram code */
@@ -35,23 +36,10 @@ let mermaidPromise: Promise<typeof import('mermaid')> | null = null;
 async function loadMermaid() {
   if (!mermaidPromise) {
     mermaidPromise = import('mermaid').then((m) => {
-      // Initialize mermaid with custom config
-      m.default.initialize({
-        startOnLoad: false,
-        theme: 'default',
-        securityLevel: 'loose',
-        suppressErrorRendering: true, // Prevent error divs from being injected into DOM
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        mindmap: {
-          useMaxWidth: true,
-          padding: 16,
-        },
-        flowchart: {
-          useMaxWidth: true,
-          htmlLabels: true,
-          curve: 'basis',
-        },
-      });
+      // Initialize mermaid with the shared config (single source of truth —
+      // also used by the docgen server-renderer and the docgen client script).
+      // See src/lib/diagram-gen/mermaid-config.ts.
+      m.default.initialize(MERMAID_INIT_CONFIG);
       return m;
     });
   }
@@ -338,13 +326,59 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
       setIsLoading(true);
       setError(null);
 
+      // The sanitized code is reused by both the client render and the
+      // server-side fallback endpoint, so compute it once.
+      const cleanCode = sanitizeMermaidCode(code);
+
+      // Phase 3: server-side fallback via the internal Playwright endpoint.
+      // Air-gap safe — NO external egress. Reused when client-side render or
+      // parse fails. Returns the SVG string or null.
+      async function serverRenderFallback(): Promise<string | null> {
+        try {
+          const res = await fetch('/api/diagram/render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: cleanCode }),
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          return typeof data.svg === 'string' ? data.svg : null;
+        } catch {
+          return null;
+        }
+      }
+
       try {
         const mermaid = await loadMermaid();
 
         if (!mounted) return;
 
-        // Clean and sanitize the code to fix common LLM-generated syntax issues
-        const cleanCode = sanitizeMermaidCode(code);
+        // Pre-validate with mermaid.parse() before render.
+        // parse() is async in v11 and throws on invalid syntax; on success
+        // it returns a ParseResult. We only need to catch the throw.
+        // On parse failure, try the server-side Playwright fallback (it uses
+        // the same mermaid version + config and may succeed where the client
+        // parser is stricter) before surfacing the error.
+        try {
+          await mermaid.default.parse(cleanCode);
+        } catch (parseErr) {
+          if (!mounted) return;
+          const parseMsg = parseErr instanceof Error
+            ? parseErr.message
+            : 'Mermaid syntax validation failed';
+          console.error('Mermaid parse error:', parseMsg);
+
+          // Try server-side render before giving up — the Playwright renderer
+          // uses the same mermaid build and may tolerate the syntax.
+          const serverSvg = await serverRenderFallback();
+          if (!mounted) return;
+          if (serverSvg) {
+            setSvgContent(serverSvg);
+            return;
+          }
+          setError(`Syntax error: ${parseMsg}`);
+          return;
+        }
 
         // Generate unique ID for this render
         const diagramId = `mermaid-${uniqueId}-${Date.now()}`;
@@ -359,6 +393,15 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
         if (!mounted) return;
 
         console.error('Mermaid rendering error:', err);
+
+        // Phase 3: client render failed — try the internal Playwright endpoint.
+        const serverSvg = await serverRenderFallback();
+        if (!mounted) return;
+        if (serverSvg) {
+          setSvgContent(serverSvg);
+          return;
+        }
+
         setError(err instanceof Error ? err.message : 'Failed to render diagram');
       } finally {
         if (mounted) {
