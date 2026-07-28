@@ -117,10 +117,6 @@ function isGeminiModelId(modelId: string): boolean {
   return modelId.startsWith('gemini-') || modelId.startsWith('gemini/');
 }
 
-function isFireworksModelId(modelId: string): boolean {
-  return modelId.startsWith('fireworks/');
-}
-
 async function getThinkingCompletionParams(
   model: string,
   requestedMax: number,
@@ -133,11 +129,11 @@ async function getThinkingCompletionParams(
   });
   if (!profile.enabled) {
     // Non-thinking models: keep the requested budget as-is (no reasoning
-    // headroom needed). Fireworks non-streaming caps at 4096 regardless.
-    const cap = isFireworksModelId(model) ? FIREWORKS_NONSTREAMING_MAX_TOKENS : Infinity;
+    // headroom needed). callFireworks streams when maxTokens > 4096
+    // (mirroring generateFireworks), so no transport cap is needed here.
     return {
       requestParams: {},
-      maxTokens: Math.min(requestedMax, cap),
+      maxTokens: requestedMax,
       enabled: false,
     };
   }
@@ -146,10 +142,12 @@ async function getThinkingCompletionParams(
   const isAdaptive = isClaudeAdaptiveThinkingModel(model);
   const isClaudeLegacy = isClaudeModelId(model) && !isAdaptive;
   const isGemini = isGeminiModelId(model);
-  const isFireworks = isFireworksModelId(model);
-  // Fireworks non-streaming transport caps max_tokens at 4096 regardless of the
-  // model's native output limit. Apply this guard to all branches below.
-  const transportCap = isFireworks ? FIREWORKS_NONSTREAMING_MAX_TOKENS : outputCeiling;
+  // callFireworks now streams when maxTokens > 4096 (mirroring
+  // generateFireworks in llm-router.ts:478), so the real ceiling is the
+  // model's native output limit (max_output_tokens from DB), not the 4096
+  // non-streaming transport cap. Use outputCeiling for all providers so the
+  // reasoning budget formula has positive headroom on every retry.
+  const transportCap = outputCeiling;
 
   // --- Separate-budget providers (Anthropic legacy, Gemini) ---
   // max_tokens is visible-only; the thinking budget is a separate parameter.
@@ -288,9 +286,42 @@ async function callFireworks(model: string, opts: InternalCompletionOptions): Pr
     ? `accounts/fireworks/models/${model.slice('fireworks/'.length)}`
     : model;
   // Thinking models (DeepSeek/Kimi hosted on Fireworks) need reasoning headroom.
-  // Non-thinking models keep the 4096 cap (Fireworks non-streaming rejects >4096).
+  // getThinkingCompletionParams now uses the model's DB-driven output ceiling
+  // (not the 4096 non-streaming cap) so retry escalation has positive headroom.
   const { requestParams, maxTokens, enabled } = await getThinkingCompletionParams(model, opts.maxTokens ?? 2000);
   const baseTemp = opts.temperature ?? 0.3;
+
+  // Fireworks requires stream=true for max_tokens > 4096 (non-streaming
+  // rejects larger values with an empty response). Mirror generateFireworks
+  // in llm-router.ts:478. Streaming unlocks the model's real output limit
+  // (up to 16384) and makes Phase 5's retry escalation actually work.
+  if (maxTokens > FIREWORKS_NONSTREAMING_MAX_TOKENS) {
+    const stream = await client.chat.completions.create({
+      model: fireworksModel,
+      messages: opts.messages,
+      temperature: getTemperatureForModel(model, baseTemp),
+      max_tokens: maxTokens,
+      ...requestParams,
+      stream: true,
+      stream_options: { include_usage: true },
+    } as OpenAI.Chat.ChatCompletionCreateParamsStreaming);
+
+    let content = '';
+    let totalTokens = 0;
+    for await (const chunk of stream) {
+      content += chunk.choices[0]?.delta?.content || '';
+      if (chunk.usage) totalTokens = chunk.usage.total_tokens;
+    }
+    emitUsage(opts, { total_tokens: totalTokens } as OpenAI.CompletionUsage, model);
+    const visible = stripThinkTags(content.trim());
+    if (visible) return visible;
+    if (enabled) {
+      logEmptyThinkingResponse('Fireworks', fireworksModel, maxTokens, 0);
+    }
+    return '';
+  }
+
+  // Non-streaming path (maxTokens <= 4096) — unchanged
   const response = await client.chat.completions.create({
     model: fireworksModel,
     messages: opts.messages,

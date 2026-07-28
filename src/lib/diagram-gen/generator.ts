@@ -12,7 +12,7 @@ import { getToolConfig } from '@/lib/db/compat/tool-config';
 import { logger } from '@/lib/logger';
 import { buildGenerationPrompt, getDiagramSystemPrompt, DIAGRAM_TEMPLATES } from './templates';
 import { validateMermaidSyntax, sanitizeMermaidCode } from './validator';
-import { MERMAID_INIT_CONFIG } from './mermaid-config';
+import { MERMAID_PARSE_CONFIG } from './mermaid-config';
 import type {
   MermaidDiagramType,
   FlowDirection,
@@ -74,9 +74,14 @@ let mermaidParseModule: typeof import('mermaid') | null = null;
 async function getMermaidParse() {
   if (!mermaidParseModule) {
     const mod = await import('mermaid');
-    // Initialize once with the shared config so parse uses the same rules
-    // as the client + Playwright renderer.
-    mod.default.initialize(MERMAID_INIT_CONFIG);
+    // Initialize once with the server-side parse config (securityLevel:
+    // 'strict') so parse() does not invoke DOMPurify.sanitize(), which is
+    // unavailable in the Node standalone server build and crashes parse()
+    // with "DOMPurify.sanitize is not a function". Parse validation only
+    // checks syntax — it does not render into the DOM — so 'strict' is
+    // sufficient. The client + Playwright renderer keep 'loose' for HTML
+    // labels where DOMPurify is available.
+    mod.default.initialize(MERMAID_PARSE_CONFIG);
     mermaidParseModule = mod;
   }
   return mermaidParseModule;
@@ -92,7 +97,17 @@ async function parseValidate(code: string): Promise<string | null> {
     await mermaid.default.parse(code);
     return null;
   } catch (err) {
-    return err instanceof Error ? err.message : 'Mermaid parse validation failed';
+    const msg = err instanceof Error ? err.message : 'Mermaid parse validation failed';
+    // Environment errors (DOMPurify, jsdom, etc.) are not syntax errors.
+    // Skip parse validation rather than falsely rejecting valid code.
+    // validateMermaidSyntax (regex) already ran before this and caught
+    // structural errors; a false positive from a broken parse call is worse
+    // than skipping it.
+    if (/DOMPurify|sanitize is not a function|jsdom|is not defined/i.test(msg)) {
+      logger.warn('[DiagramGen] parseValidate skipped — environment error', { error: msg.substring(0, 200) });
+      return null;
+    }
+    return msg;
   }
 }
 

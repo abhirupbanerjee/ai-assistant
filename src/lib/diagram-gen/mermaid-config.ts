@@ -44,6 +44,24 @@ export const MERMAID_INIT_CONFIG = {
 };
 
 /**
+ * Server-side parse-only config.
+ *
+ * `securityLevel: 'strict'` disables DOMPurify.sanitize(), which is unavailable
+ * in the Node standalone server build. Parse validation only checks syntax — it
+ * does not render into the DOM — so 'strict' is sufficient and avoids the
+ * "DOMPurify.sanitize is not a function" crash that falsely rejects valid
+ * mermaid code in production.
+ *
+ * The client (MermaidDiagram.tsx) and Playwright renderer (server-renderer.ts)
+ * keep `securityLevel: 'loose'` for HTML label rendering, where DOMPurify is
+ * available (browser global or full jsdom environment).
+ */
+export const MERMAID_PARSE_CONFIG = {
+  ...MERMAID_INIT_CONFIG,
+  securityLevel: 'strict' as const,
+};
+
+/**
  * Serialize the config to JSON for embedding in string-injected browser scripts
  * (e.g. the docgen HTML client at src/lib/docgen/html/client/index.ts, where the
  * config must be a literal string, not an imported object).

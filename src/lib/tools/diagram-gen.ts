@@ -161,7 +161,12 @@ async function executeDiagramGen(args: DiagramGenToolArgs): Promise<string> {
     const response: DiagramGenResponse = {
       success: false,
       message: result.error?.message ||
-        'Diagram generation failed. Describe this using formatted text, a bullet-point outline, or ASCII art instead.',
+        'Diagram generation failed. FALLBACK INSTRUCTIONS (follow in order): ' +
+        '(1) Call html_gen with a ```mermaid code block containing the diagram — ' +
+        'it renders client-side and bypasses the server-side parser issue. ' +
+        '(2) If html_gen also fails, output the diagram as ASCII art or a ' +
+        'structured text outline directly in your response. ' +
+        'Do NOT call image_gen as a substitute for a diagram.',
       error: result.error,
     };
     return JSON.stringify(response);
