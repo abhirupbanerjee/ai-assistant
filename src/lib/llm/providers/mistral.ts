@@ -71,6 +71,8 @@ export async function callMistralChat(
   options?: {
     temperature?: number;
     maxTokens?: number;
+    /** Thinking request params (e.g. reasoning_effort) for Magistral/reasoning models. */
+    thinkingParams?: Record<string, unknown>;
   }
 ): Promise<{ content: string; totalTokens: number }> {
   const client = await getMistralClient();
@@ -81,6 +83,7 @@ export async function callMistralChat(
     messages: messages as any,
     temperature: options?.temperature,
     maxTokens: options?.maxTokens,
+    ...(options?.thinkingParams ?? {}),
   } as any);
 
   const messageContent = response.choices?.[0]?.message?.content;

@@ -103,6 +103,8 @@ export async function callOpenAIChat(
     responseSchema?: object;
     responseFormat?: { type: 'json_object' | 'text' } | { type: 'json_schema'; json_schema: { name: string; schema: object; strict?: boolean } };
     systemPrompt?: string;
+    /** Reasoning effort for GPT-5/o-series thinking models ('low'|'medium'|'high'|'max'). */
+    reasoningEffort?: string;
   },
 ): Promise<OpenAIChatResult> {
   const client = await getOpenAIDirectClient();
@@ -128,6 +130,7 @@ export async function callOpenAIChat(
     messages: requestMessages,
     ...(options?.temperature !== undefined && { temperature: options.temperature }),
     ...maxTokensParam,
+    ...(options?.reasoningEffort && { reasoning_effort: options.reasoningEffort }),
   };
 
   // Native OpenAI structured output support

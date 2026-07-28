@@ -1214,6 +1214,61 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured force_swarm_role_allowlist table + default rows exist (Phase 1)');
 
+  // Seed max_output_tokens for known models where it is NULL. Admin-edited values
+  // are preserved (WHERE max_output_tokens IS NULL). The per-model CASE values
+  // mirror the nativeProviderSpecs/fireworksSpecs seed blocks above so the two
+  // never disagree. Output limits vary widely WITHIN a provider family
+  // (Mistral 3K–16K, Kimi 16K–131K, MiniMax 16K–32K, Claude 8K–128K), so
+  // broad provider-prefix caps would silently over- or under-allocate the
+  // reasoning budget — per-model matching is required.
+  await sql`
+    UPDATE enabled_models SET max_output_tokens = CASE
+      -- Claude adaptive-thinking (Sonnet 5, Opus 5/4.6+, Fable 5): 128K
+      WHEN id LIKE 'claude-sonnet-5%' OR id LIKE 'anthropic/claude-sonnet-5%'
+        OR id LIKE 'claude-opus-5%' OR id LIKE 'anthropic/claude-opus-5%'
+        OR id LIKE 'claude-fable-5%' OR id LIKE 'anthropic/claude-fable-5%'
+        OR id LIKE 'claude-opus-4-6%' OR id LIKE 'anthropic/claude-opus-4-6%' THEN 128000
+      -- Claude Sonnet 4.6: 32K
+      WHEN id LIKE 'claude-sonnet-4-6%' OR id LIKE 'anthropic/claude-sonnet-4-6%' THEN 32000
+      -- Legacy Claude (3.5, 4 base, Haiku): 8K
+      WHEN id LIKE 'claude%' OR id LIKE 'anthropic/claude%' THEN 8192
+      -- OpenAI GPT-5.x (5, 5.4, 5.5, 5.6 Sol/Terra/Luna): 128K
+      WHEN id LIKE 'gpt-5%' OR id LIKE 'openai/gpt-5%' THEN 128000
+      -- GPT-4.1: 32K
+      WHEN id LIKE 'gpt-4.1%' OR id LIKE 'openai/gpt-4.1%' THEN 32768
+      -- GPT-4o: 16K
+      WHEN id LIKE 'gpt-4o%' OR id LIKE 'openai/gpt-4o%' THEN 16384
+      -- Gemini 2.5 / 3.x: 65K; legacy Gemini: 8K
+      WHEN id LIKE 'gemini-3%' OR id LIKE 'gemini-2.5%' THEN 65536
+      WHEN id LIKE 'gemini%' THEN 8192
+      -- Mistral (output varies by tier: large=16K, medium=8K, small=3K)
+      WHEN id LIKE 'mistral-large%' THEN 16000
+      WHEN id LIKE 'mistral-medium-3.5%' THEN 16000
+      WHEN id LIKE 'mistral-medium%' THEN 8000
+      WHEN id LIKE 'mistral-small%' THEN 3000
+      WHEN id LIKE 'mistral%' THEN 8000
+      -- Kimi K3: 131072 (caps at 1M); K2.x: 16K; K2.7-code: 16384
+      WHEN id LIKE 'moonshot/kimi-k3%' OR id LIKE 'kimi-k3%' THEN 131072
+      WHEN id LIKE 'moonshot/kimi-k2.7-code%' OR id LIKE 'fireworks/kimi-k2p7-code%' THEN 16384
+      WHEN id LIKE 'moonshot/kimi-k2%' OR id LIKE 'fireworks/kimi-k2%'
+        OR id LIKE 'kimi-k2%' THEN 16000
+      -- MiniMax M3: 32K; M2.x: 16K
+      WHEN id LIKE 'fireworks/minimax-m3%' OR id LIKE 'minimax-m3%' THEN 32768
+      WHEN id LIKE 'fireworks/minimax-m2%' OR id LIKE 'minimax-m2%' THEN 16384
+      -- DeepSeek V4 (flash/pro): 16K
+      WHEN id LIKE 'deepseek-v4%' OR id LIKE 'fireworks/deepseek-v4%'
+        OR id LIKE 'deepseek/deepseek-v4%' THEN 16384
+      WHEN id LIKE 'deepseek%' THEN 8000
+      -- Fireworks hosted (glm, qwen3p7, gpt-oss, nemotron): 16K common cap
+      WHEN id LIKE 'fireworks/%' THEN 16384
+      -- Ollama (local, small models): 8K
+      WHEN id LIKE 'ollama%' THEN 8000
+      ELSE 16000
+    END
+    WHERE max_output_tokens IS NULL
+  `.execute(database);
+  console.log('[Kysely] Seeded max_output_tokens for known models (NULL rows only)');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

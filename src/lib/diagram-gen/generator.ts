@@ -163,6 +163,12 @@ export async function generateMermaidDiagram(
 
   let lastError: string | undefined;
   let retryCount = 0;
+  // Retry-budget escalation: when the model returns an empty response (reasoning
+  // exhausted the token budget), double the requested maxTokens for the next
+  // attempt. getThinkingCompletionParams() scales the reasoning budget from the
+  // requested max and caps it at the model's output ceiling, so this can't run
+  // away — it just gives the model more room to think on the next try.
+  let reasoningBudgetMultiplier = 1.0;
 
   // Retry loop — targeted repair (Phase 2). maxRetries stays at 3 (4 total
   // attempts). Reducing it would lower the >95% success-rate target.
@@ -176,7 +182,7 @@ export async function generateMermaidDiagram(
       const rawCode = await createInternalCompletion({
         model,
         temperature: getTemperatureForModel(model, config.temperature),
-        maxTokens: config.maxTokens,
+        maxTokens: Math.round(config.maxTokens * reasoningBudgetMultiplier),
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: userContent },
@@ -185,6 +191,8 @@ export async function generateMermaidDiagram(
 
       if (!rawCode) {
         lastError = 'Empty response from LLM';
+        // Likely reasoning exhaustion — escalate the budget for the next attempt.
+        reasoningBudgetMultiplier *= 2;
         retryCount++;
         continue;
       }

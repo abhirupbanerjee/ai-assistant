@@ -865,6 +865,75 @@ export async function getModelContextLimit(modelId: string): Promise<number> {
   return 128_000; // OpenAI-safe default
 }
 
+/**
+ * Get the max OUTPUT token limit for a model from the enabled_models DB table.
+ * Falls back to provider-prefix heuristics (verified July 2026 specs) when the
+ * DB row is missing or max_output_tokens is NULL.
+ *
+ * Used by getThinkingCompletionParams() in llm-client.ts to cap max_tokens to
+ * the model's real output ceiling instead of a hardcoded 8192.
+ */
+export async function getModelOutputLimit(modelId: string): Promise<number> {
+  const { getEnabledModel } = await import('../db/compat/enabled-models');
+  const model = await getEnabledModel(modelId);
+  if (model?.maxOutputTokens) {
+    return model.maxOutputTokens;
+  }
+  // Granular fallback by model family — values mirror the DB seed in
+  // kysely.ts (nativeProviderSpecs + fireworksSpecs). These only fire when the
+  // DB row is missing or max_output_tokens is NULL. Output limits vary widely
+  // WITHIN a provider family (Mistral 3K–16K, Kimi 16K–131K, MiniMax 16K–32K),
+  // so per-model matching is required — a broad provider-prefix cap would
+  // silently over- or under-allocate the reasoning budget.
+  const id = modelId.toLowerCase();
+  // --- Claude (Anthropic) ---
+  // Adaptive-thinking models (Sonnet 5, Opus 5/4.6+, Fable 5): 128K output.
+  if (id.startsWith('claude-sonnet-5') || id.includes('/claude-sonnet-5')) return 128_000;
+  if (id.startsWith('claude-opus-5') || id.includes('/claude-opus-5')) return 128_000;
+  if (id.startsWith('claude-fable-5') || id.includes('/claude-fable-5')) return 128_000;
+  if (id.startsWith('claude-opus-4-6') || id.includes('/claude-opus-4-6')) return 64_000;
+  if (id.startsWith('claude-sonnet-4-6') || id.includes('/claude-sonnet-4-6')) return 32_000;
+  // Legacy Claude 3.5 / 4 base: 8192
+  if (id.startsWith('claude') || id.startsWith('anthropic/claude')) return 8_192;
+  // --- OpenAI GPT ---
+  if (id.startsWith('gpt-5.6') || id.startsWith('openai/gpt-5.6')) return 128_000;
+  if (id.startsWith('gpt-5.5') || id.startsWith('openai/gpt-5.5')) return 128_000;
+  if (id.startsWith('gpt-5.4') || id.startsWith('openai/gpt-5.4')) return 128_000;
+  if (id.startsWith('gpt-5') || id.startsWith('openai/gpt-5')) return 128_000;
+  if (id.startsWith('gpt-4.1') || id.startsWith('openai/gpt-4.1')) return 32_768;
+  if (id.startsWith('gpt-4o') || id.startsWith('openai/gpt-4o')) return 16_384;
+  if (id.startsWith('gpt-4') || id.startsWith('openai/gpt-4')) return 16_384;
+  // --- Gemini ---
+  if (id.startsWith('gemini-3') || id.startsWith('gemini/3')) return 65_536;
+  if (id.startsWith('gemini-2.5') || id.startsWith('gemini/2.5')) return 65_536;
+  if (id.startsWith('gemini')) return 8_192; // legacy Gemini 1.x/2.0
+  // --- Mistral (output varies 3K–16K by tier) ---
+  if (id.startsWith('mistral-large') || id.startsWith('mistral/mistral-large')) return 16_000;
+  if (id.startsWith('mistral-medium-3.5') || id.startsWith('mistral/mistral-medium-3.5')) return 16_000;
+  if (id.startsWith('mistral-medium') || id.startsWith('mistral/mistral-medium')) return 8_000;
+  if (id.startsWith('mistral-small') || id.startsWith('mistral/mistral-small')) return 3_000;
+  if (id.startsWith('codestral')) return 8_000;
+  // --- Moonshot / Kimi ---
+  // K3: 131072 default (caps at 1M). K2.x: 16000. K2.7-code: 16384.
+  if (id.startsWith('moonshot/kimi-k3') || id.startsWith('kimi-k3')) return 131_072;
+  if (id.includes('kimi-k2.7-code')) return 16_384;
+  if (id.includes('kimi-k2p7-code')) return 16_384;
+  if (id.startsWith('moonshot/kimi-k2') || id.startsWith('kimi-k2')) return 16_000;
+  if (id.startsWith('moonshot/')) return 16_000;
+  // --- MiniMax ---
+  if (id.includes('minimax-m3')) return 32_768;
+  if (id.includes('minimax-m2')) return 16_384;
+  if (id.startsWith('minimax')) return 16_384;
+  // --- DeepSeek ---
+  if (id.startsWith('deepseek-v4') || id.includes('/deepseek-v4')) return 16_384;
+  if (id.startsWith('deepseek')) return 8_000;
+  // --- Fireworks (hosted models — limit varies by model, 16K is the common cap) ---
+  if (id.startsWith('fireworks/')) return 16_384;
+  // --- Ollama (local — small models, 4K–8K typical) ---
+  if (id.startsWith('ollama')) return 8_000;
+  return 16_000; // conservative default
+}
+
 export function estimateTokens(text: string): number {
   // Rough estimate: 1 token ≈ 4 characters
   return Math.ceil(text.length / 4);

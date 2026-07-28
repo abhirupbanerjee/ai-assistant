@@ -268,6 +268,8 @@ export async function callGeminiChat(
     maxTokens?: number;
     responseSchema?: object;
     systemPrompt?: string;
+    /** Thinking config for Gemini 2.5 reasoning models. thinkingBudget: -1 = auto. */
+    thinkingConfig?: { thinkingBudget?: number; thinkingLevel?: string };
   },
 ): Promise<GeminiChatResult> {
   const client = await getGeminiClient();
@@ -286,6 +288,11 @@ export async function callGeminiChat(
 
   if (options?.responseSchema) {
     config.responseSchema = options.responseSchema;
+  }
+
+  // Gemini 2.5 thinking models: enable thinking with auto budget.
+  if (options?.thinkingConfig) {
+    config.thinkingConfig = options.thinkingConfig;
   }
 
   const response = await client.models.generateContent({
