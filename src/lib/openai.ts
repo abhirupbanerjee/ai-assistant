@@ -2037,9 +2037,13 @@ export async function generateResponseWithTools(
     logger.info('Downgraded tool_choice for model without forced-tool support', { model: effectiveModel, original: originalToolChoice });
   }
 
-  // Inject request_clarification meta-tool when preflight skill is active.
-  // Skipped for Ollama: small models struggle with meta-tools and context is already tight.
-  if (enableClarification && modelSupportsTools && !isOllama) {
+  // Inject request_clarification meta-tool when preflight skill is active OR
+  // when any kb_* tool is present (kb_read AMBIGUOUS confidence relies on it to
+  // ask the user which document they meant). Skipped for Ollama: small models
+  // struggle with meta-tools and context is already tight — kb_read degrades
+  // gracefully by returning candidates + a plain-text ask hint instead.
+  const hasKbTool = Boolean(tools?.some(t => t.function?.name?.startsWith('kb_')));
+  if ((enableClarification || hasKbTool) && modelSupportsTools && !isOllama) {
     tools = [...(tools || []), REQUEST_CLARIFICATION_TOOL];
   }
 

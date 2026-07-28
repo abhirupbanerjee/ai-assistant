@@ -1140,7 +1140,7 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       ('tpl-planner',    'Planner (template)',    'planner',    NULL, NULL, 'You are a Planner. Decompose the user''s goal into a DAG of subtasks and assign each subtask to the best-suited executor/researcher agent. Output the plan as structured JSON.', '[]', '{"max_subtasks": 12, "allow_parallel": true}'::jsonb, TRUE),
       ('tpl-executor',   'Executor (template)',   'executor',   NULL, NULL, 'You are an Executor. Complete the assigned subtask using the tools in your allowlist. Return an artifact, a confidence score (0-1), and a suggested_next action.', '[]', '{"max_retries": 2}'::jsonb, TRUE),
       ('tpl-critic',     'Critic (template)',     'critic',     NULL, NULL, 'You are a Critic. Review the executor artifact against the subtask criteria. Approve, or loop back with specific failure reasons. Never approve low-confidence artifacts without justification.', '[]', '{"min_confidence": 0.6}'::jsonb, TRUE),
-      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary","kb_read"]', '{}'::jsonb, TRUE),
+      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary","kb_search","kb_read"]', '{}'::jsonb, TRUE),
       ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '[]', '{}'::jsonb, TRUE)
     ON CONFLICT (id) DO NOTHING
   `.execute(database);
@@ -1159,6 +1159,36 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       AND NOT (tool_allowlist @> '["kb_read"]'::jsonb)
   `.execute(database);
   console.log('[Kysely] Ensured kb_read in tool_allowlist for agents with kb_summary');
+
+  // Migration: Append kb_search to the tool_allowlist of any agent that already
+  // has kb_read but is missing kb_search. Idempotent. Completes the kb_* ladder
+  // (kb_summary → kb_search → kb_read) for the Researcher agent and any
+  // executor/researcher with KB access.
+  await sql`
+    UPDATE agent
+    SET tool_allowlist = tool_allowlist || '["kb_search"]'::jsonb
+    WHERE tool_allowlist IS NOT NULL
+      AND tool_allowlist @> '["kb_read"]'::jsonb
+      AND NOT (tool_allowlist @> '["kb_search"]'::jsonb)
+  `.execute(database);
+  console.log('[Kysely] Ensured kb_search in tool_allowlist for agents with kb_read');
+
+  // Seed suggested (not forced) tool-routing rules for common KB-intent keywords.
+  // force_mode='suggested' → determineToolChoice returns 'auto', so the model is
+  // free to call the tool but is not forced (avoids forced-tool incompatibility
+  // across Anthropic/Fireworks/Gemini/thinking models). Idempotent via
+  // ON CONFLICT (id) DO NOTHING with deterministic seed ids. Admins can edit or
+  // delete these from the Tool Routing admin UI like any other rule.
+  await sql`
+    INSERT INTO tool_routing_rules (id, tool_name, rule_name, rule_type, patterns, force_mode, priority, category_ids, is_active, created_by, updated_by)
+    VALUES
+      ('seed-kb-search-rfp',    'kb_search',  'RFP/RFQ/proposal/tender/contract intent', 'keyword', '["rfp","rfq","proposal","tender","contract"]', 'suggested', 90, NULL, 1, 'system', 'system'),
+      ('seed-kb-search-review', 'kb_search',  'Review a report/document/file',            'keyword', '["review"]',                                   'suggested', 95, NULL, 1, 'system', 'system'),
+      ('seed-kb-summary-policy','kb_summary', 'Policy/manual/handbook/guideline intent',  'keyword', '["policy","manual","handbook","guideline"]',    'suggested', 90, NULL, 1, 'system', 'system'),
+      ('seed-kb-summary-summ',  'kb_summary', 'Summarise a report/document/file',         'keyword', '["summarise","summarize"]',                     'suggested', 95, NULL, 1, 'system', 'system')
+    ON CONFLICT (id) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Seeded suggested kb_* tool-routing rules (idempotent)');
 
   // model registry — capability tier column (swarm-eligibility + role assignment)
   // 'unclassified' is the conservative default: swarm-ineligible until an admin assigns a tier.

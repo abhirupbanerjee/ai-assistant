@@ -546,9 +546,29 @@ export async function performRAGRetrieval(
     systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
   }
 
-  // KB summary tool instruction: tell the LLM to use kb_summary when the user
-  // asks about KB contents, even if the search-based context is empty.
-  systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results. If the user references a specific KB document by name (e.g. "review the CMS RFP"), call the kb_read tool with the filename or a partial name to retrieve its content — always prefer kb_read over web_search for documents that exist in the knowledge base.`;
+  // KB tools ladder instruction. Injected when any kb_* tool is available so
+  // the model knows the escalation path: RAG context → kb_summary (inventory)
+  // → kb_search (passages by query) → kb_read (full document by name). Only
+  // fall back to web_search when kb_search and kb_read return nothing relevant.
+  // kb_read returns a confidence field: "high" (content returned), "ambiguous"
+  // (multiple candidates — use request_clarification to ask the user, then
+  // retry with the exact name), or "none" (no match — use kb_summary/kb_search).
+  const hasKbTool = toolDefs.some(t => t.function?.name?.startsWith('kb_'));
+  if (hasKbTool) {
+    systemPrompt = `${systemPrompt}\n\n# Knowledge Base Tools — use before web search
+When the user asks about content that may be in the knowledge base:
+1. First check the RAG context already provided. If it answers the question, respond directly.
+2. If the RAG context is empty or insufficient, call kb_summary to see what documents exist.
+3. If the user refers to a specific document by name, call kb_read with the filename (or a recognizable part of it).
+4. If you need passages on a topic without a filename, call kb_search with a precise query. Check the hasMore flag and call again with a refined query to explore more.
+5. Only fall back to web_search if kb_search and kb_read return nothing relevant.
+You may call kb_search and kb_read multiple times with refined queries. Always prefer kb_read over web_search for documents that exist in the knowledge base.
+kb_read returns a "confidence" field: "high" (content returned — use it), "ambiguous" (multiple candidates returned — call request_clarification with the candidate filenames as options and allowFreeText true, then retry kb_read with the exact name the user picks), or "none" (no match — call kb_summary or kb_search instead). Do NOT say "no documents found" based on the search context alone.`;
+  } else {
+    // No kb_* tools available — keep the legacy kb_summary hint for models that
+    // still have it (kb_summary may be present without kb_search/kb_read).
+    systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results.`;
+  }
 
   // Inject memory context into system prompt
   if (memoryContext?.trim()) {

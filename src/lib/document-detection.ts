@@ -37,6 +37,19 @@ export interface DetectedDocument {
   document: DbDocument;
   /** Which matching strategy succeeded */
   matchStrategy: 'exact' | 'extension_stripped' | 'token_overlap' | 'substring';
+  /**
+   * Overlap ratio for the token_overlap strategy (presentTokens / meaningfulTokens).
+   * Undefined for exact/extension_stripped/substring strategies.
+   * Used by kb_read to grade confidence (HIGH ≥ 0.9, AMBIGUOUS 0.6–0.9).
+   */
+  overlapRatio?: number;
+  /**
+   * Runner-up documents that also matched within the token_overlap band (ratio ≥ 0.6).
+   * Excludes the winning document. Populated only for the token_overlap strategy.
+   * Used by kb_read AMBIGUOUS tier to surface alternatives for HITL clarification.
+   * Each entry includes its own overlapRatio for ranking the candidates.
+   */
+  candidateDocuments?: Array<{ document: DbDocument; overlapRatio: number }>;
 }
 
 /**
@@ -152,7 +165,11 @@ export function detectReferencedDocument(
   // remaining tokens are the meaningful parts — partial overlap on them is a
   // strong signal. When multiple documents match, the highest overlap ratio
   // wins (ties broken by more present tokens, then earlier in the list).
-  let bestMatch: { doc: DbDocument; tokens: string[]; ratio: number; present: number } | null = null;
+  //
+  // All documents within the ≥0.6 band are collected so the caller (kb_read)
+  // can grade confidence and surface runner-ups for HITL clarification when
+  // the match is ambiguous (0.6–0.9 with competing documents).
+  const overlapMatches: Array<{ doc: DbDocument; tokens: string[]; ratio: number; present: number }> = [];
   for (const doc of documents) {
     const tokens = tokenizeFilename(doc.filename);
     // Need at least 2 meaningful tokens to avoid false positives
@@ -166,32 +183,46 @@ export function detectReferencedDocument(
     const overlapRatio = presentTokens.length / tokens.length;
     if (overlapRatio < 0.6) continue;
 
-    if (
-      !bestMatch ||
-      overlapRatio > bestMatch.ratio ||
-      (overlapRatio === bestMatch.ratio && presentTokens.length > bestMatch.present)
-    ) {
-      bestMatch = { doc, tokens, ratio: overlapRatio, present: presentTokens.length };
-    }
+    overlapMatches.push({ doc, tokens, ratio: overlapRatio, present: presentTokens.length });
   }
 
-  if (bestMatch) {
+  if (overlapMatches.length > 0) {
+    // Sort by ratio desc, then present-token count desc, then original order (stable)
+    overlapMatches.sort((a, b) =>
+      b.ratio - a.ratio || b.present - a.present || 0
+    );
+    const bestMatch = overlapMatches[0];
+    // Runner-ups (everything except the winner) become candidates for HITL
+    const candidateDocuments = overlapMatches.slice(1).map(m => ({
+      document: m.doc,
+      overlapRatio: m.ratio,
+    }));
+
     logger.debug('Document detected via token overlap', {
       filename: bestMatch.doc.filename,
       tokens: bestMatch.tokens,
       overlapRatio: bestMatch.ratio,
+      candidateCount: candidateDocuments.length,
     });
-    return { document: bestMatch.doc, matchStrategy: 'token_overlap' };
+    return {
+      document: bestMatch.doc,
+      matchStrategy: 'token_overlap',
+      overlapRatio: bestMatch.ratio,
+      candidateDocuments,
+    };
   }
 
   // Strategy 4: Substring match (extension-stripped filename as substring,
-  // ignoring separators — handles "q3report" matching "Q3_Report")
+  // ignoring separators — handles "q3report" matching "Q3_Report").
+  // Stores the stripped length as overlapRatio so kb_read can grade: a long,
+  // specific substring (≥8 chars) is HIGH confidence; a short one (4–7) is
+  // AMBIGUOUS because it may match multiple documents incidentally.
   for (const doc of documents) {
     const stripped = stripExtension(doc.filename).toLowerCase().replace(/[^a-z0-9]/g, '');
     const messageNoSep = messageNormalized.replace(/[^a-z0-9]/g, '');
     if (stripped.length >= 4 && messageNoSep.includes(stripped)) {
-      logger.debug('Document detected via substring match', { filename: doc.filename });
-      return { document: doc, matchStrategy: 'substring' };
+      logger.debug('Document detected via substring match', { filename: doc.filename, strippedLength: stripped.length });
+      return { document: doc, matchStrategy: 'substring', overlapRatio: stripped.length };
     }
   }
 

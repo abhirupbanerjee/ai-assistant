@@ -23,6 +23,7 @@ import { fileToHtmlTool } from './tools/file-to-html';
 import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
 import { siteGenTool } from './tools/site-gen';
 import { kbSummaryTool } from './tools/kb-summary';
+import { kbSearchTool } from './tools/kb-search';
 import { kbReadTool } from './tools/kb-read';
 import { handoffToCategoryTool } from './tools/handoff-category';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
@@ -211,6 +212,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   // ── Knowledge Base ──
   kb_summary: { ...kbSummaryTool, subagentSafe: true,
     modelRequirements: { requiresToolCalling: true } },
+  kb_search: { ...kbSearchTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
   kb_read: { ...kbReadTool, subagentSafe: true,
     modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
 

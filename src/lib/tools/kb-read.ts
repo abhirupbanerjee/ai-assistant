@@ -19,6 +19,7 @@ import { getRequestContext } from '../request-context';
 import { getDocumentsByCategory, getGlobalDocuments } from '../db/compat';
 import { getCategoriesByIds } from '../db/compat/categories';
 import { detectReferencedDocument, retrieveFullKbDocumentChunks } from '../document-detection';
+import type { DetectedDocument } from '../document-detection';
 import { ragLogger as logger } from '../logger';
 import type { ToolDefinition, ValidationResult } from '../tools';
 
@@ -28,8 +29,42 @@ import type { ToolDefinition, ValidationResult } from '../tools';
  */
 const KB_READ_CHAR_BUDGET = 12000;
 
+/** Confidence band for the detected document, used to decide HITL behavior. */
+type KbReadConfidence = 'high' | 'ambiguous' | 'none';
+
+/**
+ * Thresholds for grading token_overlap matches. A match with ratio ≥ 0.9 is a
+ * near-certain hit (HIGH). 0.6–0.9 is AMBIGUOUS — especially when competing
+ * candidates exist — and should trigger clarification. Substring matches use
+ * the stripped length as the overlapRatio: ≥8 chars is specific (HIGH), <8 is
+ * AMBIGUOUS (may incidentally match several documents).
+ */
+const HIGH_OVERLAP_THRESHOLD = 0.9;
+const SUBSTRING_HIGH_LENGTH = 8;
+
 interface KbReadArgs {
   filename?: string;
+}
+
+/**
+ * Grade the detected document into a confidence tier.
+ * - exact / extension_stripped → HIGH (unambiguous name presence)
+ * - token_overlap ≥ 0.9 → HIGH; 0.6–0.9 → AMBIGUOUS
+ * - substring: length ≥ 8 → HIGH; < 8 → AMBIGUOUS
+ * - no detection → NONE (caller handles null before calling this)
+ */
+export function gradeConfidence(detected: DetectedDocument): KbReadConfidence {
+  switch (detected.matchStrategy) {
+    case 'exact':
+    case 'extension_stripped':
+      return 'high';
+    case 'token_overlap':
+      return (detected.overlapRatio ?? 0) >= HIGH_OVERLAP_THRESHOLD ? 'high' : 'ambiguous';
+    case 'substring':
+      return (detected.overlapRatio ?? 0) >= SUBSTRING_HIGH_LENGTH ? 'high' : 'ambiguous';
+    default:
+      return 'ambiguous';
+  }
 }
 
 /**
@@ -82,11 +117,40 @@ async function executeKbRead(args: KbReadArgs): Promise<string> {
     // Fuzzy-match the requested filename against KB documents
     const detected = detectReferencedDocument(filename, uniqueKbDocs);
     if (!detected) {
+      // NONE confidence: no document matched. Surface the full inventory so the
+      // model can call kb_summary for descriptions or kb_search for topical
+      // passages instead of falling back to web_search.
       return JSON.stringify({
         success: false,
-        error: `No document matching '${filename}' found in the knowledge base. Retry with one of the available filenames.`,
+        confidence: 'none' as const,
+        error: `No document matching '${filename}' found in the knowledge base.`,
         errorCode: 'NOT_FOUND',
         availableDocs: uniqueKbDocs.map(d => d.filename),
+        hint: "Call kb_summary to see document descriptions, or call kb_search with a topic query to find passages. Only use web_search if the topic is not in the knowledge base.",
+      });
+    }
+
+    const confidence = gradeConfidence(detected);
+
+    // AMBIGUOUS confidence: the filename partially matches and there are
+    // competing candidates. Do not fetch chunks — return the candidates and
+    // instruct the model to clarify with the user (request_clarification is
+    // injected whenever kb_* tools are active) or retry with an exact name.
+    if (confidence === 'ambiguous') {
+      const candidates = [
+        { filename: detected.document.filename, overlapRatio: detected.overlapRatio ?? null },
+        ...(detected.candidateDocuments ?? []).map(c => ({
+          filename: c.document.filename,
+          overlapRatio: c.overlapRatio,
+        })),
+      ];
+      return JSON.stringify({
+        success: false,
+        confidence: 'ambiguous' as const,
+        error: `Multiple documents could match '${filename}'. Please confirm which one you mean.`,
+        errorCode: 'AMBIGUOUS_MATCH',
+        candidates,
+        hint: "Call request_clarification to ask the user which document to open (pass the candidate filenames as options, allowFreeText: true), then call kb_read again with the exact filename. If request_clarification is unavailable, ask the user in plain text.",
       });
     }
 
@@ -122,6 +186,7 @@ async function executeKbRead(args: KbReadArgs): Promise<string> {
       requestedFilename: filename,
       matchedFilename: detected.document.filename,
       matchStrategy: detected.matchStrategy,
+      confidence,
       totalChunks: chunks.length,
       returnedChunks: resultChunks.length,
       truncated,
@@ -129,6 +194,7 @@ async function executeKbRead(args: KbReadArgs): Promise<string> {
 
     return JSON.stringify({
       success: true,
+      confidence: 'high' as const,
       filename: detected.document.filename,
       matchStrategy: detected.matchStrategy,
       chunks: resultChunks,
@@ -166,7 +232,10 @@ export const kbReadTool: ToolDefinition = {
         'Use this AFTER kb_summary to retrieve the actual text of a document you have identified. ' +
         'Returns the document content with page numbers for citation. ' +
         'Always prefer this over web_search for documents that exist in the knowledge base. ' +
-        "Pass the filename or a recognizable part of it (e.g. 'CMS RFP' matches 'FINAL-1-CMS-RFP-September-2024.pdf').",
+        "Pass the filename or a recognizable part of it (e.g. 'CMS RFP' matches 'FINAL-1-CMS-RFP-September-2024.pdf'). " +
+        'The result includes a confidence field: "high" (content returned), "ambiguous" (multiple candidates — ' +
+        'call request_clarification with the candidate filenames as options, then retry with the exact name), ' +
+        'or "none" (no match — call kb_summary or kb_search instead).',
       parameters: {
         type: 'object',
         properties: {
