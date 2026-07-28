@@ -1,6 +1,9 @@
-// v8 — evict manifest + bot-icon caches on BRANDING_UPDATED so the
-// PWA home-screen icon and favicon refresh after an admin icon change.
-const CACHE_VERSION = 'v8';
+// v9 — bump cache version to evict the stale app-shell + static caches
+// after a deploy that changed chunk hashes. Without this, the SW serves
+// stale cached HTML referencing old /_next/static/chunks/*.js filenames
+// that 404 on the new server → ChunkLoadError → ChatWindow ErrorBoundary.
+// v8 added BRANDING_UPDATED eviction for manifest + bot-icon caches.
+const CACHE_VERSION = 'v9';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
