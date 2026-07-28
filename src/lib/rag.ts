@@ -1347,6 +1347,30 @@ export async function ragQuery(
 }
 
 /**
+ * Build a tool_call_id → tool name map from assistant messages in the history.
+ * Source extraction must gate on tool identity, not result shape: any tool
+ * whose result JSON contains a `results` array (e.g. kb_search) would
+ * otherwise be misread as web_search output and surface "[WEB] undefined".
+ */
+function buildToolNameByCallId(
+  history: OpenAI.Chat.ChatCompletionMessageParam[]
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const msg of history) {
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        const fn = (tc as { function?: { name?: string } }).function;
+        if (tc.id && fn?.name) map.set(tc.id, fn.name);
+      }
+    }
+  }
+  return map;
+}
+
+/** Tool names whose `results` arrays use the Tavily {title, url, content, score} shape. */
+const WEB_SOURCE_TOOLS = new Set(['web_search', 'web_extract']);
+
+/**
  * Extract web search sources from tool call history
  * DEPRECATED: Use extractWebSourcesAsChunks + rerankChunks for filtered web results
  */
@@ -1354,9 +1378,11 @@ function extractWebSourcesFromHistory(
   history: OpenAI.Chat.ChatCompletionMessageParam[]
 ): Source[] {
   const webSources: Source[] = [];
+  const toolNames = buildToolNameByCallId(history);
 
   for (const msg of history) {
     if (msg.role === 'tool') {
+      if (!WEB_SOURCE_TOOLS.has(toolNames.get(msg.tool_call_id) ?? '')) continue;
       try {
         const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
         const toolResult = JSON.parse(content);
@@ -1390,9 +1416,11 @@ function extractWebSourcesAsChunks(
   history: OpenAI.Chat.ChatCompletionMessageParam[]
 ): RetrievedChunk[] {
   const webChunks: RetrievedChunk[] = [];
+  const toolNames = buildToolNameByCallId(history);
 
   for (const msg of history) {
     if (msg.role === 'tool') {
+      if (!WEB_SOURCE_TOOLS.has(toolNames.get(msg.tool_call_id) ?? '')) continue;
       try {
         const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
         const toolResult = JSON.parse(content);

@@ -425,33 +425,66 @@ export async function POST(
             );
             const llmMs = Date.now() - llmStart;
 
-            // Extract web sources from tool history
+            // Extract sources from tool history, gated by TOOL NAME — not result
+            // shape. kb_search also returns a `results` array (with filename/page/
+            // text instead of title/url/content); without the name gate it was
+            // misclassified as web_search output and rendered "[WEB] undefined".
+            const toolNameByCallId = new Map<string, string>();
             for (const msg of toolResult.fullHistory) {
-              if (msg.role === 'tool') {
-                try {
-                  const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-                  const parsed = JSON.parse(content);
-                  if (parsed.results && Array.isArray(parsed.results)) {
-                    for (const result of parsed.results) {
-                      webSources.push({
-                        documentName: `[WEB] ${result.title || result.url}`,
-                        pageNumber: 0,
-                        chunkText: result.content?.substring(0, 200) || '',
-                        score: result.score || 0,
-                        url: result.url,
+              if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                  const fn = (tc as { function?: { name?: string } }).function;
+                  if (tc.id && fn?.name) toolNameByCallId.set(tc.id, fn.name);
+                }
+              }
+            }
+
+            // kb_search passages become proper KB sources (filename + page
+            // citations), deduped by (document, page) before merging.
+            const kbToolSources = new Map<string, Source>();
+
+            for (const msg of toolResult.fullHistory) {
+              if (msg.role !== 'tool') continue;
+              const toolName = toolNameByCallId.get(msg.tool_call_id);
+              try {
+                const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                const parsed = JSON.parse(content);
+
+                if ((toolName === 'web_search' || toolName === 'web_extract') && parsed.results && Array.isArray(parsed.results)) {
+                  for (const result of parsed.results) {
+                    webSources.push({
+                      documentName: `[WEB] ${result.title || result.url}`,
+                      pageNumber: 0,
+                      chunkText: result.content?.substring(0, 200) || '',
+                      score: result.score || 0,
+                      url: result.url,
+                    });
+                  }
+                } else if (toolName === 'kb_search' && parsed.success && Array.isArray(parsed.results)) {
+                  for (const r of parsed.results) {
+                    if (!r || typeof r.filename !== 'string') continue;
+                    const key = `${r.filename}#${typeof r.page === 'number' ? r.page : 0}`;
+                    const score = typeof r.score === 'number' ? r.score : 0;
+                    const existing = kbToolSources.get(key);
+                    if (!existing || score > existing.score) {
+                      kbToolSources.set(key, {
+                        documentName: r.filename,
+                        pageNumber: typeof r.page === 'number' ? r.page : 0,
+                        chunkText: typeof r.text === 'string' ? r.text.substring(0, 200) : '',
+                        score,
                       });
                     }
                   }
-                } catch {
-                  // Not a web search result
                 }
+              } catch {
+                // Not a JSON tool result — ignore
               }
             }
 
             // Combine RAG + web sources, dedupe by document name (web entries are prefixed [WEB]
             // so they never collide with RAG docs of the same name), and cap at MAX_SOURCES_DISPLAYED.
             const combinedByName = new Map<string, Source>();
-            for (const s of [...ragResult.sources, ...webSources]) {
+            for (const s of [...ragResult.sources, ...kbToolSources.values(), ...webSources]) {
               const existing = combinedByName.get(s.documentName);
               if (!existing || s.score > existing.score) combinedByName.set(s.documentName, s);
             }

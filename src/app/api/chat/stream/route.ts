@@ -740,7 +740,20 @@ export async function POST(request: NextRequest) {
 
             const llmMs = Date.now() - llmStart;
 
-            // Extract web sources from tool history
+            // Extract sources from tool history, gated by TOOL NAME — not result
+            // shape. kb_search also returns a `results` array (with filename/page/
+            // text instead of title/url/content); without the name gate it was
+            // misclassified as web_search output and rendered "[WEB] undefined".
+            const toolNameByCallId = new Map<string, string>();
+            for (const msg of toolResult.fullHistory) {
+              if (msg.role === 'assistant' && Array.isArray(msg.tool_calls)) {
+                for (const tc of msg.tool_calls) {
+                  const fn = (tc as { function?: { name?: string } }).function;
+                  if (tc.id && fn?.name) toolNameByCallId.set(tc.id, fn.name);
+                }
+              }
+            }
+
             const webTrajectoryEntries: Array<{
               messageId: string;
               threadId: string;
@@ -755,45 +768,67 @@ export async function POST(request: NextRequest) {
               sourceType: 'web';
             }> = [];
 
+            // kb_search passages become proper KB sources (filename + page
+            // citations). Deduped by (document, page) — the model often calls
+            // kb_search repeatedly with overlapping result sets.
+            const kbToolSources = new Map<string, Source>();
+
             for (const msg of toolResult.fullHistory) {
-              if (msg.role === 'tool') {
-                try {
-                  const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-                  const parsed = JSON.parse(content);
-                  if (parsed.results && Array.isArray(parsed.results)) {
-                    for (const result of parsed.results) {
-                      const docName = `[WEB] ${result.title || result.url}`;
-                      webSources.push({
-                        documentName: docName,
-                        pageNumber: 0,
-                        chunkText: result.content?.substring(0, 200) || '',
-                        score: result.score || 0,
-                        url: result.url,
-                      });
-                      // Save web search trajectory entry
-                      webTrajectoryEntries.push({
-                        messageId: assistantMessageId,
-                        threadId,
-                        chunkId: result.url || `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        documentName: docName,
-                        pageNumber: 0,
-                        rawScore: result.score ?? null,  // Tavily relevance score
-                        rerankedScore: null,  // No reranker for web results
-                        wasSelected: true,  // Web results are always included in context
-                        rankBefore: null,
-                        rankAfter: null,
-                        sourceType: 'web',
+              if (msg.role !== 'tool') continue;
+              const toolName = toolNameByCallId.get(msg.tool_call_id);
+              try {
+                const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                const parsed = JSON.parse(content);
+
+                if ((toolName === 'web_search' || toolName === 'web_extract') && parsed.results && Array.isArray(parsed.results)) {
+                  for (const result of parsed.results) {
+                    const docName = `[WEB] ${result.title || result.url}`;
+                    webSources.push({
+                      documentName: docName,
+                      pageNumber: 0,
+                      chunkText: result.content?.substring(0, 200) || '',
+                      score: result.score || 0,
+                      url: result.url,
+                    });
+                    // Save web search trajectory entry
+                    webTrajectoryEntries.push({
+                      messageId: assistantMessageId,
+                      threadId,
+                      chunkId: result.url || `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                      documentName: docName,
+                      pageNumber: 0,
+                      rawScore: result.score ?? null,  // Tavily relevance score
+                      rerankedScore: null,  // No reranker for web results
+                      wasSelected: true,  // Web results are always included in context
+                      rankBefore: null,
+                      rankAfter: null,
+                      sourceType: 'web',
+                    });
+                  }
+                } else if (toolName === 'kb_search' && parsed.success && Array.isArray(parsed.results)) {
+                  for (const r of parsed.results) {
+                    if (!r || typeof r.filename !== 'string') continue;
+                    const key = `${r.filename}#${typeof r.page === 'number' ? r.page : 0}`;
+                    const score = typeof r.score === 'number' ? r.score : 0;
+                    const existing = kbToolSources.get(key);
+                    if (!existing || score > existing.score) {
+                      kbToolSources.set(key, {
+                        documentName: r.filename,
+                        pageNumber: typeof r.page === 'number' ? r.page : 0,
+                        chunkText: typeof r.text === 'string' ? r.text.substring(0, 200) : '',
+                        score,
                       });
                     }
                   }
-                } catch {
-                  // Not a web search result
                 }
+              } catch {
+                // Not a JSON tool result — ignore
               }
             }
 
-            // Combine all sources
-            const allSources = [...ragResult.sources, ...webSources];
+            // Combine all sources: automatic RAG (deduped per document),
+            // kb_search tool passages (deduped per document+page), web results
+            const allSources = [...ragResult.sources, ...kbToolSources.values(), ...webSources];
 
             // Send combined sources (including web search results)
             if (allSources.length > 0) {
