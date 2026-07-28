@@ -594,15 +594,16 @@ export async function reindexDocument(
   const store = await getVectorStore();
   const collNames = getCollectionNames();
 
-  // Delete existing embeddings
-  if (doc.isGlobal) {
-    await store.deleteDocumentsFromAllCollections([docId]);
-  } else if (categorySlugs.length > 0) {
-    for (const slug of categorySlugs) {
-      await store.deleteDocumentsByFilter(collNames.forCategory(slug), { documentId: docId });
-    }
-  } else {
-    await store.deleteDocumentsByFilter(collNames.legacy, { documentId: docId });
+  // Delete existing embeddings from EVERY collection — not just the document's
+  // current category collections. A document re-categorized after ingest would
+  // otherwise leave orphaned vectors in its previous collection(s), which then
+  // surface as stale chunks in that category's searches. (Global documents are
+  // embedded into all category collections, so they need the same sweep.)
+  // Filters on the documentId payload — the same mechanism the per-collection
+  // path used — so it is correct regardless of point-ID derivation.
+  const existingCollections = await store.listCollections();
+  for (const name of existingCollections) {
+    await store.deleteDocumentsByFilter(name, { documentId: docId });
   }
 
   // Update status to processing

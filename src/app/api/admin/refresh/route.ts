@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { listGlobalDocuments, reindexDocument, deleteDocument } from '@/lib/ingest';
+import { listGlobalDocuments, reindexDocument } from '@/lib/ingest';
 import { clearAllCache } from '@/lib/redis';
 import { fileExists } from '@/lib/storage';
 import { getGlobalDocsDir } from '@/lib/storage';
@@ -8,12 +8,15 @@ import path from 'path';
 import type { ApiError } from '@/types';
 
 /**
- * POST /api/admin/refresh?mode=vector|all
+ * POST /api/admin/refresh
  *
- * mode=vector: Clear cache + reindex all docs into Qdrant only
- * mode=all:    Clear cache + reindex all docs (default)
+ * Clears the Redis cache, then reindexes every document: re-extract from
+ * disk, re-chunk, re-embed into Qdrant, and regenerate the per-document
+ * summaries. There used to be a ?mode=vector|all parameter dating back to
+ * the graph-DB era ("all" also rebuilt the graph); both modes have run
+ * identical code since its removal, so the dead parameter was dropped.
  */
-export async function POST(request: Request) {
+export async function POST() {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -30,12 +33,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Parse mode from query params
-    const url = new URL(request.url);
-    const mode = (url.searchParams.get('mode') || 'all') as 'vector' | 'all';
-
-    // Clear cache + reindex documents
-    // Clear Redis cache
+    // Clear Redis cache, then reindex all documents
     await clearAllCache();
 
     // Get all documents and reindex them
@@ -68,7 +66,6 @@ export async function POST(request: Request) {
     // Report missing files prominently so the admin can clean them up
     const response: Record<string, unknown> = {
       success: true,
-      mode,
       documentsReindexed: reindexedCount,
       totalDocuments: documents.length,
       documentsSkipped: skippedCount,

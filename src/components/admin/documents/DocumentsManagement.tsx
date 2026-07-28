@@ -763,13 +763,10 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     }
   };
 
-  // Refresh documents with mode selection
-  const handleRefresh = async (mode: 'vector' | 'all') => {
-    const modeLabels = {
-      vector: 'Refresh Vector: Re-embed all documents into Qdrant',
-      all: 'Refresh All: Re-embed all documents (full rebuild)',
-    };
-    if (!confirm(`${modeLabels[mode]}. This may take a few minutes. Continue?`)) {
+  // Refresh all documents: clears the cache, then re-extracts, re-embeds,
+  // and re-summarises every document (full rebuild — can take several minutes).
+  const handleRefresh = async () => {
+    if (!confirm('Refresh All: re-extract, re-embed, and re-summarise all documents. This may take a few minutes. Continue?')) {
       return;
     }
 
@@ -777,7 +774,7 @@ export default function DocumentsManagement({ documentsSection: initialSection }
     setError(null);
 
     try {
-      const response = await fetch(`/api/admin/refresh?mode=${mode}`, {
+      const response = await fetch('/api/admin/refresh', {
         method: 'POST',
       });
 
@@ -1146,22 +1143,12 @@ export default function DocumentsManagement({ documentsSection: initialSection }
                   variant="secondary"
                   disabled={refreshingAll || documents.length === 0}
                   loading={refreshingAll}
-                  onClick={() => handleRefresh('all')}
-                  title="Re-embed all documents (full rebuild)"
+                  onClick={handleRefresh}
+                  title="Re-extract, re-embed, and re-summarise all documents (full rebuild)"
                   className="text-xs px-2.5 py-1.5"
                 >
                   <RefreshCw size={14} className={`mr-1 ${refreshingAll ? 'animate-spin' : ''}`} />
                   {refreshingAll ? 'Refreshing...' : 'Refresh All'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={refreshingAll || documents.length === 0}
-                  onClick={() => handleRefresh('vector')}
-                  title="Re-embed all documents into Qdrant"
-                  className="text-xs px-2.5 py-1.5"
-                >
-                  <RefreshCw size={14} className="mr-1" />
-                  Vector
                 </Button>
                 <Button
                   variant="secondary"
