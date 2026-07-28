@@ -46,6 +46,36 @@ import { getLlmSettings } from './db/compat/config';
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from '@/types';
 
 /**
+ * Denylist for the query-rewrite fallback extractor.
+ *
+ * When the LLM emits malformed JSON (e.g. duplicate-key objects like
+ * `{"query": "...", "query": "..."}`), the quote-extraction fallback pulls out
+ * every double-quoted string — including literal JSON keys such as "query" —
+ * which then get embedded and searched as real query variations (and cached in
+ * Redis for 1 hour). These tokens never match anything useful and pollute
+ * retrieval. Filter them out along with very short strings and filler words.
+ */
+const REWRITE_FALLBACK_DENYLIST = new Set([
+  // Common JSON keys seen in malformed rewrite responses
+  'query', 'queries', 'q', 'search', 'term', 'terms',
+  // Generic filler words that add noise without retrieval value
+  'the', 'and', 'for', 'with', 'from', 'into', 'about',
+]);
+
+/**
+ * Returns true if an extracted fallback string is a usable query variation.
+ * Rejects denylisted tokens, strings shorter than 3 chars, and strings that
+ * contain no alphanumeric characters (pure punctuation/braces).
+ */
+function isUsableRewriteVariation(value: string): boolean {
+  const cleaned = value.trim().toLowerCase();
+  if (cleaned.length < 3) return false;
+  if (!/[a-z0-9]/i.test(cleaned)) return false;
+  if (REWRITE_FALLBACK_DENYLIST.has(cleaned)) return false;
+  return true;
+}
+
+/**
  * Helper to repair a truncated JSON array.
  * Truncates back to the last complete item, strips trailing commas, and closes with ']'.
  */
@@ -170,18 +200,22 @@ Rules:
         rawResponse: response 
       });
       
-      // Fallback 1: Extract all double-quoted strings
+      // Fallback 1: Extract all double-quoted strings.
+      // Filter out JSON keys ("query", "queries", ...) and junk tokens so
+      // malformed responses don't pollute retrieval (see REWRITE_FALLBACK_DENYLIST).
       const quoteMatches = [...response.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)];
       if (quoteMatches.length > 0) {
-        variations = quoteMatches.map(m => m[1].replace(/\\"/g, '"').trim()).filter(Boolean);
+        variations = quoteMatches
+          .map(m => m[1].replace(/\\"/g, '"').trim())
+          .filter(isUsableRewriteVariation);
       }
-      
+
       // Fallback 2: Extract list items line-by-line
       if (variations.length === 0) {
         const lines = response.split('\n');
         for (const line of lines) {
           const cleanedLine = line.replace(/^\s*[-*•\d+.]+\s*/, '').trim();
-          if (cleanedLine && cleanedLine !== '[' && cleanedLine !== ']') {
+          if (cleanedLine && cleanedLine !== '[' && cleanedLine !== ']' && isUsableRewriteVariation(cleanedLine)) {
             variations.push(cleanedLine);
           }
         }
@@ -1146,9 +1180,12 @@ export async function ragQuery(
   // global rerank. When a KB document was targeted by name, lower the rerank
   // floor to 0 and enable the KB-document safety net so the referenced
   // document's chunks are never silently dropped by the reranker threshold.
+  const globalCragOut = { fired: false };
   const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
     rerankChunks(userMessage, mergedGlobalChunks, {
       boostDocuments,
+      cragFallbackEnabled: ragSettings.cragFallbackEnabled,
+      cragFallbackOut: globalCragOut,
       ...(kbDocTargetedName
         ? { minScoreOverride: 0, isKbDocumentTargeted: true }
         : {}),
@@ -1159,6 +1196,12 @@ export async function ragQuery(
       isUserUpload: true,
     }),
   ]);
+
+  if (globalCragOut.fired) {
+    logger.warn('CRAG fallback fired — returning low-confidence KB chunks', {
+      chunkCount: rerankedGlobalChunks.length,
+    });
+  }
 
   // Format context for LLM
   let context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
@@ -1227,7 +1270,7 @@ export async function ragQuery(
 
   // KB summary tool instruction: tell the LLM to use kb_summary when the user
   // asks about KB contents, even if the search-based context is empty.
-  systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results.`;
+  systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results. If the user references a specific KB document by name (e.g. "review the CMS RFP"), call the kb_read tool with the filename or a partial name to retrieve its content — always prefer kb_read over web_search for documents that exist in the knowledge base.`;
 
   // Inject memory context into system prompt
   if (memoryContext && memoryContext.trim()) {

@@ -1728,10 +1728,22 @@ function runMigrations(database: Database.Database): void {
       ('tpl-planner',    'Planner (template)',    'planner',    NULL, NULL, 'You are a Planner. Decompose the user''s goal into a DAG of subtasks and assign each subtask to the best-suited executor/researcher agent. Output the plan as structured JSON.', '[]', '{"max_subtasks": 12, "allow_parallel": true}', 1),
       ('tpl-executor',   'Executor (template)',   'executor',   NULL, NULL, 'You are an Executor. Complete the assigned subtask using the tools in your allowlist. Return an artifact, a confidence score (0-1), and a suggested_next action.', '[]', '{"max_retries": 2}', 1),
       ('tpl-critic',     'Critic (template)',     'critic',     NULL, NULL, 'You are a Critic. Review the executor artifact against the subtask criteria. Approve, or loop back with specific failure reasons. Never approve low-confidence artifacts without justification.', '[]', '{"min_confidence": 0.6}', 1),
-      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary"]', '{}', 1),
+      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary","kb_read"]', '{}', 1),
       ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '[]', '{}', 1);
   `);
   console.log('[DB Migration] Seeded 5 global template agents (Phase 1)');
+
+  // Migration: Append kb_read to the tool_allowlist of any agent that already
+  // has kb_summary but is missing kb_read (agents seeded before kb_read existed).
+  // Idempotent: the NOT LIKE guard makes re-runs a no-op.
+  database.exec(`
+    UPDATE agent
+    SET tool_allowlist = json_insert(tool_allowlist, '$[#]', 'kb_read')
+    WHERE tool_allowlist IS NOT NULL
+      AND tool_allowlist LIKE '%"kb_summary"%'
+      AND tool_allowlist NOT LIKE '%"kb_read"%';
+  `);
+  console.log('[DB Migration] Ensured kb_read in tool_allowlist for agents with kb_summary');
 
   console.log('[DB Migration] Migrations completed successfully');
 }
@@ -2239,6 +2251,7 @@ function initializeDefaultSettings(database: Database.Database): void {
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
+      cragFallbackEnabled: false,
     },
     'llm-settings': {
       model: 'gpt-4o-mini',

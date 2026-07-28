@@ -1140,11 +1140,25 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       ('tpl-planner',    'Planner (template)',    'planner',    NULL, NULL, 'You are a Planner. Decompose the user''s goal into a DAG of subtasks and assign each subtask to the best-suited executor/researcher agent. Output the plan as structured JSON.', '[]', '{"max_subtasks": 12, "allow_parallel": true}'::jsonb, TRUE),
       ('tpl-executor',   'Executor (template)',   'executor',   NULL, NULL, 'You are an Executor. Complete the assigned subtask using the tools in your allowlist. Return an artifact, a confidence score (0-1), and a suggested_next action.', '[]', '{"max_retries": 2}'::jsonb, TRUE),
       ('tpl-critic',     'Critic (template)',     'critic',     NULL, NULL, 'You are a Critic. Review the executor artifact against the subtask criteria. Approve, or loop back with specific failure reasons. Never approve low-confidence artifacts without justification.', '[]', '{"min_confidence": 0.6}'::jsonb, TRUE),
-      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary"]', '{}'::jsonb, TRUE),
+      ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary","kb_read"]', '{}'::jsonb, TRUE),
       ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '[]', '{}'::jsonb, TRUE)
     ON CONFLICT (id) DO NOTHING
   `.execute(database);
   console.log('[Kysely] Seeded 5 global template agents (one per role family) (Phase 1)');
+
+  // Migration: Append kb_read to the tool_allowlist of any agent that already
+  // has kb_summary (researcher templates + any executor with KB access) but is
+  // missing kb_read. Idempotent: the @> checks make re-runs a no-op. Covers
+  // agents seeded before the kb_read tool existed (tpl-researcher was seeded
+  // with '["web_search","web_extract","kb_summary"]').
+  await sql`
+    UPDATE agent
+    SET tool_allowlist = tool_allowlist || '["kb_read"]'::jsonb
+    WHERE tool_allowlist IS NOT NULL
+      AND tool_allowlist @> '["kb_summary"]'::jsonb
+      AND NOT (tool_allowlist @> '["kb_read"]'::jsonb)
+  `.execute(database);
+  console.log('[Kysely] Ensured kb_read in tool_allowlist for agents with kb_summary');
 
   // model registry — capability tier column (swarm-eligibility + role assignment)
   // 'unclassified' is the conservative default: swarm-ineligible until an admin assigns a tier.

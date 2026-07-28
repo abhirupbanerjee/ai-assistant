@@ -57,8 +57,34 @@ function stripExtension(name: string): string {
 }
 
 /**
+ * Stop tokens filtered out of filenames before matching.
+ *
+ * Date/version tokens are included because users almost never say them when
+ * referring to a document ("review the CMS RFP", not "review the FINAL-1 CMS
+ * RFP September 2024"). Removing them shrinks the token set to the meaningful
+ * parts of the filename, which makes partial-overlap matching precise instead
+ * of noisy: FINAL-1-CMS-RFP-September-2024.pdf → ["cms", "rfp"].
+ */
+const FILENAME_STOP_TOKENS: ReadonlySet<string> = new Set([
+  // Generic file words
+  'doc', 'document', 'file', 'report', 'pdf', 'docx',
+  // Version/finality markers
+  'final', 'draft', 'v1', 'v2', 'v3', 'version', 'copy', 'new', 'old', 'latest', 'updated',
+  // Years
+  '2020', '2021', '2022', '2023', '2024', '2025', '2026',
+  // Month names + common abbreviations
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+  'september', 'october', 'november', 'december',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+  // Day numbers 01-31 (zero-padded) and 1-31
+  '01', '02', '03', '04', '05', '06', '07', '08', '09',
+  '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
+  '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31',
+]);
+
+/**
  * Tokenize a filename into meaningful tokens (words), filtering out very short
- * tokens and common file-related words that wouldn't help matching.
+ * tokens and common file/date/version words that wouldn't help matching.
  */
 function tokenizeFilename(name: string): string[] {
   const stripped = stripExtension(name);
@@ -67,9 +93,8 @@ function tokenizeFilename(name: string): string[] {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(t => t.length >= 2);
-  // Filter out very generic tokens that add noise
-  const stopTokens = new Set(['doc', 'document', 'file', 'report', 'pdf', 'docx']);
-  return tokens.filter(t => !stopTokens.has(t));
+  // Filter out generic tokens that add noise (dates, versions, file words)
+  return tokens.filter(t => !FILENAME_STOP_TOKENS.has(t));
 }
 
 /**
@@ -79,10 +104,12 @@ function tokenizeFilename(name: string): string[] {
  *   1. **Exact match** — the full filename (with extension) appears in the message.
  *   2. **Extension-stripped match** — the filename without extension appears
  *      (e.g. "Q3_Report" matches "Q3_Report.pdf").
- *   3. **Token overlap** — all significant tokens from the filename appear in the
- *      message (e.g. "summarise the q3 report" contains both "q3" and "report"
- *      from "Q3_Report.pdf"). Requires at least 2 meaningful tokens to avoid
- *      false positives on single-token filenames like "data.docx".
+ *   3. **Token overlap** — ≥60% of significant filename tokens appear in the
+ *      message (e.g. "review the cms rfp" contains both "cms" and "rfp" from
+ *      "FINAL-1-CMS-RFP-September-2024.pdf"). Requires at least 2 meaningful
+ *      tokens to avoid false positives on single-token filenames like
+ *      "data.docx". When several documents qualify, the highest overlap ratio
+ *      wins.
  *   4. **Substring match** — the extension-stripped filename appears as a substring
  *      in the message (handles cases where the user writes it without spaces, e.g.
  *      "q3report" matching "Q3_Report").
@@ -118,24 +145,43 @@ export function detectReferencedDocument(
     }
   }
 
-  // Strategy 3: Token overlap (all meaningful tokens present in message)
+  // Strategy 3: Token overlap (≥60% of meaningful tokens present, min 2 tokens).
+  // Users typically say only the meaningful parts of a filename ("CMS RFP" for
+  // FINAL-1-CMS-RFP-September-2024.pdf), so requiring ALL tokens misses real
+  // references. The expanded stop-token list strips date/version noise, so the
+  // remaining tokens are the meaningful parts — partial overlap on them is a
+  // strong signal. When multiple documents match, the highest overlap ratio
+  // wins (ties broken by more present tokens, then earlier in the list).
+  let bestMatch: { doc: DbDocument; tokens: string[]; ratio: number; present: number } | null = null;
   for (const doc of documents) {
     const tokens = tokenizeFilename(doc.filename);
     // Need at least 2 meaningful tokens to avoid false positives
     if (tokens.length < 2) continue;
 
-    const allPresent = tokens.every(token => {
+    const presentTokens = tokens.filter(token => {
       // Match as a word boundary or substring (handles "q3" inside "q3 report")
       return messageLower.includes(token);
     });
 
-    if (allPresent) {
-      logger.debug('Document detected via token overlap', {
-        filename: doc.filename,
-        tokens,
-      });
-      return { document: doc, matchStrategy: 'token_overlap' };
+    const overlapRatio = presentTokens.length / tokens.length;
+    if (overlapRatio < 0.6) continue;
+
+    if (
+      !bestMatch ||
+      overlapRatio > bestMatch.ratio ||
+      (overlapRatio === bestMatch.ratio && presentTokens.length > bestMatch.present)
+    ) {
+      bestMatch = { doc, tokens, ratio: overlapRatio, present: presentTokens.length };
     }
+  }
+
+  if (bestMatch) {
+    logger.debug('Document detected via token overlap', {
+      filename: bestMatch.doc.filename,
+      tokens: bestMatch.tokens,
+      overlapRatio: bestMatch.ratio,
+    });
+    return { document: bestMatch.doc, matchStrategy: 'token_overlap' };
   }
 
   // Strategy 4: Substring match (extension-stripped filename as substring,

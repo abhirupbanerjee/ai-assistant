@@ -46,6 +46,21 @@ export interface RerankOptions {
    * is never silently dropped.
    */
   isKbDocumentTargeted?: boolean;
+  /**
+   * CRAG-style graded fallback (opt-in via RAG settings). When the reranker
+   * SUCCEEDED but the threshold filtered out every chunk — and the chunks are
+   * NOT explicitly referenced (uploads/detected docs have their own safety
+   * net) — keep the top-5 original chunks by Qdrant score as low-confidence
+   * context instead of returning an empty pool. Prevents the pipeline from
+   * silently declaring defeat with "No relevant documents found".
+   */
+  cragFallbackEnabled?: boolean;
+  /**
+   * If provided, populated with { fired: true } when the CRAG fallback tier
+   * fired, so the caller can surface the signal (e.g. an operation_log SSE
+   * event telling the user the results are low-confidence).
+   */
+  cragFallbackOut?: { fired: boolean };
 }
 
 // Cohere rerank result type
@@ -624,6 +639,30 @@ export async function rerankChunks(
       `Falling back to original chunks (provider succeeded but nothing passed).`
     );
     return [...chunks].sort((a, b) => b.score - a.score);
+  }
+
+  // CRAG-style graded fallback (opt-in): when the reranker succeeded but the
+  // threshold zeroed the pool for a NON-explicit query, keep the top-5
+  // original chunks by Qdrant score as low-confidence context rather than
+  // returning nothing ("No relevant documents found"). This is a SEPARATE
+  // path from the provider-failure fallback (0.05 threshold) above and from
+  // the explicitly-referenced safety net: it fires when retrieval is graded
+  // "incorrect" so the model gets best-effort context instead of silence.
+  if (
+    options?.cragFallbackEnabled &&
+    finalChunks.length === 0 &&
+    chunks.length > 0 &&
+    !isExplicitlyReferenced
+  ) {
+    const topN = [...chunks].sort((a, b) => b.score - a.score).slice(0, 5);
+    console.warn(
+      `[Reranker] CRAG fallback: all ${chunks.length} chunks scored below threshold ${minScore}; ` +
+      `keeping top-${topN.length} originals by Qdrant score (low-confidence)`
+    );
+    if (options.cragFallbackOut) {
+      options.cragFallbackOut.fired = true;
+    }
+    return topN;
   }
 
   return finalChunks;

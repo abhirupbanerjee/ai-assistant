@@ -235,7 +235,7 @@ export async function performRAGRetrieval(
     getRagSettings(),
     categorySlugs.length > 0 ? getCategoryIdsBySlugs(categorySlugs) : Promise.resolve([]),
   ]);
-  const { queryExpansionEnabled, llmQueryRewritingEnabled } = ragSettings;
+  const { queryExpansionEnabled, llmQueryRewritingEnabled, cragFallbackEnabled } = ragSettings;
   const uploadDirected = isUploadDirectedQuery(userMessage, userDocPaths.length > 0);
 
   logger.debug('Starting RAG retrieval', { categorySlugs, userDocPaths: userDocPaths.length, uploadDirected });
@@ -367,9 +367,14 @@ export async function performRAGRetrieval(
   // When a KB document was targeted by name, lower the global rerank floor to 0
   // and enable the KB-document safety net so the referenced document's chunks
   // are never silently dropped by the reranker threshold.
+  // cragFallbackOut is populated by rerankChunks when the CRAG graded-fallback
+  // tier fires (opt-in via RAG settings), so we can surface the signal.
+  const globalCragOut = { fired: false };
   const [rerankedGlobalChunks, rerankedUserChunks] = await Promise.all([
     rerankChunks(userMessage, mergedGlobalChunks, {
       boostDocuments,
+      cragFallbackEnabled,
+      cragFallbackOut: globalCragOut,
       ...(kbDocTargetedName
         ? { minScoreOverride: 0, isKbDocumentTargeted: true }
         : {}),
@@ -380,6 +385,20 @@ export async function performRAGRetrieval(
       isUserUpload: true,
     }),
   ]);
+
+  // CRAG graded fallback fired: the reranker threshold zeroed the pool, so
+  // top-N low-confidence originals were kept instead. Tell the user the KB
+  // results are best-effort and web search may add context.
+  if (globalCragOut.fired) {
+    logger.warn('CRAG fallback fired — returning low-confidence KB chunks', {
+      chunkCount: rerankedGlobalChunks.length,
+    });
+    send?.({
+      type: 'operation_log',
+      category: 'rag',
+      message: 'KB retrieval inconclusive — showing best available matches; consider web search for additional context',
+    });
+  }
 
   // Emit truncation warnings for documents with content cut off
   if (send && userDocTruncations.length > 0) {
@@ -529,7 +548,7 @@ export async function performRAGRetrieval(
 
   // KB summary tool instruction: tell the LLM to use kb_summary when the user
   // asks about KB contents, even if the search-based context is empty.
-  systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results.`;
+  systemPrompt = `${systemPrompt}\n\nIMPORTANT: If the user asks what documents are in the knowledge base, asks for a KB summary/overview, or asks what information is available, you MUST call the kb_summary tool. Do NOT say "no documents found" based on the search context alone — the kb_summary tool has pre-computed summaries that are separate from search results. If the user references a specific KB document by name (e.g. "review the CMS RFP"), call the kb_read tool with the filename or a partial name to retrieve its content — always prefer kb_read over web_search for documents that exist in the knowledge base.`;
 
   // Inject memory context into system prompt
   if (memoryContext?.trim()) {

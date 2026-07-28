@@ -26,6 +26,7 @@ interface RAGSettings {
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
   contextualEnrichmentEnabled: boolean;
+  cragFallbackEnabled: boolean;
   fullDocCharBudget: number;
   summaryDocCharThreshold: number;
   chapterDocCharThreshold: number;
@@ -154,6 +155,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         hybridSearchEnabled: false,
         llmQueryRewritingEnabled: false,
         contextualEnrichmentEnabled: false,
+        cragFallbackEnabled: false,
         fullDocCharBudget: 30000,
         summaryDocCharThreshold: 30000,
         chapterDocCharThreshold: 120000,
@@ -175,6 +177,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         hybridSearchEnabled: ragData.hybridSearchEnabled ?? false,
         llmQueryRewritingEnabled: ragData.llmQueryRewritingEnabled ?? false,
         contextualEnrichmentEnabled: ragData.contextualEnrichmentEnabled ?? false,
+        cragFallbackEnabled: ragData.cragFallbackEnabled ?? false,
         fullDocCharBudget: ragData.fullDocCharBudget ?? 30000,
         summaryDocCharThreshold: ragData.summaryDocCharThreshold ?? 30000,
         chapterDocCharThreshold: ragData.chapterDocCharThreshold ?? 120000,
@@ -393,6 +396,7 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
         hybridSearchEnabled: settings.hybridSearchEnabled ?? false,
         llmQueryRewritingEnabled: settings.llmQueryRewritingEnabled ?? false,
         contextualEnrichmentEnabled: settings.contextualEnrichmentEnabled ?? false,
+        cragFallbackEnabled: settings.cragFallbackEnabled ?? false,
         fullDocCharBudget: settings.fullDocCharBudget ?? 30000,
         summaryDocCharThreshold: settings.summaryDocCharThreshold ?? 30000,
         chapterDocCharThreshold: settings.chapterDocCharThreshold ?? 120000,
@@ -915,6 +919,15 @@ export default function UnifiedRAGSettings({ readOnly = false }: { readOnly?: bo
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm text-gray-700">Contextual Chunk Enrichment</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editedSettings.cragFallbackEnabled}
+                  onChange={(e) => handleChange('cragFallbackEnabled', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">CRAG Fallback (low-confidence chunks when nothing passes)</span>
               </label>
             </div>
             {editedSettings.hybridSearchEnabled && (

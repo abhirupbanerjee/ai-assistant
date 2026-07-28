@@ -40,6 +40,7 @@ export interface RagSettings {
   hybridSearchEnabled: boolean;
   llmQueryRewritingEnabled: boolean;
   contextualEnrichmentEnabled: boolean;
+  cragFallbackEnabled: boolean;  // CRAG graded fallback: keep top-N low-confidence chunks when reranker zeroes the pool (default: false)
   // ── Full-document summarization thresholds (for user-uploaded chat files) ──
   fullDocCharBudget?: number;        // Max chars of full text injected directly without summarization (default: 30000)
   summaryDocCharThreshold?: number;  // Chars above which single-document LLM summarization begins (default: 30000)
@@ -649,6 +650,8 @@ export function getRagSettings(): RagSettings {
     hybridSearchEnabled: false,
     llmQueryRewritingEnabled: false,
     contextualEnrichmentEnabled: false,
+    // CRAG graded fallback is opt-in (off by default)
+    cragFallbackEnabled: false,
     // Provide defaults for full-document summarization thresholds
     fullDocCharBudget: 30000,
     summaryDocCharThreshold: 30000,

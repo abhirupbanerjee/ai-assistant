@@ -23,6 +23,7 @@ import { fileToHtmlTool } from './tools/file-to-html';
 import { htmlGenTool, getHtmlGenDescriptionWithDate } from './tools/html-gen';
 import { siteGenTool } from './tools/site-gen';
 import { kbSummaryTool } from './tools/kb-summary';
+import { kbReadTool } from './tools/kb-read';
 import { handoffToCategoryTool } from './tools/handoff-category';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
 import { toolsLogger as logger } from './logger';
@@ -210,6 +211,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   // ── Knowledge Base ──
   kb_summary: { ...kbSummaryTool, subagentSafe: true,
     modelRequirements: { requiresToolCalling: true } },
+  kb_read: { ...kbReadTool, subagentSafe: true,
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
 
   // ── Agent System (Phase 2.2) — single-agent routing ──
   // LLM-driven category handoff. The executor resolves the target category

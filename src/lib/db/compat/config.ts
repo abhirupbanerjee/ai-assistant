@@ -236,6 +236,7 @@ export async function getRagSettings(): Promise<RagSettings> {
     hybridSearchEnabled: false,
     llmQueryRewritingEnabled: false,
     contextualEnrichmentEnabled: false,
+    cragFallbackEnabled: false,
     fullDocCharBudget: 30000,
     summaryDocCharThreshold: 30000,
     chapterDocCharThreshold: 120000,

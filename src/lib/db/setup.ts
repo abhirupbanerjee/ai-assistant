@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS: Record<string, object> = {
     queryExpansionEnabled: true,
     cacheEnabled: true,
     cacheTTLSeconds: 3600,
+    cragFallbackEnabled: false,
   },
   'llm-settings': {
     model: 'gpt-4o-mini',
