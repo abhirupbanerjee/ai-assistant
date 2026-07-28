@@ -567,7 +567,6 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 subtitle={diagram.type}
                 index={index}
                 total={message.generatedDiagrams!.length}
-                defaultCollapsed={message.generatedDiagrams!.length > 1}
               >
                 <MermaidDiagram code={diagram.code} />
               </CollapsibleArtifactCard>
