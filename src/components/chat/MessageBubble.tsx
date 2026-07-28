@@ -518,7 +518,6 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
               <AgentResponseCard
                 key={`${resp.agentId}-${idx}`}
                 response={resp}
-                defaultCollapsed={idx < message.agentResponses!.length - 1}
               />
             ))}
           </div>
