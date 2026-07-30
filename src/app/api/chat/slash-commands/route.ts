@@ -6,15 +6,43 @@
 
 import { NextResponse } from 'next/server';
 import { getEnabledSlashCommands } from '@/lib/db/compat/slash-commands';
-import { isToolEnabled } from '@/lib/tools';
+import { isToolEnabled, AVAILABLE_TOOLS } from '@/lib/tools';
 
 export async function GET() {
   try {
-    const commands = await getEnabledSlashCommands();
+    const dbCommands = await getEnabledSlashCommands();
+    const dbKeys = new Set(dbCommands.map((c) => c.commandKey));
+
+    // Fallback: auto-derive from ToolDefinition.slashCommand for tools
+    // whose slash command hasn't been seeded to the DB yet (new tools).
+    // This makes / commands fully dynamic — like @ agent mentions.
+    const autoCommands: typeof dbCommands = [];
+    for (const [toolName, tool] of Object.entries(AVAILABLE_TOOLS)) {
+      const cmd = tool.slashCommand;
+      if (!cmd || dbKeys.has(cmd.commandKey)) continue;
+      autoCommands.push({
+        id: '',
+        commandKey: cmd.commandKey,
+        toolName,
+        label: cmd.label,
+        description: cmd.description,
+        aliases: cmd.aliases,
+        hint: '',
+        icon: cmd.icon ?? '',
+        formatHint: null,
+        enabled: true,
+        sortOrder: 0,
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: '',
+      });
+    }
+
+    const allCommands = [...dbCommands, ...autoCommands];
 
     // Filter out commands whose underlying tool is disabled
     const availableCommands = [];
-    for (const cmd of commands) {
+    for (const cmd of allCommands) {
       if (await isToolEnabled(cmd.toolName)) {
         availableCommands.push({
           commandKey: cmd.commandKey,

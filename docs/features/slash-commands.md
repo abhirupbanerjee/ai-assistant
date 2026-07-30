@@ -18,11 +18,6 @@ Slash commands are **strong hints**, not forced directives. When a user invokes 
 - Keyboard navigation: ↑/↓ to select, Enter/Tab to confirm, Esc to close
 - Selecting a command strips the `/` prefix and shows an active chip above the input
 
-**Create Menu (PlusMenu):**
-- The `+` menu in the chat input includes a **Create** section
-- Grid of buttons for common outputs (Image, Chart, Diagram, PDF, Word, etc.)
-- Selecting a button sets the active slash command the same way as typing `/`
-
 **Direct Typing:**
 - Users can type `/command message` directly (e.g., `/pdf summary of leave policy`)
 - The `/command` prefix is stripped from the saved message history

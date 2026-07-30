@@ -1093,7 +1093,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           responseTone: preferences?.responseTone,
           showCitationTrajectory: preferences?.showCitationTrajectory,
           thinkingEnabled: preferences?.thinkingEnabled,
-          toolHint: preferences?.toolHint,
+          toolHints: preferences?.toolHints,
+          agentMention: preferences?.agentMention,
+          pipeline: preferences?.pipeline,
+          pipelineMode: preferences?.pipelineMode,
         }),
         signal: abortControllerRef.current.signal,
       });

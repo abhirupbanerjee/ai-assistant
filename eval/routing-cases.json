@@ -248,5 +248,45 @@
     "expectedToolCall": "handoff_to_category",
     "expectedTargetCategory": "architecture",
     "notes": "Architecture handoff"
+  },
+  {
+    "id": "agent-code-01",
+    "input": "Analyze this codebase for security vulnerabilities and generate an architecture diagram.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Code analysis + diagram task should route to a code-executor agent"
+  },
+  {
+    "id": "agent-doc-01",
+    "input": "Write a comprehensive report on market trends with data visualizations.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Document generation + charts should route to a doc-executor agent"
+  },
+  {
+    "id": "agent-data-01",
+    "input": "Build an Excel spreadsheet from this sales data with formulas and charts.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Excel + data aggregation should route to a data-executor agent"
+  },
+  {
+    "id": "agent-site-01",
+    "input": "Generate a static website for our product landing page.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "Site generation should route to a site-executor agent"
+  },
+  {
+    "id": "agent-pptx-01",
+    "input": "Create a PowerPoint presentation from this quarterly report with charts.",
+    "threadCategories": [],
+    "expectedMode": "return_result",
+    "expectedToolCall": "agent__*",
+    "notes": "PPTX generation should route to a pptx-executor agent"
   }
 ]

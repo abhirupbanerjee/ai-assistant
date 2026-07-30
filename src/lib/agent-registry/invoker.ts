@@ -62,6 +62,8 @@ export interface InvokeAgentInput {
   temperature?: number;
   /** Optional max-tokens override. */
   maxTokens?: number;
+  /** Optional per-agent tool hints (from /command tokens in the user's pipeline). */
+  toolHints?: string[];
 }
 
 /**
@@ -191,7 +193,36 @@ export async function invokeAgent(
 
   // --- 3. Build messages ---
   const systemMessage = buildSystemMessage(agent);
-  const userMessage = buildUserMessage(task, context);
+  let annotatedTask = task;
+
+  // Inject per-agent tool hints (from /command tokens in the user's pipeline).
+  // If the hinted tool is outside the agent's allowlist, annotate honestly so
+  // the orchestrator (or main LLM) can fulfill it instead.
+  if (input.toolHints && input.toolHints.length > 0) {
+    // Deferred import to avoid circular deps with the compat layer.
+    const { getSlashCommandByKey } = await import('@/lib/db/compat/slash-commands');
+    const hints: string[] = [];
+    for (const key of input.toolHints) {
+      const cmd = await getSlashCommandByKey(key);
+      if (cmd?.enabled) {
+        if (!agent.toolAllowlist.includes(cmd.toolName)) {
+          hints.push(
+            `The user requested /${key} (tool ${cmd.toolName}), which is outside your toolset. ` +
+            `Note this in your suggested_next.reason so the orchestrator can fulfill it instead.`,
+          );
+        } else {
+          let text = cmd.hint || `Use the ${cmd.toolName} tool.`;
+          if (cmd.formatHint) text += ` Use format='${cmd.formatHint}'.`;
+          hints.push(text);
+        }
+      }
+    }
+    if (hints.length > 0) {
+      annotatedTask = `${task}\n\n[TOOL HINTS: ${hints.join(' | ')}]`;
+    }
+  }
+
+  const userMessage = buildUserMessage(annotatedTask, context);
 
   // --- 4. Call the LLM via generateResponseWithTools ---
   // Phase 2.2 (d2): re-routed from createInternalCompletion to

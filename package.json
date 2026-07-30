@@ -1,6 +1,6 @@
 {
   "name": "ai-assistant",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,9 @@
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
+    "test": "npx tsx --test src/lib/**/*.test.ts",
     "test:connectivity": "npx tsx scripts/test-connectivity.ts",
+    "test:unit": "npx tsx --test src/lib/**/*.test.ts",
     "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
     "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
     "docker:prod": "docker compose up -d --build",

@@ -103,6 +103,8 @@ export async function GET() {
         isHybrid: HYBRID_TOOLS.has(tool.name),
         toolType: config?.config?.toolType ?? (tool.group === 'mcp' ? 'mcp' : 'builtin'),
         serverId: config?.config?.serverId ?? null,
+        subagentSafe: tool.subagentSafe ?? null,
+        modelRequirements: tool.modelRequirements ?? null,
         metadata: config ? {
           id: config.id,
           createdAt: config.createdAt,

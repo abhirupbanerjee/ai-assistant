@@ -15,7 +15,42 @@ import {
   type AgentRoleFamily,
   type UpdateAgentInput,
 } from '@/lib/db/compat';
+import { getEnabledModel } from '@/lib/db/compat/enabled-models';
+import { AVAILABLE_TOOLS } from '@/lib/tools';
 import type { ApiError } from '@/types';
+
+/**
+ * Validate that the bound model satisfies tool capability requirements.
+ * Returns an array of warning strings (empty if all checks pass).
+ * This is a soft guard — warnings are returned alongside the agent but
+ * do not block creation/update.
+ */
+async function validateModelCapabilities(
+  toolAllowlist: string[] | undefined,
+  modelId: string | null | undefined
+): Promise<string[]> {
+  const warnings: string[] = [];
+  if (!toolAllowlist || toolAllowlist.length === 0 || !modelId) return warnings;
+
+  let minContext = 0;
+  for (const toolName of toolAllowlist) {
+    const tool = AVAILABLE_TOOLS[toolName];
+    if (tool?.modelRequirements?.minimumContextTokens) {
+      minContext = Math.max(minContext, tool.modelRequirements.minimumContextTokens);
+    }
+  }
+
+  if (minContext > 0) {
+    const model = await getEnabledModel(modelId);
+    if (model && model.maxInputTokens != null && model.maxInputTokens < minContext) {
+      warnings.push(
+        `Model "${model.displayName}" has max input ${model.maxInputTokens.toLocaleString()} tokens, but selected tools require at least ${minContext.toLocaleString()}. Consider a larger-context model.`
+      );
+    }
+  }
+
+  return warnings;
+}
 
 const VALID_ROLES: AgentRoleFamily[] = [
   'planner',
@@ -88,6 +123,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Soft capability validation — warns if bound model can't satisfy tool requirements.
+    // When modelId is not provided in the update, fall back to the existing agent's bound model.
+    let modelIdToCheck = body.modelId;
+    if (modelIdToCheck === undefined || modelIdToCheck === null) {
+      const existing = await getAgentById(id);
+      modelIdToCheck = existing?.modelId ?? null;
+    }
+    const warnings = await validateModelCapabilities(body.toolAllowlist, modelIdToCheck);
+
     const agent = await updateAgent(id, body);
 
     if (!agent) {
@@ -97,7 +141,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    return NextResponse.json({ agent });
+    return NextResponse.json({ agent, warnings: warnings.length > 0 ? warnings : undefined });
   } catch (error) {
     console.error('[Agent Registry] PUT error:', error);
     return NextResponse.json<ApiError>(

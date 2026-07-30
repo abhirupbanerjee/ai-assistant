@@ -16,6 +16,7 @@ import {
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
+import type { ModelRequirements } from '@/lib/tools';
 
 // ============ Types ============
 
@@ -49,6 +50,15 @@ interface EnabledModel {
   enabled: boolean;
 }
 
+interface ToolMeta {
+  name: string;
+  displayName: string;
+  enabled: boolean;
+  group: string | null;
+  subagentSafe: boolean | null;
+  modelRequirements: ModelRequirements | null;
+}
+
 interface AgentFormData {
   id: string;
   name: string;
@@ -56,7 +66,7 @@ interface AgentFormData {
   categoryId: number | null;
   modelId: string | null;
   systemPrompt: string;
-  toolAllowlist: string;
+  toolAllowlist: string[];
   enabled: boolean;
 }
 
@@ -88,7 +98,7 @@ function emptyForm(): AgentFormData {
     categoryId: null,
     modelId: null,
     systemPrompt: '',
-    toolAllowlist: '',
+    toolAllowlist: [],
     enabled: true,
   };
 }
@@ -101,7 +111,7 @@ function formFromAgent(agent: AgentRecord): AgentFormData {
     categoryId: agent.categoryId,
     modelId: agent.modelId,
     systemPrompt: agent.systemPrompt,
-    toolAllowlist: agent.toolAllowlist.join(', '),
+    toolAllowlist: [...agent.toolAllowlist],
     enabled: agent.enabled,
   };
 }
@@ -112,6 +122,7 @@ export default function AgentRegistryTab() {
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [models, setModels] = useState<EnabledModel[]>([]);
+  const [tools, setTools] = useState<ToolMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -135,9 +146,10 @@ export default function AgentRegistryTab() {
 
   const loadMetadata = useCallback(async () => {
     try {
-      const [catRes, modelRes] = await Promise.all([
+      const [catRes, modelRes, toolRes] = await Promise.all([
         fetch('/api/admin/categories'),
         fetch('/api/admin/llm/models'),
+        fetch('/api/admin/tools'),
       ]);
       if (catRes.ok) {
         const catData = await catRes.json();
@@ -146,6 +158,10 @@ export default function AgentRegistryTab() {
       if (modelRes.ok) {
         const modelData = await modelRes.json();
         setModels(modelData.models ?? []);
+      }
+      if (toolRes.ok) {
+        const toolData = await toolRes.json();
+        setTools(toolData.tools ?? []);
       }
     } catch {
       // Non-fatal — the forms still work without these
@@ -202,18 +218,13 @@ export default function AgentRegistryTab() {
     setSaving(true);
     setError(null);
     try {
-      const toolAllowlist = form.toolAllowlist
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-
       const payload = {
         name: form.name.trim(),
         roleFamily: form.roleFamily,
         categoryId: form.categoryId,
         modelId: form.modelId,
         systemPrompt: form.systemPrompt,
-        toolAllowlist,
+        toolAllowlist: form.toolAllowlist,
         enabled: form.enabled,
       };
 
@@ -237,7 +248,12 @@ export default function AgentRegistryTab() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      setSuccess(editing ? 'Agent updated' : 'Agent created');
+      const result = await res.json();
+      let msg = editing ? 'Agent updated' : 'Agent created';
+      if (result.warnings && result.warnings.length > 0) {
+        msg += ` (${result.warnings.length} warning${result.warnings.length > 1 ? 's' : ''})`;
+      }
+      setSuccess(msg);
       setModalOpen(false);
       await loadAgents();
     } catch (err) {
@@ -552,16 +568,141 @@ export default function AgentRegistryTab() {
           {/* Tool Allowlist */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Tool Allowlist (comma-separated)
+              Tool Allowlist
             </label>
-            <input
-              type="text"
-              value={form.toolAllowlist}
-              onChange={(e) => setForm({ ...form, toolAllowlist: e.target.value })}
-              placeholder="e.g. web_search, rag_search, calculator"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-            />
-            <p className="text-xs text-gray-500 mt-1">Leave empty to inherit the category's tool set.</p>
+            {tools.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">Loading tools…</p>
+            ) : (
+              <div className="border border-gray-300 dark:border-gray-600 rounded-md max-h-64 overflow-y-auto bg-white dark:bg-gray-800">
+                {(() => {
+                  const allowSet = new Set(form.toolAllowlist);
+                  const groupOrder = ['tavily', 'kb', 'generative', 'data', 'utility', 'mcp'];
+                  const grouped = new Map<string | 'Other', ToolMeta[]>();
+                  for (const t of tools) {
+                    const g = t.group && groupOrder.includes(t.group) ? t.group : 'Other';
+                    if (!grouped.has(g)) grouped.set(g, []);
+                    grouped.get(g)!.push(t);
+                  }
+                  const orderedGroups = [
+                    ...groupOrder.filter((g) => grouped.has(g)),
+                    ...(grouped.has('Other') ? ['Other' as const] : []),
+                  ];
+
+                  const toggleTool = (name: string) => {
+                    const next = allowSet.has(name)
+                      ? form.toolAllowlist.filter((t) => t !== name)
+                      : [...form.toolAllowlist, name];
+                    setForm({ ...form, toolAllowlist: next });
+                  };
+
+                  const reqLabel = (reqs: ModelRequirements | null) => {
+                    if (!reqs) return null;
+                    const badges: string[] = [];
+                    if (reqs.minimumContextTokens) badges.push(`needs ${reqs.minimumContextTokens}`);
+                    if (reqs.prefersCodeQuality) badges.push('code-quality');
+                    if (reqs.prefersInstructionFollowing) badges.push('instr-follow');
+                    if (reqs.prefersLargeContext) badges.push('large-ctx');
+                    if (badges.length === 0) return null;
+                    return badges.map((b) => (
+                      <span key={b} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        {b}
+                      </span>
+                    ));
+                  };
+
+                  return orderedGroups.map((group) => {
+                    const groupTools = grouped.get(group)!;
+                    const selectedCount = groupTools.filter((t) => allowSet.has(t.name)).length;
+                    return (
+                      <div key={group}>
+                        <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center justify-between border-b border-gray-200 dark:border-gray-700">
+                          <span>{group}</span>
+                          <span className="font-normal normal-case">{selectedCount}/{groupTools.length}</span>
+                        </div>
+                        {groupTools.map((tool) => {
+                          const checked = allowSet.has(tool.name);
+                          const disabled = !tool.enabled;
+                          return (
+                            <label
+                              key={tool.name}
+                              className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 ${
+                                disabled ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={() => toggleTool(tool.name)}
+                                className="rounded border-gray-300 dark:border-gray-600 flex-shrink-0"
+                              />
+                              <span className="flex-1 text-gray-800 dark:text-gray-200">{tool.displayName}</span>
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">{tool.name}</span>
+                              {tool.subagentSafe === true && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 flex-shrink-0">
+                                  subagent-safe
+                                </span>
+                              )}
+                              {tool.subagentSafe === false && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
+                                  heavy
+                                </span>
+                              )}
+                              {tool.subagentSafe === null && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 flex-shrink-0">
+                                  —
+                                </span>
+                              )}
+                              {tool.modelRequirements && (
+                                <span className="flex items-center gap-0.5 flex-shrink-0">{reqLabel(tool.modelRequirements)}</span>
+                              )}
+                              {disabled && <span className="text-[10px] text-gray-400 italic flex-shrink-0">(disabled)</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              {form.toolAllowlist.length === 0
+                ? 'No tools selected — agent will have no static tools available.'
+                : `${form.toolAllowlist.length} tool${form.toolAllowlist.length !== 1 ? 's' : ''} selected.`}
+            </p>
+            {form.toolAllowlist.some((t) => {
+              const meta = tools.find((tm) => tm.name === t);
+              return meta?.subagentSafe === false;
+            }) && !form.modelId && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Heavy tools selected without a bound model. Consider binding a capable model.
+              </p>
+            )}
+            {(() => {
+              const selectedTools = form.toolAllowlist
+                .map((t) => tools.find((tm) => tm.name === t))
+                .filter(Boolean) as ToolMeta[];
+              const hasLargeContext = selectedTools.some(
+                (t) => t.modelRequirements && (t.modelRequirements.minimumContextTokens || t.modelRequirements.prefersLargeContext)
+              );
+              const needsInstruction = selectedTools.some(
+                (t) => t.modelRequirements && t.modelRequirements.prefersInstructionFollowing
+              );
+              if ((hasLargeContext || needsInstruction) && !form.modelId) {
+                const notes: string[] = [];
+                if (hasLargeContext) notes.push('large context window');
+                if (needsInstruction) notes.push('strong instruction following');
+                return (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Selected tools require {notes.join(' + ')}. Consider binding a specific model rather than using the category default.
+                  </p>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           {/* Enabled toggle */}

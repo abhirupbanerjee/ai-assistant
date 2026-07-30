@@ -33,6 +33,7 @@ import { TONE_PRESETS } from '@/types/stream';
 import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent, PodcastHint, DiagramHint, AgentResponseInfo } from '@/types';
 import { complianceCheckerTool, type ComplianceCheckerResult } from '@/lib/tools/compliance-checker';
 import { isToolEnabled } from '@/lib/tools';
+import { executeAgentTool } from '@/lib/agent-registry/agent-tools';
 import { getImageCapabilities } from '@/lib/config-capability-checker';
 import { getLlmSettings } from '@/lib/db/compat';
 import {
@@ -125,8 +126,14 @@ export async function POST(request: NextRequest) {
           responseTone = 'default',
           showCitationTrajectory = true,
           thinkingEnabled = false,
-          toolHint,
+          toolHints,
+          agentMention,
+          pipelineMode,
         } = body;
+
+        // `pipeline` is client-supplied (untrusted). Keep it mutable so it can
+        // be re-validated against the server-side registry below.
+        let pipeline = body.pipeline;
 
         if (!message || !threadId) {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
@@ -180,6 +187,199 @@ export async function POST(request: NextRequest) {
         };
         await addMessage(user.id, threadId, userMessage);
         await updateThreadTokenCount(threadId, countTokens(message));
+
+        // ============ AGENT MENTION & PIPELINE BRANCH ============
+        // Phase 5: Inline pipeline orchestration runs before the single-@
+        // mention path. When 2+ @agent tokens are detected inline, the app
+        // executes steps sequentially and injects all artifacts into the
+        // main LLM's context.
+        let agentResultContext = '';
+
+        // ---- Trust boundary: re-validate the client-supplied pipeline ----
+        // The client sends `pipeline` directly; re-check agent ids and slash
+        // command keys against the registry so a malicious client cannot
+        // enqueue arbitrary agent__* invocations or bogus tool hints.
+        if (pipeline && pipeline.length > 0) {
+          const { sanitizePipeline } = await import('@/lib/pipeline-parser');
+          const { getAgentToolMetadata } = await import('@/lib/agent-registry/agent-tools');
+          const { getEnabledSlashCommands } = await import('@/lib/db/compat/slash-commands');
+
+          const validAgentIds = new Set(
+            (await getAgentToolMetadata(activeCategoryId)).map((m) => m.agent.id.toLowerCase()),
+          );
+          const validCommandKeys = new Set(
+            (await getEnabledSlashCommands()).map((c) => c.commandKey.toLowerCase()),
+          );
+
+          const { steps: sanitized, droppedAgentIds } = sanitizePipeline(
+            pipeline,
+            validAgentIds,
+            validCommandKeys,
+          );
+
+          if (droppedAgentIds.length > 0) {
+            console.warn(
+              `[Pipeline] Dropped ${droppedAgentIds.length} invalid agent step(s): ${droppedAgentIds.join(', ')}`,
+            );
+          }
+
+          // A pipeline needs 2+ valid steps; otherwise fall back to normal
+          // single-message handling (no pipeline, no single-@ mention).
+          pipeline = sanitized.length >= 2 ? sanitized : undefined;
+        }
+
+        // --- helper: emit an agent artifact card ---
+        const emitAgentArtifact = (
+          result: Record<string, unknown>,
+          step: { agentId: string }
+        ) => {
+          if (result.agentId) {
+            send({
+              type: 'artifact',
+              subtype: 'agent',
+              data: {
+                agentId: result.agentId as string,
+                agentName: (result.agentName ?? step.agentId) as string,
+                roleFamily: (result.roleFamily ?? 'executor') as AgentResponseInfo['roleFamily'],
+                artifact: (result.artifact ?? { type: 'text', content: '' }) as AgentResponseInfo['artifact'],
+                confidence: typeof result.confidence === 'number' ? result.confidence : 0,
+                suggestedNextReason:
+                  typeof (result as Record<string, unknown>).suggestedNext === 'object' &&
+                  (result as Record<string, unknown>).suggestedNext !== null
+                    ? ((result as Record<string, unknown>).suggestedNext as Record<string, unknown>).reason as string | undefined
+                    : undefined,
+              } as AgentResponseInfo,
+            });
+          }
+        };
+
+        // ============ PIPELINE BRANCH (Phase 5) ============
+        if (pipeline && pipeline.length >= 2) {
+          // --- Swarm kill-switch gate ---
+          {
+            const { getGlobalKillSwitch } = await import('@/lib/db/compat/swarm-control');
+            const ks = await getGlobalKillSwitch();
+            if (!ks.swarmEnabled) {
+              send({
+                type: 'error',
+                code: 'FEATURE_DISABLED',
+                message: 'Multi-agent pipelines are disabled by the administrator.',
+                recoverable: true,
+              });
+              cleanup();
+              safeClose();
+              return;
+            }
+          }
+
+          if (pipelineMode === 'strict') {
+            // --- STRICT MODE: execute steps sequentially, chain artifacts ---
+            const pipelineArtifacts: string[] = [];
+            for (let i = 0; i < pipeline.length; i++) {
+              const step = pipeline[i];
+              send({
+                type: 'status',
+                phase: 'init',
+                content: `Step ${i + 1}/${pipeline.length}: Invoking @${step.agentId}…`,
+              });
+
+              // Build context from all prior artifacts.
+              let stepContext = '';
+              if (pipelineArtifacts.length > 0) {
+                stepContext = pipelineArtifacts
+                  .map((a, j) => `[Artifact from step ${j + 1}]:\n${a}`)
+                  .join('\n\n');
+              }
+
+              try {
+                const resultJson = await executeAgentTool(
+                  `agent__${step.agentId}`,
+                  JSON.stringify({ task: step.task, context: stepContext }),
+                  step.toolHints.length > 0 ? step.toolHints : undefined,
+                );
+                const result = JSON.parse(resultJson);
+                emitAgentArtifact(result, step);
+
+                // Accumulate for next step.
+                const summary =
+                  typeof result.artifact?.content === 'string'
+                    ? result.artifact.content.slice(0, 2000)
+                    : JSON.stringify(result.artifact ?? result).slice(0, 2000);
+                pipelineArtifacts.push(summary);
+              } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                send({
+                  type: 'status',
+                  phase: 'init',
+                  content: `Step ${i + 1} failed: ${errMsg}. Continuing with remaining steps.`,
+                });
+                pipelineArtifacts.push(`[Step ${i + 1} failed: ${errMsg}]`);
+              }
+            }
+
+            // Inject all artifacts into agentResultContext for the main LLM.
+            if (pipelineArtifacts.length > 0) {
+              agentResultContext = pipelineArtifacts
+                .map((a, i) => `\n\n[Step ${i + 1} result]: ${a}`)
+                .join('');
+            }
+          } else {
+            // --- AUTO MODE: serialize pipeline as a system-prompt directive ---
+            // The main LLM executes steps via its existing agent__* tool loop.
+            // We build the directive here and append it to effectiveSystemPrompt
+            // later (before the LLM call). Temporarily stash in agentResultContext
+            // which is already injected into the system prompt at line ~607.
+            let directive =
+              '\n\n[PIPELINE WORKFLOW — execute these steps in order using agent__* tools:\n';
+            for (let i = 0; i < pipeline.length; i++) {
+              const s = pipeline[i];
+              directive += `${i + 1}. Call agent__${s.agentId} with task: "${s.task}"`;
+              if (s.toolHints.length > 0) {
+                directive += ` (prefer these tools: ${s.toolHints.map((h) => '/' + h).join(', ')})`;
+              }
+              if (i > 0) directive += ` — pass the output of step ${i} as context`;
+              directive += '\n';
+            }
+            directive +=
+              'After all steps complete, compose the final answer from their outputs.]';
+            agentResultContext = directive;
+          }
+        }
+
+        // ============ SINGLE-@ AGENT MENTION BRANCH ============
+        // Preserved for backward compatibility: single @agent chip at position 0.
+        if (agentMention && !(pipeline && pipeline.length >= 2)) {
+          try {
+            const agentToolName = `agent__${agentMention}`;
+            const agentArgs = JSON.stringify({
+              task: message,
+              context: '', // context will be enriched by RAG later
+            });
+            send({ type: 'status', phase: 'init', content: `Invoking @${agentMention} agent…` });
+            const resultJson = await executeAgentTool(
+              agentToolName,
+              agentArgs,
+              toolHints && toolHints.length > 0 ? toolHints : undefined,
+            );
+            const result = JSON.parse(resultJson);
+
+            // Emit artifact for the AgentResponseCard UI
+            emitAgentArtifact(result, { agentId: agentMention });
+
+            // Build context from agent result for the main LLM
+            if (result.error) {
+              agentResultContext = `\n\n[The @${agentMention} agent encountered an error: ${result.error}. Please inform the user and handle gracefully.]`;
+            } else {
+              const summary = typeof result.artifact === 'string'
+                ? result.artifact.slice(0, 2000)
+                : JSON.stringify(result.artifact ?? result).slice(0, 2000);
+              agentResultContext = `\n\n[The @${agentMention} agent completed its task. Result summary: ${summary}. Use this information to compose your final response to the user.]`;
+            }
+          } catch (err) {
+            console.error(`[Agent Mention] Failed to invoke @${agentMention}:`, err);
+            agentResultContext = `\n\n[The @${agentMention} agent failed to execute. Please inform the user and suggest trying again.]`;
+          }
+        }
 
         // ============ AUTONOMOUS MODE BRANCH ============
         if (mode === 'autonomous') {
@@ -535,19 +735,26 @@ export async function POST(request: NextRequest) {
               effectiveSystemPrompt = `${tonePrompt}\n\n${ragResult.systemPrompt}`;
             }
 
-            // Phase 1: Inject slash command hint for this turn only (transient, not persistent)
-            if (toolHint) {
+            // Phase 1: Inject slash command hints for this turn only (transient, not persistent)
+            if (toolHints && toolHints.length > 0) {
               const { getSlashCommandByKey } = await import('@/lib/db/compat/slash-commands');
               const { isToolEnabled: checkToolEnabled } = await import('@/lib/tools');
 
-              const command = await getSlashCommandByKey(toolHint);
-              if (command && command.enabled && await checkToolEnabled(command.toolName)) {
-                let hintText = command.hint;
-                if (command.formatHint) {
-                  hintText += ` Use format='${command.formatHint}'.`;
+              for (const hint of toolHints) {
+                const command = await getSlashCommandByKey(hint);
+                if (command && command.enabled && await checkToolEnabled(command.toolName)) {
+                  let hintText = command.hint;
+                  if (command.formatHint) {
+                    hintText += ` Use format='${command.formatHint}'.`;
+                  }
+                  effectiveSystemPrompt += `\n\n[SUGGESTED APPROACH: ${hintText}]`;
                 }
-                effectiveSystemPrompt += `\n\n[SUGGESTED APPROACH: ${hintText}]`;
               }
+            }
+
+            // Append agent mention result context (forced invocation, Phase C3)
+            if (agentResultContext) {
+              effectiveSystemPrompt += agentResultContext;
             }
 
             // Append clarification instruction when preflight skill is active

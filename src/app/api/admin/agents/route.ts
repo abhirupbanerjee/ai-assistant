@@ -18,6 +18,8 @@ import {
   type AgentRoleFamily,
   type CreateAgentInput,
 } from '@/lib/db/compat';
+import { getEnabledModel } from '@/lib/db/compat/enabled-models';
+import { AVAILABLE_TOOLS } from '@/lib/tools';
 import type { ApiError } from '@/types';
 
 const VALID_ROLES: AgentRoleFamily[] = [
@@ -36,6 +38,40 @@ const VALID_ROLES: AgentRoleFamily[] = [
  */
 const AGENT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const AGENT_ID_MAX_LENGTH = 57;
+
+/**
+ * Validate that the bound model satisfies tool capability requirements.
+ * Returns an array of warning strings (empty if all checks pass).
+ * This is a soft guard — warnings are returned alongside the agent but
+ * do not block creation/update.
+ */
+async function validateModelCapabilities(
+  toolAllowlist: string[] | undefined,
+  modelId: string | null | undefined
+): Promise<string[]> {
+  const warnings: string[] = [];
+  if (!toolAllowlist || toolAllowlist.length === 0 || !modelId) return warnings;
+
+  // Compute union of minimumContextTokens across selected tools
+  let minContext = 0;
+  for (const toolName of toolAllowlist) {
+    const tool = AVAILABLE_TOOLS[toolName];
+    if (tool?.modelRequirements?.minimumContextTokens) {
+      minContext = Math.max(minContext, tool.modelRequirements.minimumContextTokens);
+    }
+  }
+
+  if (minContext > 0) {
+    const model = await getEnabledModel(modelId);
+    if (model && model.maxInputTokens != null && model.maxInputTokens < minContext) {
+      warnings.push(
+        `Model "${model.displayName}" has max input ${model.maxInputTokens.toLocaleString()} tokens, but selected tools require at least ${minContext.toLocaleString()}. Consider a larger-context model.`
+      );
+    }
+  }
+
+  return warnings;
+}
 
 // GET /api/admin/agents
 export async function GET(request: NextRequest) {
@@ -142,9 +178,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Soft capability validation — warns if bound model can't satisfy tool requirements
+    const warnings = await validateModelCapabilities(body.toolAllowlist, body.modelId);
+
     const agent = await createAgent(body);
 
-    return NextResponse.json({ agent }, { status: 201 });
+    return NextResponse.json({ agent, warnings: warnings.length > 0 ? warnings : undefined }, { status: 201 });
   } catch (error) {
     console.error('[Agent Registry] POST error:', error);
     return NextResponse.json<ApiError>(

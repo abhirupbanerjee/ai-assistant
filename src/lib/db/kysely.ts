@@ -1141,10 +1141,40 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       ('tpl-executor',   'Executor (template)',   'executor',   NULL, NULL, 'You are an Executor. Complete the assigned subtask using the tools in your allowlist. Return an artifact, a confidence score (0-1), and a suggested_next action.', '[]', '{"max_retries": 2}'::jsonb, TRUE),
       ('tpl-critic',     'Critic (template)',     'critic',     NULL, NULL, 'You are a Critic. Review the executor artifact against the subtask criteria. Approve, or loop back with specific failure reasons. Never approve low-confidence artifacts without justification.', '[]', '{"min_confidence": 0.6}'::jsonb, TRUE),
       ('tpl-researcher', 'Researcher (template)', 'researcher', NULL, NULL, 'You are a Researcher. Retrieve information from the knowledge base, web, and uploaded documents for the assigned subtask. Cite sources. Return a structured artifact.', '["web_search","web_extract","kb_summary","kb_search","kb_read"]', '{}'::jsonb, TRUE),
-      ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '[]', '{}'::jsonb, TRUE)
+      ('tpl-presenter',  'Presenter (template)',  'presenter',  NULL, NULL, 'You are a Presenter. Assemble the final deliverable from the swarm''s artifacts into a coherent, well-formatted response for the user.', '["diagram_gen"]'::jsonb, '{}'::jsonb, TRUE)
     ON CONFLICT (id) DO NOTHING
   `.execute(database);
   console.log('[Kysely] Seeded 5 global template agents (one per role family) (Phase 1)');
+
+  // Seed 7 domain-specialized executor + critic template agents.
+  // All model_id values are NULL — models are user-configured, so binding
+  // happens post-seed via the admin UI (Phase 3 validation guides admins).
+  await sql`
+    INSERT INTO agent (id, name, role_family, category_id, model_id, system_prompt, tool_allowlist, config, enabled) VALUES
+      ('tpl-code-executor','Code Executor (template)','executor',NULL,NULL,
+       'You are a Code Executor. Analyze repositories using code_analysis (cite SonarCloud metric keys), produce architecture diagrams with diagram_gen. Return findings with severity ratings and confidence. Reject confidence < 0.7.',
+       '["code_analysis","diagram_gen"]'::jsonb,'{"max_retries":2,"min_confidence":0.7}'::jsonb,TRUE),
+      ('tpl-code-critic','Code Critic (template)','critic',NULL,NULL,
+       'You are a Code Critic. Review for missed security hotspots, false-positive severity ratings, missing architecture context. Reject confidence < 0.7 with specific file/function references.',
+       '[]'::jsonb,'{"min_confidence":0.7}'::jsonb,TRUE),
+      ('tpl-doc-executor','Document Executor (template)','executor',NULL,NULL,
+       'You are a Document Executor. Produce formatted .docx via doc_gen; generate data visualizations with chart_gen and reference them. Source all claims. Return artifact with confidence.',
+       '["doc_gen","chart_gen"]'::jsonb,'{"max_retries":2}'::jsonb,TRUE),
+      ('tpl-doc-critic','Document Critic (template)','critic',NULL,NULL,
+       'You are a Document Critic. Review structural completeness (exec summary, methodology, findings, recommendations), unsupported claims, chart-text alignment, branding. Reject if sections missing or claims unsourced.',
+       '[]'::jsonb,'{"min_confidence":0.65}'::jsonb,TRUE),
+      ('tpl-data-executor','Data Analyst Executor (template)','executor',NULL,NULL,
+       'You are a Data Analyst Executor. Build Excel spreadsheets with formulas via xlsx_gen; combine datasets with aggregate_data; visualize with chart_gen. Return spreadsheet artifact with data-quality confidence.',
+       '["xlsx_gen","aggregate_data","chart_gen"]'::jsonb,'{"max_retries":2}'::jsonb,TRUE),
+      ('tpl-pptx-executor','Presentation Executor (template)','executor',NULL,NULL,
+       'You are a Presentation Executor. Generate .pptx via pptx_gen with visuals from image_gen and charts from chart_gen. Return deck artifact with confidence and slide-count summary.',
+       '["pptx_gen","image_gen","chart_gen"]'::jsonb,'{"max_retries":2}'::jsonb,TRUE),
+      ('tpl-site-executor','Web Builder Executor (template)','executor',NULL,NULL,
+       'You are a Web Builder Executor. Generate static sites with site_gen, interactive HTML dashboards with html_gen, audit existing sites with website_analysis. Return site artifact with confidence.',
+       '["site_gen","html_gen","website_analysis"]'::jsonb,'{"max_retries":2}'::jsonb,TRUE)
+    ON CONFLICT (id) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Seeded 7 domain-specialized executor + critic template agents (Phase 2)');
 
   // Migration: Append kb_read to the tool_allowlist of any agent that already
   // has kb_summary (researcher templates + any executor with KB access) but is
@@ -1172,6 +1202,27 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
       AND NOT (tool_allowlist @> '["kb_search"]'::jsonb)
   `.execute(database);
   console.log('[Kysely] Ensured kb_search in tool_allowlist for agents with kb_read');
+
+  // Migration: Append website_analysis and load_testing to tpl-researcher.
+  // Both tools are subagentSafe: true — safe addition that lets the researcher
+  // audit sites during research without needing a separate executor.
+  await sql`
+    UPDATE agent
+    SET tool_allowlist = tool_allowlist || '["website_analysis","load_testing"]'::jsonb
+    WHERE id = 'tpl-researcher'
+      AND NOT tool_allowlist @> '["website_analysis"]'::jsonb
+  `.execute(database);
+  console.log('[Kysely] Ensured website_analysis + load_testing in tpl-researcher tool_allowlist');
+
+  // Migration: Add diagram_gen to tpl-presenter (presenter assembles deliverables;
+  // diagrams are a common deliverable format).
+  await sql`
+    UPDATE agent
+    SET tool_allowlist = tool_allowlist || '["diagram_gen"]'::jsonb
+    WHERE id = 'tpl-presenter'
+      AND NOT tool_allowlist @> '["diagram_gen"]'::jsonb
+  `.execute(database);
+  console.log('[Kysely] Ensured diagram_gen in tpl-presenter tool_allowlist');
 
   // Seed suggested (not forced) tool-routing rules for common KB-intent keywords.
   // force_mode='suggested' → determineToolChoice returns 'auto', so the model is

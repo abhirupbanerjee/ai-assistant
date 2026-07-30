@@ -154,10 +154,12 @@ function buildToolDefinition(agent: AgentRecord): OpenAI.Chat.ChatCompletionFunc
  *   - On success: the full `AgentResponse` contract envelope.
  *   - On infra failure (agent missing, provider down): a minimal error
  *     object `{ error, agentId, roleFamily }` so the LLM can escalate.
+ * @param toolHints Optional /command keys to inject as tool-use hints for the agent.
  */
 export async function executeAgentTool(
   name: string,
-  args: string
+  args: string,
+  toolHints?: string[]
 ): Promise<string> {
   const agentId = toolNameToAgentId(name);
   if (!agentId) {
@@ -203,6 +205,7 @@ export async function executeAgentTool(
     agentId,
     task: parsed.task,
     context: typeof parsed.context === 'string' ? parsed.context : undefined,
+    toolHints,
   });
 
   // If the invoker hit an infrastructure problem (agent not found, model

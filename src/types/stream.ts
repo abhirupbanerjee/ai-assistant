@@ -423,6 +423,24 @@ export const TONE_PRESETS: Record<string, TonePreset> = {
 };
 
 /**
+ * A single step in an inline multi-agent pipeline.
+ *
+ * Each step pairs an agent id (validated against the registry) with a task
+ * clause and optional tool hints from inline /command tokens.
+ */
+export interface PipelineStep {
+  /** Validated agent id (e.g. `tpl-planner`). */
+  agentId: string;
+  /** The clause text assigned to this agent step. */
+  task: string;
+  /** /command keys attached to this step (e.g. `['pdf']`). */
+  toolHints: string[];
+}
+
+/** Execution mode for inline pipelines. */
+export type PipelineMode = 'auto' | 'strict';
+
+/**
  * Chat preferences that can be set per-thread
  */
 export interface ChatPreferences {
@@ -432,9 +450,14 @@ export interface ChatPreferences {
   showSources: boolean;
   showCitationTrajectory: boolean;
   thinkingEnabled: boolean;
-  toolHint?: string; // Transient slash command hint for this message only
+  toolHints?: string[]; // Transient slash command hints for this message only
+  agentMention?: string; // Transient @ agent mention for this message only (agent id)
   /** Scope memory retrieval/extraction to a single category */
   activeCategoryId?: number;
+  /** Inline multi-agent pipeline steps (2+ @agent tokens detected). */
+  pipeline?: PipelineStep[];
+  /** Execution mode for the pipeline: 'strict' (deterministic) or 'auto' (LLM-driven). */
+  pipelineMode?: PipelineMode;
 }
 
 /**
@@ -477,7 +500,12 @@ export interface StreamChatRequest {
   responseTone?: string; // e.g., 'concise', 'formal', defaults to 'default'
   showCitationTrajectory?: boolean; // default: true
   thinkingEnabled?: boolean; // default: false unless model-specific UI default enables it
-  toolHint?: string; // Transient slash command hint for this message only
+  toolHints?: string[]; // Transient slash command hints for this message only
+  agentMention?: string; // Transient @ agent mention for this message only (agent id)
+  /** Inline multi-agent pipeline steps (detected from 2+ @agent tokens). */
+  pipeline?: PipelineStep[];
+  /** Execution mode for the pipeline. */
+  pipelineMode?: PipelineMode;
 }
 
 /**

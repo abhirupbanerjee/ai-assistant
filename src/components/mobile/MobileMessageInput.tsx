@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowUp, Mic, Paperclip, Settings, AlertCircle, Loader2, X } from 'lucide-react';
 import SlashCommandMenu from '@/components/chat/SlashCommandMenu';
+import AgentMentionMenu from '@/components/chat/AgentMentionMenu';
 import VoiceInput from '@/components/chat/VoiceInput';
 import FileUpload from '@/components/chat/FileUpload';
 import ModeToggle, { ChatMode } from '@/components/chat/ModeToggle';
@@ -11,6 +12,8 @@ import LanguageSelector from '@/components/chat/LanguageSelector';
 import ToneSelector from '@/components/chat/ToneSelector';
 import ModelSelector from '@/components/chat/ModelSelector';
 import type { ChatPreferences } from '@/types/stream';
+import { buildSubmitPayload } from '@/lib/message-input-parser';
+import { removeTriggerSpan, type TriggerSpan } from '@/lib/trigger-span';
 import { useMobileMenuOptional } from '@/contexts/MobileMenuContext';
 
 interface UrlSourceInfo {
@@ -63,7 +66,15 @@ export default function MobileMessageInput({
   const [isUploading, setIsUploading] = useState(false);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
-  const [activeSlashCommand, setActiveSlashCommand] = useState<string | null>(null);
+  const MAX_SLASH_COMMANDS = 3;
+  const [activeSlashCommands, setActiveSlashCommands] = useState<string[]>([]);
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [activeAgentMention, setActiveAgentMention] = useState<string | null>(null);
+  // Phase 5: pipeline orchestration — token cache
+  const [knownAgentIds, setKnownAgentIds] = useState<Set<string>>(new Set());
+  const [knownCommandKeys, setKnownCommandKeys] = useState<Set<string>>(new Set());
+  const triggerSpanRef = useRef<TriggerSpan | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prefsMenuRef = useRef<HTMLDivElement>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
@@ -76,6 +87,25 @@ export default function MobileMessageInput({
   useEffect(() => {
     mobileMenu?.setInputExpanded(isExpanded);
   }, [isExpanded, mobileMenu]);
+
+  // Phase 5: pre-fetch known agents and slash commands for pipeline validation
+  useEffect(() => {
+    fetch('/api/chat/agents')
+      .then((r) => r.json())
+      // Lowercase ids to match parsePipelinePrompt's lowercased @token lookup.
+      .then((d) =>
+        setKnownAgentIds(new Set((d.agents as Array<{ id: string }>).map((a) => a.id.toLowerCase())))
+      )
+      .catch(() => {});
+    fetch('/api/chat/slash-commands')
+      .then((r) => r.json())
+      .then((d) =>
+        setKnownCommandKeys(
+          new Set((d.commands as Array<{ commandKey: string }>).map((c) => c.commandKey))
+        )
+      )
+      .catch(() => {});
+  }, []);
 
   // Auto-resize textarea: 1 line default (~24px), expand up to 4 lines (~96px), then scroll
   const LINE_HEIGHT = 24;
@@ -108,38 +138,49 @@ export default function MobileMessageInput({
 
   const handleSubmit = () => {
     let finalMessage = message.trim();
-    if (!finalMessage && !activeSlashCommand) return;
+    if (!finalMessage && activeSlashCommands.length === 0 && !activeAgentMention) return;
     if (isSubmitDisabled) return;
 
-    let toolHint: string | undefined;
-    if (activeSlashCommand) {
-      toolHint = activeSlashCommand;
-    } else {
-      const slashMatch = finalMessage.match(/^\/([a-z0-9_-]+)(?:\s+(.+))?$/i);
-      if (slashMatch) {
-        toolHint = slashMatch[1].toLowerCase();
-        finalMessage = slashMatch[2] || '';
-      }
-    }
+    // Phase 5: pipeline detection + chip merging + slash extraction handled by
+    // the shared, unit-tested buildSubmitPayload helper. Mobile defaults to
+    // strict pipeline mode.
+    const { finalMessage: outMessage, toolHints, agentMention, pipeline, pipelineMode } =
+      buildSubmitPayload({
+        message,
+        activeAgentMention,
+        activeSlashCommands,
+        knownAgentIds,
+        knownCommandKeys,
+        pipelineModeState: 'strict',
+        maxSlashCommands: MAX_SLASH_COMMANDS,
+      });
 
-    onSend(finalMessage, mode, { ...preferences, toolHint });
+    onSend(outMessage, mode, { ...preferences, toolHints, agentMention, pipeline, pipelineMode });
     setMessage('');
-    setActiveSlashCommand(null);
+    setActiveSlashCommands([]);
+    setActiveAgentMention(null);
     setMode('normal');
     setIsExpanded(false);
     setShowPrefsMenu(false);
     setSlashMenuOpen(false);
     setSlashQuery('');
+    setMentionMenuOpen(false);
+    setMentionQuery('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      // Menu open → Enter selects the highlighted item via the menu's
+      // window-level listener; don't submit the raw partial trigger token.
+      if (mentionMenuOpen || slashMenuOpen) return;
       e.preventDefault();
       handleSubmit();
     }
     if (e.key === 'Escape') {
       setSlashMenuOpen(false);
       setSlashQuery('');
+      setMentionMenuOpen(false);
+      setMentionQuery('');
     }
   };
 
@@ -226,7 +267,7 @@ export default function MobileMessageInput({
     preferences.webSearchEnabled,
     preferences.targetLanguage !== 'en',
     preferences.responseTone !== 'default',
-    !!activeSlashCommand,
+    activeSlashCommands.length > 0,
   ].filter(Boolean).length;
 
   // Collapsed state - thin bar (hidden while scrolling)
@@ -311,15 +352,15 @@ export default function MobileMessageInput({
           </div>
         )}
 
-        {/* Active slash command indicator */}
-        {activeSlashCommand && (
+        {/* Active agent mention indicator */}
+        {activeAgentMention && (
           <div className="mb-2 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-              /{activeSlashCommand}
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+              @{activeAgentMention}
               <button
                 type="button"
-                onClick={() => setActiveSlashCommand(null)}
-                className="ml-0.5 hover:text-blue-900"
+                onClick={() => setActiveAgentMention(null)}
+                className="ml-0.5 hover:text-green-900"
               >
                 <X size={12} />
               </button>
@@ -327,20 +368,75 @@ export default function MobileMessageInput({
           </div>
         )}
 
+        {/* Active slash command indicators (multi-chip) */}
+        {activeSlashCommands.length > 0 && (
+          <div className="mb-2 flex items-center gap-2 flex-wrap">
+            {activeSlashCommands.map((cmd, idx) => (
+              <span key={`${cmd}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                /{cmd}
+                <button
+                  type="button"
+                  onClick={() => setActiveSlashCommands(prev => prev.filter((_, i) => i !== idx))}
+                  className="ml-0.5 hover:text-blue-900"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Agent mention menu */}
+        {mentionMenuOpen && (
+          <AgentMentionMenu
+            query={mentionQuery}
+            activeCategoryId={preferences.activeCategoryId}
+            onSelect={(agentId) => {
+              const span = triggerSpanRef.current;
+              const end = textareaRef.current?.selectionStart ?? message.length;
+              setActiveAgentMention(agentId);
+              setMentionMenuOpen(false);
+              setMentionQuery('');
+              if (span) {
+                setMessage((prev) => removeTriggerSpan(prev, span.start, end));
+              } else {
+                setMessage((prev) => prev.replace(/^@\S+/, ''));
+              }
+              triggerSpanRef.current = null;
+              textareaRef.current?.focus();
+            }}
+            onDismiss={() => {
+              setMentionMenuOpen(false);
+              setMentionQuery('');
+              triggerSpanRef.current = null;
+            }}
+          />
+        )}
+
         {/* Slash command menu */}
         {slashMenuOpen && (
           <SlashCommandMenu
             query={slashQuery}
             onSelect={(commandKey) => {
-              setActiveSlashCommand(commandKey);
-              setSlashMenuOpen(false);
-              setSlashQuery('');
-              setMessage((prev) => prev.replace(/^\//, ''));
-              textareaRef.current?.focus();
+              const span = triggerSpanRef.current;
+              const end = textareaRef.current?.selectionStart ?? message.length;
+              if (activeSlashCommands.length < MAX_SLASH_COMMANDS) {
+                setActiveSlashCommands(prev => [...prev, commandKey]);
+                setSlashMenuOpen(false);
+                setSlashQuery('');
+                if (span) {
+                  setMessage((prev) => removeTriggerSpan(prev, span.start, end));
+                } else {
+                  setMessage((prev) => prev.replace(/^\//, ''));
+                }
+                triggerSpanRef.current = null;
+                textareaRef.current?.focus();
+              }
             }}
             onDismiss={() => {
               setSlashMenuOpen(false);
               setSlashQuery('');
+              triggerSpanRef.current = null;
             }}
           />
         )}
@@ -351,22 +447,32 @@ export default function MobileMessageInput({
           value={message}
           onChange={(e) => {
             const val = e.target.value;
+            const cursorPos = e.target.selectionStart ?? val.length;
             setMessage(val);
 
-            // Detect slash command at position 0
-            if (activeSlashCommand) {
-              setSlashMenuOpen(false);
-              return;
-            }
+            // Phase 5: cursor-anchored trigger detection
+            const textBeforeCursor = val.slice(0, cursorPos);
+            const atMatch = textBeforeCursor.match(/(?:^|\s)(@)([a-z0-9_-]*)$/);
+            const slashMatch = textBeforeCursor.match(/(?:^|\s)(\/)([a-z0-9_-]*)$/);
 
-            if (val.startsWith('/')) {
-              const spaceIdx = val.indexOf(' ');
-              const query = spaceIdx === -1 ? val.slice(1) : val.slice(1, spaceIdx);
-              setSlashQuery(query);
-              setSlashMenuOpen(true);
-            } else {
+            if (atMatch && !activeAgentMention) {
+              triggerSpanRef.current = { start: cursorPos - 1 - atMatch[2].length, kind: 'at' };
+              setMentionQuery(atMatch[2]);
+              setMentionMenuOpen(true);
               setSlashMenuOpen(false);
               setSlashQuery('');
+            } else if (slashMatch && activeSlashCommands.length < MAX_SLASH_COMMANDS) {
+              triggerSpanRef.current = { start: cursorPos - 1 - slashMatch[2].length, kind: 'slash' };
+              setSlashQuery(slashMatch[2]);
+              setSlashMenuOpen(true);
+              setMentionMenuOpen(false);
+              setMentionQuery('');
+            } else {
+              triggerSpanRef.current = null;
+              setSlashMenuOpen(false);
+              setMentionMenuOpen(false);
+              setSlashQuery('');
+              setMentionQuery('');
             }
           }}
           onKeyDown={handleKeyDown}

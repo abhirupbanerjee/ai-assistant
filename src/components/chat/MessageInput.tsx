@@ -6,6 +6,7 @@ import { ArrowUp, Loader2, Square, Bot, Globe, Paperclip, Brain, BookOpen } from
 import VoiceInput from './VoiceInput';
 import PlusMenu from './PlusMenu';
 import SlashCommandMenu from './SlashCommandMenu';
+import AgentMentionMenu from './AgentMentionMenu';
 import ModelSelector from './ModelSelector';
 import InlineModeChips from './InlineModeChips';
 import InlineLanguageToneChips from './InlineLanguageToneChips';
@@ -13,7 +14,10 @@ import ChipSheet, { type ActiveFeatureBadge } from './ChipSheet';
 
 import { ChatMode } from './ModeToggle';
 import { useToast } from '@/contexts/ToastContext';
-import type { ChatPreferences } from '@/types/stream';
+import type { ChatPreferences, PipelineMode } from '@/types/stream';
+import { parsePipelinePrompt } from '@/lib/pipeline-parser';
+import { buildSubmitPayload } from '@/lib/message-input-parser';
+import { removeTriggerSpan, type TriggerSpan } from '@/lib/trigger-span';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
 import { useInputState } from '@/hooks/useInputState';
@@ -107,7 +111,16 @@ const MessageInput = memo(function MessageInput({
   const [currentModelInfo, setCurrentModelInfo] = useState<CurrentModelInfo | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
-  const [activeSlashCommand, setActiveSlashCommand] = useState<string | null>(null);
+  const MAX_SLASH_COMMANDS = 3;
+  const [activeSlashCommands, setActiveSlashCommands] = useState<string[]>([]);
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [activeAgentMention, setActiveAgentMention] = useState<string | null>(null);
+  // Phase 5: pipeline orchestration
+  const [knownAgentIds, setKnownAgentIds] = useState<Set<string>>(new Set());
+  const [knownCommandKeys, setKnownCommandKeys] = useState<Set<string>>(new Set());
+  const [pipelineModeState, setPipelineModeState] = useState<PipelineMode>('strict');
+  const triggerSpanRef = useRef<TriggerSpan | null>(null);
   const lastModelIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -130,6 +143,27 @@ const MessageInput = memo(function MessageInput({
       setMessage(initialDraft);
     }
   }, [initialDraft, setMessage]);
+
+  // Phase 5: pre-fetch known agents and slash commands for pipeline validation
+  // and cursor-anchored trigger detection.
+  useEffect(() => {
+    fetch('/api/chat/agents')
+      .then((r) => r.json())
+      // Lowercase ids: parsePipelinePrompt lowercases @tokens before lookup, so
+      // a mixed-case admin-created id would otherwise never pipeline-match.
+      .then((d) =>
+        setKnownAgentIds(new Set((d.agents as Array<{ id: string }>).map((a) => a.id.toLowerCase())))
+      )
+      .catch(() => { /* non-critical — pipeline detection degrades gracefully */ });
+    fetch('/api/chat/slash-commands')
+      .then((r) => r.json())
+      .then((d) =>
+        setKnownCommandKeys(
+          new Set((d.commands as Array<{ commandKey: string }>).map((c) => c.commandKey))
+        )
+      )
+      .catch(() => { /* non-critical */ });
+  }, []);
 
   // Fire toast when draft is restored or when draft save fails
   useEffect(() => {
@@ -267,28 +301,39 @@ const MessageInput = memo(function MessageInput({
   const handleSubmit = useCallback(() => {
     if (!message.trim() || isSubmitDisabled) return;
 
-    let finalMessage = message.trim();
-    let toolHint: string | undefined;
+    // Phase 5: pipeline detection + chip merging + slash extraction is handled
+    // by the pure buildSubmitPayload helper (unit-tested, framework-free).
+    const { finalMessage, toolHints, agentMention, pipeline, pipelineMode } =
+      buildSubmitPayload({
+        message,
+        activeAgentMention,
+        activeSlashCommands,
+        knownAgentIds,
+        knownCommandKeys,
+        pipelineModeState,
+        maxSlashCommands: MAX_SLASH_COMMANDS,
+      });
 
-    // If active slash command was selected via menu
-    if (activeSlashCommand) {
-      toolHint = activeSlashCommand;
-    } else {
-      // Fallback: parse raw message for /command pattern
-      const slashMatch = finalMessage.match(/^\/([a-z0-9_-]+)(?:\s+(.+))?$/i);
-      if (slashMatch) {
-        toolHint = slashMatch[1].toLowerCase();
-        finalMessage = slashMatch[2] || '';
-      }
-    }
-
-    onSend(finalMessage, mode, { ...preferences, toolHint });
+    onSend(finalMessage, mode, { ...preferences, toolHints, agentMention, pipeline, pipelineMode });
     setMessage('');
-    setActiveSlashCommand(null);
+    setActiveSlashCommands([]);
+    setActiveAgentMention(null);
     clearDraft();
     // Reset mode to normal after sending
     setMode('normal');
-  }, [message, isSubmitDisabled, onSend, mode, preferences, activeSlashCommand, clearDraft]);
+  }, [
+    message,
+    isSubmitDisabled,
+    onSend,
+    mode,
+    preferences,
+    activeSlashCommands,
+    activeAgentMention,
+    clearDraft,
+    knownAgentIds,
+    knownCommandKeys,
+    pipelineModeState,
+  ]);
 
   // Memoized keyboard shortcut callbacks to prevent listener re-binding
   const focusTextarea = useCallback(() => {
@@ -311,6 +356,11 @@ const MessageInput = memo(function MessageInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      // When a trigger menu is open, Enter/Tab selects the highlighted item via
+      // the menu's window-level keydown listener (which calls preventDefault,
+      // so no newline is inserted). Submitting here would fire before that
+      // listener and send the raw partial trigger token.
+      if (mentionMenuOpen || slashMenuOpen) return;
       // On mobile, Enter always inserts a new line (submit via button only)
       if (isMobile) return;
       // Shift+Enter or Ctrl/Cmd+Enter = new line
@@ -454,16 +504,16 @@ const MessageInput = memo(function MessageInput({
           </div>
         )}
 
-        {/* Active slash command indicator */}
-        {activeSlashCommand && (
+        {/* Active agent mention indicator */}
+        {activeAgentMention && (
           <div className="mb-2 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-              /{activeSlashCommand}
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+              @{activeAgentMention}
               <button
                 type="button"
-                onClick={() => setActiveSlashCommand(null)}
-                className="hover:text-blue-900 ml-0.5"
-                aria-label="Remove slash command"
+                onClick={() => setActiveAgentMention(null)}
+                className="hover:text-green-900 ml-0.5"
+                aria-label="Remove agent mention"
               >
                 ×
               </button>
@@ -471,21 +521,76 @@ const MessageInput = memo(function MessageInput({
           </div>
         )}
 
+        {/* Active slash command indicators (multi-chip) */}
+        {activeSlashCommands.length > 0 && (
+          <div className="mb-2 flex items-center gap-2 flex-wrap">
+            {activeSlashCommands.map((cmd, idx) => (
+              <span key={`${cmd}-${idx}`} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                /{cmd}
+                <button
+                  type="button"
+                  onClick={() => setActiveSlashCommands(prev => prev.filter((_, i) => i !== idx))}
+                  className="hover:text-blue-900 ml-0.5"
+                  aria-label={`Remove /${cmd} command`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Agent mention menu */}
+        {mentionMenuOpen && (
+          <AgentMentionMenu
+            query={mentionQuery}
+            activeCategoryId={preferences.activeCategoryId}
+            onSelect={(agentId) => {
+              const span = triggerSpanRef.current;
+              const end = textareaRef.current?.selectionStart ?? message.length;
+              setActiveAgentMention(agentId);
+              setMentionMenuOpen(false);
+              setMentionQuery('');
+              if (span) {
+                setMessage((prev) => removeTriggerSpan(prev, span.start, end));
+              } else {
+                setMessage((prev) => prev.replace(/^@\S+/, ''));
+              }
+              triggerSpanRef.current = null;
+              textareaRef.current?.focus();
+            }}
+            onDismiss={() => {
+              setMentionMenuOpen(false);
+              setMentionQuery('');
+              triggerSpanRef.current = null;
+            }}
+          />
+        )}
+
         {/* Slash command menu */}
         {slashMenuOpen && (
           <SlashCommandMenu
             query={slashQuery}
             onSelect={(commandKey) => {
-              setActiveSlashCommand(commandKey);
-              setSlashMenuOpen(false);
-              setSlashQuery('');
-              // Strip the leading slash from message
-              setMessage((prev) => prev.replace(/^\//, ''));
-              textareaRef.current?.focus();
+              const span = triggerSpanRef.current;
+              const end = textareaRef.current?.selectionStart ?? message.length;
+              if (activeSlashCommands.length < MAX_SLASH_COMMANDS) {
+                setActiveSlashCommands(prev => [...prev, commandKey]);
+                setSlashMenuOpen(false);
+                setSlashQuery('');
+                if (span) {
+                  setMessage((prev) => removeTriggerSpan(prev, span.start, end));
+                } else {
+                  setMessage((prev) => prev.replace(/^\//, ''));
+                }
+                triggerSpanRef.current = null;
+                textareaRef.current?.focus();
+              }
             }}
             onDismiss={() => {
               setSlashMenuOpen(false);
               setSlashQuery('');
+              triggerSpanRef.current = null;
             }}
           />
         )}
@@ -496,22 +601,34 @@ const MessageInput = memo(function MessageInput({
           value={message}
           onChange={(e) => {
             const val = e.target.value;
+            const cursorPos = e.target.selectionStart ?? val.length;
             setMessage(val);
 
-            // Detect slash command at position 0
-            if (activeSlashCommand) {
-              setSlashMenuOpen(false);
-              return;
-            }
+            // Phase 5: cursor-anchored trigger detection — find the @ or /
+            // token immediately before the caret. This handles both position-0
+            // single-chip and inline multi-@ pipeline tokens.
+            const textBeforeCursor = val.slice(0, cursorPos);
+            const atMatch = textBeforeCursor.match(/(?:^|\s)(@)([a-z0-9_-]*)$/);
+            const slashMatch = textBeforeCursor.match(/(?:^|\s)(\/)([a-z0-9_-]*)$/);
 
-            if (val.startsWith('/')) {
-              const spaceIdx = val.indexOf(' ');
-              const query = spaceIdx === -1 ? val.slice(1) : val.slice(1, spaceIdx);
-              setSlashQuery(query);
-              setSlashMenuOpen(true);
-            } else {
+            if (atMatch && !activeAgentMention) {
+              triggerSpanRef.current = { start: cursorPos - 1 - atMatch[2].length, kind: 'at' };
+              setMentionQuery(atMatch[2]);
+              setMentionMenuOpen(true);
               setSlashMenuOpen(false);
               setSlashQuery('');
+            } else if (slashMatch && activeSlashCommands.length < MAX_SLASH_COMMANDS) {
+              triggerSpanRef.current = { start: cursorPos - 1 - slashMatch[2].length, kind: 'slash' };
+              setSlashQuery(slashMatch[2]);
+              setSlashMenuOpen(true);
+              setMentionMenuOpen(false);
+              setMentionQuery('');
+            } else {
+              triggerSpanRef.current = null;
+              setSlashMenuOpen(false);
+              setMentionMenuOpen(false);
+              setSlashQuery('');
+              setMentionQuery('');
             }
           }}
           onKeyDown={handleKeyDown}
@@ -552,10 +669,6 @@ const MessageInput = memo(function MessageInput({
               onSourcesToggle={handleSourcesToggle}
               adminSourcesDisabled={adminSourcesDisabled}
               adminCitationTrajectoryDisabled={adminCitationTrajectoryDisabled}
-              onCreateCommandSelect={(commandKey) => {
-                setActiveSlashCommand(commandKey);
-                textareaRef.current?.focus();
-              }}
             />
             {currentModelInfo?.thinkingCapable && (
               <button
@@ -574,6 +687,30 @@ const MessageInput = memo(function MessageInput({
                 <Brain size={18} />
               </button>
             )}
+            {/* Phase 5: pipeline mode toggle — visible only when a pipeline is detected */}
+            {knownAgentIds.size > 0 && message.includes('@') && (() => {
+              const parsed = parsePipelinePrompt(message, knownAgentIds, knownCommandKeys);
+              if (parsed.steps.length < 2) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setPipelineModeState((s) => (s === 'strict' ? 'auto' : 'strict'))}
+                  className={`p-2 rounded-lg text-xs font-medium transition-colors ${
+                    pipelineModeState === 'strict'
+                      ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                      : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                  }`}
+                  title={
+                    pipelineModeState === 'strict'
+                      ? 'Strict pipeline — guaranteed order'
+                      : 'Auto pipeline — LLM orchestrates'
+                  }
+                  aria-label={`Pipeline mode: ${pipelineModeState}`}
+                >
+                  {pipelineModeState === 'strict' ? '🔄 Strict' : '🤖 Auto'}
+                </button>
+              );
+            })()}
           </div>
 
           {/* Center: Model selector */}

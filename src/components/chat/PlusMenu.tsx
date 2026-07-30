@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, X, ChevronRight, Image, BarChart3, Workflow, FileText, Code, Presentation, Sheet } from 'lucide-react';
-import Modal from '@/components/ui/Modal';
+import { Plus, X } from 'lucide-react';
 import FileUpload from './FileUpload';
 import ModeToggle, { ChatMode } from './ModeToggle';
 import WebSearchToggle from './WebSearchToggle';
@@ -50,8 +49,6 @@ interface PlusMenuProps {
   adminSourcesDisabled?: boolean;
   // CitationTrajectoryToggle admin control
   adminCitationTrajectoryDisabled?: boolean;
-  // Create menu
-  onCreateCommandSelect?: (commandKey: string) => void;
   // General
   disabled?: boolean;
 }
@@ -76,26 +73,10 @@ export default function PlusMenu({
   onSourcesToggle,
   adminSourcesDisabled,
   adminCitationTrajectoryDisabled,
-  onCreateCommandSelect,
   disabled,
 }: PlusMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [showAllCreate, setShowAllCreate] = useState(false);
-  const [createCommands, setCreateCommands] = useState<Array<{ commandKey: string; label: string; description: string; icon: string }>>([]);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Fetch enabled slash commands for Create menu
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch('/api/chat/slash-commands')
-      .then((r) => r.json())
-      .then((data) => {
-        setCreateCommands(data.commands || []);
-      })
-      .catch(() => {
-        setCreateCommands([]);
-      });
-  }, [isOpen]);
 
   // Close menu when clicking outside or pressing Escape
   useEffect(() => {
@@ -220,50 +201,6 @@ export default function PlusMenu({
              </div>
            </div>
 
-           {/* Create Section */}
-           {createCommands.length > 0 && onCreateCommandSelect && (
-             <div className="border-t border-gray-100 pt-2 mt-2">
-               <div className="text-xs uppercase text-gray-500 font-medium mb-2">Create</div>
-               <div className="flex flex-col gap-1">
-                 {createCommands.slice(0, 6).map((cmd) => {
-                   const iconMap: Record<string, React.ReactNode> = {
-                     Image: <Image size={14} className="text-gray-500" />,
-                     BarChart3: <BarChart3 size={14} className="text-gray-500" />,
-                     Workflow: <Workflow size={14} className="text-gray-500" />,
-                     FileText: <FileText size={14} className="text-gray-500" />,
-                     Code: <Code size={14} className="text-gray-500" />,
-                     Presentation: <Presentation size={14} className="text-gray-500" />,
-                     Sheet: <Sheet size={14} className="text-gray-500" />,
-                   };
-                   return (
-                     <button
-                       key={cmd.commandKey}
-                       type="button"
-                       onClick={() => {
-                         onCreateCommandSelect(cmd.commandKey);
-                         setIsOpen(false);
-                       }}
-                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 text-left transition-colors"
-                     >
-                       {iconMap[cmd.icon] || <FileText size={14} className="text-gray-500" />}
-                       <span className="text-xs text-gray-700">{cmd.label}</span>
-                     </button>
-                   );
-                 })}
-                 {createCommands.length > 6 && (
-                   <button
-                     type="button"
-                     onClick={() => setShowAllCreate(true)}
-                     className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-lg hover:bg-gray-100 text-left transition-colors text-xs text-blue-600 font-medium"
-                   >
-                     Show All ({createCommands.length})
-                     <ChevronRight size={14} />
-                   </button>
-                 )}
-               </div>
-             </div>
-           )}
-
            {/* Attachments Section */}
            <div className="border-t border-gray-100 pt-2 mt-2">
              <div className="text-xs uppercase text-gray-500 font-medium mb-2">Attachments</div>
@@ -284,48 +221,6 @@ export default function PlusMenu({
            </div>
          </div>
        )}
-
-      {/* Show All Create Commands Modal */}
-      <Modal
-        isOpen={showAllCreate}
-        onClose={() => setShowAllCreate(false)}
-        title="Create"
-        maxWidth="max-w-md"
-      >
-        <div className="grid grid-cols-2 gap-2">
-          {createCommands.map((cmd) => {
-            const iconMap: Record<string, React.ReactNode> = {
-              Image: <Image size={18} className="text-gray-500" />,
-              BarChart3: <BarChart3 size={18} className="text-gray-500" />,
-              Workflow: <Workflow size={18} className="text-gray-500" />,
-              FileText: <FileText size={18} className="text-gray-500" />,
-              Code: <Code size={18} className="text-gray-500" />,
-              Presentation: <Presentation size={18} className="text-gray-500" />,
-              Sheet: <Sheet size={18} className="text-gray-500" />,
-            };
-            return (
-              <button
-                key={cmd.commandKey}
-                type="button"
-                onClick={() => {
-                  onCreateCommandSelect?.(cmd.commandKey);
-                  setShowAllCreate(false);
-                  setIsOpen(false);
-                }}
-                className="flex flex-col items-start gap-1.5 p-3 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-left transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  {iconMap[cmd.icon] || <FileText size={18} className="text-gray-500" />}
-                  <span className="text-sm font-medium text-gray-900">{cmd.label}</span>
-                </div>
-                {cmd.description && (
-                  <span className="text-xs text-gray-500 line-clamp-2">{cmd.description}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </Modal>
-    </div>
-  );
+   </div>
+ );
 }

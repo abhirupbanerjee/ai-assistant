@@ -109,6 +109,26 @@ export interface ToolDefinition {
   modelRequirements?: ModelRequirements;
   /** Optional group name for admin UI grouping (e.g., 'tavily' groups web_search, web_extract, web_crawl, web_map) */
   group?: string;
+  /** Slash command auto-registration metadata. When present, the tool auto-generates
+   *  a / command in the chat input. Like agent @ mentions — fully dynamic, no hardcoded list. */
+  slashCommand?: SlashCommandMeta;
+}
+
+/**
+ * Auto-registration metadata for the slash command menu.
+ * Tools declare this to auto-generate a / command entry.
+ */
+export interface SlashCommandMeta {
+  /** Command key typed after / (e.g., 'code-review' → /code-review) */
+  commandKey: string;
+  /** Display label in the menu */
+  label: string;
+  /** Description shown in the menu */
+  description: string;
+  /** Search aliases (e.g., ['review', 'code']) */
+  aliases: string[];
+  /** Lucide icon name (e.g., 'Code', 'Search', 'Globe') */
+  icon?: string;
 }
 
 /**
@@ -157,65 +177,90 @@ export const HYBRID_TOOLS = new Set(['translation']);
 export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   // ── Search & Research ──
   web_search: { ...tavilyWebSearch, group: 'tavily', subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'search', label: 'Search Web', description: 'Search the web for current information', aliases: ['search', 'web'], icon: 'Search' } },
   web_extract: { ...tavilyWebExtract, group: 'tavily', subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'extract', label: 'Extract Content', description: 'Extract and read content from a URL', aliases: ['extract', 'scrape'], icon: 'FileText' } },
   web_crawl: { ...tavilyWebCrawl, group: 'tavily', subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'crawl', label: 'Crawl Website', description: 'Crawl a website and extract its pages', aliases: ['crawl', 'spider'], icon: 'Globe' } },
   web_map: { ...tavilyWebMap, group: 'tavily', subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'sitemap', label: 'Map Website', description: 'Map a website structure and list URLs', aliases: ['sitemap', 'map'], icon: 'Globe' } },
   website_analysis: { ...websiteAnalysisTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'audit', label: 'Audit Website', description: 'Analyze website performance and SEO', aliases: ['audit', 'pagespeed'], icon: 'BarChart3' } },
   load_testing: { ...loadTestingTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'loadtest', label: 'Load Test', description: 'Run load/stress tests on a URL', aliases: ['loadtest', 'stress'], icon: 'Workflow' } },
   youtube: { ...youtubeToolDefinition,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'youtube', label: 'YouTube', description: 'Extract and analyze YouTube video content', aliases: ['youtube', 'yt'], icon: 'Image' } },
 
   // ── Generative (documents, images, media) ──
   doc_gen: { ...documentGenerationTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true },
+    slashCommand: { commandKey: 'document', label: 'Generate Document', description: 'Create a formatted document (PDF or Word)', aliases: ['doc', 'document', 'pdf', 'docx'], icon: 'FileText' } },
   pptx_gen: { ...pptxGenTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersInstructionFollowing: true },
+    slashCommand: { commandKey: 'slide', label: 'Generate Presentation', description: 'Create a PowerPoint presentation', aliases: ['slide', 'pptx', 'ppt'], icon: 'Presentation' } },
   html_gen: { ...htmlGenTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true },
+    slashCommand: { commandKey: 'html', label: 'Generate HTML', description: 'Create an HTML page or report', aliases: ['html'], icon: 'Code' } },
   site_gen: { ...siteGenTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true, prefersCodeQuality: true },
+    slashCommand: { commandKey: 'site', label: 'Generate Website', description: 'Create a multi-page themed website', aliases: ['site', 'website', 'web'], icon: 'Globe' } },
   file_to_html: { ...fileToHtmlTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'convert', label: 'Convert to HTML', description: 'Convert a file to HTML format', aliases: ['convert', 'tohtml'], icon: 'Code' } },
   image_gen: { ...imageGenTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'image', label: 'Generate Image', description: 'Create an AI-generated image', aliases: ['image', 'img'], icon: 'Image' } },
   podcast_gen: { ...podcastGenTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'podcast', label: 'Generate Podcast', description: 'Create an AI-generated podcast audio', aliases: ['podcast', 'audio'], icon: 'Image' } },
   diagram_gen: { ...diagramGenTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true } },
+    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true },
+    slashCommand: { commandKey: 'diagram', label: 'Generate Diagram', description: 'Create a technical diagram', aliases: ['diagram', 'diag'], icon: 'Workflow' } },
 
   // ── Data & Code ──
   chart_gen: { ...chartGenTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'chart', label: 'Generate Chart', description: 'Create a data visualization chart', aliases: ['chart'], icon: 'BarChart3' } },
   xlsx_gen: { ...xlsxGenTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true } },
+    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true },
+    slashCommand: { commandKey: 'sheet', label: 'Generate Spreadsheet', description: 'Create an Excel spreadsheet', aliases: ['sheet', 'xlsx', 'excel'], icon: 'Sheet' } },
   data_source: { ...dataSourceTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'datasource', label: 'Query Data Source', description: 'Query a configured data source', aliases: ['datasource', 'query'], icon: 'Sheet' } },
   aggregate_data: { ...aggregateDataTool, subagentSafe: false,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'aggregate', label: 'Aggregate Data', description: 'Combine and aggregate multiple datasets', aliases: ['aggregate', 'combine'], icon: 'BarChart3' } },
   code_analysis: { ...codeAnalysisTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true, minimumContextTokens: 32000 } },
+    modelRequirements: { requiresToolCalling: true, prefersCodeQuality: true, minimumContextTokens: 32000 },
+    slashCommand: { commandKey: 'code-review', label: 'Analyze Code', description: 'Run code quality and security analysis', aliases: ['code-review', 'sonar', 'review'], icon: 'Code' } },
   function_api: { ...functionApiTool, subagentSafe: false,
     modelRequirements: { requiresToolCalling: true } },
 
   // ── Utility (lightweight or processor tools — no special model requirements) ──
-  translation: { ...translationTool, subagentSafe: true },
+  translation: { ...translationTool, subagentSafe: true,
+    slashCommand: { commandKey: 'translate', label: 'Translate', description: 'Translate text to another language', aliases: ['translate', 'tr'], icon: 'FileText' } },
   share_thread: shareThreadTool,
   send_email: sendEmailTool,
-  compliance_checker: complianceCheckerTool,
+  compliance_checker: { ...complianceCheckerTool,
+    slashCommand: { commandKey: 'compliance', label: 'Compliance Check', description: 'Check content for regulatory compliance', aliases: ['compliance', 'check'], icon: 'CheckCircle' } },
 
   // ── Knowledge Base ──
   kb_summary: { ...kbSummaryTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true } },
+    modelRequirements: { requiresToolCalling: true },
+    slashCommand: { commandKey: 'kb-summary', label: 'Summarize KB', description: 'Summarize knowledge base documents', aliases: ['kb-summary', 'summary'], icon: 'FileText' } },
   kb_search: { ...kbSearchTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'kb-search', label: 'Search KB', description: 'Search knowledge base documents', aliases: ['kb-search', 'find'], icon: 'Search' } },
   kb_read: { ...kbReadTool, subagentSafe: true,
-    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true } },
+    modelRequirements: { requiresToolCalling: true, prefersLargeContext: true },
+    slashCommand: { commandKey: 'kb-read', label: 'Read KB Document', description: 'Read a specific knowledge base document', aliases: ['kb-read', 'open'], icon: 'FileText' } },
 
   // ── Agent System (Phase 2.2) — single-agent routing ──
   // LLM-driven category handoff. The executor resolves the target category

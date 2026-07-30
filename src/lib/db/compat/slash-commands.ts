@@ -11,42 +11,8 @@ import type { SlashCommandConfig, SlashCommandUpdate } from '@/types/slash-comma
 // ============ Default Seed Data ============
 
 const DEFAULT_COMMANDS: Omit<SlashCommandConfig, 'id' | 'createdAt' | 'updatedAt' | 'updatedBy'>[] = [
-  {
-    commandKey: 'image',
-    toolName: 'image_gen',
-    label: 'Generate Image',
-    description: 'Create an AI-generated image',
-    aliases: ['image', 'img'],
-    hint: 'The user wants to generate an image. Use the image_gen tool to fulfill this request.',
-    icon: 'Image',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 0,
-  },
-  {
-    commandKey: 'chart',
-    toolName: 'chart_gen',
-    label: 'Generate Chart',
-    description: 'Create a data visualization chart',
-    aliases: ['chart'],
-    hint: 'The user wants to generate a data chart. Use the chart_gen tool to fulfill this request.',
-    icon: 'BarChart3',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 1,
-  },
-  {
-    commandKey: 'diagram',
-    toolName: 'diagram_gen',
-    label: 'Generate Diagram',
-    description: 'Create a technical diagram',
-    aliases: ['diagram', 'diag'],
-    hint: 'The user wants to generate a technical diagram. Use the diagram_gen tool to fulfill this request.',
-    icon: 'Workflow',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 2,
-  },
+  // Type/format-specific variants only — generic commands are auto-derived from ToolDefinition.slashCommand.
+  // Document format-specific commands
   {
     commandKey: 'pdf',
     toolName: 'doc_gen',
@@ -70,54 +36,6 @@ const DEFAULT_COMMANDS: Omit<SlashCommandConfig, 'id' | 'createdAt' | 'updatedAt
     formatHint: 'docx',
     enabled: true,
     sortOrder: 4,
-  },
-  {
-    commandKey: 'html',
-    toolName: 'html_gen',
-    label: 'Generate HTML',
-    description: 'Create an HTML page or report',
-    aliases: ['html'],
-    hint: 'The user wants to generate HTML content. Use the html_gen tool to fulfill this request.',
-    icon: 'Code',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 5,
-  },
-  {
-    commandKey: 'site',
-    toolName: 'site_gen',
-    label: 'Generate Website',
-    description: 'Create a multi-page themed website',
-    aliases: ['site', 'website', 'web'],
-    hint: 'The user wants to generate a complete website. Use the site_gen tool to fulfill this request.',
-    icon: 'Globe',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 6,
-  },
-  {
-    commandKey: 'slide',
-    toolName: 'pptx_gen',
-    label: 'Generate Presentation',
-    description: 'Create a PowerPoint presentation',
-    aliases: ['slide', 'pptx', 'ppt'],
-    hint: 'The user wants to generate a presentation. Use the pptx_gen tool to fulfill this request.',
-    icon: 'Presentation',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 6,
-  },
-  {
-    commandKey: 'sheet',
-    toolName: 'xlsx_gen',
-    label: 'Generate Spreadsheet',
-    description: 'Create an Excel spreadsheet',
-    aliases: ['sheet', 'xlsx', 'excel'],
-    hint: 'The user wants to generate a spreadsheet. Use the xlsx_gen tool to fulfill this request.',
-    icon: 'Sheet',
-    formatHint: null,
-    enabled: true,
-    sortOrder: 7,
   },
   // Diagram type-specific commands
   {
@@ -369,10 +287,56 @@ export async function resetSlashCommandsToDefaults(updatedBy: string): Promise<v
 /**
  * Ensure all default slash commands exist in the database.
  * Idempotent — skips commands that already exist.
+ *
+ * Two sources:
+ * 1. Auto-derived from ToolDefinition.slashCommand (per-tool metadata, like @ mentions).
+ * 2. Hardcoded DEFAULT_COMMANDS (type/format-specific variants that don't map 1:1 to tools).
+ *
+ * Auto-derived entries are inserted with a synthetic hint; DB-managed entries (from
+ * DEFAULT_COMMANDS or admin edits) are never overwritten.
  */
 export async function ensureSlashCommandsExist(updatedBy: string): Promise<void> {
   const db = await getDb();
 
+  // Lazy-import to avoid circular deps at module load time
+  const { AVAILABLE_TOOLS } = await import('@/lib/tools');
+
+  // --- Step 1: Auto-derive from ToolDefinition.slashCommand ---
+  for (const [toolName, tool] of Object.entries(AVAILABLE_TOOLS)) {
+    const cmd = tool.slashCommand;
+    if (!cmd) continue;
+
+    const existing = await db
+      .selectFrom('slash_command_configs')
+      .select('id')
+      .where('command_key', '=', cmd.commandKey)
+      .executeTakeFirst();
+
+    if (!existing) {
+      // Auto-generate hint from label + description
+      const hint = `The user wants to ${cmd.description.toLowerCase()}. Use the ${toolName} tool to fulfill this request.`;
+
+      await db
+        .insertInto('slash_command_configs')
+        .values({
+          id: uuidv4(),
+          command_key: cmd.commandKey,
+          tool_name: toolName,
+          label: cmd.label,
+          description: cmd.description,
+          aliases: JSON.stringify(cmd.aliases),
+          hint,
+          icon: cmd.icon ?? null,
+          format_hint: null,
+          enabled: 1,
+          sort_order: 0,
+          updated_by: updatedBy,
+        })
+        .execute();
+    }
+  }
+
+  // --- Step 2: Insert hardcoded type/format-specific variants ---
   for (const cmd of DEFAULT_COMMANDS) {
     const existing = await db
       .selectFrom('slash_command_configs')
