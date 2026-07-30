@@ -389,7 +389,7 @@ export default function ProcessingIndicator({
               </h4>
               <div className="space-y-1.5">
                 {[
-                  ...(details.operationLog ?? []).map(e => ({ ...e, _kind: 'log' as const })),
+                  ...(details.operationLog ?? []).map(e => ({ ...e, _kind: 'log' as const, category: (e as any).category || 'system' })),
                   ...details.toolsExecuted.map(t => ({
                     ...t,
                     _kind: 'tool' as const,

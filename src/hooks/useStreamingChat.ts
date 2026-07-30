@@ -891,7 +891,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           processingDetails: {
             ...prev.processingDetails,
             operationLog: [...prev.processingDetails.operationLog, {
-              category: event.category,
+              category: (['rag','llm','memory','tool','upload','system','compliance','plan','agent'] as const).includes(event.category as any) ? event.category : 'system',
               message: event.message,
               timestamp: Date.now(),
             }],
