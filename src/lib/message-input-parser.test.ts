@@ -8,7 +8,7 @@ const COMMANDS = new Set(['pdf', 'flowchart', 'bar-chart']);
 function base(overrides: Partial<Parameters<typeof buildSubmitPayload>[0]> = {}) {
   return buildSubmitPayload({
     message: '',
-    activeAgentMention: null,
+    activeAgentMentions: [],
     activeSlashCommands: [],
     knownAgentIds: AGENTS,
     knownCommandKeys: COMMANDS,
@@ -73,7 +73,7 @@ describe('buildSubmitPayload — single @ mention chip', () => {
   it('sets agentMention and combines with slash chips', () => {
     const r = base({
       message: 'analyze this',
-      activeAgentMention: 'tpl-researcher',
+      activeAgentMentions: ['tpl-researcher'],
       activeSlashCommands: ['pdf'],
     });
     assert.equal(r.agentMention, 'tpl-researcher');
@@ -82,7 +82,7 @@ describe('buildSubmitPayload — single @ mention chip', () => {
   });
 
   it('strips a leading @token matching the chip', () => {
-    const r = base({ message: '@tpl-researcher analyze', activeAgentMention: 'tpl-researcher' });
+    const r = base({ message: '@tpl-researcher analyze', activeAgentMentions: ['tpl-researcher'] });
     assert.equal(r.finalMessage, 'analyze');
   });
 });
@@ -99,7 +99,7 @@ describe('buildSubmitPayload — pipeline detection', () => {
     // Single @ chip + a selected /flowchart chip, then a second inline @agent.
     const r = base({
       message: '@tpl-presenter present it',
-      activeAgentMention: 'tpl-researcher',
+      activeAgentMentions: ['tpl-researcher'],
       activeSlashCommands: ['flowchart'],
     });
     assert.ok(r.pipeline, 'a pipeline should form');

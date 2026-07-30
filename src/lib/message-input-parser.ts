@@ -2,7 +2,7 @@
  * Message Input Payload Builder
  *
  * Pure, framework-free logic extracted from the chat composer's submit handler.
- * Given the raw message text plus the currently-selected @agent chip and
+ * Given the raw message text plus the currently-selected @agent chips and
  * /command chips, it decides whether the turn is:
  *
  *   1. an inline multi-agent **pipeline** (2+ valid @agent tokens), or
@@ -18,10 +18,10 @@ import { parsePipelinePrompt } from '@/lib/pipeline-parser';
 
 /** Inputs describing the current composer state at submit time. */
 export interface BuildSubmitPayloadInput {
-  /** Raw (untrimmed) textarea contents. */
+  /** Raw (untrimmed) textarea / contentEditable contents. */
   message: string;
-  /** Selected @agent chip id, or null when none is active. */
-  activeAgentMention: string | null;
+  /** Selected @agent chip ids (plural — supports multi-agent pipeline chips). */
+  activeAgentMentions: string[];
   /** Selected /command chip keys (already validated by the chip menu). */
   activeSlashCommands: string[];
   /** Valid agent ids from the registry (may be empty if the fetch failed). */
@@ -109,7 +109,7 @@ export function buildSubmitPayload(
 ): BuildSubmitPayloadResult {
   const {
     message,
-    activeAgentMention,
+    activeAgentMentions,
     activeSlashCommands,
     knownAgentIds,
     knownCommandKeys,
@@ -125,11 +125,13 @@ export function buildSubmitPayload(
 
   // Re-insert chip tokens (@agent + /commands) before parsing so that a
   // chip-selected agent/slash combined with inline @agent tokens forms a
-  // pipeline whose step 1 still carries the chip-selected slash hints.
-  // Without this, selecting a slash chip and then typing a second @agent
-  // would silently drop the slash chip.
+  // pipeline whose steps carry the chip-selected hints.
+  //
+  // With contentEditable inline mentions, @agent tokens already appear as
+  // plain text in the serialized message. Slash chips are still re-inserted
+  // for backward compatibility with the chip-based flow.
   const chipPrefixParts = [
-    activeAgentMention ? `@${activeAgentMention}` : '',
+    ...activeAgentMentions.map((a) => `@${a}`),
     ...activeSlashCommands.map((c) => `/${c}`),
   ].filter(Boolean);
   const parseInput =
@@ -156,12 +158,13 @@ export function buildSubmitPayload(
   }
 
   // ---- Single @agent mention (chip) ----
-  if (activeAgentMention) {
-    agentMention = activeAgentMention;
+  if (activeAgentMentions.length > 0) {
+    // Use the first active agent mention for single-@ path.
+    agentMention = activeAgentMentions[0];
     // Only strip a leading @token when it matches the active chip — a different
     // inline @token should not be silently consumed.
     const leading = finalMessage.match(/^@([a-z0-9_-]+)\s*/i);
-    if (leading && leading[1].toLowerCase() === activeAgentMention.toLowerCase()) {
+    if (leading && leading[1].toLowerCase() === activeAgentMentions[0].toLowerCase()) {
       finalMessage = finalMessage.slice(leading[0].length).trim();
     }
   }
