@@ -39,6 +39,13 @@ import { toolsLogger as logger } from '@/lib/logger';
 // In-memory registry of discovered MCP tools keyed by prefixed name.
 const mcpToolRegistry = new Map<string, McpRegisteredTool>();
 
+// Phase 6 optimization: cache discovery results to avoid redundant re-discovery
+// within a single request. MCP server config changes are rare; a 30s TTL is
+// acceptable staleness. Only skip when the last discovery found 0 servers.
+let lastDiscoveryTime = 0;
+let lastDiscoveryServerCount = 0;
+const MCP_DISCOVERY_CACHE_MS = 30_000;
+
 /**
  * Check whether a tool name refers to an MCP tool.
  */
@@ -79,6 +86,17 @@ export async function refreshMcpTools(): Promise<void> {
     return;
   }
 
+  // Fast-path: if we discovered recently and no servers existed, skip
+  // re-discovery for the cache window. Server config changes are rare.
+  const now = Date.now();
+  if (now - lastDiscoveryTime < MCP_DISCOVERY_CACHE_MS) {
+    if (lastDiscoveryServerCount === 0) {
+      // No servers last time — still no servers. Skip.
+      return;
+    }
+    // Servers existed — re-discover to pick up tool changes.
+  }
+
   mcpToolRegistry.clear();
 
   let servers: McpServerConfig[];
@@ -88,6 +106,10 @@ export async function refreshMcpTools(): Promise<void> {
     logger.error('Failed to load MCP servers for tool discovery', { error: String(error) });
     return;
   }
+
+  // Track for next cache window
+  lastDiscoveryTime = Date.now();
+  lastDiscoveryServerCount = servers.length;
 
   for (const server of servers) {
     if (!server.enabled) continue;

@@ -203,6 +203,18 @@ export const TERMINAL_TOOLS = new Set([
 ]);
 
 /**
+ * Tools that skills-based routing can map to via keyword matching.
+ * Used to short-circuit `resolveSkills()` when all mappable tools are
+ * excluded (common for sub-agents with narrow allowlists).
+ */
+export const SKILL_MAPPABLE_TOOLS = new Set([
+  'web_search', 'web_extract', 'kb_search', 'kb_summary', 'kb_read',
+  'doc_gen', 'pptx_gen', 'image_gen', 'xlsx_gen', 'chart_gen',
+  'diagram_gen', 'podcast_gen', 'html_gen', 'site_gen',
+  'data_source', 'aggregate_data', 'compliance_checker',
+]);
+
+/**
  * Check whether a tool name should be treated as terminal.
  * Built-in terminal membership is hardcoded in TERMINAL_TOOLS; MCP tools can be
  * marked terminal via their tool_configs metadata.
@@ -1934,6 +1946,14 @@ export async function generateResponseWithTools(
   const toolConfigOverrides = new Map<string, Record<string, unknown>>();
 
   if (effectiveEnableTools && tools && tools.length > 0) {
+    // Phase 6 optimization: short-circuit skills resolution when all
+    // skill-mappable tools are excluded (common for sub-agents with narrow
+    // allowlists, e.g., doc-executor only has doc_gen).
+    const allSkillToolsExcluded = excludeTools &&
+      excludeTools.length > 0 &&
+      [...SKILL_MAPPABLE_TOOLS].every(t => excludeTools.includes(t));
+
+    if (!allSkillToolsExcluded) {
     // First, check skills-based tool routing (new unified system)
     const skillsResult = await resolveSkills(categoryIds || [], userMessage);
     if (skillsResult.toolRouting && skillsResult.toolRouting.matches.length > 0) {
@@ -1969,6 +1989,8 @@ export async function generateResponseWithTools(
         });
       }
     }
+
+    } // end if (!allSkillToolsExcluded)
 
     // Fall back to legacy tool-routing rules if no skills-based routing matched
     if (!toolChoiceAppliedByRouting) {

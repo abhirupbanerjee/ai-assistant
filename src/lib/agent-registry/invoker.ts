@@ -64,6 +64,8 @@ export interface InvokeAgentInput {
   maxTokens?: number;
   /** Optional per-agent tool hints (from /command tokens in the user's pipeline). */
   toolHints?: string[];
+  /** Optional thread ID for artifact persistence (file saves). */
+  threadId?: string;
 }
 
 /**
@@ -245,6 +247,7 @@ export async function invokeAgent(
     userMessage,
     context,
     modelUsed,
+    threadId: input.threadId,
   });
 
   let rawOutput: string;
@@ -328,8 +331,9 @@ function buildAgentCompletionParams(input: {
   userMessage: string;
   context?: string;
   modelUsed: string;
+  threadId?: string;
 }) {
-  const { agent, systemMessage, userMessage, context, modelUsed } = input;
+  const { agent, systemMessage, userMessage, context, modelUsed, threadId } = input;
   const categoryIds = agent.categoryId ? [agent.categoryId] : undefined;
 
   // Enforce toolAllowlist as an intersection: exclude every AVAILABLE_TOOLS
@@ -359,7 +363,7 @@ function buildAgentCompletionParams(input: {
     modelOverride: modelUsed,
     enableClarification: false,
     userId: undefined,
-    threadId: undefined,
+    threadId: threadId,  // Phase 6: propagate for artifact persistence
     thinkingEnabled: false,
   };
 }

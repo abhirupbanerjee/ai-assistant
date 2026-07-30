@@ -159,7 +159,8 @@ function buildToolDefinition(agent: AgentRecord): OpenAI.Chat.ChatCompletionFunc
 export async function executeAgentTool(
   name: string,
   args: string,
-  toolHints?: string[]
+  toolHints?: string[],
+  threadId?: string,
 ): Promise<string> {
   const agentId = toolNameToAgentId(name);
   if (!agentId) {
@@ -206,6 +207,7 @@ export async function executeAgentTool(
     task: parsed.task,
     context: typeof parsed.context === 'string' ? parsed.context : undefined,
     toolHints,
+    threadId,
   });
 
   // If the invoker hit an infrastructure problem (agent not found, model

@@ -296,6 +296,7 @@ export async function POST(request: NextRequest) {
                   `agent__${step.agentId}`,
                   JSON.stringify({ task: step.task, context: stepContext }),
                   step.toolHints.length > 0 ? step.toolHints : undefined,
+                  threadId,
                 );
                 const result = JSON.parse(resultJson);
                 emitAgentArtifact(result, step);
@@ -329,19 +330,46 @@ export async function POST(request: NextRequest) {
             // We build the directive here and append it to effectiveSystemPrompt
             // later (before the LLM call). Temporarily stash in agentResultContext
             // which is already injected into the system prompt at line ~607.
-            let directive =
-              '\n\n[PIPELINE WORKFLOW — execute these steps in order using agent__* tools:\n';
+            //
+            // Phase 6 optimization: enriched directive tells the LLM what context
+            // is already available, enforces research-before-generation ordering,
+            // and prevents duplicate agent calls and redundant file generation.
+            // Context-awareness pre-amble is added later when ragResult/memoryContext
+            // are available (see the agentResultContext append block below).
+
+            // --- Classify and list steps ---
+            let directive = '\n\n[PIPELINE WORKFLOW]\n\n';
+
+            directive += '\nRULES (violating these wastes time and tokens):\n';
+            directive += '1. RESEARCH PHASE FIRST: Complete ALL information-gathering ' +
+              '(web_search, kb_search, kb_summary, agent__*researcher*) before calling ' +
+              'ANY generation tool (image_gen, pptx_gen, doc_gen, chart_gen, diagram_gen).\n';
+            directive += '2. EXACT ORDER: Execute pipeline steps in the order listed below. ' +
+              'Do not skip ahead.\n';
+            directive += '3. PASS CONTEXT: When calling a non-researcher agent, ALWAYS pass ' +
+              'the full output of all prior steps as the "context" parameter.\n';
+            directive += '4. CALL EACH AGENT ONCE: After an agent returns with ' +
+              'suggestedNext.action = "complete", do not call that agent again.\n';
+            directive += '5. NO DUPLICATE FILES: If an agent already produced a file ' +
+              '(docx, pptx, image), do NOT call doc_gen/pptx_gen/image_gen again for ' +
+              'the same deliverable. Reference the agent-produced file instead.\n';
+
+            directive += '\nPIPELINE STEPS:\n';
             for (let i = 0; i < pipeline.length; i++) {
               const s = pipeline[i];
-              directive += `${i + 1}. Call agent__${s.agentId} with task: "${s.task}"`;
+              const isResearch = s.agentId.includes('research');
+              const phase = isResearch ? 'RESEARCH' : 'GENERATION';
+
+              directive += `${i + 1}. [${phase}] agent__${s.agentId}: "${s.task}"`;
               if (s.toolHints.length > 0) {
-                directive += ` (prefer these tools: ${s.toolHints.map((h) => '/' + h).join(', ')})`;
+                directive += ` (hints: ${s.toolHints.map((h) => '/' + h).join(', ')})`;
               }
-              if (i > 0) directive += ` — pass the output of step ${i} as context`;
+              if (i > 0) directive += ' — pass all prior step outputs as context';
               directive += '\n';
             }
+
             directive +=
-              'After all steps complete, compose the final answer from their outputs.]';
+              '\nAfter ALL steps complete, compose the final answer from their outputs.]';
             agentResultContext = directive;
           }
         }
@@ -360,6 +388,7 @@ export async function POST(request: NextRequest) {
               agentToolName,
               agentArgs,
               toolHints && toolHints.length > 0 ? toolHints : undefined,
+              threadId,
             );
             const result = JSON.parse(resultJson);
 
@@ -752,8 +781,37 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // Append agent mention result context (forced invocation, Phase C3)
+            // Append agent mention result context (forced invocation, Phase C3).
+            // Phase 6 optimization: when agentResultContext is a pipeline directive
+            // (starts with '\n\n[PIPELINE WORKFLOW]'), prepend a context-awareness
+            // block so the LLM knows what research is already available.
             if (agentResultContext) {
+              if (agentResultContext.startsWith('\n\n[PIPELINE WORKFLOW]')) {
+                // --- Context-awareness pre-amble ---
+                const hasRag = ragResult.context &&
+                  ragResult.context !== 'No relevant documents found in the knowledge base.';
+                const hasMemory = !!memoryContext;
+                const hasSummary = !!summaryContext;
+
+                let contextBlock = '\nCONTEXT ALREADY LOADED (do not re-fetch these):\n';
+                if (hasRag) contextBlock += '- Knowledge base chunks are already in your context.\n';
+                if (hasMemory) contextBlock += '- User memory/preferences are already in your context.\n';
+                if (hasSummary) contextBlock += '- Conversation summary is already in your context.\n';
+                if (!hasRag && !hasMemory && !hasSummary) {
+                  contextBlock += '- No pre-loaded context; you may need to gather information.\n';
+                }
+
+                // Insert context block after the [PIPELINE WORKFLOW] header line.
+                // The directive starts with '\n\n[PIPELINE WORKFLOW]\n\n...'.
+                // Find the second '\n\n' (after the header), not the leading one.
+                const headerEnd = agentResultContext.indexOf('\n\n', 2);
+                if (headerEnd !== -1) {
+                  agentResultContext = agentResultContext.slice(0, headerEnd + 2) +
+                    contextBlock + agentResultContext.slice(headerEnd + 2);
+                } else {
+                  agentResultContext = agentResultContext + contextBlock;
+                }
+              }
               effectiveSystemPrompt += agentResultContext;
             }
 
@@ -780,6 +838,10 @@ export async function POST(request: NextRequest) {
               send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
             }
 
+            // Phase 6 optimization: track agent invocations for duplicate-detection
+            const completedAgents = new Set<string>();
+            const agentCallCounts = new Map<string, number>();
+
             // Define streaming callbacks
             const callbacks = {
               // For English responses: forward content tokens directly to the client as they
@@ -794,6 +856,12 @@ export async function POST(request: NextRequest) {
               },
               onToolEnd: (name: string, success: boolean, duration: number, error?: string) => {
                 send({ type: 'tool_end', name, success, duration, error });
+                // Track agent__* invocations for duplicate-detection observability
+                if (name.startsWith('agent__') && success) {
+                  const agentId = name.slice('agent__'.length);
+                  completedAgents.add(agentId);
+                  agentCallCounts.set(agentId, (agentCallCounts.get(agentId) || 0) + 1);
+                }
               },
               onArtifact: (type: 'visualization' | 'document' | 'image' | 'diagram' | 'podcast' | 'agent', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo | DiagramHint | PodcastHint | AgentResponseInfo) => {
                 if (type === 'visualization') {
@@ -932,6 +1000,13 @@ export async function POST(request: NextRequest) {
 
               toolResult = fallbackResult.result;
               usedModel = fallbackResult.usedModel;
+
+              // Phase 6 optimization: warn if any agent was called more than once
+              for (const [agentId, count] of agentCallCounts) {
+                if (count > 1) {
+                  console.warn(`[Pipeline] Duplicate agent invocation: ${agentId} called ${count} times`);
+                }
+              }
             } catch (error) {
               if (error instanceof LlmFallbackError) {
                 send({
