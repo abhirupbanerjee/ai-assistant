@@ -67,7 +67,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: 'AI Assistant',
-    description: 'AI-powered policy assistant for government staff',
+    description: 'Enterprise AI platform for secure, self-hosted assistants and autonomous agents',
     manifest: '/manifest.webmanifest',
     appleWebApp: {
       capable: true,

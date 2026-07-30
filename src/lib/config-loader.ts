@@ -579,7 +579,7 @@ function getHardcodedDefaults(): AppConfig {
     },
     branding: {
       botName: 'AI Assistant',
-      botIcon: 'policy',
+      botIcon: 'ai-neural',
     },
     limits: {
       conversationHistoryMessages: 5,

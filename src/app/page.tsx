@@ -347,7 +347,7 @@ export default function LandingPage() {
                 {typingStage >= 1 && (
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                      PB
+                      <BotIcon iconKey={brandingBotIcon} size={16} className="text-white" />
                     </div>
                     <div className="flex-1 space-y-2 max-w-[85%]">
                       
@@ -388,7 +388,7 @@ export default function LandingPage() {
                 {typingStage >= 2 && typedResponse && (
                   <div className="flex items-start gap-3 animate-fade-in">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                      PB
+                      <BotIcon iconKey={brandingBotIcon} size={16} className="text-white" />
                     </div>
                     <div className="flex-1 space-y-4 max-w-[85%]">
                       <div className="bg-slate-900/60 rounded-2xl rounded-tl-none border border-slate-800/80 px-4 py-3 text-sm leading-relaxed text-slate-200 shadow-sm relative">
@@ -526,7 +526,7 @@ export default function LandingPage() {
             </div>
             <h3 className="text-lg font-bold text-white mb-3">Absolute Sovereignty</h3>
             <p className="text-slate-400 text-sm leading-relaxed">
-              Run entirely on your infrastructure. Vector indices (Qdrant), databases, caches, and files remain local, satisfying air-gapped standards.
+              All data — RAG documents, chat threads, artifacts, and usage logs — stays within your infrastructure. Nothing is sent to LLM provider clouds for training or storage. Vector indices, databases, and caches remain local, satisfying air-gapped and data residency standards.
             </p>
           </div>
 
@@ -536,7 +536,7 @@ export default function LandingPage() {
             </div>
             <h3 className="text-lg font-bold text-white mb-3">Multi-Route LLM Connections</h3>
             <p className="text-slate-400 text-sm leading-relaxed">
-              Ensure model survivability by routing requests over direct SDK connections, LiteLLM gateway proxies, local Ollama hosts, or Ollama Cloud instantly.
+              Ensure model survivability by routing requests over native SDKs, aggregator gateways, or local Ollama hosts — all without proxy intermediaries.
             </p>
           </div>
 
@@ -677,6 +677,24 @@ export default function LandingPage() {
               </div>
             </div>
 
+            {/* MCP Server Integration */}
+            <div className="rounded-2xl border border-slate-900 bg-slate-900/40 p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded bg-cyan-500/10 flex items-center justify-center text-cyan-400 border border-cyan-500/20">
+                  <Share2 size={18} />
+                </div>
+                <h3 className="font-bold text-white text-base">MCP Server Integration</h3>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Register external MCP-compatible servers to expose your internal APIs, databases, and services as AI-callable tools. Extend the platform without writing custom integrations.
+              </p>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">MCP Protocol</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">Custom Tools</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-800">API Bridge</span>
+              </div>
+            </div>
+
           </div>
 
         </div>
@@ -696,15 +714,15 @@ export default function LandingPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Assistant Mode */}
+          {/* Main Chat Platform */}
           <div className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/60 to-slate-950 p-8 space-y-6 flex flex-col justify-between">
             <div className="space-y-4">
               <div className="w-11 h-11 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
                 <Bot size={22} />
               </div>
-              <h3 className="text-xl font-bold text-white">Interactive Assistant</h3>
+              <h3 className="text-xl font-bold text-white">Main Chat Platform</h3>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Multi-turn conversation panel with real-time SSE streaming. Seamlessly invoke 16 predefined slash commands (like `/diagram`, `/gantt`, `/slide`) to instantly construct and download production-grade outputs.
+                Your organization's central AI workspace. Multi-turn conversation panel with real-time SSE streaming and 16 slash commands like `/diagram`, `/gantt`, and `/slide` to construct and download production-grade outputs instantly.
               </p>
             </div>
             <div className="border-t border-slate-900 pt-4 space-y-2">
@@ -719,15 +737,15 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Embedded Widget */}
+          {/* Customer-Facing Chatbots */}
           <div className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/60 to-slate-950 p-8 space-y-6 flex flex-col justify-between">
             <div className="space-y-4">
               <div className="w-11 h-11 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 border border-indigo-500/20">
                 <Layout size={22} />
               </div>
-              <h3 className="text-xl font-bold text-white">Embeddable Widgets</h3>
+              <h3 className="text-xl font-bold text-white">Customer-Facing Chatbots</h3>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Drop high-speed interactive chat widgets onto existing company intranets or websites via iframe codes (`/e/[slug]`). Configure allowed domains dynamically in the Admin panel to automatically assert frame CSP parameters.
+                Deploy branded AI assistants on your public websites via embeddable iframe widgets. Configure allowed domains, customize branding, and manage access controls from the Admin panel. Perfect for citizen support portals and customer service.
               </p>
             </div>
             <div className="border-t border-slate-900 pt-4 space-y-2">
@@ -742,25 +760,25 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Agent Framework */}
+          {/* Autonomous Agent Framework */}
           <div className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/60 to-slate-950 p-8 space-y-6 flex flex-col justify-between">
             <div className="space-y-4">
               <div className="w-11 h-11 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400 border border-violet-500/20">
                 <Terminal size={22} />
               </div>
-              <h3 className="text-xl font-bold text-white">Autonomous Agent Loop</h3>
+              <h3 className="text-xl font-bold text-white">Autonomous Agent Framework</h3>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Unlocks recursive subagent reasoning using Planner → Executor → Checker → Summarizer pathways. Tracks token expenditure limits and requires human confirmation (HITL approval) before running expensive or complex tools.
+                Invoke specialized agents using @mentions — Planner, Executor, Critic, Researcher, and Presenter — each with scoped tool access and model binding. Tracks token expenditure and requires HITL approval before running expensive or complex tools.
               </p>
             </div>
             <div className="border-t border-slate-900 pt-4 space-y-2">
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Check size={14} className="text-violet-400" />
-                <span>Tool Safety Gating</span>
+                <span>@Mention Context-Aware Routing</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Check size={14} className="text-violet-400" />
-                <span>Real-Time SSE Loop Progress</span>
+                <span>12 Domain-Specialized Templates</span>
               </div>
             </div>
           </div>
@@ -935,16 +953,23 @@ export default function LandingPage() {
                   </p>
                 </div>
                 {/* Visual Representation */}
-                <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800 grid grid-cols-2 gap-2 font-mono text-[10px]">
+                <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800 grid grid-cols-3 gap-2 font-mono text-[10px]">
                   {[
-                    { cmd: '/diagram', desc: 'Flowcharts, Sequence, C4' },
+                    { cmd: '/diagram', desc: 'Flowcharts, C4, Sequence' },
                     { cmd: '/chart', desc: 'Line, Bar, Infographics' },
                     { cmd: '/gantt', desc: 'Schedules & Timelines' },
+                    { cmd: '/image', desc: 'AI Image Generation' },
                     { cmd: '/pdf', desc: 'Docgen PDF Reports' },
                     { cmd: '/docx', desc: 'Editable Word Docs' },
-                    { cmd: '/sheet', desc: 'Structured Excel XLSX' },
-                    { cmd: '/slide', desc: 'PowerPoint slide deck' },
-                    { cmd: '/cyber', desc: 'SSL, DNS & Load tests' }
+                    { cmd: '/slide', desc: 'PowerPoint Decks' },
+                    { cmd: '/sheet', desc: 'Excel Spreadsheets' },
+                    { cmd: '/html', desc: 'HTML Pages & Reports' },
+                    { cmd: '/site', desc: 'Multi-Page Websites' },
+                    { cmd: '/podcast', desc: 'AI Podcast Audio' },
+                    { cmd: '/code-review', desc: 'SonarCloud Analysis' },
+                    { cmd: '/audit', desc: 'SSL, DNS, PageSpeed' },
+                    { cmd: '/search', desc: 'Web & KB Search' },
+                    { cmd: '/translate', desc: 'Multi-Language' },
                   ].map((item) => (
                     <div key={item.cmd} className="p-2 bg-slate-950/60 border border-slate-800 rounded flex flex-col justify-between">
                       <span className="text-pink-400 font-bold">{item.cmd}</span>
@@ -970,6 +995,9 @@ export default function LandingPage() {
             </h2>
             <p className="mt-4 text-slate-400 leading-relaxed">
               AI Assistant leverages unique internal communication pathways to connect with any local or cloud LLM, guaranteeing zero-downtime performance.
+            </p>
+            <p className="mt-3 text-slate-400 leading-relaxed max-w-3xl mx-auto text-sm">
+              Bring your own API keys for any LLM provider — OpenAI, Anthropic, Gemini, Mistral, DeepSeek — and external tools like Tavily, SonarCloud, Grafana, and GitHub. You maintain full control over model selection, spend, and data routing across all providers.
             </p>
           </div>
 
@@ -1042,7 +1070,7 @@ export default function LandingPage() {
             Take Control of Your Enterprise AI
           </h2>
           <p className="text-slate-400 max-w-2xl mx-auto text-base leading-relaxed">
-            Deploy AI Assistant on your own cloud, local server, or secure VM container. Open-source, self-hosted, and designed for military-grade sovereignty.
+            Deploy on your own cloud, on-premises server, or air-gapped container. Open-source, self-hosted, and designed for military-grade data sovereignty — your data never leaves your control.
           </p>
           <div className="pt-4">
             <Link
@@ -1082,7 +1110,7 @@ export default function LandingPage() {
             </div>
           </div>
           <p className="text-xs text-slate-500 font-mono">
-            Powered by Kysely, Qdrant and Ollama
+            Powered by PostgreSQL, Qdrant, Redis, and Ollama
           </p>
         </div>
       </footer>
