@@ -37,7 +37,7 @@ import { getEnabledModel, getDefaultModel } from '@/lib/db/compat/enabled-models
 import { getLlmSettings } from '@/lib/db/compat/config';
 import { validateAgentResponse, type AgentResponse } from '@/types/agent';
 import { AVAILABLE_TOOLS } from '@/lib/tools';
-import type { Message } from '@/types';
+import type { Message, StreamingCallbacks } from '@/types';
 import { logger } from '@/lib/logger';
 
 // ============ Public Types ============
@@ -66,6 +66,8 @@ export interface InvokeAgentInput {
   toolHints?: string[];
   /** Optional thread ID for artifact persistence (file saves). */
   threadId?: string;
+  /** Optional parent callbacks for streaming sub-agent tool activity to the UI (Fix 8). */
+  parentCallbacks?: StreamingCallbacks;
 }
 
 /**
@@ -248,6 +250,7 @@ export async function invokeAgent(
     context,
     modelUsed,
     threadId: input.threadId,
+    parentCallbacks: input.parentCallbacks,
   });
 
   let rawOutput: string;
@@ -332,8 +335,9 @@ function buildAgentCompletionParams(input: {
   context?: string;
   modelUsed: string;
   threadId?: string;
+  parentCallbacks?: StreamingCallbacks;
 }) {
-  const { agent, systemMessage, userMessage, context, modelUsed, threadId } = input;
+  const { agent, systemMessage, userMessage, context, modelUsed, threadId, parentCallbacks } = input;
   const categoryIds = agent.categoryId ? [agent.categoryId] : undefined;
 
   // Enforce toolAllowlist as an intersection: exclude every AVAILABLE_TOOLS
@@ -353,7 +357,16 @@ function buildAgentCompletionParams(input: {
     userMessage,
     enableTools: true,
     categoryIds,
-    callbacks: undefined,
+    // Phase 6 (Fix 8): Forward parent callbacks for sub-agent tool progress visibility.
+    // Tool names are prefixed with '↳' so the UI can render nested tool activity.
+    callbacks: parentCallbacks ? {
+      onToolStart: (name: string, displayName: string) => {
+        parentCallbacks?.onToolStart?.(`↳ ${name}`, `[${agent.name}] ${displayName}`);
+      },
+      onToolEnd: (name: string, success: boolean, duration: number, error?: string) => {
+        parentCallbacks?.onToolEnd?.(`↳ ${name}`, success, duration, error);
+      },
+    } : undefined,
     images: undefined,
     summaryContext: undefined,
     memoryContext: undefined,

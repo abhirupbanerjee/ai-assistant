@@ -764,6 +764,22 @@ export async function POST(request: NextRequest) {
               effectiveSystemPrompt = `${tonePrompt}\n\n${ragResult.systemPrompt}`;
             }
 
+            // Phase 6 (Fix 6): Inject agent usage rules into the system prompt.
+            // These teach the main LLM how to use agent__* tools correctly —
+            // when to pass context, when to stop re-invoking, and how to handle
+            // suggestedNext feedback.
+            effectiveSystemPrompt += '\n\n[AGENT USAGE RULES]\n' +
+              '- When calling an agent via agent__* tools, always pass relevant conversation ' +
+              'context and prior agent outputs as the "context" parameter.\n' +
+              '- If an agent returns suggestedNext.action = "loop_back" with a reason, you MUST ' +
+              'address that reason in your next context parameter as corrective feedback.\n' +
+              '- If an agent returns suggestedNext.action = "complete" with confidence >= 0.7, ' +
+              'synthesize your final answer from the artifact. Do not re-invoke the agent.\n' +
+              '- Never call the same agent more than twice per turn. After 2 invocations, ' +
+              'synthesize the best answer from available results.\n' +
+              '- After ALL pipeline steps complete, compose the final answer from agent outputs. ' +
+              'Do not re-invoke agents that already produced results.';
+
             // Phase 1: Inject slash command hints for this turn only (transient, not persistent)
             if (toolHints && toolHints.length > 0) {
               const { getSlashCommandByKey } = await import('@/lib/db/compat/slash-commands');
@@ -811,8 +827,19 @@ export async function POST(request: NextRequest) {
                 } else {
                   agentResultContext = agentResultContext + contextBlock;
                 }
+                effectiveSystemPrompt += agentResultContext;
+              } else if (agentResultContext.includes('[Step ') && agentResultContext.includes('result]')) {
+                // Phase 6 (Fix 3): Post-agent synthesis — agents completed THIS turn.
+                // Lifecycle tag eliminates "should I re-invoke?" ambiguity.
+                effectiveSystemPrompt += '\n\n[MODE: SYNTHESIS — The following agents have completed their tasks THIS turn.\n' +
+                  'Do NOT re-invoke these agents. Synthesize their outputs into a cohesive response.\n' +
+                  'Present all artifacts (ebooks, infographics, documents) to the user with a summary.]\n';
+                effectiveSystemPrompt += agentResultContext;
+              } else {
+                // Single agent mention result or prior-turn reference.
+                effectiveSystemPrompt += '\n\n[AGENT RESULT — Reference this output when composing your response. Do NOT re-invoke this agent.]\n';
+                effectiveSystemPrompt += agentResultContext;
               }
-              effectiveSystemPrompt += agentResultContext;
             }
 
             // Append clarification instruction when preflight skill is active

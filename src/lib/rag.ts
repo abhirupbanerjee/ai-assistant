@@ -132,6 +132,14 @@ function repairJsonArray(jsonStr: string): string {
  * Gracefully returns empty array on any failure.
  */
 async function rewriteQueryWithLLM(query: string): Promise<string[]> {
+  // Skip LLM rewriting if query contains @mentions — these are routing
+  // metadata, not semantic query content. The LLM-based rewriter echoes
+  // them back verbatim, causing JSON parse failures.
+  if (/@[a-z0-9_-]+/i.test(query)) {
+    logger.debug('Skipping LLM query rewrite: query contains @mentions');
+    return [];
+  }
+
   try {
     const cacheKey = 'query-rewrite:' + hashQuery(query);
     const cached = await getCachedQuery(cacheKey);
@@ -246,8 +254,16 @@ export async function expandQueries(originalQuery: string, enabled: boolean, llm
     return queries;
   }
 
+  // Strip @agent mentions and pipeline directives for cleaner query rewriting.
+  // The raw user message may contain routing metadata (e.g., "@tpl-researcher")
+  // that confuses the LLM-based rewriter and produces JSON parse failures.
+  const cleanQuery = originalQuery
+    .replace(/@[a-z0-9_-]+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   // Extract key terms and create variations
-  const lowerQuery = originalQuery.toLowerCase();
+  const lowerQuery = cleanQuery.toLowerCase();
 
   // Get acronym mappings from SQLite config
   const acronymExpansions = await getAcronymMappings();

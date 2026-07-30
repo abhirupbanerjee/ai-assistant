@@ -77,6 +77,8 @@ export interface ToolExecutionOptions {
   functionName?: string;
   /** Config override from skill-level tool_config_override (merged with global config) */
   configOverride?: Record<string, unknown>;
+  /** Thread ID for artifact persistence (image_gen, doc_gen, pptx_gen, etc.) */
+  threadId?: string;
 }
 
 /**
@@ -606,7 +608,7 @@ export async function executeTool(
         }
       }
       // Pass the function name to the function_api tool
-      return await tool.execute(parsedArgs, { functionName: name, configOverride });
+      return await tool.execute(parsedArgs, { functionName: name, configOverride, threadId });
     } catch (error) {
       logger.error(`Function API execution error [${name}]`, error);
       return JSON.stringify({
@@ -675,7 +677,7 @@ export async function executeTool(
         });
       }
     }
-    return await tool.execute(parsedArgs, { configOverride });
+    return await tool.execute(parsedArgs, { configOverride, threadId });
   } catch (error) {
     logger.error(`Tool execution error [${name}]`, error);
     return JSON.stringify({

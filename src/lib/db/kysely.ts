@@ -1224,6 +1224,47 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured diagram_gen in tpl-presenter tool_allowlist');
 
+  // Migration: Fix tpl-executor empty allowlist (currently '[]').
+  // An executor with no tools forces unnecessary agent nesting:
+  //   tpl-executor → agent__tpl-site-executor → html_gen
+  // instead of calling html_gen/image_gen directly.
+  // Idempotent: WHERE tool_allowlist @> '[]' matches only the empty array.
+  await sql`
+    UPDATE agent
+    SET tool_allowlist = '["html_gen","image_gen","chart_gen","diagram_gen","doc_gen","pptx_gen","site_gen"]'::jsonb
+    WHERE id = 'tpl-executor'
+      AND tool_allowlist @> '[]'::jsonb
+      AND jsonb_array_length(tool_allowlist) = 0
+  `.execute(database);
+  console.log('[Kysely] Fixed tpl-executor empty tool_allowlist → 7 artifact-generation tools');
+
+  // Migration: Add dedicated tpl-html-executor for HTML ebooks/dashboards/single pages.
+  // Splits from tpl-site-executor so the LLM can choose the right specialist:
+  //   tpl-html-executor → html_gen + diagram_gen + chart_gen (ebooks, dashboards)
+  //   tpl-site-executor → site_gen + html_gen + website_analysis + image_gen (full sites)
+  // Idempotent via ON CONFLICT (id) DO NOTHING.
+  await sql`
+    INSERT INTO agent (id, name, role_family, category_id, model_id, system_prompt, tool_allowlist, config, enabled) VALUES
+      ('tpl-html-executor','HTML Executor (template)','executor',NULL,NULL,
+       'You are an HTML Executor. Generate interactive HTML dashboards and ebooks with html_gen, include diagrams via diagram_gen and charts via chart_gen. Return HTML artifact with confidence.',
+       '["html_gen","diagram_gen","chart_gen"]'::jsonb,'{"max_retries":2}'::jsonb,TRUE)
+    ON CONFLICT (id) DO NOTHING
+  `.execute(database);
+  console.log('[Kysely] Seeded tpl-html-executor template agent (idempotent)');
+
+  // Migration: Expand tpl-site-executor to include image_gen for site assets.
+  // The allowlist was '["site_gen","html_gen","website_analysis"]' — adding image_gen
+  // lets it generate site assets (hero images, icons) directly.
+  // Idempotent: only appends if image_gen is not already present.
+  await sql`
+    UPDATE agent
+    SET tool_allowlist = tool_allowlist || '["image_gen"]'::jsonb,
+        system_prompt = 'You are a Web Builder Executor. Generate complete static sites with site_gen, interactive HTML pages with html_gen, audit existing sites with website_analysis, and generate images with image_gen for site assets. Return site artifact with confidence.'
+    WHERE id = 'tpl-site-executor'
+      AND NOT tool_allowlist @> '["image_gen"]'::jsonb
+  `.execute(database);
+  console.log('[Kysely] Expanded tpl-site-executor allowlist + added image_gen');
+
   // Seed suggested (not forced) tool-routing rules for common KB-intent keywords.
   // force_mode='suggested' → determineToolChoice returns 'auto', so the model is
   // free to call the tool but is not forced (avoids forced-tool incompatibility

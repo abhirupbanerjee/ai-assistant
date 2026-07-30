@@ -2256,6 +2256,10 @@ export async function generateResponseWithTools(
   let iterations = 0;
   let totalToolCalls = 0;
   const toolCallCounts = new Map<string, number>();
+  // Phase 6: Track agent invocations for cap enforcement (max 2 per agent per turn)
+  const agentInvocationCaps = new Set<string>();
+  // Accumulate agent results for context bridging (Fix 2)
+  const priorAgentResults: Array<{ toolName: string; artifactContent: string; confidence: number; suggestedReason: string }> = [];
   let terminalToolSucceeded = false;
   // Collect every successful terminal tool's metadata so the post-loop status marker
   // can name the correct count. Previously a scalar that was overwritten on each
@@ -2429,6 +2433,38 @@ export async function generateResponseWithTools(
                   suggestedNextReason: parsed.suggestedNext?.reason,
                 };
                 callbacks.onArtifact('agent', info);
+
+                // Phase 6 (Fix 1): Confidence-gated termination for agent tools.
+                // High-confidence agents that declare completion are treated as terminal,
+                // stopping the tool loop without needing a separate LLM call.
+                const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+                const suggestedAction = parsed.suggestedNext?.action;
+
+                if (confidence >= 0.8 && suggestedAction === 'complete') {
+                  logger.info(`[Tools] Agent ${toolName} terminal (confidence=${confidence}, action=${suggestedAction})`);
+                  terminalToolSucceeded = true;
+                  terminalToolResults.push({ toolName, parsedResult: parsed });
+                }
+
+                // Phase 6 (Fix 1): Track per-agent invocation count for cap enforcement.
+                // After 2 invocations of the same agent, force synthesis.
+                const agentCount = toolCallCounts.get(toolName) ?? 0;
+                if (agentCount >= 2) {
+                  agentInvocationCaps.add(toolName);
+                  logger.warn(`[Tools] Agent ${toolName} invocation cap reached (${agentCount}), synthesis directive will be injected`);
+                }
+
+                // Phase 6 (Fix 2): Accumulate agent results for context bridging.
+                // When the same agent is re-invoked, the prior output is injected as feedback.
+                const artifactContent = typeof parsed.artifact?.content === 'string'
+                  ? parsed.artifact.content.slice(0, 2000)
+                  : JSON.stringify(parsed.artifact ?? parsed).slice(0, 2000);
+                priorAgentResults.push({
+                  toolName,
+                  artifactContent,
+                  confidence,
+                  suggestedReason: typeof parsed.suggestedNext?.reason === 'string' ? parsed.suggestedNext.reason : '',
+                });
               }
             } catch (artifactError) {
               logger.error(`Artifact callback error for tool ${toolName}:`, artifactError);
@@ -2702,6 +2738,36 @@ export async function generateResponseWithTools(
     // Push all tool results as a single Anthropic 'user' message
     if (useAnthropicDirect && anthropicToolResults.length > 0) {
       anthropicMessages.push({ role: 'user', content: anthropicToolResults });
+    }
+
+    // Phase 6 (Fix 2): Inject prior agent context before the next LLM call.
+    // When agents have been invoked in this turn, provide structured feedback
+    // so the LLM either passes corrective context or synthesizes from results.
+    if (priorAgentResults.length > 0) {
+      for (const result of priorAgentResults) {
+        const capReached = agentInvocationCaps.has(result.toolName);
+        const feedbackNote =
+          `[AGENT FEEDBACK — ${result.toolName}]\n` +
+          `Prior output: ${result.artifactContent}\n` +
+          `Confidence: ${result.confidence}\n` +
+          (result.suggestedReason ? `Agent suggested: ${result.suggestedReason}\n` : '') +
+          (capReached
+            ? `CAP REACHED: Do NOT re-invoke ${result.toolName}. Synthesize final answer from available results.\n`
+            : `If re-invoking ${result.toolName}, pass the above as "context" and address any feedback.`);
+
+        messages.push({
+          role: 'user',
+          content: feedbackNote,
+        });
+        if (useAnthropicDirect) {
+          anthropicMessages.push({
+            role: 'user',
+            content: feedbackNote,
+          });
+        }
+      }
+      // Clear accumulated results after injection to avoid duplicate messages
+      priorAgentResults.length = 0;
     }
 
     // If a terminal tool succeeded, skip getting another response
