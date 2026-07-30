@@ -17,7 +17,7 @@ import { useToast } from '@/contexts/ToastContext';
 import type { ChatPreferences, PipelineMode } from '@/types/stream';
 import { parsePipelinePrompt } from '@/lib/pipeline-parser';
 import { buildSubmitPayload } from '@/lib/message-input-parser';
-import { serializeToPlainText, insertMentionSpan, getCursorToken, renderMentionsFromPlainText } from '@/lib/chat-input-dom';
+import { type TriggerSpan } from '@/lib/trigger-span';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
 import { useInputState } from '@/hooks/useInputState';
@@ -73,6 +73,16 @@ interface CurrentModelInfo {
   thinkingCapable: boolean;
 }
 
+/** Replace a partial trigger token in the textarea with the full mention text. */
+function replaceTriggerToken(
+  currentValue: string,
+  triggerStart: number,
+  cursorPos: number,
+  replacement: string
+): string {
+  return currentValue.slice(0, triggerStart) + replacement + currentValue.slice(cursorPos);
+}
+
 const MessageInput = memo(function MessageInput({
   onSend,
   disabled,
@@ -115,13 +125,13 @@ const MessageInput = memo(function MessageInput({
   const [activeSlashCommands, setActiveSlashCommands] = useState<string[]>([]);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
-  const [activeAgentMentions, setActiveAgentMentions] = useState<string[]>([]);
   // Phase 5: pipeline orchestration
   const [knownAgentIds, setKnownAgentIds] = useState<Set<string>>(new Set());
   const [knownCommandKeys, setKnownCommandKeys] = useState<Set<string>>(new Set());
   const [pipelineModeState, setPipelineModeState] = useState<PipelineMode>('strict');
+  const triggerSpanRef = useRef<TriggerSpan | null>(null);
   const lastModelIdRef = useRef<string | null>(null);
-  const contentEditableRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
   // Toast notifications
@@ -142,22 +152,6 @@ const MessageInput = memo(function MessageInput({
       setMessage(initialDraft);
     }
   }, [initialDraft, setMessage]);
-
-  // Sync contentEditable DOM when message changes from outside (draft restore,
-  // initialDraft). During normal typing, onInput already keeps the DOM in sync
-  // and updates message state — this effect only fires when message diverges
-  // from the DOM (i.e. programmatic changes).
-  useEffect(() => {
-    const div = contentEditableRef.current;
-    if (!div || !message) {
-      if (div && !message) div.innerHTML = '';
-      return;
-    }
-    const domText = serializeToPlainText(div);
-    if (domText !== message) {
-      renderMentionsFromPlainText(div, message, knownAgentIds, knownCommandKeys);
-    }
-  }, [message, knownAgentIds, knownCommandKeys]);
 
   // Phase 5: pre-fetch known agents and slash commands for pipeline validation
   // and cursor-anchored trigger detection.
@@ -219,7 +213,7 @@ const MessageInput = memo(function MessageInput({
     }
     if (preferences.targetLanguage !== 'en') {
       features.push({
-        icon: <span className="text-[10px] font-bold">{preferences.targetLanguage?.toUpperCase() ?? 'EN'}</span>,
+        icon: <span className="text-[10px] font-bold">{preferences.targetLanguage.toUpperCase()}</span>,
         label: preferences.targetLanguage,
       });
     }
@@ -252,13 +246,13 @@ const MessageInput = memo(function MessageInput({
   }, [inputState]);
 
 
-  // Auto-resize contentEditable div
+  // Auto-resize textarea with different max heights for mobile vs desktop
   useEffect(() => {
-    if (contentEditableRef.current) {
-      const maxHeight = isMobile ? 112 : 150;
-      contentEditableRef.current.style.height = 'auto';
-      const scrollHeight = contentEditableRef.current.scrollHeight;
-      contentEditableRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    if (textareaRef.current) {
+      const maxHeight = isMobile ? 112 : 150; // Mobile: 4 lines, Desktop: ~6 lines
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
       
       // Calculate line count (approximate: 28px per line on mobile, 24px on desktop)
       const lineHeightPx = isMobile ? 28 : 24;
@@ -316,12 +310,13 @@ const MessageInput = memo(function MessageInput({
   const handleSubmit = useCallback(() => {
     if (!message.trim() || isSubmitDisabled) return;
 
-    // Phase 5: pipeline detection + chip merging + slash extraction is handled
-    // by the pure buildSubmitPayload helper (unit-tested, framework-free).
+    // Phase 5: pipeline detection — tokens are inline in the textarea text.
+    // No chip re-insertion needed. buildSubmitPayload handles slash command
+    // extraction from chips (if any) or raw inline tokens.
     const { finalMessage, toolHints, agentMention, pipeline, pipelineMode } =
       buildSubmitPayload({
         message,
-        activeAgentMentions,
+        activeAgentMentions: [],
         activeSlashCommands,
         knownAgentIds,
         knownCommandKeys,
@@ -331,12 +326,7 @@ const MessageInput = memo(function MessageInput({
 
     onSend(finalMessage, mode, { ...preferences, toolHints, agentMention, pipeline, pipelineMode });
     setMessage('');
-    // Clear contentEditable div
-    if (contentEditableRef.current) {
-      contentEditableRef.current.innerHTML = '';
-    }
     setActiveSlashCommands([]);
-    setActiveAgentMentions([]);
     clearDraft();
     // Reset mode to normal after sending
     setMode('normal');
@@ -347,7 +337,6 @@ const MessageInput = memo(function MessageInput({
     mode,
     preferences,
     activeSlashCommands,
-    activeAgentMentions,
     clearDraft,
     knownAgentIds,
     knownCommandKeys,
@@ -356,11 +345,11 @@ const MessageInput = memo(function MessageInput({
 
   // Memoized keyboard shortcut callbacks to prevent listener re-binding
   const focusTextarea = useCallback(() => {
-    contentEditableRef.current?.focus();
+    textareaRef.current?.focus();
   }, []);
 
   const blurTextarea = useCallback(() => {
-    contentEditableRef.current?.blur();
+    textareaRef.current?.blur();
   }, []);
 
   // Keyboard shortcuts (desktop only)
@@ -369,7 +358,7 @@ const MessageInput = memo(function MessageInput({
     onBlur: blurTextarea,
     onSend: handleSubmit,
     onTogglePlusMenu: undefined,
-    textareaRef: contentEditableRef as unknown as React.RefObject<HTMLTextAreaElement>,
+    textareaRef: textareaRef as React.RefObject<HTMLTextAreaElement>,
     disabled: disabled || isMobile,
   });
 
@@ -393,24 +382,8 @@ const MessageInput = memo(function MessageInput({
   };
 
   const handleVoiceTranscript = (text: string) => {
-    const div = contentEditableRef.current;
-    if (div) {
-      div.focus();
-      // Move cursor to end
-      const range = document.createRange();
-      range.selectNodeContents(div);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-      // Insert text
-      if (message) {
-        document.execCommand('insertText', false, ' ' + text);
-      } else {
-        document.execCommand('insertText', false, text);
-      }
-      setMessage(serializeToPlainText(div));
-    }
+    setMessage((prev) => prev + (prev ? ' ' : '') + text);
+    textareaRef.current?.focus();
   };
 
   const handleFocus = () => {
@@ -453,8 +426,8 @@ const MessageInput = memo(function MessageInput({
     }
   }, [threadId, onUploadComplete, addToast]);
 
-  // Handle paste event — files are uploaded, text is pasted as plain text only
-  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
+  // Handle paste event for file uploads
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (!items || !threadId) return;
 
@@ -469,23 +442,15 @@ const MessageInput = memo(function MessageInput({
       }
     }
 
-    // If files found, upload them (prevent default paste)
-    if (files.length > 0) {
-      e.preventDefault();
-      for (const file of files) {
-        await uploadFile(file);
-      }
-      return;
-    }
+    // If no files, let default paste behavior handle it (text paste)
+    if (files.length === 0) return;
 
-    // Plain text paste: strip HTML formatting
+    // Prevent default paste for file uploads
     e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    if (text) {
-      document.execCommand('insertText', false, text);
-      if (contentEditableRef.current) {
-        setMessage(serializeToPlainText(contentEditableRef.current));
-      }
+
+    // Upload each file
+    for (const file of files) {
+      await uploadFile(file);
     }
   }, [threadId, uploadFile]);
 
@@ -553,18 +518,33 @@ const MessageInput = memo(function MessageInput({
             query={mentionQuery}
             activeCategoryId={preferences.activeCategoryId}
             onSelect={(agentId) => {
-              const div = contentEditableRef.current;
-              if (div) {
-                insertMentionSpan(div, '@', agentId, 'mention-agent');
-                setMessage(serializeToPlainText(div));
+              const span = triggerSpanRef.current;
+              const end = textareaRef.current?.selectionStart ?? message.length;
+              const replacement = `@${agentId} `;
+              // Replace the partial @query with the full @agentId token.
+              if (span) {
+                const newCursorPos = span.start + replacement.length;
+                setMessage((prev) =>
+                  replaceTriggerToken(prev, span.start, end, replacement)
+                );
+                // Restore cursor after the inserted token.
+                setTimeout(() => {
+                  textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+                }, 0);
+              } else {
+                setMessage((prev) =>
+                  prev.replace(/(?:^|\s)@\S+/, ` ${replacement}`.trimStart())
+                );
               }
               setMentionMenuOpen(false);
               setMentionQuery('');
-              div?.focus();
+              triggerSpanRef.current = null;
+              textareaRef.current?.focus();
             }}
             onDismiss={() => {
               setMentionMenuOpen(false);
               setMentionQuery('');
+              triggerSpanRef.current = null;
             }}
           />
         )}
@@ -574,50 +554,70 @@ const MessageInput = memo(function MessageInput({
           <SlashCommandMenu
             query={slashQuery}
             onSelect={(commandKey) => {
-              const div = contentEditableRef.current;
-              if (div && activeSlashCommands.length < MAX_SLASH_COMMANDS) {
-                insertMentionSpan(div, '/', commandKey, 'mention-slash');
-                setMessage(serializeToPlainText(div));
+              const span = triggerSpanRef.current;
+              const end = textareaRef.current?.selectionStart ?? message.length;
+              const replacement = `/${commandKey} `;
+              if (activeSlashCommands.length < MAX_SLASH_COMMANDS) {
+                // Replace the partial /query with the full /commandKey token.
+                if (span) {
+                  const newCursorPos = span.start + replacement.length;
+                  setMessage((prev) =>
+                    replaceTriggerToken(prev, span.start, end, replacement)
+                  );
+                  setTimeout(() => {
+                    textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+                  }, 0);
+                } else {
+                  setMessage((prev) =>
+                    prev.replace(/(?:^|\s)\/\S+/, ` ${replacement}`.trimStart())
+                  );
+                }
                 setActiveSlashCommands(prev => [...prev, commandKey]);
               }
               setSlashMenuOpen(false);
               setSlashQuery('');
-              div?.focus();
+              triggerSpanRef.current = null;
+              textareaRef.current?.focus();
             }}
             onDismiss={() => {
               setSlashMenuOpen(false);
               setSlashQuery('');
+              triggerSpanRef.current = null;
             }}
           />
         )}
 
-        {/* ContentEditable div — replaces <textarea> for inline colored mentions */}
-        <div
-          ref={contentEditableRef}
-          contentEditable
-          suppressContentEditableWarning
-          data-placeholder="Ask a question..."
-          className={`chat-content-editable ${isMobile ? 'chat-content-editable-mobile' : ''}`}
-          style={isMobile ? { minHeight: '56px', maxHeight: '112px' } : { minHeight: '40px', maxHeight: '40vh' }}
-          onInput={() => {
-            const div = contentEditableRef.current;
-            if (!div) return;
-            const plainText = serializeToPlainText(div);
-            setMessage(plainText);
+        {/* Textarea - responsive sizing */}
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => {
+            const val = e.target.value;
+            const cursorPos = e.target.selectionStart ?? val.length;
+            setMessage(val);
 
-            // Phase 5: cursor-anchored trigger detection via DOM
-            const token = getCursorToken(div);
-            if (token.prefix === '@') {
-              setMentionQuery(token.query);
+            // Phase 5: cursor-anchored trigger detection — find the @ or /
+            // token immediately before the caret. This handles both position-0
+            // single-chip and inline multi-@ pipeline tokens.
+            // Menu opens for every @ trigger (no guard — supports multi-agent pipeline).
+            const textBeforeCursor = val.slice(0, cursorPos);
+            const atMatch = textBeforeCursor.match(/(?:^|\s)(@)([a-z0-9_-]*)$/);
+            const slashMatch = textBeforeCursor.match(/(?:^|\s)(\/)([a-z0-9_-]*)$/);
+
+            if (atMatch) {
+              triggerSpanRef.current = { start: cursorPos - 1 - atMatch[2].length, kind: 'at' };
+              setMentionQuery(atMatch[2]);
               setMentionMenuOpen(true);
               setSlashMenuOpen(false);
               setSlashQuery('');
-            } else if (token.prefix === '/' && activeSlashCommands.length < MAX_SLASH_COMMANDS) {
-              setSlashQuery(token.query);
+            } else if (slashMatch && activeSlashCommands.length < MAX_SLASH_COMMANDS) {
+              triggerSpanRef.current = { start: cursorPos - 1 - slashMatch[2].length, kind: 'slash' };
+              setSlashQuery(slashMatch[2]);
               setSlashMenuOpen(true);
               setMentionMenuOpen(false);
               setMentionQuery('');
             } else {
+              triggerSpanRef.current = null;
               setSlashMenuOpen(false);
               setMentionMenuOpen(false);
               setSlashQuery('');
@@ -628,6 +628,13 @@ const MessageInput = memo(function MessageInput({
           onPaste={handlePaste}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          placeholder="Ask a question..."
+          disabled={isUploading}
+          rows={isMobile ? 2 : 1}
+          enterKeyHint={isMobile ? 'enter' : 'send'}
+          className={`w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 ${
+            isMobile ? 'min-h-[56px] max-h-[112px]' : 'min-h-[40px] max-h-[40vh]'
+          }`}
         />
 
         {/* Bottom row: Voice + Plus menu + Model selector + Submit */}
