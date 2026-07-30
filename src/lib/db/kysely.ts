@@ -1405,6 +1405,68 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Seeded max_output_tokens for known models (NULL rows only)');
 
+  // Migration: Comprehensive model spec sync (July 2026) — pricing, capabilities, context windows
+  // Covers all 25 currently enabled models. Uses idempotent UPDATEs safe for re-run.
+  const comprehensiveModelSpecs: Array<{
+    id: string;
+    max_input_tokens: number;
+    max_output_tokens: number;
+    vision_capable: number;
+    parallel_tool_capable: number;
+    thinking_capable: number;
+    forced_tool_capable: number;
+    input_cost_per_1m: number;
+    output_cost_per_1m: number;
+  }> = [
+    // === Fireworks AI — Serverless Chat Models ===
+    { id: 'fireworks/minimax-m3', max_input_tokens: 512000, max_output_tokens: 32768, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20 },
+    { id: 'fireworks/glm-5p2', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 1.40, output_cost_per_1m: 4.40 },
+    { id: 'fireworks/glm-5p1', max_input_tokens: 202752, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 1.40, output_cost_per_1m: 4.40 },
+    { id: 'fireworks/kimi-k2p7-code', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.95, output_cost_per_1m: 4.00 },
+    { id: 'fireworks/kimi-k2p6', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.95, output_cost_per_1m: 4.00 },
+    { id: 'fireworks/kimi-k2p5', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 3.00 },
+    { id: 'fireworks/qwen3p7-plus', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.40, output_cost_per_1m: 1.60 },
+    { id: 'fireworks/minimax-m2p7', max_input_tokens: 196608, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20 },
+    { id: 'fireworks/minimax-m2p5', max_input_tokens: 196608, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 1.20 },
+    { id: 'fireworks/gpt-oss-120b', max_input_tokens: 131072, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 0, input_cost_per_1m: 0.15, output_cost_per_1m: 0.60 },
+    { id: 'fireworks/gpt-oss-20b', max_input_tokens: 131072, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 0, input_cost_per_1m: 0.07, output_cost_per_1m: 0.30 },
+    { id: 'fireworks/deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28 },
+    { id: 'fireworks/deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.74, output_cost_per_1m: 3.48 },
+    { id: 'fireworks/nemotron-3-ultra-nvfp4', max_input_tokens: 262144, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 0.60, output_cost_per_1m: 2.40 },
+    // === DeepSeek Native API ===
+    { id: 'deepseek-v4-flash', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.14, output_cost_per_1m: 0.28 },
+    { id: 'deepseek-v4-pro', max_input_tokens: 1048576, max_output_tokens: 16384, vision_capable: 0, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.435, output_cost_per_1m: 0.87 },
+    // === OpenAI GPT-5.6 Family ===
+    { id: 'gpt-5.6-luna', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.00, output_cost_per_1m: 6.00 },
+    { id: 'gpt-5.6-terra', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 2.50, output_cost_per_1m: 15.00 },
+    { id: 'gpt-5.6-sol', max_input_tokens: 1050000, max_output_tokens: 128000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 5.00, output_cost_per_1m: 30.00 },
+    // === Google Gemini ===
+    { id: 'gemini-3.6-flash', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 7.50 },
+    { id: 'gemini-3.5-flash', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 9.00 },
+    { id: 'gemini-3.5-flash-lite', max_input_tokens: 1048576, max_output_tokens: 65536, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 1, forced_tool_capable: 1, input_cost_per_1m: 0.30, output_cost_per_1m: 2.50 },
+    // === Mistral AI ===
+    { id: 'mistral-medium-3-5', max_input_tokens: 256000, max_output_tokens: 16000, vision_capable: 0, parallel_tool_capable: 0, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 7.50 },
+    { id: 'mistral-medium-3.5', max_input_tokens: 256000, max_output_tokens: 16000, vision_capable: 0, parallel_tool_capable: 0, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 1.50, output_cost_per_1m: 7.50 },
+    { id: 'mistral-large-2512', max_input_tokens: 262144, max_output_tokens: 16000, vision_capable: 1, parallel_tool_capable: 1, thinking_capable: 0, forced_tool_capable: 1, input_cost_per_1m: 0.50, output_cost_per_1m: 1.50 },
+  ];
+  for (const m of comprehensiveModelSpecs) {
+    await sql`
+      UPDATE enabled_models
+      SET
+        max_input_tokens = ${m.max_input_tokens},
+        max_output_tokens = ${m.max_output_tokens},
+        vision_capable = ${m.vision_capable},
+        tool_capable = 1,
+        parallel_tool_capable = ${m.parallel_tool_capable},
+        thinking_capable = ${m.thinking_capable},
+        forced_tool_capable = ${m.forced_tool_capable},
+        input_cost_per_1m = ${m.input_cost_per_1m},
+        output_cost_per_1m = ${m.output_cost_per_1m}
+      WHERE id = ${m.id}
+    `.execute(database);
+  }
+  console.log('[Kysely] Synced comprehensive model specs for all 25 enabled models (July 2026)');
+
   console.log('[Kysely] PostgreSQL migrations completed');
 
   // Fire-and-forget: fail stale active autonomous plans (crashed/restarted sessions)

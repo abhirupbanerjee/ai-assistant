@@ -128,10 +128,12 @@ export function isLikelyThinkingCapableModel(modelId: string): boolean {
     /^qwen3/,
     /^qwq/,
     /^deepseek-v4-pro/,
+    /^deepseek-v4-flash/,
     /^deepseek-reasoner/,
     /^kimi-k/,
     /^gpt-oss/,
     /^gemini-2\.5/,
+    /^gemini-3/,
     /^magistral/,
     /^mistral-(small|medium).*reason/,
   ].some((pattern) => pattern.test(id));

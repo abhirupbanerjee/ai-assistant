@@ -183,6 +183,8 @@ const THINKING_CAPABLE_PATTERNS = [
   /^gpt-5/,
   // Think-tag models — <think>…</think> parsed via parseThinkChunk()
   /^qwen3/,
+  /^fireworks\/qwen3/,
+  /^accounts\/fireworks\/models\/qwen3/,
   /^qwq/,
   /^deepseek-v4-(flash|pro)/,
   /^fireworks\/deepseek-v4-(flash|pro)/,
@@ -256,6 +258,8 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'gemini-3-flash-preview': 1048576,
   'gemini-3.1-pro-preview': 1048576,
   'gemini-3.5-flash': 1048576,
+  'gemini-3.5-flash-lite': 1048576,
+  'gemini-3.6-flash': 1048576,
   'gemini-3.1-flash-lite': 1048576,
   // Gemini latest aliases
   'gemini-pro-latest': 1049000,
@@ -268,6 +272,7 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'mistral-large-2512': 262144,
   'mistral-medium-latest': 256000,
   'mistral-medium-3.5': 256000,
+  'mistral-medium-3-5': 256000,
   'mistral-medium-3': 131072,
   'mistral-small-latest': 128000,
   'mistral-small-4': 128000,
@@ -298,6 +303,8 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'deepseek-v4-pro': 1048576,
 
   // Fireworks serverless chat models
+  'fireworks/deepseek-v4-flash': 1048576,
+  'fireworks/deepseek-v4-pro': 1048576,
   'fireworks/glm-5p2': 1048576,
   'fireworks/glm-5p1': 202752,
   'fireworks/glm-5': 202752,
@@ -326,6 +333,8 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'accounts/fireworks/models/gpt-oss-120b': 131072,
   'accounts/fireworks/models/nemotron-3-ultra-nvfp4': 262144,
   'accounts/fireworks/models/qwen3p7-plus': 262144,
+  'accounts/fireworks/models/deepseek-v4-flash': 1048576,
+  'accounts/fireworks/models/deepseek-v4-pro': 1048576,
 
 };
 
