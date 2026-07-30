@@ -462,7 +462,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 key={doc.id}
                 kind="document"
                 title={doc.filename}
-                subtitle={`${doc.fileType.toUpperCase()} · ${doc.fileSizeFormatted}`}
+                subtitle={`${doc.fileType?.toUpperCase() ?? 'FILE'} · ${doc.fileSizeFormatted}`}
                 index={i}
                 total={message.generatedDocuments!.length}
                 defaultCollapsed={message.generatedDocuments!.length > 1}
@@ -500,7 +500,7 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
                 key={podcast.id}
                 kind="podcast"
                 title={podcast.filename}
-                subtitle={`${Math.round(podcast.duration)}s · ${podcast.format.toUpperCase()}`}
+                subtitle={`${Math.round(podcast.duration)}s · ${podcast.format?.toUpperCase() ?? 'AUDIO'}`}
                 index={i}
                 total={message.generatedPodcasts!.length}
                 defaultCollapsed={message.generatedPodcasts!.length > 1}

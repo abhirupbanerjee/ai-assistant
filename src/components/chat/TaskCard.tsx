@@ -37,7 +37,7 @@ export interface TaskCardProps {
 }
 
 function getTaskTypeIcon(type: string) {
-  switch (type.toLowerCase()) {
+  switch ((type || 'unknown').toLowerCase()) {
     case 'search':
     case 'web_search':
       return <Search size={14} className="text-blue-500" />;

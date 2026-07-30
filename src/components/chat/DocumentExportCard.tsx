@@ -104,7 +104,7 @@ export default function DocumentExportCard({
         <div className="flex items-center gap-2">
           <Button onClick={handleDownload} size="sm">
             <FileDown size={16} className="mr-2" />
-            Download {exportedDoc.fileType.toUpperCase()}
+            Download {exportedDoc.fileType?.toUpperCase() ?? 'FILE'}
           </Button>
           <Button
             variant="secondary"

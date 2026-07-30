@@ -219,7 +219,7 @@ const MessageInput = memo(function MessageInput({
     }
     if (preferences.targetLanguage !== 'en') {
       features.push({
-        icon: <span className="text-[10px] font-bold">{preferences.targetLanguage.toUpperCase()}</span>,
+        icon: <span className="text-[10px] font-bold">{preferences.targetLanguage?.toUpperCase() ?? 'EN'}</span>,
         label: preferences.targetLanguage,
       });
     }
