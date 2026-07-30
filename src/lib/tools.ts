@@ -519,7 +519,8 @@ function attemptJsonRepair(s: string): string | null {
 export async function executeTool(
   name: string,
   args: string,
-  configOverride?: Record<string, unknown>
+  configOverride?: Record<string, unknown>,
+  threadId?: string,
 ): Promise<string> {
   await initializeTools();
 
@@ -529,7 +530,7 @@ export async function executeTool(
   // through to the "Unknown tool" branch.
   if (isAgentTool(name)) {
     try {
-      return await executeAgentTool(name, args);
+      return await executeAgentTool(name, args, undefined, threadId);
     } catch (error) {
       logger.error(`Agent tool execution error [${name}]`, error);
       return JSON.stringify({

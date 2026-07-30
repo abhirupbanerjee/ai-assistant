@@ -2595,7 +2595,7 @@ export async function generateResponseWithTools(
 
         try {
           const configOverride = toolConfigOverrides.get(toolName);
-          result = await executeTool(toolName, toolCall.function.arguments, configOverride);
+          result = await executeTool(toolName, toolCall.function.arguments, configOverride, threadId);
         } catch (error) {
           success = false;
           errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -2667,7 +2667,7 @@ export async function generateResponseWithTools(
           const configOverride = toolConfigOverrides.get(tc.function.name);
           logger.info(`[Tools] Executing tool (parallel): ${tc.function.name}`);
           try {
-            const result = await executeTool(tc.function.name, tc.function.arguments, configOverride);
+            const result = await executeTool(tc.function.name, tc.function.arguments, configOverride, threadId);
             return { result, success: true as boolean, errorMsg: undefined as string | undefined, startTime };
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
