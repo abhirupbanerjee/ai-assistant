@@ -71,6 +71,29 @@ export interface AutoSelectionResult {
   dominantFactor?: string;
 }
 
+/** Score breakdown for a single model in the ranking */
+export interface ScoredModel {
+  modelId: string;
+  displayName: string;
+  score: number;
+  breakdown: {
+    capability: number;
+    contextFit: number;
+    cost: number;
+    latency: number;
+    satisfaction: number;
+  };
+  dominantFactor: string;
+}
+
+/** Full detailed result including runner-up and all scored candidates */
+export interface DetailedSelectionResult extends AutoSelectionResult {
+  score: number;
+  breakdown: ScoredModel['breakdown'];
+  runnerUp: ScoredModel | null;
+  allCandidates: ScoredModel[];
+}
+
 // ============ Helper ============
 
 /**
@@ -84,16 +107,56 @@ async function getToolPreferredModel(toolName: string): Promise<string | undefin
 
 // ============ Main Selector ============
 
+const FACTOR_LABELS: Record<string, string> = {
+  capability:   'quality',
+  contextFit:   'context fit',
+  cost:         'cost efficiency',
+  latency:      'speed',
+  satisfaction: 'user satisfaction',
+};
+
 /**
- * Select the best available model for the given input context.
+ * Build a ScoredModel from an EnabledModel and the scoring context.
+ */
+function buildScoredModel(
+  m: EnabledModel,
+  score: number,
+  caps: CapabilityScores,
+  dimension: keyof CapabilityScores,
+  contextFit: number,
+  cost: number,
+  latency: number,
+  satisfaction: number,
+  weights: { contextFit: number; cost: number; latency: number },
+  contextBoost: number,
+): ScoredModel {
+  const capability = caps[dimension] ?? (m.toolCapable ? 0.7 : 0.3);
+  const breakdown = {
+    capability:   capability * 0.40,
+    contextFit:   contextFit * weights.contextFit * contextBoost,
+    cost:         cost * weights.cost,
+    latency:      latency * weights.latency,
+    satisfaction: satisfaction * 0.20,
+  };
+  const dominantFactor = Object.entries(breakdown)
+    .sort(([, a], [, b]) => b - a)[0][0];
+  return {
+    modelId: m.id,
+    displayName: m.displayName || m.id,
+    score,
+    breakdown,
+    dominantFactor: FACTOR_LABELS[dominantFactor] ?? dominantFactor,
+  };
+}
+
+/**
+ * Select the best available model and return full scoring details including
+ * the runner-up and all scored candidates.
  *
- * This function is called ONLY when the user's selected model is the
- * AUTO_MODEL_SENTINEL. It never runs for explicit model choices.
- *
- * @returns AutoSelectionResult with a concrete model id and explanation
+ * @returns DetailedSelectionResult with winner, runner-up, and all candidates
  * @throws Error if no models are available at all
  */
-export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSelectionResult> {
+export async function selectBestModelDetailed(input: AutoSelectionInput): Promise<DetailedSelectionResult> {
   const routesSettings = await getRoutesSettings();
 
   // ── Step 1: Candidate pool ──
@@ -145,11 +208,16 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     if (prefId) {
       const match = candidates.find(m => m.id === prefId);
       if (match) {
-        return {
+        const result: DetailedSelectionResult = {
           modelId: match.id,
           displayName: match.displayName || match.id,
           reason: 'tool_preference',
+          score: 1,
+          breakdown: { capability: 1, contextFit: 0, cost: 0, latency: 0, satisfaction: 0 },
+          runnerUp: null,
+          allCandidates: [],
         };
+        return result;
       }
     }
   }
@@ -248,13 +316,20 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
          + satisfaction * 0.20;
   }
 
-  candidates.sort((a, b) => {
-    const d = scoreOf(b) - scoreOf(a);
+  // Score all candidates and build the full ranking
+  const scoredCandidates: Array<{ model: EnabledModel; score: number }> = candidates.map(m => ({
+    model: m,
+    score: scoreOf(m),
+  }));
+
+  scoredCandidates.sort((a, b) => {
+    const d = b.score - a.score;
     if (Math.abs(d) > 1e-9) return d;
-    return a.sortOrder - b.sortOrder;   // deterministic final tie-break (unchanged)
+    return a.model.sortOrder - b.model.sortOrder;   // deterministic final tie-break
   });
 
-  const best = candidates[0];
+  const best = scoredCandidates[0].model;
+  const bestScore = scoredCandidates[0].score;
 
   // Determine the reason for UI feedback
   let reason: AutoSelectionReason;
@@ -266,9 +341,26 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
     reason = 'best_score';
   }
 
-  // Determine the dominant scoring factor for richer feedback
+  // Build scored model objects for all candidates
+  const allCandidates: ScoredModel[] = scoredCandidates.map(({ model, score }) => {
+    const caps = (model.capabilityScores ?? deriveScores(model)) as CapabilityScores;
+    const contextFit = input.estimatedTokens
+      ? Math.min(1, (model.maxInputTokens ?? 0) / input.estimatedTokens)
+      : 1;
+    const costVal = model.inputCostPer1M ? 1 / (1 + model.inputCostPer1M) : 0.5;
+    const p50 = latencies[model.id];
+    const latencyVal = p50 ? 1 / (1 + p50 / 1000) : 0.5;
+    const satisfactionVal = qualityMap.get(model.id) ?? 0.5;
+
+    return buildScoredModel(
+      model, score, caps, dimension,
+      contextFit, costVal, latencyVal, satisfactionVal,
+      weights, contextBoost,
+    );
+  });
+
+  // Build the winner breakdown
   const bestCaps = (best.capabilityScores ?? deriveScores(best)) as CapabilityScores;
-  const bestCapability = bestCaps[dimension] ?? (best.toolCapable ? 0.7 : 0.3);
   const bestContextFit = input.estimatedTokens
     ? Math.min(1, (best.maxInputTokens ?? 0) / input.estimatedTokens)
     : 1;
@@ -277,30 +369,45 @@ export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSe
   const bestLatency = bestP50 ? 1 / (1 + bestP50 / 1000) : 0.5;
   const bestSatisfaction = qualityMap.get(best.id) ?? 0.5;
 
-  const contributions = {
-    capability:   bestCapability * 0.40,
+  const winnerBreakdown = {
+    capability:   (bestCaps[dimension] ?? (best.toolCapable ? 0.7 : 0.3)) * 0.40,
     contextFit:   bestContextFit * weights.contextFit * contextBoost,
     cost:         bestCost * weights.cost,
     latency:      bestLatency * weights.latency,
     satisfaction: bestSatisfaction * 0.20,
   };
 
-  const dominantFactor = Object.entries(contributions)
+  const dominantFactor = Object.entries(winnerBreakdown)
     .sort(([, a], [, b]) => b - a)[0][0];
-
-  const factorLabels: Record<string, string> = {
-    capability:   'quality',
-    contextFit:   'context fit',
-    cost:         'cost efficiency',
-    latency:      'speed',
-    satisfaction: 'user satisfaction',
-  };
 
   return {
     modelId: best.id,
     displayName: best.displayName || best.id,
     reason,
-    dominantFactor: factorLabels[dominantFactor] ?? dominantFactor,
+    dominantFactor: FACTOR_LABELS[dominantFactor] ?? dominantFactor,
+    score: bestScore,
+    breakdown: winnerBreakdown,
+    runnerUp: allCandidates.length > 1 ? allCandidates[1] : null,
+    allCandidates,
+  };
+}
+
+/**
+ * Select the best available model for the given input context.
+ *
+ * This function is called ONLY when the user's selected model is the
+ * AUTO_MODEL_SENTINEL. It never runs for explicit model choices.
+ *
+ * @returns AutoSelectionResult with a concrete model id and explanation
+ * @throws Error if no models are available at all
+ */
+export async function selectBestModel(input: AutoSelectionInput): Promise<AutoSelectionResult> {
+  const detailed = await selectBestModelDetailed(input);
+  return {
+    modelId: detailed.modelId,
+    displayName: detailed.displayName,
+    reason: detailed.reason,
+    dominantFactor: detailed.dominantFactor,
   };
 }
 

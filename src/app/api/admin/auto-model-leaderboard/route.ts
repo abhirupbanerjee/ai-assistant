@@ -6,36 +6,52 @@
  * Returns a per-dimension leaderboard showing which model the auto-selector
  * would pick for each capability dimension. Used by the admin diagnostics panel
  * to provide visibility into auto-selection decisions.
+ *
+ * Each entry includes the winner with full scoring breakdown, the runner-up,
+ * and the total number of candidates considered.
  */
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
-import { selectBestModel } from '@/lib/auto-model-selector';
+import { selectBestModelDetailed } from '@/lib/auto-model-selector';
+import type { ScoredModel } from '@/lib/auto-model-selector';
 import type { CapabilityScores } from '@/lib/db/enabled-models';
+
+interface LeaderboardWinner {
+  modelId: string;
+  displayName: string;
+  score: number;
+  breakdown: {
+    capability: number;
+    contextFit: number;
+    cost: number;
+    latency: number;
+    satisfaction: number;
+  };
+  dominantFactor: string;
+}
+
+interface LeaderboardRunnerUp {
+  modelId: string;
+  displayName: string;
+  score: number;
+  breakdown: {
+    capability: number;
+    contextFit: number;
+    cost: number;
+    latency: number;
+    satisfaction: number;
+  };
+  dominantFactor: string;
+}
 
 interface LeaderboardEntry {
   dimension: keyof CapabilityScores;
   label: string;
   description: string;
   samplePrompt: string;
-  winner: {
-    modelId: string;
-    displayName: string;
-    score: number;
-    breakdown: {
-      capability: number;
-      contextFit: number;
-      cost: number;
-      latency: number;
-      satisfaction: number;
-    };
-    dominantFactor: string;
-  } | null;
-  runnerUp: {
-    modelId: string;
-    displayName: string;
-    score: number;
-  } | null;
+  winner: LeaderboardWinner | null;
+  runnerUp: LeaderboardRunnerUp | null;
   totalCandidates: number;
   error?: string;
 }
@@ -72,6 +88,22 @@ const DIMENSIONS: Array<{
   },
 ];
 
+function toWinner(scored: ScoredModel): LeaderboardWinner {
+  return {
+    modelId: scored.modelId,
+    displayName: scored.displayName,
+    score: Math.round(scored.score * 1000) / 1000,
+    breakdown: {
+      capability: Math.round(scored.breakdown.capability * 1000) / 1000,
+      contextFit: Math.round(scored.breakdown.contextFit * 1000) / 1000,
+      cost: Math.round(scored.breakdown.cost * 1000) / 1000,
+      latency: Math.round(scored.breakdown.latency * 1000) / 1000,
+      satisfaction: Math.round(scored.breakdown.satisfaction * 1000) / 1000,
+    },
+    dominantFactor: scored.dominantFactor,
+  };
+}
+
 export async function GET() {
   try {
     await requireAdmin();
@@ -80,7 +112,7 @@ export async function GET() {
 
     for (const dim of DIMENSIONS) {
       try {
-        const picked = await selectBestModel({
+        const detailed = await selectBestModelDetailed({
           userMessage: dim.sample,
           categoryIds: [],
           hasImages: dim.dimension === 'visual_reasoning',
@@ -88,29 +120,17 @@ export async function GET() {
           dimensionOverride: dim.dimension,
         });
 
-        // Re-run with scoring to get runner-up. We can't easily extract runner-up
-        // from selectBestModel directly, so we approximate by noting the winner
-        // and explaining the dominant factor.
+        const winner = detailed.allCandidates[0];
+        const runnerUp = detailed.allCandidates.length > 1 ? detailed.allCandidates[1] : null;
+
         results.push({
           dimension: dim.dimension,
           label: dim.label,
           description: dim.description,
           samplePrompt: dim.sample,
-          winner: {
-            modelId: picked.modelId,
-            displayName: picked.displayName,
-            score: 0, // score not directly available from selectBestModel return
-            breakdown: {
-              capability: 0,
-              contextFit: 0,
-              cost: 0,
-              latency: 0,
-              satisfaction: 0,
-            },
-            dominantFactor: picked.dominantFactor || 'quality',
-          },
-          runnerUp: null,
-          totalCandidates: 0,
+          winner: winner ? toWinner(winner) : null,
+          runnerUp: runnerUp ? toWinner(runnerUp) : null,
+          totalCandidates: detailed.allCandidates.length,
         });
       } catch (err) {
         results.push({

@@ -4,21 +4,29 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, AlertCircle, Zap, Brain, Code, Eye } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
 
+interface ScoreBreakdown {
+  capability: number;
+  contextFit: number;
+  cost: number;
+  latency: number;
+  satisfaction: number;
+}
+
+interface LeaderboardModel {
+  modelId: string;
+  displayName: string;
+  score: number;
+  breakdown: ScoreBreakdown;
+  dominantFactor: string;
+}
+
 interface LeaderboardEntry {
   dimension: string;
   label: string;
   description: string;
   samplePrompt: string;
-  winner: {
-    modelId: string;
-    displayName: string;
-    dominantFactor: string;
-  } | null;
-  runnerUp: {
-    modelId: string;
-    displayName: string;
-    score: number;
-  } | null;
+  winner: LeaderboardModel | null;
+  runnerUp: LeaderboardModel | null;
   totalCandidates: number;
   error?: string;
 }
@@ -29,6 +37,31 @@ const DIMENSION_ICONS: Record<string, React.ReactNode> = {
   code_quality: <Code size={18} className="text-blue-500" />,
   visual_reasoning: <Eye size={18} className="text-green-500" />,
 };
+
+const BREAKDOWN_LABELS: Record<string, string> = {
+  capability: 'Capability',
+  contextFit: 'Context',
+  cost: 'Cost',
+  latency: 'Speed',
+  satisfaction: 'Satisfaction',
+};
+
+/** Render a compact horizontal bar for a score component */
+function ScoreBar({ label, value, maxValue }: { label: string; value: number; maxValue: number }) {
+  const pct = maxValue > 0 ? Math.min(100, Math.round((value / maxValue) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="w-16 text-gray-500 shrink-0">{label}</span>
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-400 rounded-full transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="w-10 text-right text-gray-600 font-mono">{value.toFixed(3)}</span>
+    </div>
+  );
+}
 
 export default function AutoModelLeaderboard() {
   const [data, setData] = useState<LeaderboardEntry[] | null>(null);
@@ -115,6 +148,9 @@ export default function AutoModelLeaderboard() {
                 <h4 className="font-medium text-gray-900 text-sm">{entry.label}</h4>
                 <p className="text-xs text-gray-500">{entry.description}</p>
               </div>
+              {entry.totalCandidates > 0 && (
+                <span className="ml-auto text-xs text-gray-400">{entry.totalCandidates} models</span>
+              )}
             </div>
 
             {/* Content */}
@@ -132,20 +168,59 @@ export default function AutoModelLeaderboard() {
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5 font-mono">{entry.winner.modelId}</p>
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
-                      {entry.winner.dominantFactor}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-mono text-gray-500">{entry.winner.score.toFixed(3)}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                        {entry.winner.dominantFactor}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Sub-details */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
-                    <span>Sample: "{entry.samplePrompt.slice(0, 60)}…"</span>
+                  {/* Winner score breakdown bars */}
+                  <div className="space-y-0.5 pt-1">
+                    {(() => {
+                      const maxVal = Math.max(...Object.values(entry.winner.breakdown), 0.001);
+                      return Object.entries(entry.winner.breakdown).map(([key, val]) => (
+                        <ScoreBar
+                          key={key}
+                          label={BREAKDOWN_LABELS[key] || key}
+                          value={val}
+                          maxValue={maxVal}
+                        />
+                      ));
+                    })()}
                   </div>
 
+                  {/* Runner-up */}
                   {entry.runnerUp && (
-                    <div className="pt-1.5 border-t flex items-center gap-1.5">
-                      <span className="text-sm">🥈</span>
-                      <span className="text-xs text-gray-600">{entry.runnerUp.displayName}</span>
+                    <div className="pt-2 border-t space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">🥈</span>
+                          <span className="text-xs text-gray-700 font-medium">{entry.runnerUp.displayName}</span>
+                          <span className="text-xs text-gray-400 font-mono">{entry.runnerUp.modelId}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono text-gray-500">{entry.runnerUp.score.toFixed(3)}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+                            {entry.runnerUp.dominantFactor}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Runner-up breakdown bars */}
+                      <div className="space-y-0.5">
+                        {(() => {
+                          const maxVal = Math.max(...Object.values(entry.runnerUp.breakdown), 0.001);
+                          return Object.entries(entry.runnerUp.breakdown).map(([key, val]) => (
+                            <ScoreBar
+                              key={key}
+                              label={BREAKDOWN_LABELS[key] || key}
+                              value={val}
+                              maxValue={maxVal}
+                            />
+                          ));
+                        })()}
+                      </div>
                     </div>
                   )}
                 </div>
