@@ -10,14 +10,11 @@ import {
   Users,
   MessageSquare,
   Sparkles,
-  Bot,
-  BrainCircuit,
   Coins,
   BarChart3,
   Layers,
   Database,
   Settings,
-  Shield,
   Palette,
   Wrench,
   ChevronDown,
@@ -31,14 +28,14 @@ import {
 // Type Definitions
 // ============================================================================
 
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'agent-registry' | 'swarm-control' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agent-registry' | 'workspaces' | 'settings';
 
 // Section types for expandable menus
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type ToolsSection = 'management' | 'dependencies' | 'routing' | 'conflicts' | 'slash-commands' | 'mcp-servers';
-type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type ToolsSection = 'management' | 'slash-commands' | 'mcp-servers';
+type SettingsSection = 'agents' | 'autonomous-mode' | 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Generic submenu item type
 interface SubmenuItem {
@@ -72,25 +69,21 @@ const MENU_CONFIG: MenuConfigItem[] = [
     expandable: true,
     submenu: [
       { id: 'management', label: 'Tools Management' },
-      { id: 'dependencies', label: 'Dependencies' },
-      { id: 'routing', label: 'Tool Routing' },
-      { id: 'conflicts', label: 'Conflicts' },
       { id: 'slash-commands', label: 'Slash Commands' },
       { id: 'mcp-servers', label: 'MCP Servers' },
     ]
   },
   { id: 'skills', label: 'Skills', icon: Sparkles, expandable: false },
   { id: 'workspaces', label: 'Workspaces', icon: Layers, expandable: false },
-  { id: 'autonomous-mode', label: 'Autonomous Mode', icon: BrainCircuit, expandable: false },
-  { id: 'agent', label: 'Agent Bots', icon: Bot, expandable: false },
   { id: 'agent-registry', label: 'Agent Registry', icon: Users, expandable: false },
-  { id: 'swarm-control', label: 'Swarm Control', icon: Shield, expandable: false },
   {
     id: 'settings',
     label: 'Settings',
     icon: Settings,
     expandable: true,
     submenu: [
+      { id: 'agents', label: 'Agents' },
+      { id: 'autonomous-mode', label: 'Autonomous Mode' },
       { id: 'branding', label: 'Branding' },
       { id: 'tokens', label: 'Tokens' },
       { id: 'usage', label: 'Usage' },

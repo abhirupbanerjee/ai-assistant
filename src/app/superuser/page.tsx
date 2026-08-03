@@ -111,7 +111,7 @@ interface SubscribedCategory {
 }
 
 // Valid tab types for URL parameter validation
-const VALID_TABS: TabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'agent', 'settings'];
+const VALID_TABS: TabType[] = ['dashboard', 'categories', 'users', 'documents', 'prompts', 'tools', 'skills', 'workspaces', 'settings'];
 
 function SuperUserPageContent() {
   const router = useRouter();
@@ -155,10 +155,15 @@ function SuperUserPageContent() {
   // Sync URL tab parameter to state
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && VALID_TABS.includes(tab as TabType)) {
+    // Legacy URL redirect: 'agent' was a top-level tab, now moved under Settings
+    if (tab === 'agent') {
+      setActiveTab('settings');
+      setSettingsSection('agent');
+      router.replace('/superuser?tab=settings&section=agent', { scroll: false });
+    } else if (tab && VALID_TABS.includes(tab as TabType)) {
       setActiveTab(tab as TabType);
     }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   // Prompts accordion section type
   type PromptsSection = 'global-prompt' | 'category-prompts';
@@ -175,7 +180,7 @@ function SuperUserPageContent() {
   };
 
   // Settings sidebar section state
-  type SettingsSection = 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
+  type SettingsSection = 'agent' | 'llm' | 'rag' | 'reranker' | 'ocr' | 'speech' | 'cache' | 'backup';
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
   const [exportingHistory, setExportingHistory] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -1015,10 +1020,6 @@ function SuperUserPageContent() {
           <WorkspacesTab isAdmin={false} />
         )}
 
-        {/* Agent Section */}
-        {activeTab === 'agent' && (
-          <SuperuserAgentBotsList />
-        )}
 
         {/* Settings Section (view only) */}
         {activeTab === 'settings' && (
@@ -1027,6 +1028,11 @@ function SuperUserPageContent() {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               <p className="text-sm text-blue-700">These settings are view only. Only users with the Admin role can make changes.</p>
             </div>
+            {/* Agent Section (view only) */}
+            {settingsSection === 'agent' && (
+              <SuperuserAgentBotsList />
+            )}
+
             {settingsSection === 'llm' && <UnifiedLLMSettings readOnly />}
             {settingsSection === 'rag' && <UnifiedRAGSettings readOnly />}
             {settingsSection === 'reranker' && <RerankerSettingsTab readOnly />}

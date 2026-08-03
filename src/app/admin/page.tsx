@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins, Key } from 'lucide-react';
+import { ArrowLeft, AlertCircle, ChevronUp, ChevronDown, Users, Settings, MessageSquare, Coins, Key, Bot, Shield } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -114,11 +114,11 @@ interface AvailableModel {
 }
 
 // New menu structure types - matching AdminSidebarMenu
-type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'autonomous-mode' | 'agent' | 'agent-registry' | 'swarm-control' | 'workspaces' | 'settings';
+type TabType = 'dashboard' | 'categories' | 'documents' | 'users' | 'prompts' | 'tools' | 'skills' | 'agent-registry' | 'workspaces' | 'settings';
 type DocumentsSection = 'documents' | 'acronyms';
 type UsersSection = 'management' | 'superuser' | 'credentials-auth';
 type PromptsSection = 'system-prompt' | 'category-prompts';
-type SettingsSection = 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
+type SettingsSection = 'agents' | 'autonomous-mode' | 'branding' | 'tokens' | 'usage' | 'api-keys' | 'routes' | 'llm' | 'rag' | 'reranker' | 'uploads' | 'ocr' | 'speech' | 'cache' | 'backup' | 'display';
 
 // Legacy types for backward compatibility during migration
 type ToolsSection = SidebarToolsSection;
@@ -255,7 +255,8 @@ interface SystemStats {
   };
 }
 
-const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['branding', 'tokens', 'usage', 'api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
+const VALID_SETTINGS_SECTIONS: SettingsSection[] = ['agents', 'autonomous-mode', 'branding', 'tokens', 'usage', 'api-keys', 'routes', 'llm', 'rag', 'reranker', 'uploads', 'ocr', 'speech', 'cache', 'backup', 'display'];
+const VALID_TABS: TabType[] = ['dashboard', 'categories', 'documents', 'users', 'prompts', 'tools', 'skills', 'agent-registry', 'workspaces', 'settings'];
 
 function AdminPageContent() {
   const router = useRouter();
@@ -281,7 +282,7 @@ function AdminPageContent() {
   const [selectedAgentBotId, setSelectedAgentBotId] = useState<string | null>(null);
 
   // Tools section state with URL sync
-  const VALID_TOOLS_SECTIONS: ToolsSection[] = ['management', 'dependencies', 'routing', 'conflicts', 'slash-commands', 'mcp-servers'];
+  const VALID_TOOLS_SECTIONS: ToolsSection[] = ['management', 'slash-commands', 'mcp-servers'];
   const toolsSectionParam = searchParams.get('toolsSection');
   const [toolsSection, setToolsSection] = useState<ToolsSection>(
     VALID_TOOLS_SECTIONS.includes(toolsSectionParam as ToolsSection)
@@ -290,6 +291,9 @@ function AdminPageContent() {
   );
 
   // Accordion expanded states for flattened menu items
+  // Agent accordion state (within Settings → Agents)
+  const [expandedAgentSections, setExpandedAgentSections] = useState<Set<'agent-bots' | 'swarm-control'>>(new Set(['agent-bots']));
+
   const [expandedUsersSections, setExpandedUsersSections] = useState<Set<UsersSection>>(new Set(['management']));
   const [expandedPromptsSections, setExpandedPromptsSections] = useState<Set<PromptsSection>>(new Set(['system-prompt']));
   const [expandedTokensSections, setExpandedTokensSections] = useState<Set<TokensSection>>(new Set(['memory']));
@@ -572,12 +576,14 @@ function AdminPageContent() {
       // - 'agent-bots' was renamed to 'agent' (Agent Bots management)
       // - 'agents' (plural) was the prior name for the autonomous-mode tab
       if (tab === 'agent-bots') {
-        setActiveTab('agent');
-        router.replace('/admin?tab=agent', { scroll: false });
+        setActiveTab('settings');
+        setSettingsSection('agents');
+        router.replace('/admin?tab=settings&section=agents', { scroll: false });
       } else if (tab === 'agents') {
-        setActiveTab('autonomous-mode');
-        router.replace('/admin?tab=autonomous-mode', { scroll: false });
-      } else {
+        setActiveTab('settings');
+        setSettingsSection('autonomous-mode');
+        router.replace('/admin?tab=settings&section=autonomous-mode', { scroll: false });
+      } else if (VALID_TABS.includes(tab as TabType)) {
         setActiveTab(tab as TabType);
       }
       // Sync settings section from URL
@@ -1139,6 +1145,81 @@ function AdminPageContent() {
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <>
+              {/* Agents Section (accordion: Agent Bots + Swarm Control) */}
+              {settingsSection === 'agents' && (
+                <div className="space-y-4">
+                  {/* Agent Bots Accordion */}
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => {
+                        setExpandedAgentSections(prev => {
+                          const next = new Set(prev);
+                          next.has('agent-bots') ? next.delete('agent-bots') : next.add('agent-bots');
+                          return next;
+                        });
+                      }}
+                      className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Bot size={20} className="text-gray-600" />
+                        <div className="text-left">
+                          <h2 className="font-semibold text-gray-900">Agent Bots</h2>
+                          <p className="text-sm text-gray-500">Create and manage programmable AI agent APIs</p>
+                        </div>
+                      </div>
+                      {expandedAgentSections.has('agent-bots') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+                    </button>
+                    {expandedAgentSections.has('agent-bots') && (
+                      <div className="border-t">
+                        {selectedAgentBotId ? (
+                          <AgentBotDetail
+                            botId={selectedAgentBotId}
+                            onBack={() => setSelectedAgentBotId(null)}
+                          />
+                        ) : (
+                          <AgentBotsManagement
+                            onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Swarm Control Accordion (COLLAPSED by default) */}
+                  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => {
+                        setExpandedAgentSections(prev => {
+                          const next = new Set(prev);
+                          next.has('swarm-control') ? next.delete('swarm-control') : next.add('swarm-control');
+                          return next;
+                        });
+                      }}
+                      className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Shield size={20} className="text-gray-600" />
+                        <div className="text-left">
+                          <h2 className="font-semibold text-gray-900">Swarm Control</h2>
+                          <p className="text-sm text-gray-500">Kill switch and force-swarm role matrix</p>
+                        </div>
+                      </div>
+                      {expandedAgentSections.has('swarm-control') ? <ChevronUp size={20} className="text-gray-500" /> : <ChevronDown size={20} className="text-gray-500" />}
+                    </button>
+                    {expandedAgentSections.has('swarm-control') && (
+                      <div className="border-t">
+                        <SwarmControlTab />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Autonomous Mode Section */}
+              {settingsSection === 'autonomous-mode' && (
+                <AgentSettingsTab />
+              )}
+
               {/* Branding Section */}
               {settingsSection === 'branding' && <BrandingSettingsTab />}
 
@@ -1318,33 +1399,9 @@ function AdminPageContent() {
           <WorkspacesTab isAdmin={true} />
         )}
 
-        {/* Autonomous Mode Tab (L1 menu item) */}
-        {activeTab === 'autonomous-mode' && (
-          <AgentSettingsTab />
-        )}
-
-        {/* Agent Tab (L1 menu item) - bot management */}
-        {activeTab === 'agent' && (
-          selectedAgentBotId ? (
-            <AgentBotDetail
-              botId={selectedAgentBotId}
-              onBack={() => setSelectedAgentBotId(null)}
-            />
-          ) : (
-            <AgentBotsManagement
-              onSelectBot={(bot) => setSelectedAgentBotId(bot.id)}
-            />
-          )
-        )}
-
         {/* Agent Registry Tab (L1 menu item) - swarm role agent registry */}
         {activeTab === 'agent-registry' && (
           <AgentRegistryTab />
-        )}
-
-        {/* Swarm Control Tab (L1 menu item) - kill switch + force-swarm role matrix */}
-        {activeTab === 'swarm-control' && (
-          <SwarmControlTab />
         )}
 
         </main>
