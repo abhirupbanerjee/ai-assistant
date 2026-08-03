@@ -138,16 +138,48 @@ function normalizeRedirectRequest(init: RequestInit, status: number): RequestIni
 }
 
 /**
+ * Parse SSRF_ALLOW_HOSTS into a list of lowercase hostnames.
+ * Empty env var returns an empty list.
+ */
+export function getSsrfAllowedHosts(): string[] {
+  const raw = process.env.SSRF_ALLOW_HOSTS;
+  if (!raw) return [];
+  return raw
+    .split(/[,\s]+/)
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export interface ValidateUrlIsPublicOptions {
+  /**
+   * Hostnames that are allowed to bypass private/reserved IP checks.
+   * Exact lowercase match only; wildcards are not supported.
+   * Useful for trusted internal Docker services (e.g. drive-connector).
+   */
+  allowedHosts?: string[];
+}
+
+/**
  * Validates that a URL points to a public internet address.
  * Resolves the hostname to IP addresses and checks all resolved IPs
  * against private/reserved ranges.
  *
  * @param urlString - The URL to validate
+ * @param options - Optional allowlist of trusted hostnames
  * @throws Error if the URL points to a private/reserved IP or cannot be resolved
  */
-export async function validateUrlIsPublic(urlString: string): Promise<void> {
+export async function validateUrlIsPublic(
+  urlString: string,
+  options: ValidateUrlIsPublicOptions = {}
+): Promise<void> {
   const url = new URL(urlString);
-  const hostname = url.hostname;
+  const hostname = url.hostname.toLowerCase();
+
+  // Allowlisted hostnames bypass IP checks (e.g. trusted Docker services).
+  // Exact match only — no wildcards.
+  if (options.allowedHosts?.includes(hostname)) {
+    return;
+  }
 
   // If hostname is already an IP literal, check it directly
   const ipType = isIP(hostname);
@@ -197,6 +229,8 @@ export async function validateUrlIsPublic(urlString: string): Promise<void> {
 export interface FetchWithSsrfGuardOptions {
   maxRedirects?: number;
   followRedirects?: boolean;
+  /** Hostnames allowed to bypass private/reserved IP checks (exact match). */
+  allowedHosts?: string[];
 }
 
 export async function fetchWithSsrfGuard(
@@ -207,7 +241,7 @@ export async function fetchWithSsrfGuard(
   const maxRedirects = options.maxRedirects ?? 5;
   const followRedirects = options.followRedirects ?? true;
 
-  await validateUrlIsPublic(url);
+  await validateUrlIsPublic(url, { allowedHosts: options.allowedHosts });
 
   if (!followRedirects) {
     const response = await fetch(url, { ...init, redirect: 'manual' });
@@ -226,7 +260,7 @@ export async function fetchWithSsrfGuard(
       }
 
       const nextUrl = new URL(location, currentUrl).toString();
-      await validateUrlIsPublic(nextUrl);
+      await validateUrlIsPublic(nextUrl, { allowedHosts: options.allowedHosts });
       currentInit = normalizeRedirectRequest(currentInit, response.status);
       currentUrl = nextUrl;
       continue;

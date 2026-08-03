@@ -47,13 +47,15 @@ In the same GCP project, enable:
 - **Google Sheets API**
 - **Google Drive API**
 - **Google Docs API**
+- **Google Slides API** (only needed for `slides_get_presentation`; `slides_export` works via Drive)
 
 (APIs & Services → Library → search and Enable each.)
 
-### 3. Share your sheets/docs with the service account
+### 3. Share your sheets/docs/slides with the service account
 
-Open the Google Sheet (or Doc) → **Share** → paste the service account's
-`client_email` → grant **Viewer** (read-only) or **Editor** (read/write).
+Open the Google Sheet, Doc, or Slides deck → **Share** → paste the service
+account's `client_email` → grant **Viewer** (read-only) or **Editor**
+(read/write).
 
 > The service account only sees files explicitly shared with its email.
 
@@ -69,7 +71,7 @@ All configuration is via environment variables:
 | `PORT` | No | `8090` | HTTP listen port. |
 | `SERVICE_ACCOUNT_PATH` | No | `/run/secrets/gcp-service-account.json` | Path to the service-account JSON key file. |
 | `SERVICE_ACCOUNT_JSON` | No | — | Inline JSON key (overrides `SERVICE_ACCOUNT_PATH`). Useful for env-var injection in Docker. |
-| `GOOGLE_SCOPES` | No | spreadsheets + drive.readonly + documents.readonly | Space/comma-delimited Google API scopes. |
+| `GOOGLE_SCOPES` | No | spreadsheets + drive.readonly + documents.readonly + presentations.readonly | Space/comma-delimited Google API scopes. |
 | `GOOGLE_TIMEOUT_MS` | No | `30000` | Outbound Google API request timeout. |
 | `CORS_ORIGINS` | No | `*` | Comma-delimited allowed CORS origins. |
 | `CONNECTOR_HMAC_SECRET` | No (Phase 2) | — | HMAC secret shared with the app. When set, the connector verifies the `X-Connector-User-Sig` header and trusts `X-Connector-User-Id` (ignoring any body `userId`). Must match the app's `CONNECTOR_HMAC_SECRET`. Generate with `openssl rand -hex 32`. |
@@ -99,6 +101,8 @@ All configuration is via environment variables:
 | `drive_list_files` | drive | List files visible to the service account. |
 | `drive_get_file` | drive | Get metadata for a single file. |
 | `docs_export` | docs | Export a Google Doc as text/markdown/PDF/DOCX. |
+| `slides_export` | slides | Export a Google Slides deck as text/PDF/PPTX (Drive export). |
+| `slides_get_presentation` | slides | Get Slides structure with per-slide text and speaker notes. |
 
 Every tool accepts an optional `userId` (string) — reserved for Phase 2
 per-user OAuth. It is accepted but ignored in Phase 1.
@@ -281,7 +285,7 @@ In **Admin → Tools → Function API**, create a new config with these values:
 | Field | Value |
 |---|---|
 | **Name** | Google Drive Connector |
-| **Description** | Shared service-account access to Google Sheets, Drive, and Docs |
+| **Description** | Shared service-account access to Google Sheets, Drive, Docs, and Slides |
 | **Base URL** | `http://drive-connector:8090` |
 | **Auth Type** | `bearer` |
 | **Auth Header** | *(leave default — uses `Authorization: Bearer <token>`)* |
@@ -307,7 +311,9 @@ arguments as the JSON body, which is exactly what the connector expects:
   "sheets_get_spreadsheet":   { "method": "POST", "path": "/sheets_get_spreadsheet" },
   "drive_list_files":         { "method": "POST", "path": "/drive_list_files" },
   "drive_get_file":           { "method": "POST", "path": "/drive_get_file" },
-  "docs_export":              { "method": "POST", "path": "/docs_export" }
+  "docs_export":              { "method": "POST", "path": "/docs_export" },
+  "slides_export":            { "method": "POST", "path": "/slides_export" },
+  "slides_get_presentation":  { "method": "POST", "path": "/slides_get_presentation" }
 }
 ```
 
@@ -316,6 +322,29 @@ arguments as the JSON body, which is exactly what the connector expects:
 Under **Category Access**, check the **PMO** category (or whichever category
 should have access). The tools will then be available to LLMs serving chats
 in that category.
+
+### SSRF hostname allowlist (required for Docker-network connectors)
+
+The app enforces an **SSRF guard** that blocks URLs resolving to
+private/reserved IP ranges (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16`, `169.254.0.0/16`, etc.). The `drive-connector` service
+runs on the Docker network, so its hostname `http://drive-connector:8090`
+resolves to a private IP and is blocked by default.
+
+To allow the connector, add this to the app's `.env`:
+
+```bash
+SSRF_ALLOW_HOSTS=drive-connector
+```
+
+Then restart the app container (`docker compose up -d app`). This is a
+**hostname allowlist**, not an IP bypass: the redirect-safe SSRF fetch still
+validates every redirect hop, and `169.254.169.254` (cloud metadata) remains
+blocked even from an allowlisted host. Exact match only — wildcards are not
+supported.
+
+Only admin-configured HTTP targets use this allowlist. LLM-controlled tools
+like `web_extract` and `pagespeed` stay fully guarded and cannot use it.
 
 ---
 

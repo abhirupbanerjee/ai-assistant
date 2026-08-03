@@ -33,6 +33,8 @@ import {
   driveListFiles,
   driveGetFile,
   docsExport,
+  slidesExport,
+  slidesGetPresentation,
   msDriveListFiles,
   msDriveGetFile,
   msDriveDownloadFile,
@@ -266,6 +268,16 @@ async function dispatch(
       return driveGetFile(cfg, String(v.fileId), v.fields as string | undefined, v.userId as string | undefined);
     case 'docs_export':
       return docsExport(cfg, String(v.fileId), v.mimeType as string | undefined, v.userId as string | undefined);
+    // ── Slides ───────────────────────────────────────────────────────────────
+    case 'slides_export':
+      return slidesExport(cfg, String(v.fileId), v.mimeType as string | undefined, v.userId as string | undefined);
+    case 'slides_get_presentation':
+      return slidesGetPresentation(
+        cfg,
+        String(v.presentationId),
+        v.includeNotes !== false,
+        v.userId as string | undefined
+      );
     // ── Microsoft Graph (OneDrive) ──────────────────────────────────────────
     case 'ms_drive_list_files':
       return msDriveListFiles(cfg, {

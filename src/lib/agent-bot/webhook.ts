@@ -8,7 +8,7 @@
  */
 
 import { createHmac } from 'crypto';
-import { fetchWithSsrfGuard, validateUrlIsPublic } from '@/lib/ssrf-guard';
+import { fetchWithSsrfGuard, getSsrfAllowedHosts, validateUrlIsPublic } from '@/lib/ssrf-guard';
 import type {
   WebhookPayload,
   AgentBotJob,
@@ -183,9 +183,10 @@ export async function deliverWebhook(
   const payloadString = JSON.stringify(payload);
   const signature = generateSignature(payloadString, config.secret);
 
-  // SSRF guard: block private/internal IP ranges
+  // SSRF guard: block private/internal IP ranges; allow-listed internal hostnames pass
+  const allowedHosts = getSsrfAllowedHosts();
   try {
-    await validateUrlIsPublic(config.url);
+    await validateUrlIsPublic(config.url, { allowedHosts });
   } catch (err) {
     return {
       success: false,
@@ -223,7 +224,7 @@ export async function deliverWebhook(
           body: payloadString,
           signal: controller.signal,
         },
-        { maxRedirects: 5, followRedirects: true }
+        { maxRedirects: 5, followRedirects: true, allowedHosts }
       );
 
       clearTimeout(timeoutId);

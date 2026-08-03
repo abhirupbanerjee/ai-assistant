@@ -7,7 +7,7 @@
 import { safeDecrypt } from '../encryption';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getToolConfig } from '../db/compat/tool-config';
-import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
+import { fetchWithSsrfGuard, getSsrfAllowedHosts, validateUrlIsPublic } from '../ssrf-guard';
 import type {
   DataAPIConfig,
   DataAPIParameter,
@@ -85,9 +85,10 @@ export async function callDataAPI(
       }
     }
 
-    // SSRF guard: block private/internal IP ranges
+    // SSRF guard: block private/internal IP ranges; allow-listed internal hostnames pass
+    const allowedHosts = getSsrfAllowedHosts();
     try {
-      await validateUrlIsPublic(url);
+      await validateUrlIsPublic(url, { allowedHosts });
     } catch (err) {
       return {
         success: false,
@@ -113,6 +114,7 @@ export async function callDataAPI(
     const { response } = await fetchWithSsrfGuard(url, requestOptions, {
       maxRedirects: 5,
       followRedirects: true,
+      allowedHosts,
     });
 
     // Check response status

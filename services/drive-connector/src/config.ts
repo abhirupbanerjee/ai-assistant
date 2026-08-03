@@ -80,6 +80,7 @@ export function loadConfig(): AppConfig {
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/documents.readonly',
+        'https://www.googleapis.com/auth/presentations.readonly',
       ]
     ),
     googleTimeoutMs: parseInt(process.env.GOOGLE_TIMEOUT_MS || '30000', 10),
@@ -100,4 +101,5 @@ export const DEFAULT_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/documents.readonly',
+  'https://www.googleapis.com/auth/presentations.readonly',
 ];

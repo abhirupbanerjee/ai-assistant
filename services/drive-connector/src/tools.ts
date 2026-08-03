@@ -26,7 +26,7 @@ export interface ToolDef {
   description: string;
   params: ToolParam[];
   /** Category — helps the host UI group tools. */
-  category: 'sheets' | 'drive' | 'docs' | 'onedrive';
+  category: 'sheets' | 'drive' | 'docs' | 'slides' | 'onedrive';
 }
 
 export const TOOLS: ToolDef[] = [
@@ -190,6 +190,54 @@ export const TOOLS: ToolDef[] = [
         description: 'Export format.',
         enum: ['text/plain', 'text/markdown', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
         default: 'text/markdown',
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+
+  // ── Slides ─────────────────────────────────────────────────────────────────
+  {
+    name: 'slides_export',
+    category: 'slides',
+    summary: 'Export a Google Slides presentation as plain text, PDF, or PPTX.',
+    description:
+      'Exports a Google Slides presentation using the Drive export media ' +
+      'download endpoint. Returns the presentation content as text/binary.',
+    params: [
+      { name: 'fileId', type: 'string', required: true, description: 'The Slides presentation file ID.' },
+      {
+        name: 'mimeType',
+        type: 'string',
+        description: 'Export format.',
+        enum: [
+          'text/plain',
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ],
+        default: 'text/plain',
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'slides_get_presentation',
+    category: 'slides',
+    summary: 'Get a Google Slides presentation structure with text and speaker notes.',
+    description:
+      'Reads the presentation via the Slides API and returns a flattened ' +
+      'structure: title, slide count, and per-slide text plus speaker notes.',
+    params: [
+      {
+        name: 'presentationId',
+        type: 'string',
+        required: true,
+        description: 'The Slides presentation ID (from the URL: /d/<id>/edit).',
+      },
+      {
+        name: 'includeNotes',
+        type: 'boolean',
+        description: 'Whether to include speaker notes for each slide.',
+        default: true,
       },
       { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
     ],

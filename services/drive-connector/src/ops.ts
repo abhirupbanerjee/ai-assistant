@@ -291,13 +291,13 @@ export async function driveGetFile(
   );
 }
 
-// ── Docs export (via Drive media download) ──────────────────────────────────
+// ── Drive media export (used by Docs and Slides) ────────────────────────────
 const DRIVE_EXPORT = 'https://www.googleapis.com/drive/v3/files';
 
-export async function docsExport(
+async function driveExport(
   cfg: AppConfig,
   fileId: string,
-  mimeType = 'text/markdown',
+  mimeType: string,
   userId?: string
 ): Promise<OpResult<{ content: string; mimeType: string; fileId: string }>> {
   const url =
@@ -315,6 +315,119 @@ export async function docsExport(
   }, userId);
   if (!result.ok) return fail(result.error!, result.status, result.code);
   return ok({ content: result.data!.content, mimeType, fileId });
+}
+
+export async function docsExport(
+  cfg: AppConfig,
+  fileId: string,
+  mimeType = 'text/markdown',
+  userId?: string
+): Promise<OpResult<{ content: string; mimeType: string; fileId: string }>> {
+  return driveExport(cfg, fileId, mimeType, userId);
+}
+
+export async function slidesExport(
+  cfg: AppConfig,
+  fileId: string,
+  mimeType = 'text/plain',
+  userId?: string
+): Promise<OpResult<{ content: string; mimeType: string; fileId: string }>> {
+  return driveExport(cfg, fileId, mimeType, userId);
+}
+
+// ── Google Slides API ───────────────────────────────────────────────────────
+const SLIDES_BASE = 'https://slides.googleapis.com/v1/presentations';
+
+interface SlidesPresentation {
+  presentationId: string;
+  title: string;
+  slides?: SlidesSlide[];
+}
+
+interface SlidesSlide {
+  objectId: string;
+  slideProperties?: { notesPage?: { speakerNotesShape?: { text?: { textElements?: Array<{ textRun?: { content?: string } }> } } } };
+  pageElements?: SlidesPageElement[];
+}
+
+interface SlidesPageElement {
+  shape?: { text?: { textElements?: Array<{ textRun?: { content?: string } }> } };
+  table?: { tableRows?: Array<{ tableCells?: Array<{ text?: { textElements?: Array<{ textRun?: { content?: string } }> } }> }> };
+}
+
+interface SlideSummary {
+  slideId: string;
+  title: string;
+  text: string;
+  notes?: string;
+}
+
+function extractTextFromElements(elements?: Array<{ textRun?: { content?: string } }>): string {
+  if (!elements) return '';
+  return elements
+    .map((e) => e.textRun?.content || '')
+    .join('')
+    .trim();
+}
+
+function flattenSlideText(slide: SlidesSlide): string {
+  const parts: string[] = [];
+  for (const element of slide.pageElements || []) {
+    if (element.shape?.text?.textElements) {
+      parts.push(extractTextFromElements(element.shape.text.textElements));
+    }
+    if (element.table?.tableRows) {
+      for (const row of element.table.tableRows) {
+        for (const cell of row.tableCells || []) {
+          parts.push(extractTextFromElements(cell.text?.textElements));
+        }
+      }
+    }
+  }
+  return parts.filter(Boolean).join('\n').trim();
+}
+
+function flattenSlideNotes(slide: SlidesSlide): string {
+  const notesShape = slide.slideProperties?.notesPage?.speakerNotesShape;
+  return extractTextFromElements(notesShape?.text?.textElements);
+}
+
+export async function slidesGetPresentation(
+  cfg: AppConfig,
+  presentationId: string,
+  includeNotes = true,
+  userId?: string
+): Promise<OpResult<{ presentationId: string; title: string; slideCount: number; slides: SlideSummary[] }>> {
+  const url = `${SLIDES_BASE}/${enc(presentationId)}`;
+  const result = await runOp<SlidesPresentation>(cfg, async (headers) => {
+    return getJson(url, headers, cfg.googleTimeoutMs) as Promise<SlidesPresentation>;
+  }, userId);
+
+  if (!result.ok) return fail(result.error!, result.status, result.code);
+
+  const presentation = result.data!;
+  const slides: SlideSummary[] = (presentation.slides || []).map((slide) => {
+    const text = flattenSlideText(slide);
+    // Use the first line of text as the slide title; Google Slides does not
+    // expose a dedicated title field in the API response.
+    const title = text.split('\n')[0] || '';
+    const summary: SlideSummary = {
+      slideId: slide.objectId,
+      title,
+      text,
+    };
+    if (includeNotes) {
+      summary.notes = flattenSlideNotes(slide) || undefined;
+    }
+    return summary;
+  });
+
+  return ok({
+    presentationId: presentation.presentationId || presentationId,
+    title: presentation.title || 'Untitled presentation',
+    slideCount: slides.length,
+    slides,
+  });
 }
 
 // ── Microsoft Graph (OneDrive / Excel) ───────────────────────────────────────

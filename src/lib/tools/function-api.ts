@@ -16,7 +16,7 @@ import {
 } from '../db/compat';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getRequestContext } from '../request-context';
-import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
+import { fetchWithSsrfGuard, getSsrfAllowedHosts, validateUrlIsPublic } from '../ssrf-guard';
 
 // ===== Connector identity signing (Drive Connectors — Phase 2) =====
 //
@@ -287,9 +287,10 @@ async function executeFunction(
       requestOptions.body = JSON.stringify(bodyArgs);
     }
 
-    // SSRF guard: block private/internal IP ranges
+    // SSRF guard: block private/internal IP ranges; allow-listed internal hostnames pass
+    const allowedHosts = getSsrfAllowedHosts();
     try {
-      await validateUrlIsPublic(url);
+      await validateUrlIsPublic(url, { allowedHosts });
     } catch (err) {
       return formatResponseForLLM({
         success: false,
@@ -301,10 +302,11 @@ async function executeFunction(
       });
     }
 
-    // Make the request
+    // Make the request with SSRF-guarded fetch (redirect-safe)
     const { response } = await fetchWithSsrfGuard(url, requestOptions, {
       maxRedirects: 5,
       followRedirects: true,
+      allowedHosts,
     });
 
     // Check response status
