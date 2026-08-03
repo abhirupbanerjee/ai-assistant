@@ -1042,6 +1042,30 @@ async function runPostgresMigrations(database: Kysely<DB>): Promise<void> {
   `.execute(database);
   console.log('[Kysely] Ensured user_evolved_kb_settings table exists');
 
+  // Per-user connected OAuth accounts (Drive connectors — Phase 2)
+  // Stores encrypted access/refresh tokens for providers like Google Drive and Microsoft OneDrive.
+  // `user_email` is the identity key (matches session.user.email / RequestContext.userId).
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_connected_accounts (
+      id              TEXT PRIMARY KEY,
+      provider        TEXT NOT NULL CHECK (provider IN ('google', 'microsoft')),
+      user_email      TEXT NOT NULL,
+      display_name    TEXT,
+      access_token    TEXT,
+      refresh_token   TEXT,
+      scopes          TEXT NOT NULL,
+      token_expiry    TIMESTAMPTZ,
+      revoked         BOOLEAN DEFAULT FALSE,
+      last_error      TEXT,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ DEFAULT NOW()
+    )
+  `.execute(database);
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_connected_accounts_unique ON user_connected_accounts(user_email, provider)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_user_connected_accounts_user ON user_connected_accounts(user_email)`.execute(database);
+  await sql`CREATE INDEX IF NOT EXISTS idx_user_connected_accounts_provider ON user_connected_accounts(provider)`.execute(database);
+  console.log('[Kysely] Ensured user_connected_accounts table exists');
+
   // Feature flag at instance level
   await sql`
     CREATE TABLE IF NOT EXISTS evolved_kb_settings (

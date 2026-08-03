@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { ArrowLeft, Trash2, Brain, X, AlertTriangle, Loader2, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
+import ConnectedAccountsSection from '@/components/profile/ConnectedAccountsSection';
 
 interface UserMemory {
   id: number;
@@ -333,6 +334,9 @@ export default function ProfilePage() {
             </Button>
           </div>
         </div>
+
+        {/* Connected Accounts (Drive Connectors — §8 Task 8) */}
+        <ConnectedAccountsSection />
 
         {/* Info Section */}
         <div className="mt-6 bg-blue-50 border border-blue-100 rounded-lg p-4">

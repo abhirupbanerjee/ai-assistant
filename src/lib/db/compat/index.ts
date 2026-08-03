@@ -1151,3 +1151,19 @@ export {
   bulkUpdateMcpServersEnabled,
   updateMcpServerHealth,
 } from './mcp-servers';
+
+// ============ Connected Accounts (Drive Connectors — Phase 2) ============
+export {
+  type ConnectedAccount,
+  type ConnectedAccountProvider,
+  type ConnectedAccountPublicView,
+  type UpsertConnectedAccountInput,
+  upsertConnectedAccount,
+  getConnectedAccountById,
+  getConnectedAccount,
+  listConnectedAccounts,
+  revokeConnectedAccount,
+  deleteConnectedAccount,
+  setConnectedAccountError,
+  hasConnectedAccount,
+} from './connected-accounts';

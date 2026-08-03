@@ -1,0 +1,57 @@
+# =============================================================================
+# Drive Connector — Docker Compose override
+# =============================================================================
+# Usage:
+#   1. Place your GCP service-account JSON key at ./config/gcp-service-account.json
+#   2. Set CONNECTOR_BEARER_TOKEN in your .env (generate with: openssl rand -hex 32)
+#   3. Start with:  docker compose -f docker-compose.yml -f services/drive-connector/docker-compose.connector.yml up -d
+#   4. The app reaches the connector at http://drive-connector:8090
+# =============================================================================
+
+services:
+  drive-connector:
+    build:
+      context: ./services/drive-connector
+      dockerfile: Dockerfile
+    container_name: policy-bot-drive-connector
+    environment:
+      - CONNECTOR_BEARER_TOKEN=${CONNECTOR_BEARER_TOKEN}
+      - PORT=8090
+      - LOG_LEVEL=${CONNECTOR_LOG_LEVEL:-info}
+      - GOOGLE_TIMEOUT_MS=${CONNECTOR_GOOGLE_TIMEOUT_MS:-30000}
+      - GOOGLE_SCOPES=https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly
+      # Option A: mount the key file (see volumes below) — uses SERVICE_ACCOUNT_PATH
+      - SERVICE_ACCOUNT_PATH=/run/secrets/gcp-service-account.json
+      # Option B: inline the key JSON as an env var (uncomment to use instead of a file):
+      # - SERVICE_ACCOUNT_JSON=${CONNECTOR_SERVICE_ACCOUNT_JSON}
+      # Phase 2: HMAC identity verification + per-user vault token lookup.
+      # When CONNECTOR_HMAC_SECRET is set, the connector verifies the signed
+      # X-Connector-User-Id header and calls APP_BASE_URL to fetch per-user
+      # OAuth tokens. Leave both unset for Phase 1 (shared service account).
+      - CONNECTOR_HMAC_SECRET=${CONNECTOR_HMAC_SECRET:-}
+      # In Docker, the connector reaches the app via the app's service name.
+      # The app's service is named "app" in docker-compose.yml.
+      - APP_BASE_URL=${APP_BASE_URL:-http://app:3000}
+      # Phase 2: Microsoft Graph (OneDrive) app-only fallback.
+      # Uses the same Azure AD app registration as the login provider, or a
+      # separate one configured via MS_CLIENT_ID / MS_CLIENT_SECRET / MS_TENANT_ID.
+      - MS_CLIENT_ID=${MS_CLIENT_ID:-${AZURE_AD_CLIENT_ID:-}}
+      - MS_CLIENT_SECRET=${MS_CLIENT_SECRET:-${AZURE_AD_CLIENT_SECRET:-}}
+      - MS_TENANT_ID=${MS_TENANT_ID:-${AZURE_AD_TENANT_ID:-}}
+      - MS_GRAPH_TIMEOUT_MS=${MS_GRAPH_TIMEOUT_MS:-30000}
+    volumes:
+      # Mount the service-account JSON key read-only.
+      - ./config/gcp-service-account.json:/run/secrets/gcp-service-account.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8090/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - policy-bot-network
+    restart: unless-stopped

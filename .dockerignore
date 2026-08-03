@@ -47,5 +47,8 @@ docs/
 # Data directory (runtime only)
 data/
 
+# Separate microservices (built from their own Dockerfiles/contexts)
+services/
+
 # Misc
 .dockerignore

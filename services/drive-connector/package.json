@@ -1,0 +1,20 @@
+{
+  "name": "drive-connector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connector microservice exposing Google Drive/Sheets/Docs operations behind a static bearer token. Phase 1 uses a shared service-account identity; Phase 2 will add per-user OAuth.",
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.12.0",
+    "ts-node": "^10.9.0"
+  }
+}

@@ -533,6 +533,23 @@ export interface FunctionApiCategoriesTable {
   created_at: Generated<string>;
 }
 
+// ============ Connected Accounts (Drive Connectors — Phase 2) ============
+
+export interface UserConnectedAccountsTable {
+  id: string;
+  provider: Generated<'google' | 'microsoft'>;
+  user_email: string;
+  display_name: string | null;
+  access_token: string | null;
+  refresh_token: string | null;
+  scopes: string;
+  token_expiry: string | null;
+  revoked: Generated<boolean>;
+  last_error: string | null;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
 // ============ RAG Test Queries ============
 
 export interface RagTestQueriesTable {
@@ -1055,6 +1072,7 @@ export interface DB {
   data_source_audit: DataSourceAuditTable;
   function_api_configs: FunctionApiConfigsTable;
   function_api_categories: FunctionApiCategoriesTable;
+  user_connected_accounts: UserConnectedAccountsTable;
   rag_test_queries: RagTestQueriesTable;
   rag_test_results: RagTestResultsTable;
   thread_shares: ThreadSharesTable;

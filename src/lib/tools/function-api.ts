@@ -5,6 +5,7 @@
  * Function API schemas. Supports multiple function definitions per API configuration.
  */
 
+import { createHmac, timingSafeEqual } from 'crypto';
 import type OpenAI from 'openai';
 import type { ToolDefinition, ValidationResult, ToolExecutionOptions } from '../tools';
 import type { FunctionAPIConfig, FunctionExecutionResult } from '../../types/function-api';
@@ -16,6 +17,62 @@ import {
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getRequestContext } from '../request-context';
 import { fetchWithSsrfGuard, validateUrlIsPublic } from '../ssrf-guard';
+
+// ===== Connector identity signing (Drive Connectors — Phase 2) =====
+//
+// The connector needs to know *which user* is calling so it can look up that
+// user's OAuth tokens in the vault. The Function API request body IS the
+// LLM-generated tool arguments (see line 226 below), so a body-based userId
+// would be spoofable by the LLM or a prompt-injected document.
+//
+// Instead, executeFunction() injects a per-request `X-Connector-User-Id`
+// header (the user's email from the trusted RequestContext) plus an
+// HMAC-SHA256 signature of that email. The connector verifies the signature
+// with the same `CONNECTOR_HMAC_SECRET` and trusts the header — ignoring any
+// userId in the body. This keeps identity out of LLM control.
+
+function getConnectorHmacSecret(): string | null {
+  const secret = process.env.CONNECTOR_HMAC_SECRET;
+  if (!secret || secret.trim() === '') return null;
+  return secret;
+}
+
+/**
+ * Build the signed-identity headers for a connector request.
+ * Returns an empty object when there is no userId in context or no HMAC
+ * secret configured (Phase 1 / shared service-account mode continues to work).
+ */
+function buildConnectorIdentityHeaders(userId: string | undefined): Record<string, string> {
+  if (!userId) return {};
+  const secret = getConnectorHmacSecret();
+  if (!secret) {
+    // No secret configured — still send the unsigned header so connectors
+    // that haven't upgraded to HMAC verification can read it. Connectors
+    // with HMAC enabled will reject unsigned requests in their own check.
+    return { 'X-Connector-User-Id': userId };
+  }
+  const sig = createHmac('sha256', secret).update(userId, 'utf8').digest('hex');
+  return {
+    'X-Connector-User-Id': userId,
+    'X-Connector-User-Sig': sig,
+  };
+}
+
+// Exported for the connector side (services/drive-connector) to reuse when
+// it is bundled in the same monorepo, and for unit testing.
+export function verifyConnectorIdentity(
+  userId: string,
+  signature: string,
+  secret: string
+): boolean {
+  const expected = createHmac('sha256', secret).update(userId, 'utf8').digest('hex');
+  if (expected.length !== signature.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'));
+  } catch {
+    return false;
+  }
+}
 
 // ===== Configuration =====
 
@@ -164,6 +221,7 @@ async function executeFunction(
   // Get category IDs from request context
   const context = getRequestContext();
   const categoryIds = context.categoryIds && context.categoryIds.length > 0 ? context.categoryIds : [];
+  const userId = context.userId; // email — injected as signed connector identity header
 
   // Find the config that contains this function
   const match = await findConfigForFunction(functionName, categoryIds);
@@ -212,7 +270,10 @@ async function executeFunction(
     }
 
     // Build headers
-    const headers = buildAuthHeaders(config);
+    const headers: Record<string, string> = {
+      ...buildAuthHeaders(config),
+      ...buildConnectorIdentityHeaders(userId),
+    };
 
     // Build request options
     const requestOptions: RequestInit = {
