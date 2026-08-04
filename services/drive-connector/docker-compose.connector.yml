@@ -19,7 +19,7 @@ services:
       - PORT=8090
       - LOG_LEVEL=${CONNECTOR_LOG_LEVEL:-info}
       - GOOGLE_TIMEOUT_MS=${CONNECTOR_GOOGLE_TIMEOUT_MS:-30000}
-      - GOOGLE_SCOPES=https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/presentations.readonly
+      - GOOGLE_SCOPES=https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations
       # Option A: mount the key file (see volumes below) — uses SERVICE_ACCOUNT_PATH
       - SERVICE_ACCOUNT_PATH=/run/secrets/gcp-service-account.json
       # Option B: inline the key JSON as an env var (uncomment to use instead of a file):

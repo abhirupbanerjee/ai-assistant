@@ -282,12 +282,27 @@ npm install && npm run dev
 ```bash
 # Configure .env with auth providers and domain
 
-# PostgreSQL + Qdrant
-docker compose --profile qdrant up -d --build
+# PostgreSQL + Qdrant (uses COMPOSE_PROFILES from .env)
+make up
 
 # Add Ollama for local LLM inference
 docker compose --profile qdrant --profile ollama up -d --build
 ```
+
+### Optional: Drive Connector (Google / Microsoft)
+```bash
+# Place a GCP service-account key and set CONNECTOR_BEARER_TOKEN in .env first.
+# Then start the connector alongside the app:
+make up
+
+# Or manage it independently:
+make up-connector      # start only the connector
+make build-connector   # rebuild and restart only the connector
+make down-connector    # stop only the connector
+```
+
+See [`services/drive-connector/README.md`](services/drive-connector/README.md) for
+setup, tool registration, and SSRF allowlist instructions.
 
 ## Scaling Guide
 
@@ -314,14 +329,15 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 
 ## Infrastructure
 
-| Service | Purpose | Profile |
-|---------|---------|---------|
+| Service | Purpose | Profile / Compose file |
+|---------|---------|------------------------|
 | **Traefik** | Reverse proxy + TLS (ports 80, 443) | Default |
 | **Next.js** | Application (port 3000) | Default |
 | **Redis** | Cache + sessions (port 6379) | Default |
 | **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
 | **Qdrant** | Vector database (ports 6333/6334) | `--profile qdrant` |
 | **Ollama** | Local LLM inference | `--profile ollama` |
+| **drive-connector** | Google / Microsoft Drive Function API microservice | `services/drive-connector/docker-compose.connector.yml` |
 
 ## External API Keys & Licenses
 

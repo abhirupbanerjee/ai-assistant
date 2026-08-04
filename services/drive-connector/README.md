@@ -1,7 +1,8 @@
 # Drive Connector Microservice
 
-Phase 1 **shared service-identity** connector for Google Sheets, Drive, and Docs.
-A tiny Node/TypeScript service (zero runtime dependencies — Node built-ins only)
+Phase 1 **shared service-identity** connector for Google Sheets, Drive, Docs, and
+Microsoft OneDrive/Excel. A tiny Node/TypeScript service (zero runtime dependencies
+— Node built-ins only)
 that owns a GCP service-account credential, mints/refreshes OAuth2 access tokens
 internally, and exposes a stable REST surface secured by a static bearer token.
 
@@ -47,7 +48,7 @@ In the same GCP project, enable:
 - **Google Sheets API**
 - **Google Drive API**
 - **Google Docs API**
-- **Google Slides API** (only needed for `slides_get_presentation`; `slides_export` works via Drive)
+- **Google Slides API**
 
 (APIs & Services → Library → search and Enable each.)
 
@@ -71,9 +72,13 @@ All configuration is via environment variables:
 | `PORT` | No | `8090` | HTTP listen port. |
 | `SERVICE_ACCOUNT_PATH` | No | `/run/secrets/gcp-service-account.json` | Path to the service-account JSON key file. |
 | `SERVICE_ACCOUNT_JSON` | No | — | Inline JSON key (overrides `SERVICE_ACCOUNT_PATH`). Useful for env-var injection in Docker. |
-| `GOOGLE_SCOPES` | No | spreadsheets + drive.readonly + documents.readonly + presentations.readonly | Space/comma-delimited Google API scopes. |
+| `GOOGLE_SCOPES` | No | spreadsheets + drive + documents + presentations | Space/comma-delimited Google API scopes. |
 | `GOOGLE_TIMEOUT_MS` | No | `30000` | Outbound Google API request timeout. |
 | `CORS_ORIGINS` | No | `*` | Comma-delimited allowed CORS origins. |
+| `MS_CLIENT_ID` | No | — | Azure AD / Microsoft Entra application ID. Used for OneDrive/Excel app-only access. Defaults to `AZURE_AD_CLIENT_ID`. |
+| `MS_CLIENT_SECRET` | No | — | Azure AD application secret. Defaults to `AZURE_AD_CLIENT_SECRET`. |
+| `MS_TENANT_ID` | No | — | Azure AD tenant ID. Defaults to `AZURE_AD_TENANT_ID`. |
+| `MS_GRAPH_TIMEOUT_MS` | No | `30000` | Outbound Microsoft Graph request timeout. |
 | `CONNECTOR_HMAC_SECRET` | No (Phase 2) | — | HMAC secret shared with the app. When set, the connector verifies the `X-Connector-User-Sig` header and trusts `X-Connector-User-Id` (ignoring any body `userId`). Must match the app's `CONNECTOR_HMAC_SECRET`. Generate with `openssl rand -hex 32`. |
 | `APP_BASE_URL` | No (Phase 2) | — | Base URL of the AI-assistant app (e.g. `https://assistant.example.com`). Used to call the internal vault endpoint (`/api/connectors/vault/tokens`) to fetch per-user OAuth tokens. Required for per-user mode; without it the connector only uses the shared service account. |
 | `LOG_LEVEL` | No | `info` | `debug` \| `info` \| `warn` \| `error` |
@@ -183,12 +188,42 @@ openssl rand -hex 32
 
 ### 3. Start with the override compose file
 
+**Recommended — use the root Makefile:**
+
 ```bash
+# Start app + infrastructure + drive-connector
+make up
+
+# Or start only the connector (app/infrastructure must already be running)
+make up-connector
+
+# Rebuild and restart only the connector after code changes
+make build-connector
+```
+
+**Equivalent raw `docker compose` commands (same result, more typing):**
+
+```bash
+# Start everything
+docker compose \
+  -f docker-compose.yml \
+  -f services/drive-connector/docker-compose.connector.yml \
+  up -d
+
+# Start only the connector
+docker compose \
+  -f docker-compose.yml \
+  -f services/drive-connector/docker-compose.connector.yml \
+  up -d drive-connector
+
+# Rebuild and restart only the connector
 docker compose \
   -f docker-compose.yml \
   -f services/drive-connector/docker-compose.connector.yml \
   up -d --build drive-connector
 ```
+
+Run `make help` for a full list of shortcuts.
 
 The app container reaches the connector at `http://drive-connector:8090`
 (they share the `policy-bot-network`).
@@ -229,10 +264,13 @@ cp /path/to/gcp-service-account.json config/gcp-service-account.json
 echo "CONNECTOR_BEARER_TOKEN=$(openssl rand -hex 32)" >> .env
 
 # 4. Build and start the connector
-docker compose \
-  -f docker-compose.yml \
-  -f services/drive-connector/docker-compose.connector.yml \
-  up -d --build drive-connector
+make up-connector
+
+# Or, equivalently:
+# docker compose \
+#   -f docker-compose.yml \
+#   -f services/drive-connector/docker-compose.connector.yml \
+#   up -d --build drive-connector
 
 # 5. Verify
 curl http://localhost:8090/health
@@ -244,13 +282,27 @@ Your existing flow is **not affected** — the main app rebuilds as before:
 
 ```bash
 git pull
-docker compose down
-docker compose up -d --build
+make down
+make up
 ```
 
-This rebuilds only the main app. The connector continues running
-independently (`restart: unless-stopped`) and survives `docker compose down`
-only if you don't include the connector override file in the down command.
+Or, equivalently:
+
+```bash
+git pull
+docker compose \
+  -f docker-compose.yml \
+  -f services/drive-connector/docker-compose.connector.yml \
+  down
+docker compose \
+  -f docker-compose.yml \
+  -f services/drive-connector/docker-compose.connector.yml \
+  up -d --build
+```
+
+This rebuilds the main app and the connector together. The connector can also
+be managed independently with `make up-connector`, `make down-connector`, and
+`make build-connector`.
 
 > **Note:** If you run `docker compose down` *without* the `-f` override,
 > the connector is not touched (it's not in the base `docker-compose.yml`).
@@ -264,28 +316,34 @@ When you push connector code changes and pull them on the VM:
 git pull
 
 # Rebuild and restart only the connector (app keeps running):
-docker compose \
-  -f docker-compose.yml \
-  -f services/drive-connector/docker-compose.connector.yml \
-  up -d --build drive-connector
+make build-connector
+
+# Or, equivalently:
+# docker compose \
+#   -f docker-compose.yml \
+#   -f services/drive-connector/docker-compose.connector.yml \
+#   up -d --build drive-connector
 ```
 
 ### Stopping the connector
+
+```bash
+make down-connector
+
+# Or, equivalently:
+docker compose \
+  -f docker-compose.yml \
+  -f services/drive-connector/docker-compose.connector.yml \
+  down drive-connector
+```
+
+To stop without removing the container, use:
 
 ```bash
 docker compose \
   -f docker-compose.yml \
   -f services/drive-connector/docker-compose.connector.yml \
   stop drive-connector
-```
-
-### Stopping and removing the connector
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f services/drive-connector/docker-compose.connector.yml \
-  down drive-connector
 ```
 
 ---
@@ -297,7 +355,7 @@ In **Admin → Tools → Function API**, create a new config with these values:
 | Field | Value |
 |---|---|
 | **Name** | Google Drive Connector |
-| **Description** | Shared service-account access to Google Sheets, Drive, Docs, and Slides |
+| **Description** | Shared service-account access to Google Sheets, Drive, Docs, Slides, and Microsoft OneDrive/Excel |
 | **Base URL** | `http://drive-connector:8090` |
 | **Auth Type** | `bearer` |
 | **Auth Header** | *(leave default — uses `Authorization: Bearer <token>`)* |
