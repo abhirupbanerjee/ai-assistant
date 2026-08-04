@@ -285,9 +285,23 @@ npm install && npm run dev
 # PostgreSQL + Qdrant (uses COMPOSE_PROFILES from .env)
 make up
 
+# Stop everything (including drive-connector)
+make down
+
+# Rebuild and start everything
+make build
+
 # Add Ollama for local LLM inference
 docker compose --profile qdrant --profile ollama up -d --build
 ```
+
+> **Connector lifecycle note:** `make up`, `make down`, and `make build` include the
+> `drive-connector` service because the root Makefile merges both compose files.
+> If you want to manage the connector independently — for example, to avoid
+> restarting it during an app-only deployment — use `make up-connector`,
+> `make down-connector`, and `make build-connector` instead.
+> To act on the app and infrastructure **without** touching the connector, use
+> `make up-app`, `make down-app`, and `make build-app`.
 
 ### Optional: Drive Connector (Google / Microsoft)
 ```bash
@@ -299,6 +313,11 @@ make up
 make up-connector      # start only the connector
 make build-connector   # rebuild and restart only the connector
 make down-connector    # stop only the connector
+
+# App-only lifecycle (does not touch the connector):
+make up-app            # start app + infrastructure only
+make build-app         # rebuild and start app + infrastructure only
+make down-app          # stop app + infrastructure only
 ```
 
 See [`services/drive-connector/README.md`](services/drive-connector/README.md) for

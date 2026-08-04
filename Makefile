@@ -1,9 +1,10 @@
 # AI Assistant — Docker Compose convenience wrapper
 # Use `make help` to see all targets.
 
-.PHONY: help up down build up-connector down-connector build-connector logs-connector status
+.PHONY: help up down build up-app down-app build-app up-connector down-connector build-connector logs-connector status
 
 COMPOSE_FILES := -f docker-compose.yml -f services/drive-connector/docker-compose.connector.yml
+BASE_COMPOSE_FILE := -f docker-compose.yml
 
 help: ## Show available make targets
 	@echo "AI Assistant — Docker Compose shortcuts"
@@ -18,6 +19,15 @@ down: ## Stop app + infrastructure + drive-connector
 
 build: ## Build all services (app + connector)
 	docker compose $(COMPOSE_FILES) up -d --build
+
+up-app: ## Start app + infrastructure only (connector keeps running)
+	docker compose $(BASE_COMPOSE_FILE) up -d
+
+down-app: ## Stop app + infrastructure only (connector keeps running)
+	docker compose $(BASE_COMPOSE_FILE) down
+
+build-app: ## Build and start app + infrastructure only (connector keeps running)
+	docker compose $(BASE_COMPOSE_FILE) up -d --build
 
 up-connector: ## Start only drive-connector (assumes app/infrastructure already running)
 	docker compose $(COMPOSE_FILES) up -d drive-connector
