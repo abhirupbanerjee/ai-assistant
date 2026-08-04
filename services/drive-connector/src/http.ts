@@ -8,7 +8,7 @@ import { URL } from 'url';
 import { logger } from './logger';
 
 export interface HttpRequestOptions {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   url: string;
   headers?: Record<string, string>;
   body?: string | Buffer;

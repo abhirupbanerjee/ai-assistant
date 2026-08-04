@@ -33,6 +33,8 @@ const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
 const CONNECTOR_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/presentations',
   'openid',
   'email',
   'profile',

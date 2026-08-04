@@ -101,8 +101,20 @@ All configuration is via environment variables:
 | `drive_list_files` | drive | List files visible to the service account. |
 | `drive_get_file` | drive | Get metadata for a single file. |
 | `docs_export` | docs | Export a Google Doc as text/markdown/PDF/DOCX. |
+| `docs_create` | docs | Create a new Google Doc. |
+| `docs_get` | docs | Get a Google Doc title and body text. |
+| `docs_append_text` | docs | Append text to the end of a Google Doc. |
+| `docs_replace_text` | docs | Replace all occurrences of a string in a Google Doc. |
 | `slides_export` | slides | Export a Google Slides deck as text/PDF/PPTX (Drive export). |
 | `slides_get_presentation` | slides | Get Slides structure with per-slide text and speaker notes. |
+| `slides_create` | slides | Create a new Google Slides presentation. |
+| `slides_add_slide` | slides | Add a slide to a presentation. |
+| `slides_insert_text` | slides | Insert text into a shape on a slide. |
+| `slides_replace_all_text` | slides | Replace all occurrences of text across a presentation. |
+| `ms_drive_create_folder` | onedrive | Create a folder in OneDrive. |
+| `ms_drive_upload_file` | onedrive | Upload a text file to OneDrive. |
+| `ms_excel_get_range` | onedrive | Read a range from an Excel workbook in OneDrive. |
+| `ms_excel_update_range` | onedrive | Write values into a range of an Excel workbook. |
 
 Every tool accepts an optional `userId` (string) — reserved for Phase 2
 per-user OAuth. It is accepted but ignored in Phase 1.

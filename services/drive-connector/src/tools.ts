@@ -194,6 +194,62 @@ export const TOOLS: ToolDef[] = [
       { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
     ],
   },
+  {
+    name: 'docs_create',
+    category: 'docs',
+    summary: 'Create a blank Google Doc.',
+    description:
+      'Creates a new Google Docs document with the given title under the ' +
+      'service account (or connected user) and returns its ID and edit URL.',
+    params: [
+      { name: 'title', type: 'string', required: true, description: 'Title of the new document.' },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'docs_get',
+    category: 'docs',
+    summary: 'Get a Google Doc structure and full body text.',
+    description:
+      'Reads a Google Docs document via the Docs API and returns the ' +
+      'document ID, title, edit URL, and concatenated body text.',
+    params: [
+      { name: 'fileId', type: 'string', required: true, description: 'The Docs file ID.' },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'docs_append_text',
+    category: 'docs',
+    summary: 'Append text to the end of a Google Doc.',
+    description:
+      'Appends the supplied text to the end of the document body.',
+    params: [
+      { name: 'fileId', type: 'string', required: true, description: 'The Docs file ID.' },
+      { name: 'text', type: 'string', required: true, description: 'Text to append.' },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'docs_replace_text',
+    category: 'docs',
+    summary: 'Replace all occurrences of a string in a Google Doc.',
+    description:
+      'Runs replaceAllText on the document and returns how many replacements ' +
+      'were made. Use a unique placeholder (e.g. {{NAME}}) for precise edits.',
+    params: [
+      { name: 'fileId', type: 'string', required: true, description: 'The Docs file ID.' },
+      { name: 'containsText', type: 'string', required: true, description: 'String to find.' },
+      { name: 'replaceText', type: 'string', required: true, description: 'String to replace it with.' },
+      {
+        name: 'matchCase',
+        type: 'boolean',
+        description: 'Whether matching is case-sensitive.',
+        default: true,
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
 
   // ── Slides ─────────────────────────────────────────────────────────────────
   {
@@ -242,6 +298,106 @@ export const TOOLS: ToolDef[] = [
       { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
     ],
   },
+  {
+    name: 'slides_create',
+    category: 'slides',
+    summary: 'Create a blank Google Slides presentation.',
+    description:
+      'Creates a new Google Slides presentation with the given title and ' +
+      'returns its ID and edit URL.',
+    params: [
+      { name: 'title', type: 'string', required: true, description: 'Title of the new presentation.' },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'slides_add_slide',
+    category: 'slides',
+    summary: 'Add a new slide to a Google Slides presentation.',
+    description:
+      'Creates a new slide at the requested insertion index. Use the ' +
+      'resulting slide objectId and placeholder IDs for follow-up insert_text calls.',
+    params: [
+      {
+        name: 'presentationId',
+        type: 'string',
+        required: true,
+        description: 'The presentation ID.',
+      },
+      {
+        name: 'insertionIndex',
+        type: 'number',
+        description: 'Zero-based index where the slide should appear. Defaults to end.',
+      },
+      {
+        name: 'layoutReferenceId',
+        type: 'string',
+        description: 'Predefined layout, e.g. BLANK, TITLE, TITLE_AND_TWO_COLUMNS.',
+        default: 'BLANK',
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'slides_insert_text',
+    category: 'slides',
+    summary: 'Insert text into a shape on a Google Slide.',
+    description:
+      'Inserts text at a specific index in a shape identified by objectId. ' +
+      'Use slides_get_presentation to discover shape objectIds.',
+    params: [
+      {
+        name: 'presentationId',
+        type: 'string',
+        required: true,
+        description: 'The presentation ID.',
+      },
+      {
+        name: 'objectId',
+        type: 'string',
+        required: true,
+        description: 'The objectId of the shape to write into.',
+      },
+      {
+        name: 'text',
+        type: 'string',
+        required: true,
+        description: 'Text to insert.',
+      },
+      {
+        name: 'insertionIndex',
+        type: 'number',
+        description: 'Character index at which to insert. Default 0 (beginning).',
+        default: 0,
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'slides_replace_all_text',
+    category: 'slides',
+    summary: 'Replace all occurrences of text across a presentation.',
+    description:
+      'Runs replaceAllText across all slides and returns the number of ' +
+      'replacements. Useful for bulk placeholder substitution.',
+    params: [
+      {
+        name: 'presentationId',
+        type: 'string',
+        required: true,
+        description: 'The presentation ID.',
+      },
+      { name: 'containsText', type: 'string', required: true, description: 'String to find.' },
+      { name: 'replaceText', type: 'string', required: true, description: 'String to replace it with.' },
+      {
+        name: 'matchCase',
+        type: 'boolean',
+        description: 'Whether matching is case-sensitive.',
+        default: true,
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
 
   // ── Microsoft OneDrive (Graph API) ─────────────────────────────────────────
   {
@@ -279,6 +435,79 @@ export const TOOLS: ToolDef[] = [
       'Returns the file content as a string along with its MIME type.',
     params: [
       { name: 'itemId', type: 'string', required: true, description: 'The OneDrive item ID to download.' },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_drive_create_folder',
+    category: 'onedrive',
+    summary: 'Create a folder in OneDrive.',
+    description:
+      'Creates a new folder under the OneDrive root or inside a parent folder.',
+    params: [
+      { name: 'name', type: 'string', required: true, description: 'Name of the new folder.' },
+      { name: 'parentId', type: 'string', description: 'Optional parent folder item ID; defaults to root.' },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_drive_upload_file',
+    category: 'onedrive',
+    summary: 'Upload a text file to OneDrive.',
+    description:
+      'Uploads a file to OneDrive using simple upload. Existing files are ' +
+      'replaced by default. Paths are relative to the OneDrive root.',
+    params: [
+      { name: 'path', type: 'string', required: true, description: 'Target path, e.g. "Reports/Q2.txt".' },
+      { name: 'content', type: 'string', required: true, description: 'File content.' },
+      {
+        name: 'mimeType',
+        type: 'string',
+        description: 'MIME type of the content.',
+        default: 'text/plain',
+      },
+      {
+        name: 'conflictBehavior',
+        type: 'string',
+        description: 'What to do if the file already exists.',
+        enum: ['replace', 'rename', 'fail'],
+        default: 'replace',
+      },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_excel_get_range',
+    category: 'onedrive',
+    summary: 'Read a range from an Excel workbook stored in OneDrive.',
+    description:
+      'Reads values from a worksheet range using the Graph Excel workbook API. ' +
+      'The workbook must be closed (not locked by a desktop session) for edits to succeed.',
+    params: [
+      { name: 'itemId', type: 'string', required: true, description: 'The OneDrive item ID of the Excel file.' },
+      { name: 'worksheet', type: 'string', required: true, description: 'Worksheet name, e.g. "Sheet1".' },
+      { name: 'address', type: 'string', required: true, description: 'Range address, e.g. "A1:D10".' },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_excel_update_range',
+    category: 'onedrive',
+    summary: 'Write values into a range of an Excel workbook in OneDrive.',
+    description:
+      'Updates values in a worksheet range using the Graph Excel workbook API. ' +
+      'The values array must match the dimensions of the address.',
+    params: [
+      { name: 'itemId', type: 'string', required: true, description: 'The OneDrive item ID of the Excel file.' },
+      { name: 'worksheet', type: 'string', required: true, description: 'Worksheet name, e.g. "Sheet1".' },
+      { name: 'address', type: 'string', required: true, description: 'Range address, e.g. "A1:D10".' },
+      {
+        name: 'values',
+        type: 'array',
+        required: true,
+        description: '2D array of values (rows of columns).',
+        items: { type: 'array' },
+      },
       { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
     ],
   },

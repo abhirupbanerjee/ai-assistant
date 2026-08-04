@@ -292,6 +292,8 @@ export async function driveGetFile(
 }
 
 // ── Drive media export (used by Docs and Slides) ────────────────────────────
+// Native Google Docs/Slides/Presentations cannot be downloaded with
+// ?alt=media. They must be exported via /files/{id}/export?mimeType=...
 const DRIVE_EXPORT = 'https://www.googleapis.com/drive/v3/files';
 
 async function driveExport(
@@ -301,8 +303,8 @@ async function driveExport(
   userId?: string
 ): Promise<OpResult<{ content: string; mimeType: string; fileId: string }>> {
   const url =
-    `${DRIVE_EXPORT}/${enc(fileId)}?` +
-    `alt=media&mimeType=${enc(mimeType)}`;
+    `${DRIVE_EXPORT}/${enc(fileId)}/export?` +
+    `mimeType=${enc(mimeType)}`;
   const result = await runOp<{ content: string; status: number }>(cfg, async (headers) => {
     const res = await request({
       method: 'GET',
@@ -324,6 +326,140 @@ export async function docsExport(
   userId?: string
 ): Promise<OpResult<{ content: string; mimeType: string; fileId: string }>> {
   return driveExport(cfg, fileId, mimeType, userId);
+}
+
+// ── Google Docs API ──────────────────────────────────────────────────────────
+const DOCS_BASE = 'https://docs.googleapis.com/v1/documents';
+
+export interface DocsCreateResult {
+  documentId: string;
+  title: string;
+  url: string;
+}
+
+export async function docsCreate(
+  cfg: AppConfig,
+  title: string,
+  userId?: string
+): Promise<OpResult<DocsCreateResult>> {
+  return runOp<DocsCreateResult>(cfg, async (headers) => {
+    const res = (await postJson(
+      DOCS_BASE,
+      { title },
+      headers,
+      cfg.googleTimeoutMs
+    )) as { documentId: string; title: string };
+    return {
+      documentId: res.documentId,
+      title: res.title,
+      url: `https://docs.google.com/document/d/${res.documentId}/edit`,
+    };
+  }, userId);
+}
+
+export interface DocsGetResult {
+  documentId: string;
+  title: string;
+  url: string;
+  bodyText: string;
+}
+
+export async function docsGet(
+  cfg: AppConfig,
+  fileId: string,
+  userId?: string
+): Promise<OpResult<DocsGetResult>> {
+  return runOp<DocsGetResult>(cfg, async (headers) => {
+    const res = (await getJson(`${DOCS_BASE}/${enc(fileId)}`, headers, cfg.googleTimeoutMs)) as {
+      documentId: string;
+      title: string;
+      body?: {
+        content?: Array<{
+          paragraph?: {
+            elements?: Array<{ textRun?: { content?: string } }>;
+          };
+        }>;
+      };
+    };
+    const parts: string[] = [];
+    for (const structural of res.body?.content || []) {
+      const paragraph = structural.paragraph;
+      if (!paragraph) continue;
+      for (const el of paragraph.elements || []) {
+        if (el.textRun?.content) parts.push(el.textRun.content);
+      }
+    }
+    return {
+      documentId: res.documentId,
+      title: res.title,
+      url: `https://docs.google.com/document/d/${res.documentId}/edit`,
+      bodyText: parts.join('').trim(),
+    };
+  }, userId);
+}
+
+interface DocsBatchUpdateRequest {
+  requests: unknown[];
+  writeControl?: unknown;
+}
+
+export async function docsAppendText(
+  cfg: AppConfig,
+  fileId: string,
+  text: string,
+  userId?: string
+): Promise<OpResult<{ documentId: string }>> {
+  const body: DocsBatchUpdateRequest = {
+    requests: [
+      {
+        insertText: {
+          text,
+          endOfSegmentLocation: { segmentId: '' },
+        },
+      },
+    ],
+  };
+  return runOp<{ documentId: string }>(cfg, async (headers) => {
+    return (await postJson(
+      `${DOCS_BASE}/${enc(fileId)}:batchUpdate`,
+      body,
+      headers,
+      cfg.googleTimeoutMs
+    )) as { documentId: string };
+  }, userId);
+}
+
+export async function docsReplaceText(
+  cfg: AppConfig,
+  fileId: string,
+  replaceText: string,
+  containsText: string,
+  matchCase = true,
+  userId?: string
+): Promise<OpResult<{ documentId: string; occurrencesChanged: number }>> {
+  const body: DocsBatchUpdateRequest = {
+    requests: [
+      {
+        replaceAllText: {
+          replaceText,
+          containsText: { text: containsText, matchCase },
+        },
+      },
+    ],
+  };
+  return runOp<{ documentId: string; occurrencesChanged: number }>(cfg, async (headers) => {
+    const res = (await postJson(
+      `${DOCS_BASE}/${enc(fileId)}:batchUpdate`,
+      body,
+      headers,
+      cfg.googleTimeoutMs
+    )) as { documentId: string; replies?: Array<{ replaceAllText?: { occurrencesChanged?: number } }> };
+    const first = res.replies?.[0]?.replaceAllText;
+    return {
+      documentId: res.documentId,
+      occurrencesChanged: first?.occurrencesChanged ?? 0,
+    };
+  }, userId);
 }
 
 export async function slidesExport(
@@ -351,8 +487,15 @@ interface SlidesSlide {
 }
 
 interface SlidesPageElement {
+  objectId?: string;
   shape?: { text?: { textElements?: Array<{ textRun?: { content?: string } }> } };
   table?: { tableRows?: Array<{ tableCells?: Array<{ text?: { textElements?: Array<{ textRun?: { content?: string } }> } }> }> };
+}
+
+interface SlideElementSummary {
+  objectId: string;
+  type: 'shape' | 'table' | 'unknown';
+  text: string;
 }
 
 interface SlideSummary {
@@ -360,6 +503,7 @@ interface SlideSummary {
   title: string;
   text: string;
   notes?: string;
+  elements?: SlideElementSummary[];
 }
 
 function extractTextFromElements(elements?: Array<{ textRun?: { content?: string } }>): string {
@@ -392,6 +536,33 @@ function flattenSlideNotes(slide: SlidesSlide): string {
   return extractTextFromElements(notesShape?.text?.textElements);
 }
 
+function summarizeSlideElements(slide: SlidesSlide): SlideElementSummary[] {
+  const summaries: SlideElementSummary[] = [];
+  for (const element of slide.pageElements || []) {
+    if (!element.objectId) continue;
+    if (element.shape?.text?.textElements) {
+      summaries.push({
+        objectId: element.objectId,
+        type: 'shape',
+        text: extractTextFromElements(element.shape.text.textElements),
+      });
+    } else if (element.table?.tableRows) {
+      const parts: string[] = [];
+      for (const row of element.table.tableRows) {
+        for (const cell of row.tableCells || []) {
+          parts.push(extractTextFromElements(cell.text?.textElements));
+        }
+      }
+      summaries.push({
+        objectId: element.objectId,
+        type: 'table',
+        text: parts.filter(Boolean).join(' | '),
+      });
+    }
+  }
+  return summaries;
+}
+
 export async function slidesGetPresentation(
   cfg: AppConfig,
   presentationId: string,
@@ -415,6 +586,7 @@ export async function slidesGetPresentation(
       slideId: slide.objectId,
       title,
       text,
+      elements: summarizeSlideElements(slide),
     };
     if (includeNotes) {
       summary.notes = flattenSlideNotes(slide) || undefined;
@@ -428,6 +600,122 @@ export async function slidesGetPresentation(
     slideCount: slides.length,
     slides,
   });
+}
+
+// ── Google Slides write API ──────────────────────────────────────────────────
+export interface SlidesCreateResult {
+  presentationId: string;
+  title: string;
+  url: string;
+}
+
+export async function slidesCreate(
+  cfg: AppConfig,
+  title: string,
+  userId?: string
+): Promise<OpResult<SlidesCreateResult>> {
+  return runOp<SlidesCreateResult>(cfg, async (headers) => {
+    const res = (await postJson(
+      SLIDES_BASE,
+      { title },
+      headers,
+      cfg.googleTimeoutMs
+    )) as { presentationId: string; title: string };
+    return {
+      presentationId: res.presentationId,
+      title: res.title,
+      url: `https://docs.google.com/presentation/d/${res.presentationId}/edit`,
+    };
+  }, userId);
+}
+
+export async function slidesAddSlide(
+  cfg: AppConfig,
+  presentationId: string,
+  insertionIndex?: number,
+  layoutReferenceId = 'BLANK',
+  userId?: string
+): Promise<OpResult<{ presentationId: string; replies?: unknown[] }>> {
+  const body = {
+    requests: [
+      {
+        createSlide: {
+          insertionIndex: insertionIndex ?? undefined,
+          slideLayoutReference: { predefinedLayout: layoutReferenceId },
+        },
+      },
+    ],
+  };
+  return runOp<{ presentationId: string; replies?: unknown[] }>(cfg, async (headers) => {
+    return (await postJson(
+      `${SLIDES_BASE}/${enc(presentationId)}:batchUpdate`,
+      body,
+      headers,
+      cfg.googleTimeoutMs
+    )) as { presentationId: string; replies?: unknown[] };
+  }, userId);
+}
+
+export async function slidesInsertText(
+  cfg: AppConfig,
+  presentationId: string,
+  objectId: string,
+  text: string,
+  insertionIndex = 0,
+  userId?: string
+): Promise<OpResult<{ presentationId: string; replies?: unknown[] }>> {
+  const body = {
+    requests: [
+      {
+        insertText: {
+          objectId,
+          text,
+          insertionIndex,
+        },
+      },
+    ],
+  };
+  return runOp<{ presentationId: string; replies?: unknown[] }>(cfg, async (headers) => {
+    return (await postJson(
+      `${SLIDES_BASE}/${enc(presentationId)}:batchUpdate`,
+      body,
+      headers,
+      cfg.googleTimeoutMs
+    )) as { presentationId: string; replies?: unknown[] };
+  }, userId);
+}
+
+export async function slidesReplaceAllText(
+  cfg: AppConfig,
+  presentationId: string,
+  replaceText: string,
+  containsText: string,
+  matchCase = true,
+  userId?: string
+): Promise<OpResult<{ presentationId: string; occurrencesChanged: number }>> {
+  const body = {
+    requests: [
+      {
+        replaceAllText: {
+          replaceText,
+          containsText: { text: containsText, matchCase },
+        },
+      },
+    ],
+  };
+  return runOp<{ presentationId: string; occurrencesChanged: number }>(cfg, async (headers) => {
+    const res = (await postJson(
+      `${SLIDES_BASE}/${enc(presentationId)}:batchUpdate`,
+      body,
+      headers,
+      cfg.googleTimeoutMs
+    )) as { presentationId: string; replies?: Array<{ replaceAllText?: { occurrencesChanged?: number } }> };
+    const first = res.replies?.[0]?.replaceAllText;
+    return {
+      presentationId: res.presentationId,
+      occurrencesChanged: first?.occurrencesChanged ?? 0,
+    };
+  }, userId);
 }
 
 // ── Microsoft Graph (OneDrive / Excel) ───────────────────────────────────────
@@ -558,6 +846,113 @@ export async function msDriveDownloadFile(
   return ok({ content: result.data!.content, mimeType: result.data!.mimeType, itemId });
 }
 
+// ── OneDrive write operations ────────────────────────────────────────────────
+
+export async function msDriveCreateFolder(
+  cfg: AppConfig,
+  name: string,
+  parentId?: string,
+  userId?: string
+): Promise<OpResult<MsDriveItem>> {
+  const url = parentId
+    ? `${GRAPH_BASE}/me/drive/items/${enc(parentId)}/children`
+    : `${GRAPH_BASE}/me/drive/root/children`;
+  return msRunOp<MsDriveItem>(
+    cfg,
+    async (headers) =>
+      (await postJson(
+        url,
+        { name, folder: {} },
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsDriveItem,
+    userId
+  );
+}
+
+/**
+ * Upload or overwrite a file in OneDrive. Uses simple upload (<4 MB).
+ * For larger files, a resumable upload session should be added later.
+ */
+export async function msDriveUploadFile(
+  cfg: AppConfig,
+  path: string,
+  content: string,
+  mimeType = 'text/plain',
+  conflictBehavior: 'rename' | 'replace' | 'fail' = 'replace',
+  userId?: string
+): Promise<OpResult<MsDriveItem>> {
+  // Normalize to /-prefixed path with no trailing slash.
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  const url =
+    `${GRAPH_BASE}/me/drive/root:${enc(normalized)}:/content?` +
+    `@microsoft.graph.conflictBehavior=${enc(conflictBehavior)}`;
+
+  return msRunOp<MsDriveItem>(cfg, async (headers) => {
+    const res = await request({
+      method: 'PUT',
+      url,
+      headers: {
+        'Content-Type': mimeType,
+        ...headers,
+      },
+      body: content,
+      timeoutMs: cfg.msGraphTimeoutMs,
+      json: true,
+    });
+    return res.data as MsDriveItem;
+  }, userId);
+}
+
+// ── Microsoft Excel workbook operations ──────────────────────────────────────
+
+interface MsWorkbookRange {
+  values: unknown[][];
+  address?: string;
+}
+
+function workbookRangeUrl(itemId: string, worksheet: string, address: string): string {
+  const encodedAddress = enc(address);
+  const encodedSheet = enc(worksheet);
+  return `${GRAPH_BASE}/me/drive/items/${enc(itemId)}/workbook/worksheets/${encodedSheet}/range(address='${encodedAddress}')`;
+}
+
+export async function msExcelGetRange(
+  cfg: AppConfig,
+  itemId: string,
+  worksheet: string,
+  address: string,
+  userId?: string
+): Promise<OpResult<MsWorkbookRange>> {
+  return msRunOp<MsWorkbookRange>(
+    cfg,
+    async (headers) =>
+      (await getJson(workbookRangeUrl(itemId, worksheet, address), headers, cfg.msGraphTimeoutMs)) as MsWorkbookRange,
+    userId
+  );
+}
+
+export async function msExcelUpdateRange(
+  cfg: AppConfig,
+  itemId: string,
+  worksheet: string,
+  address: string,
+  values: unknown[][],
+  userId?: string
+): Promise<OpResult<MsWorkbookRange>> {
+  return msRunOp<MsWorkbookRange>(
+    cfg,
+    async (headers) =>
+      (await patchJson(
+        workbookRangeUrl(itemId, worksheet, address),
+        { values },
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsWorkbookRange,
+    userId
+  );
+}
+
 /** Extract a human-readable message from a Microsoft Graph error. */
 function extractMsError(err: unknown): string {
   if (err instanceof HttpError) {
@@ -588,6 +983,26 @@ async function putJson(
   logger.debug('HTTP PUT', { url, bytes: payload.length });
   const res = await request({
     method: 'PUT',
+    url,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: payload,
+    timeoutMs,
+    json: true,
+  });
+  return res.data;
+}
+
+/** PATCH JSON expecting JSON. */
+async function patchJson(
+  url: string,
+  body: unknown,
+  headers: Record<string, string>,
+  timeoutMs: number
+): Promise<unknown> {
+  const payload = JSON.stringify(body);
+  logger.debug('HTTP PATCH', { url, bytes: payload.length });
+  const res = await request({
+    method: 'PATCH',
     url,
     headers: { 'Content-Type': 'application/json', ...headers },
     body: payload,

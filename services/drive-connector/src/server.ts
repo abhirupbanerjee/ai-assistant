@@ -33,11 +33,23 @@ import {
   driveListFiles,
   driveGetFile,
   docsExport,
+  docsCreate,
+  docsGet,
+  docsAppendText,
+  docsReplaceText,
   slidesExport,
   slidesGetPresentation,
+  slidesCreate,
+  slidesAddSlide,
+  slidesInsertText,
+  slidesReplaceAllText,
   msDriveListFiles,
   msDriveGetFile,
   msDriveDownloadFile,
+  msDriveCreateFolder,
+  msDriveUploadFile,
+  msExcelGetRange,
+  msExcelUpdateRange,
 } from './ops';
 import { getServiceAccountEmail } from './google';
 
@@ -268,6 +280,21 @@ async function dispatch(
       return driveGetFile(cfg, String(v.fileId), v.fields as string | undefined, v.userId as string | undefined);
     case 'docs_export':
       return docsExport(cfg, String(v.fileId), v.mimeType as string | undefined, v.userId as string | undefined);
+    case 'docs_create':
+      return docsCreate(cfg, String(v.title), v.userId as string | undefined);
+    case 'docs_get':
+      return docsGet(cfg, String(v.fileId), v.userId as string | undefined);
+    case 'docs_append_text':
+      return docsAppendText(cfg, String(v.fileId), String(v.text), v.userId as string | undefined);
+    case 'docs_replace_text':
+      return docsReplaceText(
+        cfg,
+        String(v.fileId),
+        String(v.replaceText),
+        String(v.containsText),
+        v.matchCase !== false,
+        v.userId as string | undefined
+      );
     // ── Slides ───────────────────────────────────────────────────────────────
     case 'slides_export':
       return slidesExport(cfg, String(v.fileId), v.mimeType as string | undefined, v.userId as string | undefined);
@@ -276,6 +303,34 @@ async function dispatch(
         cfg,
         String(v.presentationId),
         v.includeNotes !== false,
+        v.userId as string | undefined
+      );
+    case 'slides_create':
+      return slidesCreate(cfg, String(v.title), v.userId as string | undefined);
+    case 'slides_add_slide':
+      return slidesAddSlide(
+        cfg,
+        String(v.presentationId),
+        v.insertionIndex as number | undefined,
+        v.layoutReferenceId as string | undefined,
+        v.userId as string | undefined
+      );
+    case 'slides_insert_text':
+      return slidesInsertText(
+        cfg,
+        String(v.presentationId),
+        String(v.objectId),
+        String(v.text),
+        v.insertionIndex as number | undefined,
+        v.userId as string | undefined
+      );
+    case 'slides_replace_all_text':
+      return slidesReplaceAllText(
+        cfg,
+        String(v.presentationId),
+        String(v.replaceText),
+        String(v.containsText),
+        v.matchCase !== false,
         v.userId as string | undefined
       );
     // ── Microsoft Graph (OneDrive) ──────────────────────────────────────────
@@ -289,6 +344,34 @@ async function dispatch(
       return msDriveGetFile(cfg, String(v.itemId), v.userId as string | undefined);
     case 'ms_drive_download_file':
       return msDriveDownloadFile(cfg, String(v.itemId), v.userId as string | undefined);
+    case 'ms_drive_create_folder':
+      return msDriveCreateFolder(cfg, String(v.name), v.parentId as string | undefined, v.userId as string | undefined);
+    case 'ms_drive_upload_file':
+      return msDriveUploadFile(
+        cfg,
+        String(v.path),
+        String(v.content),
+        v.mimeType as string | undefined,
+        v.conflictBehavior as 'replace' | 'rename' | 'fail' | undefined,
+        v.userId as string | undefined
+      );
+    case 'ms_excel_get_range':
+      return msExcelGetRange(
+        cfg,
+        String(v.itemId),
+        String(v.worksheet),
+        String(v.address),
+        v.userId as string | undefined
+      );
+    case 'ms_excel_update_range':
+      return msExcelUpdateRange(
+        cfg,
+        String(v.itemId),
+        String(v.worksheet),
+        String(v.address),
+        v.values as unknown[][],
+        v.userId as string | undefined
+      );
     default:
       return { ok: false, error: `Unknown operation: ${op}` };
   }
