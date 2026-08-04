@@ -13,7 +13,7 @@
 
 import { authHeaders, invalidateToken, RECONNECT_REQUIRED } from './google';
 import { authHeaders as msAuthHeaders, invalidateToken as msInvalidateToken } from './microsoft';
-import { getJson, postJson, request, HttpError } from './http';
+import { getJson, postJson, postRaw, request, HttpError } from './http';
 import { AppConfig } from './config';
 import { logger } from './logger';
 
@@ -289,6 +289,204 @@ export async function driveGetFile(
     )) as DriveFile,
     userId
   );
+}
+
+export interface DriveUploadResult {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  webViewLink?: string;
+}
+
+/**
+ * Google's scope-deficiency error ("Request had insufficient authentication
+ * scopes." / reason "insufficientPermissions") surfaces as a 403 whose message
+ * matches this pattern. Returned as a distinct OpResult code so callers can
+ * prompt the user to re-consent instead of reporting a generic failure.
+ */
+const INSUFFICIENT_SCOPE_RE = /insufficient (authentication )?scopes|insufficientPermissions/i;
+
+/**
+ * Post-process an OpResult: rewrite a Google 403 scope error into a structured
+ * INSUFFICIENT_SCOPE failure. Applied to write/list ops that require scopes
+ * beyond the legacy connect flow (drive.file).
+ */
+function reclassifyScopeError<T>(result: OpResult<T>, opName: string): OpResult<T> {
+  if (!result.ok && result.status === 403 && result.error && INSUFFICIENT_SCOPE_RE.test(result.error)) {
+    logger.warn('Google rejected call with insufficient scopes — user must re-consent', { op: opName });
+    return fail(
+      'The connected Google account is missing the drive.file scope. Please disconnect and reconnect your Google account to grant the updated permissions.',
+      403,
+      'INSUFFICIENT_SCOPE'
+    );
+  }
+  return result;
+}
+
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const GOOGLE_SLIDES_MIME = 'application/vnd.google-apps.presentation';
+const GOOGLE_DOCS_MIME = 'application/vnd.google-apps.document';
+const GOOGLE_SHEETS_MIME = 'application/vnd.google-apps.spreadsheet';
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+function toGoogleMimeType(sourceMime: string, convert: boolean): string {
+  if (!convert) return sourceMime;
+  if (sourceMime === PPTX_MIME) return GOOGLE_SLIDES_MIME;
+  if (sourceMime === DOCX_MIME) return GOOGLE_DOCS_MIME;
+  if (sourceMime === XLSX_MIME) return GOOGLE_SHEETS_MIME;
+  return sourceMime;
+}
+
+async function findOrCreateFolder(
+  cfg: AppConfig,
+  headers: Record<string, string>,
+  name: string
+): Promise<string> {
+  const listParams = new URLSearchParams();
+  listParams.set(
+    'q',
+    `name='${name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and mimeType='${FOLDER_MIME}' and trashed=false`
+  );
+  listParams.set('fields', 'files(id,name)');
+  listParams.set('pageSize', '1');
+
+  const listRes = (await getJson(
+    `${DRIVE_BASE}?${listParams.toString()}`,
+    headers,
+    cfg.googleTimeoutMs
+  )) as DriveFileList;
+
+  if (listRes.files && listRes.files.length > 0) {
+    logger.debug('Found existing folder', { name, id: listRes.files[0].id });
+    return listRes.files[0].id;
+  }
+
+  const createRes = (await postJson(
+    DRIVE_BASE,
+    {
+      name,
+      mimeType: FOLDER_MIME,
+    },
+    headers,
+    cfg.googleTimeoutMs
+  )) as { id: string };
+
+  logger.info('Created Drive folder', { name, id: createRes.id });
+  return createRes.id;
+}
+
+export async function driveUploadFile(
+  cfg: AppConfig,
+  opts: {
+    filename: string;
+    mimeType: string;
+    contentBase64: string;
+    folderName?: string;
+    folderId?: string;
+    convertToGoogleFormat?: boolean;
+    description?: string;
+    userId?: string;
+  }
+): Promise<OpResult<DriveUploadResult>> {
+  const folderName = opts.folderName ?? 'AI Assistant';
+  const convert = opts.convertToGoogleFormat !== false;
+  const targetMimeType = toGoogleMimeType(opts.mimeType, convert);
+  const content = Buffer.from(opts.contentBase64, 'base64');
+
+  logger.info('drive_upload_file requested', {
+    userId: opts.userId ?? null,
+    filename: opts.filename,
+    mimeType: opts.mimeType,
+    targetMimeType,
+    folderName: opts.folderId ? null : folderName,
+    folderIdProvided: Boolean(opts.folderId),
+    bytes: content.length,
+    convert,
+  });
+
+  const result = await runOp<DriveUploadResult>(cfg, async (headers) => {
+    let parentId = opts.folderId;
+    if (!parentId) {
+      parentId = await findOrCreateFolder(cfg, headers, folderName);
+    }
+
+    const metadata: Record<string, unknown> = {
+      name: opts.filename,
+      mimeType: targetMimeType,
+      parents: [parentId],
+    };
+    if (opts.description) metadata.description = opts.description;
+
+    // Build multipart/related body per Google Drive upload spec.
+    // The media part carries the RAW decoded bytes — no Content-Transfer-Encoding
+    // header, since we are not sending base64 text in the body.
+    const boundary = `----DriveConnectorBoundary${Date.now().toString(36)}`;
+    const metaPart = JSON.stringify(metadata);
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\n`, 'utf8'),
+      Buffer.from('Content-Type: application/json; charset=UTF-8\r\n\r\n', 'utf8'),
+      Buffer.from(`${metaPart}\r\n`, 'utf8'),
+      Buffer.from(`--${boundary}\r\n`, 'utf8'),
+      Buffer.from(`Content-Type: ${opts.mimeType}\r\n\r\n`, 'utf8'),
+      content,
+      Buffer.from(`\r\n--${boundary}--`, 'utf8'),
+    ]);
+
+    const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,webViewLink`;
+
+    const res = (await postRaw(url, body, {
+      ...headers,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+      'Content-Length': String(body.length),
+    }, cfg.googleTimeoutMs)) as {
+      id: string;
+      name: string;
+      mimeType: string;
+      webViewLink?: string;
+    };
+
+    logger.info('Uploaded file to Drive', { fileId: res.id, name: res.name, mimeType: res.mimeType });
+    return {
+      fileId: res.id,
+      name: res.name,
+      mimeType: res.mimeType,
+      webViewLink: res.webViewLink,
+    };
+  }, opts.userId);
+
+  return reclassifyScopeError(result, 'drive_upload_file');
+}
+
+export interface DriveFolderListResult {
+  folders: Array<{ id: string; name: string; createdTime?: string }>;
+  nextPageToken?: string;
+}
+
+export async function driveListFolders(
+  cfg: AppConfig,
+  opts: { pageSize?: number; pageToken?: string; userId?: string }
+): Promise<OpResult<DriveFolderListResult>> {
+  const params = new URLSearchParams();
+  params.set('q', `mimeType='${FOLDER_MIME}' and trashed=false`);
+  params.set('pageSize', String(opts.pageSize ?? 50));
+  params.set('fields', 'nextPageToken,files(id,name,createdTime)');
+  params.set('orderBy', 'name');
+  if (opts.pageToken) params.set('pageToken', opts.pageToken);
+
+  const result = await runOp<DriveFolderListResult>(cfg, async (headers) => {
+    const res = (await getJson(`${DRIVE_BASE}?${params.toString()}`, headers, cfg.googleTimeoutMs)) as {
+      files: Array<{ id: string; name: string; createdTime?: string }>;
+      nextPageToken?: string;
+    };
+    return {
+      folders: res.files || [],
+      nextPageToken: res.nextPageToken,
+    };
+  }, opts.userId);
+
+  return reclassifyScopeError(result, 'drive_list_folders');
 }
 
 // ── Drive media export (used by Docs and Slides) ────────────────────────────

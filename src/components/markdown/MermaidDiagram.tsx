@@ -19,9 +19,12 @@
  */
 
 import { useEffect, useRef, useState, useId, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { Download, ZoomIn, ZoomOut, RotateCcw, FileText } from 'lucide-react';
 import { sanitizeMermaidCode } from '@/lib/diagram-gen/sanitize';
 import { MERMAID_INIT_CONFIG } from '@/lib/diagram-gen/mermaid-config';
+
+const SaveToDriveButton = dynamic(() => import('../chat/SaveToDriveButton'), { ssr: false });
 
 interface MermaidDiagramProps {
   /** The Mermaid diagram code */
@@ -446,6 +449,21 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
     URL.revokeObjectURL(url);
   };
 
+  const getSvgBase64 = (): string | null => {
+    if (!svgContent) return null;
+    let finalSvg = svgContent;
+    if (disclaimerConfig?.enabled) {
+      const disclaimerElement = `
+        <text x="50%" y="98%" text-anchor="middle"
+              style="font-size:${disclaimerConfig.fontSize}px;fill:${disclaimerConfig.color};font-style:italic;font-family:Arial,sans-serif;">
+          ${disclaimerConfig.fullText}
+        </text>
+      `;
+      finalSvg = svgContent.replace('</svg>', `${disclaimerElement}</svg>`);
+    }
+    return btoa(unescape(encodeURIComponent(finalSvg)));
+  };
+
   const handleDownloadPng = async () => {
     if (!svgContent || !containerRef.current) return;
 
@@ -627,6 +645,13 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
             <Download size={14} />
             PNG
           </button>
+          <SaveToDriveButton
+            filename="diagram.svg"
+            mimeType="image/svg+xml"
+            getContentBase64={async () => getSvgBase64()}
+            label="Drive"
+            tooltip="Save diagram SVG to Google Drive"
+          />
         </div>
       </div>
 

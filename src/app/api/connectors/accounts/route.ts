@@ -1,0 +1,67 @@
+/**
+ * Connected accounts status endpoint.
+ *
+ * Returns a public-view summary of the authenticated user's connected
+ * Google and Microsoft accounts. No tokens are exposed.
+ */
+
+import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { listConnectedAccounts } from '@/lib/db/compat';
+
+export const dynamic = 'force-dynamic';
+
+export interface ConnectedAccountsResponse {
+  google: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
+  microsoft: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
+}
+
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required', code: 'AUTH_REQUIRED' },
+      { status: 401 }
+    );
+  }
+
+  let accounts;
+  try {
+    accounts = await listConnectedAccounts(user.email);
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'Failed to look up connected accounts', code: 'VAULT_ERROR' },
+      { status: 500 }
+    );
+  }
+
+  const google = accounts.find((a) => a.provider === 'google');
+  const microsoft = accounts.find((a) => a.provider === 'microsoft');
+
+  const response: ConnectedAccountsResponse = {
+    google: {
+      connected: !!google && !google.revoked,
+      displayName: google?.displayName,
+      revoked: google?.revoked ?? false,
+      scopes: google?.scopes,
+    },
+    microsoft: {
+      connected: !!microsoft && !microsoft.revoked,
+      displayName: microsoft?.displayName,
+      revoked: microsoft?.revoked ?? false,
+      scopes: microsoft?.scopes,
+    },
+  };
+
+  return NextResponse.json(response);
+}

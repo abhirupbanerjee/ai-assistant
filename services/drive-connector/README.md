@@ -52,13 +52,19 @@ In the same GCP project, enable:
 
 (APIs & Services → Library → search and Enable each.)
 
-### 3. Share your sheets/docs/slides with the service account
+### 3. Share your sheets/docs/slides with the service account (read/write tools)
 
 Open the Google Sheet, Doc, or Slides deck → **Share** → paste the service
 account's `client_email` → grant **Viewer** (read-only) or **Editor**
 (read/write).
 
 > The service account only sees files explicitly shared with its email.
+>
+> **Note:** `drive_upload_file` and `drive_list_folders` use the
+> `drive.file` scope. Files uploaded via `drive_upload_file` are owned by
+> the acting identity (service account or connected user) and do **not**
+> need to be shared back with the service account. Folders created by the
+> app are also visible to `drive_list_folders` automatically.
 
 ---
 
@@ -72,7 +78,7 @@ All configuration is via environment variables:
 | `PORT` | No | `8090` | HTTP listen port. |
 | `SERVICE_ACCOUNT_PATH` | No | `/run/secrets/gcp-service-account.json` | Path to the service-account JSON key file. |
 | `SERVICE_ACCOUNT_JSON` | No | — | Inline JSON key (overrides `SERVICE_ACCOUNT_PATH`). Useful for env-var injection in Docker. |
-| `GOOGLE_SCOPES` | No | spreadsheets + drive + documents + presentations | Space/comma-delimited Google API scopes. |
+| `GOOGLE_SCOPES` | No | spreadsheets + drive.readonly + drive.file + documents + presentations | Space/comma-delimited Google API scopes. The default now includes `drive.file` so the connector can upload files and list app-created folders. |
 | `GOOGLE_TIMEOUT_MS` | No | `30000` | Outbound Google API request timeout. |
 | `CORS_ORIGINS` | No | `*` | Comma-delimited allowed CORS origins. |
 | `MS_CLIENT_ID` | No | — | Azure AD / Microsoft Entra application ID. Used for OneDrive/Excel app-only access. Defaults to `AZURE_AD_CLIENT_ID`. |
@@ -105,6 +111,8 @@ All configuration is via environment variables:
 | `sheets_get_spreadsheet` | sheets | Get spreadsheet metadata (tabs, dimensions, named ranges). |
 | `drive_list_files` | drive | List files visible to the service account. |
 | `drive_get_file` | drive | Get metadata for a single file. |
+| `drive_upload_file` | drive | Upload a file to Google Drive (multipart, with optional Office→Google conversion and find-or-create folder placement). |
+| `drive_list_folders` | drive | List app-created folders (picker-safe set under the `drive.file` scope). |
 | `docs_export` | docs | Export a Google Doc as text/markdown/PDF/DOCX. |
 | `docs_create` | docs | Create a new Google Doc. |
 | `docs_get` | docs | Get a Google Doc title and body text. |
@@ -381,6 +389,8 @@ arguments as the JSON body, which is exactly what the connector expects:
   "sheets_get_spreadsheet":   { "method": "POST", "path": "/sheets_get_spreadsheet" },
   "drive_list_files":         { "method": "POST", "path": "/drive_list_files" },
   "drive_get_file":           { "method": "POST", "path": "/drive_get_file" },
+  "drive_upload_file":        { "method": "POST", "path": "/drive_upload_file" },
+  "drive_list_folders":       { "method": "POST", "path": "/drive_list_folders" },
   "docs_export":              { "method": "POST", "path": "/docs_export" },
   "slides_export":            { "method": "POST", "path": "/slides_export" },
   "slides_get_presentation":  { "method": "POST", "path": "/slides_get_presentation" }

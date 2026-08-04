@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import {
   BarChart,
   Bar,
@@ -27,6 +28,8 @@ import {
 } from 'recharts';
 import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import type { ChartType, VisualizationHint } from '@/types/data-sources';
+
+const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
 
 // ===== Error Boundary =====
 
@@ -889,6 +892,29 @@ export default function DataVisualization({
     }
   };
 
+  const getChartPngBase64 = async (): Promise<string | null> => {
+    if (!chartRef.current || chartType === 'table') return null;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(chartRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      logging: false,
+    });
+    if (disclaimerConfig?.enabled) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const fontSize = disclaimerConfig.fontSize * 2;
+        ctx.font = `italic ${fontSize}px Arial, sans-serif`;
+        ctx.fillStyle = disclaimerConfig.color;
+        ctx.textAlign = 'center';
+        ctx.fillText(disclaimerConfig.fullText, canvas.width / 2, canvas.height - fontSize);
+      }
+    }
+    return canvas.toDataURL('image/png').split(',')[1] || null;
+  };
+
+  const chartFileName = `${formatFieldName(xField).replace(/\s+/g, '-').toLowerCase()}-${chartType}-chart.png`;
+
   return (
     <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mt-3">
       {/* Header */}
@@ -915,6 +941,15 @@ export default function DataVisualization({
               <ImageIcon size={14} />
               <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'PNG'}</span>
             </button>
+          )}
+          {chartType !== 'table' && (
+            <SaveToDriveButton
+              filename={chartFileName}
+              mimeType="image/png"
+              getContentBase64={getChartPngBase64}
+              label="Drive"
+              tooltip="Save chart PNG to Google Drive"
+            />
           )}
           <button
             onClick={handleExportCSV}

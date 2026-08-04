@@ -79,6 +79,7 @@ export function loadConfig(): AppConfig {
       [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/documents',
         'https://www.googleapis.com/auth/presentations',
       ]
@@ -100,6 +101,7 @@ export function loadConfig(): AppConfig {
 export const DEFAULT_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/presentations',
 ];

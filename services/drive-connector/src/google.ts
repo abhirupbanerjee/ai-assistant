@@ -207,7 +207,13 @@ export async function getAccessToken(
     if (vaultResult) {
       return vaultResult.accessToken;
     }
-    // null → fall through to service account.
+    // null → fall through to service account. Warn loudly: writes performed
+    // under the service-account identity land in the SA's Drive, not the
+    // user's — a silent wrong-identity failure mode we need to see in logs.
+    logger.warn('No per-user token in vault — falling back to service-account identity', {
+      userId,
+      appBaseUrlConfigured: Boolean(cfg.appBaseUrl),
+    });
   }
 
   // Service-account path (Phase 1 / fallback).

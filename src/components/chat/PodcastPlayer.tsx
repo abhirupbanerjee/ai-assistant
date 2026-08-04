@@ -7,9 +7,12 @@
  * Displays play controls, duration, and download button.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { Play, Pause, Download, Volume2, VolumeX, Podcast } from 'lucide-react';
 import type { PodcastHint } from '@/types';
+
+const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
 
 interface PodcastPlayerProps {
   podcast: PodcastHint;
@@ -32,6 +35,25 @@ export default function PodcastPlayer({ podcast, compact = false }: PodcastPlaye
   const [duration, setDuration] = useState(podcast.duration || 0);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Lazy byte capture for Save-to-Drive — only fetches when the user saves.
+  const fetchAudioBase64 = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch(podcast.downloadUrl, { credentials: 'same-origin' });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve((reader.result as string | undefined)?.split(',')[1] || null);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  }, [podcast.downloadUrl]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -135,6 +157,13 @@ export default function PodcastPlayer({ podcast, compact = false }: PodcastPlaye
           <h4 className="text-sm font-medium text-gray-900 truncate">{podcast.filename}</h4>
           <p className="text-xs text-gray-500">Audio Podcast</p>
         </div>
+        <SaveToDriveButton
+          filename={podcast.filename || 'podcast.mp3'}
+          mimeType={podcast.format === 'wav' ? 'audio/wav' : 'audio/mpeg'}
+          getContentBase64={fetchAudioBase64}
+          label="Drive"
+          tooltip="Save podcast to Google Drive"
+        />
         <a
           href={podcast.downloadUrl}
           download

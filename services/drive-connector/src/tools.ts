@@ -173,6 +173,50 @@ export const TOOLS: ToolDef[] = [
       { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
     ],
   },
+  {
+    name: 'drive_upload_file',
+    category: 'drive',
+    summary: 'Upload a file to Google Drive.',
+    description:
+      'Uploads a file to Google Drive via multipart upload. The file is placed ' +
+      'in the specified folder (default "AI Assistant", created if necessary). ' +
+      'Office formats (pptx, docx, xlsx) can optionally be converted to native ' +
+      'Google formats. Returns the uploaded file ID and web view link.',
+    params: [
+      { name: 'filename', type: 'string', required: true, description: 'Target file name with extension, e.g. "Report.pptx".' },
+      { name: 'mimeType', type: 'string', required: true, description: 'MIME type of the source file bytes, e.g. application/vnd.openxmlformats-officedocument.presentationml.presentation.' },
+      { name: 'contentBase64', type: 'string', required: true, description: 'File contents encoded as base64.' },
+      {
+        name: 'folderName',
+        type: 'string',
+        description: 'Folder to upload into. The folder is created if it does not exist. Defaults to "AI Assistant".',
+        default: 'AI Assistant',
+      },
+      { name: 'folderId', type: 'string', description: 'Optional Drive folder ID. Takes precedence over folderName if provided.' },
+      {
+        name: 'convertToGoogleFormat',
+        type: 'boolean',
+        description: 'When true and the file is a pptx/docx/xlsx, upload with conversion to Google Slides/Docs/Sheets.',
+        default: true,
+      },
+      { name: 'description', type: 'string', description: 'Optional file description.' },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'drive_list_folders',
+    category: 'drive',
+    summary: 'List app-created folders in Google Drive.',
+    description:
+      'Returns folders created by this app. Under the drive.file scope only ' +
+      'app-created folders are visible, so this is intentionally limited to a ' +
+      'picker-safe set (full Drive tree browsing requires the drive.readonly scope).',
+    params: [
+      { name: 'pageSize', type: 'number', description: 'Maximum number of folders to return (1-1000).', default: 50 },
+      { name: 'pageToken', type: 'string', description: 'Next-page token from a previous call.' },
+      { name: 'userId', type: 'string', description: 'Optional. Reserved for per-user identity (Phase 2).' },
+    ],
+  },
 
   // ── Docs ──────────────────────────────────────────────────────────────────
   {

@@ -1,10 +1,19 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { FileText, FileSpreadsheet, FileCode, Globe, FileArchive, Download, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
 import type { GeneratedDocumentInfo } from '@/types';
 
+const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
+
 interface DocumentResultCardProps {
   document: GeneratedDocumentInfo;
+  /**
+   * Which outputs table the document id belongs to. Currently always
+   * 'thread' — this card is only rendered by MessageBubble (main chat).
+   * Workspace artifact cards can pass 'workspace' when they adopt this card.
+   */
+  context?: 'thread' | 'workspace';
 }
 
 /**
@@ -65,7 +74,7 @@ function formatExpiration(expiresAt: string | null): { text: string | null; vari
   return { text: `Expires ${expDate.toLocaleDateString()}`, variant: 'none' };
 }
 
-export default function DocumentResultCard({ document }: DocumentResultCardProps) {
+export default function DocumentResultCard({ document, context = 'thread' }: DocumentResultCardProps) {
   const { text: expirationText, variant: expirationVariant } = formatExpiration(document.expiresAt);
   const isExpired = expirationVariant === 'expired';
   const isWarning = expirationVariant === 'warning';
@@ -80,6 +89,9 @@ export default function DocumentResultCard({ document }: DocumentResultCardProps
     if (isExpired) return;
     window.open(document.downloadUrl, '_blank');
   };
+
+  const outputId = document.id ? Number(document.id) : undefined;
+  const isConvertible = document.fileType === 'pptx' || document.fileType === 'docx' || document.fileType === 'xlsx';
 
   return (
     <div className={`rounded-lg border p-4 mt-3 ${isExpired ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
@@ -111,6 +123,15 @@ export default function DocumentResultCard({ document }: DocumentResultCardProps
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
+          {!isExpired && outputId !== undefined && !Number.isNaN(outputId) && (
+            <SaveToDriveButton
+              outputId={outputId}
+              context={context}
+              convertToGoogleFormat={isConvertible}
+              label="Drive"
+              tooltip="Save to Google Drive"
+            />
+          )}
           {isExpired ? (
             <span className="text-xs text-gray-400 italic px-3 py-2">Deleted</span>
           ) : isHtml ? (

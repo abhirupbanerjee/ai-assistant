@@ -17,46 +17,10 @@ import {
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import { getRequestContext } from '../request-context';
 import { fetchWithSsrfGuard, getSsrfAllowedHosts, validateUrlIsPublic } from '../ssrf-guard';
-
-// ===== Connector identity signing (Drive Connectors — Phase 2) =====
-//
-// The connector needs to know *which user* is calling so it can look up that
-// user's OAuth tokens in the vault. The Function API request body IS the
-// LLM-generated tool arguments (see line 226 below), so a body-based userId
-// would be spoofable by the LLM or a prompt-injected document.
-//
-// Instead, executeFunction() injects a per-request `X-Connector-User-Id`
-// header (the user's email from the trusted RequestContext) plus an
-// HMAC-SHA256 signature of that email. The connector verifies the signature
-// with the same `CONNECTOR_HMAC_SECRET` and trusts the header — ignoring any
-// userId in the body. This keeps identity out of LLM control.
-
-function getConnectorHmacSecret(): string | null {
-  const secret = process.env.CONNECTOR_HMAC_SECRET;
-  if (!secret || secret.trim() === '') return null;
-  return secret;
-}
-
-/**
- * Build the signed-identity headers for a connector request.
- * Returns an empty object when there is no userId in context or no HMAC
- * secret configured (Phase 1 / shared service-account mode continues to work).
- */
-function buildConnectorIdentityHeaders(userId: string | undefined): Record<string, string> {
-  if (!userId) return {};
-  const secret = getConnectorHmacSecret();
-  if (!secret) {
-    // No secret configured — still send the unsigned header so connectors
-    // that haven't upgraded to HMAC verification can read it. Connectors
-    // with HMAC enabled will reject unsigned requests in their own check.
-    return { 'X-Connector-User-Id': userId };
-  }
-  const sig = createHmac('sha256', secret).update(userId, 'utf8').digest('hex');
-  return {
-    'X-Connector-User-Id': userId,
-    'X-Connector-User-Sig': sig,
-  };
-}
+import {
+  buildConnectorIdentityHeaders,
+  getConnectorHmacSecret,
+} from '../connector-identity';
 
 // Exported for the connector side (services/drive-connector) to reuse when
 // it is bundled in the same monorepo, and for unit testing.

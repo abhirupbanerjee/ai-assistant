@@ -118,3 +118,22 @@ export async function postJson(
   });
   return res.data;
 }
+
+/** Convenience: POST a raw body with a custom Content-Type, expecting JSON. */
+export async function postRaw(
+  url: string,
+  body: string | Buffer,
+  headers: Record<string, string>,
+  timeoutMs: number
+): Promise<unknown> {
+  logger.debug('HTTP POST raw', { url, bytes: body.length });
+  const res = await request({
+    method: 'POST',
+    url,
+    headers,
+    body,
+    timeoutMs,
+    json: true,
+  });
+  return res.data;
+}

@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { Download, Maximize2, X, ImageIcon, Sparkles, Cpu } from 'lucide-react';
 import type { GeneratedImageInfo } from '@/types';
+
+const SaveToDriveButton = dynamic(() => import('./SaveToDriveButton'), { ssr: false });
 
 interface ImageDisplayProps {
   image: GeneratedImageInfo;
@@ -47,6 +50,25 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
     // Open download URL in new tab
     window.open(fullUrl, '_blank');
   };
+
+  // Lazy byte capture for Save-to-Drive — only fetches when the user saves.
+  const fetchImageBase64 = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch(fullUrl, { credentials: 'same-origin' });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve((reader.result as string | undefined)?.split(',')[1] || null);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  }, [fullUrl]);
 
   const handleExpand = () => {
     setModalImageError(false); // Reset modal error state when opening
@@ -131,6 +153,13 @@ export default function ImageDisplay({ image }: ImageDisplayProps) {
               </span>
             </div>
 
+            <SaveToDriveButton
+              filename={image.alt ? `${image.alt.replace(/\s+/g, '-').toLowerCase()}.png` : 'generated-image.png'}
+              mimeType="image/png"
+              getContentBase64={fetchImageBase64}
+              label="Drive"
+              tooltip="Save image to Google Drive"
+            />
             <button
               onClick={handleDownload}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"

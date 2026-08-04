@@ -32,6 +32,8 @@ import {
   sheetsGetSpreadsheet,
   driveListFiles,
   driveGetFile,
+  driveUploadFile,
+  driveListFolders,
   docsExport,
   docsCreate,
   docsGet,
@@ -61,7 +63,15 @@ interface InvokeBody {
 }
 
 /** Read and parse JSON body from an IncomingMessage. */
-function readJsonBody(req: http.IncomingMessage, maxBytes = 1_000_000): Promise<unknown> {
+/** Body cap for regular tool calls. */
+const DEFAULT_BODY_LIMIT = 1_000_000;
+/**
+ * Body cap for upload operations. Files up to ~35 MB raw become ~47 MB of
+ * base64 inside the JSON envelope, so allow 50 MB for upload paths.
+ */
+const UPLOAD_BODY_LIMIT = 50_000_000;
+
+function readJsonBody(req: http.IncomingMessage, maxBytes = DEFAULT_BODY_LIMIT): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -278,6 +288,23 @@ async function dispatch(
       });
     case 'drive_get_file':
       return driveGetFile(cfg, String(v.fileId), v.fields as string | undefined, v.userId as string | undefined);
+    case 'drive_upload_file':
+      return driveUploadFile(cfg, {
+        filename: String(v.filename),
+        mimeType: String(v.mimeType),
+        contentBase64: String(v.contentBase64),
+        folderName: v.folderName as string | undefined,
+        folderId: v.folderId as string | undefined,
+        convertToGoogleFormat: v.convertToGoogleFormat as boolean | undefined,
+        description: v.description as string | undefined,
+        userId: v.userId as string | undefined,
+      });
+    case 'drive_list_folders':
+      return driveListFolders(cfg, {
+        pageSize: v.pageSize as number | undefined,
+        pageToken: v.pageToken as string | undefined,
+        userId: v.userId as string | undefined,
+      });
     case 'docs_export':
       return docsExport(cfg, String(v.fileId), v.mimeType as string | undefined, v.userId as string | undefined);
     case 'docs_create':
@@ -450,9 +477,15 @@ async function handleRequest(
       return;
     }
 
+    // Upload operations carry base64 file bytes in the JSON body — allow a
+    // much larger envelope for those paths (path-based op name is known here;
+    // /invoke may also carry an upload op, so it gets the larger cap too).
+    const bodyLimit =
+      path === '/drive_upload_file' || path === '/invoke' ? UPLOAD_BODY_LIMIT : DEFAULT_BODY_LIMIT;
+
     let body: unknown;
     try {
-      body = await readJsonBody(req);
+      body = await readJsonBody(req, bodyLimit);
     } catch (err) {
       sendJson(req, res, cfg, 400, { ok: false, error: (err as Error).message });
       return;
