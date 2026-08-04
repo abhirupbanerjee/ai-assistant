@@ -248,7 +248,7 @@ Tier 1 — Structured visual slides (PREFER THESE for any data, comparisons, ste
 - geo: Regional or location data. Provide geoData with markers array (label, lat, lng, size). Simplified map visualization.
 
 Tier 2 — AI-generated image slide (use when no Tier 1 type fits but a generated visual strengthens the slide):
-- image: Visual slide with AI-generated imagery. Use imagePrompt. Supports description overlay and split layout.
+- image: Visual slide with AI-generated imagery. Use imagePrompt. The image is rendered full-bleed 16:9; do NOT provide a description or content for image slides because text overlays are intentionally omitted to keep the visual unobstructed.
 
 Tier 3 — Last-resort text fallback (use ONLY when no Tier 1 or Tier 2 type fits; narrative/transition slides with no visualisable data):
 - content: Title + description + bullet points + optional "icon" emoji. Supports layout: "split-left", "split-right", "split-top"
@@ -333,7 +333,7 @@ For image slides, provide an imagePrompt describing the visual.`,
                 },
                 imagePrompt: {
                   type: 'string',
-                  description: 'For image slides: detailed prompt for AI image generation',
+                  description: 'For image slides: detailed prompt for AI image generation. The image will be rendered full-bleed 16:9 with NO text overlays. Do NOT ask the image to include headers, footers, slide numbers, titles, logos, watermarks, captions, or UI frames.',
                 },
                 imageStyle: {
                   type: 'string',

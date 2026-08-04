@@ -733,6 +733,8 @@ export class PptxBuilder {
     pptxSlide: PptxGenJS.Slide,
     slide: SlideDefinition
   ): Promise<void> {
+    // Full-bleed image slides intentionally avoid text overlays so the generated
+    // visual is unobstructed. Split mode still needs full theme for title/text.
     const { background, textColor, accentColor, headerFont, bodyFont, bodyTextColor } = this.theme;
 
     // If image_gen is not available, fall back to content slide
@@ -751,9 +753,15 @@ export class PptxBuilder {
     }
 
     try {
-      // Generate image using image_gen tool
+      // Generate image using image_gen tool.
+      // Append a strict "no page furniture" instruction so the image is a
+      // clean standalone visual suitable for full-bleed 16:9 slides.
+      const noFurnitureInstruction =
+        "\n\nCRITICAL: Do NOT include any headers, footers, slide numbers, page titles, " +
+        "logos, watermarks, captions, UI chrome, or border frames. Output only the clean " +
+        "standalone visual content suitable for full-bleed use on a 16:9 presentation slide.";
       const imageArgs: ImageGenToolArgs = {
-        prompt: slide.imagePrompt,
+        prompt: `${slide.imagePrompt}${noFurnitureInstruction}`,
         style: (slide.imageStyle as ImageGenToolArgs['style']) || 'infographic',
         aspectRatio: '16:9',
         resolution: (slide.imageResolution as ImageGenToolArgs['resolution']) || '1K',
@@ -828,7 +836,9 @@ export class PptxBuilder {
           });
         }
       } else {
-        // Full mode: full-bleed image with title overlay
+        // Full mode: full-bleed image only. Avoid title/description overlays
+        // because they obscure the generated image and compress the usable visual
+        // area on 16:9 slides.
         pptxSlide.addImage({
           data: `image/${extension};base64,${base64Image}`,
           x: 0,
@@ -837,36 +847,6 @@ export class PptxBuilder {
           h: '100%',
           sizing: { type: 'cover', w: '100%', h: '100%' },
         });
-
-        // Title overlay with shadow
-        pptxSlide.addText(slide.title, {
-          x: 0.5,
-          y: 4.1,
-          w: '90%',
-          h: 1.0,
-          fontSize: 32,
-          fontFace: headerFont,
-          color: 'FFFFFF',
-          bold: true,
-          align: 'center',
-          shadow: { type: 'outer', blur: 3, offset: 2, angle: 45, color: '000000', opacity: 0.6 },
-        });
-
-        // Description overlay below title
-        if (slide.description) {
-          pptxSlide.addText(slide.description, {
-            x: 1.0,
-            y: 4.8,
-            w: '80%',
-            h: 0.5,
-            fontSize: 14,
-            fontFace: bodyFont,
-            color: 'FFFFFF',
-            align: 'center',
-            italic: true,
-            shadow: { type: 'outer', blur: 2, offset: 1, angle: 45, color: '000000', opacity: 0.5 },
-          });
-        }
       }
 
       this.imageSlideCount++;
