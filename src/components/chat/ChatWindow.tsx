@@ -277,7 +277,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     podcasts: PodcastHint[],
     metadata?: MessageMetadata,
     thinkingContent?: string,
-    agentResponses?: AgentResponseInfo[]
+    agentResponses?: AgentResponseInfo[],
+    userMessageId?: string
   ) => {
     const assistantMessage: Message = {
       id: messageId,
@@ -297,7 +298,22 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     setMessages(prev => {
       // Guard against race condition where loadThread already added this message
       if (prev.some(m => m.id === messageId)) return prev;
-      return [...prev, assistantMessage];
+      let base = prev;
+      // Reconcile the locally-generated user message id (user-<ts>) with the
+      // server-persisted id so regenerate/edit truncation can target a real
+      // DB row on subsequent turns.
+      if (userMessageId) {
+        for (let i = base.length - 1; i >= 0; i--) {
+          const m = base[i];
+          if (m.role === 'user' && m.id.startsWith('user-')) {
+            if (m.id !== userMessageId) {
+              base = base.map((msg, idx) => idx === i ? { ...msg, id: userMessageId } : msg);
+            }
+            break;
+          }
+        }
+      }
+      return [...base, assistantMessage];
     });
     setLoading(false);
   }, []);
@@ -305,6 +321,23 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
   const handleStreamError = useCallback((code: string, message: string) => {
     setError(message);
     setLoading(false);
+  }, []);
+
+  // Swap the optimistic user-<ts> id of the latest user message for the real
+  // DB id as soon as the server persists it (user_message_saved event). Runs
+  // before generation starts, so stop/error paths are covered too — the 'done'
+  // reconciliation in handleStreamComplete then becomes a no-op backup.
+  const handleUserMessageSaved = useCallback((serverMessageId: string) => {
+    setMessages(prev => {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const m = prev[i];
+        if (m.role === 'user' && m.id.startsWith('user-')) {
+          if (m.id === serverMessageId) return prev;
+          return prev.map((msg, idx) => idx === i ? { ...msg, id: serverMessageId } : msg);
+        }
+      }
+      return prev;
+    });
   }, []);
 
   const handleModelSwitch = useCallback((originalModel: string, newModel: string, _reason: string, message: string) => {
@@ -333,6 +366,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     onComplete: handleStreamComplete,
     onError: handleStreamError,
     onModelSwitch: handleModelSwitch,
+    onUserMessageSaved: handleUserMessageSaved,
   });
 
   // Always-current streaming flag for scroll handler (avoids recreating callback)
@@ -770,7 +804,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     return null;
   }, [onThreadCreated, pendingCategoryId, pendingModelId]);
 
-  const sendMessage = useCallback(async (content: string, mode?: ChatMode, preferences?: ChatPreferences) => {
+  const sendMessage = useCallback(async (content: string, mode?: ChatMode, preferences?: ChatPreferences, options?: { truncateFromMessageId?: string }) => {
     setError(null);
 
     // Set sending flag BEFORE createThread (which may trigger onThreadCreated → activeThread change)
@@ -811,7 +845,7 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
       activeCategoryId: activeThread?.categories?.[0]?.id,
     };
     try {
-      await sendStreamingMessage(content, currentThreadId, mode, prefsToUse);
+      await sendStreamingMessage(content, currentThreadId, mode, prefsToUse, options);
     } finally {
       isSendingRef.current = false;
     }
@@ -846,14 +880,26 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     if (index < 0) return;
     const message = currentMessages[index];
     if (message.role !== 'assistant') return;
-    const precedingUserMsg = [...currentMessages]
-      .slice(0, index)
-      .reverse()
-      .find(m => m.role === 'user');
-    if (precedingUserMsg) {
-      setMessages(prev => prev.slice(0, index));
-      sendMessage(precedingUserMsg.content);
+    const userIndex = (() => {
+      for (let i = index - 1; i >= 0; i--) {
+        if (currentMessages[i].role === 'user') return i;
+      }
+      return -1;
+    })();
+    if (userIndex < 0) return;
+    const precedingUserMsg = currentMessages[userIndex];
+    // Truncate from the USER message (not just the assistant reply) so the
+    // re-sent turn replaces the old one; the server deletes from the same
+    // point via truncateFromMessageId, keeping DB history consistent.
+    // DEBUG: session-only anchor ids predict a server-side no-op (hypothesis-1);
+    // the count lets us compare against the server log to detect created_at
+    // tie over-deletion (hypothesis-2).
+    if (precedingUserMsg.id.startsWith('user-') || precedingUserMsg.id.startsWith('stopped-')) {
+      console.warn(`[Chat] Regenerate anchor is session-only (${precedingUserMsg.id}) — server truncation will no-op`);
     }
+    console.log(`[Chat] Regenerate: client truncating ${currentMessages.length - userIndex} message(s) from ${precedingUserMsg.id}`);
+    setMessages(prev => prev.slice(0, userIndex));
+    sendMessage(precedingUserMsg.content, undefined, undefined, { truncateFromMessageId: precedingUserMsg.id });
   }, [streamingState.isStreaming, sendMessage]);
 
   // Edit a user message in-place and re-run from that point.
@@ -865,10 +911,58 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
     const currentMessages = messagesRef.current;
     const index = currentMessages.findIndex(m => m.id === messageId);
     if (index < 0) return;
-    // Slice off the edited message and everything after it
+    // Slice off the edited message and everything after it; the server
+    // deletes from the same point so the edited turn replaces the original.
+    if (messageId.startsWith('user-') || messageId.startsWith('stopped-')) {
+      console.warn(`[Chat] Edit anchor is session-only (${messageId}) — server truncation will no-op`);
+    }
+    console.log(`[Chat] Edit: client truncating ${currentMessages.length - index} message(s) from ${messageId}`);
     setMessages(prev => prev.slice(0, index));
-    sendMessage(newContent);
+    sendMessage(newContent, undefined, undefined, { truncateFromMessageId: messageId });
   }, [streamingState.isStreaming, sendMessage]);
+
+  // Regenerate with a different model (ChatGPT-style): persist the model
+  // choice on the thread first — the stream route resolves the effective
+  // model per request — then run the normal regenerate flow.
+  const handleRegenerateWithModel = useCallback(async (messageId: string, modelId: string) => {
+    if (streamingState.isStreaming || !threadId) return;
+    try {
+      const res = await fetch(`/api/threads/${threadId}/model`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId }),
+      });
+      if (!res.ok) {
+        console.error('Failed to switch model:', await res.text());
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to switch model:', err);
+      return;
+    }
+    handleRegenerate(messageId);
+  }, [streamingState.isStreaming, threadId, handleRegenerate]);
+
+  // Fork the conversation into a new thread containing all messages up to
+  // and including the given message, then navigate to it.
+  const handleFork = useCallback(async (messageId: string) => {
+    if (streamingState.isStreaming || !threadId) return;
+    try {
+      const res = await fetch(`/api/threads/${threadId}/fork`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onThreadCreated?.(data.thread);
+      } else {
+        console.error('Fork failed:', await res.text());
+      }
+    } catch (err) {
+      console.error('Fork failed:', err);
+    }
+  }, [streamingState.isStreaming, threadId, onThreadCreated]);
 
   const handleUploadComplete = useCallback((filename: string) => {
     setUploads((prev) => [...prev, filename]);
@@ -1018,6 +1112,8 @@ const ChatWindow = forwardRef<ChatWindowRef, ChatWindowProps>(function ChatWindo
               showCitationTrajectory={effectiveShowCitationTrajectory}
               onRegenerate={message.role === 'assistant' ? handleRegenerate : undefined}
               onEdit={message.role === 'user' ? handleEditMessage : undefined}
+              onFork={message.role === 'assistant' && threadId ? handleFork : undefined}
+              onRegenerateWithModel={message.role === 'assistant' && threadId ? handleRegenerateWithModel : undefined}
               query={query}
             />
           </Fragment>

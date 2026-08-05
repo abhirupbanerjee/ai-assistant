@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory, transferThreadCategory } from '@/lib/db/compat';
+import { getUserByEmail, linkOutputsToMessage, getEffectiveModelForThread, getProcessingDocumentsByCategory, transferThreadCategory, deleteMessagesFromPoint } from '@/lib/db/compat';
 import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import { readFileBuffer } from '@/lib/storage';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
           toolHints,
           agentMention,
           pipelineMode,
+          truncateFromMessageId,
         } = body;
 
         // `pipeline` is client-supplied (untrusted). Keep it mutable so it can
@@ -159,6 +160,26 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        // Regenerate/edit flow: delete the messages being replaced BEFORE
+        // persisting the new user message, so DB history matches the client's
+        // truncated view (prevents ghost turns reappearing on thread reload).
+        if (truncateFromMessageId) {
+          try {
+            const deleted = await deleteMessagesFromPoint(threadId, truncateFromMessageId);
+            if (deleted > 0) {
+              console.log(`[Stream] Truncated ${deleted} message(s) from ${truncateFromMessageId} in thread ${threadId}`);
+            } else {
+              // DEBUG(hypothesis-1): anchor miss means the client sent a
+              // session-only id (user-<ts>/stopped-<ts>) — the 'done' event
+              // never fired (stop/error), so reconciliation never happened.
+              console.warn(`[Stream] Truncate anchor NOT FOUND (0 deleted): ${truncateFromMessageId} in thread ${threadId} — ghost turn will persist`);
+            }
+          } catch (err) {
+            // Non-fatal: worst case the old turns remain (previous behavior)
+            console.warn('[Stream] Message truncation failed (non-fatal):', err);
+          }
+        }
+
         // Resolve effective model for this thread (thread override or global default)
         // Note: may be AUTO_MODEL_SENTINEL — resolved to concrete id below after context is available
         let effectiveModel = await getEffectiveModelForThread(threadId);
@@ -187,6 +208,11 @@ export async function POST(request: NextRequest) {
         };
         await addMessage(user.id, threadId, userMessage);
         await updateThreadTokenCount(threadId, countTokens(message));
+
+        // Emit the persisted user message id immediately so the client can
+        // reconcile its optimistic id even if the stream is later stopped or
+        // errors out (regenerate/edit truncation needs a real DB anchor).
+        send({ type: 'user_message_saved', messageId: userMessageId, threadId });
 
         // ============ AGENT MENTION & PIPELINE BRANCH ============
         // Phase 5: Inline pipeline orchestration runs before the single-@
@@ -511,7 +537,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Send completion
-                send({ type: 'done', messageId: assistantMessageId, threadId });
+                send({ type: 'done', messageId: assistantMessageId, threadId, userMessageId });
               } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : 'Autonomous execution failed';
                 send({ type: 'error', code: 'UNKNOWN_ERROR', message: errorMsg, recoverable: false });
@@ -1307,6 +1333,7 @@ export async function POST(request: NextRequest) {
               type: 'done',
               messageId: assistantMessageId,
               threadId,
+              userMessageId,
               model: usedModel,
               totalMs: Date.now() - requestStart,
               llmMs,

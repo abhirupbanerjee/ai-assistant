@@ -260,6 +260,7 @@ export {
   addMessage,
   getMessageById,
   getMessagesForThread,
+  deleteMessagesFromPoint,
   // Thread Uploads
   addThreadUpload,
   getThreadUploadById,

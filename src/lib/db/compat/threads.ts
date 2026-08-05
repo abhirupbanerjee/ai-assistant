@@ -473,9 +473,66 @@ export async function getMessagesForThread(threadId: string): Promise<ParsedMess
     ])
     .where('thread_id', '=', threadId)
     .orderBy('created_at', 'asc')
+    // Tie-break identical timestamps (second-precision on imported rows) so
+    // the loaded order matches deleteMessagesFromPoint's anchor positioning.
+    .orderBy('id', 'asc')
     .execute();
 
   return messages.map((msg) => parseMessage(msg as DbMessage));
+}
+
+/**
+ * Delete a message and every message after it in a thread.
+ *
+ * Used by regenerate/edit-message flows: the client truncates its local list
+ * and re-sends, so the server must delete the replaced turns or they would
+ * reappear as "ghost" messages on the next thread load.
+ *
+ * Implementation note: deletion is by ANCHOR POSITION in a deterministic
+ * ordering (created_at, id) rather than a `created_at >= anchor` comparison.
+ * Timestamp ties (second-precision on SQLite-imported rows, same-second
+ * writes) would otherwise match messages BEFORE the anchor and delete the
+ * wrong turn.
+ *
+ * The anchor message must belong to the given thread (callers verify thread
+ * ownership beforehand). Generated artifacts in thread_outputs are detached
+ * (message_id SET NULL) so they survive; citation_trajectories rows are
+ * removed via FK ON DELETE CASCADE.
+ *
+ * Returns the number of deleted messages (0 when the anchor is not found —
+ * e.g. a session-only message id that was never persisted).
+ */
+export async function deleteMessagesFromPoint(threadId: string, fromMessageId: string): Promise<number> {
+  const db = await getDb();
+
+  // Deterministic ordering — id breaks created_at ties so the anchor's
+  // position is stable and matches the client's loaded order.
+  const ordered = await db
+    .selectFrom('messages')
+    .select(['id'])
+    .where('thread_id', '=', threadId)
+    .orderBy('created_at', 'asc')
+    .orderBy('id', 'asc')
+    .execute();
+
+  const anchorIndex = ordered.findIndex(r => r.id === fromMessageId);
+  if (anchorIndex === -1) return 0;
+
+  const ids = ordered.slice(anchorIndex).map(r => r.id);
+
+  // Detach generated outputs so they remain accessible in thread_outputs
+  await db
+    .updateTable('thread_outputs')
+    .set({ message_id: null })
+    .where('message_id', 'in', ids)
+    .execute();
+
+  const result = await db
+    .deleteFrom('messages')
+    .where('id', 'in', ids)
+    .executeTakeFirst();
+
+  return Number(result.numDeletedRows ?? 0);
 }
 
 // ============ Thread Uploads ============

@@ -216,6 +216,10 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   /** Callback to regenerate the assistant response (assistant messages only) */
   onRegenerate?: (messageId: string) => void;
+  /** Callback to regenerate with a different model (ChatGPT-style model picker) */
+  onRegenerateWithModel?: (messageId: string, modelId: string) => void;
+  /** Callback to fork the conversation into a new thread up to this message */
+  onFork?: (messageId: string) => void;
   /** Callback to edit a user message and re-run from that point */
   onEdit?: (messageId: string, newContent: string) => void;
   /** Thread ID for citation trajectory card */
@@ -230,7 +234,7 @@ interface MessageBubbleProps {
   workspaceId?: string | null;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onEdit, threadId, showSources = true, showCitationTrajectory = true, query, workspaceId }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, isStreaming = false, onRegenerate, onRegenerateWithModel, onFork, onEdit, threadId, showSources = true, showCitationTrajectory = true, query, workspaceId }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -628,6 +632,9 @@ const MessageBubble = memo(function MessageBubble({ message, isStreaming = false
           <MessageActions
             content={message.content}
             onRegenerate={() => onRegenerate(message.id)}
+            onRegenerateWithModel={onRegenerateWithModel ? (modelId) => onRegenerateWithModel(message.id, modelId) : undefined}
+            onFork={onFork ? () => onFork(message.id) : undefined}
+            threadId={threadId}
           />
         )}
 
@@ -665,6 +672,8 @@ function areMessageBubblePropsEqual(
   if (prev.showCitationTrajectory !== next.showCitationTrajectory) return false;
   // Callback identity — only compare by reference (parent should useCallback)
   if (prev.onRegenerate !== next.onRegenerate) return false;
+  if (prev.onRegenerateWithModel !== next.onRegenerateWithModel) return false;
+  if (prev.onFork !== next.onFork) return false;
   if (prev.onEdit !== next.onEdit) return false;
 
   const pm = prev.message;

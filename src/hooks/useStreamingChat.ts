@@ -130,20 +130,36 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata, thinkingContent?: string, agentResponses?: AgentResponseInfo[]) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[], diagrams: DiagramHint[], podcasts: PodcastHint[], metadata?: import('@/types').MessageMetadata, thinkingContent?: string, agentResponses?: AgentResponseInfo[], userMessageId?: string) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
   onPhaseChange?: (phase: StreamPhase) => void;
   /** Callback when LLM model is switched (fallback or capability requirement) */
   onModelSwitch?: (originalModel: string, newModel: string, reason: string, message: string) => void;
+  /**
+   * Callback as soon as the user message is persisted (before generation).
+   * Lets the client swap its optimistic user-<ts> id for the real DB id even
+   * when the stream is stopped or errors (no 'done' event in those paths).
+   */
+  onUserMessageSaved?: (messageId: string) => void;
+}
+
+/** Per-send options (not part of persisted chat preferences) */
+export interface SendMessageOptions {
+  /**
+   * Regenerate/edit flow: id of the earliest message being replaced. The server
+   * deletes it and all later messages before persisting the new turn, keeping
+   * DB history consistent with the client's truncated view.
+   */
+  truncateFromMessageId?: string;
 }
 
 export interface UseStreamingChatReturn {
   /** Current streaming state */
   state: StreamingState;
   /** Send a message and start streaming */
-  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous' | 'swarm', preferences?: ChatPreferences) => Promise<void>;
+  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous' | 'swarm', preferences?: ChatPreferences, options?: SendMessageOptions) => Promise<void>;
   /** Abort current streaming */
   abort: () => void;
   /** Toggle processing details expansion */
@@ -237,7 +253,7 @@ const initialState: StreamingState = {
 // ============ Hook ============
 
 export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStreamingChatReturn {
-  const { onComplete, onError, onPhaseChange, onModelSwitch } = options;
+  const { onComplete, onError, onPhaseChange, onModelSwitch, onUserMessageSaved } = options;
 
   const [state, setState] = useState<StreamingState>(initialState);
   // Always-current state ref — used to read values outside setState updaters
@@ -334,6 +350,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
    */
   const processEvent = useCallback((event: StreamEvent) => {
     switch (event.type) {
+      case 'user_message_saved':
+        onUserMessageSaved?.(event.messageId);
+        break;
+
       case 'status':
         setState(prev => ({
           ...prev,
@@ -1020,7 +1040,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           },
         }));
         completedRef.current = true;
-        onComplete?.(event.messageId, finalContent, finalSources, finalVisualizations, finalDocuments, finalImages, finalDiagrams, finalPodcasts, metadata, finalThinking || undefined, finalAgentResponses);
+        onComplete?.(event.messageId, finalContent, finalSources, finalVisualizations, finalDocuments, finalImages, finalDiagrams, finalPodcasts, metadata, finalThinking || undefined, finalAgentResponses, event.userMessageId);
         break;
       }
 
@@ -1037,12 +1057,12 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         onError?.(event.code, event.message, event.recoverable);
         break;
     }
-  }, [onComplete, onError, onPhaseChange, onModelSwitch]);
+  }, [onComplete, onError, onPhaseChange, onModelSwitch, onUserMessageSaved]);
 
   /**
    * Send message and start streaming
    */
-  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' | 'swarm' = 'normal', preferences?: ChatPreferences) => {
+  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' | 'swarm' = 'normal', preferences?: ChatPreferences, options?: SendMessageOptions) => {
     // Abort any existing stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -1097,6 +1117,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
           agentMention: preferences?.agentMention,
           pipeline: preferences?.pipeline,
           pipelineMode: preferences?.pipelineMode,
+          truncateFromMessageId: options?.truncateFromMessageId,
         }),
         signal: abortControllerRef.current.signal,
       });

@@ -245,8 +245,14 @@ export type StreamEvent =
   // Thinking/reasoning content from think-tag models (Qwen3, QwQ, DeepSeek-R1)
   | { type: 'thinking_chunk'; content: string }
 
+  // User message persisted — emitted immediately after the user turn is saved,
+  // BEFORE generation begins, so the client can reconcile its optimistic
+  // user-<ts> id with the real DB id even when the stream is stopped or errors
+  // (the 'done' event never fires in those paths).
+  | { type: 'user_message_saved'; messageId: string; threadId: string }
+
   // Completion
-  | { type: 'done'; messageId: string; threadId: string; model?: string; totalMs?: number; llmMs?: number; ragMs?: number; completionTokens?: number; tokensEstimated?: boolean }
+  | { type: 'done'; messageId: string; threadId: string; userMessageId?: string; model?: string; totalMs?: number; llmMs?: number; ragMs?: number; completionTokens?: number; tokensEstimated?: boolean }
 
   // Error
   | { type: 'error'; code: StreamErrorCode; message: string; recoverable: boolean }
@@ -506,6 +512,12 @@ export interface StreamChatRequest {
   pipeline?: PipelineStep[];
   /** Execution mode for the pipeline. */
   pipelineMode?: PipelineMode;
+  /**
+   * Regenerate/edit flow: delete this message and all later messages in the
+   * thread before persisting the new user message, so DB history matches the
+   * client's truncated view (no ghost turns on reload).
+   */
+  truncateFromMessageId?: string;
 }
 
 /**
