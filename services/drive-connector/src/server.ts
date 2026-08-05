@@ -52,6 +52,14 @@ import {
   msDriveUploadFile,
   msExcelGetRange,
   msExcelUpdateRange,
+  msTeamsListTeams,
+  msTeamsListChannels,
+  msTeamsGetMessages,
+  msOutlookListMessages,
+  msOutlookSendMail,
+  msOutlookGetCalendar,
+  msSharepointSearch,
+  msSharepointListLists,
 } from './ops';
 import { getServiceAccountEmail } from './google';
 
@@ -399,6 +407,37 @@ async function dispatch(
         v.values as unknown[][],
         v.userId as string | undefined
       );
+    // ── Microsoft Teams ──────────────────────────────────────────────────────
+    case 'ms_teams_list_teams':
+      return msTeamsListTeams(cfg, v.userId as string | undefined);
+    case 'ms_teams_list_channels':
+      return msTeamsListChannels(cfg, String(v.teamId), v.userId as string | undefined);
+    case 'ms_teams_get_messages':
+      return msTeamsGetMessages(
+        cfg,
+        String(v.teamId),
+        String(v.channelId),
+        v.top as number | undefined,
+        v.userId as string | undefined
+      );
+    // ── Microsoft Outlook ────────────────────────────────────────────────────
+    case 'ms_outlook_list_messages':
+      return msOutlookListMessages(cfg, v.top as number | undefined, v.userId as string | undefined);
+    case 'ms_outlook_send_mail':
+      return msOutlookSendMail(
+        cfg,
+        String(v.to),
+        String(v.subject),
+        String(v.body),
+        v.userId as string | undefined
+      );
+    case 'ms_outlook_get_calendar':
+      return msOutlookGetCalendar(cfg, v.top as number | undefined, v.userId as string | undefined);
+    // ── Microsoft SharePoint ─────────────────────────────────────────────────
+    case 'ms_sharepoint_search':
+      return msSharepointSearch(cfg, v.query as string | undefined, v.userId as string | undefined);
+    case 'ms_sharepoint_list_lists':
+      return msSharepointListLists(cfg, String(v.siteId), v.userId as string | undefined);
     default:
       return { ok: false, error: `Unknown operation: ${op}` };
   }

@@ -322,6 +322,14 @@ export async function initializeTools(): Promise<void> {
     // Ensure all registered tools have configs
     await ensureToolConfigsExist();
 
+    // Sync connector tools on startup
+    try {
+      const { syncConnectorTools } = await import('./connectors/connector-registry');
+      await syncConnectorTools();
+    } catch (error) {
+      logger.error('Failed to sync connector tools', { error: String(error) });
+    }
+
     // Discover MCP tools from enabled servers when MCP is enabled
     if (isMcpEnabled()) {
       try {

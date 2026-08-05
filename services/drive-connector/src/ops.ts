@@ -1168,6 +1168,250 @@ function extractMsError(err: unknown): string {
   return (err as Error).message || String(err);
 }
 
+// ── Microsoft Teams ──────────────────────────────────────────────────────────
+
+interface MsTeam {
+  id: string;
+  displayName: string;
+  description?: string;
+  visibility?: string;
+}
+
+interface MsTeamsListResponse {
+  value: MsTeam[];
+}
+
+interface MsChannel {
+  id: string;
+  displayName: string;
+  description?: string;
+  membershipType?: string;
+}
+
+interface MsChannelsListResponse {
+  value: MsChannel[];
+}
+
+interface MsChatMessage {
+  id: string;
+  body: { content: string; contentType: string };
+  from?: { user?: { id: string; displayName: string } };
+  createdDateTime: string;
+}
+
+interface MsMessagesListResponse {
+  value: MsChatMessage[];
+}
+
+export async function msTeamsListTeams(
+  cfg: AppConfig,
+  userId?: string
+): Promise<OpResult<MsTeamsListResponse>> {
+  return msRunOp<MsTeamsListResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(`${GRAPH_BASE}/me/joinedTeams`, headers, cfg.msGraphTimeoutMs)) as MsTeamsListResponse,
+    userId
+  );
+}
+
+export async function msTeamsListChannels(
+  cfg: AppConfig,
+  teamId: string,
+  userId?: string
+): Promise<OpResult<MsChannelsListResponse>> {
+  return msRunOp<MsChannelsListResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(
+        `${GRAPH_BASE}/teams/${enc(teamId)}/channels`,
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsChannelsListResponse,
+    userId
+  );
+}
+
+export async function msTeamsGetMessages(
+  cfg: AppConfig,
+  teamId: string,
+  channelId: string,
+  top?: number,
+  userId?: string
+): Promise<OpResult<MsMessagesListResponse>> {
+  const params = new URLSearchParams();
+  if (top) params.set('$top', String(top));
+  return msRunOp<MsMessagesListResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(
+        `${GRAPH_BASE}/teams/${enc(teamId)}/channels/${enc(channelId)}/messages?${params.toString()}`,
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsMessagesListResponse,
+    userId
+  );
+}
+
+// ── Microsoft Outlook ────────────────────────────────────────────────────────
+
+interface MsOutlookMessage {
+  id: string;
+  subject: string;
+  from?: { emailAddress?: { name: string; address: string } };
+  receivedDateTime: string;
+  bodyPreview: string;
+}
+
+interface MsOutlookMessagesResponse {
+  value: MsOutlookMessage[];
+}
+
+interface MsCalendarEvent {
+  id: string;
+  subject: string;
+  start: { dateTime: string; timeZone: string };
+  end: { dateTime: string; timeZone: string };
+  location?: { displayName: string };
+  organizer?: { emailAddress?: { name: string; address: string } };
+}
+
+interface MsCalendarEventsResponse {
+  value: MsCalendarEvent[];
+}
+
+export async function msOutlookListMessages(
+  cfg: AppConfig,
+  top?: number,
+  userId?: string
+): Promise<OpResult<MsOutlookMessagesResponse>> {
+  const params = new URLSearchParams();
+  params.set('$top', String(top ?? 20));
+  params.set('$select', 'id,subject,from,receivedDateTime,bodyPreview');
+  return msRunOp<MsOutlookMessagesResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(
+        `${GRAPH_BASE}/me/messages?${params.toString()}`,
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsOutlookMessagesResponse,
+    userId
+  );
+}
+
+export async function msOutlookSendMail(
+  cfg: AppConfig,
+  to: string,
+  subject: string,
+  body: string,
+  userId?: string
+): Promise<OpResult<{ ok: boolean }>> {
+  const toRecipients = to.split(',').map((addr) => ({
+    emailAddress: { address: addr.trim() },
+  }));
+  const mailBody = {
+    message: {
+      subject,
+      body: { contentType: 'Text', content: body },
+      toRecipients,
+    },
+  };
+  return msRunOp<{ ok: boolean }>(
+    cfg,
+    async (headers) => {
+      await postJson(
+        `${GRAPH_BASE}/me/sendMail`,
+        mailBody,
+        headers,
+        cfg.msGraphTimeoutMs
+      );
+      return { ok: true };
+    },
+    userId
+  );
+}
+
+export async function msOutlookGetCalendar(
+  cfg: AppConfig,
+  top?: number,
+  userId?: string
+): Promise<OpResult<MsCalendarEventsResponse>> {
+  const params = new URLSearchParams();
+  params.set('$top', String(top ?? 20));
+  params.set('$select', 'id,subject,start,end,location,organizer');
+  params.set('$orderby', 'start/dateTime');
+  return msRunOp<MsCalendarEventsResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(
+        `${GRAPH_BASE}/me/calendar/events?${params.toString()}`,
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsCalendarEventsResponse,
+    userId
+  );
+}
+
+// ── Microsoft SharePoint ─────────────────────────────────────────────────────
+
+interface MsSharePointSite {
+  id: string;
+  name: string;
+  webUrl: string;
+  displayName: string;
+  description?: string;
+}
+
+interface MsSharePointSitesResponse {
+  value: MsSharePointSite[];
+}
+
+interface MsSharePointList {
+  id: string;
+  name: string;
+  displayName: string;
+  description?: string;
+}
+
+interface MsSharePointListsResponse {
+  value: MsSharePointList[];
+}
+
+export async function msSharepointSearch(
+  cfg: AppConfig,
+  query?: string,
+  userId?: string
+): Promise<OpResult<MsSharePointSitesResponse>> {
+  let url = `${GRAPH_BASE}/sites`;
+  if (query) {
+    url += `?search=${enc(query)}`;
+  }
+  return msRunOp<MsSharePointSitesResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(url, headers, cfg.msGraphTimeoutMs)) as MsSharePointSitesResponse,
+    userId
+  );
+}
+
+export async function msSharepointListLists(
+  cfg: AppConfig,
+  siteId: string,
+  userId?: string
+): Promise<OpResult<MsSharePointListsResponse>> {
+  return msRunOp<MsSharePointListsResponse>(
+    cfg,
+    async (headers) =>
+      (await getJson(
+        `${GRAPH_BASE}/sites/${enc(siteId)}/lists`,
+        headers,
+        cfg.msGraphTimeoutMs
+      )) as MsSharePointListsResponse,
+    userId
+  );
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** PUT JSON expecting JSON. */

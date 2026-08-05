@@ -24,6 +24,24 @@ export interface ConnectedAccountsResponse {
     revoked: boolean;
     scopes?: string;
   };
+  github: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
+  notion: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
+  slack: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
 }
 
 export async function GET() {
@@ -47,6 +65,9 @@ export async function GET() {
 
   const google = accounts.find((a) => a.provider === 'google');
   const microsoft = accounts.find((a) => a.provider === 'microsoft');
+  const github = accounts.find((a) => a.provider === 'github');
+  const notion = accounts.find((a) => a.provider === 'notion');
+  const slack = accounts.find((a) => a.provider === 'slack');
 
   const response: ConnectedAccountsResponse = {
     google: {
@@ -60,6 +81,24 @@ export async function GET() {
       displayName: microsoft?.displayName,
       revoked: microsoft?.revoked ?? false,
       scopes: microsoft?.scopes,
+    },
+    github: {
+      connected: !!github && !github.revoked,
+      displayName: github?.displayName,
+      revoked: github?.revoked ?? false,
+      scopes: github?.scopes,
+    },
+    notion: {
+      connected: !!notion && !notion.revoked,
+      displayName: notion?.displayName,
+      revoked: notion?.revoked ?? false,
+      scopes: notion?.scopes,
+    },
+    slack: {
+      connected: !!slack && !slack.revoked,
+      displayName: slack?.displayName,
+      revoked: slack?.revoked ?? false,
+      scopes: slack?.scopes,
     },
   };
 

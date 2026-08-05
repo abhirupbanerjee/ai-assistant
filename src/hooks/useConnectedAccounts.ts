@@ -21,6 +21,24 @@ export interface ConnectedAccountsStatus {
     revoked: boolean;
     scopes?: string;
   };
+  github: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
+  notion: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
+  slack: {
+    connected: boolean;
+    displayName?: string;
+    revoked: boolean;
+    scopes?: string;
+  };
 }
 
 export function useConnectedAccounts() {
@@ -54,6 +72,9 @@ export function useConnectedAccounts() {
   return {
     googleConnected: accounts?.google?.connected ?? false,
     microsoftConnected: accounts?.microsoft?.connected ?? false,
+    githubConnected: accounts?.github?.connected ?? false,
+    notionConnected: accounts?.notion?.connected ?? false,
+    slackConnected: accounts?.slack?.connected ?? false,
     accounts,
     loading,
     error,

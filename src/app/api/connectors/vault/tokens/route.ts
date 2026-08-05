@@ -29,7 +29,7 @@ import type { ConnectedAccountProvider } from '@/types/connected-accounts';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_PROVIDERS: ReadonlySet<string> = new Set(['google', 'microsoft']);
+const VALID_PROVIDERS: ReadonlySet<string> = new Set(['google', 'microsoft', 'github', 'notion', 'slack']);
 
 /**
  * Verify the HMAC signature on the X-Connector-User-Id header.

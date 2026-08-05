@@ -1,0 +1,37 @@
+# =============================================================================
+# GitHub Connector — Docker Compose override
+# =============================================================================
+# Usage:
+#   1. Set GITHUB_CONNECTOR_BEARER_TOKEN in your .env (generate with: openssl rand -hex 32)
+#   2. Set CONNECTOR_HMAC_SECRET in your .env (shared across all connectors)
+#   3. Set APP_BASE_URL (e.g., http://app:3000 in Docker)
+#   4. Start with: docker compose -f docker-compose.yml -f services/github-connector/docker-compose.connector.yml up -d
+# =============================================================================
+
+services:
+  github-connector:
+    build:
+      context: ./services/github-connector
+      dockerfile: Dockerfile
+    container_name: policy-bot-github-connector
+    environment:
+      - CONNECTOR_BEARER_TOKEN=${GITHUB_CONNECTOR_BEARER_TOKEN}
+      - PORT=8091
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - GITHUB_TIMEOUT_MS=${GITHUB_TIMEOUT_MS:-30000}
+      - CONNECTOR_HMAC_SECRET=${CONNECTOR_HMAC_SECRET:-}
+      - APP_BASE_URL=${APP_BASE_URL:-http://app:3000}
+      - CORS_ORIGINS=*
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - policy-bot-network
+    restart: unless-stopped

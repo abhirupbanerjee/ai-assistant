@@ -2,19 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { HardDrive, AlertTriangle, Loader2, CheckCircle2, XCircle, Plug, Unplug } from 'lucide-react';
+import {
+  HardDrive,
+  Github,
+  AlertTriangle,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Plug,
+  Unplug,
+} from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 /**
  * Connect/Disconnect UI for Drive connectors (§8 Task 8).
  *
  * Renders the connected state, granted scopes, and a Connect / Disconnect
- * button for each supported provider. Currently supports Google; Microsoft
- * slots in via the same shape (§8 Task 10).
- *
- * The section reads OAuth callback result flags from the URL query params
- * (`?google_connected=1`, `?google_error=...`) to surface success/error
- * messages after the redirect round-trip.
+ * button for each supported provider. Fetches provider metadata from
+ * GET /api/connectors/providers and falls back to a hardcoded list if
+ * the API call fails.
  */
 
 interface ConnectedAccountStatus {
@@ -28,35 +34,54 @@ interface ConnectedAccountStatus {
   updatedAt?: string;
 }
 
-type ProviderKey = 'google' | 'microsoft';
+type ProviderKey = 'google' | 'microsoft' | 'github';
 
 interface ProviderConfig {
   key: ProviderKey;
   label: string;
+  description: string;
   startPath: string;
   disconnectPath: string;
-  icon: typeof HardDrive;
+  icon: string;
   accentColor: string;
 }
 
-const PROVIDERS: ProviderConfig[] = [
+/** Hardcoded fallback providers used when the API call fails. */
+const FALLBACK_PROVIDERS: ProviderConfig[] = [
   {
     key: 'google',
     label: 'Google Drive',
+    description: 'Access Google Drive, Sheets, Docs, and Slides',
     startPath: '/api/connectors/google/start',
     disconnectPath: '/api/connectors/google/disconnect',
-    icon: HardDrive,
+    icon: 'HardDrive',
     accentColor: 'text-blue-600',
   },
   {
     key: 'microsoft',
     label: 'OneDrive',
+    description: 'Access OneDrive, Excel, and SharePoint files',
     startPath: '/api/connectors/microsoft/start',
     disconnectPath: '/api/connectors/microsoft/disconnect',
-    icon: HardDrive,
+    icon: 'HardDrive',
     accentColor: 'text-sky-600',
   },
+  {
+    key: 'github',
+    label: 'GitHub',
+    description: 'Access repositories, issues, PRs, and code search',
+    startPath: '/api/connectors/github/start',
+    disconnectPath: '/api/connectors/github/disconnect',
+    icon: 'Github',
+    accentColor: 'text-purple-600',
+  },
 ];
+
+/** Map icon string names to lucide-react components. */
+const ICON_MAP: Record<string, typeof HardDrive> = {
+  HardDrive,
+  Github,
+};
 
 /** Format scope URIs into human-readable labels. */
 function formatScope(scope: string): string {
@@ -77,40 +102,82 @@ function formatScope(scope: string): string {
 
 export default function ConnectedAccountsSection() {
   const router = useRouter();
+  const [providers, setProviders] = useState<ProviderConfig[]>(FALLBACK_PROVIDERS);
   const [statuses, setStatuses] = useState<Record<ProviderKey, ConnectedAccountStatus | null>>({
     google: null,
     microsoft: null,
+    github: null,
   });
   const [loading, setLoading] = useState<Record<ProviderKey, boolean>>({
     google: true,
     microsoft: true,
+    github: true,
   });
   const [disconnecting, setDisconnecting] = useState<Record<ProviderKey, boolean>>({
     google: false,
     microsoft: false,
+    github: false,
   });
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // ── Fetch providers from API on mount ──────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/connectors/providers')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.providers && Array.isArray(data.providers)) {
+          const mapped: ProviderConfig[] = data.providers.map((p: Record<string, unknown>) => ({
+            key: p.provider as ProviderKey,
+            label: p.label as string,
+            description: p.description as string,
+            startPath: p.oauthStartPath as string,
+            disconnectPath: p.oauthDisconnectPath as string,
+            icon: p.icon as string,
+            accentColor: p.accentColor as string,
+          }));
+          setProviders(mapped);
+        }
+      })
+      .catch(() => {
+        // Fallback to hardcoded providers — already set as initial state
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Load connection status for all providers ─────────────────────────────
-  const loadStatus = useCallback(async (provider: ProviderKey) => {
-    try {
-      const res = await fetch(PROVIDERS.find((p) => p.key === provider)!.disconnectPath);
-      if (res.status === 401) {
-        router.push('/auth/signin');
+  const loadStatus = useCallback(
+    async (provider: ProviderKey) => {
+      const config = providers.find((p) => p.key === provider);
+      if (!config) {
+        setStatuses((prev) => ({ ...prev, [provider]: { connected: false } }));
+        setLoading((prev) => ({ ...prev, [provider]: false }));
         return;
       }
-      if (res.ok) {
-        const data = (await res.json()) as ConnectedAccountStatus;
-        setStatuses((prev) => ({ ...prev, [provider]: data }));
-      } else {
+      try {
+        const res = await fetch(config.disconnectPath);
+        if (res.status === 401) {
+          router.push('/auth/signin');
+          return;
+        }
+        if (res.ok) {
+          const data = (await res.json()) as ConnectedAccountStatus;
+          setStatuses((prev) => ({ ...prev, [provider]: data }));
+        } else {
+          setStatuses((prev) => ({ ...prev, [provider]: { connected: false } }));
+        }
+      } catch {
         setStatuses((prev) => ({ ...prev, [provider]: { connected: false } }));
+      } finally {
+        setLoading((prev) => ({ ...prev, [provider]: false }));
       }
-    } catch {
-      setStatuses((prev) => ({ ...prev, [provider]: { connected: false } }));
-    } finally {
-      setLoading((prev) => ({ ...prev, [provider]: false }));
-    }
-  }, [router]);
+    },
+    [router, providers]
+  );
 
   useEffect(() => {
     // Check URL for OAuth callback result flags.
@@ -118,41 +185,60 @@ export default function ConnectedAccountsSection() {
     if (params.get('google_connected') === '1') {
       setNotice({ type: 'success', message: 'Google Drive connected successfully.' });
     } else if (params.get('google_error')) {
-      setNotice({ type: 'error', message: `Google connection failed: ${params.get('google_error')}` });
+      setNotice({
+        type: 'error',
+        message: `Google connection failed: ${params.get('google_error')}`,
+      });
     } else if (params.get('ms_connected') === '1') {
       setNotice({ type: 'success', message: 'OneDrive connected successfully.' });
     } else if (params.get('ms_error')) {
-      setNotice({ type: 'error', message: `OneDrive connection failed: ${params.get('ms_error')}` });
+      setNotice({
+        type: 'error',
+        message: `OneDrive connection failed: ${params.get('ms_error')}`,
+      });
+    } else if (params.get('github_connected') === '1') {
+      setNotice({ type: 'success', message: 'GitHub connected successfully.' });
+    } else if (params.get('github_error')) {
+      setNotice({
+        type: 'error',
+        message: `GitHub connection failed: ${params.get('github_error')}`,
+      });
     }
     // Clean the URL so the notice doesn't persist on refresh.
     if (
       params.get('google_connected') ||
       params.get('google_error') ||
       params.get('ms_connected') ||
-      params.get('ms_error')
+      params.get('ms_error') ||
+      params.get('github_connected') ||
+      params.get('github_error')
     ) {
       const url = new URL(window.location.href);
       url.searchParams.delete('google_connected');
       url.searchParams.delete('google_error');
       url.searchParams.delete('ms_connected');
       url.searchParams.delete('ms_error');
+      url.searchParams.delete('github_connected');
+      url.searchParams.delete('github_error');
       window.history.replaceState({}, '', url.toString());
     }
 
-    // Load status for all configured providers.
-    PROVIDERS.forEach((p) => loadStatus(p.key));
-  }, [loadStatus]);
+    // Load status for all providers.
+    providers.forEach((p) => loadStatus(p.key));
+  }, [loadStatus, providers]);
 
   // ── Handle Connect (redirect to OAuth start) ─────────────────────────────
   const handleConnect = (provider: ProviderKey) => {
-    const config = PROVIDERS.find((p) => p.key === provider)!;
+    const config = providers.find((p) => p.key === provider);
+    if (!config) return;
     // Redirect to the OAuth start endpoint with a return-to path.
     window.location.href = `${config.startPath}?redirect=/profile`;
   };
 
   // ── Handle Disconnect ─────────────────────────────────────────────────────
   const handleDisconnect = async (provider: ProviderKey) => {
-    const config = PROVIDERS.find((p) => p.key === provider)!;
+    const config = providers.find((p) => p.key === provider);
+    if (!config) return;
     setDisconnecting((prev) => ({ ...prev, [provider]: true }));
     setNotice(null);
     try {
@@ -161,7 +247,10 @@ export default function ConnectedAccountsSection() {
         const data = await res.json().catch(() => ({ error: 'Disconnect failed' }));
         throw new Error(data.error || 'Disconnect failed');
       }
-      setNotice({ type: 'success', message: `${config.label} disconnected. Tokens revoked and vault row deleted.` });
+      setNotice({
+        type: 'success',
+        message: `${config.label} disconnected. Tokens revoked and vault row deleted.`,
+      });
       await loadStatus(provider);
     } catch (err) {
       setNotice({
@@ -205,8 +294,8 @@ export default function ConnectedAccountsSection() {
         )}
 
         {/* Provider rows */}
-        {PROVIDERS.map((config) => {
-          const Icon = config.icon;
+        {providers.map((config) => {
+          const Icon = ICON_MAP[config.icon] || HardDrive;
           const status = statuses[config.key];
           const isLoading = loading[config.key];
           const isDisconnecting = disconnecting[config.key];
@@ -226,7 +315,9 @@ export default function ConnectedAccountsSection() {
                     ) : status?.connected ? (
                       <div className="flex items-center gap-1.5 text-xs text-green-700">
                         <CheckCircle2 size={14} />
-                        <span>Connected{status.displayName ? ` — ${status.displayName}` : ''}</span>
+                        <span>
+                          Connected{status.displayName ? ` — ${status.displayName}` : ''}
+                        </span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -257,7 +348,11 @@ export default function ConnectedAccountsSection() {
                       Disconnect
                     </Button>
                   ) : (
-                    <Button variant="primary" size="sm" onClick={() => handleConnect(config.key)}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleConnect(config.key)}
+                    >
                       <Plug size={14} className="mr-1" />
                       Connect
                     </Button>

@@ -205,6 +205,69 @@ services:
       - policy-bot-network
     restart: unless-stopped
 
+  # GitHub Connector — microservice for GitHub API access (repos, issues, PRs)
+  # Requires GITHUB_CONNECTOR_BEARER_TOKEN set and profile 'github' enabled.
+  github-connector:
+    profiles:
+      - github
+    build:
+      context: ./services/github-connector
+      dockerfile: Dockerfile
+    container_name: policy-bot-github-connector
+    environment:
+      - PORT=8091
+      - CONNECTOR_BEARER_TOKEN=${GITHUB_CONNECTOR_BEARER_TOKEN}
+      - CONNECTOR_HMAC_SECRET=${CONNECTOR_HMAC_SECRET}
+      - APP_BASE_URL=${NEXTAUTH_URL}
+      - GITHUB_TIMEOUT_MS=30000
+      - CORS_ORIGINS=*
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  # Notion Connector — microservice for Notion API access (pages, databases, search)
+  # Requires NOTION_CONNECTOR_BEARER_TOKEN set and profile 'notion' enabled.
+  notion-connector:
+    profiles:
+      - notion
+    build:
+      context: ./services/notion-connector
+      dockerfile: Dockerfile
+    container_name: policy-bot-notion-connector
+    environment:
+      - PORT=8092
+      - CONNECTOR_BEARER_TOKEN=${NOTION_CONNECTOR_BEARER_TOKEN}
+      - CONNECTOR_HMAC_SECRET=${CONNECTOR_HMAC_SECRET}
+      - APP_BASE_URL=${NEXTAUTH_URL}
+      - NOTION_TIMEOUT_MS=30000
+      - CORS_ORIGINS=*
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  # Slack Connector — microservice for Slack API access (messages, channels, users)
+  # Requires SLACK_CONNECTOR_BEARER_TOKEN set and profile 'slack' enabled.
+  slack-connector:
+    profiles:
+      - slack
+    build:
+      context: ./services/slack-connector
+      dockerfile: Dockerfile
+    container_name: policy-bot-slack-connector
+    environment:
+      - PORT=8093
+      - CONNECTOR_BEARER_TOKEN=${SLACK_CONNECTOR_BEARER_TOKEN}
+      - CONNECTOR_HMAC_SECRET=${CONNECTOR_HMAC_SECRET}
+      - APP_BASE_URL=${NEXTAUTH_URL}
+      - SLACK_TIMEOUT_MS=30000
+      - CORS_ORIGINS=*
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
 networks:
   policy-bot-network:
     name: policy-bot-network

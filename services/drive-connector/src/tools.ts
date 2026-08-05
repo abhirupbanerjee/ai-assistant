@@ -26,7 +26,7 @@ export interface ToolDef {
   description: string;
   params: ToolParam[];
   /** Category — helps the host UI group tools. */
-  category: 'sheets' | 'drive' | 'docs' | 'slides' | 'onedrive';
+  category: 'sheets' | 'drive' | 'docs' | 'slides' | 'onedrive' | 'teams' | 'outlook' | 'sharepoint';
 }
 
 export const TOOLS: ToolDef[] = [
@@ -552,6 +552,111 @@ export const TOOLS: ToolDef[] = [
         description: '2D array of values (rows of columns).',
         items: { type: 'array' },
       },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+
+  // ── Microsoft Teams ────────────────────────────────────────────────────────
+  {
+    name: 'ms_teams_list_teams',
+    category: 'teams',
+    summary: 'List joined Microsoft Teams.',
+    description:
+      'Lists all Microsoft Teams that the authenticated user has joined. ' +
+      'Returns team ID, display name, description, and visibility.',
+    params: [
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_teams_list_channels',
+    category: 'teams',
+    summary: 'List channels in a Microsoft Team.',
+    description:
+      'Lists all channels within a specific Microsoft Team. Returns channel ' +
+      'ID, display name, description, and membership type.',
+    params: [
+      { name: 'teamId', type: 'string', required: true, description: 'The team ID from ms_teams_list_teams.' },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_teams_get_messages',
+    category: 'teams',
+    summary: 'Get messages from a Teams channel.',
+    description:
+      'Retrieves messages from a specific Teams channel. Returns message ' +
+      'content, sender, timestamp, and attachments.',
+    params: [
+      { name: 'teamId', type: 'string', required: true, description: 'The team ID.' },
+      { name: 'channelId', type: 'string', required: true, description: 'The channel ID from ms_teams_list_channels.' },
+      { name: 'top', type: 'number', description: 'Maximum number of messages to return.', default: 20 },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+
+  // ── Microsoft Outlook ──────────────────────────────────────────────────────
+  {
+    name: 'ms_outlook_list_messages',
+    category: 'outlook',
+    summary: 'List recent emails from Outlook.',
+    description:
+      'Retrieves recent email messages from the user\'s Outlook inbox. ' +
+      'Returns subject, sender, received date, and preview text.',
+    params: [
+      { name: 'top', type: 'number', description: 'Maximum number of messages to return.', default: 20 },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_outlook_send_mail',
+    category: 'outlook',
+    summary: 'Send an email via Outlook.',
+    description:
+      'Sends an email through the authenticated user\'s Outlook account. ' +
+      'Requires Mail.Send delegated permission.',
+    params: [
+      { name: 'to', type: 'string', required: true, description: 'Recipient email address (comma-separated for multiple).' },
+      { name: 'subject', type: 'string', required: true, description: 'Email subject line.' },
+      { name: 'body', type: 'string', required: true, description: 'Email body text.' },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_outlook_get_calendar',
+    category: 'outlook',
+    summary: 'Get calendar events from Outlook.',
+    description:
+      'Retrieves upcoming calendar events from the user\'s Outlook calendar. ' +
+      'Returns event subject, start/end times, location, and organizer.',
+    params: [
+      { name: 'top', type: 'number', description: 'Maximum number of events to return.', default: 20 },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+
+  // ── Microsoft SharePoint ────────────────────────────────────────────────────
+  {
+    name: 'ms_sharepoint_search',
+    category: 'sharepoint',
+    summary: 'Search SharePoint sites.',
+    description:
+      'Searches SharePoint sites accessible to the authenticated user. ' +
+      'Returns site name, URL, and description.',
+    params: [
+      { name: 'query', type: 'string', description: 'Search query for site names/descriptions.' },
+      { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
+    ],
+  },
+  {
+    name: 'ms_sharepoint_list_lists',
+    category: 'sharepoint',
+    summary: 'List SharePoint lists in a site.',
+    description:
+      'Lists all SharePoint lists within a specific site. Returns list ' +
+      'name, display name, and description.',
+    params: [
+      { name: 'siteId', type: 'string', required: true, description: 'The SharePoint site ID.' },
       { name: 'userId', type: 'string', description: 'Optional. Per-user identity (Phase 2).' },
     ],
   },
