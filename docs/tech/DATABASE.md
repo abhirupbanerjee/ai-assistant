@@ -77,6 +77,23 @@ PostgreSQL stores all structured metadata with ACID transactions. The database i
                                                 │ acknowledged_by │
                                                 └─────────────────┘
 
+┌──────────────────────┐
+│ user_connected_accounts│  (Connectors — per-user OAuth tokens)
+│──────────────────────│
+│ id (PK)              │
+│ provider             │  Google, Microsoft, GitHub, Notion, Slack
+│ user_email (FK)      │
+│ display_name         │
+│ access_token (ENC)   │  AES-256-GCM encrypted
+│ refresh_token (ENC)  │  AES-256-GCM encrypted
+│ scopes               │
+│ token_expiry         │  NULL for non-expiring tokens
+│ revoked              │
+│ last_error           │
+│ created_at           │
+│ updated_at           │
+└──────────────────────┘
+
 ┌─────────────────┐     ┌─────────────────┐
 │  thread_shares  │     │share_access_log │
 │─────────────────│     │─────────────────│

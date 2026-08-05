@@ -75,6 +75,14 @@ Comprehensive architecture documentation for AI Assistant - an enterprise RAG pl
 │ │ 2.5-pro (V)  │ │                  │                                    │
 │ │ 2.5-flash(V) │ │                  │                                    │
 │ └──────────────┘ │                  │                                    │
+│                  │                  │                                    │
+│  CONNECTOR MICROSERVICES (Docker)   │                                    │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
+│  │drive-connector│ │github-conn.  │ │notion-conn.  │ │slack-conn.   │    │
+│  │:8090 (GDrive, │ │:8091 (Repos, │ │:8092 (Pages, │ │:8093 (Msg,   │    │
+│  │OneDrive,Teams)│ │Issues,PRs)   │ │Databases)    │ │Channels)     │    │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘    │
+│                                                                         │
 │ ┌──────────────┐ │                  │                                    │
 │ │ Mistral AI   │ │                  │                                    │
 │ │ (@mistralai/ │ │                  │                                    │
@@ -135,6 +143,7 @@ Admins toggle routes via **Settings > Routes**. Disabling a route removes its mo
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
 | Data Sources | API + CSV integration | External data querying with visualization |
 | Function APIs | OpenAI-format schemas | Dynamic function calling to external services |
+| Connectors | Per-user OAuth microservices (GitHub, Notion, Slack, Google Drive, OneDrive) | Access external services with per-user permissions via Dockerized connectors |
 | Reranking | BGE cross-encoder (local), Fireworks AI Qwen3 Reranker (direct API), Cohere API, local bi-encoder | Chunk reranking for improved relevance (priority-based fallback) |
 | Vector DB | Qdrant | Category-based document embeddings storage |
 | Cache | Redis 7 | Query caching (RAG + Tavily), sessions |

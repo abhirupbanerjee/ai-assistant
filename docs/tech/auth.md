@@ -7,7 +7,8 @@ This document provides comprehensive coverage of AI Assistant's authentication s
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Authentication Providers](#authentication-providers)
+2. [Connector OAuth vs Login OAuth](#connector-oauth-vs-login-oauth)
+3. [Authentication Providers](#authentication-providers)
    - [Microsoft Azure AD](#microsoft-azure-ad)
    - [Google OAuth](#google-oauth)
    - [Credentials Authentication](#credentials-authentication)
@@ -37,6 +38,29 @@ AI Assistant uses [NextAuth.js v4](https://next-auth.js.org/) for authentication
 - OAuth providers are only registered when their client IDs are set in environment variables
 - All authentication flows converge on the same user database and role system
 - Server restart required after changing authentication settings
+
+### Connector OAuth vs Login OAuth
+
+AI Assistant has **two separate OAuth systems** that serve different purposes:
+
+| | Login OAuth (NextAuth) | Connector OAuth |
+|---|---|---|
+| **Purpose** | Authenticate user identity | Authorize access to external services |
+| **Providers** | Azure AD, Google, Credentials | GitHub, Notion, Slack, Google Drive, OneDrive |
+| **Routes** | `/api/auth/*` | `/api/connectors/{provider}/*` |
+| **Middleware** | Protected (requires auth) | Excluded (`api/connectors` in matcher) |
+| **Session** | NextAuth session (JWT) | Route-level `getCurrentUser()` call |
+| **Token storage** | NextAuth-managed | `user_connected_accounts` table (AES-256-GCM encrypted) |
+| **Scopes** | `openid email profile` | Service-specific (e.g., `repo`, `channels:read`) |
+| **Flow** | User clicks "Sign in with Google" | User goes to Profile → Connected Accounts → "Connect GitHub" |
+
+Connector OAuth is intentionally separate from login OAuth:
+- Login uses minimal scopes (`openid email profile`) for identity only
+- Connectors request broader scopes for data access (`repo`, `channels:read`, etc.)
+- Connector routes are excluded from NextAuth middleware — they use their own PKCE + session verification
+- Users can connect/disconnect services independently without affecting their login session
+
+See [`docs/features/connectors.md`](../features/connectors.md) for full connector documentation.
 
 ---
 

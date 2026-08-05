@@ -111,6 +111,7 @@ Built with enterprise-grade, open-source technologies:
 - **Analytics** - Usage tracking per workspace (sessions, messages, tokens)
 
 ### Tools
+- **Connectors** — Per-user OAuth for GitHub, Notion, Slack, Google Drive, OneDrive. Access repos, databases, messages, and files from chat.
 - **Web Search** - Tavily integration for current information
 - **Data Sources** - Query external APIs and CSV files
 - **Aggregate Data** - Server-side aggregation (group, count, sum, avg) across data sources
@@ -179,6 +180,7 @@ ai-assistant/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/                # REST API endpoints
 │   │   │   ├── chat/           # RAG chat (streaming + HITL)
+│   │   │   ├── connectors/     # OAuth flows for external services (GitHub, Notion, Slack, etc.)
 │   │   │   ├── threads/        # Thread CRUD + file uploads + sharing
 │   │   │   ├── admin/          # Admin endpoints (documents, users, categories, settings, agent-bots)
 │   │   │   ├── superuser/      # Superuser endpoints (global scope)
@@ -207,6 +209,7 @@ ai-assistant/
 │   │   │   ├── schema/         # PostgreSQL schema SQL
 │   │   │   ├── kysely.ts       # Kysely instance factory (Postgres-only)
 │   │   │   └── db-types.ts     # TypeScript types for all tables
+│   │   ├── connectors/         # Connector registry (auto-discovery + provider metadata)
 │   │   ├── tools/              # 22 tool implementations
 │   │   ├── agent/              # Autonomous agent (planner, executor, checker, summarizer)
 │   │   ├── agent-bots/         # Agent bot job runner and output management
@@ -236,6 +239,7 @@ ai-assistant/
 │   ├── API/
 │   │   └── API_SPECIFICATION.md        # Full REST API reference
 │   ├── features/
+│   │   ├── connectors.md               # Connector framework (GitHub, Notion, Slack, Drive)
 │   │   ├── Tools.md                    # Tool system documentation
 │   │   ├── PROMPTS.md                  # Prompts system guide
 │   │   ├── SKILLS.md                   # Skills system guide (includes tool routing)
@@ -303,25 +307,34 @@ docker compose --profile qdrant --profile ollama up -d --build
 > To act on the app and infrastructure **without** touching the connector, use
 > `make up-app`, `make down-app`, and `make build-app`.
 
-### Optional: Drive Connector (Google / Microsoft)
+### Optional: Connectors (GitHub, Notion, Slack, Google Drive, OneDrive)
+
+Connect external services so users can query their own accounts from chat.
+Each connector uses per-user OAuth — users connect from Profile → Connected Accounts.
+
 ```bash
-# Place a GCP service-account key and set CONNECTOR_BEARER_TOKEN in .env first.
-# Then start the connector alongside the app:
-make up
+# Enable connectors by setting COMPOSE_PROFILES in .env:
+COMPOSE_PROFILES=postgres,qdrant,github,notion,slack
 
-# Or manage it independently:
-make up-connector      # start only the connector
-make build-connector   # rebuild and restart only the connector
-make down-connector    # stop only the connector
-
-# App-only lifecycle (does not touch the connector):
-make up-app            # start app + infrastructure only
-make build-app         # rebuild and start app + infrastructure only
-make down-app          # stop app + infrastructure only
+# Or start individual connectors:
+docker compose --profile github up -d
+docker compose --profile notion up -d
+docker compose --profile slack up -d
 ```
 
-See [`services/drive-connector/README.md`](services/drive-connector/README.md) for
-setup, tool registration, and SSRF allowlist instructions.
+Set up OAuth credentials per connector:
+```bash
+GITHUB_CLIENT_ID=...          GITHUB_CLIENT_SECRET=...
+NOTION_CLIENT_ID=...          NOTION_CLIENT_SECRET=...
+SLACK_CLIENT_ID=...           SLACK_CLIENT_SECRET=...
+# Bearer tokens for connector auth (generate: openssl rand -hex 32)
+GITHUB_CONNECTOR_BEARER_TOKEN=...
+NOTION_CONNECTOR_BEARER_TOKEN=...
+SLACK_CONNECTOR_BEARER_TOKEN=...
+```
+
+See [`docs/features/connectors.md`](docs/features/connectors.md) for full setup,
+security model, and admin guide.
 
 ## Scaling Guide
 
@@ -356,7 +369,10 @@ See [scaling.md](docs/tech/scaling.md) for detailed architecture diagrams, confi
 | **PostgreSQL** | Relational database (port 5432) | `--profile postgres` |
 | **Qdrant** | Vector database (ports 6333/6334) | `--profile qdrant` |
 | **Ollama** | Local LLM inference | `--profile ollama` |
-| **drive-connector** | Google / Microsoft Drive Function API microservice | `services/drive-connector/docker-compose.connector.yml` |
+| **drive-connector** | Google Drive / OneDrive / Teams / Outlook / SharePoint (port 8090) | Default |
+| **github-connector** | GitHub repos, issues, PRs, code search (port 8091) | `--profile github` |
+| **notion-connector** | Notion pages, databases, search (port 8092) | `--profile notion` |
+| **slack-connector** | Slack messages, channels, users (port 8093) | `--profile slack` |
 
 ## External API Keys & Licenses
 
@@ -466,6 +482,18 @@ OLLAMA_CLOUD_API_KEY=...           # Ollama Cloud hosted models (Route 5)
 # Production Auth (at least one)
 AZURE_AD_CLIENT_ID=...
 GOOGLE_CLIENT_ID=...
+
+# Connectors (optional — per-user OAuth for external services)
+GITHUB_CLIENT_ID=...              # GitHub OAuth App
+GITHUB_CLIENT_SECRET=...
+GITHUB_CONNECTOR_BEARER_TOKEN=... # openssl rand -hex 32
+NOTION_CLIENT_ID=...              # Notion integration
+NOTION_CLIENT_SECRET=...
+NOTION_CONNECTOR_BEARER_TOKEN=...
+SLACK_CLIENT_ID=...               # Slack App
+SLACK_CLIENT_SECRET=...
+SLACK_CONNECTOR_BEARER_TOKEN=...
+CONNECTOR_HMAC_SECRET=...         # Shared across all connectors
 
 # Optional Enhancements
 COHERE_API_KEY=...                 # Or use local BGE reranker
