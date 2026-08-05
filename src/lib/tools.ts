@@ -27,6 +27,7 @@ import { kbSearchTool } from './tools/kb-search';
 import { kbReadTool } from './tools/kb-read';
 import { handoffToCategoryTool } from './tools/handoff-category';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/compat/tool-config';
+import { getCategoryToolConfigs } from './db/compat/category-tool-config';
 import { toolsLogger as logger } from './logger';
 import { isAgentTool, executeAgentTool, getAgentToolDefinitions } from './agent-registry/agent-tools';
 import { isMcpEnabled } from './mcp/config';
@@ -359,9 +360,28 @@ export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI
 
   const tools: OpenAI.Chat.ChatCompletionFunctionTool[] = [];
 
+  // Batch preload category tool configs to avoid N+1 queries per tool
+  let disabledCategoryTools: Set<string> | undefined;
+  if (categoryIds && categoryIds.length > 0) {
+    try {
+      const configs = await getCategoryToolConfigs(categoryIds[0]);
+      disabledCategoryTools = new Set(
+        configs.filter(c => c.isEnabled === false).map(c => c.toolName)
+      );
+    } catch (error) {
+      logger.warn('Failed to load category tool configs, skipping category-level filtering', {
+        categoryId: categoryIds[0],
+        error: String(error),
+      });
+    }
+  }
+
   // Add static tool definitions
   for (const tool of Object.values(AVAILABLE_TOOLS)) {
     if (tool.category !== 'autonomous' || !(await isToolEnabled(tool.name))) continue;
+
+    // Category-level filter: skip tools explicitly disabled for this category
+    if (disabledCategoryTools && disabledCategoryTools.has(tool.name)) continue;
 
     // Skip function_api here - its definitions are added dynamically below
     if (tool.name === 'function_api') continue;
@@ -414,13 +434,41 @@ export async function getToolDefinitions(categoryIds?: number[]): Promise<OpenAI
   // agents. These dispatch through executeTool via the isAgentTool branch.
   const agentCategoryId = categoryIds && categoryIds.length > 0 ? categoryIds[0] : undefined;
   const agentToolDefinitions = await getAgentToolDefinitions(agentCategoryId);
-  tools.push(...agentToolDefinitions);
+  // Category-level filter for agent-as-tool definitions
+  if (disabledCategoryTools) {
+    const filteredAgentDefs = agentToolDefinitions.filter(
+      def => {
+        if (!def.function?.name) {
+          logger.debug('Agent tool definition missing function.name, bypassing category filter');
+          return true;
+        }
+        return !disabledCategoryTools.has(def.function.name);
+      }
+    );
+    tools.push(...filteredAgentDefs);
+  } else {
+    tools.push(...agentToolDefinitions);
+  }
 
   // Add MCP tool definitions when MCP is enabled
   if (isMcpEnabled()) {
     try {
       const mcpToolDefinitions = await getMcpToolDefinitions();
-      tools.push(...mcpToolDefinitions);
+      // Category-level filter for MCP tool definitions
+      if (disabledCategoryTools) {
+        const filteredMcpDefs = mcpToolDefinitions.filter(
+          def => {
+            if (!def.function?.name) {
+              logger.debug('MCP tool definition missing function.name, bypassing category filter');
+              return true;
+            }
+            return !disabledCategoryTools.has(def.function.name);
+          }
+        );
+        tools.push(...filteredMcpDefs);
+      } else {
+        tools.push(...mcpToolDefinitions);
+      }
     } catch (error) {
       logger.error('Failed to load MCP tool definitions', { error: String(error) });
     }
